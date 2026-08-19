@@ -102,9 +102,16 @@ against production Aug 19 2026 — confirmed via a fresh read-only table
 count (18 tables: the original 17 + Alembic's own tracking table, `users`
 correctly absent) that this only recorded history and changed nothing.
 
-**Not yet done — still needs your explicit go-ahead before each step:**
-(2) `alembic upgrade head` (adds the real `users` table to production),
-(3) any actual ESPN sync write against production.
+**Done, with explicit go-ahead:** (2) `alembic upgrade head` run against
+production Aug 19 2026 — added the real `users` table and
+`owners.user_id` column. Verified immediately after: 19 tables (18 +
+`users`), `users` columns correct (`id`/`email`/`created_at`),
+`owners.user_id` present, and all 16 existing `owners` rows untouched.
+
+**Not yet done — still needs your explicit go-ahead:** (3) any actual
+ESPN sync write against production (`POST /admin/sync` or the scheduler,
+pointed at the real Supabase database). Phase 3's code and tests are
+otherwise complete.
 
 **Correction, Aug 19 2026:** real `ESPN_S2`/`SWID`/league ID were briefly
 added to `backend/.env.example` (the committed template) instead of
