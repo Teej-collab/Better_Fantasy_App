@@ -532,6 +532,84 @@ visit — wasteful and risky. Instead:
 3 new backend tests (current-week endpoint null-when-uncached; both
 `run_full_sync` and `run_live_sync` correctly cache it), 60 total passing.
 
+## PHASE 7.5 — ESPN LINEUP WRITE INVESTIGATION (Aug 19 2026)
+- [x] Build a safe lineup-mutation layer (reads/planning only)
+- [ ] Verify the actual ESPN write request — **blocked on a DevTools
+      capture from you**, see `ESPN_LINEUP_WRITE.md`
+
+Revisits the "not feasible" write-capability call from Phase 7 at your
+explicit request, this time with a proper investigation instead of
+stopping at "the library we use doesn't support it": re-confirmed
+`espn_api` is read-only at the source level (zero live `.post()`/
+`.put()` calls anywhere in it), checked `mkreiser/ESPN-Fantasy-Football-API`
+(sometimes cited as having transaction support — it doesn't, verified by
+reading its actual source tree), and searched current
+(2025–2026-dated where possible) community sources for a verified
+lineup-write request body. None exists publicly. Full breakdown, labeled
+VERIFIED / COMMUNITY-REPORTED / ASSUMED / NEEDS CAPTURE line by line, is
+in `ESPN_LINEUP_WRITE.md` at the repo root — including exact Chrome
+DevTools capture steps and exactly what must be redacted (`Cookie` /
+`Authorization` headers, any `SWID` echoed in a payload) before a
+captured request is ever pasted here.
+
+Built anyway, since none of it depends on the unverified write body:
+- `backend/app/providers/espn/lineup_client.py` — `ESPNLineupClient`,
+  isolated from both `adapter.py` (our DB-sync pipeline) and raw
+  `espn_api`. Always reads live from ESPN, never our DB (which is only
+  synced during game windows, per Phase 6, and can be stale). Implements
+  the full Phase 6 read-before-write sequence — fetch roster, find
+  player, validate slot, validate eligibility, check lock (best-effort,
+  via the player's scheduled kickoff time — `espn_api` exposes no
+  explicit "locked" flag), detect whether the destination slot needs a
+  displacement — and returns a `LineupChangePlan`/`SwapPlan` only once
+  every check passes.
+- `backend/app/providers/espn/slots.py` — `LineupSlot` enum + label
+  helpers. The slot IDs (QB=0, RB=2, WR=4, TE=6, D/ST=16, K=17,
+  BENCH=20, IR=21, FLEX=23) are VERIFIED — they're exactly what
+  `espn_api`'s `POSITION_MAP` already uses in production today to parse
+  every real roster correctly. Caught a real bug before it shipped:
+  `POSITION_MAP`'s string keys are NOT the reverse of its int keys (it
+  has `20: 'BE'` but no `'BE': 20`, and `23: 'RB/WR/TE'` but only
+  `'FLEX': 23`, not `'RB/WR/TE': 23`) — a naive reverse lookup through
+  the same dict would have silently misidentified every bench, IR, and
+  (in this league) flex player. Fixed by deriving the reverse map from
+  the verified int→label direction instead, plus a small alias table
+  ("FLEX" → 23) since that's what a human/Discord command will actually
+  type, not this league's literal ESPN label.
+- `backend/app/providers/espn/lineup_models.py` /
+  `lineup_exceptions.py` — `RosterEntry`, `LineupChangePlan`,
+  `SwapPlan`, `MutationResult`, and a specific exception per Phase 7
+  failure mode (`PlayerNotFoundError`, `SlotIneligibleError`,
+  `LineupLockedError`, `AmbiguousDisplacementError` — when a destination
+  slot has more than one occupant and there's no ESPN-given way to know
+  which one to bump, so `swap_players()` with an explicit second player
+  is required instead of guessing — `WriteNotVerifiedError`,
+  `MutationVerificationFailedError`).
+- `ESPNLineupClient.set_lineup()`/`swap_players()` build a plan, then
+  either log the exact mutation that would be sent and stop (dry-run,
+  the default — `ESPN_DRY_RUN` in `.env.example`, defaults to `true`) or
+  raise `WriteNotVerifiedError` (real-write mode). No code path anywhere
+  sends an actual request to ESPN yet — Phase 7's "never silently fail,
+  never guess" rule applied to the whole layer, not just individual
+  requests.
+- `verify_lineup()` — re-reads the live roster and checks it matches
+  what was expected; this is the only thing that will ever be allowed to
+  call a future mutation "successful," never an HTTP status code alone.
+- `backend/app/providers/espn/capture.py` — redaction/comparison helper
+  for once a real captured request is available, so a human redaction
+  attempt isn't the only line of defense.
+- Explicitly not built: Discord slash commands. This repo is the
+  FastAPI/Next.js web app, not the Discord bot process — the mutation
+  layer is UI-agnostic and callable from either once the write endpoint
+  is verified.
+
+31 new backend tests (slot ID/label resolution including the BE/IR/FLEX
+bug above, roster parsing, player lookup, eligibility validation, lock
+detection, displacement/ambiguous-displacement, swap validation, dry-run
+behavior, credential-redaction-in-logs, capture-utility redaction), 91
+total passing. Nothing here touches production — every test runs against
+fakes, no real ESPN credentials or network calls.
+
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records
 - [ ] Notifications (design pending)

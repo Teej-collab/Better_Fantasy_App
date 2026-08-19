@@ -6,12 +6,33 @@ to match only the attributes app/providers/espn/adapter.py actually reads.
 from types import SimpleNamespace
 
 
-def make_fake_team(team_id, name, owner_member_id, first, last, final_standing=0):
+def make_fake_team(team_id, name, owner_member_id, first, last, final_standing=0, roster=None):
     return SimpleNamespace(
         team_id=team_id,
         team_name=name,
         owners=[{"id": owner_member_id, "firstName": first, "lastName": last}],
         final_standing=final_standing,  # 0 = season still in progress, matches real ESPN behavior
+        roster=roster or [],
+    )
+
+
+def make_fake_lineup_player(
+    player_id, name, lineup_slot, eligible_slots, pro_team="KC", injury_status="ACTIVE", schedule=None
+):
+    """Stands in for espn_api.football.Player as used by
+    app/providers/espn/lineup_client.py. `lineup_slot` and
+    `eligible_slots` are espn_api's own label strings (e.g. "BE",
+    "RB/WR/TE"), matching what Player.lineupSlot/eligibleSlots actually
+    hold — NOT raw slot IDs, since that's the real (asymmetric)
+    POSITION_MAP shape the client has to work with."""
+    return SimpleNamespace(
+        playerId=player_id,
+        name=name,
+        lineupSlot=lineup_slot,
+        eligibleSlots=eligible_slots,
+        proTeam=pro_team,
+        injuryStatus=injury_status,
+        schedule=schedule or {},
     )
 
 
@@ -47,9 +68,13 @@ class FakeLeague:
     that to know when to stop."""
 
     def __init__(self, teams=None, reg_season_count=13,
-                 scoreboard_by_week=None, box_scores_by_week=None, current_week=1):
+                 scoreboard_by_week=None, box_scores_by_week=None, current_week=1,
+                 position_slot_counts=None):
         self.teams = teams or []
-        self.settings = SimpleNamespace(reg_season_count=reg_season_count)
+        self.settings = SimpleNamespace(
+            reg_season_count=reg_season_count,
+            position_slot_counts=position_slot_counts or {},
+        )
         self._scoreboard_by_week = scoreboard_by_week or {}
         self._box_scores_by_week = box_scores_by_week or {}
         self.current_week = current_week

@@ -19,3 +19,9 @@ class ESPNConfig:
         self.league_start_season = int(
             os.getenv("LEAGUE_START_SEASON", str(self.active_season))
         )
+        # Defaults to True (safe by default): the lineup mutation layer
+        # (app/providers/espn/lineup_client.py) refuses to send a real
+        # write request until this is explicitly set to false AND the
+        # write endpoint has been verified — see ESPN_LINEUP_WRITE.md.
+        # Anything other than exactly "false" (case-insensitive) is dry-run.
+        self.dry_run = os.getenv("ESPN_DRY_RUN", "true").strip().lower() != "false"
