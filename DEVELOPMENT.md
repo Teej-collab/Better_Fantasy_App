@@ -12,6 +12,23 @@ but only when deliberately triggered: `POST /admin/sync`, or the scheduled
 job if `ENABLE_ESPN_SYNC_SCHEDULER=true` is set (off by default). Nothing
 syncs automatically just from running the backend.
 
+### Connecting to Supabase — two gotchas that will otherwise waste an hour
+
+1. **Use the connection *pooler* string, not the direct one.** Supabase's
+   direct host (`db.<project-ref>.supabase.co`) is IPv6-only. If your
+   network has no IPv6 route (common on home ISPs), it fails DNS
+   resolution outright. Use the pooler string instead — dashboard →
+   Project Settings → Database → Connection string → "Transaction" or
+   "Session" pooler mode. It looks like
+   `postgresql://postgres.<project-ref>:[password]@aws-0-<region>.pooler.supabase.com:6543/postgres`
+   — note the username becomes `postgres.<project-ref>`, not just `postgres`.
+2. **Transaction-mode pgbouncer breaks asyncpg's prepared statements** —
+   you'll see `DuplicatePreparedStatementError`. `app/db.py` already
+   passes `statement_cache_size=0` to `asyncpg.create_pool(...)` to work
+   around this; if you're writing a one-off script that connects directly
+   with `asyncpg.connect(...)` instead of going through `get_pool()`,
+   pass that same argument or you'll hit the same error.
+
 ---
 
 ## Backend (FastAPI)
@@ -56,14 +73,26 @@ alembic revision -m "..."   # start a new migration
 ```
 
 **Do not run `alembic upgrade` against the production Supabase database.**
-Its tables already exist (created by hand from the original `schema.sql`,
-before Alembic existed in this project). The baseline migration
-(`f8b66c486a5e_baseline_schema.py`) is only meant to bring up a *fresh*
-database — local, test, or CI — to match what's already live. Bringing the
-real production DB under Alembic's management is a one-time, deliberate
-step (`alembic stamp f8b66c486a5e`, then `alembic upgrade head` for
-anything after that) that should happen with your explicit go-ahead, not
-automatically.
+Its tables already exist (created by hand, before Alembic existed in this
+project). The baseline migration (`f8b66c486a5e_baseline_schema.py`) is
+only meant to bring up a *fresh* database — local, test, or CI — to match
+what's already live. Bringing the real production DB under Alembic's
+management is a one-time, deliberate step (`alembic stamp f8b66c486a5e`,
+then `alembic upgrade head` for anything after that) that should happen
+with your explicit go-ahead, not automatically.
+
+**`db/schema.sql` (in Fantasy_Helper) turned out to be stale.** A
+read-only introspection of the real production database on Aug 19 2026
+found 6 tables (`bench_crimes`, `chug_debts`, `season_champions`,
+`season_awards`, `owner_nicknames`, `chug_weekly_status`) and several
+columns (`rosters.is_boom`/`is_bust`, `weekly_team_stats.team_points_projected`,
+`rivalries.name`/`emoji`/`tagline`/`description`/`tier`,
+`chug_scores.season`/`week`) that exist live but were never in
+`schema.sql`. The baseline migration here has been corrected to match
+what's actually live, not what the file said — if you're ever comparing
+this project's schema against Fantasy_Helper's `db/schema.sql` again,
+know that file is out of date and the migration in this repo is the more
+current reference.
 
 ### Running tests
 

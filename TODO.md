@@ -56,6 +56,14 @@ Supabase database. Applying them there — starting with
 your explicit go-ahead, not something to do automatically. See
 DEVELOPMENT.md's Migrations section for the exact command sequence.
 
+**Correction, Aug 19 2026:** the baseline migration originally ported
+`db/schema.sql` verbatim, as this phase's checkbox said. A later read-only
+check against the real production database (Phase 3) found that file was
+stale — production has 6 extra tables and several extra columns
+`schema.sql` never documented. The baseline migration has been corrected
+to match the live schema; see Phase 3 below and DEVELOPMENT.md for the
+full list of what was missing.
+
 The `users` table added here is intentionally minimal (`id`, `email`,
 `created_at` — no password/OAuth columns yet) since the actual auth
 mechanism is still a Phase 5 decision per ARCHITECTURE.md. `owners.user_id`
@@ -76,16 +84,24 @@ links a web login to a league-owner record once someone signs up.
       APScheduler inside the backend process, **off by default**
       (`ENABLE_ESPN_SYNC_SCHEDULER=true` to turn it on)
 
-**Still not done, on purpose:** the production Supabase database itself
-has not been touched — no migration, no sync write. `DATABASE_URL` in
-`backend/.env` is still a placeholder; real ESPN reads (above) don't
-require it. Once it's set to the real Supabase connection string, the
-plan is: (1) read-only compare the live schema against
-`f8b66c486a5e_baseline_schema` before touching anything, (2) `alembic
-stamp` that baseline rather than run it, since the tables already exist,
-(3) confirm explicitly before running `alembic upgrade head` (adds
-`users` table) or any real ESPN sync against it. See DEVELOPMENT.md's
-"ESPN sync" and "Migrations" sections.
+**Production DB work in progress, Aug 19 2026** — `DATABASE_URL` is now
+set to the real Supabase pooler connection string (the direct
+`db.<ref>.supabase.co` host is IPv6-only and didn't resolve on this
+network; switched to the pooler string, and `app/db.py` now passes
+`statement_cache_size=0` since transaction-mode pgbouncer doesn't support
+asyncpg's prepared statements — see DEVELOPMENT.md). Step 1 of the plan
+(read-only schema comparison) is done and found real drift — see the
+Phase 2 correction note above and DEVELOPMENT.md's Migrations section for
+the full list. The baseline migration has been corrected and re-verified
+locally (upgrade + downgrade clean against a fresh local Postgres,
+19 tables match production's 17 + `users` + `alembic_version`). A live
+read-only `/health` check against production Supabase itself succeeded.
+
+**Not yet done — needs your explicit go-ahead before each step:**
+(1) `alembic stamp f8b66c486a5e` against production (marks the corrected
+baseline as already applied, without running it), (2) `alembic upgrade
+head` (adds the real `users` table to production), (3) any actual ESPN
+sync write against production. None of these have happened yet.
 
 **Correction, Aug 19 2026:** real `ESPN_S2`/`SWID`/league ID were briefly
 added to `backend/.env.example` (the committed template) instead of
