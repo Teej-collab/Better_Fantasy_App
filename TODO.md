@@ -319,6 +319,14 @@ Also: your Discord client secret was accidentally printed in a terminal
 command's output while debugging — recommended resetting it in the
 Discord Developer Portal as a precaution.
 
+**Confirmed working end-to-end, Aug 19 2026.** Real login completed:
+Discord consent → callback → session issued → signed in. Verified
+directly in production (not just trusting the UI): a real `users` row
+was created (`discord_username='teej_8'`) and correctly linked via
+`owners.user_id` to owner `tj overlin`. **Phase 5's core deliverable —
+Discord OAuth login verified against real league membership — is done
+and proven working, not just built.**
+
 ## PHASE 6 — EXISTING BOT FEATURES → WEB
 - [ ] Team profile page (port `team_profile.py`)
 - [ ] Awards leaderboard page (port `season_awards.py`, `weekly_awards.py`)
