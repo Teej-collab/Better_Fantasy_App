@@ -1,54 +1,48 @@
-import { getStandings, listSeasons } from "@/lib/api";
+import { getCareerProfile, getOwnerBadges, listOwners, listSeasons } from "@/lib/api";
+import { TeamProfileCard } from "@/components/TeamProfileCard";
 
 export default async function DashboardPage() {
-  const { seasons } = await listSeasons();
-  const latestSeason = Math.max(...seasons);
-  const { standings } = await getStandings(latestSeason);
-  const top3 = standings.slice(0, 3);
+  const [{ owners }, { seasons }] = await Promise.all([listOwners(), listSeasons()]);
+
+  const cards = await Promise.all(
+    owners.map(async (owner) => {
+      const [career, badges] = await Promise.all([
+        getCareerProfile(owner.owner_id),
+        getOwnerBadges(owner.owner_id),
+      ]);
+      return { owner, career, badges };
+    })
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div>
+        <h1 className="text-2xl font-semibold">Team Profiles</h1>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Every owner who&apos;s ever been in the league — {owners.length} total. Pick a season
+          on any card for that year&apos;s stats.
+        </p>
+      </div>
 
-      <section className="rounded-lg border border-black/10 p-4 dark:border-white/10">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="font-medium">{latestSeason} Standings — Top 3</h2>
-          <a href={`/standings?season=${latestSeason}`} className="text-sm text-black/60 hover:underline dark:text-white/60">
-            View full standings
+      <div className="flex flex-wrap gap-2 text-sm">
+        {[...seasons].reverse().map((season) => (
+          <a
+            key={season}
+            href={`/standings?season=${season}`}
+            className="rounded-full border border-black/10 px-3 py-1.5 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+          >
+            {season}
           </a>
-        </div>
-        <ol className="flex flex-col gap-2">
-          {top3.map((row, i) => (
-            <li key={row.team_id} className="flex items-center justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate">
-                <span className="mr-2 text-black/40 dark:text-white/40">{i + 1}.</span>
-                {row.team_name}
-                <span className="ml-2 text-black/50 dark:text-white/50">({row.owner_name})</span>
-              </span>
-              <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
-                {row.wins}-{row.losses}
-                {row.ties > 0 ? `-${row.ties}` : ""}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
+        ))}
+      </div>
 
-      <section className="rounded-lg border border-black/10 p-4 dark:border-white/10">
-        <h2 className="mb-3 font-medium">Seasons</h2>
-        <ul className="flex flex-wrap gap-2">
-          {[...seasons].reverse().map((season) => (
-            <li key={season}>
-              <a
-                href={`/standings?season=${season}`}
-                className="rounded-full border border-black/10 px-3 py-1.5 text-sm hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-              >
-                {season}
-              </a>
-            </li>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {cards
+          .filter((c): c is typeof c & { career: NonNullable<typeof c.career> } => c.career !== null)
+          .map(({ owner, career, badges }) => (
+            <TeamProfileCard key={owner.owner_id} owner={owner} initialCareer={career} initialBadges={badges} />
           ))}
-        </ul>
-      </section>
+      </div>
     </div>
   );
 }

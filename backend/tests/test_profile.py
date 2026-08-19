@@ -64,6 +64,35 @@ async def test_season_profile_404_for_owner_with_no_team(pool):
     assert resp.status_code == 404
 
 
+async def test_season_profile_includes_season_awards(pool):
+    owner_a, team_a = await _seed_owner_and_team(pool, 6, "Faye", "Faye's Team")
+    _, team_b = await _seed_owner_and_team(pool, 7, "Gus", "Gus's Team")
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 1, $2, $3, 120.0, 100.0, FALSE)",
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            "INSERT INTO season_awards (season, owner_id, award_type, detail) VALUES ($1, $2, 'Boom Week', '120.0 pts')",
+            TEST_SEASON, owner_a,
+        )
+        # A different season's award for the same owner should NOT show up.
+        await conn.execute(
+            "INSERT INTO season_awards (season, owner_id, award_type, detail) VALUES (2019, $1, 'Old Award', 'irrelevant')",
+            owner_a,
+        )
+
+    resp = await _get(f"/owners/{owner_a}/profile?season={TEST_SEASON}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["season_awards"] == [{"award_type": "Boom Week", "detail": "120.0 pts"}]
+
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM season_awards WHERE season = 2019 AND owner_id = $1", owner_a)
+
+
 async def test_career_profile_aggregates_across_seasons(pool):
     owner_a, team_a_2023 = await _seed_owner_and_team(pool, 3, "Carl", "Carl's 2023 Team", season=2023)
     async with pool.acquire() as conn:
@@ -130,3 +159,29 @@ async def test_owner_badges_groups_awards_by_type(pool):
     body = resp.json()
     assert body["championship_years"] == [TEST_SEASON]
     assert body["award_summary"] == {"Clutch Performer": [TEST_SEASON]}
+
+
+async def test_list_all_owners_not_scoped_to_one_season(pool):
+    # Explicit requirement: the owner-card grid includes everyone who's
+    # ever been in the league, not just current-season teams — so an
+    # owner whose only team was in an old season must still show up.
+    owner_id, team_2023 = await _seed_owner_and_team(pool, 5, "Erin", "Erin 2023 Squad", season=2023)
+    async with pool.acquire() as conn:
+        team_2025 = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (2025, 305, $1, 'Erin 2025 Squad') RETURNING id",
+            owner_id,
+        )
+        cleanup_ids = [team_2023, team_2025]
+
+    resp = await _get("/owners")
+    assert resp.status_code == 200
+    owners_by_id = {o["owner_id"]: o for o in resp.json()["owners"]}
+
+    assert owner_id in owners_by_id
+    entry = owners_by_id[owner_id]
+    assert entry["display_name"] == "Erin"
+    assert entry["latest_team_name"] == "Erin 2025 Squad"  # most recent season, not first
+    assert entry["seasons"] == [2023, 2025]
+
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM teams_by_season WHERE id = ANY($1)", cleanup_ids)

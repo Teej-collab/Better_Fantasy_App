@@ -17,6 +17,16 @@ async def list_season_awards(conn, season: int):
     )
 
 
+async def list_owner_season_awards(conn, owner_id: int, season: int):
+    """Matches Fantasy_Helper's team.py embed: the season profile view
+    shows "Awards This Season" as its own small list, separate from the
+    career-wide grouped badges."""
+    return await conn.fetch(
+        "SELECT award_type, detail FROM season_awards WHERE season = $1 AND owner_id = $2",
+        season, owner_id,
+    )
+
+
 async def get_season_champion(conn, season: int):
     return await conn.fetchrow(
         """

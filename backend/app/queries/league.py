@@ -28,6 +28,31 @@ async def list_teams(conn, season: int):
     )
 
 
+async def list_all_owners(conn):
+    """Every owner who has ever been in the league — not scoped to any
+    one season, unlike list_teams. Used for the home page's owner-card
+    grid, which per explicit ask includes everyone with league history,
+    not just current-season teams (some owners here have left the
+    league entirely)."""
+    return await conn.fetch(
+        """
+        SELECT o.owner_id, o.display_name,
+               (
+                   SELECT t.team_name FROM teams_by_season t
+                   WHERE t.owner_id = o.owner_id
+                   ORDER BY t.season DESC LIMIT 1
+               ) AS latest_team_name,
+               (
+                   SELECT array_agg(t.season ORDER BY t.season) FROM teams_by_season t
+                   WHERE t.owner_id = o.owner_id
+               ) AS seasons
+        FROM owners o
+        WHERE EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = o.owner_id)
+        ORDER BY o.display_name
+        """
+    )
+
+
 async def get_team(conn, team_id: int):
     return await conn.fetchrow(
         """

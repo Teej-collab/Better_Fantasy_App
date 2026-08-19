@@ -128,6 +128,14 @@ export type SeasonProfile = {
   avg_luck: number | null;
   avg_chaos: number | null;
   current_power_rank: number | null;
+  season_awards: { award_type: string; detail: string | null }[];
+};
+
+export type Owner = {
+  owner_id: number;
+  display_name: string;
+  latest_team_name: string;
+  seasons: number[];
 };
 
 export type CareerProfile = {
@@ -192,6 +200,10 @@ export type Rivalry = {
   owner_b_id: number;
   owner_b_name: string;
 };
+
+export function listOwners() {
+  return get<{ owners: Owner[] }>("/owners");
+}
 
 export function getSeasonProfile(ownerId: number, season: number) {
   return getOrNull<SeasonProfile>(`/owners/${ownerId}/profile?season=${season}`);

@@ -440,6 +440,48 @@ that check has to wait for an actual Sunday. The mechanism itself, and
 every piece that doesn't require a live game, is tested and confirmed
 working.
 
+**Team Profile home page rebuild, Aug 19 2026 — real user requirement.**
+The project owner asked for the home page to lead with rich, interactive
+team profile cards for every owner who's ever been in the league,
+explicitly pointing at Fantasy_Helper's `/team_profile` Discord embed
+(`bot/discord_bot/commands/team.py`) as the reference: career view by
+default, a dropdown to drill into any season, championship banner,
+grouped career awards. Read that file before building anything — it's a
+genuinely well-designed embed, not a stub, and matching it closely (not
+reinventing the layout) was the right call.
+
+- New `list_all_owners()` query / `GET /owners` — every owner with any
+  team history, **not scoped to one season**. Confirmed against
+  production: 16 real owners, including 5 who've left the league
+  entirely (Aaron Roberts, Bailey Hawn, Brian Thomas, Ligmuh Bauhs,
+  Tyler Dailey) — they show up too, per the explicit "every owner who's
+  ever been in the league" requirement.
+- Season profile endpoint now also returns `season_awards` — the
+  Discord embed's "Awards This Season" list, which nothing had exposed
+  yet. Real parity gap, found by reading the reference file, not
+  guessed at.
+- `TeamProfileCard` (client component): career data is fetched
+  server-side for every owner up front (needed immediately, same
+  page-load); season data is fetched client-side, lazily, only when a
+  specific season is actually selected from the dropdown — deliberately
+  avoiding the same N+1-shaped mistake already made and fixed once this
+  session (weekly awards).
+- Home page (`/`) rebuilt: was a thin "top 3 standings" teaser, now a
+  responsive grid of full profile cards for all 16 owners. Verified
+  against real production data — full page load ~1s (16 owners × 2
+  server-side calls each, well within the range that's fine without
+  batching, unlike the weekly-awards case).
+
+4 new backend tests (owner listing spans multiple seasons and shows the
+most recent team name; season-awards inclusion, including that a
+different season's award correctly does NOT leak in), 57 total passing.
+
+**Not yet verified:** the actual click-to-switch-season interaction —
+no browser tooling was available this session, so this is
+build-clean/backend-tested/curl-verified, not eyes-on-the-actual-toggle
+verified. Worth a real click-through before calling the "interactive"
+part fully confirmed.
+
 ## PHASE 7 — LINEUP MANAGEMENT
 - [ ] Read lineups from ESPN
 - [ ] Investigate ESPN write-capability feasibility (research task, not a
