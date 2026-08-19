@@ -78,37 +78,54 @@ These IDs are VERIFIED as what ESPN's **read** responses use to describe
 a player's current slot. It is **NOT** verified that a **write** request
 uses these same integers in the same field name/shape — see below.
 
-## Write API — NEEDS CAPTURE
+## Write API
 
-Nothing below this line has been independently confirmed. It's included
-because it's what's commonly cited by the reverse-engineering community,
-not because we've verified it.
+Updated 2026-08-19 from a real captured request (headers only so far —
+body and response still needed, see "Still needed" below).
 
-- **Host** — `https://lm-api-writes.fantasy.espn.com` — **COMMUNITY-REPORTED**.
-  Plausible (it mirrors the verified read host's naming exactly), but no
-  source we found actually shows a real request against it.
-- **Path** — `POST /apis/v3/games/ffl/seasons/{year}/segments/0/leagues/{league_id}/roster/`
-  — **COMMUNITY-REPORTED**, same caveat.
-- **HTTP method** — **NEEDS CAPTURE**. Commonly assumed to be `POST`; some
-  ESPN write actions elsewhere in the reverse-engineering community are
-  `PUT` instead. Not confirmed either way for lineup changes specifically.
-- **Auth** — `espn_s2` / `SWID` cookies — **COMMUNITY-REPORTED**, consistent
-  with how the read API authenticates (which is VERIFIED), so plausible,
-  but the exact header/cookie set for a *write* call (ESPN's write paths
-  elsewhere are known to sometimes require extra headers like
-  `X-Fantasy-Filter` or a CSRF-style token) is **NEEDS CAPTURE**.
-- **Content-Type** — **NEEDS CAPTURE**.
-- **Request body shape for a single lineup slot change** — **NEEDS CAPTURE**.
-  We found no current (2025–2026) public source with a verified body.
-  Every search that looked promising (mkreiser's
-  `ESPN-Fantasy-Football-API`, which we specifically checked because it's
-  sometimes cited as having transaction support) turned out to be
-  read-only on inspection of its actual source — no `roster`, `lineup`,
-  or `transaction` write code exists in that repo either. `espn_api`
-  (the Python library this app already depends on) is also confirmed
-  read-only: its `requests/espn_requests.py` has zero live `.post()`/
-  `.put()` calls — the only POST-shaped code in it is commented out and
-  belongs to a disabled login flow, not lineup writes.
+- **Host** — `https://lm-api-writes.fantasy.espn.com` — **VERIFIED** (2026-08-19
+  capture). Matches the pattern we'd guessed, now confirmed for real.
+- **Path** — `POST /apis/v3/games/ffl/seasons/{year}/segments/0/leagues/{league_id}/transactions/?platformVersion={hash}`
+  — **VERIFIED** (2026-08-19 capture). **This corrects our own earlier
+  guess** — the commonly-cited `/roster/` path was wrong (or at least
+  not what the live web app actually calls); lineup changes go through
+  `/transactions/`, the same endpoint family `espn_api`'s
+  `TRANSACTION_TYPES` (`"ROSTER"` among them) already hinted at from the
+  read side. The `platformVersion` query param is a hash
+  (`5e254affd13eaa961c7dffbd9de59d867a2e0acf` in the captured request) —
+  unknown yet whether this needs to be exact, is checked for shape/
+  presence only, or is safely omittable. **NEEDS CAPTURE** to confirm.
+- **HTTP method** — `POST` — **VERIFIED** (2026-08-19 capture).
+- **Auth** — no `Cookie` header appeared in what was captured/shared.
+  Either it was manually redacted before sharing (correct, and
+  expected — see the redaction instructions above) or Chrome's header
+  copy view omitted it. Either way, real browser requests to an
+  authenticated endpoint like this one are essentially certain to be
+  sending `espn_s2`/`SWID` via `Cookie` — treating that assumption as
+  **COMMUNITY-REPORTED, not yet independently re-verified** here, since
+  we haven't actually seen the header ourselves. Doesn't block anything
+  else — `ESPNLineupClient` already builds requests through the same
+  `espn_s2`/`swid` cookie auth the (VERIFIED, working) read path uses.
+- **Other verified headers** (from the same capture):
+  - `content-type: application/json`
+  - `accept: application/json`
+  - `x-fantasy-platform: espn-fantasy-web`
+  - `x-fantasy-source:` — value got cut off in what was pasted (looked
+    like it started with `kona`); **NEEDS CAPTURE** to get the exact
+    full value.
+  - `origin: https://fantasy.espn.com`, `referer: https://fantasy.espn.com/`
+  - `content-length: 218` — tells us the body is small (roughly what
+    you'd expect for a single-player slot change, not a full-roster
+    payload), but not what's in it.
+- **Request body shape for a single lineup slot change** — **NEEDS CAPTURE**
+  (still). The 2026-08-19 capture was headers-only; the body (218 bytes,
+  per `content-length`) is the one piece that actually lets us implement
+  `_send_mutation` — see "Still needed" below for exactly which DevTools
+  tab has it. No current (2025–2026) public source has a verified body
+  either: `mkreiser/ESPN-Fantasy-Football-API` (sometimes cited as
+  having transaction support — checked its actual source, it doesn't)
+  and `espn_api` (this app's own dependency — zero live `.post()`/
+  `.put()` calls anywhere in it) are both confirmed read-only.
 - **Whether ESPN expects the full roster or just the changed player(s)**
   — **NEEDS CAPTURE**.
 - **Whether it's an `entries` array or something else** — **NEEDS CAPTURE**.
@@ -128,10 +145,23 @@ confirming ESPN's internal model does represent lineup changes as a
 distinct transaction type — but that's from the read-side activity feed,
 not a write request body, so it doesn't tell us the shape of what to send.
 
-## What we need from you to close this out
+## What we still need from you to close this out
 
-A single real lineup change, captured from ESPN's own web app, with
-credentials redacted before it ever reaches this repo or this chat.
+The 2026-08-19 capture confirmed the host, path, and method — real
+progress. Still missing, from that *same* captured request:
+
+1. **The request body** (Payload/Request tab, not Headers) — the actual
+   218 bytes that were sent. This is the one piece that unblocks
+   implementation.
+2. **The response** — status code and response body, from the
+   **Response** tab of the same request.
+3. **The full `x-fantasy-source` header value** — it got cut off as
+   `kona` in what was shared; needed in full.
+
+If you still have that Network panel open (or can reproduce the same
+lineup change again), click the same request and grab those three
+things. If not, a fresh capture of any real lineup change works just as
+well — see the steps below.
 
 ### How to capture it (Chrome DevTools)
 
