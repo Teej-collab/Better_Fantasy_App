@@ -189,11 +189,26 @@ nvm use lts
 Then, on either platform:
 ```bash
 cd frontend
+cp .env.local.example .env.local   # points at http://localhost:8000 by default
 npm install
 npm run dev
 ```
 
-Visit `http://localhost:3000`.
+Visit `http://localhost:3000`. The backend must be running too (see above)
+— every page fetches real data server-side at request time (no caching),
+so an unreachable backend means every page 500s.
+
+### Phase 4 pages
+
+Dashboard (`/`), Standings (`/standings`), League (`/league`), Team roster
+(`/teams/[teamId]`), a week's matchups (`/seasons/[season]/weeks/[week]`),
+and a single matchup box score (`/matchups/[matchupId]`) — all server
+components, all reading `app/queries/league.py`'s plain SQL aggregation
+(not the stats_engine ports, which are Phase 6). No auth yet, so "Team"
+is browsable by ID rather than a personalized "My Team" — that becomes
+free once Phase 5 links a logged-in user to their owner record. No design
+pass was done here (plain Tailwind, functional over polished) — worth a
+proper look once the page set stabilizes.
 
 ---
 

@@ -1,9 +1,11 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_pool
-from app.routers import admin
+from app.routers import admin, league
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -15,7 +17,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Better Fantasy App API", lifespan=lifespan)
+
+allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 app.include_router(admin.router)
+app.include_router(league.router)
 
 
 @app.get("/health")

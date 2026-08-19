@@ -126,9 +126,47 @@ double-checking which file's meant for secrets before pasting real
 values into either one going forward.
 
 ## PHASE 4 — CORE APPLICATION (read-only views)
-- [ ] Auth: basic login (decision pending — see ARCHITECTURE.md)
-- [ ] Dashboard, My Team, Matchup, Standings, League pages — thin, backed by
-      ported stats_engine functions
+
+**Scoping correction, Aug 19 2026:** this phase's original wording said
+pages would be "backed by ported stats_engine functions" — but
+stats_engine porting (luck score, power rank, awards) is explicitly Phase
+6 work, not done yet. Built these pages against the raw synced data
+instead (teams/matchups/rosters, standings via plain win/loss
+aggregation in `app/queries/league.py`) — real, working, just not the
+fancier computed stats. Those get layered on in Phase 6 without needing
+to redo these pages.
+
+- [ ] Auth: basic login — still not done, still a Phase 5 decision per
+      ARCHITECTURE.md. Not attempted here to avoid pre-deciding it.
+- [x] Dashboard, Standings, League, Team, Matchup pages — built and
+      verified against real production data (curl-based verification;
+      no browser tooling was available this session — see note below).
+      **"My Team" became "Team" (browsable by ID)** since there's no
+      login yet to know whose team is "mine" — trivial to personalize
+      once Phase 5 lands.
+- [x] Backend: `GET /seasons`, `/seasons/{s}/teams`, `/seasons/{s}/standings`,
+      `/seasons/{s}/weeks/{w}/matchups`, `/matchups/{id}`, `/teams/{id}`,
+      `/teams/{id}/roster` — all public, no auth, appropriate for a single
+      private league's own data. Covered by 6 new integration tests
+      (`tests/test_league.py`) against real local Postgres.
+- [x] CORS enabled (`CORS_ALLOWED_ORIGINS`, defaults to the local Next.js
+      dev origin).
+
+**Verification note:** Claude in Chrome wasn't connected this session, so
+pages were verified via `curl` against both local dev servers (backend on
+real production data, frontend calling it) — confirmed 200s, correct real
+data (team names, owner names, scores) present in the rendered HTML, and
+clean server logs on both sides. That's request/response-level
+verification, not a visual check — worth an actual look in a browser
+before treating the UI itself (layout, responsiveness, dark mode) as
+confirmed. No custom design pass was done; pages are plain functional
+Tailwind.
+
+**Known minor issue, not fixed:** the Dashboard defaults to the
+numerically latest season (2026), which hasn't started yet, so its "Top
+3" widget currently shows a 0-0-0 tie among all teams. Not broken, just
+not the most useful default — worth revisiting (e.g. default to the most
+recent season with actual games) when picking this back up.
 
 ## PHASE 5 — AUTHENTICATION (full)
 - [ ] Finalize auth approach with you (major decision, not pre-made)
