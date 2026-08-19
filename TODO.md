@@ -359,27 +359,26 @@ that's already there — no new computation needed for what's below.
       themselves live in the separate `Fantasy_Helper` repo, out of
       scope here. Not marked done since nothing in Discord itself changed.
 
-**Known data gap, not fixed:** `rosters.is_boom`/`is_bust` (added during
-the Phase 3 schema-drift discovery, never populated — 0 real rows
-anywhere in production) means the Boom/Bust leaderboard on the weekly
-awards section will always be empty. Not a bug in what was built here —
-`get_boom_bust_leaders()` is correct, there's just no data for it to
-find. Whatever would set these (a `compute_boom_bust.py`-equivalent,
-see `bot/stats_engine/boom_bust.py` for the real classification logic)
-was never ported or run. Flagging rather than silently shipping an
-always-empty section without explanation.
+**Boom/bust gap — fixed, Aug 19 2026.** Ported `bot/stats_engine/boom_bust.py`'s
+classification rule (`classify_boom_bust`/`get_baseline`, unchanged) and
+`scripts/compute_boom_bust.py`'s write logic into
+`app/domain/boom_bust.py` (`compute_boom_bust_for_week`/`_for_season`,
+scoped per-season so it doesn't redo untouched history). Wired into
+`run_full_sync` as a new step after `rosters`, so every sync — full or
+future live — keeps `is_boom`/`is_bust` current automatically, not just
+a one-time backfill. 6 new tests. **Still needs one thing:** this has
+only run against local test Postgres — backfilling real production data
+(currently 0 rows) needs an actual sync run, same explicit-go-ahead
+pattern as every other production write this session.
 
-**Known performance issue, not fixed:** the weekly awards page took
-~7 seconds to load against production. Not a bug — the ported logic
-(`weekly_awards.py`, faithfully unchanged) makes roughly 125 sequential
-DB round-trips per week (mostly repeated `get_expected_score` /
-team-name lookups inside loops), which was fine for the original bot
-calling this once per recap generation, but is slow for a page loading
-it fresh on every visit against a remote pooled Postgres. Fixing this
-would mean batching/caching those lookups, which changes the ported
-logic's shape — flagging as a deliberate follow-up rather than
-rewriting it without asking, per "keep the calculation logic itself
-unchanged" from MIGRATION_MAP.md.
+**Weekly awards performance — fixed, Aug 19 2026.** Rewrote
+`weekly_awards.py` (and `team_profile.find_game_of_the_week`'s power-rank
+lookups) to batch-fetch each week's inputs (matchup scores, projections,
+team names, power ranks) in a handful of queries instead of querying
+per-team/per-matchup in loops — same calculation logic, same thresholds,
+verified byte-for-byte identical output against real production data
+(2025 week 5) before and after. ~125 sequential round-trips → ~12.
+Measured: backend computation 7s → 0.95s; full page load 7s → ~1s.
 
 **Open question, not decided:** who computes/refreshes `weekly_team_stats`,
 `bench_crimes`, `season_awards`, `chug_debts`, etc. going forward?

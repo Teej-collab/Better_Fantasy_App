@@ -1,38 +1,76 @@
 """
-Ported from Fantasy_Helper's bot/awards_engine/weekly_awards.py,
-unchanged (see MIGRATION_MAP.md).
+Weekly awards — same calculation logic as Fantasy_Helper's
+bot/awards_engine/weekly_awards.py (ported verbatim originally; see git
+history), rewritten here to batch-fetch each week's inputs once instead
+of querying per-team/per-matchup in a loop.
 
-Computes the four weekly awards + the boom/bust player leaderboard for
-one season/week, league-wide. Meant to be called once per recap.
+Why: the original was fine for a bot generating one recap post per week.
+Called fresh on every page view, its ~125 sequential DB round-trips
+(mostly repeated `get_expected_score` and team-name lookups inside
+loops) took ~7s against a remote pooled Postgres. This version fetches
+the same underlying data (weekly_team_stats projections, matchup scores,
+team names, power ranks) in a handful of batched queries, then runs the
+identical comparisons/thresholds against it in Python. Outputs are
+equivalent, not approximated — see tests/test_awards.py.
+
+get_biggest_bench_crime and get_boom_bust_leaders were already single
+queries in the original and are unchanged. find_game_of_the_week lives
+in app.domain.team_profile (that's where it was in the original bot) —
+callers use both modules together, see app/routers/awards.py.
 """
-from app.domain.expected_score import get_expected_score
+
+
+async def _load_week_context(conn, season: int, week: int):
+    matchups = await conn.fetch(
+        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0", season, week
+    )
+
+    team_score = {}
+    for m in matchups:
+        team_score[m["home_team_id"]] = float(m["home_score"])
+        team_score[m["away_team_id"]] = float(m["away_score"])
+
+    wts_rows = await conn.fetch(
+        "SELECT team_id, team_points_projected FROM weekly_team_stats WHERE season = $1 AND week = $2",
+        season, week,
+    )
+    projected = {
+        r["team_id"]: float(r["team_points_projected"]) if r["team_points_projected"] else None
+        for r in wts_rows
+    }
+    # Same set of teams the original get_overachiever_and_meltdown considered
+    # (sourced from weekly_team_stats, not matchups) — preserved deliberately.
+    wts_team_ids = [r["team_id"] for r in wts_rows]
+
+    league_avg = sum(team_score.values()) / len(team_score) if team_score else 0.0
+
+    def expected_score(team_id: int) -> float:
+        p = projected.get(team_id)
+        return p if p and p > 0 else league_avg
+
+    team_ids = set(team_score) | set(projected)
+    team_names = {}
+    if team_ids:
+        rows = await conn.fetch(
+            "SELECT id, team_name FROM teams_by_season WHERE id = ANY($1::int[])", list(team_ids)
+        )
+        team_names = {r["id"]: r["team_name"] for r in rows}
+
+    return matchups, team_score, wts_team_ids, expected_score, team_names
 
 
 async def get_overachiever_and_meltdown(conn, season: int, week: int):
-    teams = await conn.fetch(
-        "SELECT DISTINCT team_id FROM weekly_team_stats WHERE season = $1 AND week = $2",
-        season, week,
-    )
+    _, team_score, wts_team_ids, expected_score, team_names = await _load_week_context(conn, season, week)
 
     results = []
-    for t in teams:
-        team_id = t["team_id"]
-        score = await conn.fetchval(
-            """
-            SELECT CASE WHEN home_team_id = $1 THEN home_score ELSE away_score END
-            FROM matchups WHERE season = $2 AND week = $3 AND (home_team_id = $1 OR away_team_id = $1) AND home_score > 0
-            """,
-            team_id, season, week,
-        )
+    for team_id in wts_team_ids:
+        score = team_score.get(team_id)
         if score is None:
             continue
-
-        expected = await get_expected_score(conn, season, week, team_id)
+        expected = expected_score(team_id)
         if expected <= 0:
             continue
-
-        team_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", team_id)
-        results.append({"team_id": team_id, "team_name": team_name, "diff": float(score) - expected})
+        results.append({"team_id": team_id, "team_name": team_names.get(team_id), "diff": score - expected})
 
     if not results:
         return None, None
@@ -56,9 +94,7 @@ async def get_biggest_bench_crime(conn, season: int, week: int):
 
 
 async def get_clutch_choke_of_week(conn, season: int, week: int):
-    matchups = await conn.fetch(
-        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0", season, week
-    )
+    matchups, _, _, expected_score, team_names = await _load_week_context(conn, season, week)
 
     clutch = None
     choke = None
@@ -70,8 +106,8 @@ async def get_clutch_choke_of_week(conn, season: int, week: int):
             score = float(m["home_score"] if is_home else m["away_score"])
             won = (m["home_score"] > m["away_score"]) if is_home else (m["away_score"] > m["home_score"])
 
-            expected = await get_expected_score(conn, season, week, team_id)
-            opp_expected = await get_expected_score(conn, season, week, opp_id)
+            expected = expected_score(team_id)
+            opp_expected = expected_score(opp_id)
             if expected <= 0 or opp_expected <= 0:
                 continue
 
@@ -79,7 +115,7 @@ async def get_clutch_choke_of_week(conn, season: int, week: int):
             was_underdog = expected < (opp_expected - 10)
             was_favored = expected > (opp_expected + 10)
 
-            team_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", team_id)
+            team_name = team_names.get(team_id)
 
             if won and (pct_diff >= 0.15 or was_underdog):
                 margin = pct_diff if pct_diff >= 0.15 else (opp_expected - expected)

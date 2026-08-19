@@ -163,21 +163,34 @@ async def find_game_of_the_week(conn, season: int, week: int, matchups: list[dic
     Picks the matchup with the best combined power rank (lower rank
     number = better team, so we want the LOWEST sum). Returns None if
     not enough power-rank data exists yet (e.g. week 1).
+
+    Each team's rank is its most recent recorded power_rank in this
+    season by week number, with no upper bound at the current week —
+    that matches the original per-matchup query exactly (it never
+    filtered by week <= current), just batched into one query instead
+    of two per matchup.
     """
+    if not matchups:
+        return None
+
+    team_ids = {m["home_team_id"] for m in matchups} | {m["away_team_id"] for m in matchups}
+    rows = await conn.fetch(
+        """
+        SELECT DISTINCT ON (team_id) team_id, power_rank
+        FROM weekly_team_stats
+        WHERE season = $1 AND team_id = ANY($2::int[]) AND power_rank IS NOT NULL
+        ORDER BY team_id, week DESC
+        """,
+        season, list(team_ids),
+    )
+    ranks = {r["team_id"]: r["power_rank"] for r in rows}
+
     best_matchup = None
     best_combined_rank = None
 
     for m in matchups:
-        home_rank = await conn.fetchval(
-            "SELECT power_rank FROM weekly_team_stats WHERE season = $1 AND team_id = $2 "
-            "AND power_rank IS NOT NULL ORDER BY week DESC LIMIT 1",
-            season, m["home_team_id"],
-        )
-        away_rank = await conn.fetchval(
-            "SELECT power_rank FROM weekly_team_stats WHERE season = $1 AND team_id = $2 "
-            "AND power_rank IS NOT NULL ORDER BY week DESC LIMIT 1",
-            season, m["away_team_id"],
-        )
+        home_rank = ranks.get(m["home_team_id"])
+        away_rank = ranks.get(m["away_team_id"])
         if home_rank is None or away_rank is None:
             continue
 
