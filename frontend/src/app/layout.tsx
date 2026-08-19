@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { listSeasons } from "@/lib/api";
+import { AuthStatus } from "@/components/AuthStatus";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -43,6 +44,7 @@ async function NavBar() {
             Matchups
           </a>
         )}
+        <AuthStatus />
       </nav>
     </header>
   );

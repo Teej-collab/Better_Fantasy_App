@@ -244,8 +244,67 @@ skips-when-in-progress; 2 query: final_rank ordering / fallback to
 record), replacing the 2 champion-field tests. 21 total passing.
 
 ## PHASE 5 — AUTHENTICATION (full)
-- [ ] Finalize auth approach with you (major decision, not pre-made)
-- [ ] League membership / roles (commissioner vs. member)
+- [x] Finalize auth approach with you — **Sign in with Discord**, verified
+      against `owners.discord_user_id` (real league membership, already
+      synced from ESPN). You initially asked about "sign in with ESPN"
+      for the same verification reason; explained that ESPN has no
+      public OAuth for third-party apps, and using the ESPN session
+      cookies (already used for data sync) as a "login" would mean
+      asking ~12 people to extract and hand over their own private
+      session cookies — a real security risk and bad UX, not a login
+      mechanism. Discord OAuth + the owner-ID check gets the same
+      "verify they're actually in the league" property safely.
+- [x] League membership / roles (commissioner vs. member) — foundational
+      version: `is_commissioner` on the session, set by comparing the
+      logged-in Discord ID against `COMMISSIONER_DISCORD_ID` (same env
+      var Fantasy_Helper's bot already used). No commissioner-only
+      features exist yet to gate with it — that's real work for whenever
+      a feature actually needs it, not built ahead of need.
+
+**What was built:**
+- `users` table extended (migration `0528c1f9a3cb`, applied to
+  production): `email` now nullable (Discord OAuth doesn't reliably
+  return one without extra consent scope), added `discord_user_id`
+  (unique) and `discord_username` — discord_user_id is the real identity
+  key for a user account now.
+- `POST/GET /auth/discord/login`, `/auth/discord/callback`, `GET
+  /auth/me`, `POST /auth/logout` (`app/routers/auth.py`). Callback
+  verifies the Discord account against `owners.discord_user_id` before
+  issuing a session — someone can complete Discord's consent screen and
+  still get denied (redirected to `/login?error=not_a_league_member`)
+  if they're not a real league member.
+- Session = signed JWT in an httpOnly cookie (`app/auth/session.py`,
+  `pyjwt`), not a server-side session table — reasonable for a ~12-person
+  league; revisit if real revocation is ever needed.
+- Config split into `SessionConfig` (just `SESSION_SECRET` —used by
+  `/auth/me` and `/auth/logout`) and `DiscordAuthConfig` (adds the
+  Discord app credentials — used only by the login/callback routes) so
+  checking "am I logged in" doesn't require Discord credentials at all.
+  Both lazy, same pattern as `ESPNConfig`.
+- Frontend: `AuthStatus` client component in the nav (the one part of
+  this app that fetches from the browser, not server-side — a Next.js
+  server component has no access to the session cookie, which is set on
+  the *backend's* origin from a browser-driven OAuth redirect). `/login`
+  page for the "not a league member" error.
+- 9 new backend tests, all mocked (`tests/test_auth.py` mocks Discord's
+  token/user endpoints; `tests/test_session.py` is pure JWT round-trip
+  logic) — **nothing has hit Discord's real API yet**, since that needs
+  a real registered Discord application, which only you can create. See
+  DEVELOPMENT.md's "Discord login" section for the exact setup steps.
+  30 tests total passing.
+
+**Known gap, not fixed:** checked production — 11 of 16 owners already
+have a real `discord_user_id` (so login works for them once credentials
+are set), but 5 don't: Aaron Roberts, Bailey Hawn, Brian Thomas, Ligmuh
+Bauhs, Tyler Dailey. They won't be able to log in until their Discord ID
+is added to their `owners` row — ESPN sync can't provide this (ESPN
+doesn't know Discord identities), so it needs either their Discord ID
+from you or an admin tool to set it. Not built — flagging rather than
+guessing at scope for a 5-person, one-time fix.
+
+**Not yet done:** an actual live login has not been tested — that needs
+you to register a Discord application (DEVELOPMENT.md walks through it)
+and add the credentials to `backend/.env`.
 
 ## PHASE 6 — EXISTING BOT FEATURES → WEB
 - [ ] Team profile page (port `team_profile.py`)

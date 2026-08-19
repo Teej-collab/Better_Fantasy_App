@@ -6,3 +6,5 @@ alembic
 psycopg2-binary
 espn_api
 apscheduler
+httpx
+pyjwt

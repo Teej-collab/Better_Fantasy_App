@@ -21,7 +21,18 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM season_champions WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
+        # owners.user_id -> users.id, so capture which users are linked to
+        # test owners *before* deleting those owners, then delete the
+        # users afterward — deleting users first would violate the FK.
+        linked_user_ids = [
+            r["user_id"]
+            for r in await conn.fetch(
+                "SELECT user_id FROM owners WHERE espn_member_id LIKE 'test-%' AND user_id IS NOT NULL"
+            )
+        ]
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
+        if linked_user_ids:
+            await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", linked_user_ids)
 
 
 @pytest.fixture

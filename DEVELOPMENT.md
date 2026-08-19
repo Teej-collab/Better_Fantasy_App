@@ -161,6 +161,46 @@ The scheduled job (`app/scheduler.py`) does the same thing on a timer
 is explicitly set truthy — left off by default so no one's local dev
 backend starts quietly syncing real league data on a schedule.
 
+### Discord login (Phase 5)
+
+Sign-in is "Sign in with Discord," verified against `owners.discord_user_id`
+(real league membership, already synced from ESPN) — see TODO.md's Phase 5
+notes for why this approach was chosen over email/password or a (nonexistent)
+"Sign in with ESPN." Covered by mocked tests (`tests/test_auth.py`,
+`tests/test_session.py`) — Discord's OAuth endpoints aren't hit in tests,
+so this hasn't been verified against a real login yet.
+
+**One-time setup — registering a Discord application** (only you can do
+this, it needs your Discord account):
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) →
+   **New Application** → name it anything (e.g. "Better Fantasy App").
+2. **OAuth2** tab → **Redirects** → add `http://localhost:8000/auth/discord/callback`
+   exactly (must match `DISCORD_REDIRECT_URI` below character-for-character).
+3. Same tab: copy the **Client ID**, and click **Reset Secret** to get a
+   **Client Secret**.
+4. Add to `backend/.env` (not `.env.example` — see the note about that
+   mistake earlier in this project):
+   ```
+   DISCORD_CLIENT_ID=<from step 3>
+   DISCORD_CLIENT_SECRET=<from step 3>
+   DISCORD_REDIRECT_URI=http://localhost:8000/auth/discord/callback
+   ```
+   `SESSION_SECRET` is already set (a random value was generated for you
+   when this feature was built) — don't need to touch it. Optionally set
+   `COMMISSIONER_DISCORD_ID` to your own Discord user ID (right-click your
+   name in Discord with Developer Mode on → Copy User ID) to get the
+   `is_commissioner` flag on your session.
+5. For someone to actually be able to log in, their real Discord user ID
+   needs to already be in `owners.discord_user_id` for some owner row —
+   this should already be true for anyone whose ESPN-linked Discord account
+   was captured during a sync; check with `SELECT display_name,
+   discord_user_id FROM owners` if unsure.
+
+Once set, visiting `http://localhost:8000/auth/discord/login` in a browser
+(or clicking "Sign in with Discord" in the app nav) should redirect to a
+real Discord consent screen and back.
+
 ---
 
 ## Frontend (Next.js)

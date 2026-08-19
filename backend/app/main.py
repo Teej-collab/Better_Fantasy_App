@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_pool
-from app.routers import admin, league
+from app.routers import admin, auth, league
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -24,9 +24,14 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
+    # Needed so the browser sends the session cookie on cross-origin
+    # requests from the frontend (different port = different origin) to
+    # GET /auth/me and POST /auth/logout.
+    allow_credentials=True,
 )
 
 app.include_router(admin.router)
+app.include_router(auth.router)
 app.include_router(league.router)
 
 
