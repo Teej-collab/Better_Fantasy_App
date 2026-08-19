@@ -97,11 +97,14 @@ locally (upgrade + downgrade clean against a fresh local Postgres,
 19 tables match production's 17 + `users` + `alembic_version`). A live
 read-only `/health` check against production Supabase itself succeeded.
 
-**Not yet done — needs your explicit go-ahead before each step:**
-(1) `alembic stamp f8b66c486a5e` against production (marks the corrected
-baseline as already applied, without running it), (2) `alembic upgrade
-head` (adds the real `users` table to production), (3) any actual ESPN
-sync write against production. None of these have happened yet.
+**Done, with explicit go-ahead:** (1) `alembic stamp f8b66c486a5e` run
+against production Aug 19 2026 — confirmed via a fresh read-only table
+count (18 tables: the original 17 + Alembic's own tracking table, `users`
+correctly absent) that this only recorded history and changed nothing.
+
+**Not yet done — still needs your explicit go-ahead before each step:**
+(2) `alembic upgrade head` (adds the real `users` table to production),
+(3) any actual ESPN sync write against production.
 
 **Correction, Aug 19 2026:** real `ESPN_S2`/`SWID`/league ID were briefly
 added to `backend/.env.example` (the committed template) instead of
