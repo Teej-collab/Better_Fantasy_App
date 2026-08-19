@@ -1,47 +1,78 @@
 """
-Independent scheduled sync job — replaces Fantasy_Helper's in-process
-discord.ext.tasks loop (see ARCHITECTURE.md: scheduling "should be
-triggered by a proper scheduler... so it doesn't depend on a Discord bot
-process being alive"). Runs inside the backend process via APScheduler.
+Two independent scheduled jobs, both off by default so running the
+backend locally doesn't silently start hitting ESPN and writing to
+whatever DATABASE_URL happens to be configured:
 
-Off by default (ENABLE_ESPN_SYNC_SCHEDULER unset) — running the backend
-locally shouldn't silently start hitting ESPN and writing to whatever
-DATABASE_URL happens to be configured. Turn it on deliberately once ESPN
-sync has been confirmed working via the manual POST /admin/sync endpoint.
+- Full sync (ENABLE_ESPN_SYNC_SCHEDULER): the complete historical scan,
+  replaces Fantasy_Helper's in-process discord.ext.tasks loop (see
+  ARCHITECTURE.md). Meant for a slow cadence (default: daily).
+- Live sync (ENABLE_LIVE_SYNC_SCHEDULER): re-syncs just the current
+  week's matchups/rosters + boom/bust, fast enough to poll frequently
+  during live games. Gated to actual NFL game windows
+  (app/game_windows.py) by default so an unofficial API isn't polled
+  around the clock for no reason — a deliberate decision, not an
+  oversight (discussed with the project owner Aug 19 2026).
 """
 import logging
 import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.game_windows import is_within_nfl_game_window
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
-from app.providers.sync import run_full_sync
+from app.providers.sync import run_full_sync, run_live_sync
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
 
 
-async def _run_sync_job():
+async def _run_full_sync_job():
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
     results = await run_full_sync(
         provider, espn_config.league_start_season, espn_config.active_season
     )
-    logger.info("Scheduled ESPN sync finished: %s", results)
+    logger.info("Scheduled full ESPN sync finished: %s", results)
+
+
+async def _run_live_sync_job():
+    if not is_within_nfl_game_window():
+        return
+
+    espn_config = ESPNConfig()
+    provider = ESPNProvider(espn_config)
+    season = espn_config.active_season
+    week = await provider.get_current_week(season)
+    results = await run_live_sync(provider, season, week)
+    logger.info("Live sync finished (season=%s week=%s): %s", season, week, results)
 
 
 def start_scheduler():
     global _scheduler
-    if os.getenv("ENABLE_ESPN_SYNC_SCHEDULER", "").lower() not in ("1", "true", "yes"):
-        return
-
-    interval_hours = int(os.getenv("SYNC_INTERVAL_HOURS", "24"))
     _scheduler = AsyncIOScheduler()
-    _scheduler.add_job(_run_sync_job, "interval", hours=interval_hours, id="espn_sync")
-    _scheduler.start()
-    logger.info("ESPN sync scheduler started (every %d hours)", interval_hours)
+    started_any = False
+
+    if os.getenv("ENABLE_ESPN_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_hours = int(os.getenv("SYNC_INTERVAL_HOURS", "24"))
+        _scheduler.add_job(_run_full_sync_job, "interval", hours=interval_hours, id="espn_full_sync")
+        logger.info("Full ESPN sync scheduler started (every %d hours)", interval_hours)
+        started_any = True
+
+    if os.getenv("ENABLE_LIVE_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_minutes = int(os.getenv("LIVE_SYNC_INTERVAL_MINUTES", "5"))
+        _scheduler.add_job(_run_live_sync_job, "interval", minutes=interval_minutes, id="espn_live_sync")
+        logger.info(
+            "Live ESPN sync scheduler started (every %d minutes, only during NFL game windows)",
+            interval_minutes,
+        )
+        started_any = True
+
+    if started_any:
+        _scheduler.start()
+    else:
+        _scheduler = None
 
 
 def stop_scheduler():

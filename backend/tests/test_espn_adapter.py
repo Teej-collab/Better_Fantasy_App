@@ -9,6 +9,68 @@ from tests.fakes_espn import (
 )
 
 
+async def test_get_current_week(espn_config, monkeypatch):
+    fake_league = FakeLeague(current_week=7)
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    assert await provider.get_current_week(TEST_SEASON) == 7
+
+
+async def test_sync_matchups_for_week_targets_one_week_only(pool, espn_config, monkeypatch):
+    fake_teams = [
+        make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),
+        make_fake_team(2, "Team Two", "test-member-2", "Bob", "Jones"),
+    ]
+    fake_league = FakeLeague(
+        teams=fake_teams,
+        scoreboard_by_week={5: [make_fake_matchup(1, 2, 111.0, 99.0)]},
+    )
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)
+    saved = await provider.sync_matchups_for_week(pool, TEST_SEASON, 5)
+    assert saved == 1
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT home_score, away_score FROM matchups WHERE season = $1 AND week = 5", TEST_SEASON
+        )
+    assert float(row["home_score"]) == 111.0
+    assert float(row["away_score"]) == 99.0
+
+
+async def test_sync_rosters_for_week_saves_even_with_zero_points(pool, espn_config, monkeypatch):
+    # Unlike the full sync_rosters loop, a live/targeted sync of a known
+    # week must NOT skip pre-kickoff lineups just because no points have
+    # been scored yet — that's real, current roster data (e.g. a waiver
+    # add before games lock), not "this week hasn't started, stop scanning".
+    fake_teams = [
+        make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),
+        make_fake_team(2, "Team Two", "test-member-2", "Bob", "Jones"),
+    ]
+    pregame_lineup_home = [make_fake_player("Not Yet Played", "QB", "QB", 0, 20.0)]
+    pregame_lineup_away = [make_fake_player("Also Not Yet Played", "WR", "WR", 0, 12.0)]
+    fake_league = FakeLeague(
+        teams=fake_teams,
+        box_scores_by_week={5: [make_fake_box_score(1, 2, pregame_lineup_home, pregame_lineup_away)]},
+    )
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)
+    saved = await provider.sync_rosters_for_week(pool, TEST_SEASON, 5)
+    assert saved == 1  # NOT 0 — this is the behavior sync_rosters (full scan) intentionally differs on
+
+    async with pool.acquire() as conn:
+        names = [
+            r["player_name"]
+            for r in await conn.fetch("SELECT player_name FROM rosters WHERE season = $1 AND week = 5", TEST_SEASON)
+        ]
+    assert set(names) == {"Not Yet Played", "Also Not Yet Played"}
+
+
 async def test_sync_teams_upserts_owners_and_teams(pool, espn_config, monkeypatch):
     fake_teams = [
         make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),

@@ -76,3 +76,11 @@ async def compute_boom_bust_for_season(pool, season: int) -> int:
         for w in weeks:
             total += await compute_boom_bust_for_week(conn, season, w["week"])
     return total
+
+
+async def compute_boom_bust_for_single_week(pool, season: int, week: int) -> int:
+    """Pool-based single-week entry point for live sync (see
+    app/providers/sync.py's run_live_sync) — recomputes just the one
+    week that was just re-synced, not the whole season."""
+    async with pool.acquire() as conn:
+        return await compute_boom_bust_for_week(conn, season, week)

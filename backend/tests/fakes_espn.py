@@ -47,11 +47,12 @@ class FakeLeague:
     that to know when to stop."""
 
     def __init__(self, teams=None, reg_season_count=13,
-                 scoreboard_by_week=None, box_scores_by_week=None):
+                 scoreboard_by_week=None, box_scores_by_week=None, current_week=1):
         self.teams = teams or []
         self.settings = SimpleNamespace(reg_season_count=reg_season_count)
         self._scoreboard_by_week = scoreboard_by_week or {}
         self._box_scores_by_week = box_scores_by_week or {}
+        self.current_week = current_week
 
     def scoreboard(self, week):
         if week not in self._scoreboard_by_week:

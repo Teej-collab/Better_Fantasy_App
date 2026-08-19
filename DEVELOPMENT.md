@@ -161,6 +161,36 @@ The scheduled job (`app/scheduler.py`) does the same thing on a timer
 is explicitly set truthy — left off by default so no one's local dev
 backend starts quietly syncing real league data on a schedule.
 
+### Live sync (in-game updates)
+
+The full sync above re-scans *all* history every run — fine daily, too
+slow and wasteful to poll every few minutes. `run_live_sync` (in
+`app/providers/sync.py`) is a separate, narrow path: re-syncs only the
+*current* week's matchups and rosters (one ESPN call each, not a 1-17
+week scan), then recomputes boom/bust for just that week. Re-running it
+naturally picks up roster/lineup changes too, since roster sync always
+replaces that week's data wholesale.
+
+- **Manual trigger:** `POST /admin/sync/live` (same `X-Admin-Token`
+  header as `/admin/sync`). Ignores the game-window gate — if you're
+  asking for it directly, it runs.
+- **Scheduled:** off by default (`ENABLE_LIVE_SYNC_SCHEDULER=true` to
+  turn on). When on, it ticks every `LIVE_SYNC_INTERVAL_MINUTES`
+  (default 5) but only actually calls ESPN during an NFL game window
+  (`app/game_windows.py`: Thursday/Sunday/Monday evenings, generously
+  bounded — doesn't cover the rare Saturday-only late-season slate).
+  This gating was a deliberate choice, not an oversight: ESPN's API is
+  unofficial (see ARCHITECTURE.md) and there's no reason to poll it at
+  3am on a Tuesday.
+
+**Not yet verified against a real live game** — as of this writing the
+2026 season hasn't started (`get_current_week` correctly returns 0), so
+there's nothing in progress to test the "does this actually track a
+live-scoring game" behavior against. The mechanism itself is tested
+(`tests/test_espn_adapter.py`, `tests/test_game_windows.py`) and
+`get_current_week` has been confirmed working against real ESPN — the
+end-to-end "watch a real Sunday" check has to wait for an actual Sunday.
+
 ### Discord login (Phase 5)
 
 Sign-in is "Sign in with Discord," verified against `owners.discord_user_id`

@@ -6,6 +6,12 @@ sync_matchups.py, and sync_rosters.py already did (see MIGRATION_MAP.md:
 same"). Only the shape changed: one season at a time, behind the
 FantasyProvider interface, instead of a standalone script looping over
 every season itself.
+
+sync_matchups_for_week/sync_rosters_for_week and get_current_week were
+added for live in-game sync (see app/providers/sync.py's
+run_live_sync) — fetching one specific week directly instead of looping
+1..17 "does this week exist yet" checks, so they're fast enough to poll
+frequently during live games without re-scanning full history.
 """
 from decimal import Decimal
 
@@ -35,6 +41,10 @@ class ESPNProvider(FantasyProvider):
             espn_s2=self.config.espn_s2,
             swid=self.config.swid,
         )
+
+    async def get_current_week(self, season: int) -> int:
+        """Ported from Fantasy_Helper's bot/ingestion/espn_client.py, unchanged."""
+        return self._league(season).current_week
 
     async def sync_teams(self, pool, season: int) -> int:
         league = self._league(season)
@@ -68,6 +78,40 @@ class ESPNProvider(FantasyProvider):
 
         return len(league.teams)
 
+    async def _sync_matchup_week(self, conn, matchups, season: int, week: int, reg_season_weeks: int) -> int:
+        if not matchups:
+            return 0
+
+        is_playoff = week > reg_season_weeks
+        saved_count = 0
+
+        for m in matchups:
+            if m.away_team == 0:  # bye week, no real opponent
+                continue
+
+            home_db_id = await _get_team_db_id(conn, season, m.home_team.team_id)
+            away_db_id = await _get_team_db_id(conn, season, m.away_team.team_id)
+
+            if home_db_id is None or away_db_id is None:
+                continue  # team not found, skip rather than crash
+
+            await conn.execute(
+                """
+                INSERT INTO matchups
+                    (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (season, week, home_team_id, away_team_id)
+                DO UPDATE SET home_score = EXCLUDED.home_score,
+                              away_score = EXCLUDED.away_score,
+                              is_playoff = EXCLUDED.is_playoff
+                """,
+                season, week, home_db_id, away_db_id,
+                Decimal(str(round(m.home_score, 2))), Decimal(str(round(m.away_score, 2))), is_playoff,
+            )
+            saved_count += 1
+
+        return saved_count
+
     async def sync_matchups(self, pool, season: int) -> int:
         league = self._league(season)
         reg_season_weeks = league.settings.reg_season_count
@@ -76,41 +120,47 @@ class ESPNProvider(FantasyProvider):
         async with pool.acquire() as conn:
             for week in range(1, MAX_WEEKS_TO_TRY + 1):
                 try:
-                    matchups = league.scoreboard(week)
+                    week_matchups = league.scoreboard(week)
                 except Exception:
                     break  # no more weeks exist for this season
 
-                if not matchups:
+                if not week_matchups:
                     break
 
-                is_playoff = week > reg_season_weeks
-
-                for m in matchups:
-                    if m.away_team == 0:  # bye week, no real opponent
-                        continue
-
-                    home_db_id = await _get_team_db_id(conn, season, m.home_team.team_id)
-                    away_db_id = await _get_team_db_id(conn, season, m.away_team.team_id)
-
-                    if home_db_id is None or away_db_id is None:
-                        continue  # team not found, skip rather than crash
-
-                    await conn.execute(
-                        """
-                        INSERT INTO matchups
-                            (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        ON CONFLICT (season, week, home_team_id, away_team_id)
-                        DO UPDATE SET home_score = EXCLUDED.home_score,
-                                      away_score = EXCLUDED.away_score,
-                                      is_playoff = EXCLUDED.is_playoff
-                        """,
-                        season, week, home_db_id, away_db_id,
-                        Decimal(str(round(m.home_score, 2))), Decimal(str(round(m.away_score, 2))), is_playoff,
-                    )
-                    saved_count += 1
+                saved_count += await self._sync_matchup_week(conn, week_matchups, season, week, reg_season_weeks)
 
         return saved_count
+
+    async def sync_matchups_for_week(self, pool, season: int, week: int) -> int:
+        league = self._league(season)
+        reg_season_weeks = league.settings.reg_season_count
+        matchups = league.scoreboard(week)
+        async with pool.acquire() as conn:
+            return await self._sync_matchup_week(conn, matchups, season, week, reg_season_weeks)
+
+    async def _save_roster_week(self, conn, box_scores, season: int, week: int) -> bool:
+        """Just the write — no "has this week really started" judgment.
+        That gate matters for the full historical scan (below), where it's
+        the signal to stop looking at further weeks, but not for a live
+        sync of a week we already know is current: pre-kickoff lineups
+        (0 points scored so far) are still real roster data worth saving,
+        e.g. to reflect a waiver add before games lock."""
+        if not box_scores:
+            return False
+
+        for bs in box_scores:
+            if bs.away_team == 0:
+                continue
+
+            home_db_id = await _get_team_db_id(conn, season, bs.home_team.team_id)
+            away_db_id = await _get_team_db_id(conn, season, bs.away_team.team_id)
+
+            if home_db_id:
+                await self._save_lineup(conn, season, week, home_db_id, bs.home_lineup)
+            if away_db_id:
+                await self._save_lineup(conn, season, week, away_db_id, bs.away_lineup)
+
+        return True
 
     async def sync_rosters(self, pool, season: int) -> int:
         league = self._league(season)
@@ -134,21 +184,17 @@ class ESPNProvider(FantasyProvider):
                 if not any_real_points:
                     break
 
-                for bs in box_scores:
-                    if bs.away_team == 0:
-                        continue
-
-                    home_db_id = await _get_team_db_id(conn, season, bs.home_team.team_id)
-                    away_db_id = await _get_team_db_id(conn, season, bs.away_team.team_id)
-
-                    if home_db_id:
-                        await self._save_lineup(conn, season, week, home_db_id, bs.home_lineup)
-                    if away_db_id:
-                        await self._save_lineup(conn, season, week, away_db_id, bs.away_lineup)
-
+                await self._save_roster_week(conn, box_scores, season, week)
                 saved_weeks += 1
 
         return saved_weeks
+
+    async def sync_rosters_for_week(self, pool, season: int, week: int) -> int:
+        league = self._league(season)
+        box_scores = league.box_scores(week)
+        async with pool.acquire() as conn:
+            saved = await self._save_roster_week(conn, box_scores, season, week)
+        return 1 if saved else 0
 
     async def sync_final_standings(self, pool, season: int) -> int:
         league = self._league(season)

@@ -380,21 +380,57 @@ verified byte-for-byte identical output against real production data
 (2025 week 5) before and after. ~125 sequential round-trips → ~12.
 Measured: backend computation 7s → 0.95s; full page load 7s → ~1s.
 
-**Open question, not decided:** who computes/refreshes `weekly_team_stats`,
-`bench_crimes`, `season_awards`, `chug_debts`, etc. going forward?
-Better_Fantasy_App's own sync pipeline (Phase 3) only syncs raw ESPN
-data (teams/matchups/rosters/final_standings) — it doesn't run any of
-the `compute_*.py` write-layer scripts that originally populated these
-tables. If nothing else is running that pipeline anymore, this data will
-go stale once the 2026 season actually starts. Not blocking (all the
-2023-2025 historical data these pages show is real and correct), but
-worth a real answer before relying on this for the current season.
+**Partial answer to "who computes this going forward," Aug 19 2026:**
+`matchups`/`rosters`/`boom_bust` now have a real answer —
+Better_Fantasy_App's own sync pipeline, including live in-game updates
+(see below). `weekly_team_stats` (luck/chaos/power_rank/team_projected),
+`bench_crimes`, `season_awards`, and `chug_debts` are still an open
+question — nothing in this app's pipeline computes those yet, so they'll
+go stale once the 2026 season starts unless something else (the old bot,
+or a future port) keeps running for them specifically.
 
 13 new backend tests (profile: 4, awards/rivalries: 3, plus the
 domain/query modules they exercise), 37 total passing. Verified
 extensively against real production data (team profiles, career stats,
 season awards, weekly awards, rivalries) beyond just the test suite —
 all internally consistent and plausible for a real league.
+
+**Live in-game sync, Aug 19 2026 — real user requirement:** the project
+owner explicitly asked for scores and roster moves to update quickly
+during live games, not just once a day. Full sync (Phase 3) always
+re-scans the *entire* history, which is fine daily but far too slow and
+wasteful to poll every few minutes. Built a separate, narrow path
+instead:
+
+- `ESPNProvider.sync_matchups_for_week`/`sync_rosters_for_week` — one
+  targeted ESPN call for a specific week, not a 1-17 week scan.
+  `sync_rosters_for_week` deliberately does NOT skip pre-kickoff lineups
+  with 0 points scored (the full scan does, to know when to stop
+  scanning further weeks) — a live sync target already knows the week
+  is current, so an empty scoreline is real data (e.g. a waiver add
+  before games lock), not a "not started yet" signal. Caught this
+  distinction before shipping it, not after.
+- `ESPNProvider.get_current_week` — ported from Fantasy_Helper's
+  `bot/ingestion/espn_client.py`, confirmed working against real ESPN
+  (correctly returns 0 — the season hasn't started).
+- `run_live_sync` (`app/providers/sync.py`) — matchups + rosters +
+  boom/bust for just the current week.
+- `POST /admin/sync/live` — manual trigger.
+- Scheduled live-sync job (`app/scheduler.py`), off by default
+  (`ENABLE_LIVE_SYNC_SCHEDULER`). **Decided with the project owner:**
+  gated to actual NFL game windows (`app/game_windows.py` — Thu/Sun/Mon
+  evenings, generous bounds; doesn't cover the rare Saturday-only
+  late-season slate, a known gap) polling every 5 minutes during those
+  windows, rather than a fixed interval around the clock — ESPN's API is
+  unofficial (flagged since Phase 0), no reason to hit it at 3am Tuesday.
+
+11 new backend tests (adapter per-week methods, game-window boundaries,
+admin endpoint gating). **Not yet verified against a real live game** —
+the 2026 season hasn't started, so there's nothing in progress to test
+the actual "does this track a live-scoring game" behavior against yet;
+that check has to wait for an actual Sunday. The mechanism itself, and
+every piece that doesn't require a live game, is tested and confirmed
+working.
 
 ## PHASE 7 — LINEUP MANAGEMENT
 - [ ] Read lineups from ESPN

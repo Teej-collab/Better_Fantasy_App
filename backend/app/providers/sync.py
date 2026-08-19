@@ -12,7 +12,7 @@ crimes, awards) haven't been ported yet — see TODO.md's Phase 6 "who
 computes this going forward" note.
 """
 from app.db import get_pool
-from app.domain.boom_bust import compute_boom_bust_for_season
+from app.domain.boom_bust import compute_boom_bust_for_season, compute_boom_bust_for_single_week
 from app.providers.base import FantasyProvider
 
 
@@ -35,5 +35,27 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             except Exception as e:
                 season_results[step_name] = {"status": "failed", "detail": str(e)}
         results[season] = season_results
+
+    return results
+
+
+async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> dict:
+    """Fast path for in-game updates: re-syncs one specific week's
+    matchups and rosters (not a full season scan) and recomputes
+    boom/bust for just that week. Cheap enough to poll frequently during
+    live games — see app/scheduler.py's live-sync job."""
+    pool = await get_pool()
+    results = {}
+
+    for step_name, step in (
+        ("matchups", lambda p, s: provider.sync_matchups_for_week(p, s, week)),
+        ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
+        ("boom_bust", lambda p, s: compute_boom_bust_for_single_week(p, s, week)),
+    ):
+        try:
+            count = await step(pool, season)
+            results[step_name] = {"status": "success", "count": count}
+        except Exception as e:
+            results[step_name] = {"status": "failed", "detail": str(e)}
 
     return results
