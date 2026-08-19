@@ -366,10 +366,15 @@ classification rule (`classify_boom_bust`/`get_baseline`, unchanged) and
 scoped per-season so it doesn't redo untouched history). Wired into
 `run_full_sync` as a new step after `rosters`, so every sync — full or
 future live — keeps `is_boom`/`is_bust` current automatically, not just
-a one-time backfill. 6 new tests. **Still needs one thing:** this has
-only run against local test Postgres — backfilling real production data
-(currently 0 rows) needs an actual sync run, same explicit-go-ahead
-pattern as every other production write this session.
+a one-time backfill. 6 new tests.
+
+**Backfilled against production, Aug 19 2026** — with explicit go-ahead,
+ran a full sync (all 4 seasons, now including the boom_bust step). Zero
+failures across every step/season. Final state: 65 real boom rows, 406
+real bust rows, out of 10,078 total roster rows. Spot-checked: real
+players (Jahmyr Gibbs, Ja'Marr Chase) correctly flagged for weeks where
+actual points scored (52-55) blew past projections (~21) — the Boom/Bust
+leaderboard on the weekly awards page now actually shows something.
 
 **Weekly awards performance — fixed, Aug 19 2026.** Rewrote
 `weekly_awards.py` (and `team_profile.find_game_of_the_week`'s power-rank
@@ -416,13 +421,16 @@ instead:
 - `run_live_sync` (`app/providers/sync.py`) — matchups + rosters +
   boom/bust for just the current week.
 - `POST /admin/sync/live` — manual trigger.
-- Scheduled live-sync job (`app/scheduler.py`), off by default
-  (`ENABLE_LIVE_SYNC_SCHEDULER`). **Decided with the project owner:**
-  gated to actual NFL game windows (`app/game_windows.py` — Thu/Sun/Mon
-  evenings, generous bounds; doesn't cover the rare Saturday-only
-  late-season slate, a known gap) polling every 5 minutes during those
-  windows, rather than a fixed interval around the clock — ESPN's API is
-  unofficial (flagged since Phase 0), no reason to hit it at 3am Tuesday.
+- Scheduled live-sync job (`app/scheduler.py`). **Decided with the
+  project owner:** gated to actual NFL game windows
+  (`app/game_windows.py` — Thu/Sun/Mon evenings, generous bounds;
+  doesn't cover the rare Saturday-only late-season slate, a known gap)
+  polling every 5 minutes during those windows, rather than a fixed
+  interval around the clock — ESPN's API is unofficial (flagged since
+  Phase 0), no reason to hit it at 3am Tuesday. **Turned on in
+  production** (`ENABLE_LIVE_SYNC_SCHEDULER=true`) — confirmed the job
+  actually registers with APScheduler on startup. Safe to leave on: it's
+  a no-op outside game windows.
 
 11 new backend tests (adapter per-week methods, game-window boundaries,
 admin endpoint gating). **Not yet verified against a real live game** —
