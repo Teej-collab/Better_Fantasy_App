@@ -65,9 +65,10 @@ links a web login to a league-owner record once someone signs up.
 - [x] Port `sync_teams.py` / `sync_matchups.py` / `sync_rosters.py` behind a
       `FantasyProvider` interface — logic unchanged, verified against fake
       ESPN responses + real local Postgres (`tests/test_espn_adapter.py`)
-- [ ] **Confirm your `ESPN_S2`/`ESPN_SWID` cookies are current and valid —
-      not done. Needs your real cookies in `backend/.env`, which I won't
-      ask you to paste into chat.**
+- [x] Confirm your `ESPN_S2`/`ESPN_SWID` cookies are current and valid —
+      confirmed Aug 19 2026: connected to the real league (ID 2027626914)
+      and pulled all 12 real team names. Read-only ESPN API call, no
+      database involved.
 - [x] Backend endpoint to trigger a manual sync (admin-only) — `POST
       /admin/sync`, gated by a shared-secret `X-Admin-Token` header
       (`ADMIN_SYNC_TOKEN` env var) as a stopgap until real auth in Phase 5
@@ -75,12 +76,23 @@ links a web login to a league-owner record once someone signs up.
       APScheduler inside the backend process, **off by default**
       (`ENABLE_ESPN_SYNC_SCHEDULER=true` to turn it on)
 
-**Not done, and deliberately not done:** nothing here has run against real
-ESPN data or the production Supabase database yet. The adapter is proven
-correct against fakes + a local test DB, but going live needs your real
-ESPN cookies in your own `.env` and an explicit decision to point
-`DATABASE_URL` at production — see DEVELOPMENT.md's "ESPN sync" section
-for the exact steps once you're ready.
+**Still not done, on purpose:** the production Supabase database itself
+has not been touched — no migration, no sync write. `DATABASE_URL` in
+`backend/.env` is still a placeholder; real ESPN reads (above) don't
+require it. Once it's set to the real Supabase connection string, the
+plan is: (1) read-only compare the live schema against
+`f8b66c486a5e_baseline_schema` before touching anything, (2) `alembic
+stamp` that baseline rather than run it, since the tables already exist,
+(3) confirm explicitly before running `alembic upgrade head` (adds
+`users` table) or any real ESPN sync against it. See DEVELOPMENT.md's
+"ESPN sync" and "Migrations" sections.
+
+**Correction, Aug 19 2026:** real `ESPN_S2`/`SWID`/league ID were briefly
+added to `backend/.env.example` (the committed template) instead of
+`backend/.env` (gitignored). Caught before anything was committed or
+pushed — moved to `.env`, `.env.example` restored to placeholders. Worth
+double-checking which file's meant for secrets before pasting real
+values into either one going forward.
 
 ## PHASE 4 — CORE APPLICATION (read-only views)
 - [ ] Auth: basic login (decision pending — see ARCHITECTURE.md)
