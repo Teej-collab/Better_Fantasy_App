@@ -18,6 +18,7 @@ async def cleanup_test_season(pool):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM rosters WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM season_champions WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
 

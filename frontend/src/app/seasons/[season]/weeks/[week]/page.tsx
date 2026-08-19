@@ -1,4 +1,5 @@
 import { listWeekMatchups } from "@/lib/api";
+import { PlayoffBadge } from "@/components/PlayoffBadge";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -9,11 +10,13 @@ export default async function WeekMatchupsPage({
 }) {
   const { season, week } = await params;
   const { matchups } = await listWeekMatchups(Number(season), Number(week));
+  const isPlayoffWeek = matchups.some((m) => m.is_playoff);
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">
+      <h1 className="flex items-center gap-2 text-2xl font-semibold">
         {season} — Week {week}
+        {isPlayoffWeek && <PlayoffBadge />}
       </h1>
 
       <div className="flex flex-wrap gap-2 text-sm">

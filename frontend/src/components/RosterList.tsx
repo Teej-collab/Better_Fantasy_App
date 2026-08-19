@@ -19,7 +19,13 @@ export function RosterList({
   if (players.length === 0) return null;
   return (
     <div>
-      <h2 className="mb-1 text-sm font-medium text-black/60 dark:text-white/60">{title}</h2>
+      <div className="mb-1 flex items-baseline justify-between">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60">{title}</h2>
+        <div className="flex gap-3 text-xs text-black/40 dark:text-white/40">
+          {showProjected && <span className="w-10 text-right">Proj</span>}
+          <span className="w-10 text-right">Final</span>
+        </div>
+      </div>
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
         {players.map((p, i) => (
           <li key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
@@ -29,7 +35,7 @@ export function RosterList({
             </div>
             <div className="flex shrink-0 gap-3 tabular-nums">
               {showProjected && (
-                <span className="text-black/50 dark:text-white/50">
+                <span className="w-10 text-right text-black/50 dark:text-white/50">
                   {p.points_projected !== null ? Number(p.points_projected).toFixed(1) : "—"}
                 </span>
               )}

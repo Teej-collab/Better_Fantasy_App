@@ -29,6 +29,12 @@ export type StandingsRow = {
   points_against: string;
 };
 
+export type Champion = {
+  team_id: number;
+  team_name: string;
+  owner_name: string;
+};
+
 export type WeekMatchup = {
   matchup_id: number;
   is_playoff: boolean;
@@ -79,7 +85,9 @@ export function listTeams(season: number) {
 }
 
 export function getStandings(season: number) {
-  return get<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`);
+  return get<{ standings: StandingsRow[]; champion: Champion | null }>(
+    `/seasons/${season}/standings`
+  );
 }
 
 export function listWeekMatchups(season: number, week: number) {

@@ -195,6 +195,33 @@ Still not visually confirmed in an actual browser this session (no
 browser tooling connected) — worth a real look on an actual phone before
 treating this as done, not just curl/build-verified.
 
+**Second round of real user feedback, Aug 19 2026:**
+- **Champion badge on Standings.** `season_champions` (discovered during
+  the Phase 3 schema-drift investigation) records who won each season —
+  confirmed real data for 2023-2025 before building on it. Added
+  `get_champion()` and wired it into `GET /seasons/{s}/standings`
+  (`champion` field). Frontend pins the champion to rank #1 with a 🏆
+  badge; the rest of the list keeps regular-season order below,
+  renumbered. Verified this actually matters: 2024's champion (Amishtown
+  Rumspringers) was ranked 4th by regular-season record, not 1st — the
+  badge genuinely changes what's shown, not just cosmetic. **Caveat, by
+  design:** `season_champions` only records the winner, not full playoff
+  bracket placement (2nd/3rd/etc.), so this can crown a champion but
+  can't reconstruct true final standings beyond that — the page says so
+  ("Champion, then regular season record").
+- **Playoffs vs. regular season distinction.** New shared `PlayoffBadge`
+  component, shown on the week-schedule page header (when any matchup
+  that week is a playoff game) and the matchup detail page header.
+  Standings already only counted regular-season games for W-L-T (that
+  was already correct) — this just makes the distinction visible in the
+  UI, which it wasn't before.
+- **Restored Proj/Final column labels** on `RosterList` — lost when the
+  table→row-list mobile conversion happened; added back as a small
+  header row above each list, right-aligned to match the number columns.
+
+2 new backend tests for the champion behavior (present + null cases),
+19 total passing.
+
 ## PHASE 5 — AUTHENTICATION (full)
 - [ ] Finalize auth approach with you (major decision, not pre-made)
 - [ ] League membership / roles (commissioner vs. member)

@@ -69,6 +69,28 @@ async def test_standings_computed_from_matchups(pool):
     assert float(standings[team_b]["points_for"]) == 100.0
 
 
+async def test_standings_includes_champion_when_present(pool):
+    team_a, _ = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        owner_a = await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE id = $1", team_a)
+        await conn.execute(
+            "INSERT INTO season_champions (season, owner_id, team_name) VALUES ($1, $2, $3)",
+            TEST_SEASON, owner_a, "Team Alpha",
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    body = resp.json()
+    assert body["champion"]["team_id"] == team_a
+    assert body["champion"]["team_name"] == "Team Alpha"
+
+
+async def test_standings_champion_null_when_absent(pool):
+    await _seed_two_teams(pool)
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    assert resp.json()["champion"] is None
+
+
 async def test_standings_excludes_unplayed_zero_zero_games(pool):
     # ESPN returns 0/0 (not NULL) for matchups that haven't been played
     # yet — a 0-0 "tie" should not be counted.

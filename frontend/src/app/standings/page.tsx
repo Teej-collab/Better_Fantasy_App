@@ -1,4 +1,4 @@
-import { getStandings, listSeasons } from "@/lib/api";
+import { getStandings, listSeasons, type StandingsRow } from "@/lib/api";
 
 export default async function StandingsPage({
   searchParams,
@@ -10,7 +10,16 @@ export default async function StandingsPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { standings } = await getStandings(season);
+  const { standings, champion } = await getStandings(season);
+
+  // The champion (from season_champions — who actually won it all) isn't
+  // necessarily the regular-season #1 seed. Pull them out of the regular
+  // order and pin them to the top with a badge; everyone else keeps their
+  // regular-season rank below. See app/queries/league.py's get_champion —
+  // we only know who won, not full playoff bracket placement, so this is
+  // "champion first, then regular season order," not a true final bracket.
+  const championRow = champion ? standings.find((r) => r.team_id === champion.team_id) : undefined;
+  const restRows = championRow ? standings.filter((r) => r.team_id !== champion!.team_id) : standings;
 
   return (
     <div className="flex flex-col gap-4">
@@ -33,6 +42,10 @@ export default async function StandingsPage({
         </div>
       </div>
 
+      <p className="text-xs text-black/50 dark:text-white/50">
+        {championRow ? "Champion, then regular season record." : "Regular season record."}
+      </p>
+
       {/* Column headers only from sm up — on mobile each row labels itself */}
       <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
         <span className="w-6 shrink-0" />
@@ -43,31 +56,56 @@ export default async function StandingsPage({
       </div>
 
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-        {standings.map((row, i) => (
-          <li key={row.team_id} className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-center sm:gap-0">
-            <div className="flex min-w-0 flex-1 items-baseline gap-2">
-              <span className="w-6 shrink-0 tabular-nums text-black/40 dark:text-white/40">{i + 1}</span>
-              <div className="min-w-0">
-                <a href={`/teams/${row.team_id}`} className="font-medium hover:underline">
-                  {row.team_name}
-                </a>
-                <div className="truncate text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
-              </div>
-            </div>
-            <div className="flex gap-4 pl-8 text-sm sm:gap-0 sm:pl-0">
-              <span className="tabular-nums font-medium sm:w-20 sm:shrink-0 sm:text-right">
-                {row.wins}-{row.losses}-{row.ties}
-              </span>
-              <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
-                {Number(row.points_for).toFixed(1)}
-              </span>
-              <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
-                {Number(row.points_against).toFixed(1)}
-              </span>
-            </div>
-          </li>
+        {championRow && <StandingsListRow row={championRow} rank={1} isChampion />}
+        {restRows.map((row, i) => (
+          <StandingsListRow key={row.team_id} row={row} rank={championRow ? i + 2 : i + 1} />
         ))}
       </ul>
     </div>
+  );
+}
+
+function StandingsListRow({
+  row,
+  rank,
+  isChampion = false,
+}: {
+  row: StandingsRow;
+  rank: number;
+  isChampion?: boolean;
+}) {
+  return (
+    <li
+      className={
+        "flex flex-col gap-1.5 py-3 sm:flex-row sm:items-center sm:gap-0" +
+        (isChampion ? " bg-amber-50 dark:bg-amber-400/10" : "")
+      }
+    >
+      <div className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="w-6 shrink-0 tabular-nums text-black/40 dark:text-white/40">{rank}</span>
+        <div className="min-w-0">
+          <a href={`/teams/${row.team_id}`} className="font-medium hover:underline">
+            {row.team_name}
+          </a>
+          {isChampion && (
+            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
+              🏆 Champion
+            </span>
+          )}
+          <div className="truncate text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
+        </div>
+      </div>
+      <div className="flex gap-4 pl-8 text-sm sm:gap-0 sm:pl-0">
+        <span className="tabular-nums font-medium sm:w-20 sm:shrink-0 sm:text-right">
+          {row.wins}-{row.losses}-{row.ties}
+        </span>
+        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
+          {Number(row.points_for).toFixed(1)}
+        </span>
+        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
+          {Number(row.points_against).toFixed(1)}
+        </span>
+      </div>
+    </li>
   );
 }

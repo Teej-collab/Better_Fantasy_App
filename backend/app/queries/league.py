@@ -84,6 +84,23 @@ async def get_standings(conn, season: int):
     )
 
 
+async def get_champion(conn, season: int):
+    """The season_champions table only records who won it all — not full
+    playoff bracket placement (2nd/3rd/etc). So this can crown a champion
+    but can't reconstruct true final standings beyond that; the rest of
+    `get_standings` stays regular-season order."""
+    return await conn.fetchrow(
+        """
+        SELECT t.id AS team_id, sc.team_name, o.display_name AS owner_name
+        FROM season_champions sc
+        JOIN teams_by_season t ON t.owner_id = sc.owner_id AND t.season = sc.season
+        JOIN owners o ON o.owner_id = sc.owner_id
+        WHERE sc.season = $1
+        """,
+        season,
+    )
+
+
 async def list_week_matchups(conn, season: int, week: int):
     return await conn.fetch(
         """

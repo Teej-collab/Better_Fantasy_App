@@ -1,5 +1,6 @@
 import { getMatchup } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
+import { PlayoffBadge } from "@/components/PlayoffBadge";
 
 export default async function MatchupPage({
   params,
@@ -12,9 +13,9 @@ export default async function MatchupPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
           {matchup.season} — Week {matchup.week}
-          {matchup.is_playoff ? " (Playoffs)" : ""}
+          {matchup.is_playoff && <PlayoffBadge />}
         </h1>
         <div className="mt-2 flex flex-col gap-1 text-lg sm:flex-row sm:items-center sm:gap-4">
           <TeamScore teamId={matchup.home_team_id} name={matchup.home_team_name} score={matchup.home_score} />

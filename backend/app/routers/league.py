@@ -29,7 +29,11 @@ async def teams(season: int, pool=Depends(get_pool)):
 async def standings(season: int, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         rows = await queries.get_standings(conn, season)
-    return {"standings": [dict(r) for r in rows]}
+        champion = await queries.get_champion(conn, season)
+    return {
+        "standings": [dict(r) for r in rows],
+        "champion": dict(champion) if champion is not None else None,
+    }
 
 
 @router.get("/seasons/{season}/weeks/{week}/matchups")
