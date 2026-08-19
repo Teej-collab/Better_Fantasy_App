@@ -328,13 +328,74 @@ Discord OAuth login verified against real league membership — is done
 and proven working, not just built.**
 
 ## PHASE 6 — EXISTING BOT FEATURES → WEB
-- [ ] Team profile page (port `team_profile.py`)
-- [ ] Awards leaderboard page (port `season_awards.py`, `weekly_awards.py`)
-- [ ] Weekly recap/preview page (port narrative_engine)
-- [ ] Rivalries page (port `rivalry_map.py` data → move into DB first, per
-      MIGRATION_MAP.md)
-- [ ] Fill in the 8 currently-stub Discord commands' underlying logic once —
-      shared by web + (eventually) Discord
+
+**Scoping discovery, Aug 19 2026:** before building, checked whether the
+underlying computed data (weekly_team_stats, season_awards,
+season_champions, bench_crimes) actually exists in production — it does,
+fully populated (612/33/3/1988 real rows respectively), and
+`rivalries` already has the `rivalry_map.py` data migrated in too (12
+real rows). So this phase turned out to be the same shape as Phase 4:
+port the real read-layer logic, build endpoints and pages against data
+that's already there — no new computation needed for what's below.
+
+- [x] Team profile page (ported `team_profile.py` verbatim into
+      `app/domain/team_profile.py`) — season + career views, badges
+      (championships + awards). `/owners/{id}`.
+- [x] Awards leaderboard page (ported `season_awards.py`'s *read* side —
+      the table it populates, already computed — and `weekly_awards.py`
+      verbatim into `app/domain/weekly_awards.py`). Season awards at
+      `/seasons/{s}/awards`; weekly awards folded into the existing
+      week-schedule page rather than a separate route, since they're
+      naturally about the same week.
+- [ ] Weekly recap/preview page (port narrative_engine) — **deliberately
+      not started.** This calls the real Anthropic API and costs real
+      money per generation; asking before building it, not assuming.
+- [x] Rivalries page — the "move into DB first" step was already done
+      (by something/someone before this session); just needed the query
+      + page. `/rivalries`.
+- [~] Fill in the 8 currently-stub Discord commands' underlying logic —
+      the underlying domain functions now exist and are shared-ready
+      (that was the point), but the actual Discord bot commands
+      themselves live in the separate `Fantasy_Helper` repo, out of
+      scope here. Not marked done since nothing in Discord itself changed.
+
+**Known data gap, not fixed:** `rosters.is_boom`/`is_bust` (added during
+the Phase 3 schema-drift discovery, never populated — 0 real rows
+anywhere in production) means the Boom/Bust leaderboard on the weekly
+awards section will always be empty. Not a bug in what was built here —
+`get_boom_bust_leaders()` is correct, there's just no data for it to
+find. Whatever would set these (a `compute_boom_bust.py`-equivalent,
+see `bot/stats_engine/boom_bust.py` for the real classification logic)
+was never ported or run. Flagging rather than silently shipping an
+always-empty section without explanation.
+
+**Known performance issue, not fixed:** the weekly awards page took
+~7 seconds to load against production. Not a bug — the ported logic
+(`weekly_awards.py`, faithfully unchanged) makes roughly 125 sequential
+DB round-trips per week (mostly repeated `get_expected_score` /
+team-name lookups inside loops), which was fine for the original bot
+calling this once per recap generation, but is slow for a page loading
+it fresh on every visit against a remote pooled Postgres. Fixing this
+would mean batching/caching those lookups, which changes the ported
+logic's shape — flagging as a deliberate follow-up rather than
+rewriting it without asking, per "keep the calculation logic itself
+unchanged" from MIGRATION_MAP.md.
+
+**Open question, not decided:** who computes/refreshes `weekly_team_stats`,
+`bench_crimes`, `season_awards`, `chug_debts`, etc. going forward?
+Better_Fantasy_App's own sync pipeline (Phase 3) only syncs raw ESPN
+data (teams/matchups/rosters/final_standings) — it doesn't run any of
+the `compute_*.py` write-layer scripts that originally populated these
+tables. If nothing else is running that pipeline anymore, this data will
+go stale once the 2026 season actually starts. Not blocking (all the
+2023-2025 historical data these pages show is real and correct), but
+worth a real answer before relying on this for the current season.
+
+13 new backend tests (profile: 4, awards/rivalries: 3, plus the
+domain/query modules they exercise), 37 total passing. Verified
+extensively against real production data (team profiles, career stats,
+season awards, weekly awards, rivalries) beyond just the test suite —
+all internally consistent and plausible for a real league.
 
 ## PHASE 7 — LINEUP MANAGEMENT
 - [ ] Read lineups from ESPN

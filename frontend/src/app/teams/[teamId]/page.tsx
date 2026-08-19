@@ -24,7 +24,11 @@ export default async function TeamPage({
       <div>
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
-          {team.owner_name} — {team.season} season
+          <a href={`/owners/${team.owner_id}?season=${team.season}`} className="hover:underline">
+            {team.owner_name}
+          </a>
+          {" — "}
+          {team.season} season
         </p>
       </div>
 

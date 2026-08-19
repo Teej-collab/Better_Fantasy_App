@@ -1,8 +1,7 @@
 """
-Phase 4 read-only views: teams, standings, matchups, rosters — plain
-aggregation over synced data, not the stats_engine ports (that's Phase 6).
-No auth yet (Phase 5 decision); everything here is public read access,
-appropriate for a single private league's own data.
+Read-only views: teams, standings, matchups, rosters, rivalries. No auth
+(Phase 5 decision doesn't gate this) — everything here is public read
+access, appropriate for a single private league's own data.
 """
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -71,3 +70,10 @@ async def team_roster(team_id: int, week: int, pool=Depends(get_pool)):
             raise HTTPException(status_code=404, detail="Team not found")
         rows = await queries.get_roster(conn, team_id, week)
     return {"team": dict(team), "week": week, "roster": [dict(r) for r in rows]}
+
+
+@router.get("/rivalries")
+async def rivalries(pool=Depends(get_pool)):
+    async with pool.acquire() as conn:
+        rows = await queries.list_rivalries(conn)
+    return {"rivalries": [dict(r) for r in rows]}

@@ -18,8 +18,18 @@ async def cleanup_test_season(pool):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM rosters WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM season_champions WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM season_awards WHERE season = $1", TEST_SEASON)
+        # rivalries.owner_a_id/owner_b_id -> owners.owner_id, so this has to
+        # go before deleting owners below (no season column to scope by —
+        # every test owner is 'test-%', so that's the only signal here).
+        await conn.execute(
+            "DELETE FROM rivalries WHERE owner_a_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%') "
+            "OR owner_b_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
         await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
         # owners.user_id -> users.id, so capture which users are linked to
         # test owners *before* deleting those owners, then delete the

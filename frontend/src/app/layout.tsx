@@ -44,6 +44,17 @@ async function NavBar() {
             Matchups
           </a>
         )}
+        {latestSeason !== null && (
+          <a
+            href={`/seasons/${latestSeason}/awards`}
+            className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
+          >
+            Awards
+          </a>
+        )}
+        <a href="/rivalries" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+          Rivalries
+        </a>
         <AuthStatus />
       </nav>
     </header>

@@ -1,8 +1,9 @@
 """
-Read queries over the raw synced data (teams/matchups/rosters) for
-Phase 4's core views. Deliberately NOT the stats_engine ports (luck
-score, power rank, awards) — those are Phase 6. Standings here is a
-plain win/loss/points aggregation over `matchups`, nothing more.
+Read queries over the raw synced data (teams/matchups/rosters/rivalries).
+Standings is a plain win/loss/points aggregation over `matchups` (with
+final_rank layered in when available — see get_standings). The
+stats_engine-derived views (team profile, awards) live in
+app/domain/ + app/queries/awards.py instead — see MIGRATION_MAP.md.
 """
 
 
@@ -151,4 +152,19 @@ async def get_roster(conn, team_id: int, week: int):
             _SLOT_ORDER.index(r["lineup_slot"]) if r["lineup_slot"] in _SLOT_ORDER else len(_SLOT_ORDER),
             r["player_name"],
         ),
+    )
+
+
+async def list_rivalries(conn):
+    return await conn.fetch(
+        """
+        SELECT r.id, r.name, r.emoji, r.tagline, r.description, r.tier,
+               r.all_time_wins_a, r.all_time_wins_b,
+               oa.owner_id AS owner_a_id, oa.display_name AS owner_a_name,
+               ob.owner_id AS owner_b_id, ob.display_name AS owner_b_name
+        FROM rivalries r
+        JOIN owners oa ON oa.owner_id = r.owner_a_id
+        JOIN owners ob ON ob.owner_id = r.owner_b_id
+        ORDER BY r.tier, r.name
+        """
     )
