@@ -164,9 +164,36 @@ Tailwind.
 
 **Known minor issue, not fixed:** the Dashboard defaults to the
 numerically latest season (2026), which hasn't started yet, so its "Top
-3" widget currently shows a 0-0-0 tie among all teams. Not broken, just
-not the most useful default — worth revisiting (e.g. default to the most
-recent season with actual games) when picking this back up.
+3" widget shows an (now correctly) 0-0-0 tie among all teams, with
+arbitrary ordering. Not broken, just not the most useful default — worth
+revisiting (e.g. default to the most recent season with actual games)
+when picking this back up.
+
+**Bugs found and fixed from real user feedback, Aug 19 2026:**
+- **Standings miscounted ties.** ESPN returns `0/0` (not `NULL`) for
+  matchups that haven't been played yet, so the `IS NOT NULL` filter in
+  `get_standings()` didn't exclude them — 2026 standings showed `0-0-13`
+  instead of `0-0-0`. Fixed by also excluding `home_score = 0 AND
+  away_score = 0`; a genuine 0-0 tie isn't realistic in fantasy football.
+  Added a regression test (`test_standings_excludes_unplayed_zero_zero_games`).
+- **Roster order didn't match ESPN's standard lineup layout.** Was
+  sorting alphabetically by `lineup_slot`. Fixed with an explicit slot
+  order (QB, RB, WR, TE, flex, D/ST, K, then bench/IR) in
+  `get_roster()`. This league's flex slot is stored as `"RB/WR/TE"` (its
+  actual position eligibility), not literally `"FLEX"` — confirmed
+  against real data before assuming. Added a regression test
+  (`test_roster_ordered_like_espn_lineup`).
+
+**Mobile-first pass, Aug 19 2026:** per explicit instruction that most
+initial users will be on phones, replaced the wide `<table>` layouts on
+Standings and Team/Matchup rosters with stacking row layouts (flex-col
+on mobile, flex-row from `sm:` up) that need no horizontal scrolling.
+Extracted a shared `RosterList` component (`frontend/src/components/`)
+used by both the Team and Matchup pages. Also fixed nav bar wrapping and
+long team/owner name truncation across League, Standings, and Dashboard.
+Still not visually confirmed in an actual browser this session (no
+browser tooling connected) — worth a real look on an actual phone before
+treating this as done, not just curl/build-verified.
 
 ## PHASE 5 — AUTHENTICATION (full)
 - [ ] Finalize auth approach with you (major decision, not pre-made)

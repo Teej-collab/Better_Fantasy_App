@@ -14,9 +14,9 @@ export default async function LeaguePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">League</h1>
-        <div className="flex gap-2 text-sm">
+        <div className="flex gap-x-3 text-sm">
           {[...seasons].reverse().map((s) => (
             <a
               key={s}
@@ -35,11 +35,11 @@ export default async function LeaguePage({
 
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
         {teams.map((team) => (
-          <li key={team.team_id} className="flex items-center justify-between py-3">
-            <a href={`/teams/${team.team_id}`} className="hover:underline">
+          <li key={team.team_id} className="flex items-center justify-between gap-3 py-3">
+            <a href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
               {team.team_name}
             </a>
-            <span className="text-sm text-black/60 dark:text-white/60">{team.owner_name}</span>
+            <span className="shrink-0 text-sm text-black/60 dark:text-white/60">{team.owner_name}</span>
           </li>
         ))}
       </ul>

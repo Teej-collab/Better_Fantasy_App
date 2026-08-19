@@ -24,9 +24,10 @@ async function NavBar() {
 
   return (
     <header className="border-b border-black/10 dark:border-white/10">
-      <nav className="mx-auto flex max-w-4xl items-center gap-4 px-4 py-3 text-sm">
+      <nav className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm">
         <a href="/" className="font-semibold">
-          Better Fantasy App
+          <span className="sm:hidden">BFA</span>
+          <span className="hidden sm:inline">Better Fantasy App</span>
         </a>
         <a href="/standings" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
           Standings

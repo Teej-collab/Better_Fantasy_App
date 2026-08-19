@@ -41,6 +41,11 @@ async def get_team(conn, team_id: int):
 
 
 async def get_standings(conn, season: int):
+    # ESPN returns 0/0 (not NULL) for matchups that haven't been played
+    # yet, so IS NOT NULL alone doesn't exclude them — a 0-0 game would
+    # otherwise count as a tie. A genuine 0-0 tie is not realistic in
+    # fantasy football (some player always scores something), so treat
+    # "both scores exactly 0" as "not played yet" too.
     return await conn.fetch(
         """
         WITH results AS (
@@ -51,6 +56,7 @@ async def get_standings(conn, season: int):
             FROM matchups
             WHERE season = $1 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
+              AND NOT (home_score = 0 AND away_score = 0)
             UNION ALL
             SELECT away_team_id, away_score, home_score,
                    (away_score > home_score)::int,
@@ -59,6 +65,7 @@ async def get_standings(conn, season: int):
             FROM matchups
             WHERE season = $1 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
+              AND NOT (home_score = 0 AND away_score = 0)
         )
         SELECT t.id AS team_id, t.team_name, o.display_name AS owner_name,
                COALESCE(SUM(r.win), 0)::int AS wins,
@@ -109,14 +116,27 @@ async def get_matchup(conn, matchup_id: int):
     )
 
 
+# ESPN's standard lineup order. This league's flex slot is stored as
+# "RB/WR/TE" (its actual eligibility), not "FLEX" — confirmed against
+# real synced data. Unrecognized slots sort last rather than erroring,
+# so an unexpected future slot value doesn't break the page.
+_SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR"]
+
+
 async def get_roster(conn, team_id: int, week: int):
-    return await conn.fetch(
+    rows = await conn.fetch(
         """
         SELECT player_name, position, lineup_slot, points_scored, points_projected
         FROM rosters
         WHERE team_id = $1 AND week = $2
-        ORDER BY lineup_slot, player_name
         """,
         team_id,
         week,
+    )
+    return sorted(
+        rows,
+        key=lambda r: (
+            _SLOT_ORDER.index(r["lineup_slot"]) if r["lineup_slot"] in _SLOT_ORDER else len(_SLOT_ORDER),
+            r["player_name"],
+        ),
     )

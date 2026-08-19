@@ -69,6 +69,71 @@ async def test_standings_computed_from_matchups(pool):
     assert float(standings[team_b]["points_for"]) == 100.0
 
 
+async def test_standings_excludes_unplayed_zero_zero_games(pool):
+    # ESPN returns 0/0 (not NULL) for matchups that haven't been played
+    # yet — a 0-0 "tie" should not be counted.
+    team_a, team_b = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $2, $3, 110.0, 90.0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 2, $2, $3, 0, 0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    standings = {row["team_id"]: row for row in resp.json()["standings"]}
+
+    assert standings[team_a]["wins"] == 1
+    assert standings[team_a]["losses"] == 0
+    assert standings[team_a]["ties"] == 0
+    assert standings[team_b]["wins"] == 0
+    assert standings[team_b]["losses"] == 1
+    assert standings[team_b]["ties"] == 0
+
+
+async def test_roster_ordered_like_espn_lineup(pool):
+    team_a, _ = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        # Insert deliberately out of order to prove sorting, not insert order.
+        for name, slot in [
+            ("Bench Guy", "BE"),
+            ("Kicker", "K"),
+            ("Flex Guy", "RB/WR/TE"),
+            ("Tight End", "TE"),
+            ("Wide Out 2", "WR"),
+            ("Wide Out 1", "WR"),
+            ("Running Back 2", "RB"),
+            ("Running Back 1", "RB"),
+            ("Quarterback", "QB"),
+            ("IR Guy", "IR"),
+            ("Defense", "D/ST"),
+        ]:
+            await conn.execute(
+                """
+                INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
+                VALUES ($1, 1, $2, $3, 'X', $4, 1.0, 1.0)
+                """,
+                TEST_SEASON, team_a, name, slot,
+            )
+
+    resp = await _get(f"/teams/{team_a}/roster?week=1")
+    slots_in_order = [p["lineup_slot"] for p in resp.json()["roster"]]
+    assert slots_in_order == [
+        "QB", "RB", "RB", "WR", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR",
+    ]
+
+
 async def test_matchup_detail_includes_both_rosters(pool):
     team_a, team_b = await _seed_two_teams(pool)
 

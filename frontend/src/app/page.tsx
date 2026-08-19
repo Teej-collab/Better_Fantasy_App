@@ -11,7 +11,7 @@ export default async function DashboardPage() {
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
       <section className="rounded-lg border border-black/10 p-4 dark:border-white/10">
-        <div className="mb-3 flex items-baseline justify-between">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h2 className="font-medium">{latestSeason} Standings — Top 3</h2>
           <a href={`/standings?season=${latestSeason}`} className="text-sm text-black/60 hover:underline dark:text-white/60">
             View full standings
@@ -19,13 +19,13 @@ export default async function DashboardPage() {
         </div>
         <ol className="flex flex-col gap-2">
           {top3.map((row, i) => (
-            <li key={row.team_id} className="flex items-center justify-between text-sm">
-              <span>
+            <li key={row.team_id} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">
                 <span className="mr-2 text-black/40 dark:text-white/40">{i + 1}.</span>
                 {row.team_name}
                 <span className="ml-2 text-black/50 dark:text-white/50">({row.owner_name})</span>
               </span>
-              <span className="tabular-nums text-black/70 dark:text-white/70">
+              <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
                 {row.wins}-{row.losses}
                 {row.ties > 0 ? `-${row.ties}` : ""}
               </span>
@@ -41,7 +41,7 @@ export default async function DashboardPage() {
             <li key={season}>
               <a
                 href={`/standings?season=${season}`}
-                className="rounded-full border border-black/10 px-3 py-1 text-sm hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                className="rounded-full border border-black/10 px-3 py-1.5 text-sm hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
               >
                 {season}
               </a>
