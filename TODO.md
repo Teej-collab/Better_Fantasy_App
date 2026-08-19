@@ -108,10 +108,15 @@ production Aug 19 2026 — added the real `users` table and
 `users`), `users` columns correct (`id`/`email`/`created_at`),
 `owners.user_id` present, and all 16 existing `owners` rows untouched.
 
-**Not yet done — still needs your explicit go-ahead:** (3) any actual
-ESPN sync write against production (`POST /admin/sync` or the scheduler,
-pointed at the real Supabase database). Phase 3's code and tests are
-otherwise complete.
+**Done, with explicit go-ahead:** (3) real ESPN sync run against
+production Aug 19 2026 — all 4 seasons (2023-2026), all 3 steps each,
+zero failures. Final state: 48 teams, 354 matchups, 10,078 roster rows,
+16 owners (unchanged — all matched existing records via upsert, none
+duplicated). Season 2026 correctly has 0 roster rows (season hasn't
+started) but 78 matchups (the published schedule).
+
+**Phase 3 is fully complete.** All three "not done" items above are now
+done, each with its own explicit go-ahead as planned.
 
 **Correction, Aug 19 2026:** real `ESPN_S2`/`SWID`/league ID were briefly
 added to `backend/.env.example` (the committed template) instead of
