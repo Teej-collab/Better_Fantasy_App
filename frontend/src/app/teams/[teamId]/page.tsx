@@ -1,4 +1,4 @@
-import { getTeamRoster } from "@/lib/api";
+import { getCurrentWeek, getTeam, getTeamRoster } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
@@ -12,9 +12,24 @@ export default async function TeamPage({
 }) {
   const { teamId } = await params;
   const { week: weekParam } = await searchParams;
-  const week = weekParam ? Number(weekParam) : 1;
 
-  const { team, roster } = await getTeamRoster(Number(teamId), week);
+  const team = await getTeam(Number(teamId));
+
+  // Defaults to the season's actual current week (cached from the last
+  // sync — see league_state) rather than always week 1, so this reads
+  // like "your team right now" instead of requiring a manual click
+  // every visit. Falls back to 1 if nothing's cached yet, or if it's
+  // preseason — ESPN reports current_week as 0 before Week 1 starts,
+  // and "week 0" isn't a real thing in our data.
+  let week: number;
+  if (weekParam) {
+    week = Number(weekParam);
+  } else {
+    const { current_week } = await getCurrentWeek(team.season);
+    week = current_week && current_week >= 1 ? current_week : 1;
+  }
+
+  const { roster } = await getTeamRoster(Number(teamId), week);
 
   const starters = roster.filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
   const bench = roster.filter((p) => p.lineup_slot === "BE" || p.lineup_slot === "IR");

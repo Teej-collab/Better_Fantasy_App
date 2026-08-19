@@ -14,6 +14,15 @@ async def list_seasons(conn):
     return [r["season"] for r in rows]
 
 
+async def get_cached_current_week(conn, season: int):
+    """Cached by app/providers/sync.py as a side effect of syncs — see
+    the league_state migration. Returns None if no sync has run for this
+    season yet (nothing to cache), not an error."""
+    return await conn.fetchval(
+        "SELECT current_week FROM league_state WHERE season = $1", season
+    )
+
+
 async def list_teams(conn, season: int):
     return await conn.fetch(
         """

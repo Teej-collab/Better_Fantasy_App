@@ -483,9 +483,54 @@ verified. Worth a real click-through before calling the "interactive"
 part fully confirmed.
 
 ## PHASE 7 — LINEUP MANAGEMENT
-- [ ] Read lineups from ESPN
-- [ ] Investigate ESPN write-capability feasibility (research task, not a
-      build task, until findings are in)
+- [x] Read lineups from ESPN — was already substantially done (rosters
+      sync + Team page). Phase 7's real gap: the Team page always
+      defaulted to Week 1 instead of the actual current week, which
+      undercut the "your lineup right now" feel.
+- [x] Investigate ESPN write-capability feasibility — **closed, not
+      feasible.** Checked `espn_api` (the library this whole project
+      depends on) thoroughly: no `set_lineup`/`submit_lineup`/`trade`/
+      `waiver_claim` method anywhere on `League` or `Team`. The only
+      POST-related code in the library at all is a disabled username/
+      password login flow, unrelated to roster moves and broken since
+      ESPN added reCAPTCHA. ESPN has no public write API for fantasy
+      football; building lineup submission would mean reverse-engineering
+      ESPN's private undocumented endpoints from scratch — real risk of
+      account restriction, no stability guarantee. **Decision: don't
+      build interactive lineup submission.** Not a "not yet," a "not
+      safely possible with the tools available."
+
+**Current-week default, Aug 19 2026 — the actual Phase 7 deliverable.**
+"Current week" only has one real source: ESPN's own `current_week`
+(`ESPNProvider.get_current_week`, already ported). Calling that live on
+every Team page view would mean hitting ESPN's unofficial API on every
+visit — wasteful and risky. Instead:
+
+- New `league_state` table (migration `9abaa1b7d38f`) caches
+  `current_week` per season.
+- Cached as a **side effect of syncs already happening** — `run_live_sync`
+  reuses the `current_week` its caller already fetched (zero extra ESPN
+  calls); `run_full_sync` fetches it once for `end_season` (the active
+  season) after the main sync completes, best-effort.
+- Team page now defaults to the cached current week instead of hardcoded
+  week 1, with one edge case caught before shipping: ESPN reports
+  `current_week = 0` during preseason, and "week 0" isn't real in our
+  data — falls back to week 1 in that case. Historical (non-active)
+  seasons still default to week 1 unchanged (`league_state` only ever
+  gets a row for the active season) — a reasonable, unsurprising
+  baseline, not silently expanded beyond what was asked.
+- Applied to production with explicit go-ahead: migration (empty new
+  table) + a live-sync trigger to populate it. Confirmed real:
+  `league_state` now has `season=2026, current_week=0`; verified via the
+  actual rendered page that `/teams/12` (no `?week=` param) correctly
+  selects the Week 1 pill, not Week 0.
+- Incidental finding while populating it: `espn_api`'s `box_scores()`
+  call throws an internal error for week 0 specifically (no real box
+  scores exist in preseason) — handled gracefully by the existing
+  try/except, not a new problem, just worth knowing.
+
+3 new backend tests (current-week endpoint null-when-uncached; both
+`run_full_sync` and `run_live_sync` correctly cache it), 60 total passing.
 
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records

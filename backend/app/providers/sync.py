@@ -16,6 +16,20 @@ from app.domain.boom_bust import compute_boom_bust_for_season, compute_boom_bust
 from app.providers.base import FantasyProvider
 
 
+async def _update_league_state(pool, season: int, current_week: int) -> None:
+    """Caches current_week so pages can read it without hitting ESPN live
+    on every request — see league_state migration for the reasoning."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO league_state (season, current_week, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week, updated_at = now()
+            """,
+            season, current_week,
+        )
+
+
 async def run_full_sync(provider: FantasyProvider, start_season: int, end_season: int) -> dict:
     pool = await get_pool()
     results = {}
@@ -35,6 +49,16 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             except Exception as e:
                 season_results[step_name] = {"status": "failed", "detail": str(e)}
         results[season] = season_results
+
+    # end_season is always the active season in every real caller (admin
+    # endpoint, scheduler) — historical backfill seasons don't have a
+    # meaningful "current week" to cache. Best-effort: one sync step
+    # failing here shouldn't fail the whole (already-succeeded) sync.
+    try:
+        current_week = await provider.get_current_week(end_season)
+        await _update_league_state(pool, end_season, current_week)
+    except Exception as e:
+        results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
 
     return results
 
@@ -57,5 +81,13 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
             results[step_name] = {"status": "success", "count": count}
         except Exception as e:
             results[step_name] = {"status": "failed", "detail": str(e)}
+
+    # The caller already had to fetch current_week (== week here) to know
+    # what to live-sync — reuse it, no extra ESPN call.
+    try:
+        await _update_league_state(pool, season, week)
+        results["league_state"] = {"status": "success", "count": week}
+    except Exception as e:
+        results["league_state"] = {"status": "failed", "detail": str(e)}
 
     return results

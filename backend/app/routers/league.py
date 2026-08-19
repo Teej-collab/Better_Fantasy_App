@@ -17,6 +17,13 @@ async def seasons(pool=Depends(get_pool)):
         return {"seasons": await queries.list_seasons(conn)}
 
 
+@router.get("/seasons/{season}/current-week")
+async def current_week(season: int, pool=Depends(get_pool)):
+    async with pool.acquire() as conn:
+        week = await queries.get_cached_current_week(conn, season)
+    return {"season": season, "current_week": week}
+
+
 @router.get("/seasons/{season}/teams")
 async def teams(season: int, pool=Depends(get_pool)):
     async with pool.acquire() as conn:

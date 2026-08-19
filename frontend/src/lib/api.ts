@@ -90,6 +90,13 @@ export function listSeasons() {
   return get<{ seasons: Season[] }>("/seasons");
 }
 
+// Cached by the backend as a side effect of syncing (see league_state
+// migration) — never a live ESPN call from the page. Null means no sync
+// has run for that season yet, not an error.
+export function getCurrentWeek(season: number) {
+  return get<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`);
+}
+
 export function listTeams(season: number) {
   return get<{ teams: Team[] }>(`/seasons/${season}/teams`);
 }
@@ -104,6 +111,10 @@ export function listWeekMatchups(season: number, week: number) {
 
 export function getMatchup(matchupId: number) {
   return get<MatchupDetail>(`/matchups/${matchupId}`);
+}
+
+export function getTeam(teamId: number) {
+  return get<TeamDetail>(`/teams/${teamId}`);
 }
 
 export function getTeamRoster(teamId: number, week: number) {
