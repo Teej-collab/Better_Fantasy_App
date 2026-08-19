@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 asyncpg
 python-dotenv
+alembic
+psycopg2-binary

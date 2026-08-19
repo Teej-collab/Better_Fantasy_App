@@ -34,13 +34,32 @@ Phase 0 discovery actually found.
       are explicitly approved (decision made Aug 18 2026)
 
 ## PHASE 2 — BACKEND FOUNDATION
-- [ ] FastAPI project skeleton, health-check endpoint
-- [ ] Async Postgres connection (asyncpg, matching existing pattern)
-- [ ] Port `db/schema.sql` into the new repo, add `users`/auth tables
-- [ ] Decide on migration tool (Alembic vs. hand-written SQL migrations) —
-      flagged as a decision, not pre-made
-- [ ] Basic automated test setup (pytest) — first real test suite for this
-      project's domain logic
+- [x] FastAPI project skeleton, health-check endpoint (`GET /health`,
+      dependency-injected DB pool so it's testable)
+- [x] Async Postgres connection (asyncpg, matching existing pattern)
+- [x] Port `db/schema.sql` into the new repo, add `users`/auth table —
+      done as Alembic migrations, not applied to production (see below)
+- [x] Decide on migration tool — **Alembic**, chosen Aug 19 2026. Raw SQL
+      via `op.execute()`, no ORM/autogenerate, matching the project's
+      existing asyncpg-only style. Migration chain verified end-to-end
+      (upgrade head + downgrade base) against a disposable local Postgres.
+- [x] Basic automated test setup (pytest) — 3 tests passing, including a
+      real integration test of `/health` against a local Postgres. Domain
+      logic itself isn't ported yet (that's Phase 6), so there's no domain
+      test suite yet — this is the infrastructure for one.
+
+**Not done, and deliberately not done:** the two migrations
+(`f8b66c486a5e_baseline_schema`, `3d2a7cf84eb9_add_users_table`) have only
+been run against a local throwaway Postgres, never against the real
+Supabase database. Applying them there — starting with
+`alembic stamp f8b66c486a5e` — is a one-time production step that needs
+your explicit go-ahead, not something to do automatically. See
+DEVELOPMENT.md's Migrations section for the exact command sequence.
+
+The `users` table added here is intentionally minimal (`id`, `email`,
+`created_at` — no password/OAuth columns yet) since the actual auth
+mechanism is still a Phase 5 decision per ARCHITECTURE.md. `owners.user_id`
+links a web login to a league-owner record once someone signs up.
 
 ## PHASE 3 — ESPN INTEGRATION (read-only first)
 - [ ] Port `sync_teams.py` / `sync_matchups.py` / `sync_rosters.py` behind a
