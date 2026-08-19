@@ -1,8 +1,11 @@
 # ESPN Lineup Write Investigation
 
-Status as of 2026-08-19: **write endpoint not implemented.** This document
-tracks what's actually known about ESPN Fantasy's lineup-mutation API vs.
-what's assumed, and exactly what's needed to close the gap.
+Status as of 2026-08-19: **single-player lineup moves are implemented and
+verified against a real ESPN capture; swaps/displacements are implemented
+but blocked from actually sending until a 2-item request is captured.**
+This document tracks what's actually known about ESPN Fantasy's
+lineup-mutation API vs. what's assumed, and exactly what's needed to close
+the remaining gap.
 
 Every claim below is labeled:
 
@@ -27,14 +30,18 @@ actually took effect. All of that is implemented in
 `lineup_exceptions.py`, and `slots.py`, with tests in
 `backend/tests/test_espn_lineup_client.py` and `test_espn_slots.py`.
 
-Write: **not implemented.** `ESPNLineupClient.set_lineup()` and
-`swap_players()` build and validate a full plan (Phase 6 of the original
-request: read roster, find player, validate slot, validate eligibility,
-check lock, check displacement) and then either log what *would* be sent
-(dry-run, the default) or raise `WriteNotVerifiedError` (real-write mode).
-There is no code path anywhere in this repo that sends a POST/PUT to ESPN.
-This isn't a flag waiting to be flipped — the request body it would need
-to send has never been confirmed, so there's nothing to send yet.
+Write: **partially implemented.** `ESPNLineupClient.set_lineup()` and
+`swap_players()` build and validate a full plan first (Phase 6 of the
+original request: read roster, find player, validate slot, validate
+eligibility, check lock, check displacement), then, per `ESPN_DRY_RUN`:
+either log what *would* be sent (dry-run, the default) or actually send
+it. Real sending only happens for a **single-player move into an open
+slot** — the exact shape verified below. A **swap or a displacement**
+(2 players changing slots at once) is fully planned and validated the
+same way, but `_send_mutation` refuses to actually POST it — raising
+`WriteNotVerifiedError` even with dry-run off — because that 2-item
+request body has never been captured, only inferred. See "What's
+implemented now vs. still open" below.
 
 ## Read API — VERIFIED
 
@@ -110,58 +117,121 @@ body and response still needed, see "Still needed" below).
   - `content-type: application/json`
   - `accept: application/json`
   - `x-fantasy-platform: espn-fantasy-web`
-  - `x-fantasy-source:` — value got cut off in what was pasted (looked
-    like it started with `kona`); **NEEDS CAPTURE** to get the exact
-    full value.
+  - `x-fantasy-source: kona`
   - `origin: https://fantasy.espn.com`, `referer: https://fantasy.espn.com/`
-  - `content-length: 218` — tells us the body is small (roughly what
-    you'd expect for a single-player slot change, not a full-roster
-    payload), but not what's in it.
-- **Request body shape for a single lineup slot change** — **NEEDS CAPTURE**
-  (still). The 2026-08-19 capture was headers-only; the body (218 bytes,
-  per `content-length`) is the one piece that actually lets us implement
-  `_send_mutation` — see "Still needed" below for exactly which DevTools
-  tab has it. No current (2025–2026) public source has a verified body
-  either: `mkreiser/ESPN-Fantasy-Football-API` (sometimes cited as
-  having transaction support — checked its actual source, it doesn't)
-  and `espn_api` (this app's own dependency — zero live `.post()`/
-  `.put()` calls anywhere in it) are both confirmed read-only.
-- **Whether ESPN expects the full roster or just the changed player(s)**
-  — **NEEDS CAPTURE**.
-- **Whether it's an `entries` array or something else** — **NEEDS CAPTURE**.
-- **Special requirements for a two-player swap** (single request vs. two)
-  — **NEEDS CAPTURE**.
-- **How lineup lock times are enforced server-side** — **NEEDS CAPTURE**.
-  This app's own lock check (`ESPNLineupClient._check_not_locked`) is a
-  best-effort approximation using the player's scheduled kickoff time
-  from `espn_api`'s own schedule data — not a flag ESPN exposes directly,
-  and not confirmed to match ESPN's actual server-side enforcement at the
-  margins (e.g. a delayed game).
-- **What a successful vs. failed write response looks like** — **NEEDS CAPTURE**.
+  - `content-length: 218` — matches the actual body below.
 
-One piece of corroborating (not conclusive) evidence: `espn_api`'s own
-`TRANSACTION_TYPES` constant includes a value literally named `"ROSTER"`,
-confirming ESPN's internal model does represent lineup changes as a
-distinct transaction type — but that's from the read-side activity feed,
-not a write request body, so it doesn't tell us the shape of what to send.
+### Request body — VERIFIED (2026-08-19 capture)
+
+A single player moved from the FLEX slot (23) into an open TE slot (6),
+no displacement:
+
+```json
+{
+    "isLeagueManager": false,
+    "teamId": 4,
+    "type": "ROSTER",
+    "memberId": "<the requesting user's own SWID-format member GUID — redacted here>",
+    "executionType": "EXECUTE",
+    "items": [
+        {
+            "playerId": 4432665,
+            "type": "LINEUP",
+            "fromLineupSlotId": 23,
+            "toLineupSlotId": 6
+        }
+    ]
+}
+```
+
+This answers three previously-open questions:
+
+- **ESPN expects only the changed player(s), not the full roster** —
+  the body contains a single `items` entry for the one player that
+  moved, nothing else.
+- **It's `type: "ROSTER"` at the top level with an `items` array of
+  `type: "LINEUP"` entries**, not a bare `entries` array as some other
+  ESPN write endpoints use.
+- **The slot IDs in the write body are the exact same integers as the
+  read side** (`fromLineupSlotId: 23` / `toLineupSlotId: 6` — FLEX and
+  TE, matching `slots.py`'s `LineupSlot` enum exactly). Our read-side
+  ID mapping (built from `espn_api`'s own `POSITION_MAP`) is directly
+  reusable for writes — no separate write-side ID scheme.
+- `memberId` matches the requesting user's own SWID-format GUID —
+  same value as the `SWID` auth cookie, echoed into the body itself.
+  **Redacted from this doc and from the test suite**, even though it's
+  not itself a bearer credential (it's also visible via this app's own
+  read API, as every owner's `espn_member_id` — see `adapter.py`) — no
+  reason to keep a real user's literal ID sitting in git history.
+
+### Response body — VERIFIED (2026-08-19 capture, HTTP 200)
+
+```json
+{
+    "bidAmount": 0,
+    "executionType": "EXECUTE",
+    "id": "4acc33f5-f72c-4ad0-92d5-7654df3ce855",
+    "isActingAsTeamOwner": false,
+    "isLeagueManager": false,
+    "isPending": false,
+    "items": [
+        {
+            "fromLineupSlotId": 23,
+            "fromTeamId": 0,
+            "isKeeper": false,
+            "overallPickNumber": 0,
+            "playerId": 4432665,
+            "toLineupSlotId": 6,
+            "toTeamId": 0,
+            "type": "LINEUP"
+        }
+    ],
+    "memberId": "<redacted, same value as above>",
+    "proposedDate": 1787175407429,
+    "rating": 0,
+    "scoringPeriodId": 0,
+    "skipTransactionCounters": false,
+    "status": "EXECUTED",
+    "subOrder": 0,
+    "teamId": 4,
+    "type": "ROSTER"
+}
+```
+
+The key field: **`"status": "EXECUTED"`** on success. ESPN echoes the
+`items` back with extra server-filled fields the request didn't send
+(`fromTeamId`, `toTeamId`, `isKeeper`, `overallPickNumber`, `bidAmount`
+— all zero/false here, presumably meaningful for trade/waiver
+transaction types that share this same endpoint). No other status value
+has been observed yet — what a *rejected* write (e.g. attempting a
+change after the game has locked) looks like is still unknown; per
+Phase 7, this app never trusts the response status alone anyway — every
+real mutation is followed by a live roster re-read
+(`ESPNLineupClient.verify_lineup`) before being called a success.
+
+### What's implemented now vs. still open
+
+With the above, `app/providers/espn/lineup_client.py` now actually sends
+this exact request when `ESPN_DRY_RUN=false` — **for the single-item
+case only** (a player moving into an open slot). A **displacement or a
+two-player swap needs a 2-item body**, which this capture didn't show —
+that shape is our own inference (mirroring the verified 1-item entry:
+each player gets their own `LINEUP` item with its own from/to slot), and
+`_send_mutation` deliberately refuses to send it — even with dry-run
+off — until a real 2-item capture confirms it. Dry-run mode still shows
+exactly what a swap/displacement *would* send, for review.
+
+One piece of corroborating evidence that predates this capture:
+`espn_api`'s own `TRANSACTION_TYPES` constant includes a value literally
+named `"ROSTER"`, matching what the real body now confirms.
 
 ## What we still need from you to close this out
 
-The 2026-08-19 capture confirmed the host, path, and method — real
-progress. Still missing, from that *same* captured request:
-
-1. **The request body** (Payload/Request tab, not Headers) — the actual
-   218 bytes that were sent. This is the one piece that unblocks
-   implementation.
-2. **The response** — status code and response body, from the
-   **Response** tab of the same request.
-3. **The full `x-fantasy-source` header value** — it got cut off as
-   `kona` in what was shared; needed in full.
-
-If you still have that Network panel open (or can reproduce the same
-lineup change again), click the same request and grab those three
-things. If not, a fresh capture of any real lineup change works just as
-well — see the steps below.
+One more capture: **a two-player swap** (or any lineup change that
+displaces an existing starter, e.g. moving a bench player into an
+already-full slot). That's the only remaining unverified piece — it
+tells us whether ESPN sends that as a single `transactions` request with
+2 `items` (our current assumption) or as two separate requests.
 
 ### How to capture it (Chrome DevTools)
 

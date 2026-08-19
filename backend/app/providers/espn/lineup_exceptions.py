@@ -55,3 +55,31 @@ class MutationVerificationFailedError(ESPNLineupError):
     """A mutation was actually sent (dry_run=False) but the follow-up
     live roster read didn't show the expected lineup — see Phase 7: an
     HTTP 200 alone is never treated as success."""
+
+
+class ESPNWriteTimeoutError(ESPNLineupError):
+    """The write request timed out. Phase 7's specific warning applies:
+    ESPN may have accepted the mutation before the timeout fired, so
+    retrying blindly could double-apply it (e.g. re-swapping two players
+    back to where they started). Callers must call verify_lineup() to
+    find out what actually happened before doing anything else — never
+    just retry."""
+
+
+class ESPNWriteHTTPError(ESPNLineupError):
+    """ESPN's write endpoint returned a non-2xx status. Carries the
+    status code and a bounded snippet of the response body (no
+    credentials are ever in this response — it's the user's own
+    transaction record) for debugging."""
+
+    def __init__(self, status_code: int, body_snippet: str):
+        self.status_code = status_code
+        self.body_snippet = body_snippet
+        super().__init__(f"ESPN write request failed: HTTP {status_code} — {body_snippet}")
+
+
+class ESPNWriteMalformedResponseError(ESPNLineupError):
+    """ESPN returned a 2xx but the body wasn't valid JSON, or didn't
+    contain the fields the 2026-08-19 verified capture showed
+    (specifically `status`) — see ESPN_LINEUP_WRITE.md. Treated as a
+    failure rather than guessing at what happened, per Phase 7."""

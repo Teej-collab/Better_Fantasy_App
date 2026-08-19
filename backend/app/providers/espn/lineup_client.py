@@ -9,28 +9,43 @@ only synced during NFL game windows (see app/game_windows.py) and can be
 stale outside them, e.g. right after a waiver add clears. Every read
 here goes straight to ESPN, live, every time.
 
-WRITE STATUS: not implemented. See ESPN_LINEUP_WRITE.md for why —
-in short, no public source has ever shown a verified 2026 request body
-for ESPN's lineup-change endpoint, and Phase 12 of this investigation
-explicitly says to stop rather than guess. set_lineup()/swap_players()
-build and validate a plan (the full Phase 6 read-before-write sequence)
-and then, depending on config.dry_run:
+WRITE STATUS: partially implemented, gated behind config.dry_run
+(default True) — see ESPN_LINEUP_WRITE.md for the full capture and
+verification status.
+  - The 1-item request body (move a single player into an OPEN slot —
+    no displacement) is VERIFIED against a real captured lineup change
+    on 2026-08-19: host, path, method, headers, and body all confirmed.
+  - The 2-item body used for a swap or a displacement (bumping whoever
+    already occupies the destination slot) is NOT itself captured —
+    it's a reasonable mirror of the verified 1-item shape (each player
+    gets their own LINEUP entry with their own from/to slot), but it's
+    ASSUMED. _send_mutation refuses to actually send any 2-item request
+    even with dry_run off, until a real 2-item capture confirms it —
+    dry-run logging still shows exactly what it would send, for review.
+set_lineup()/swap_players() always build and validate a plan first (the
+full Phase 6 read-before-write sequence), then, depending on
+config.dry_run:
   - dry_run=True (the default): log the exact mutation that WOULD be
     sent, with credentials redacted, and return a MutationResult that
     says so. No network write call is made.
-  - dry_run=False: raise WriteNotVerifiedError. There is currently no
-    code path that sends a real write request — this isn't a runtime
-    toggle waiting to be flipped, it's a hole waiting for the real
-    request format once we have a capture to verify it against.
+  - dry_run=False: actually POST to ESPN (1-item shape only — see
+    above), then verify_lineup() the result before ever calling it a
+    success (Phase 7 — an HTTP 200 is never enough on its own). Never
+    retries on timeout/error — see ESPNWriteTimeoutError's docstring for
+    why that's specifically dangerous here.
 """
 import logging
 from datetime import datetime, timezone
 
+import requests
 from espn_api.football import League
 
 from app.providers.espn.config import ESPNConfig
 from app.providers.espn.lineup_exceptions import (
     AmbiguousDisplacementError,
+    ESPNWriteHTTPError,
+    ESPNWriteMalformedResponseError,
+    ESPNWriteTimeoutError,
     InvalidSlotError,
     LineupLockedError,
     MutationVerificationFailedError,
@@ -45,6 +60,34 @@ from app.providers.espn.slots import LineupSlot, slot_id_from_label, slot_label
 logger = logging.getLogger(__name__)
 
 _NON_DISPLACING_SLOTS = {LineupSlot.BENCH, LineupSlot.IR}
+
+# --- write endpoint, VERIFIED 2026-08-19 against a real captured lineup
+# change — see ESPN_LINEUP_WRITE.md. Mirrors the read host
+# (lm-api-reads -> lm-api-writes) exactly as the community had guessed,
+# but the path is NOT the commonly-cited "/roster/" — it's
+# "/transactions/", confirmed for real.
+_WRITE_BASE = "https://lm-api-writes.fantasy.espn.com/apis/v3/games/ffl"
+# ESPN's frontend build fingerprint, captured from a real request. It is
+# NOT verified whether this needs to match exactly, just needs to be
+# present, or is safely omittable — if real writes start failing with an
+# otherwise-valid request, re-capture this first (see
+# ESPN_LINEUP_WRITE.md's DevTools instructions).
+_PLATFORM_VERSION = "5e254affd13eaa961c7dffbd9de59d867a2e0acf"
+_WRITE_TIMEOUT_SECONDS = 10
+
+
+def _write_url(league_id: int, year: int) -> str:
+    return f"{_WRITE_BASE}/seasons/{year}/segments/0/leagues/{league_id}/transactions/"
+
+
+def _write_headers() -> dict:
+    # VERIFIED from the 2026-08-19 capture.
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-fantasy-platform": "espn-fantasy-web",
+        "x-fantasy-source": "kona",
+    }
 
 
 class ESPNLineupClient:
@@ -212,33 +255,85 @@ class ESPNLineupClient:
         league = self.get_league(season)
         return league.settings.position_slot_counts.get(slot_label(slot_id))
 
-    # ---- writes (see module docstring — not implemented) --------------
+    # ---- writes (see module docstring for verification status) --------
 
     def set_lineup(
         self, team_id: int, player_name: str, to_slot: str | int, season: int | None = None
     ) -> MutationResult:
         plan = self.plan_lineup_change(team_id, player_name, to_slot, season)
-        return self._send_mutation(
+        items = self._lineup_change_items(plan)
+        expected = {plan.player.player_id: plan.to_slot_id}
+        if plan.displaced_player is not None:
+            expected[plan.displaced_player.player_id] = plan.from_slot_id
+
+        description = (
             f"league={self.config.league_id} team={team_id} "
             f"player={plan.player.player_id} from_slot={plan.from_slot_id} to_slot={plan.to_slot_id}"
-            + (
-                f" displaces={plan.displaced_player.player_id}"
-                if plan.displaced_player
-                else ""
-            )
+            + (f" displaces={plan.displaced_player.player_id}" if plan.displaced_player else "")
         )
+        return self._send_mutation(team_id, items, expected, season, description)
 
     def swap_players(
         self, team_id: int, player_a_name: str, player_b_name: str, season: int | None = None
     ) -> MutationResult:
         plan = self.plan_swap(team_id, player_a_name, player_b_name, season)
-        return self._send_mutation(
+        items = [
+            {
+                "playerId": plan.player_a.player_id,
+                "type": "LINEUP",
+                "fromLineupSlotId": plan.player_a.lineup_slot_id,
+                "toLineupSlotId": plan.player_b.lineup_slot_id,
+            },
+            {
+                "playerId": plan.player_b.player_id,
+                "type": "LINEUP",
+                "fromLineupSlotId": plan.player_b.lineup_slot_id,
+                "toLineupSlotId": plan.player_a.lineup_slot_id,
+            },
+        ]
+        expected = {
+            plan.player_a.player_id: plan.player_b.lineup_slot_id,
+            plan.player_b.player_id: plan.player_a.lineup_slot_id,
+        }
+        description = (
             f"league={self.config.league_id} team={team_id} swap "
             f"player_a={plan.player_a.player_id}(slot={plan.player_a.lineup_slot_id}) "
             f"player_b={plan.player_b.player_id}(slot={plan.player_b.lineup_slot_id})"
         )
+        return self._send_mutation(team_id, items, expected, season, description)
 
-    def _send_mutation(self, description: str) -> MutationResult:
+    @staticmethod
+    def _lineup_change_items(plan: LineupChangePlan) -> list[dict]:
+        items = [
+            {
+                "playerId": plan.player.player_id,
+                "type": "LINEUP",
+                "fromLineupSlotId": plan.from_slot_id,
+                "toLineupSlotId": plan.to_slot_id,
+            }
+        ]
+        if plan.displaced_player is not None:
+            # ASSUMED shape (mirrors the verified single-item capture) —
+            # see this module's docstring and ESPN_LINEUP_WRITE.md. Not
+            # itself confirmed by a real capture.
+            items.append(
+                {
+                    "playerId": plan.displaced_player.player_id,
+                    "type": "LINEUP",
+                    "fromLineupSlotId": plan.to_slot_id,
+                    "toLineupSlotId": plan.from_slot_id,
+                }
+            )
+        return items
+
+    def _send_mutation(
+        self,
+        team_id: int,
+        items: list[dict],
+        expected_slot_by_player_id: dict[int, int],
+        season: int | None,
+        description: str,
+    ) -> MutationResult:
         if self.config.dry_run:
             logger.info("ESPN lineup mutation (DRY RUN, not sent): %s dry_run=true", description)
             return MutationResult(
@@ -248,14 +343,97 @@ class ESPNLineupClient:
                 detail=f"DRY RUN — would send: {description}",
             )
 
-        # No verified write request exists yet — see ESPN_LINEUP_WRITE.md.
-        # This is the guardrail from Phase 7: refuse rather than guess.
-        logger.error("ESPN lineup mutation blocked (write not verified): %s dry_run=false", description)
-        raise WriteNotVerifiedError(
-            "ESPN's lineup-change write endpoint has not been verified against a real captured "
-            "request yet — see ESPN_LINEUP_WRITE.md. Refusing to send an unverified request. "
-            "Set ESPN_DRY_RUN=true to see what would be attempted."
+        if len(items) > 1:
+            # The 2026-08-19 capture only showed a single-item move into
+            # an open slot. A swap/displacement's 2-item body is our own
+            # mirrored inference (see _lineup_change_items/swap_players
+            # docstrings) — ASSUMED, not verified. Refuse to actually
+            # send it until a real 2-item capture confirms the shape,
+            # even with dry_run off; dry-run logging above still shows
+            # exactly what would be sent, for review.
+            logger.error("ESPN lineup mutation blocked (multi-item shape unverified): %s", description)
+            raise WriteNotVerifiedError(
+                "This mutation needs a 2-item request body (a swap or a displacement), and only "
+                "the 1-item shape has been verified against a real ESPN capture so far — see "
+                "ESPN_LINEUP_WRITE.md. Refusing to send an unverified request shape. A single "
+                "lineup move into an OPEN slot (no displacement) is verified and will send."
+            )
+
+        year = season or self.config.active_season
+        body = {
+            "isLeagueManager": False,
+            "teamId": team_id,
+            "type": "ROSTER",
+            "memberId": self.config.swid,
+            "executionType": "EXECUTE",
+            "items": items,
+        }
+        cookies = {"espn_s2": self.config.espn_s2, "SWID": self.config.swid}
+
+        logger.info("ESPN lineup mutation (SENDING): %s dry_run=false", description)
+        try:
+            response = requests.post(
+                _write_url(self.config.league_id, year),
+                params={"platformVersion": _PLATFORM_VERSION},
+                json=body,
+                headers=_write_headers(),
+                cookies=cookies,
+                timeout=_WRITE_TIMEOUT_SECONDS,
+            )
+        except requests.exceptions.Timeout as e:
+            logger.error("ESPN lineup mutation timed out (outcome UNKNOWN, not retrying): %s", description)
+            raise ESPNWriteTimeoutError(
+                "ESPN write request timed out — ESPN may or may not have applied it. Do NOT "
+                "retry blindly (see ESPNWriteTimeoutError). Call verify_lineup() to find out "
+                "what actually happened before doing anything else."
+            ) from e
+        except requests.exceptions.RequestException as e:
+            logger.error("ESPN lineup mutation network error: %s", description)
+            raise ESPNWriteHTTPError(0, self._redact(str(e))) from e
+
+        if response.status_code >= 300:
+            logger.error(
+                "ESPN lineup mutation rejected: %s status=%d", description, response.status_code
+            )
+            raise ESPNWriteHTTPError(response.status_code, self._redact(response.text[:500]))
+
+        try:
+            payload = response.json()
+        except ValueError as e:
+            raise ESPNWriteMalformedResponseError(
+                f"ESPN returned HTTP {response.status_code} but the body wasn't valid JSON"
+            ) from e
+
+        espn_status = payload.get("status")
+        logger.info("ESPN lineup mutation response: %s espn_status=%s", description, espn_status)
+
+        # Phase 7's core rule: an accepted-looking response is not proof.
+        # Only a follow-up live roster read counts.
+        if not self.verify_lineup(team_id, expected_slot_by_player_id, season):
+            raise MutationVerificationFailedError(
+                f"ESPN responded (status={espn_status}) but a follow-up roster read didn't show "
+                f"the expected lineup: {description}"
+            )
+
+        return MutationResult(
+            attempted=True,
+            dry_run=False,
+            verified=True,
+            detail=f"Applied and verified (espn_status={espn_status}): {description}",
         )
+
+    def _redact(self, text: str) -> str:
+        """Strips this client's own live credential values out of
+        arbitrary text before it's logged or raised in an exception —
+        ESPN's write response echoes `memberId` back, which is the same
+        GUID as the SWID cookie. See Phase 9's "never log credentials"
+        rule."""
+        redacted = text
+        if self.config.swid:
+            redacted = redacted.replace(self.config.swid, "<redacted-member-id>")
+        if self.config.espn_s2:
+            redacted = redacted.replace(self.config.espn_s2, "<redacted-espn-s2>")
+        return redacted
 
 
 def _slot_id_of(player) -> int:
