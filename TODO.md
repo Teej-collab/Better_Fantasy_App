@@ -62,11 +62,25 @@ mechanism is still a Phase 5 decision per ARCHITECTURE.md. `owners.user_id`
 links a web login to a league-owner record once someone signs up.
 
 ## PHASE 3 — ESPN INTEGRATION (read-only first)
-- [ ] Port `sync_teams.py` / `sync_matchups.py` / `sync_rosters.py` behind a
-      `FantasyProvider` interface
-- [ ] Confirm your `ESPN_S2`/`ESPN_SWID` cookies are current and valid
-- [ ] Backend endpoint to trigger a manual sync (admin-only)
-- [ ] Scheduled sync job (replaces in-process discord.ext.tasks loop)
+- [x] Port `sync_teams.py` / `sync_matchups.py` / `sync_rosters.py` behind a
+      `FantasyProvider` interface — logic unchanged, verified against fake
+      ESPN responses + real local Postgres (`tests/test_espn_adapter.py`)
+- [ ] **Confirm your `ESPN_S2`/`ESPN_SWID` cookies are current and valid —
+      not done. Needs your real cookies in `backend/.env`, which I won't
+      ask you to paste into chat.**
+- [x] Backend endpoint to trigger a manual sync (admin-only) — `POST
+      /admin/sync`, gated by a shared-secret `X-Admin-Token` header
+      (`ADMIN_SYNC_TOKEN` env var) as a stopgap until real auth in Phase 5
+- [x] Scheduled sync job (replaces in-process discord.ext.tasks loop) —
+      APScheduler inside the backend process, **off by default**
+      (`ENABLE_ESPN_SYNC_SCHEDULER=true` to turn it on)
+
+**Not done, and deliberately not done:** nothing here has run against real
+ESPN data or the production Supabase database yet. The adapter is proven
+correct against fakes + a local test DB, but going live needs your real
+ESPN cookies in your own `.env` and an explicit decision to point
+`DATABASE_URL` at production — see DEVELOPMENT.md's "ESPN sync" section
+for the exact steps once you're ready.
 
 ## PHASE 4 — CORE APPLICATION (read-only views)
 - [ ] Auth: basic login (decision pending — see ARCHITECTURE.md)

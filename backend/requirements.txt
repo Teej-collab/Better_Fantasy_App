@@ -4,3 +4,5 @@ asyncpg
 python-dotenv
 alembic
 psycopg2-binary
+espn_api
+apscheduler

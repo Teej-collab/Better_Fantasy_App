@@ -5,9 +5,12 @@ repo: `backend/` (FastAPI) and `frontend/` (Next.js). Run them in separate
 terminals during development.
 
 The backend connects to the same Supabase Postgres project `Fantasy_Helper`
-already uses. Per the Phase 1 decision in TODO.md, the backend is **read-only**
-against that database until schema changes are explicitly approved — don't
-add write queries without checking that's still the plan.
+already uses. Schema changes (migrations) against that production database
+still need your explicit go-ahead — see Migrations below. As of Phase 3,
+the backend does write data (ESPN sync populates teams/matchups/rosters),
+but only when deliberately triggered: `POST /admin/sync`, or the scheduled
+job if `ENABLE_ESPN_SYNC_SCHEDULER=true` is set (off by default). Nothing
+syncs automatically just from running the backend.
 
 ---
 
@@ -96,6 +99,38 @@ set DATABASE_URL=postgresql://postgres:<password>@localhost:5432/better_fantasy_
 alembic upgrade head
 pytest -v
 ```
+
+### ESPN sync
+
+`app/providers/espn/adapter.py` ports Fantasy_Helper's
+`sync_teams.py`/`sync_matchups.py`/`sync_rosters.py` behind the
+`FantasyProvider` interface (`app/providers/base.py`), unchanged logic —
+see MIGRATION_MAP.md. It's covered by `tests/test_espn_adapter.py` using
+fake ESPN API responses (`tests/fakes_espn.py`), so the upsert/skip/stop
+logic is verified without needing real ESPN credentials or a live network
+call.
+
+Running it against **real** ESPN data — locally or in production — is a
+separate, deliberate step:
+
+1. Fill in `ESPN_LEAGUE_ID`, `ESPN_S2`, `ESPN_SWID`, `ACTIVE_SEASON`, and
+   `LEAGUE_START_SEASON` in `backend/.env` (your own values — never paste
+   these into chat; see Notes below). `ADMIN_SYNC_TOKEN` too, if using the
+   HTTP endpoint.
+2. Trigger it manually, either:
+   - `POST /admin/sync` with header `X-Admin-Token: <your ADMIN_SYNC_TOKEN>`
+     while the backend is running, or
+   - a small script that constructs `ESPNProvider()` and calls
+     `app.providers.sync.run_full_sync(...)` directly.
+3. Point `DATABASE_URL` at whichever database you actually want written to.
+   **Pointing it at production Supabase is the moment this stops being a
+   dev exercise** — confirm that's actually intended first, same as any
+   other production write.
+
+The scheduled job (`app/scheduler.py`) does the same thing on a timer
+(`SYNC_INTERVAL_HOURS`, default 24) but only if `ENABLE_ESPN_SYNC_SCHEDULER`
+is explicitly set truthy — left off by default so no one's local dev
+backend starts quietly syncing real league data on a schedule.
 
 ---
 

@@ -1,8 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 
 from app.db import get_pool
+from app.routers import admin
+from app.scheduler import start_scheduler, stop_scheduler
 
-app = FastAPI(title="Better Fantasy App API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="Better Fantasy App API", lifespan=lifespan)
+app.include_router(admin.router)
 
 
 @app.get("/health")
