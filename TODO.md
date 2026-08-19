@@ -302,9 +302,22 @@ doesn't know Discord identities), so it needs either their Discord ID
 from you or an admin tool to set it. Not built — flagging rather than
 guessing at scope for a 5-person, one-time fix.
 
-**Not yet done:** an actual live login has not been tested — that needs
-you to register a Discord application (DEVELOPMENT.md walks through it)
-and add the credentials to `backend/.env`.
+**Live testing, Aug 19 2026:** registered a real Discord application and
+started testing. Found and fixed two real bugs along the way:
+1. The running backend process had `.env` loaded before the Discord
+   credentials were added to it — env vars only load at process
+   startup, so it needed a restart to pick up the new values.
+2. **The `0528c1f9a3cb` migration (users table extended for Discord
+   auth) was tested locally but never actually applied to production**
+   — a real gap, not a decision; applied with your go-ahead once found
+   (`ALTER TABLE users ADD COLUMN discord_user_id...` etc., verified via
+   `information_schema.columns` afterward). The Discord login → consent
+   screen → callback flow got as far as this bug before failing, which
+   is a good sign for the rest of the flow.
+
+Also: your Discord client secret was accidentally printed in a terminal
+command's output while debugging — recommended resetting it in the
+Discord Developer Portal as a precaution.
 
 ## PHASE 6 — EXISTING BOT FEATURES → WEB
 - [ ] Team profile page (port `team_profile.py`)
