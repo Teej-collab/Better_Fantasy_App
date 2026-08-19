@@ -8,7 +8,6 @@ from app.providers.espn.lineup_exceptions import (
     PlayerNotFoundError,
     SlotIneligibleError,
     TeamNotFoundError,
-    WriteNotVerifiedError,
 )
 from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
@@ -216,13 +215,12 @@ def test_set_lineup_dry_run_does_not_attempt_and_says_so(espn_config, monkeypatc
     assert "DRY RUN" in result.detail
 
 
-def test_set_lineup_with_displacement_refuses_unverified_two_item_write(espn_config, monkeypatch):
-    # Only the 1-item request body (move into an OPEN slot) is verified
-    # against a real ESPN capture — see ESPN_LINEUP_WRITE.md. A
-    # displacement needs a 2-item body, which is unverified and must be
-    # refused even with dry_run off. Full write-path coverage (including
-    # the verified 1-item live send) lives in test_espn_lineup_write.py.
-    espn_config.dry_run = False
+def test_set_lineup_with_displacement_dry_run_describes_both_players(espn_config, monkeypatch):
+    # Planning/dry-run coverage only — this file never mocks
+    # requests.post, so it never runs with dry_run=False. Full send
+    # coverage for the (now verified) 2-item displacement shape lives in
+    # test_espn_lineup_write.py, alongside the swap-shape test.
+    espn_config.dry_run = True
     roster = [
         make_fake_lineup_player(1, "Starting QB", "QB", ["QB", "BE"]),
         make_fake_lineup_player(2, "Bench QB", "BE", ["QB", "BE"]),
@@ -230,15 +228,9 @@ def test_set_lineup_with_displacement_refuses_unverified_two_item_write(espn_con
     _patch(monkeypatch, _team_with_roster(1, roster, position_slot_counts={"QB": 1, "BE": 6}))
     client = ESPNLineupClient(espn_config)
 
-    calls = []
-    monkeypatch.setattr("app.providers.espn.lineup_client.requests.post", lambda *a, **k: calls.append(1))
-
-    try:
-        client.set_lineup(1, "Bench QB", "QB")
-        assert False, "expected WriteNotVerifiedError"
-    except WriteNotVerifiedError:
-        pass
-    assert calls == []
+    result = client.set_lineup(1, "Bench QB", "QB")
+    assert result.dry_run is True
+    assert "displaces=1" in result.detail
 
 
 def test_dry_run_log_never_contains_credentials(espn_config, monkeypatch, caplog):

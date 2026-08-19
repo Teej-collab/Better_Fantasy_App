@@ -1,11 +1,10 @@
 # ESPN Lineup Write Investigation
 
-Status as of 2026-08-19: **single-player lineup moves are implemented and
-verified against a real ESPN capture; swaps/displacements are implemented
-but blocked from actually sending until a 2-item request is captured.**
-This document tracks what's actually known about ESPN Fantasy's
-lineup-mutation API vs. what's assumed, and exactly what's needed to close
-the remaining gap.
+Status as of 2026-08-19: **both single-player lineup moves and two-player
+swaps/displacements are implemented and verified against real ESPN
+captures.** This document records what's actually known about ESPN
+Fantasy's lineup-mutation API vs. what was assumed before being verified,
+for anyone who needs to re-verify or extend this later.
 
 Every claim below is labeled:
 
@@ -30,18 +29,14 @@ actually took effect. All of that is implemented in
 `lineup_exceptions.py`, and `slots.py`, with tests in
 `backend/tests/test_espn_lineup_client.py` and `test_espn_slots.py`.
 
-Write: **partially implemented.** `ESPNLineupClient.set_lineup()` and
+Write: **implemented.** `ESPNLineupClient.set_lineup()` and
 `swap_players()` build and validate a full plan first (Phase 6 of the
 original request: read roster, find player, validate slot, validate
 eligibility, check lock, check displacement), then, per `ESPN_DRY_RUN`:
 either log what *would* be sent (dry-run, the default) or actually send
-it. Real sending only happens for a **single-player move into an open
-slot** — the exact shape verified below. A **swap or a displacement**
-(2 players changing slots at once) is fully planned and validated the
-same way, but `_send_mutation` refuses to actually POST it — raising
-`WriteNotVerifiedError` even with dry-run off — because that 2-item
-request body has never been captured, only inferred. See "What's
-implemented now vs. still open" below.
+it and verify the result before calling it a success. Both the
+single-player (1-item) and swap/displacement (2-item) request shapes are
+verified against real captures — see below.
 
 ## Read API — VERIFIED
 
@@ -209,31 +204,71 @@ Phase 7, this app never trusts the response status alone anyway — every
 real mutation is followed by a live roster re-read
 (`ESPNLineupClient.verify_lineup`) before being called a success.
 
-### What's implemented now vs. still open
+### Two-item (swap/displacement) request body — VERIFIED (2026-08-19 capture)
 
-With the above, `app/providers/espn/lineup_client.py` now actually sends
-this exact request when `ESPN_DRY_RUN=false` — **for the single-item
-case only** (a player moving into an open slot). A **displacement or a
-two-player swap needs a 2-item body**, which this capture didn't show —
-that shape is our own inference (mirroring the verified 1-item entry:
-each player gets their own `LINEUP` item with its own from/to slot), and
-`_send_mutation` deliberately refuses to send it — even with dry-run
-off — until a real 2-item capture confirms it. Dry-run mode still shows
-exactly what a swap/displacement *would* send, for review.
+A second capture, this time a real two-player swap (a bench player
+moved into the K slot, bumping the starting kicker to the bench):
 
-One piece of corroborating evidence that predates this capture:
+```json
+{
+    "isLeagueManager": false,
+    "teamId": 4,
+    "type": "ROSTER",
+    "memberId": "<redacted — same GUID as above>",
+    "executionType": "EXECUTE",
+    "items": [
+        {"playerId": 2473037, "type": "LINEUP", "fromLineupSlotId": 20, "toLineupSlotId": 17},
+        {"playerId": 3055899, "type": "LINEUP", "fromLineupSlotId": 17, "toLineupSlotId": 20}
+    ]
+}
+```
+
+**This confirms the 2-item shape is exactly what we'd inferred** by
+mirroring the verified 1-item shape: one `LINEUP` entry per player, each
+with its own `fromLineupSlotId`/`toLineupSlotId`, the two players'
+before/after slots swapped between them. Same `type: "ROSTER"` envelope,
+same single request (not two separate requests) — response shape
+matched the single-item response too, just with two entries in `items`
+and the same `"status": "EXECUTED"` on success.
+
+With this, both **`ESPNLineupClient.set_lineup()`** (including the
+displacement case — bumping whoever's in a full slot) and
+**`swap_players()`** now actually send their requests when
+`ESPN_DRY_RUN=false`, not just the open-slot single-item case. The
+`_send_mutation` guard now only blocks 3+ item requests — nothing in
+this client's planning logic produces those, and there's no capture to
+verify that shape against if it ever does.
+
+One piece of corroborating evidence that predates these captures:
 `espn_api`'s own `TRANSACTION_TYPES` constant includes a value literally
-named `"ROSTER"`, matching what the real body now confirms.
+named `"ROSTER"`, matching what both real bodies confirm.
 
-## What we still need from you to close this out
+## Status: core investigation closed
 
-One more capture: **a two-player swap** (or any lineup change that
-displaces an existing starter, e.g. moving a bench player into an
-already-full slot). That's the only remaining unverified piece — it
-tells us whether ESPN sends that as a single `transactions` request with
-2 `items` (our current assumption) or as two separate requests.
+Both request shapes this app needs (single-item move, two-item swap/
+displacement) are now verified against real captures, end to end —
+host, path, method, headers, body, and success response. Nothing further
+is blocking `set_lineup()`/`swap_players()` from working for real once
+`ESPN_DRY_RUN=false` is set.
 
-### How to capture it (Chrome DevTools)
+What's still genuinely unknown, lower priority, and fine to learn
+opportunistically rather than needing a deliberate capture:
+- What a **rejected** write looks like (e.g. attempting a change after
+  the game has locked, or an invalid slot) — no rejection has been
+  captured yet, only successes. `ESPNWriteHTTPError` handles a non-2xx
+  response generically; a real rejection example might reveal ESPN
+  returns a 2xx with an error-shaped body instead, which would need its
+  own handling.
+- Whether `platformVersion` needs to match ESPN's current frontend build
+  exactly, or is checked more loosely — it's shown up consistently
+  across two different endpoints/requests in the same browsing session,
+  which is reassuring but not the same as testing what happens with a
+  stale value.
+
+If either of those needs chasing down later, the capture process below
+is kept for reference — same DevTools steps, same redaction rule.
+
+## Reference: how to capture a request (Chrome DevTools)
 
 1. Open `fantasy.espn.com`, go to your league, open your team.
 2. Open DevTools (`Cmd+Option+I` on Mac) → **Network** tab.
@@ -279,16 +314,19 @@ a `compare_shape()` helper to sanity-check the captured request's method
 and host against whatever we're assuming — so nothing here depends on a
 human redaction being perfect on the first try.
 
-### After a capture lands
+### After a capture lands (for any future gap, e.g. a rejected write)
 
-1. Confirm/replace the host, path, method, headers, and body shape above,
-   moving every "NEEDS CAPTURE" row to "VERIFIED".
-2. Implement the real write call behind `ESPNLineupClient._send_mutation`,
-   gated the same way it is now: dry-run by default, and a real write only
-   when `ESPN_DRY_RUN=false` is explicitly set.
-3. Test it exactly once, manually, against a real (non-critical) lineup
-   change — never in the automated test suite, which uses mocked
-   responses only (see Phase 7/10 of the original request: no real
+1. Update the relevant section above, moving the claim from
+   "NEEDS CAPTURE"/"ASSUMED" to "VERIFIED".
+2. Update `ESPNLineupClient` and its tests to match, the same way this
+   round's two captures were incorporated.
+3. **Note for the current status**: the request/response shapes are
+   verified and the code sends real requests when `ESPN_DRY_RUN=false`,
+   but no one has actually flipped that flag and run it against a real
+   roster yet — that first real end-to-end test (ideally a harmless,
+   reversible change, watched live) is still open, and per Phase 7/10 of
+   the original request should be done manually, once, outside the
+   automated test suite (which only ever uses mocked responses — no real
    mutation runs in CI).
 4. A mutation is only ever reported as successful when a follow-up live
    roster read (`ESPNLineupClient.verify_lineup`) confirms the expected

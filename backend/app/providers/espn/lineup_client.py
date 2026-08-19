@@ -9,30 +9,32 @@ only synced during NFL game windows (see app/game_windows.py) and can be
 stale outside them, e.g. right after a waiver add clears. Every read
 here goes straight to ESPN, live, every time.
 
-WRITE STATUS: partially implemented, gated behind config.dry_run
-(default True) — see ESPN_LINEUP_WRITE.md for the full capture and
-verification status.
+WRITE STATUS: implemented, gated behind config.dry_run (default True) —
+see ESPN_LINEUP_WRITE.md for the full capture and verification status.
   - The 1-item request body (move a single player into an OPEN slot —
     no displacement) is VERIFIED against a real captured lineup change
     on 2026-08-19: host, path, method, headers, and body all confirmed.
   - The 2-item body used for a swap or a displacement (bumping whoever
-    already occupies the destination slot) is NOT itself captured —
-    it's a reasonable mirror of the verified 1-item shape (each player
-    gets their own LINEUP entry with their own from/to slot), but it's
-    ASSUMED. _send_mutation refuses to actually send any 2-item request
-    even with dry_run off, until a real 2-item capture confirms it —
-    dry-run logging still shows exactly what it would send, for review.
+    already occupies the destination slot) is ALSO VERIFIED — a second
+    2026-08-19 capture of a real two-player swap confirmed it's exactly
+    the mirrored shape we'd inferred (each player gets their own LINEUP
+    entry, with the two players' from/to slots swapped between them).
+  - _send_mutation still refuses anything with more than 2 items — that
+    shape has never come up in a capture and nothing in this client's
+    planning logic currently produces it, so there's nothing to verify
+    it against. If that ever changes, verify it the same way these two
+    were verified before relaxing the guard.
 set_lineup()/swap_players() always build and validate a plan first (the
 full Phase 6 read-before-write sequence), then, depending on
 config.dry_run:
   - dry_run=True (the default): log the exact mutation that WOULD be
     sent, with credentials redacted, and return a MutationResult that
     says so. No network write call is made.
-  - dry_run=False: actually POST to ESPN (1-item shape only — see
-    above), then verify_lineup() the result before ever calling it a
-    success (Phase 7 — an HTTP 200 is never enough on its own). Never
-    retries on timeout/error — see ESPNWriteTimeoutError's docstring for
-    why that's specifically dangerous here.
+  - dry_run=False: actually POST to ESPN, then verify_lineup() the
+    result before ever calling it a success (Phase 7 — an HTTP 200 is
+    never enough on its own). Never retries on timeout/error — see
+    ESPNWriteTimeoutError's docstring for why that's specifically
+    dangerous here.
 """
 import logging
 from datetime import datetime, timezone
@@ -313,9 +315,10 @@ class ESPNLineupClient:
             }
         ]
         if plan.displaced_player is not None:
-            # ASSUMED shape (mirrors the verified single-item capture) —
-            # see this module's docstring and ESPN_LINEUP_WRITE.md. Not
-            # itself confirmed by a real capture.
+            # VERIFIED shape — matches the real 2026-08-19 two-player
+            # swap capture exactly (see ESPN_LINEUP_WRITE.md): each
+            # player gets their own LINEUP entry, from/to slots mirrored
+            # between the two.
             items.append(
                 {
                     "playerId": plan.displaced_player.player_id,
@@ -343,20 +346,19 @@ class ESPNLineupClient:
                 detail=f"DRY RUN — would send: {description}",
             )
 
-        if len(items) > 1:
-            # The 2026-08-19 capture only showed a single-item move into
-            # an open slot. A swap/displacement's 2-item body is our own
-            # mirrored inference (see _lineup_change_items/swap_players
-            # docstrings) — ASSUMED, not verified. Refuse to actually
-            # send it until a real 2-item capture confirms the shape,
-            # even with dry_run off; dry-run logging above still shows
-            # exactly what would be sent, for review.
-            logger.error("ESPN lineup mutation blocked (multi-item shape unverified): %s", description)
+        if len(items) > 2:
+            # Both the 1-item (open-slot move) and 2-item (swap/
+            # displacement) shapes are VERIFIED against real ESPN
+            # captures — see ESPN_LINEUP_WRITE.md. Nothing in this
+            # client's planning logic currently produces more than 2
+            # items, so a 3+ item request has never been captured or
+            # even exercised; refuse it rather than guess, the same way
+            # the 2-item shape was refused before it was verified.
+            logger.error("ESPN lineup mutation blocked (%d-item shape unverified): %s", len(items), description)
             raise WriteNotVerifiedError(
-                "This mutation needs a 2-item request body (a swap or a displacement), and only "
-                "the 1-item shape has been verified against a real ESPN capture so far — see "
-                "ESPN_LINEUP_WRITE.md. Refusing to send an unverified request shape. A single "
-                "lineup move into an OPEN slot (no displacement) is verified and will send."
+                f"This mutation needs a {len(items)}-item request body, and only 1- and 2-item "
+                "shapes have been verified against real ESPN captures so far — see "
+                "ESPN_LINEUP_WRITE.md. Refusing to send an unverified request shape."
             )
 
         year = season or self.config.active_season

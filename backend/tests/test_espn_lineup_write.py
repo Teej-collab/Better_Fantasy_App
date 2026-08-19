@@ -159,10 +159,14 @@ def test_timeout_raises_and_does_not_retry(monkeypatch):
     assert len(call_count) == 1  # exactly once — no automatic retry
 
 
-def test_multi_item_swap_is_blocked_even_with_dry_run_off(monkeypatch):
-    starter = make_fake_lineup_player(1, "Starter RB", "RB", ["RB", "BE"])
-    bencher = make_fake_lineup_player(2, "Bench RB", "BE", ["RB", "BE"])
-    team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=[starter, bencher])
+def test_swap_sends_the_verified_two_item_request_shape(monkeypatch):
+    # Player IDs and slot IDs match a real captured two-player swap
+    # (2026-08-19, see ESPN_LINEUP_WRITE.md): a bench player moved into
+    # K (17), the starting kicker moved to BENCH (20) — confirmed as
+    # exactly the mirrored 2-item shape this client already builds.
+    bench_k = make_fake_lineup_player(2473037, "Bench Kicker", "BE", ["K", "BE"])
+    starting_k = make_fake_lineup_player(3055899, "Starting Kicker", "K", ["K", "BE"])
+    team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=[bench_k, starting_k])
     league = FakeLeague(teams=[team], current_week=5)
     monkeypatch.setattr("app.providers.espn.lineup_client.League", lambda **kwargs: league)
 
@@ -176,15 +180,86 @@ def test_multi_item_swap_is_blocked_even_with_dry_run_off(monkeypatch):
     config.dry_run = False
     client = ESPNLineupClient(config)
 
+    captured_calls = []
+
+    def fake_post(url, params=None, json=None, headers=None, cookies=None, timeout=None):
+        captured_calls.append({"url": url, "json": json})
+        bench_k.lineupSlot = "K"  # simulate ESPN actually applying the swap
+        starting_k.lineupSlot = "BE"
+        return _FakeResponse(200, {"status": "EXECUTED"})
+
+    monkeypatch.setattr("app.providers.espn.lineup_client.requests.post", fake_post)
+
+    result = client.swap_players(4, "Bench Kicker", "Starting Kicker")
+
+    assert result.attempted is True
+    assert result.verified is True
+
+    assert captured_calls[0]["json"]["items"] == [
+        {"playerId": 2473037, "type": "LINEUP", "fromLineupSlotId": 20, "toLineupSlotId": 17},
+        {"playerId": 3055899, "type": "LINEUP", "fromLineupSlotId": 17, "toLineupSlotId": 20},
+    ]
+
+
+def test_displacement_sends_the_same_verified_two_item_shape(monkeypatch):
+    # set_lineup() into a FULL slot goes through the same
+    # _lineup_change_items mirroring as swap_players() — this confirms
+    # that path sends too, using the swap capture's verified shape.
+    starting_qb = make_fake_lineup_player(10, "Starting QB", "QB", ["QB", "BE"])
+    bench_qb = make_fake_lineup_player(11, "Bench QB", "BE", ["QB", "BE"])
+    team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=[starting_qb, bench_qb])
+    league = FakeLeague(teams=[team], current_week=5, position_slot_counts={"QB": 1, "BE": 6})
+    monkeypatch.setattr("app.providers.espn.lineup_client.League", lambda **kwargs: league)
+
+    from app.providers.espn.config import ESPNConfig
+
+    monkeypatch.setenv("ESPN_LEAGUE_ID", "2027626914")
+    monkeypatch.setenv("ESPN_S2", "s2-secret-value")
+    monkeypatch.setenv("ESPN_SWID", "{00000000-FAKE-0000-FAKE-000000000000}")
+    monkeypatch.setenv("ACTIVE_SEASON", "2026")
+    config = ESPNConfig()
+    config.dry_run = False
+    client = ESPNLineupClient(config)
+
+    captured_calls = []
+
+    def fake_post(url, params=None, json=None, headers=None, cookies=None, timeout=None):
+        captured_calls.append({"json": json})
+        bench_qb.lineupSlot = "QB"
+        starting_qb.lineupSlot = "BE"
+        return _FakeResponse(200, {"status": "EXECUTED"})
+
+    monkeypatch.setattr("app.providers.espn.lineup_client.requests.post", fake_post)
+
+    result = client.set_lineup(4, "Bench QB", "QB")
+
+    assert result.attempted is True
+    assert result.verified is True
+    assert captured_calls[0]["json"]["items"] == [
+        {"playerId": 11, "type": "LINEUP", "fromLineupSlotId": 20, "toLineupSlotId": 0},
+        {"playerId": 10, "type": "LINEUP", "fromLineupSlotId": 0, "toLineupSlotId": 20},
+    ]
+
+
+def test_more_than_two_items_still_blocked(monkeypatch):
+    # Nothing in this client's planning logic produces a 3+ item
+    # request today, so this exercises _send_mutation's guard directly
+    # rather than through set_lineup()/swap_players().
+    client, _ = _client_with_open_slot_roster(monkeypatch, dry_run=False)
     calls = []
     monkeypatch.setattr("app.providers.espn.lineup_client.requests.post", lambda *a, **k: calls.append(1))
 
+    three_items = [
+        {"playerId": 1, "type": "LINEUP", "fromLineupSlotId": 20, "toLineupSlotId": 2},
+        {"playerId": 2, "type": "LINEUP", "fromLineupSlotId": 2, "toLineupSlotId": 4},
+        {"playerId": 3, "type": "LINEUP", "fromLineupSlotId": 4, "toLineupSlotId": 20},
+    ]
     try:
-        client.swap_players(4, "Starter RB", "Bench RB")
+        client._send_mutation(4, three_items, {1: 2, 2: 4, 3: 20}, None, "test 3-item mutation")
         assert False, "expected WriteNotVerifiedError"
     except WriteNotVerifiedError:
         pass
-    assert calls == []  # never actually sent — unverified 2-item shape
+    assert calls == []
 
 
 def test_error_message_redacts_credentials(monkeypatch):

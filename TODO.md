@@ -534,8 +534,25 @@ visit — wasteful and risky. Instead:
 
 ## PHASE 7.5 — ESPN LINEUP WRITE INVESTIGATION (Aug 19 2026)
 - [x] Build a safe lineup-mutation layer (reads/planning only)
-- [ ] Verify the actual ESPN write request — **blocked on a DevTools
-      capture from you**, see `ESPN_LINEUP_WRITE.md`
+- [x] Verify the actual ESPN write request — two real captures (a
+      single-player move, then a two-player swap) confirmed both the
+      1-item and 2-item request/response shapes end to end. See
+      `ESPN_LINEUP_WRITE.md`.
+
+Update (later same day): both captures landed. `set_lineup()` and
+`swap_players()` now actually send real requests to ESPN's write
+endpoint when `ESPN_DRY_RUN=false` — dry-run stays the default. The
+2-item mirrored-swap shape our own code had inferred (before any capture
+existed) turned out to be exactly right once verified. `_send_mutation`
+still refuses anything with more than 2 items, since nothing in this
+client's planning logic produces that and there's no capture to check it
+against. 10 more tests (verified swap/displacement request bodies sent
+for real against mocks, 3+-item guard), 101 total passing. Still open,
+low priority: what a *rejected* write looks like (only successes
+captured so far), and nobody has actually flipped `ESPN_DRY_RUN=false`
+against a real roster yet — that first real end-to-end run is still
+ahead, deliberately manual and outside the test suite (see
+`ESPN_LINEUP_WRITE.md`'s "After a capture lands").
 
 Revisits the "not feasible" write-capability call from Phase 7 at your
 explicit request, this time with a proper investigation instead of
