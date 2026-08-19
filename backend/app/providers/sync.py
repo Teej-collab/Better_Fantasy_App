@@ -21,6 +21,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             ("teams", provider.sync_teams),
             ("matchups", provider.sync_matchups),
             ("rosters", provider.sync_rosters),
+            ("final_standings", provider.sync_final_standings),
         ):
             try:
                 count = await step(pool, season)

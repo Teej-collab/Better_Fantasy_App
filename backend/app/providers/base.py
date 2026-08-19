@@ -21,3 +21,8 @@ class FantasyProvider(ABC):
     @abstractmethod
     async def sync_rosters(self, pool, season: int) -> int:
         """Sync weekly rosters for one season. Returns weeks saved."""
+
+    @abstractmethod
+    async def sync_final_standings(self, pool, season: int) -> int:
+        """Sync final season ranking for one season. Returns rows saved
+        (0 for a season still in progress, not an error)."""

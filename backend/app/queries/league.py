@@ -46,6 +46,12 @@ async def get_standings(conn, season: int):
     # otherwise count as a tie. A genuine 0-0 tie is not realistic in
     # fantasy football (some player always scores something), so treat
     # "both scores exactly 0" as "not played yet" too.
+    #
+    # Ordering: final_standings.final_rank (ESPN's own rankCalculatedFinal
+    # — accounts for the full playoff bracket) when it exists for this
+    # season, falling back to regular-season win/loss/points for a season
+    # still in progress (no final rank yet). A team with final_rank == 1
+    # is the champion — no separate "champion" concept needed.
     return await conn.fetch(
         """
         WITH results AS (
@@ -72,30 +78,19 @@ async def get_standings(conn, season: int):
                COALESCE(SUM(r.loss), 0)::int AS losses,
                COALESCE(SUM(r.tie), 0)::int AS ties,
                COALESCE(SUM(r.points_for), 0) AS points_for,
-               COALESCE(SUM(r.points_against), 0) AS points_against
+               COALESCE(SUM(r.points_against), 0) AS points_against,
+               fs.final_rank
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id
         LEFT JOIN results r ON r.team_id = t.id
+        LEFT JOIN final_standings fs ON fs.team_id = t.id AND fs.season = t.season
         WHERE t.season = $1
-        GROUP BY t.id, t.team_name, o.display_name
-        ORDER BY wins DESC, points_for DESC
-        """,
-        season,
-    )
-
-
-async def get_champion(conn, season: int):
-    """The season_champions table only records who won it all — not full
-    playoff bracket placement (2nd/3rd/etc). So this can crown a champion
-    but can't reconstruct true final standings beyond that; the rest of
-    `get_standings` stays regular-season order."""
-    return await conn.fetchrow(
-        """
-        SELECT t.id AS team_id, sc.team_name, o.display_name AS owner_name
-        FROM season_champions sc
-        JOIN teams_by_season t ON t.owner_id = sc.owner_id AND t.season = sc.season
-        JOIN owners o ON o.owner_id = sc.owner_id
-        WHERE sc.season = $1
+        GROUP BY t.id, t.team_name, o.display_name, fs.final_rank
+        ORDER BY
+            CASE WHEN fs.final_rank IS NULL THEN 1 ELSE 0 END,
+            fs.final_rank,
+            wins DESC,
+            points_for DESC
         """,
         season,
     )

@@ -69,26 +69,54 @@ async def test_standings_computed_from_matchups(pool):
     assert float(standings[team_b]["points_for"]) == 100.0
 
 
-async def test_standings_includes_champion_when_present(pool):
-    team_a, _ = await _seed_two_teams(pool)
+async def test_standings_ordered_by_final_rank_when_present(pool):
+    # Real-world case this guards against: 2024's actual champion was
+    # seeded 4th by regular-season record. final_standings (ESPN's own
+    # computed final rank) must win over win/loss ordering.
+    team_a, team_b = await _seed_two_teams(pool)
 
     async with pool.acquire() as conn:
-        owner_a = await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE id = $1", team_a)
+        # Team A has the worse record...
         await conn.execute(
-            "INSERT INTO season_champions (season, owner_id, team_name) VALUES ($1, $2, $3)",
-            TEST_SEASON, owner_a, "Team Alpha",
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $3, $2, 130.0, 90.0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        # ...but won the championship (final_rank 1), so should rank first.
+        await conn.execute(
+            "INSERT INTO final_standings (season, team_id, final_rank) VALUES ($1, $2, 1)",
+            TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            "INSERT INTO final_standings (season, team_id, final_rank) VALUES ($1, $2, 2)",
+            TEST_SEASON, team_b,
         )
 
     resp = await _get(f"/seasons/{TEST_SEASON}/standings")
-    body = resp.json()
-    assert body["champion"]["team_id"] == team_a
-    assert body["champion"]["team_name"] == "Team Alpha"
+    body = resp.json()["standings"]
+    assert [row["team_id"] for row in body] == [team_a, team_b]
+    assert body[0]["final_rank"] == 1
+    assert body[0]["wins"] == 0  # confirms it's really final_rank driving order, not win/loss
 
 
-async def test_standings_champion_null_when_absent(pool):
-    await _seed_two_teams(pool)
+async def test_standings_falls_back_to_record_when_no_final_rank(pool):
+    team_a, team_b = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $2, $3, 130.0, 90.0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+
     resp = await _get(f"/seasons/{TEST_SEASON}/standings")
-    assert resp.json()["champion"] is None
+    body = resp.json()["standings"]
+    assert body[0]["team_id"] == team_a
+    assert body[0]["final_rank"] is None
 
 
 async def test_standings_excludes_unplayed_zero_zero_games(pool):

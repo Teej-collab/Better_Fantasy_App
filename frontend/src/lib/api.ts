@@ -27,12 +27,11 @@ export type StandingsRow = {
   ties: number;
   points_for: string;
   points_against: string;
-};
-
-export type Champion = {
-  team_id: number;
-  team_name: string;
-  owner_name: string;
+  // ESPN's own final-season rank (accounts for the full playoff bracket).
+  // Null means the season isn't finished yet — rows are then ordered by
+  // regular-season record instead. A row with final_rank === 1 is the
+  // champion.
+  final_rank: number | null;
 };
 
 export type WeekMatchup = {
@@ -85,9 +84,7 @@ export function listTeams(season: number) {
 }
 
 export function getStandings(season: number) {
-  return get<{ standings: StandingsRow[]; champion: Champion | null }>(
-    `/seasons/${season}/standings`
-  );
+  return get<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`);
 }
 
 export function listWeekMatchups(season: number, week: number) {

@@ -10,16 +10,11 @@ export default async function StandingsPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { standings, champion } = await getStandings(season);
-
-  // The champion (from season_champions — who actually won it all) isn't
-  // necessarily the regular-season #1 seed. Pull them out of the regular
-  // order and pin them to the top with a badge; everyone else keeps their
-  // regular-season rank below. See app/queries/league.py's get_champion —
-  // we only know who won, not full playoff bracket placement, so this is
-  // "champion first, then regular season order," not a true final bracket.
-  const championRow = champion ? standings.find((r) => r.team_id === champion.team_id) : undefined;
-  const restRows = championRow ? standings.filter((r) => r.team_id !== champion!.team_id) : standings;
+  const { standings } = await getStandings(season);
+  // Already ordered by final_rank (ESPN's real final-season rank, full
+  // playoff bracket) when the season's complete, falling back to
+  // regular-season record when it's not — see app/queries/league.py.
+  const isFinal = standings.length > 0 && standings[0].final_rank !== null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,7 +38,7 @@ export default async function StandingsPage({
       </div>
 
       <p className="text-xs text-black/50 dark:text-white/50">
-        {championRow ? "Champion, then regular season record." : "Regular season record."}
+        {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
       </p>
 
       {/* Column headers only from sm up — on mobile each row labels itself */}
@@ -56,24 +51,16 @@ export default async function StandingsPage({
       </div>
 
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-        {championRow && <StandingsListRow row={championRow} rank={1} isChampion />}
-        {restRows.map((row, i) => (
-          <StandingsListRow key={row.team_id} row={row} rank={championRow ? i + 2 : i + 1} />
+        {standings.map((row, i) => (
+          <StandingsListRow key={row.team_id} row={row} rank={i + 1} />
         ))}
       </ul>
     </div>
   );
 }
 
-function StandingsListRow({
-  row,
-  rank,
-  isChampion = false,
-}: {
-  row: StandingsRow;
-  rank: number;
-  isChampion?: boolean;
-}) {
+function StandingsListRow({ row, rank }: { row: StandingsRow; rank: number }) {
+  const isChampion = row.final_rank === 1;
   return (
     <li
       className={

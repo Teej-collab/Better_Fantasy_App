@@ -196,19 +196,9 @@ browser tooling connected) — worth a real look on an actual phone before
 treating this as done, not just curl/build-verified.
 
 **Second round of real user feedback, Aug 19 2026:**
-- **Champion badge on Standings.** `season_champions` (discovered during
-  the Phase 3 schema-drift investigation) records who won each season —
-  confirmed real data for 2023-2025 before building on it. Added
-  `get_champion()` and wired it into `GET /seasons/{s}/standings`
-  (`champion` field). Frontend pins the champion to rank #1 with a 🏆
-  badge; the rest of the list keeps regular-season order below,
-  renumbered. Verified this actually matters: 2024's champion (Amishtown
-  Rumspringers) was ranked 4th by regular-season record, not 1st — the
-  badge genuinely changes what's shown, not just cosmetic. **Caveat, by
-  design:** `season_champions` only records the winner, not full playoff
-  bracket placement (2nd/3rd/etc.), so this can crown a champion but
-  can't reconstruct true final standings beyond that — the page says so
-  ("Champion, then regular season record").
+- **Champion badge on Standings** (initial version) — pinned the
+  `season_champions`-derived champion to #1. Superseded the same day,
+  see below.
 - **Playoffs vs. regular season distinction.** New shared `PlayoffBadge`
   component, shown on the week-schedule page header (when any matchup
   that week is a playoff game) and the matchup detail page header.
@@ -219,8 +209,39 @@ treating this as done, not just curl/build-verified.
   table→row-list mobile conversion happened; added back as a small
   header row above each list, right-aligned to match the number columns.
 
-2 new backend tests for the champion behavior (present + null cases),
-19 total passing.
+**Third round of real user feedback, Aug 19 2026 — real final standings
+from ESPN.** The champion-badge caveat above ("can't reconstruct true
+final standings beyond the champion") turned out to be solvable:
+`espn_api`'s `League.standings()` sorts by `Team.final_standing`
+(`rankCalculatedFinal` — ESPN's own computed final rank, accounting for
+the full playoff bracket, not just who won it). Confirmed against real
+league data before building on it: 2024's champion (Amishtown
+Rumspringers) was seeded 4th going into playoffs but correctly shows
+`final_standing=1`; `final_standing` is `0` for a season still in
+progress, so we know exactly when there's nothing real to sync yet.
+
+- New `final_standings` table (season, team_id, final_rank) — migration
+  `a80e40f20fa5`, applied to production with your go-ahead.
+- New `FantasyProvider.sync_final_standings()` step, added to
+  `run_full_sync`'s per-season loop. Backfilled production for
+  2023-2025 (12 rows each, matching ESPN exactly); 2026 correctly got 0
+  rows since it hasn't finished.
+- `get_standings()` now LEFT JOINs `final_standings` and orders by
+  `final_rank` when present, falling back to regular-season record when
+  not (an in-progress season). **This replaced the `season_champions`-based
+  champion field entirely** — a team with `final_rank == 1` is the
+  champion by definition, so there's no separate "champion" concept to
+  keep in sync anymore. `season_champions` isn't written by anything in
+  this new pipeline, so `final_rank` is the sustainable source of truth
+  going forward; `get_champion()` and the `champion` API field were
+  removed rather than left as unused/drifting parallel logic.
+- Frontend Standings page simplified accordingly: renders `standings` in
+  the order the API already gives it, badges whichever row has
+  `final_rank === 1`. No more "pull champion out, reorder" logic needed.
+
+4 new backend tests (2 adapter: saves-when-complete /
+skips-when-in-progress; 2 query: final_rank ordering / fallback to
+record), replacing the 2 champion-field tests. 21 total passing.
 
 ## PHASE 5 — AUTHENTICATION (full)
 - [ ] Finalize auth approach with you (major decision, not pre-made)

@@ -150,6 +150,32 @@ class ESPNProvider(FantasyProvider):
 
         return saved_weeks
 
+    async def sync_final_standings(self, pool, season: int) -> int:
+        league = self._league(season)
+        saved = 0
+
+        async with pool.acquire() as conn:
+            for team in league.standings():
+                if team.final_standing == 0:
+                    continue  # season still in progress — no real final rank yet
+
+                team_db_id = await _get_team_db_id(conn, season, team.team_id)
+                if team_db_id is None:
+                    continue
+
+                await conn.execute(
+                    """
+                    INSERT INTO final_standings (season, team_id, final_rank)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (season, team_id)
+                    DO UPDATE SET final_rank = EXCLUDED.final_rank
+                    """,
+                    season, team_db_id, team.final_standing,
+                )
+                saved += 1
+
+        return saved
+
     @staticmethod
     async def _save_lineup(conn, season, week, team_db_id, lineup):
         await conn.execute(

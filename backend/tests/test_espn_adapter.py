@@ -76,6 +76,51 @@ async def test_sync_matchups_saves_and_skips_bye_week(pool, espn_config, monkeyp
     assert rows[0]["is_playoff"] is False
 
 
+async def test_sync_final_standings_saves_only_when_season_complete(pool, espn_config, monkeypatch):
+    fake_teams = [
+        make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith", final_standing=2),
+        make_fake_team(2, "Team Two", "test-member-2", "Bob", "Jones", final_standing=1),
+    ]
+    fake_league = FakeLeague(teams=fake_teams)
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)
+    saved = await provider.sync_final_standings(pool, TEST_SEASON)
+    assert saved == 2
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT t.team_name, fs.final_rank FROM final_standings fs "
+            "JOIN teams_by_season t ON t.id = fs.team_id "
+            "WHERE fs.season = $1 ORDER BY fs.final_rank",
+            TEST_SEASON,
+        )
+    assert [(r["team_name"], r["final_rank"]) for r in rows] == [
+        ("Team Two", 1), ("Team One", 2),
+    ]
+
+
+async def test_sync_final_standings_skips_in_progress_season(pool, espn_config, monkeypatch):
+    fake_teams = [
+        make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),  # final_standing=0 default
+        make_fake_team(2, "Team Two", "test-member-2", "Bob", "Jones"),
+    ]
+    fake_league = FakeLeague(teams=fake_teams)
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)
+    saved = await provider.sync_final_standings(pool, TEST_SEASON)
+    assert saved == 0
+
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT count(*) FROM final_standings WHERE season = $1", TEST_SEASON
+        )
+    assert count == 0
+
+
 async def test_sync_rosters_saves_and_replaces_on_rerun(pool, espn_config, monkeypatch):
     fake_teams = [
         make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),

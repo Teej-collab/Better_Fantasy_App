@@ -6,11 +6,12 @@ to match only the attributes app/providers/espn/adapter.py actually reads.
 from types import SimpleNamespace
 
 
-def make_fake_team(team_id, name, owner_member_id, first, last):
+def make_fake_team(team_id, name, owner_member_id, first, last, final_standing=0):
     return SimpleNamespace(
         team_id=team_id,
         team_name=name,
         owners=[{"id": owner_member_id, "firstName": first, "lastName": last}],
+        final_standing=final_standing,  # 0 = season still in progress, matches real ESPN behavior
     )
 
 
@@ -61,3 +62,8 @@ class FakeLeague:
         if week not in self._box_scores_by_week:
             raise Exception(f"no data for week {week}")
         return self._box_scores_by_week[week]
+
+    def standings(self):
+        # Mirrors the real League.standings(): sorted by final_standing
+        # (falling back to a team's regular `standing` if final is 0).
+        return sorted(self.teams, key=lambda t: t.final_standing or getattr(t, "standing", 0))
