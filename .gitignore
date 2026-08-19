@@ -1,0 +1,18 @@
+# Secrets
+.env
+backend/.env
+
+# Python (backend)
+__pycache__/
+*.pyc
+*.pyo
+backend/.venv/
+backend/venv/
+
+# Node (frontend) — frontend/.gitignore also covers this, kept here for
+# anything run from the repo root
+frontend/node_modules/
+frontend/.next/
+
+# OS junk
+.DS_Store

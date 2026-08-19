@@ -11,21 +11,27 @@ Phase 0 discovery actually found.
 ## PHASE 0 — DISCOVERY
 - [x] Inspect Fantasy_Helper codebase (tech stack, architecture, DB schema,
       real vs. stub components)
-- [x] Write PROJECT_STATE.md, ARCHITECTURE.md, MIGRATION_MAP.md,
-      PRODUCT_REQUIREMENTS.md, TODO.md, CLAUDE.md, DEVELOPMENT.md
-- [ ] **You review this audit and approve/adjust the proposed architecture
-      and tech stack before Phase 1 starts** ← we are here
+- [x] Write PROJECT_STATE.md, ARCHITECTURE.md, MIGRATION_MAP.md, TODO.md
+      (PRODUCT_REQUIREMENTS.md, CLAUDE.md, DEVELOPMENT.md were referenced by
+      an earlier audit pass but not carried over — proceeding without them
+      per your call on Aug 18 2026)
+- [x] You review this audit and approve/adjust the proposed architecture and
+      tech stack before Phase 1 starts — approved as proposed (FastAPI +
+      Next.js + Postgres), Aug 18 2026
 
-## PHASE 1 — ARCHITECTURE / FOUNDATION (not started, awaiting approval above)
-- [ ] Confirm tech stack decisions from ARCHITECTURE.md (FastAPI + Next.js +
-      Postgres) — or adjust based on your feedback
-- [ ] Create `Better_Fantasy_App` repo structure (backend/, frontend/, docs)
-- [ ] Set up local dev environment on your Mac (and document Windows
-      equivalent commands)
-- [ ] `.env.example` + `.gitignore` for the new repo (same discipline as
-      Fantasy_Helper's config pattern)
-- [ ] Confirm whether you have a real Postgres instance with real historical
-      data already, or whether Phase 2 starts from an empty DB
+## PHASE 1 — ARCHITECTURE / FOUNDATION
+- [x] Confirm tech stack decisions from ARCHITECTURE.md (FastAPI + Next.js +
+      Postgres) — approved
+- [x] Create `Better_Fantasy_App` repo structure (`backend/`, `frontend/`)
+- [x] Set up local dev environment on your Mac (installed nvm + Node LTS,
+      Python venv) — see DEVELOPMENT.md, which also documents the Windows
+      equivalent commands
+- [x] `.env.example` + `.gitignore` for the new repo (same discipline as
+      Fantasy_Helper's config pattern — fail-loud required env vars, no
+      secrets committed)
+- [x] Confirmed: real historical league data already exists in Supabase.
+      Backend connects to that same project, read-only until schema changes
+      are explicitly approved (decision made Aug 18 2026)
 
 ## PHASE 2 — BACKEND FOUNDATION
 - [ ] FastAPI project skeleton, health-check endpoint
@@ -84,18 +90,24 @@ Phase 0 discovery actually found.
 
 ---
 
-## Open questions for you (not blocking, but worth answering before Phase 1)
+## Open questions — answered Aug 18 2026
 
-1. Does `Fantasy_Helper` currently run anywhere against real Discord/ESPN/
-   Postgres, or has it only been developed, not deployed? (PROJECT_STATE.md
-   flags this as UNKNOWN from the code alone.)
-2. Do you have real historical league data already sitting in a Postgres
-   instance, or does this start from zero data?
-3. Are you happy with the FastAPI + Next.js + Postgres recommendation in
-   ARCHITECTURE.md, or do you want to discuss alternatives before we commit?
-4. What do you want to do about `bot-codebase-audit.md` — it's referenced by
-   Fantasy_Helper's README but wasn't in the file you gave me. If it has
-   useful context about what was deleted/why, it'd help me avoid re-treading
-   ground.
-5. Chug Analyzer — Discord-only forever, or eventually web? No rush on this
-   one, just flagging it early since it changes Phase 8 scope a lot either way.
+1. ~~Does `Fantasy_Helper` currently run anywhere against real Discord/ESPN/
+   Postgres, or has it only been developed, not deployed?~~ **Running
+   somewhere** — it's a live deployment against real Discord/ESPN/Postgres.
+2. ~~Do you have real historical league data already sitting in a Postgres
+   instance?~~ **Yes** — real historical data already exists in Supabase.
+3. ~~Are you happy with the FastAPI + Next.js + Postgres recommendation?~~
+   **Approved as proposed.**
+4. `bot-codebase-audit.md` — not resolved, low priority. Revisit only if a
+   question comes up that it might answer.
+5. ~~Chug Analyzer — Discord-only forever, or eventually web?~~ **Eventually
+   web** — stays in the Phase 8 roadmap as a real feature, not deferred
+   indefinitely.
+
+## New decision — Aug 18 2026
+
+- New backend connects to the **same** Supabase project the live bot writes
+  to (not a separate dev copy), but is **read-only** until schema changes
+  are explicitly approved. Chosen for simplicity over safety-via-isolation;
+  revisit if this ever feels risky in practice.
