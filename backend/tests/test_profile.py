@@ -79,8 +79,11 @@ async def test_season_profile_includes_season_awards(pool):
             TEST_SEASON, owner_a,
         )
         # A different season's award for the same owner should NOT show up.
+        # A fake year, same reasoning as TEST_SEASON in conftest.py — never
+        # a real league season, so this can't collide with real data even
+        # though this insert isn't scoped by the autouse cleanup fixture.
         await conn.execute(
-            "INSERT INTO season_awards (season, owner_id, award_type, detail) VALUES (2019, $1, 'Old Award', 'irrelevant')",
+            "INSERT INTO season_awards (season, owner_id, award_type, detail) VALUES (1899, $1, 'Old Award', 'irrelevant')",
             owner_a,
         )
 
@@ -90,48 +93,51 @@ async def test_season_profile_includes_season_awards(pool):
     assert body["season_awards"] == [{"award_type": "Boom Week", "detail": "120.0 pts"}]
 
     async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM season_awards WHERE season = 2019 AND owner_id = $1", owner_a)
+        await conn.execute("DELETE FROM season_awards WHERE season = 1899 AND owner_id = $1", owner_a)
 
 
 async def test_career_profile_aggregates_across_seasons(pool):
-    owner_a, team_a_2023 = await _seed_owner_and_team(pool, 3, "Carl", "Carl's 2023 Team", season=2023)
+    # Fake years (not TEST_SEASON) since this test needs two distinct
+    # seasons — see conftest.py's TEST_SEASON comment for why these can
+    # never be real-looking years like 2023/2024.
+    owner_a, team_a_1901 = await _seed_owner_and_team(pool, 3, "Carl", "Carl's 1901 Team", season=1901)
     async with pool.acquire() as conn:
-        team_a_2024 = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (2024, 203, $1, 'Carl 2024') RETURNING id",
+        team_a_1902 = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (1902, 203, $1, 'Carl 1902') RETURNING id",
             owner_a,
         )
         opp_id = await conn.fetchval(
             "INSERT INTO owners (espn_member_id, display_name) VALUES ('test-profile-owner-opp', 'Opp') RETURNING owner_id",
         )
-        opp_team_2023 = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (2023, 210, $1, 'Opp 2023') RETURNING id",
+        opp_team_1901 = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (1901, 210, $1, 'Opp 1901') RETURNING id",
             opp_id,
         )
-        opp_team_2024 = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (2024, 211, $1, 'Opp 2024') RETURNING id",
+        opp_team_1902 = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (1902, 211, $1, 'Opp 1902') RETURNING id",
             opp_id,
         )
-        # 2023: win
+        # 1901: win
         await conn.execute(
             "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
-            "VALUES (2023, 1, $1, $2, 100.0, 90.0, FALSE)",
-            team_a_2023, opp_team_2023,
+            "VALUES (1901, 1, $1, $2, 100.0, 90.0, FALSE)",
+            team_a_1901, opp_team_1901,
         )
-        # 2024: loss
+        # 1902: loss
         await conn.execute(
             "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
-            "VALUES (2024, 1, $1, $2, 80.0, 95.0, FALSE)",
-            team_a_2024, opp_team_2024,
+            "VALUES (1902, 1, $1, $2, 80.0, 95.0, FALSE)",
+            team_a_1902, opp_team_1902,
         )
-        cleanup_ids = [team_a_2023, team_a_2024, opp_team_2023, opp_team_2024]
+        cleanup_ids = [team_a_1901, team_a_1902, opp_team_1901, opp_team_1902]
 
     resp = await _get(f"/owners/{owner_a}/career")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["seasons"] == [2023, 2024]
+    assert body["seasons"] == [1901, 1902]
     assert body["regular"]["record"] == "1-1"
-    assert body["best_season"]["season"] == 2023
-    assert body["worst_season"]["season"] == 2024
+    assert body["best_season"]["season"] == 1901
+    assert body["worst_season"]["season"] == 1902
 
     # manual cleanup — these seasons aren't TEST_SEASON, so the autouse
     # fixture's season-scoped cleanup won't catch them
@@ -165,13 +171,13 @@ async def test_list_all_owners_not_scoped_to_one_season(pool):
     # Explicit requirement: the owner-card grid includes everyone who's
     # ever been in the league, not just current-season teams — so an
     # owner whose only team was in an old season must still show up.
-    owner_id, team_2023 = await _seed_owner_and_team(pool, 5, "Erin", "Erin 2023 Squad", season=2023)
+    owner_id, team_1901 = await _seed_owner_and_team(pool, 5, "Erin", "Erin 1901 Squad", season=1901)
     async with pool.acquire() as conn:
-        team_2025 = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (2025, 305, $1, 'Erin 2025 Squad') RETURNING id",
+        team_1902 = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES (1902, 305, $1, 'Erin 1902 Squad') RETURNING id",
             owner_id,
         )
-        cleanup_ids = [team_2023, team_2025]
+        cleanup_ids = [team_1901, team_1902]
 
     resp = await _get("/owners")
     assert resp.status_code == 200
@@ -180,8 +186,8 @@ async def test_list_all_owners_not_scoped_to_one_season(pool):
     assert owner_id in owners_by_id
     entry = owners_by_id[owner_id]
     assert entry["display_name"] == "Erin"
-    assert entry["latest_team_name"] == "Erin 2025 Squad"  # most recent season, not first
-    assert entry["seasons"] == [2023, 2025]
+    assert entry["latest_team_name"] == "Erin 1902 Squad"  # most recent season, not first
+    assert entry["seasons"] == [1901, 1902]
 
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM teams_by_season WHERE id = ANY($1)", cleanup_ids)

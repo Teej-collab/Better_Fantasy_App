@@ -4,7 +4,18 @@ import pytest_asyncio
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
 
-TEST_SEASON = 2024
+# MUST be a season number that can never be a real league season, ever.
+# cleanup_test_season below runs after every single test and does an
+# unscoped `DELETE FROM <table> WHERE season = TEST_SEASON` — the app's
+# default DATABASE_URL is production (the same DB the live league uses,
+# see DEVELOPMENT.md), so if this ever collides with a real season, that
+# season's real data gets silently wiped the moment any test runs.
+# This happened for real: TEST_SEASON was 2024, the league's real 2024
+# season had no data yet at the time, so the collision was invisible —
+# until 2024 was backfilled with real data and the very next test run
+# deleted all of it. A year like 1900 can't ever collide, by
+# construction — don't "fix" this back to a real-looking year.
+TEST_SEASON = 1900
 
 
 @pytest_asyncio.fixture
