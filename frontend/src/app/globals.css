@@ -584,6 +584,9 @@ body {
      a full ~16-game NFL slate (plus league items on the homepage), and
      32s no longer gave each item enough time to actually read. */
   animation: live-ticker-scroll 68s linear infinite;
+  /* Runs the entire time this bar is on screen — force GPU layer
+     promotion up front instead of leaving it to browser heuristics. */
+  will-change: transform;
 }
 /* Faster during Game Day — "the ticker becomes more active" — but still
    slower than the old baseline speed, same reasoning as above. 34s read
@@ -661,6 +664,13 @@ body {
   position: absolute;
   inset: -15%;
   background-repeat: no-repeat;
+  /* These cover most of the viewport and drift forever the whole time
+     the screen is up — a much bigger area to composite on a desktop
+     display than a phone's. will-change asks the browser to promote
+     each to its own GPU layer up front rather than deciding on the
+     fly, which is where desktop browsers (Safari especially) can lag
+     a beat behind and drop frames on a continuous transform. */
+  will-change: transform;
 }
 .wl-ambient::before {
   background-image:
@@ -809,6 +819,7 @@ body {
   animation:
     wl-weekend-power-on 1.8s ease-out both,
     wl-neon-buzz 5s ease-in-out 1.8s infinite;
+  will-change: opacity;
 }
 
 /* League — plain HTML text + CSS glow (see LeagueWordmark.tsx for why
@@ -906,6 +917,7 @@ body {
     0 0 50px color-mix(in srgb, var(--neon-color) 60%, transparent);
   opacity: 0;
   animation: wl-enter-breathe 4.6s ease-in-out 1.7s infinite;
+  will-change: opacity;
 }
 @keyframes wl-enter-breathe {
   0%,
@@ -959,6 +971,7 @@ body {
     transform 0.9s cubic-bezier(0.6, 0, 0.9, 0.4),
     opacity 0.9s ease;
   transform-origin: center 62%;
+  will-change: transform, opacity;
 }
 .wl-scene--entering {
   transform: scale(1.6) translateY(-6%);
@@ -981,6 +994,7 @@ body {
     rgba(57, 255, 106, 0) 68%
   );
   animation: wl-bloom 0.9s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+  will-change: transform, opacity;
 }
 @keyframes wl-bloom {
   0% {
