@@ -36,11 +36,20 @@ export default async function PlayersPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* Horizontal deck, not a grid — snap-scroll so each swipe/scroll
+          settles on one card at a time, like flipping through a stack,
+          rather than a vertically-scrolling list. -mx-4/px-4 lets it
+          bleed to the screen edges (undoing PageShell's page padding)
+          so the next card peeks in from the right as a scroll hint. */}
+      <div
+        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+      >
         {cards
           .filter((c): c is typeof c & { career: NonNullable<typeof c.career> } => c.career !== null)
           .map(({ owner, career, badges }) => (
-            <TeamProfileCard key={owner.owner_id} owner={owner} initialCareer={career} initialBadges={badges} />
+            <div key={owner.owner_id} className="w-[85vw] shrink-0 snap-center sm:w-[420px]">
+              <TeamProfileCard owner={owner} initialCareer={career} initialBadges={badges} />
+            </div>
           ))}
       </div>
     </div>
