@@ -268,6 +268,39 @@ Visit `http://localhost:3000`. The backend must be running too (see above)
 — every page fetches real data server-side at request time (no caching),
 so an unreachable backend means every page 500s.
 
+### Testing on your phone (same WiFi network)
+
+Three separate things all have to point at your Mac's LAN IP, not
+`localhost` — `localhost` on your phone means the phone itself:
+
+1. Find your Mac's LAN IP: `ipconfig getifaddr en0` (or `en1`).
+2. `frontend/.env.local` — set `NEXT_PUBLIC_API_BASE_URL` to
+   `http://<that-ip>:8000`. This one's easy to miss because the site
+   still *loads* fine without it (server-rendered pages fetch from the
+   Mac itself, not the phone) — it's specifically the client-side
+   interactive bits (dropdowns, toggles, anything with an onClick) that
+   silently fail without it, since those fetches happen in the phone's
+   own browser.
+3. `backend/.env` — add `http://<that-ip>:3000` to
+   `CORS_ALLOWED_ORIGINS` (comma-separated), or the browser will block
+   those same client-side requests.
+
+`next.config.ts`'s `allowedDevOrigins` is derived automatically from
+step 2's `NEXT_PUBLIC_API_BASE_URL`, so there's no separate IP to keep
+in sync there — but it's worth knowing what it's for: Next.js 16's dev
+server blocks serving its own JS bundle (including hot-reload) to any
+origin except `localhost` by default. Without it, the page looks like
+it loaded but **nothing is actually interactive** — React never
+hydrates, so every click/change handler is just dead HTML. That's the
+failure mode that's easy to miss, since there's no error on screen,
+only a warning in the terminal running `npm run dev`.
+
+Restart both `uvicorn` and `next dev` after changing either `.env` —
+they're only read at process start. Then visit `http://<that-ip>:3000`
+from your phone. If the IP ever changes (router reassigns the lease),
+update `NEXT_PUBLIC_API_BASE_URL` and `CORS_ALLOWED_ORIGINS` and
+restart both again.
+
 ### Phase 4 pages
 
 Dashboard (`/`), Standings (`/standings`), League (`/league`), Team roster
