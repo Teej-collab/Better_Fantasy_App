@@ -43,7 +43,6 @@ type Stage = "dark" | "word" | "final" | "entering" | "auth";
 export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: string[]; isGameDay: boolean }) {
   const [stage, setStage] = useState<Stage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
-  const [reducedMotion, setReducedMotion] = useState(false);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -62,7 +61,6 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
     const startTimeout = setTimeout(() => {
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const seenBefore = localStorage.getItem(SEEN_INTRO_KEY) === "1";
-      setReducedMotion(prefersReduced);
 
       if (prefersReduced || seenBefore) {
         setStage("final");
@@ -149,7 +147,7 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
           <>
             <h1 className={`wl-weekend text-5xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
             <div className="wl-league-wrap -mt-1 sm:-mt-2">
-              <LeagueWordmark fontFamily={satisfy.style.fontFamily} reducedMotion={reducedMotion} />
+              <LeagueWordmark className={satisfy.className} />
             </div>
             <p className="wl-tagline max-w-[16rem] text-sm sm:max-w-sm sm:text-base">
               Sit back. Relax. Dive into the League.

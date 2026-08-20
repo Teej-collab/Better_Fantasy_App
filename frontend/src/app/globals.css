@@ -809,9 +809,13 @@ body {
     wl-neon-buzz 5s ease-in-out 1.8s infinite;
 }
 
-/* League — a genuine stroke-order handwriting reveal (see
-   LeagueWordmark.tsx). The pen stroke lives in an SVG mask and draws
-   in via stroke-dashoffset; a glowing nib rides its tip. */
+/* League — plain HTML text + CSS glow (see LeagueWordmark.tsx for why
+   this replaced an SVG mask/pen-reveal system: three rounds of
+   increasingly aggressive SVG geometry fixes for a real "L clipped on
+   mobile" bug produced zero visible change, which is strong evidence
+   the SVG machinery itself — not its tuning — was the problem. A <p>
+   has no viewBox/mask/filter region for a phone's renderer to disagree
+   about, so this class of bug can't recur here. */
 .wl-league-wrap {
   animation: wl-league-settle 1.6s ease-out both;
 }
@@ -826,55 +830,21 @@ body {
     transform: translateY(0) rotate(-1deg);
   }
 }
-.wl-league-svg {
-  /* 480/740 = the original 260/400 scaled by ~1.85x, matching the
-     viewBox going from 520-wide to 960-wide (LeagueWordmark.tsx's
-     clipping fix round 3) — keeps the rendered word close to its
-     original visual size while giving it nearly 2x its own canvas in
-     breathing room on every side, instead of relying on overflow:
-     visible to paint past a tight viewBox. max-width: 100% lets it
-     shrink on a narrow phone instead of overflowing .wl-scene's own
-     padding — 480px is wider than some real phone viewports, and THAT
-     overflowing would just be a different way to re-cut-off the same
-     word, this time by the container instead of the mask. */
-  width: 480px;
-  max-width: 100%;
-  height: auto;
-  overflow: visible;
+.wl-league {
+  font-size: 2.75rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #eaf6ff;
+  text-shadow:
+    0 0 6px rgba(92, 198, 255, 0.9),
+    0 0 18px rgba(92, 198, 255, 0.7),
+    0 0 42px rgba(92, 198, 255, 0.45),
+    0 0 80px rgba(92, 198, 255, 0.25);
 }
 @media (min-width: 640px) {
-  .wl-league-svg {
-    width: 740px;
+  .wl-league {
+    font-size: 4.5rem;
   }
-}
-/* The pen stroke inside the mask: starts fully retracted, draws in. */
-.wl-pen-stroke {
-  animation: wl-pen-draw 1.5s cubic-bezier(0.4, 0, 0.3, 1) 0.15s both;
-}
-@keyframes wl-pen-draw {
-  from {
-    stroke-dashoffset: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-.wl-pen-stroke,
-.wl-pen-stroke--static {
-  stroke-dasharray: 1;
-}
-.wl-pen-stroke--static {
-  stroke-dashoffset: 0;
-  animation: none;
-}
-/* The nib — bright core plus a soft blue halo laying the blue ink. */
-.wl-nib-core {
-  fill: #eaf6ff;
-}
-.wl-nib-glow {
-  fill: #5cc6ff;
-  filter: blur(2.5px);
-  opacity: 0.9;
 }
 
 .wl-tagline {
@@ -1019,7 +989,6 @@ body {
   .wl-word,
   .wl-weekend,
   .wl-league-wrap,
-  .wl-pen-stroke,
   .wl-tagline,
   .wl-enter-sign,
   .wl-scene,
@@ -1038,9 +1007,6 @@ body {
   .wl-auth-enter {
     opacity: 1;
     transform: none;
-  }
-  .wl-pen-stroke {
-    stroke-dashoffset: 0;
   }
   .wl-ambient {
     opacity: 1;
