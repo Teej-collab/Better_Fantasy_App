@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import {
   API_BASE_URL,
@@ -27,6 +28,19 @@ const SECTION_ACCENT: Record<string, string> = {
   players: "bg-cyan-400",
   rules: "bg-purple-500",
   league: "bg-indigo-500",
+};
+
+// Same palette as SECTION_ACCENT, as a soft box-shadow glow behind each
+// section header's dot instead of a flat CSS color utility (box-shadow
+// can't reference a bg-* class's color directly).
+const SECTION_GLOW: Record<string, string> = {
+  standings: "#0ea5e9",
+  matchups: "#ec4899",
+  awards: "#fbbf24",
+  rivalries: "#f97316",
+  players: "#22d3ee",
+  rules: "#a855f7",
+  league: "#6366f1",
 };
 
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
@@ -86,146 +100,191 @@ export default async function HomePage() {
     isGameDay
   );
 
+  // Which stagger slot each section lands in — sections that are
+  // conditionally absent (e.g. no other matchups this week) just skip
+  // their slot rather than leaving a gap, since delay only matters
+  // relative to what's actually rendered.
+  let revealIndex = 0;
+  const nextReveal = () => revealIndex++;
+
   return (
     <div className="flex flex-col gap-6">
+      {/* Fixed behind everything, ignores PageShell's centered column so
+          it washes the full viewport — three soft brand-colored glows,
+          restrained compared to /weekend's full neon treatment per the
+          brief ("neon as accent, not the whole design"). This is the
+          fix for the homepage reading as a flat black-and-white screen. */}
+      <div className="home-ambient" aria-hidden />
       {isGameDay && <GameDayRefresher />}
 
-      <div className="flex items-center gap-2">
-        <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
-        <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-          The Weekend Live
-        </span>
-        {isGameDay && (
-          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
-            Game Day
+      <Reveal index={nextReveal()}>
+        <div className="flex items-center gap-2">
+          <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
+          <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+            The Weekend Live
           </span>
-        )}
-      </div>
-      <LiveTicker items={tickerItems} fast={isGameDay} />
+          {isGameDay && (
+            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
+              Game Day
+            </span>
+          )}
+        </div>
+        <div className="mt-2">
+          <LiveTicker items={tickerItems} fast={isGameDay} />
+        </div>
+      </Reveal>
 
-      {myWeek?.matchup ? (
-        <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
-      ) : myWeek ? (
-        <EmptyHero
-          title={myWeek.team_name}
-          message={
-            // ESPN reports current_week as 0 during preseason — not a
-            // real week, same convention as the Team page's fallback.
-            myWeek.week === null || myWeek.week < 1
-              ? "No matchup yet — the season hasn't started."
-              : "No matchup this week (bye week or the schedule isn't set yet)."
-          }
-        />
-      ) : (
-        <SignInHero />
-      )}
+      <Reveal index={nextReveal()}>
+        {myWeek?.matchup ? (
+          <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
+        ) : myWeek ? (
+          <EmptyHero
+            title={myWeek.team_name}
+            message={
+              // ESPN reports current_week as 0 during preseason — not a
+              // real week, same convention as the Team page's fallback.
+              myWeek.week === null || myWeek.week < 1
+                ? "No matchup yet — the season hasn't started."
+                : "No matchup this week (bye week or the schedule isn't set yet)."
+            }
+          />
+        ) : (
+          <SignInHero />
+        )}
+      </Reveal>
 
       {standings.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader color="standings" title="League Standings" href="/standings" />
-          <ol className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
-            {standings.slice(0, 5).map((row, i) => (
-              <li key={row.team_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
-                  <span className="truncate">{row.team_name}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
-                  {row.wins}-{row.losses}
-                  {row.ties ? `-${row.ties}` : ""}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <Reveal index={nextReveal()}>
+          <section className="flex flex-col gap-2">
+            <SectionHeader color="standings" title="League Standings" href="/standings" />
+            <ol className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+              {standings.slice(0, 5).map((row, i) => (
+                <li
+                  key={row.team_id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                    <span className="truncate">{row.team_name}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
+                    {row.wins}-{row.losses}
+                    {row.ties ? `-${row.ties}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </Reveal>
       )}
 
       {otherMatchups.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader
-            color="matchups"
-            title="Other Matchups"
-            href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
-          />
-          <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
-            {otherMatchups.map((m) => {
-              const started =
-                m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
-              return (
-                <li key={m.matchup_id}>
-                  <a
-                    href={`/matchups/${m.matchup_id}`}
-                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span className="flex items-center gap-1.5">
-                        {isGameDay && started && <span className="live-dot" aria-hidden />}
-                        {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
-                        {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
-                        <span className="truncate">{m.home.team_name}</span>
+        <Reveal index={nextReveal()}>
+          <section className="flex flex-col gap-2">
+            <SectionHeader
+              color="matchups"
+              title="Other Matchups"
+              href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
+            />
+            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+              {otherMatchups.map((m) => {
+                const started =
+                  m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
+                return (
+                  <li key={m.matchup_id}>
+                    <a
+                      href={`/matchups/${m.matchup_id}`}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                    >
+                      <span className="flex min-w-0 flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5">
+                          {isGameDay && started && <span className="live-dot" aria-hidden />}
+                          {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
+                          {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
+                          <span className="truncate">{m.home.team_name}</span>
+                        </span>
+                        <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
                       </span>
-                      <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
-                    </span>
-                    <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
-                      <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
-                      <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+                      <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
+                        <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
+                        <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </Reveal>
       )}
 
       {(rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
-          {rivalryGamesThisWeek.length > 0 ? (
-            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
-              {rivalryGamesThisWeek.map((m) => (
-                <li key={m.matchup_id}>
-                  <a
-                    href={`/matchups/${m.matchup_id}`}
-                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-                  >
+        <Reveal index={nextReveal()}>
+          <section className="flex flex-col gap-2">
+            <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
+            {rivalryGamesThisWeek.length > 0 ? (
+              <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+                {rivalryGamesThisWeek.map((m) => (
+                  <li key={m.matchup_id}>
+                    <a
+                      href={`/matchups/${m.matchup_id}`}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span>{m.rivalry?.emoji ?? "⚔️"}</span>
+                        <span className="truncate font-medium">{m.rivalry?.name}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
+                        {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+                {topRivalries.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                     <span className="flex min-w-0 items-center gap-2">
-                      <span>{m.rivalry?.emoji ?? "⚔️"}</span>
-                      <span className="truncate font-medium">{m.rivalry?.name}</span>
+                      <span>{r.emoji ?? "⚔️"}</span>
+                      <span className="truncate font-medium">{r.name}</span>
                     </span>
                     <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                      {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
+                      {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
                     </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
-              {topRivalries.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span>{r.emoji ?? "⚔️"}</span>
-                    <span className="truncate font-medium">{r.name}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                    {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </Reveal>
       )}
 
       {weekPlayed && weeklyAwards && season !== null && week !== null && (
-        <section className="flex flex-col gap-2">
-          <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
-          <AwardsPreview awards={weeklyAwards} />
-        </section>
+        <Reveal index={nextReveal()}>
+          <section className="flex flex-col gap-2">
+            <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
+            <AwardsPreview awards={weeklyAwards} />
+          </section>
+        </Reveal>
       )}
 
-      <DiscoveryGrid season={season} week={week} />
+      <Reveal index={nextReveal()}>
+        <DiscoveryGrid season={season} week={week} />
+      </Reveal>
+    </div>
+  );
+}
+
+// One-shot staggered fade/rise on first paint — pure CSS (globals.css's
+// .rise-in), no client JS needed, so this stays a server component.
+// Each top-level homepage section gets a slightly later delay than the
+// one before it, so the page visibly "wakes up" section by section
+// instead of just appearing all at once.
+function Reveal({ index, children }: { index: number; children: ReactNode }) {
+  return (
+    <div className="rise-in" style={{ animationDelay: `${index * 70}ms` }}>
+      {children}
     </div>
   );
 }
@@ -294,8 +353,8 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
 
   return (
     <section
-      className={`flex flex-col gap-3 rounded-xl border bg-black p-4 text-white ${
-        isLive ? "border-red-500/50" : "border-black/10 dark:border-white/10"
+      className={`flex flex-col gap-3 rounded-xl border bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white ${
+        isLive ? "hero-live-glow border-red-500/50" : "border-black/10 dark:border-white/10"
       }`}
     >
       <div className="flex items-center justify-between">
@@ -358,7 +417,9 @@ function TeamScoreBlock({
   return (
     <div className={`flex min-w-0 flex-col ${align === "right" ? "items-end text-right" : "items-start"}`}>
       <span className="max-w-[10rem] truncate text-sm text-white/70 sm:max-w-[14rem]">{name}</span>
-      <span className={`text-2xl font-bold tabular-nums sm:text-3xl ${lead ? "text-white" : "text-white/60"}`}>
+      <span
+        className={`score-pop text-2xl font-bold tabular-nums sm:text-3xl ${lead ? "text-white" : "text-white/60"}`}
+      >
         {score !== null ? score.toFixed(1) : "—"}
       </span>
       <span className="text-xs text-white/40 tabular-nums">Proj {projected.toFixed(1)}</span>
@@ -368,7 +429,7 @@ function TeamScoreBlock({
 
 function EmptyHero({ title, message }: { title: string; message: string }) {
   return (
-    <section className="flex flex-col gap-1 rounded-xl border border-black/10 p-4 dark:border-white/10">
+    <section className="flex flex-col gap-1 rounded-xl border border-black/10 bg-black/[0.015] p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Your Week
       </span>
@@ -380,7 +441,7 @@ function EmptyHero({ title, message }: { title: string; message: string }) {
 
 function SignInHero() {
   return (
-    <section className="flex flex-col gap-2 rounded-xl border border-black/10 p-4 dark:border-white/10">
+    <section className="flex flex-col gap-2 rounded-xl border border-black/10 bg-black/[0.015] p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Your Week
       </span>
@@ -389,7 +450,7 @@ function SignInHero() {
       </p>
       <a
         href={`${API_BASE_URL}/auth/discord/login`}
-        className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
+        className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white transition-transform hover:bg-[#4752c4] active:scale-95"
       >
         Sign in with Discord
       </a>
@@ -493,7 +554,10 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {tiles.map((t, i) => (
-        <div key={i} className="flex flex-col gap-0.5 rounded-lg border border-black/10 p-3 dark:border-white/10">
+        <div
+          key={i}
+          className="flex flex-col gap-0.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-transform active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none"
+        >
           <span className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase ${t.accent}`}>
             {t.emoji} {t.label}
           </span>
@@ -508,7 +572,11 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
 function SectionHeader({ color, title, href }: { color: string; title: string; href: string }) {
   return (
     <a href={href} className="flex items-center gap-2 hover:underline">
-      <span className={`h-2 w-2 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
+      <span
+        className={`h-2 w-2 rounded-full ${SECTION_ACCENT[color]}`}
+        style={{ boxShadow: `0 0 6px ${SECTION_GLOW[color]}` }}
+        aria-hidden
+      />
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
     </a>
   );
@@ -557,7 +625,7 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
 
       <a
         href="/weekend"
-        className="discover-weekend-card flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/30 p-4"
+        className="discover-weekend-card flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.03] p-4 transition-transform active:scale-[0.98]"
       >
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="text-xs font-semibold tracking-wide text-fuchsia-500 uppercase dark:text-fuchsia-400">
@@ -585,10 +653,14 @@ function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
   return (
     <a
       href={href}
-      className="flex flex-col gap-0.5 rounded-lg border border-black/10 p-3 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
+      className="flex flex-col gap-0.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${SECTION_ACCENT[color]}`}
+          style={{ boxShadow: `0 0 5px ${SECTION_GLOW[color]}` }}
+          aria-hidden
+        />
         {label}
       </span>
       <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>

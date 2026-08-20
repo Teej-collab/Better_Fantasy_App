@@ -39,7 +39,7 @@ export function AuthStatus() {
     return (
       <a
         href={`${API_BASE_URL}/auth/discord/login`}
-        className="ml-auto text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
+        className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
       >
         Sign in with Discord
       </a>
@@ -47,7 +47,7 @@ export function AuthStatus() {
   }
 
   return (
-    <span className="ml-auto flex items-center gap-3">
+    <span className="flex shrink-0 items-center gap-3">
       <span className="text-black/70 dark:text-white/70">{me.display_name}</span>
       <button
         onClick={logout}

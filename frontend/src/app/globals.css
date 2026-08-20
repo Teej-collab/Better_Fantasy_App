@@ -396,6 +396,126 @@ body {
    card-based dashboard, not a themed room.
    ============================================================ */
 
+/* Ambient background wash — fixed so it isn't clipped by PageShell's
+   centered max-w-4xl column, three soft brand-colored glows that never
+   move or animate. This is the fix for the homepage reading as a flat
+   black-and-white screen: real color and depth behind the content
+   without competing with it or drifting into /weekend's full neon
+   treatment. */
+.home-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-image:
+    radial-gradient(600px circle at 15% -10%, rgba(56, 189, 248, 0.1), transparent 60%),
+    radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.08), transparent 60%),
+    radial-gradient(700px circle at 50% 100%, rgba(250, 204, 21, 0.05), transparent 60%);
+}
+@media (prefers-color-scheme: light) {
+  .home-ambient {
+    background-image:
+      radial-gradient(600px circle at 15% -10%, rgba(56, 189, 248, 0.06), transparent 60%),
+      radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.05), transparent 60%),
+      radial-gradient(700px circle at 50% 100%, rgba(250, 204, 21, 0.04), transparent 60%);
+  }
+}
+
+/* One-shot staggered entrance for the homepage's top-level sections
+   (page.tsx's Reveal wrapper sets animation-delay per section via
+   inline style) — the page visibly wakes up section by section on
+   first paint instead of just appearing all at once. Pure CSS, runs
+   with no JS. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  opacity: 0;
+  animation: rise-in 0.5s ease-out forwards;
+}
+
+/* Your Week hero: a soft pulsing red glow around the whole card while
+   a game is actually live, echoing .live-dot's own pulse cadence, so
+   "this matters right now" reads at a glance before you even look at
+   the score. */
+@keyframes hero-live-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(239, 68, 68, 0.5),
+      0 0 20px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(239, 68, 68, 0.8),
+      0 0 34px rgba(239, 68, 68, 0.3);
+  }
+}
+.hero-live-glow {
+  animation: hero-live-pulse 2.4s ease-in-out infinite;
+}
+
+/* Score numbers settle into place on load instead of just appearing
+   static — a small, one-shot "pop" rather than a continuous motion. */
+@keyframes score-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.score-pop {
+  animation: score-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Ambient glow around the ticker shell — brighter/red during Game Day
+   (LiveTicker's fast prop), so the ticker's "always alive" brand role
+   is visible even at a glance, not just when you're reading the
+   scrolling text itself. */
+.ticker-shell {
+  transition: box-shadow 0.6s ease;
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.12),
+    0 0 24px rgba(250, 204, 21, 0.06);
+}
+.ticker-shell--live {
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.35),
+    0 0 28px rgba(239, 68, 68, 0.18);
+}
+
+/* Safe-area-aware horizontal padding — the header nav and main content
+   column both use this instead of a flat px-4 so content never sits
+   under the notch/dynamic island in landscape on iPhone. */
+.safe-px {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in {
+    opacity: 1;
+    animation: none;
+  }
+  .hero-live-glow,
+  .score-pop,
+  .live-ticker-track,
+  .weekend-hero-title,
+  .live-dot {
+    animation: none;
+  }
+}
+
 /* Vivid, pulsing red only during an actual live NFL game window
    (isGameDay) — "live indicators become more prominent" during Game
    Day per the brief means they should genuinely look different

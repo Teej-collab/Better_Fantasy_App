@@ -16,5 +16,5 @@ export function PageShell({ children }: { children: ReactNode }) {
   if (pathname === "/weekend") {
     return <main className="flex-1">{children}</main>;
   }
-  return <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">{children}</main>;
+  return <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-6">{children}</main>;
 }

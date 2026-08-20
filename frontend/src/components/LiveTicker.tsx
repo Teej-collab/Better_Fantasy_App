@@ -9,7 +9,11 @@ export function LiveTicker({ items, fast = false }: { items: string[]; fast?: bo
   if (items.length === 0) return null;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-black/10 bg-black dark:border-white/10">
+    <div
+      className={`ticker-shell overflow-hidden rounded-lg border border-black/10 bg-black dark:border-white/10 ${
+        fast ? "ticker-shell--live" : ""
+      }`}
+    >
       <div className={`live-ticker-track py-2.5 ${fast ? "live-ticker-track--fast" : ""}`}>
         {[...items, ...items].map((item, i) => (
           <span key={i} className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90">
