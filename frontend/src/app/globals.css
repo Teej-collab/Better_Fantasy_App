@@ -827,13 +827,23 @@ body {
   }
 }
 .wl-league-svg {
-  width: 260px;
+  /* 390/600 = the old 260/400 scaled by 1.5x, matching the viewBox
+     going from 520-wide to 780-wide (LeagueWordmark.tsx's clipping fix
+     round 2) — keeps the rendered word the same visual size as before,
+     just with real breathing room around it instead of relying on
+     overflow: visible to paint past a tight viewBox. max-width: 100%
+     lets it shrink on a narrow phone instead of overflowing .wl-scene's
+     own padding — 390px is wider than some real phone viewports, and
+     THAT overflowing would just be a different way to re-cut-off the
+     same word, this time by the container instead of the mask. */
+  width: 390px;
+  max-width: 100%;
   height: auto;
   overflow: visible;
 }
 @media (min-width: 640px) {
   .wl-league-svg {
-    width: 400px;
+    width: 600px;
   }
 }
 /* The pen stroke inside the mask: starts fully retracted, draws in. */

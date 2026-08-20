@@ -16,15 +16,31 @@
  *   - A glowing nib (SMIL animateMotion) rides the tip of that stroke,
  *     so you see the pen laying the ink down.
  *
- * Clipping fix: the Satisfy "L" swash overhangs to the left and the "g"
- * tail drops below the text's own bounding box. Oversizing the <rect>
- * and the glow <filter> region alone isn't enough — an SVG <mask> has
- * its OWN region (the mask element's x/y/width/height, separate from
- * anything drawn inside it), which defaults to just -10%/-10%/120%/120%
- * of the viewport when maskUnits="userSpaceOnUse" and is left
- * unspecified. That default region — not the oversized rect — was what
- * was actually chopping the swash and tail. Fixed by explicitly sizing
- * the <mask> element itself to match the oversized rect.
+ * Clipping fix (round 1): the Satisfy "L" swash overhangs to the left
+ * and the "g" tail drops below the text's own bounding box. Oversizing
+ * the <rect> and the glow <filter> region alone isn't enough — an SVG
+ * <mask> has its OWN region (the mask element's x/y/width/height,
+ * separate from anything drawn inside it), which defaults to just
+ * -10%/-10%/120%/120% of the viewport when maskUnits="userSpaceOnUse"
+ * and is left unspecified. That default region — not the oversized
+ * rect — was what was actually chopping the swash and tail. Fixed by
+ * explicitly sizing the <mask> element itself to match the oversized
+ * rect.
+ *
+ * Clipping fix (round 2): round 1 fixed it on desktop but not on a real
+ * phone — the "L" was still cut off there. Root cause: this relied on
+ * `overflow: visible` on the outer <svg> (globals.css's .wl-league-svg)
+ * to let the mask/glow paint past the viewBox edge, but mobile Safari
+ * has long-standing, inconsistent support for that — especially with a
+ * CSS transform on an ancestor, which .wl-league-wrap's settle
+ * animation has. Desktop tolerates it; iOS doesn't. Rather than lean on
+ * overflow:visible working at all, the viewBox itself is now padded
+ * generously (was 0 0 520 250, now -130 -90 780 430 — the SAME old
+ * 520x250 window sits centered inside a 1.5x-larger canvas) so nothing
+ * ever needs to render past the SVG's own real, hard clipping boundary
+ * on ANY browser. No internal coordinates changed — the text/mask/pen
+ * path already used oversized coordinate spaces that comfortably cover
+ * this new, still-modest viewBox.
  *
  * prefers-reduced-motion (and returning visitors) get the finished word
  * with no pen and no mask — instant, per the brief's escape hatches.
@@ -44,7 +60,7 @@ export function LeagueWordmark({
   reducedMotion?: boolean;
 }) {
   return (
-    <svg className="wl-league-svg" viewBox="0 0 520 250" role="img" aria-label="League">
+    <svg className="wl-league-svg" viewBox="-130 -90 780 430" role="img" aria-label="League">
       <defs>
         {/* Feather the reveal edge so ink flows on smoothly. The region is
             deliberately huge so the tall stroke is never clipped to a band. */}
