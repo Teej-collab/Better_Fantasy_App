@@ -4,12 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
 import { LiveTicker } from "@/components/LiveTicker";
+import { LeagueWordmark } from "@/components/LeagueWordmark";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WORDS = ["WELCOME", "TO", "THE"];
-const WORD_INTERVAL_MS = 1300;
+// Each word ignites a little quicker than the last — an accelerating
+// cadence that builds anticipation toward WEEKEND instead of a
+// metronomic repeat.
+const WORD_INTERVALS_MS = [1300, 1150, 1000];
 const INITIAL_DARK_BEAT_MS = 300;
 const SEEN_INTRO_KEY = "wl_intro_seen";
 const ENTER_TRANSITION_MS = 900;
@@ -39,6 +43,7 @@ type Stage = "dark" | "word" | "final" | "entering" | "auth";
 export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: string[]; isGameDay: boolean }) {
   const [stage, setStage] = useState<Stage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -57,6 +62,7 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
     const startTimeout = setTimeout(() => {
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const seenBefore = localStorage.getItem(SEEN_INTRO_KEY) === "1";
+      setReducedMotion(prefersReduced);
 
       if (prefersReduced || seenBefore) {
         setStage("final");
@@ -69,12 +75,12 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
         i++;
         if (i < WORDS.length) {
           setWordIndex(i);
-          timeouts.current.push(setTimeout(advance, WORD_INTERVAL_MS));
+          timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[i]));
         } else {
-          timeouts.current.push(setTimeout(() => setStage("final"), WORD_INTERVAL_MS));
+          timeouts.current.push(setTimeout(() => setStage("final"), WORD_INTERVALS_MS[WORDS.length - 1]));
         }
       };
-      timeouts.current.push(setTimeout(advance, WORD_INTERVAL_MS));
+      timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[0]));
     }, INITIAL_DARK_BEAT_MS);
 
     timeouts.current.push(startTimeout);
@@ -101,6 +107,7 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
   }
 
   const showFinal = stage === "final" || stage === "entering";
+  const entering = stage === "entering";
 
   return (
     // A real flex column, not a centered block with an absolutely
@@ -110,6 +117,10 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
     // can never overlap; the browser lays them out, nothing is guessed.
     <div className="wl-gate flex flex-col">
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
+
+      {/* Light-spill bloom that ignites from the sign on Enter and
+          overtakes the frame — the "walking through the door" beat. */}
+      {entering && <div className="wl-bloom" aria-hidden />}
 
       {stage === "word" && (
         <button
@@ -122,11 +133,14 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
 
       <div
         className={`wl-scene relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center sm:gap-5 ${
-          stage === "entering" ? "wl-scene--entering" : ""
+          entering ? "wl-scene--entering" : ""
         }`}
       >
         {stage === "word" && (
-          <h1 key={wordIndex} className={`wl-word text-4xl sm:text-6xl ${anton.className}`}>
+          <h1
+            key={wordIndex}
+            className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}
+          >
             {WORDS[wordIndex]}
           </h1>
         )}
@@ -134,13 +148,15 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
         {showFinal && (
           <>
             <h1 className={`wl-weekend text-5xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
-            <p className={`wl-league -mt-1 text-2xl sm:-mt-2 sm:text-4xl ${satisfy.className}`}>League</p>
+            <div className="wl-league-wrap -mt-1 sm:-mt-2">
+              <LeagueWordmark fontFamily={satisfy.style.fontFamily} reducedMotion={reducedMotion} />
+            </div>
             <p className="wl-tagline max-w-[16rem] text-sm sm:max-w-sm sm:text-base">
               Sit back. Relax. Dive into the League.
             </p>
             <button
               onClick={enter}
-              disabled={stage === "entering"}
+              disabled={entering}
               className="wl-enter-sign mt-3 px-8 py-3.5 text-sm font-bold sm:mt-4 sm:py-3 sm:text-base"
             >
               Enter Here

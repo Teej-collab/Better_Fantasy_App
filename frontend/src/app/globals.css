@@ -612,12 +612,13 @@ body {
 
 /* ============================================================
    Weekend League — gated opening/auth experience
-   (OpeningExperience.tsx, AuthScreen.tsx). The mandatory front door
-   for a signed-out visitor: darkness -> word-by-word reveal -> the
-   WEEKEND / League wordmark -> tagline -> Enter Here -> a transition
-   into a real Discord sign-in screen. Built entirely from gradients,
-   type, and glow — no photo background, no stock imagery, per the
-   explicit "move away from the bar/speakeasy concept" direction.
+   (OpeningExperience.tsx, AuthScreen.tsx, LeagueWordmark.tsx). The
+   mandatory front door for a signed-out visitor: darkness ->
+   word-by-word reveal -> the WEEKEND / League wordmark -> tagline ->
+   Enter Here -> a transition into a real Discord sign-in screen.
+   Built entirely from gradients, type, and glow — no photo
+   background, no stock imagery, per the explicit "move away from the
+   bar/speakeasy concept" direction.
    ============================================================ */
 
 .wl-gate {
@@ -638,58 +639,89 @@ body {
 
 /* Abstract stadium-light glow — two soft highlights suggesting distant
    floodlights, never a literal stadium image. Brightens a step once
-   the word sequence starts, echoing "the environment illuminates
-   slightly" per light 1. */
+   the word sequence starts, then drifts slowly and independently so
+   the ground reads as a living environment rather than a static
+   backdrop. */
 .wl-ambient {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image:
-    radial-gradient(900px circle at 20% -10%, rgba(57, 255, 106, 0.05), transparent 55%),
-    radial-gradient(900px circle at 80% -10%, rgba(57, 255, 106, 0.05), transparent 55%),
-    radial-gradient(1100px circle at 50% 115%, rgba(57, 255, 106, 0.04), transparent 60%);
   opacity: 0;
   transition: opacity 1.4s ease;
+}
+.wl-ambient::before,
+.wl-ambient::after {
+  content: "";
+  position: absolute;
+  inset: -15%;
+  background-repeat: no-repeat;
+}
+.wl-ambient::before {
+  background-image:
+    radial-gradient(900px circle at 20% 0%, rgba(57, 255, 106, 0.06), transparent 55%),
+    radial-gradient(1100px circle at 50% 120%, rgba(57, 255, 106, 0.045), transparent 60%);
+}
+.wl-ambient::after {
+  background-image: radial-gradient(820px circle at 82% 2%, rgba(57, 255, 106, 0.055), transparent 55%);
 }
 .wl-ambient--lit {
   opacity: 1;
 }
+.wl-ambient--lit::before {
+  animation: wl-drift-a 19s ease-in-out infinite;
+}
+.wl-ambient--lit::after {
+  animation: wl-drift-b 23s ease-in-out infinite;
+}
+@keyframes wl-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, 2%, 0) scale(1.06);
+  }
+}
+@keyframes wl-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-4%, 3%, 0) scale(1);
+  }
+}
 
 /* WELCOME / TO / THE — each word gets its own genuine "neon tube
-   igniting" beat (flicker -> surge -> settle), same technique proven
-   on /weekend's signage, just applied to this new sequence. Re-keyed
-   per word in OpeningExperience.tsx so the animation replays fresh
-   each time. */
+   igniting" beat (flicker -> surge -> settle). Re-keyed per word in
+   OpeningExperience.tsx so the animation replays fresh each time.
+   Driven by opacity alone, never a CSS filter — a filter clips its
+   effect to a rectangular region, which was chopping the soft glow
+   into a hard-edged box. Opacity lets the glow feather straight into
+   the background. */
 @keyframes wl-word-power-on {
   0% {
     opacity: 0;
-    filter: brightness(0.2);
     transform: scale(0.97);
   }
   6% {
-    opacity: 0.5;
-    filter: brightness(1.8);
+    opacity: 0.55;
   }
   10% {
     opacity: 0.05;
-    filter: brightness(0.2);
   }
   18% {
     opacity: 0.9;
-    filter: brightness(1.5);
   }
   24% {
     opacity: 0.2;
-    filter: brightness(0.3);
   }
   35% {
     opacity: 1;
-    filter: brightness(1.2);
     transform: scale(1);
   }
   100% {
     opacity: 1;
-    filter: brightness(1);
     transform: scale(1);
   }
 }
@@ -700,6 +732,19 @@ body {
     0 0 8px rgba(245, 244, 236, 0.5),
     0 0 24px rgba(57, 255, 106, 0.35);
 }
+/* Per-word variation — no two ignitions identical, and each a touch
+   snappier than the last to build anticipation toward WEEKEND
+   (paired with OpeningExperience.tsx's accelerating WORD_INTERVALS_MS). */
+.wl-word--0 {
+  animation-duration: 1.15s;
+}
+.wl-word--1 {
+  animation-duration: 1s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.wl-word--2 {
+  animation-duration: 0.85s;
+}
 
 /* WEEKEND — the dramatic beat, largest and strongest: a longer,
    bigger power-on, then a continuous subtle buzz once settled (real
@@ -707,36 +752,28 @@ body {
 @keyframes wl-weekend-power-on {
   0% {
     opacity: 0;
-    filter: brightness(0.15);
   }
   8% {
     opacity: 0.6;
-    filter: brightness(2);
   }
   13% {
     opacity: 0.05;
-    filter: brightness(0.2);
   }
   22% {
     opacity: 0.95;
-    filter: brightness(1.7);
   }
   30% {
     opacity: 0.3;
-    filter: brightness(0.4);
   }
   42% {
     opacity: 1;
-    filter: brightness(1.3);
   }
   55% {
-    opacity: 0.85;
-    filter: brightness(0.85);
+    opacity: 0.8;
   }
   70%,
   100% {
     opacity: 1;
-    filter: brightness(1);
   }
 }
 @keyframes wl-neon-buzz {
@@ -744,19 +781,15 @@ body {
   92%,
   100% {
     opacity: 1;
-    filter: brightness(1);
   }
   93% {
-    opacity: 0.88;
-    filter: brightness(0.85);
+    opacity: 0.86;
   }
   94% {
     opacity: 1;
-    filter: brightness(1.1);
   }
   96% {
-    opacity: 0.92;
-    filter: brightness(0.9);
+    opacity: 0.9;
   }
 }
 .wl-weekend {
@@ -772,44 +805,72 @@ body {
     wl-neon-buzz 5s ease-in-out 1.8s infinite;
 }
 
-/* League — a handwritten-reveal APPROXIMATION: a left-to-right
-   clip-path wipe plus a slight settle overshoot, not a true SVG
-   path-draw. Hand-tracing an accurate cursive stroke path for
-   arbitrary text is a lot of bespoke design work for marginal gain
-   over this, which already reads convincingly as "being written." */
-@keyframes wl-handwrite-reveal {
-  from {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0;
-    transform: translateY(4px) rotate(-1deg);
+/* League — a genuine stroke-order handwriting reveal (see
+   LeagueWordmark.tsx). The pen stroke lives in an SVG mask and draws
+   in via stroke-dashoffset; a glowing nib rides its tip. */
+.wl-league-wrap {
+  animation: wl-league-settle 1.6s ease-out both;
+}
+@keyframes wl-league-settle {
+  0% {
+    transform: translateY(4px) rotate(-1.4deg);
   }
-  55% {
-    opacity: 1;
+  70% {
+    transform: translateY(0) rotate(-0.6deg);
   }
-  to {
-    clip-path: inset(0 0% 0 0);
-    opacity: 1;
+  100% {
     transform: translateY(0) rotate(-1deg);
   }
 }
-.wl-league {
-  display: inline-block;
-  transform: rotate(-1deg);
-  color: var(--wl-text);
-  text-shadow: 0 0 10px rgba(245, 244, 236, 0.4);
-  animation: wl-handwrite-reveal 1.3s cubic-bezier(0.25, 0.8, 0.35, 1) both;
+.wl-league-svg {
+  width: 260px;
+  height: auto;
+  overflow: visible;
+}
+@media (min-width: 640px) {
+  .wl-league-svg {
+    width: 400px;
+  }
+}
+/* The pen stroke inside the mask: starts fully retracted, draws in. */
+.wl-pen-stroke {
+  animation: wl-pen-draw 1.5s cubic-bezier(0.4, 0, 0.3, 1) 0.15s both;
+}
+@keyframes wl-pen-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.wl-pen-stroke,
+.wl-pen-stroke--static {
+  stroke-dasharray: 1;
+}
+.wl-pen-stroke--static {
+  stroke-dashoffset: 0;
+  animation: none;
+}
+/* The nib — bright core plus a soft blue halo laying the blue ink. */
+.wl-nib-core {
+  fill: #eaf6ff;
+}
+.wl-nib-glow {
+  fill: #5cc6ff;
+  filter: blur(2.5px);
+  opacity: 0.9;
 }
 
 .wl-tagline {
   opacity: 0;
   color: var(--wl-text-secondary);
-  animation: rise-in 0.9s ease-out both;
+  animation: rise-in 0.9s ease-out 0.6s both;
 }
 
-/* Enter Here — a physical-feeling neon sign, not a generic button: a
-   glowing border, light spill via box-shadow, a slow "breathing"
-   idle glow (the mobile affordance, since there's no hover there),
-   and a brighter response on hover/press. */
+/* Enter Here — a physical neon sign with a slow, slightly irregular
+   "electrical" idle glow (not a clean sine wave) that brightens on
+   hover/press — the mobile affordance, since there's no hover there. */
 .wl-enter-sign {
   --neon-color: var(--wl-accent);
   position: relative;
@@ -828,14 +889,39 @@ body {
   transition:
     box-shadow 0.25s ease,
     transform 0.15s ease;
-  animation: wl-enter-breathe 3.2s ease-in-out infinite;
+  animation:
+    wl-enter-in 0.7s ease-out 1s both,
+    wl-enter-breathe 4.6s ease-in-out 1.7s infinite;
 }
+@keyframes wl-enter-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* Irregular so it reads as a real, imperfect tube rather than a fade. */
 @keyframes wl-enter-breathe {
   0%,
   100% {
     filter: brightness(1);
   }
-  50% {
+  18% {
+    filter: brightness(1.1);
+  }
+  22% {
+    filter: brightness(0.97);
+  }
+  40% {
+    filter: brightness(1.14);
+  }
+  63% {
+    filter: brightness(1.02);
+  }
+  70% {
     filter: brightness(1.12);
   }
 }
@@ -854,16 +940,51 @@ body {
   opacity: 0.6;
 }
 
-/* "Move through the entrance" — the scene pushes toward the sign and
-   fades to black before the auth screen mounts. */
+/* "Move through the entrance." The scene pushes forward with a real
+   perspective/depth cue (not a flat uniform scale) while a light-spill
+   bloom ignites from the sign and overtakes the frame. */
 .wl-scene {
   transition:
     transform 0.9s cubic-bezier(0.6, 0, 0.9, 0.4),
-    opacity 0.9s ease;
+    opacity 0.9s ease,
+    filter 0.9s ease;
+  transform-origin: center 62%;
 }
 .wl-scene--entering {
-  transform: scale(1.35);
+  transform: scale(1.6) translateY(-6%);
   opacity: 0;
+  filter: brightness(1.6);
+}
+.wl-bloom {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  z-index: 20;
+  width: 40vmax;
+  height: 40vmax;
+  pointer-events: none;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%) scale(0.1);
+  background: radial-gradient(
+    circle,
+    rgba(245, 244, 236, 0.95) 0%,
+    rgba(57, 255, 106, 0.55) 28%,
+    rgba(57, 255, 106, 0) 68%
+  );
+  animation: wl-bloom 0.9s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+}
+@keyframes wl-bloom {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(9);
+    opacity: 1;
+  }
 }
 
 .wl-auth-enter {
@@ -882,23 +1003,29 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .wl-word,
   .wl-weekend,
-  .wl-league,
+  .wl-league-wrap,
+  .wl-pen-stroke,
   .wl-tagline,
   .wl-enter-sign,
   .wl-scene,
+  .wl-bloom,
   .wl-auth-enter,
-  .wl-ambient {
+  .wl-ambient,
+  .wl-ambient--lit::before,
+  .wl-ambient--lit::after {
     animation: none !important;
     transition: none !important;
   }
   .wl-word,
   .wl-weekend,
-  .wl-league,
+  .wl-league-wrap,
   .wl-tagline,
   .wl-auth-enter {
     opacity: 1;
-    clip-path: none;
     transform: none;
+  }
+  .wl-pen-stroke {
+    stroke-dashoffset: 0;
   }
   .wl-ambient {
     opacity: 1;
