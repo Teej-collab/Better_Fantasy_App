@@ -26,6 +26,7 @@ const SECTION_ACCENT: Record<string, string> = {
   rivalries: "bg-orange-500",
   players: "bg-cyan-400",
   rules: "bg-purple-500",
+  league: "bg-indigo-500",
 };
 
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
@@ -224,21 +225,7 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-          Explore
-        </h2>
-        <div className="flex flex-wrap gap-2 text-sm">
-          <NavPill color="standings" href="/standings" label="Standings" />
-          {season !== null && week !== null && (
-            <NavPill color="matchups" href={`/seasons/${season}/weeks/${week}`} label="Matchups" />
-          )}
-          {season !== null && <NavPill color="awards" href={`/seasons/${season}/awards`} label="Awards" />}
-          <NavPill color="rivalries" href="/rivalries" label="Rivalries" />
-          <NavPill color="players" href="/players" label="Player Cards" />
-          <NavPill color="rules" href="/rules" label="Rules" />
-        </div>
-      </section>
+      <DiscoveryGrid season={season} week={week} />
     </div>
   );
 }
@@ -527,14 +514,84 @@ function SectionHeader({ color, title, href }: { color: string; title: string; h
   );
 }
 
-function NavPill({ color, href, label }: { color: string; href: string; label: string }) {
+type DiscoveryTile = { color: string; href: string; label: string; description: string };
+
+// Everywhere else in the league you can go from here — deliberately
+// broader than the top nav bar (which this section duplicates on
+// purpose, since a returning visitor scrolling the homepage shouldn't
+// have to scroll back up to find their way around). The Weekend gets
+// its own flagship card above the grid since it's the site's one
+// major "atmosphere" destination, not just another data page.
+function DiscoveryGrid({ season, week }: { season: number | null; week: number | null }) {
+  const tiles: DiscoveryTile[] = [
+    { color: "standings", href: "/standings", label: "Standings", description: "Full league standings and records" },
+    ...(season !== null && week !== null
+      ? [
+          {
+            color: "matchups",
+            href: `/seasons/${season}/weeks/${week}`,
+            label: "Matchups",
+            description: "This week's matchups across the league",
+          },
+        ]
+      : []),
+    ...(season !== null
+      ? [
+          {
+            color: "awards",
+            href: `/seasons/${season}/awards`,
+            label: "Awards",
+            description: "Weekly awards and season honors",
+          },
+        ]
+      : []),
+    { color: "rivalries", href: "/rivalries", label: "Rivalries", description: "All-time rivalry history and grudges" },
+    { color: "players", href: "/players", label: "Player Cards", description: "Browse every team's trading card" },
+    { color: "league", href: "/league", label: "League", description: "Every team and owner this season" },
+    { color: "rules", href: "/rules", label: "Rules", description: "Scoring, roster, and league settings" },
+  ];
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Discover</h2>
+
+      <a
+        href="/weekend"
+        className="discover-weekend-card flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/30 p-4"
+      >
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-xs font-semibold tracking-wide text-fuchsia-500 uppercase dark:text-fuchsia-400">
+            The Weekend
+          </span>
+          <span className="truncate text-sm text-black/60 dark:text-white/60">
+            Step into the full live experience
+          </span>
+        </div>
+        <span className="shrink-0 text-fuchsia-500 dark:text-fuchsia-400" aria-hidden>
+          →
+        </span>
+      </a>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {tiles.map((t) => (
+          <DiscoveryTileCard key={t.href} {...t} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
   return (
     <a
       href={href}
-      className="flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+      className="flex flex-col gap-0.5 rounded-lg border border-black/10 p-3 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
-      {label}
+      <span className="flex items-center gap-1.5 text-sm font-medium">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
+        {label}
+      </span>
+      <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>
     </a>
   );
 }

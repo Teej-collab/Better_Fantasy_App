@@ -442,6 +442,18 @@ body {
 .live-ticker-track:hover {
   animation-play-state: paused;
 }
+
+/* Homepage Discover section's flagship card into /weekend — a small,
+   deliberate neon touch (per the design brief, neon is an accent
+   here, not the whole page) rather than reusing the full neon-sign
+   treatment from the landing page itself. */
+.discover-weekend-card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.discover-weekend-card:hover {
+  border-color: rgb(217 70 239 / 0.6);
+  box-shadow: 0 0 16px rgb(217 70 239 / 0.25);
+}
 @keyframes live-ticker-scroll {
   from {
     transform: translateX(0);
