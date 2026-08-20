@@ -586,9 +586,11 @@ body {
   animation: live-ticker-scroll 68s linear infinite;
 }
 /* Faster during Game Day — "the ticker becomes more active" — but still
-   slower than the old baseline speed, same reasoning as above. */
+   slower than the old baseline speed, same reasoning as above. 34s read
+   as too quick once there's a real live slate of items scrolling by, so
+   this only trims the baseline by about a third rather than halving it. */
 .live-ticker-track--fast {
-  animation-duration: 34s;
+  animation-duration: 46s;
 }
 .live-ticker-track:hover {
   animation-play-state: paused;
@@ -874,9 +876,7 @@ body {
   transition:
     box-shadow 0.25s ease,
     transform 0.15s ease;
-  animation:
-    wl-enter-in 0.7s ease-out 1s both,
-    wl-enter-breathe 4.6s ease-in-out 1.7s infinite;
+  animation: wl-enter-in 0.7s ease-out 1s both;
 }
 @keyframes wl-enter-in {
   from {
@@ -888,26 +888,44 @@ body {
     transform: translateY(0);
   }
 }
-/* Irregular so it reads as a real, imperfect tube rather than a fade. */
+/* The "breathing" tube flicker used to animate filter: brightness()
+   directly on the button — filter forces the browser to re-rasterize
+   the element on the main thread every frame, running the whole time
+   the final screen is up, which is exactly the kind of continuous work
+   that steals frame budget from the ticker's own animation and reads
+   as choppiness on desktop. A separate glow layer animating opacity
+   instead gets the same irregular-neon look for compositor-only cost. */
+.wl-enter-sign::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow:
+    0 0 22px var(--neon-color),
+    0 0 50px color-mix(in srgb, var(--neon-color) 60%, transparent);
+  opacity: 0;
+  animation: wl-enter-breathe 4.6s ease-in-out 1.7s infinite;
+}
 @keyframes wl-enter-breathe {
   0%,
   100% {
-    filter: brightness(1);
+    opacity: 0;
   }
   18% {
-    filter: brightness(1.1);
+    opacity: 0.4;
   }
   22% {
-    filter: brightness(0.97);
+    opacity: 0.1;
   }
   40% {
-    filter: brightness(1.14);
+    opacity: 0.55;
   }
   63% {
-    filter: brightness(1.02);
+    opacity: 0.15;
   }
   70% {
-    filter: brightness(1.12);
+    opacity: 0.5;
   }
 }
 .wl-enter-sign:hover {
@@ -929,16 +947,22 @@ body {
    perspective/depth cue (not a flat uniform scale) while a light-spill
    bloom ignites from the sign and overtakes the frame. */
 .wl-scene {
+  /* transform + opacity only, deliberately — both are compositor-only
+     and stay smooth regardless of what else is on screen. A filter
+     transition here used to also animate brightness across this whole
+     subtree (WEEKEND, League, the tagline, the button's own glow) at
+     the exact moment Enter Here is clicked, forcing a full repaint of
+     all of it every frame — that's what read as "laggy" on desktop.
+     wl-bloom's own flash still delivers the "light overtaking the
+     frame" effect without needing this element to repaint at all. */
   transition:
     transform 0.9s cubic-bezier(0.6, 0, 0.9, 0.4),
-    opacity 0.9s ease,
-    filter 0.9s ease;
+    opacity 0.9s ease;
   transform-origin: center 62%;
 }
 .wl-scene--entering {
   transform: scale(1.6) translateY(-6%);
   opacity: 0;
-  filter: brightness(1.6);
 }
 .wl-bloom {
   position: absolute;
@@ -991,6 +1015,7 @@ body {
   .wl-league-wrap,
   .wl-tagline,
   .wl-enter-sign,
+  .wl-enter-sign::after,
   .wl-scene,
   .wl-bloom,
   .wl-auth-enter,
