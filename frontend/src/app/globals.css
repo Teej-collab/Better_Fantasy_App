@@ -34,6 +34,13 @@ body {
    blobs) turns into unreadable arbitrary-value soup as Tailwind
    classes. */
 .cosmic-frame {
+  /* The parent grid (app/page.tsx) already stretches every card in a
+     row to match the tallest one — but without display: flex here,
+     .cosmic-bg (the dark panel) only grows to fit its OWN content
+     (fewer awards = a shorter box), leaving the taller .cosmic-frame's
+     gradient/stars exposed below it. flex's default align-items:
+     stretch makes .cosmic-bg fill the full stretched height instead. */
+  display: flex;
   padding: 3px;
   background: linear-gradient(135deg, #38bdf8, #a855f7, #ec4899, #f97316, #facc15, #38bdf8);
   box-shadow:
@@ -42,6 +49,9 @@ body {
 }
 
 .cosmic-bg {
+  /* Sole flex child of .cosmic-frame — flex-grow fills the full
+     stretched width/height instead of shrinking to content size. */
+  flex: 1 1 auto;
   background-color: #05030f;
   background-image:
     radial-gradient(1px 1px at 20px 30px, #fff, transparent),
