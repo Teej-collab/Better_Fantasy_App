@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
+import { LiveTicker } from "@/components/LiveTicker";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -28,8 +29,14 @@ type Stage = "dark" | "word" | "final" | "entering" | "auth";
  * underneath is fully covered by this fixed overlay, but a
  * keyboard/screen-reader user could still reach it without seeing it —
  * `inert` removes it from both while this is mounted.
+ *
+ * The ticker (real NFL scores, same LiveTicker.tsx the signed-in
+ * dashboard uses) runs the whole time this screen is up — per the
+ * brief, "this gives the landing page life even before someone signs
+ * in." It drops away once Enter Here is clicked; AuthScreen itself
+ * stays clean per the brief's own "the form itself should be clean."
  */
-export function OpeningExperience() {
+export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: string[]; isGameDay: boolean }) {
   const [stage, setStage] = useState<Stage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -129,10 +136,14 @@ export function OpeningExperience() {
       </div>
 
       {stage === "word" && (
-        <button onClick={skipIntro} className="wl-skip-intro absolute right-6 bottom-6 z-10 text-xs">
+        <button onClick={skipIntro} className="wl-skip-intro absolute top-6 right-6 z-10 text-xs">
           Skip intro →
         </button>
       )}
+
+      <div className="absolute right-4 bottom-6 left-4 z-10 sm:right-8 sm:left-8">
+        <LiveTicker items={tickerItems} fast={isGameDay} />
+      </div>
     </div>
   );
 }

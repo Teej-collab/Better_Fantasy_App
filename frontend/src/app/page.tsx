@@ -62,7 +62,8 @@ export default async function HomePage() {
   // OpeningExperience.tsx.
   const me = await getMe(sessionCookie);
   if (!me) {
-    return <OpeningExperience />;
+    const [nflGames, isGameDay] = await Promise.all([getNflScoreboard(), getIsGameDay()]);
+    return <OpeningExperience tickerItems={buildNflTickerItems(nflGames, isGameDay)} isGameDay={isGameDay} />;
   }
 
   const { seasons } = await listSeasons();
@@ -308,18 +309,13 @@ function Reveal({ index, children }: { index: number; children: ReactNode }) {
   );
 }
 
-function buildTickerItems(
-  nflGames: Awaited<ReturnType<typeof getNflScoreboard>>,
-  awards: WeeklyAwards | null,
-  standings: StandingsRow[],
-  weekPlayed: boolean,
-  rivalryGamesThisWeek: WeekMatchupContextItem[],
-  isGameDay: boolean
-): string[] {
+// Shared with OpeningExperience's own ticker (the signed-out gate) — "more
+// games during an actual live window" applies there too, and it's the
+// exact same real NFL data either way, just without the league-specific
+// items (awards/rivalries/standings) a signed-out visitor has no team to
+// care about yet.
+function buildNflTickerItems(nflGames: Awaited<ReturnType<typeof getNflScoreboard>>, isGameDay: boolean): string[] {
   const items: string[] = [];
-
-  // More games in the ticker during an actual live window — "the
-  // ticker becomes more active" per the brief.
   for (const g of nflGames.slice(0, isGameDay ? 12 : 8)) {
     if (!g.home_team || !g.away_team) continue;
     if (g.state === "in") {
@@ -330,6 +326,18 @@ function buildTickerItems(
       items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
     }
   }
+  return items;
+}
+
+function buildTickerItems(
+  nflGames: Awaited<ReturnType<typeof getNflScoreboard>>,
+  awards: WeeklyAwards | null,
+  standings: StandingsRow[],
+  weekPlayed: boolean,
+  rivalryGamesThisWeek: WeekMatchupContextItem[],
+  isGameDay: boolean
+): string[] {
+  const items = buildNflTickerItems(nflGames, isGameDay);
 
   for (const m of rivalryGamesThisWeek.slice(0, 2)) {
     items.push(`⚔️ Rivalry Alert: ${m.rivalry?.name ?? `${m.home.team_name} vs ${m.away.team_name}`}`);
