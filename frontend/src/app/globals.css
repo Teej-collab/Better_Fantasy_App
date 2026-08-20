@@ -23,6 +23,13 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  /* Belt-and-suspenders: no element on the page should ever be able to
+     make the whole document scroll sideways — the /players card deck
+     (CardDeck.tsx) intentionally overflows horizontally, but only
+     inside its own overflow-x-auto container. This is what stops a
+     sizing quirk in a child from ever dragging the whole page (header
+     included) along with it. */
+  overflow-x: hidden;
 }
 
 /* Team profile card "trading card" look — TeamProfileCard.tsx. Two
