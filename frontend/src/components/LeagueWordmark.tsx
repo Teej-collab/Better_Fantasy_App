@@ -33,14 +33,23 @@
  * to let the mask/glow paint past the viewBox edge, but mobile Safari
  * has long-standing, inconsistent support for that — especially with a
  * CSS transform on an ancestor, which .wl-league-wrap's settle
- * animation has. Desktop tolerates it; iOS doesn't. Rather than lean on
- * overflow:visible working at all, the viewBox itself is now padded
- * generously (was 0 0 520 250, now -130 -90 780 430 — the SAME old
- * 520x250 window sits centered inside a 1.5x-larger canvas) so nothing
- * ever needs to render past the SVG's own real, hard clipping boundary
- * on ANY browser. No internal coordinates changed — the text/mask/pen
- * path already used oversized coordinate spaces that comfortably cover
- * this new, still-modest viewBox.
+ * animation has. Desktop tolerates it; iOS doesn't. Padded the viewBox
+ * itself instead of leaning on overflow:visible working at all.
+ *
+ * Clipping fix (round 3): round 2's padding still wasn't enough on a
+ * real phone (confirmed via a real screenshot, not guessed). Two
+ * changes: the viewBox padding is now substantially larger again
+ * (960x510 instead of 780x430 — the original 520x250 window now sits
+ * inside a canvas nearly 2x its own size on every side), and the pen
+ * stroke's own blur filter (wl-mask-soft) is removed entirely — a
+ * <filter> applied to content *inside* an SVG <mask> is exactly the
+ * kind of nested-effect combination iOS Safari has known bugs with,
+ * and it was also the most likely thing quietly eroding the mask's
+ * reveal right at the edge of the thin swash tip, which is the one
+ * part of the glyph that had the least margin for error. The stroke
+ * edge is very slightly harder without the feather; the word stays a
+ * lit, legible neon tube regardless since the glow filter on the text
+ * itself is untouched.
  *
  * prefers-reduced-motion (and returning visitors) get the finished word
  * with no pen and no mask — instant, per the brief's escape hatches.
@@ -60,14 +69,8 @@ export function LeagueWordmark({
   reducedMotion?: boolean;
 }) {
   return (
-    <svg className="wl-league-svg" viewBox="-130 -90 780 430" role="img" aria-label="League">
+    <svg className="wl-league-svg" viewBox="-220 -130 960 510" role="img" aria-label="League">
       <defs>
-        {/* Feather the reveal edge so ink flows on smoothly. The region is
-            deliberately huge so the tall stroke is never clipped to a band. */}
-        <filter id="wl-mask-soft" x="-40%" y="-500%" width="180%" height="1100%">
-          <feGaussianBlur stdDeviation="2.6" />
-        </filter>
-
         {/* Neon-tube glow matching WEEKEND, in light blue: two blur passes
             bloom outward from the glyph alpha and feather into the
             background, with the bright core on top. Follows the letter
@@ -89,21 +92,26 @@ export function LeagueWordmark({
             fix. Without them, maskUnits="userSpaceOnUse" still defaults
             the MASK'S OWN region to -10%/-10%/120%/120% of the SVG
             viewport, which clips the L swash and g tail regardless of
-            how big the rect/path drawn inside the mask are. */}
-        <mask id="wl-league-mask" maskUnits="userSpaceOnUse" x="-260" y="-260" width="1040" height="770">
+            how big the rect/path drawn inside the mask are. Sized well
+            past the (also oversized) viewBox with real margin. */}
+        <mask id="wl-league-mask" maskUnits="userSpaceOnUse" x="-320" y="-320" width="1200" height="900">
           {/* black hides, white reveals — sized far past the glyphs so the
               mask never clips the swash or descender. */}
-          <rect x="-260" y="-260" width="1040" height="770" fill="black" />
+          <rect x="-320" y="-320" width="1200" height="900" fill="black" />
+          {/* No blur filter here (round 3 removed it) — a wider, harder-
+              edged stroke instead, both to de-risk WebKit's filter-inside-
+              mask bugs and because the unfiltered stroke can't have its
+              effective coverage quietly eroded at the edge the way a
+              blurred one could. */}
           <path
             className={reducedMotion ? "wl-pen-stroke wl-pen-stroke--static" : "wl-pen-stroke"}
             d={PEN_PATH}
             pathLength={1}
             fill="none"
             stroke="white"
-            strokeWidth={230}
+            strokeWidth={260}
             strokeLinecap="round"
             strokeLinejoin="round"
-            filter="url(#wl-mask-soft)"
           />
         </mask>
       </defs>
