@@ -1,10 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { listSeasons } from "@/lib/api";
-import { AuthStatus } from "@/components/AuthStatus";
-import { ChatNavBadge } from "@/components/ChatNavBadge";
-import { HideOnHome } from "@/components/HideOnHome";
-import { PageShell } from "@/components/PageShell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,96 +32,18 @@ export const viewport: Viewport = {
   ],
 };
 
-async function NavBar() {
-  const { seasons } = await listSeasons();
-  const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
-
-  return (
-    <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
-      <nav className="safe-px mx-auto flex max-w-4xl items-center gap-3 py-3 text-sm">
-        <a href="/" className="shrink-0 font-semibold">
-          <span className="sm:hidden">WL</span>
-          <span className="hidden sm:inline">Weekend League</span>
-        </a>
-        {/* Single-row horizontal scroller on narrow screens instead of
-            wrapping to 2-3 lines — same overscroll-containment technique
-            as CardDeck.tsx's player deck, so a swipe here can't leak into
-            page-level scroll/navigation. Reverts to a normal wrapping row
-            once there's room (sm:), since these 6 links plus the brand
-            already fit on one line at that width. */}
-        <div className="flex min-w-0 flex-1 touch-pan-x items-center gap-x-4 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
-          <a
-            href="/standings"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Standings
-          </a>
-          <a
-            href="/league"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            League
-          </a>
-          {latestSeason !== null && (
-            <a
-              href={`/seasons/${latestSeason}/weeks/1`}
-              className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-            >
-              Matchups
-            </a>
-          )}
-          {latestSeason !== null && (
-            <a
-              href={`/seasons/${latestSeason}/awards`}
-              className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-            >
-              Awards
-            </a>
-          )}
-          <a
-            href="/rivalries"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Rivalries
-          </a>
-          <a
-            href="/players"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Players
-          </a>
-          <a href="/rules" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
-            Rules
-          </a>
-          <a href="/chug" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
-            Chug
-          </a>
-          <ChatNavBadge />
-          <a
-            href="/weekend"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            The Weekend
-          </a>
-        </div>
-        <AuthStatus />
-      </nav>
-    </header>
-  );
-}
-
+// Deliberately minimal — just the true document shell. The actual app
+// chrome (nav bar, persistent ticker, page column) lives in
+// app/(app)/layout.tsx and app/(home)/layout.tsx; /weekend has its own
+// even-more-minimal layout. Splitting it this way (route groups, not a
+// single root layout with client-side pathname checks hiding pieces of
+// itself) is what actually guarantees /weekend never receives — or even
+// server-fetches the data behind — chrome it shouldn't have. See
+// app/(app)/layout.tsx's comment for the full reasoning.
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <HideOnHome>
-          <NavBar />
-        </HideOnHome>
-        <PageShell>{children}</PageShell>
-      </body>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

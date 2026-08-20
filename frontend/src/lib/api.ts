@@ -379,6 +379,31 @@ export async function getNflScoreboard(): Promise<NflGame[]> {
   }
 }
 
+// Shared by the persistent site-wide ticker (layout.tsx), the signed-out
+// gate's own ticker (OpeningExperience.tsx via page.tsx), and the
+// homepage dashboard's richer ticker — the exact same real NFL data
+// everywhere, just without the league-specific items (awards/rivalries/
+// standings) that only make sense in the homepage's own context.
+export function buildNflTickerItems(nflGames: NflGame[]): string[] {
+  // Every game currently on the scoreboard, not a truncated slice — a
+  // real week's slate is ~16 games and the ticker scrolls continuously,
+  // so there's no real reason to hide the back half of it. Game Day
+  // still matters for scroll *speed* (LiveTicker's fast prop, driven by
+  // isGameDay at the call site), just not for how many games show up.
+  const items: string[] = [];
+  for (const g of nflGames) {
+    if (!g.home_team || !g.away_team) continue;
+    if (g.state === "in") {
+      items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
+    } else if (g.state === "post") {
+      items.push(`🏁 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} Final`);
+    } else {
+      items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
+    }
+  }
+  return items;
+}
+
 export type ChugLeaderboardRow = {
   owner_id: number;
   owner_name: string;

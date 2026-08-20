@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import {
+  buildNflTickerItems,
   getCurrentWeek,
   getIsGameDay,
   getMe,
@@ -300,31 +301,6 @@ function Reveal({ index, children }: { index: number; children: ReactNode }) {
       {children}
     </div>
   );
-}
-
-// Shared with OpeningExperience's own ticker (the signed-out gate) — "more
-// games during an actual live window" applies there too, and it's the
-// exact same real NFL data either way, just without the league-specific
-// items (awards/rivalries/standings) a signed-out visitor has no team to
-// care about yet.
-function buildNflTickerItems(nflGames: Awaited<ReturnType<typeof getNflScoreboard>>): string[] {
-  // Every game currently on the scoreboard, not a truncated slice — a
-  // real week's slate is ~16 games and the ticker scrolls continuously,
-  // so there's no real reason to hide the back half of it. Game Day
-  // still matters for scroll *speed* (LiveTicker's fast prop, driven by
-  // isGameDay at the call site), just not for how many games show up.
-  const items: string[] = [];
-  for (const g of nflGames) {
-    if (!g.home_team || !g.away_team) continue;
-    if (g.state === "in") {
-      items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
-    } else if (g.state === "post") {
-      items.push(`🏁 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} Final`);
-    } else {
-      items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
-    }
-  }
-  return items;
 }
 
 function buildTickerItems(

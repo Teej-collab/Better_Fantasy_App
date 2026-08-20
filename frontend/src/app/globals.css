@@ -580,11 +580,15 @@ body {
 .live-ticker-track {
   display: flex;
   width: max-content;
-  animation: live-ticker-scroll 32s linear infinite;
+  /* Slowed down from an original 32s — the ticker now regularly carries
+     a full ~16-game NFL slate (plus league items on the homepage), and
+     32s no longer gave each item enough time to actually read. */
+  animation: live-ticker-scroll 68s linear infinite;
 }
-/* Faster during Game Day — "the ticker becomes more active." */
+/* Faster during Game Day — "the ticker becomes more active" — but still
+   slower than the old baseline speed, same reasoning as above. */
 .live-ticker-track--fast {
-  animation-duration: 16s;
+  animation-duration: 34s;
 }
 .live-ticker-track:hover {
   animation-play-state: paused;
