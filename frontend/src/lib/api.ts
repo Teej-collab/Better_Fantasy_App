@@ -374,3 +374,16 @@ export async function getNflScoreboard(): Promise<NflGame[]> {
     return [];
   }
 }
+
+// Same NFL-game-window detection gating the backend's live-sync
+// scheduler (app/game_windows.py) — "is it Game Day" on the homepage
+// always agrees with whether the backend is actually polling ESPN for
+// fresh scores right now.
+export async function getIsGameDay(): Promise<boolean> {
+  try {
+    const { is_game_day } = await get<{ is_game_day: boolean }>("/game-day");
+    return is_game_day;
+  } catch {
+    return false;
+  }
+}

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import {
   API_BASE_URL,
   getCurrentWeek,
+  getIsGameDay,
   getMyWeek,
   getNflScoreboard,
   getStandings,
@@ -15,6 +16,7 @@ import {
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
+import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { LiveTicker } from "@/components/LiveTicker";
 
 const SECTION_ACCENT: Record<string, string> = {
@@ -37,7 +39,11 @@ export default async function HomePage() {
   const { seasons } = await listSeasons();
   const season = seasons.length > 0 ? Math.max(...seasons) : null;
 
-  const [myWeek, nflGames] = await Promise.all([getMyWeek(sessionCookie), getNflScoreboard()]);
+  const [myWeek, nflGames, isGameDay] = await Promise.all([
+    getMyWeek(sessionCookie),
+    getNflScoreboard(),
+    getIsGameDay(),
+  ]);
 
   let week: number | null = null;
   let standings: StandingsRow[] = [];
@@ -70,20 +76,34 @@ export default async function HomePage() {
   const otherMatchups = weekMatchups.filter((m) => m.matchup_id !== myWeek?.matchup?.matchup_id);
   const rivalryGamesThisWeek = weekMatchups.filter((m) => m.is_rivalry);
 
-  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek);
+  const tickerItems = buildTickerItems(
+    nflGames,
+    weeklyAwards,
+    standings,
+    weekPlayed,
+    rivalryGamesThisWeek,
+    isGameDay
+  );
 
   return (
     <div className="flex flex-col gap-6">
+      {isGameDay && <GameDayRefresher />}
+
       <div className="flex items-center gap-2">
-        <span className="live-dot" aria-hidden />
+        <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
         <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           The Weekend Live
         </span>
+        {isGameDay && (
+          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
+            Game Day
+          </span>
+        )}
       </div>
-      <LiveTicker items={tickerItems} />
+      <LiveTicker items={tickerItems} fast={isGameDay} />
 
       {myWeek?.matchup ? (
-        <YourWeekHero myWeek={myWeek} />
+        <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
       ) : myWeek ? (
         <EmptyHero
           title={myWeek.team_name}
@@ -127,27 +147,32 @@ export default async function HomePage() {
             href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
           />
           <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
-            {otherMatchups.map((m) => (
-              <li key={m.matchup_id}>
-                <a
-                  href={`/matchups/${m.matchup_id}`}
-                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5">
-                      {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
-                      {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
-                      <span className="truncate">{m.home.team_name}</span>
+            {otherMatchups.map((m) => {
+              const started =
+                m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
+              return (
+                <li key={m.matchup_id}>
+                  <a
+                    href={`/matchups/${m.matchup_id}`}
+                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5">
+                        {isGameDay && started && <span className="live-dot" aria-hidden />}
+                        {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
+                        {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
+                        <span className="truncate">{m.home.team_name}</span>
+                      </span>
+                      <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
                     </span>
-                    <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
-                  </span>
-                  <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
-                    <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
-                    <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
-                  </span>
-                </a>
-              </li>
-            ))}
+                    <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
+                      <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
+                      <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
@@ -223,11 +248,14 @@ function buildTickerItems(
   awards: WeeklyAwards | null,
   standings: StandingsRow[],
   weekPlayed: boolean,
-  rivalryGamesThisWeek: WeekMatchupContextItem[]
+  rivalryGamesThisWeek: WeekMatchupContextItem[],
+  isGameDay: boolean
 ): string[] {
   const items: string[] = [];
 
-  for (const g of nflGames.slice(0, 8)) {
+  // More games in the ticker during an actual live window — "the
+  // ticker becomes more active" per the brief.
+  for (const g of nflGames.slice(0, isGameDay ? 12 : 8)) {
     if (!g.home_team || !g.away_team) continue;
     if (g.state === "in") {
       items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
@@ -272,15 +300,26 @@ function buildTickerItems(
   return items;
 }
 
-function YourWeekHero({ myWeek }: { myWeek: YourWeek }) {
+function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: boolean }) {
   const m = myWeek.matchup!;
   const winning = m.my_score !== null && m.opponent_score !== null && m.my_score >= m.opponent_score;
+  const isLive = m.started && isGameDay;
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black p-4 text-white dark:border-white/10">
+    <section
+      className={`flex flex-col gap-3 rounded-xl border bg-black p-4 text-white ${
+        isLive ? "border-red-500/50" : "border-black/10 dark:border-white/10"
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold tracking-wide text-white/50 uppercase">
+        <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-white/50 uppercase">
           Your Week{m.is_playoff ? " — Playoffs" : ""}
+          {isLive && (
+            <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-1.5 py-0.5 text-red-400">
+              <span className="live-dot" aria-hidden />
+              Live
+            </span>
+          )}
         </span>
         {m.record && <span className="text-xs text-white/50">{m.record}</span>}
       </div>

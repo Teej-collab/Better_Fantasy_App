@@ -396,6 +396,10 @@ body {
    card-based dashboard, not a themed room.
    ============================================================ */
 
+/* Vivid, pulsing red only during an actual live NFL game window
+   (isGameDay) — "live indicators become more prominent" during Game
+   Day per the brief means they should genuinely look different
+   otherwise, not just always be there for decoration. */
 .live-dot {
   display: inline-block;
   width: 0.5rem;
@@ -404,6 +408,12 @@ body {
   background: #ef4444;
   box-shadow: 0 0 6px #ef4444;
   animation: live-dot-pulse 1.6s ease-in-out infinite;
+}
+
+.live-dot--idle {
+  background: rgba(120, 120, 120, 0.4);
+  box-shadow: none;
+  animation: none;
 }
 
 @keyframes live-dot-pulse {
@@ -424,6 +434,10 @@ body {
   display: flex;
   width: max-content;
   animation: live-ticker-scroll 32s linear infinite;
+}
+/* Faster during Game Day — "the ticker becomes more active." */
+.live-ticker-track--fast {
+  animation-duration: 16s;
 }
 .live-ticker-track:hover {
   animation-play-state: paused;
