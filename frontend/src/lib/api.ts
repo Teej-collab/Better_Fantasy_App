@@ -420,26 +420,98 @@ export async function getMe(sessionCookie: string | undefined): Promise<Me | nul
   return res.json();
 }
 
+export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean };
+
+export type ChatReplyPreview = { id: number; owner_name: string; body: string };
+
 export type ChatMessage = {
   id: number;
+  conversation_id: number;
   owner_id: number;
   owner_name: string;
   body: string;
+  deleted: boolean;
   created_at: string;
+  reply_to: ChatReplyPreview | null;
+  mentions: number[];
+  reactions: ChatReaction[];
 };
+
+export type ChatConversation = {
+  id: number;
+  type: "league" | "direct";
+  member_count: number;
+  other_owner_id: number | null;
+  other_owner_name: string | null;
+  unread_count: number;
+  last_message: { id: number; owner_name: string; body: string; created_at: string } | null;
+};
+
+export type ChatMember = { owner_id: number; display_name: string; team_name: string };
 
 // Session-aware, same forwarded-cookie pattern as getMyWeek — returns
 // null rather than throwing for "not signed in", which the chat page
-// treats as "show a sign-in prompt instead of the room."
-export async function getChatMessages(sessionCookie: string | undefined): Promise<ChatMessage[] | null> {
+// treats as "show a sign-in prompt instead of the app."
+export async function getChatConversations(sessionCookie: string | undefined): Promise<ChatConversation[] | null> {
   if (!sessionCookie) return null;
-  const res = await fetch(`${API_BASE_URL}/chat/messages`, {
+  const res = await fetch(`${API_BASE_URL}/chat/conversations`, {
     cache: "no-store",
     headers: { Cookie: `session=${sessionCookie}` },
   });
   if (!res.ok) return null;
-  const { messages } = await res.json();
+  const { conversations } = await res.json();
+  return conversations;
+}
+
+export async function getChatConversationMessages(
+  conversationId: number,
+  opts?: { before?: number }
+): Promise<ChatMessage[]> {
+  const qs = opts?.before ? `?before=${opts.before}` : "";
+  const { messages } = await get<{ messages: ChatMessage[] }>(`/chat/conversations/${conversationId}/messages${qs}`);
   return messages;
+}
+
+export async function getChatMembers(): Promise<ChatMember[]> {
+  const res = await fetch(`${API_BASE_URL}/chat/members`, { credentials: "include" });
+  if (!res.ok) return [];
+  const { members } = await res.json();
+  return members;
+}
+
+export async function startDirectConversation(ownerId: number): Promise<number> {
+  const res = await fetch(`${API_BASE_URL}/chat/conversations/direct`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner_id: ownerId }),
+  });
+  if (!res.ok) throw new Error(`Failed to start conversation: ${res.status}`);
+  const { conversation_id } = await res.json();
+  return conversation_id;
+}
+
+export async function markConversationRead(conversationId: number): Promise<void> {
+  await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/read`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+export async function reactToMessage(messageId: number, emoji: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/chat/messages/${messageId}/react`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export async function deleteChatMessage(messageId: number): Promise<void> {
+  await fetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
 }
 
 // ws:// for a plain http API_BASE_URL, wss:// for https — same origin

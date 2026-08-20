@@ -1,17 +1,17 @@
 import { cookies } from "next/headers";
-import { getChatMessages, getMe, API_BASE_URL } from "@/lib/api";
-import { ChatRoom } from "@/components/ChatRoom";
+import { getChatConversations, getMe, API_BASE_URL } from "@/lib/api";
+import { ChatApp } from "@/components/chat/ChatApp";
 
 export default async function ChatPage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [me, messages] = await Promise.all([getMe(sessionCookie), getChatMessages(sessionCookie)]);
+  const [me, conversations] = await Promise.all([getMe(sessionCookie), getChatConversations(sessionCookie)]);
 
-  if (!me || messages === null) {
+  if (!me || conversations === null) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold">League Chat</h1>
+        <h1 className="text-2xl font-semibold">Weekend League Chat</h1>
         <section className="flex flex-col gap-2 rounded-xl border border-black/10 p-4 dark:border-white/10">
           <p className="text-sm text-black/60 dark:text-white/60">Sign in to join the league chat.</p>
           <a
@@ -25,10 +25,5 @@ export default async function ChatPage() {
     );
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">League Chat</h1>
-      <ChatRoom initialMessages={messages} myOwnerId={me.owner_id} />
-    </div>
-  );
+  return <ChatApp initialConversations={conversations} myOwnerId={me.owner_id} />;
 }

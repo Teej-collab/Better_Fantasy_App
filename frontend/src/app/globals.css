@@ -885,3 +885,61 @@ body {
     opacity: 1;
   }
 }
+
+/* ============================================================
+   Weekend League Chat (app/chat/page.tsx, components/chat/*).
+   "iPhone Messages meets Weekend League" — modern, clean bubbles, the
+   Weekend League accent used sparingly (the sender's own bubble, the
+   send button, unread badges), not a neon takeover. The retro-terminal
+   look belongs to the live ticker, not chat.
+   ============================================================ */
+
+.chat-bubble--mine {
+  background: var(--wl-accent-dim);
+  color: #ffffff;
+}
+.chat-bubble--other {
+  background: rgba(0, 0, 0, 0.06);
+  color: inherit;
+}
+@media (prefers-color-scheme: dark) {
+  .chat-bubble--other {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.chat-mention {
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+  font-weight: 600;
+  color: var(--wl-accent);
+  background: color-mix(in srgb, var(--wl-accent) 14%, transparent);
+}
+
+@keyframes chat-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.chat-typing-dot {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-typing-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}

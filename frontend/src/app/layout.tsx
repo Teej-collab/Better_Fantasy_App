@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { listSeasons } from "@/lib/api";
 import { AuthStatus } from "@/components/AuthStatus";
+import { ChatNavBadge } from "@/components/ChatNavBadge";
 import { HideOnHome } from "@/components/HideOnHome";
 import { PageShell } from "@/components/PageShell";
 import "./globals.css";
@@ -100,9 +101,7 @@ async function NavBar() {
           <a href="/chug" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
             Chug
           </a>
-          <a href="/chat" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
-            Chat
-          </a>
+          <ChatNavBadge />
           <a
             href="/weekend"
             className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
