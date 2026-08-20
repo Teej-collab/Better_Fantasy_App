@@ -163,6 +163,46 @@ async def get_matchup(conn, matchup_id: int):
     )
 
 
+async def get_matchup_for_team(conn, team_id: int, season: int, week: int):
+    """The one matchup this team plays in a given week — used by the
+    "Your Week" homepage hero, which needs a team's own game, not a
+    matchup by its own ID."""
+    return await conn.fetchrow(
+        """
+        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff,
+               ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
+               at.id AS away_team_id, at.team_name AS away_team_name, m.away_score
+        FROM matchups m
+        JOIN teams_by_season ht ON m.home_team_id = ht.id
+        JOIN teams_by_season at ON m.away_team_id = at.id
+        WHERE m.season = $1 AND m.week = $2 AND (m.home_team_id = $3 OR m.away_team_id = $3)
+        """,
+        season, week, team_id,
+    )
+
+
+async def get_team_score_stdev(conn, season: int) -> float | None:
+    """Standard deviation of real weekly team scores this season, used
+    by the win-probability estimate (app/domain/win_probability.py) as
+    the league's actual scoring volatility rather than an arbitrary
+    guessed constant. Same 0-0-means-unplayed exclusion as elsewhere.
+    None until there's enough real data (a single score has no spread)."""
+    return await conn.fetchval(
+        """
+        SELECT stddev_pop(score) FROM (
+            SELECT home_score AS score FROM matchups
+            WHERE season = $1 AND home_score IS NOT NULL AND away_score IS NOT NULL
+              AND NOT (home_score = 0 AND away_score = 0)
+            UNION ALL
+            SELECT away_score FROM matchups
+            WHERE season = $1 AND home_score IS NOT NULL AND away_score IS NOT NULL
+              AND NOT (home_score = 0 AND away_score = 0)
+        ) scores
+        """,
+        season,
+    )
+
+
 # ESPN's standard lineup order. This league's flex slot is stored as
 # "RB/WR/TE" (its actual eligibility), not "FLEX" — confirmed against
 # real synced data. Unrecognized slots sort last rather than erroring,

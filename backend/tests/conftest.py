@@ -27,6 +27,7 @@ async def pool():
 async def cleanup_test_season(pool):
     yield
     async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM rosters WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
