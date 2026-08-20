@@ -24,3 +24,41 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Team profile card "trading card" look — TeamProfileCard.tsx. Two
+   layers: .cosmic-frame is the glowing gradient border (a padding
+   trick — the gradient shows only in the padding gap around the inner
+   dark panel); .cosmic-bg is the starfield + nebula glow background
+   for the panel itself. Plain CSS rather than Tailwind utilities
+   because a background this layered (8 star positions + 4 nebula
+   blobs) turns into unreadable arbitrary-value soup as Tailwind
+   classes. */
+.cosmic-frame {
+  padding: 3px;
+  background: linear-gradient(135deg, #38bdf8, #a855f7, #ec4899, #f97316, #facc15, #38bdf8);
+  box-shadow:
+    0 0 18px rgba(236, 72, 153, 0.35),
+    0 0 34px rgba(56, 189, 248, 0.2);
+}
+
+.cosmic-bg {
+  background-color: #05030f;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+    radial-gradient(1px 1px at 90px 120px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 160px 60px, #fff, transparent),
+    radial-gradient(1px 1px at 210px 180px, #fff, transparent),
+    radial-gradient(2px 2px at 50px 200px, #fff, transparent),
+    radial-gradient(1px 1px at 130px 20px, #fff, transparent),
+    radial-gradient(1px 1px at 250px 100px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 30px 260px, #fff, transparent),
+    radial-gradient(circle at 25% 15%, rgba(236, 72, 153, 0.4), transparent 45%),
+    radial-gradient(circle at 80% 10%, rgba(249, 115, 22, 0.32), transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(56, 189, 248, 0.32), transparent 45%),
+    radial-gradient(circle at 15% 90%, rgba(168, 85, 247, 0.32), transparent 45%);
+  background-repeat: repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat, no-repeat, no-repeat,
+    no-repeat, no-repeat;
+  background-size:
+    280px 280px, 280px 280px, 280px 280px, 280px 280px, 280px 280px, 280px 280px, 280px 280px, 280px 280px,
+    100% 100%, 100% 100%, 100% 100%, 100% 100%;
+}
