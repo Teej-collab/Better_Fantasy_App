@@ -664,6 +664,56 @@ behavior, credential-redaction-in-logs, capture-utility redaction), 91
 total passing. Nothing here touches production — every test runs against
 fakes, no real ESPN credentials or network calls.
 
+## PHASE 7.6 — HOMEPAGE REDESIGN: "Your Week" + live ticker (Aug 20 2026)
+- [x] Session-aware personalized hero (real matchup, score, projection,
+      win probability)
+- [x] NFL-wide live ticker for logged-out visitors
+- [ ] Deferred to a later pass (explicit "phase it" scope decision):
+      logged-out ticker beyond NFL scores, game-day motion polish, full
+      design-system tokens, deeper mobile-specific pass
+
+Replaced the homepage per a full design brief (premium sportsbook +
+speakeasy atmosphere, but "useful first, atmospheric second" — no
+elaborate room to navigate just to see standings). The room+neon-sign
+takeover from Phase 7.5-era work moved to `/weekend` (kept, still
+linked from nav) instead of being deleted or being the primary
+interface.
+
+New `/` is a real dashboard: auto-scrolling live ticker, a "Your Week"
+hero, standings/awards previews, and a discovery nav using the
+`/weekend` signs' same color semantics as small accent badges instead
+of full neon signage.
+
+**Win probability — real finding, not an assumption**: checked ESPN's
+raw fantasy API directly (mLiveScoring/mScoreboard/mMatchupScore/
+mBoxscore views, against a completed season and the current preseason)
+and confirmed no win-probability field exists anywhere in their data.
+`backend/app/domain/win_probability.py` is our own estimate instead —
+built only from real inputs (current score, real season-long
+projections, the league's own actual historical score standard
+deviation), gated to only show once a matchup has real scores.
+
+**NFL scoreboard — new integration, verified against live data**:
+`backend/app/providers/nfl_scoreboard.py` hits ESPN's public,
+unauthenticated scoreboard API (`site.api.espn.com`, not the private
+fantasy league API) — confirmed working against real 2026 preseason
+scores before building the parser around it.
+
+**"Your Week" is server-rendered with zero loading flash** — a new
+pattern for this app: the Next.js Server Component reads the session
+cookie via `next/headers` and forwards it to the backend's new
+`GET /me/week`, which decodes it the same way `/auth/me` does.
+
+Incidentally found and fixed while writing tests for this: a
+Decimal-vs-float crash in the win-probability estimate (Postgres's
+`stddev_pop()` returns `Decimal`) left a stale `league_state` test row
+behind (crashed before the test's own cleanup ran), which broke an
+unrelated test on the next run. `league_state` is now in
+`conftest.py`'s autouse cleanup fixture so this can't recur regardless
+of which test fails first.
+
+17 new backend tests, 133 total passing.
+
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records
 - [ ] Notifications (design pending)
