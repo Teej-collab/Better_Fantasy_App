@@ -37,12 +37,17 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM season_awards WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM chug_debts WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM chug_scores WHERE season = $1", TEST_SEASON)
-        # rivalries.owner_a_id/owner_b_id -> owners.owner_id, so this has to
-        # go before deleting owners below (no season column to scope by —
-        # every test owner is 'test-%', so that's the only signal here).
+        # rivalries.owner_a_id/owner_b_id and messages.owner_id -> owners.owner_id,
+        # so both have to go before deleting owners below (neither has a season
+        # column to scope by — every test owner is 'test-%', so that's the only
+        # signal here). Individual chat tests already clean up their own rows,
+        # but this is the backstop if a test fails before it gets there.
         await conn.execute(
             "DELETE FROM rivalries WHERE owner_a_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%') "
             "OR owner_b_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
+            "DELETE FROM messages WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
         # owners.user_id -> users.id, so capture which users are linked to

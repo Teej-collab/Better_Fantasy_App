@@ -405,6 +405,49 @@ export function getChugLeaderboard(season?: number) {
   return get<ChugLeaderboard>(season !== undefined ? `/chug/leaderboard?season=${season}` : "/chug/leaderboard");
 }
 
+export type Me = { owner_id: number; display_name: string | null; is_commissioner: boolean };
+
+// Server-side counterpart to AuthStatus's client-side /auth/me fetch —
+// used by pages that need to know who's signed in during SSR (e.g. to
+// tell the chat room which messages are "mine").
+export async function getMe(sessionCookie: string | undefined): Promise<Me | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/auth/me`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export type ChatMessage = {
+  id: number;
+  owner_id: number;
+  owner_name: string;
+  body: string;
+  created_at: string;
+};
+
+// Session-aware, same forwarded-cookie pattern as getMyWeek — returns
+// null rather than throwing for "not signed in", which the chat page
+// treats as "show a sign-in prompt instead of the room."
+export async function getChatMessages(sessionCookie: string | undefined): Promise<ChatMessage[] | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/chat/messages`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  const { messages } = await res.json();
+  return messages;
+}
+
+// ws:// for a plain http API_BASE_URL, wss:// for https — same origin
+// and port as every other backend call, just a different scheme.
+export function getChatWebSocketUrl(): string {
+  return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws`;
+}
+
 // Same NFL-game-window detection gating the backend's live-sync
 // scheduler (app/game_windows.py) — "is it Game Day" on the homepage
 // always agrees with whether the backend is actually polling ESPN for
