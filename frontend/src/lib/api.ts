@@ -8,6 +8,16 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+// Same as get(), but forwards the session cookie — for endpoints that
+// require the caller to be signed in (chat messages, etc.).
+async function authedGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`GET ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 // For endpoints where "no data" (404) is a normal, expected outcome —
 // e.g. an owner with no team in a given season — not an error to throw on.
 async function getOrNull<T>(path: string): Promise<T | null> {
@@ -493,7 +503,9 @@ export async function getChatConversationMessages(
   opts?: { before?: number }
 ): Promise<ChatMessage[]> {
   const qs = opts?.before ? `?before=${opts.before}` : "";
-  const { messages } = await get<{ messages: ChatMessage[] }>(`/chat/conversations/${conversationId}/messages${qs}`);
+  const { messages } = await authedGet<{ messages: ChatMessage[] }>(
+    `/chat/conversations/${conversationId}/messages${qs}`
+  );
   return messages;
 }
 
