@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 
 type Me = {
@@ -17,6 +18,7 @@ type Me = {
  * of the app that talks to the backend directly from the browser.
  */
 export function AuthStatus() {
+  const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,6 +33,13 @@ export function AuthStatus() {
   async function logout() {
     await fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" });
     setMe(null);
+    // The homepage's signed-out gate (OpeningExperience.tsx) is decided
+    // server-side from the session cookie on every request — router.push
+    // alone could still serve a cached RSC payload for "/" from before
+    // logout, so refresh() forces page.tsx to actually re-run server-side
+    // against the now-deleted cookie.
+    router.push("/");
+    router.refresh();
   }
 
   if (loading) return null;
