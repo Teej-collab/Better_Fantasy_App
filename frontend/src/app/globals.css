@@ -3,6 +3,21 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Weekend League — the gated opening/auth experience's design tokens
+     (OpeningExperience.tsx, AuthScreen.tsx). Deliberately distinct from
+     /weekend's older bar-themed neon signage: near-black/charcoal
+     surfaces, a single neon-green accent (not the old multi-color
+     palette), restrained everywhere else. Same values in light and
+     dark mode on purpose — this experience is always dark, by design,
+     regardless of the visitor's system theme. */
+  --wl-bg: #030402;
+  --wl-surface: #0c110d;
+  --wl-accent: #39ff6a;
+  --wl-accent-dim: #1c8a3e;
+  --wl-text: #f5f4ec;
+  --wl-text-secondary: #93a396;
+  --wl-live: #ef4444;
 }
 
 @theme inline {
@@ -580,5 +595,293 @@ body {
   }
   to {
     transform: translateX(-50%);
+  }
+}
+
+/* ============================================================
+   Weekend League — gated opening/auth experience
+   (OpeningExperience.tsx, AuthScreen.tsx). The mandatory front door
+   for a signed-out visitor: darkness -> word-by-word reveal -> the
+   WEEKEND / League wordmark -> tagline -> Enter Here -> a transition
+   into a real Discord sign-in screen. Built entirely from gradients,
+   type, and glow — no photo background, no stock imagery, per the
+   explicit "move away from the bar/speakeasy concept" direction.
+   ============================================================ */
+
+.wl-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  background: var(--wl-bg);
+  color: var(--wl-text);
+}
+
+/* Abstract stadium-light glow — two soft highlights suggesting distant
+   floodlights, never a literal stadium image. Brightens a step once
+   the word sequence starts, echoing "the environment illuminates
+   slightly" per light 1. */
+.wl-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(900px circle at 20% -10%, rgba(57, 255, 106, 0.05), transparent 55%),
+    radial-gradient(900px circle at 80% -10%, rgba(57, 255, 106, 0.05), transparent 55%),
+    radial-gradient(1100px circle at 50% 115%, rgba(57, 255, 106, 0.04), transparent 60%);
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.wl-ambient--lit {
+  opacity: 1;
+}
+
+/* WELCOME / TO / THE — each word gets its own genuine "neon tube
+   igniting" beat (flicker -> surge -> settle), same technique proven
+   on /weekend's signage, just applied to this new sequence. Re-keyed
+   per word in OpeningExperience.tsx so the animation replays fresh
+   each time. */
+@keyframes wl-word-power-on {
+  0% {
+    opacity: 0;
+    filter: brightness(0.2);
+    transform: scale(0.97);
+  }
+  6% {
+    opacity: 0.5;
+    filter: brightness(1.8);
+  }
+  10% {
+    opacity: 0.05;
+    filter: brightness(0.2);
+  }
+  18% {
+    opacity: 0.9;
+    filter: brightness(1.5);
+  }
+  24% {
+    opacity: 0.2;
+    filter: brightness(0.3);
+  }
+  35% {
+    opacity: 1;
+    filter: brightness(1.2);
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+.wl-word {
+  animation: wl-word-power-on 1.1s ease-out both;
+  letter-spacing: 0.08em;
+  text-shadow:
+    0 0 8px rgba(245, 244, 236, 0.5),
+    0 0 24px rgba(57, 255, 106, 0.35);
+}
+
+/* WEEKEND — the dramatic beat, largest and strongest: a longer,
+   bigger power-on, then a continuous subtle buzz once settled (real
+   neon never sits perfectly still). */
+@keyframes wl-weekend-power-on {
+  0% {
+    opacity: 0;
+    filter: brightness(0.15);
+  }
+  8% {
+    opacity: 0.6;
+    filter: brightness(2);
+  }
+  13% {
+    opacity: 0.05;
+    filter: brightness(0.2);
+  }
+  22% {
+    opacity: 0.95;
+    filter: brightness(1.7);
+  }
+  30% {
+    opacity: 0.3;
+    filter: brightness(0.4);
+  }
+  42% {
+    opacity: 1;
+    filter: brightness(1.3);
+  }
+  55% {
+    opacity: 0.85;
+    filter: brightness(0.85);
+  }
+  70%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+@keyframes wl-neon-buzz {
+  0%,
+  92%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  93% {
+    opacity: 0.88;
+    filter: brightness(0.85);
+  }
+  94% {
+    opacity: 1;
+    filter: brightness(1.1);
+  }
+  96% {
+    opacity: 0.92;
+    filter: brightness(0.9);
+  }
+}
+.wl-weekend {
+  letter-spacing: 0.03em;
+  color: var(--wl-accent);
+  text-shadow:
+    0 0 6px rgba(57, 255, 106, 0.9),
+    0 0 18px rgba(57, 255, 106, 0.7),
+    0 0 46px rgba(57, 255, 106, 0.45),
+    0 0 90px rgba(57, 255, 106, 0.25);
+  animation:
+    wl-weekend-power-on 1.8s ease-out both,
+    wl-neon-buzz 5s ease-in-out 1.8s infinite;
+}
+
+/* League — a handwritten-reveal APPROXIMATION: a left-to-right
+   clip-path wipe plus a slight settle overshoot, not a true SVG
+   path-draw. Hand-tracing an accurate cursive stroke path for
+   arbitrary text is a lot of bespoke design work for marginal gain
+   over this, which already reads convincingly as "being written." */
+@keyframes wl-handwrite-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+    transform: translateY(4px) rotate(-1deg);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    clip-path: inset(0 0% 0 0);
+    opacity: 1;
+    transform: translateY(0) rotate(-1deg);
+  }
+}
+.wl-league {
+  display: inline-block;
+  transform: rotate(-1deg);
+  color: var(--wl-text);
+  text-shadow: 0 0 10px rgba(245, 244, 236, 0.4);
+  animation: wl-handwrite-reveal 1.3s cubic-bezier(0.25, 0.8, 0.35, 1) both;
+}
+
+.wl-tagline {
+  opacity: 0;
+  color: var(--wl-text-secondary);
+  animation: rise-in 0.9s ease-out both;
+}
+
+/* Enter Here — a physical-feeling neon sign, not a generic button: a
+   glowing border, light spill via box-shadow, a slow "breathing"
+   idle glow (the mobile affordance, since there's no hover there),
+   and a brighter response on hover/press. */
+.wl-enter-sign {
+  --neon-color: var(--wl-accent);
+  position: relative;
+  border-radius: 0.75rem;
+  border: 2px solid var(--neon-color);
+  background: rgba(6, 10, 7, 0.6);
+  color: var(--neon-color);
+  letter-spacing: 0.12em;
+  text-shadow:
+    0 0 6px var(--neon-color),
+    0 0 16px var(--neon-color);
+  box-shadow:
+    0 0 12px var(--neon-color),
+    0 0 30px color-mix(in srgb, var(--neon-color) 55%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--neon-color) 20%, transparent);
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.15s ease;
+  animation: wl-enter-breathe 3.2s ease-in-out infinite;
+}
+@keyframes wl-enter-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+.wl-enter-sign:hover {
+  box-shadow:
+    0 0 18px var(--neon-color),
+    0 0 46px color-mix(in srgb, var(--neon-color) 65%, transparent),
+    inset 0 0 16px color-mix(in srgb, var(--neon-color) 30%, transparent);
+}
+.wl-enter-sign:active {
+  transform: scale(0.97);
+  filter: brightness(1.3);
+}
+.wl-enter-sign:disabled {
+  animation: none;
+  opacity: 0.6;
+}
+
+/* "Move through the entrance" — the scene pushes toward the sign and
+   fades to black before the auth screen mounts. */
+.wl-scene {
+  transition:
+    transform 0.9s cubic-bezier(0.6, 0, 0.9, 0.4),
+    opacity 0.9s ease;
+}
+.wl-scene--entering {
+  transform: scale(1.35);
+  opacity: 0;
+}
+
+.wl-auth-enter {
+  opacity: 0;
+  animation: rise-in 0.7s ease-out 0.15s both;
+}
+
+.wl-skip-intro {
+  color: rgba(245, 244, 236, 0.4);
+  transition: color 0.2s ease;
+}
+.wl-skip-intro:hover {
+  color: rgba(245, 244, 236, 0.75);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-word,
+  .wl-weekend,
+  .wl-league,
+  .wl-tagline,
+  .wl-enter-sign,
+  .wl-scene,
+  .wl-auth-enter,
+  .wl-ambient {
+    animation: none !important;
+    transition: none !important;
+  }
+  .wl-word,
+  .wl-weekend,
+  .wl-league,
+  .wl-tagline,
+  .wl-auth-enter {
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+  }
+  .wl-ambient {
+    opacity: 1;
   }
 }

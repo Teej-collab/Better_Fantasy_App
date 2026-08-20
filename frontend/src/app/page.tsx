@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import {
-  API_BASE_URL,
   getCurrentWeek,
   getIsGameDay,
+  getMe,
   getMyWeek,
   getNflScoreboard,
   getStandings,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { LiveTicker } from "@/components/LiveTicker";
+import { OpeningExperience } from "@/components/OpeningExperience";
 
 const SECTION_ACCENT: Record<string, string> = {
   standings: "bg-sky-500",
@@ -54,6 +55,15 @@ const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developin
 export default async function HomePage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
+
+  // Mandatory front door: a signed-out visitor sees the Weekend League
+  // opening/auth experience instead of the dashboard below, and none of
+  // this page's data gets fetched for them at all. See
+  // OpeningExperience.tsx.
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return <OpeningExperience />;
+  }
 
   const { seasons } = await listSeasons();
   const season = seasons.length > 0 ? Math.max(...seasons) : null;
@@ -153,7 +163,12 @@ export default async function HomePage() {
             }
           />
         ) : (
-          <SignInHero />
+          // Reaching this branch means /me/week itself failed even though
+          // getMe (above) confirmed a valid session — a transient fetch
+          // error, not "not signed in" (that's already handled by the
+          // early OpeningExperience return before this component fetches
+          // anything else).
+          <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
         )}
       </Reveal>
 
@@ -443,24 +458,6 @@ function EmptyHero({ title, message }: { title: string; message: string }) {
   );
 }
 
-function SignInHero() {
-  return (
-    <section className="flex flex-col gap-2 rounded-xl border border-black/10 bg-black/[0.015] p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
-      <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-        Your Week
-      </span>
-      <p className="text-sm text-black/60 dark:text-white/60">
-        Sign in to see your own matchup, score, and win probability right here.
-      </p>
-      <a
-        href={`${API_BASE_URL}/auth/discord/login`}
-        className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white transition-transform hover:bg-[#4752c4] active:scale-95"
-      >
-        Sign in with Discord
-      </a>
-    </section>
-  );
-}
 
 type Tile = { emoji: string; label: string; accent: string; title: string; subtitle: string };
 

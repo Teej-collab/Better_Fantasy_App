@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Better Fantasy App",
+  title: "Weekend League",
   description: "League standings, matchups, and rosters.",
 };
 
@@ -41,11 +41,11 @@ async function NavBar() {
   const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
 
   return (
-    <header className="border-b border-black/10 dark:border-white/10">
+    <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
       <nav className="safe-px mx-auto flex max-w-4xl items-center gap-3 py-3 text-sm">
         <a href="/" className="shrink-0 font-semibold">
-          <span className="sm:hidden">BFA</span>
-          <span className="hidden sm:inline">Better Fantasy App</span>
+          <span className="sm:hidden">WL</span>
+          <span className="hidden sm:inline">Weekend League</span>
         </a>
         {/* Single-row horizontal scroller on narrow screens instead of
             wrapping to 2-3 lines — same overscroll-containment technique
