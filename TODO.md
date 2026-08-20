@@ -714,6 +714,54 @@ of which test fails first.
 
 17 new backend tests, 133 total passing.
 
+**Continued, Aug 19 2026 — remaining hierarchy phases + polish, all shipped
+and pushed:**
+- [x] League Context expansion (Other Matchups, Rivalries sections)
+- [x] Game Day state (`GET /game-day`, live-indicator row, faster ticker,
+      auto-refresh) — reuses `app/game_windows.py`, the same source of
+      truth already gating the live-sync scheduler
+- [x] Richer Awards/Entertainment tile grid (all 8 real award fields).
+      Found and fixed the same Decimal-vs-string type bug as an earlier
+      `RosterPlayer` fix — `WeeklyAwards.points_diff`/`points_scored` were
+      typed `string` in `lib/api.ts` but are actually numbers at runtime
+      (Postgres `NUMERIC` → Decimal → JSON number via `jsonable_encoder`)
+- [x] Discovery/Nav section — replaced the flat pill row with a card grid
+      plus a flagship `/weekend` card; fixed two real dead-ends (`/league`
+      and `/weekend` weren't reachable from the homepage body before)
+- [x] Motion/atmosphere pass — the functional-dashboard rebuild had
+      regressed to a flat black screen with white text with no depth.
+      Added: fixed ambient background wash, staggered section entrance,
+      surface fill + hover/press feedback on every card, a live pulsing
+      glow on the Your Week hero during an actual live game, an ambient
+      glow on the ticker (brighter on Game Day), colored glow on section
+      dots, `prefers-reduced-motion` support throughout.
+- [x] Mobile polish (partial) — `viewport-fit=cover` + `themeColor`,
+      new `.safe-px` utility (`max(1rem, env(safe-area-inset-*))`) on the
+      header and main content column, header nav converted to a
+      single-row horizontal scroller below `sm:` (was wrapping to 2-3
+      lines) using the same overscroll-containment technique as
+      CardDeck.tsx.
+
+**Not yet done — next session:**
+- [ ] Full link-destination audit — some in-app links go to the wrong
+      place; not yet enumerated.
+- [ ] Homepage still not fully satisfying to the project owner as of
+      Aug 19 2026 despite the motion pass above — needs another look,
+      scope TBD.
+- [ ] **Game Day detection uses a fixed weekly schedule, not real game
+      times.** `app/game_windows.py` only checks day-of-week + hour range
+      (Thu 19-24, Sun 12-24, Mon 19-24 ET) — it never looks at ESPN's
+      actual schedule. Two real consequences: a game outside those hours
+      (e.g. an early-kickoff preseason game) won't trigger Game Day at
+      all, and any Thursday/Sunday/Monday evening with no real game
+      still flips Game Day on. The project owner flagged this Aug 19
+      2026 after noting a preseason game on 8/20 (a Thursday) would
+      "work" only by coincidence of day-of-week, not real detection —
+      explicit ask: **other upcoming work will also need real game times
+      and the actual schedule**, not just this fixed-window heuristic, so
+      this should be solved as a real "pull ESPN's schedule" capability
+      rather than patched narrowly for Game Day alone.
+
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records
 - [ ] Notifications (design pending)
