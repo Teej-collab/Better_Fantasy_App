@@ -46,8 +46,27 @@ async def cleanup_test_season(pool):
             "DELETE FROM rivalries WHERE owner_a_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%') "
             "OR owner_b_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
+        # Chat v2: reactions/mentions reference messages, so they go first;
+        # conversation_participants references conversations, so it goes
+        # before the orphaned-direct-conversation cleanup. Tests never touch
+        # the real seeded league conversation (only ever create their own
+        # fresh conversations with test owners), so this can't ever delete
+        # real chat data — only conversations a test itself created.
+        await conn.execute(
+            "DELETE FROM message_reactions WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
+            "DELETE FROM message_mentions WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
         await conn.execute(
             "DELETE FROM messages WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
+            "DELETE FROM conversation_participants WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
+            "DELETE FROM conversations WHERE type = 'direct' "
+            "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
         )
         await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
         # owners.user_id -> users.id, so capture which users are linked to

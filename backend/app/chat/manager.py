@@ -1,35 +1,50 @@
 """
-In-process WebSocket connection manager for the league chat room — one
-global set of active connections, broadcast to all of them on a new
-message. No Redis/pub-sub: at this league's scale (~12 people) and this
-app's deployment shape (one backend process), an in-process set is
-genuinely enough. Revisit only if this ever needs to run as more than
-one backend process (then a broadcast from process A would need to
-reach a client connected to process B).
+In-process WebSocket connection manager, keyed by owner_id (an owner
+can have more than one open tab/device, hence a set per owner) rather
+than one flat set of connections — chat v1 broadcast to literally
+everyone connected, which was fine for a single shared room but can't
+work now that direct conversations need to stay private. A conversation
+event is sent only to that conversation's participants (looked up from
+conversation_participants, see app/routers/chat.py), not to every
+connected client.
+
+Still no Redis/pub-sub: at this league's scale (~12 people) and this
+app's one-process deployment shape, an in-process dict is genuinely
+enough — same call as chat v1, revisit only if this ever runs as more
+than one backend process.
 """
 from fastapi import WebSocket
 
 
 class ChatConnectionManager:
     def __init__(self):
-        self._connections: set[WebSocket] = set()
+        self._connections: dict[int, set[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, owner_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
-        self._connections.add(websocket)
+        self._connections.setdefault(owner_id, set()).add(websocket)
 
-    def disconnect(self, websocket: WebSocket) -> None:
-        self._connections.discard(websocket)
+    def disconnect(self, owner_id: int, websocket: WebSocket) -> None:
+        conns = self._connections.get(owner_id)
+        if not conns:
+            return
+        conns.discard(websocket)
+        if not conns:
+            del self._connections[owner_id]
 
-    async def broadcast(self, message: dict) -> None:
+    async def send_to_owner(self, owner_id: int, message: dict) -> None:
         dead = []
-        for ws in self._connections:
+        for ws in list(self._connections.get(owner_id, ())):
             try:
                 await ws.send_json(message)
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self._connections.discard(ws)
+            self.disconnect(owner_id, ws)
+
+    async def broadcast_to_owners(self, owner_ids, message: dict) -> None:
+        for owner_id in owner_ids:
+            await self.send_to_owner(owner_id, message)
 
 
 manager = ChatConnectionManager()
