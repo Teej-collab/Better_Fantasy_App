@@ -255,15 +255,19 @@ export type WeeklyAwards = {
         bench_player: string;
         started_player: string;
         position: string;
-        points_diff: string;
+        // NUMERIC in Postgres -> Decimal via asyncpg -> a JSON number
+        // via FastAPI's jsonable_encoder, same as RosterPlayer's
+        // points_scored/points_projected above — this was typed string
+        // and every caller had to remember to wrap it in Number().
+        points_diff: number;
         severity: string;
         team_name: string;
       }
     | null;
   clutch: { team_name: string; margin: number; reason: string } | null;
   choke: { team_name: string; margin: number; reason: string } | null;
-  boom_leaders: { player_name: string; points_scored: string; team_name: string }[];
-  bust_leaders: { player_name: string; points_scored: string; team_name: string }[];
+  boom_leaders: { player_name: string; points_scored: number; team_name: string }[];
+  bust_leaders: { player_name: string; points_scored: number; team_name: string }[];
   game_of_the_week: { winner: string; score: string } | null;
 };
 

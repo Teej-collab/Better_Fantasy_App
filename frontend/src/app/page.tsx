@@ -284,7 +284,7 @@ function buildTickerItems(
     }
     if (awards.boom_leaders[0]) {
       items.push(
-        `🔥 ${awards.boom_leaders[0].player_name} boomed for ${Number(awards.boom_leaders[0].points_scored).toFixed(1)}`
+        `🔥 ${awards.boom_leaders[0].player_name} boomed for ${awards.boom_leaders[0].points_scored.toFixed(1)}`
       );
     }
   }
@@ -410,22 +410,111 @@ function SignInHero() {
   );
 }
 
-function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
-  const lines: string[] = [];
-  if (awards.overachiever) lines.push(`Overachiever: ${awards.overachiever.team_name}`);
-  if (awards.meltdown) lines.push(`Meltdown: ${awards.meltdown.team_name}`);
-  if (awards.clutch) lines.push(`Clutch: ${awards.clutch.team_name}`);
-  if (awards.choke) lines.push(`Choke: ${awards.choke.team_name}`);
+type Tile = { emoji: string; label: string; accent: string; title: string; subtitle: string };
 
-  if (lines.length === 0) return null;
+// One tile per real award field — every one of these is genuine
+// computed data (app/domain/weekly_awards.py), not placeholder copy.
+// Accent colors are thematic (hot/cold, good/bad), deliberately
+// separate from the six section-nav colors (Standings/Matchups/etc.)
+// so awards read as their own distinct "entertainment" category.
+function buildAwardTiles(awards: WeeklyAwards): Tile[] {
+  const tiles: Tile[] = [];
+
+  if (awards.game_of_the_week) {
+    tiles.push({
+      emoji: "⭐",
+      label: "Game of the Week",
+      accent: "text-amber-500",
+      title: awards.game_of_the_week.winner,
+      subtitle: `Won ${awards.game_of_the_week.score}`,
+    });
+  }
+  if (awards.boom_leaders[0]) {
+    const b = awards.boom_leaders[0];
+    tiles.push({
+      emoji: "🔥",
+      label: "Boom of the Week",
+      accent: "text-orange-500",
+      title: b.player_name,
+      subtitle: `${b.points_scored.toFixed(1)} pts — ${b.team_name}`,
+    });
+  }
+  if (awards.bust_leaders[0]) {
+    const b = awards.bust_leaders[0];
+    tiles.push({
+      emoji: "🥶",
+      label: "Bust of the Week",
+      accent: "text-sky-500",
+      title: b.player_name,
+      subtitle: `${b.points_scored.toFixed(1)} pts — ${b.team_name}`,
+    });
+  }
+  if (awards.biggest_bench_crime) {
+    const bc = awards.biggest_bench_crime;
+    tiles.push({
+      emoji: "💀",
+      label: "Biggest Bench Crime",
+      accent: "text-slate-500",
+      title: `${bc.bench_player} > ${bc.started_player}`,
+      subtitle: `+${bc.points_diff.toFixed(1)} pts (${bc.severity}) — ${bc.team_name}`,
+    });
+  }
+  if (awards.overachiever) {
+    tiles.push({
+      emoji: "📈",
+      label: "Overachiever",
+      accent: "text-emerald-500",
+      title: awards.overachiever.team_name,
+      subtitle: `+${awards.overachiever.diff.toFixed(1)} pts vs. expected`,
+    });
+  }
+  if (awards.meltdown) {
+    tiles.push({
+      emoji: "📉",
+      label: "Meltdown",
+      accent: "text-red-500",
+      title: awards.meltdown.team_name,
+      subtitle: `${awards.meltdown.diff.toFixed(1)} pts vs. expected`,
+    });
+  }
+  if (awards.clutch) {
+    tiles.push({
+      emoji: "🎯",
+      label: "Clutch",
+      accent: "text-teal-500",
+      title: awards.clutch.team_name,
+      subtitle: awards.clutch.reason,
+    });
+  }
+  if (awards.choke) {
+    tiles.push({
+      emoji: "😬",
+      label: "Choke",
+      accent: "text-purple-500",
+      title: awards.choke.team_name,
+      subtitle: awards.choke.reason,
+    });
+  }
+
+  return tiles;
+}
+
+function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
+  const tiles = buildAwardTiles(awards);
+  if (tiles.length === 0) return null;
+
   return (
-    <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 text-sm dark:divide-white/5 dark:border-white/10">
-      {lines.map((line, i) => (
-        <li key={i} className="px-3 py-2">
-          {line}
-        </li>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {tiles.map((t, i) => (
+        <div key={i} className="flex flex-col gap-0.5 rounded-lg border border-black/10 p-3 dark:border-white/10">
+          <span className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase ${t.accent}`}>
+            {t.emoji} {t.label}
+          </span>
+          <span className="truncate text-sm font-medium">{t.title}</span>
+          <span className="truncate text-xs text-black/50 dark:text-white/50">{t.subtitle}</span>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
 

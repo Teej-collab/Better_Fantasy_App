@@ -121,7 +121,7 @@ function BoomBustList({
   players,
 }: {
   title: string;
-  players: { player_name: string; points_scored: string; team_name: string }[];
+  players: { player_name: string; points_scored: number; team_name: string }[];
 }) {
   return (
     <div>
@@ -132,7 +132,7 @@ function BoomBustList({
             <span>
               {p.player_name} <span className="text-black/50 dark:text-white/50">({p.team_name})</span>
             </span>
-            <span className="tabular-nums">{Number(p.points_scored).toFixed(1)}</span>
+            <span className="tabular-nums">{p.points_scored.toFixed(1)}</span>
           </li>
         ))}
       </ul>
