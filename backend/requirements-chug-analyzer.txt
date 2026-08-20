@@ -1,0 +1,23 @@
+# Dedicated Python 3.11 environment for the Chug Analyzer CV pipeline
+# (app/chug_analyzer/) — mediapipe has no working build for the main
+# backend's Python 3.13, same constraint Fantasy_Helper's venv311 exists
+# for. Set up with:
+#
+#   python3.11 -m venv venv311
+#   source venv311/bin/activate
+#   pip install -r requirements-chug-analyzer.txt
+#
+# Versions pinned exactly, not just floor-bounded (>=) like
+# requirements.txt's convention elsewhere in this repo: the latest
+# mediapipe (1.0.x, as of Aug 2026) dropped the legacy `mp.solutions`
+# API this pipeline's pose_detection.py depends on entirely, in favor of
+# a new Tasks API — confirmed by actually hitting
+# `AttributeError: module 'mediapipe' has no attribute 'solutions'`
+# while setting this up. 0.10.21 is the newest version that still has it
+# and installs cleanly for Python 3.11 on Apple Silicon. Bumping any of
+# these needs the same "does mp.solutions.hands.Hands() still
+# instantiate" smoke test before trusting a bump.
+mediapipe==0.10.21
+opencv-contrib-python==4.11.0.86
+numpy==1.26.4
+moviepy==2.2.1

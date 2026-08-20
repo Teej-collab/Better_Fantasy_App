@@ -1,4 +1,6 @@
-import { getChugLeaderboard, getChugSeasons } from "@/lib/api";
+import { cookies } from "next/headers";
+import { getChugLeaderboard, getChugSeasons, getMe } from "@/lib/api";
+import { ChugUpload } from "@/components/ChugUpload";
 
 export default async function ChugLeaderboardPage({
   searchParams,
@@ -8,10 +10,19 @@ export default async function ChugLeaderboardPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : undefined;
 
-  const [{ seasons }, { leaderboard }] = await Promise.all([getChugSeasons(), getChugLeaderboard(season)]);
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+
+  const [{ seasons }, { leaderboard }, me] = await Promise.all([
+    getChugSeasons(),
+    getChugLeaderboard(season),
+    getMe(sessionCookie),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
+      {me && <ChugUpload />}
+
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">🍺 Chug Leaderboard</h1>
         <div className="flex flex-wrap gap-x-3 text-sm">

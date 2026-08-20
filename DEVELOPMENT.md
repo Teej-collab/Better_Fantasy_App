@@ -59,6 +59,37 @@ Visit `http://127.0.0.1:8000/health` — it should return `{"status": "ok"}`
 once `DATABASE_URL` points at a real, reachable Postgres instance. Auto-generated
 API docs are at `http://127.0.0.1:8000/docs`.
 
+### Chug Analyzer's second Python environment
+
+`app/chug_analyzer/` (the CV pipeline behind `POST /chug/upload`) depends
+on mediapipe, which has no working build for the main backend's Python
+3.13 — same constraint Fantasy_Helper's `venv311` exists for. It needs
+its own Python 3.11 environment, set up once, separate from `.venv`:
+
+```bash
+cd backend
+python3.11 -m venv venv311   # brew install python@3.11 first if you don't have it
+source venv311/bin/activate
+pip install -r requirements-chug-analyzer.txt
+deactivate
+```
+
+The main backend (running in `.venv`, Python 3.13) shells out to
+`venv311/bin/python` as a subprocess for each upload
+(`app/providers/chug_analyzer_bridge.py`) — it never imports
+`app.chug_analyzer` directly. `CHUG_ANALYZER_PYTHON` overrides the
+interpreter path if `venv311` lives somewhere other than
+`backend/venv311`. Without this environment set up, `/chug/upload`
+fails with "Chug analyzer subprocess failed" (venv311/bin/python not
+found) — every other endpoint is unaffected.
+
+**Version pins matter more than usual here** — see the comment at the
+top of `requirements-chug-analyzer.txt`: the latest mediapipe (1.0.x)
+dropped the legacy `mp.solutions` API this pipeline is built on
+entirely, in favor of a new Tasks API. `0.10.21` is confirmed to still
+install cleanly and work on Python 3.11 / Apple Silicon; don't bump it
+without re-verifying `mp.solutions.hands.Hands()` still instantiates.
+
 ### Migrations (Alembic)
 
 Migrations are hand-written raw SQL (`op.execute(...)`), not ORM

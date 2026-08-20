@@ -23,6 +23,25 @@ async def get_chug_owed_by_owner(conn, season: int | None):
     )
 
 
+async def insert_chug_score(
+    conn, discord_user_id: int, season: int, week: int | None,
+    duration_seconds: float, smoothness_score: float, hype_score: float, final_score: float,
+):
+    """Video URL is deliberately never set — same as the original Discord
+    bot's chug_watcher.py, which discards the uploaded file after scoring
+    rather than persisting it anywhere. See app/routers/chug.py's upload
+    endpoint."""
+    return await conn.fetchrow(
+        """
+        INSERT INTO chug_scores
+            (discord_user_id, chug_time_seconds, smoothness_score, hype_score, final_score, season, week)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+        """,
+        discord_user_id, duration_seconds, smoothness_score, hype_score, final_score, season, week,
+    )
+
+
 async def get_chug_completions(conn):
     return await conn.fetch(
         """

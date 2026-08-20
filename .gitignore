@@ -8,6 +8,7 @@ __pycache__/
 *.pyo
 backend/.venv/
 backend/venv/
+backend/venv311/
 
 # Node (frontend) — frontend/.gitignore also covers this, kept here for
 # anything run from the repo root
