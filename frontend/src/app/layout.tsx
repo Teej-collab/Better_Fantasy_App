@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { listSeasons } from "@/lib/api";
 import { AuthStatus } from "@/components/AuthStatus";
+import { HideOnHome } from "@/components/HideOnHome";
+import { PageShell } from "@/components/PageShell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -55,6 +57,12 @@ async function NavBar() {
         <a href="/rivalries" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
           Rivalries
         </a>
+        <a href="/players" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+          Players
+        </a>
+        <a href="/rules" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+          Rules
+        </a>
         <AuthStatus />
       </nav>
     </header>
@@ -68,8 +76,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <NavBar />
-        <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">{children}</main>
+        <HideOnHome>
+          <NavBar />
+        </HideOnHome>
+        <PageShell>{children}</PageShell>
       </body>
     </html>
   );
