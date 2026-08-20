@@ -554,6 +554,23 @@ against a real roster yet — that first real end-to-end run is still
 ahead, deliberately manual and outside the test suite (see
 `ESPN_LINEUP_WRITE.md`'s "After a capture lands").
 
+Update (Aug 19): before building anything for multi-owner access, you
+chose to test whether one commissioner-level account can write a
+DIFFERENT team's lineup, rather than assuming every owner needs their
+own stored ESPN credentials. Added `as_league_manager` (default False)
+to `set_lineup()`/`swap_players()` so that test is actually possible —
+ESPN's write body carries an `isLeagueManager` flag we'd been hardcoding
+to `false`. Not yet run. See `ESPN_LINEUP_WRITE.md`'s "Open question:
+does one member's credentials cover other teams?" for what each outcome
+means. Also clarified for testing: the write path already always reads
+live from ESPN (never our DB), so pre-draft roster staleness doesn't
+block testing it — only the web app's own display pages need a fresh
+`POST /admin/sync` to look right, which is a live pull with no special
+refresh/expiry logic, safe to re-run anytime (including right after the
+real draft, since the scheduler's auto-refresh is gated to NFL game
+windows, not draft timing). 1 more test (the flag reaching the request
+body), 102 total passing.
+
 Revisits the "not feasible" write-capability call from Phase 7 at your
 explicit request, this time with a proper investigation instead of
 stopping at "the library we use doesn't support it": re-confirmed

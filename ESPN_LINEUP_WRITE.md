@@ -265,6 +265,37 @@ opportunistically rather than needing a deliberate capture:
   which is reassuring but not the same as testing what happens with a
   stale value.
 
+## Open question: does one member's credentials cover other teams?
+
+Every capture so far shows a member writing their OWN team's roster —
+`memberId` in the body always matched the requesting member's own
+cookie-derived GUID, and `teamId` was their own team. Whether these same
+credentials (one commissioner's `espn_s2`/`SWID` in `.env`) can write a
+DIFFERENT team's lineup is **not verified**, and it matters a lot for
+whether this ever becomes a multi-owner feature (every owner managing
+their own team from Discord/the web app) or requires collecting and
+securely storing every owner's own ESPN session cookies.
+
+The request body carries an `isLeagueManager` flag, suggesting ESPN's
+backend is manager-role-aware. `set_lineup()`/`swap_players()` now
+accept an `as_league_manager: bool = False` parameter (defaults to
+False, matching every verified capture) specifically so this can be
+tested deliberately: try writing a *different* team's lineup, once with
+the flag off and once with it on, and see whether ESPN accepts or
+rejects each. Two outcomes:
+- **Works (with or without the flag)** — no per-owner credential storage
+  ever needed; a single commissioner-level account already covers the
+  whole league.
+- **Rejected either way** — confirms each owner needs to authenticate
+  with their own ESPN session for the app to act on their behalf, which
+  is a real credential-security feature (not yet designed) — likely a
+  new column or table under `owners` (which already has `espn_member_id`
+  and links to `users` via `user_id` from Discord OAuth), encrypted at
+  rest, with each owner submitting their own cookies through some UI.
+
+This test hasn't been run yet — status here will move to VERIFIED once
+it has.
+
 If either of those needs chasing down later, the capture process below
 is kept for reference — same DevTools steps, same redaction rule.
 

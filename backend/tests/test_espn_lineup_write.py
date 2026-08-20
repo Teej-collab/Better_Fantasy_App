@@ -91,6 +91,26 @@ def test_single_item_write_sends_the_verified_request_shape(monkeypatch):
     assert call["cookies"] == {"espn_s2": "s2-secret-value", "SWID": "{00000000-FAKE-0000-FAKE-000000000000}"}
 
 
+def test_as_league_manager_flag_flows_into_the_request_body(monkeypatch):
+    # isLeagueManager defaults to False (matching every verified
+    # capture) — this locks in that the opt-in override actually reaches
+    # the request body, for testing the own-team-vs-other-team question
+    # (see this module's docstring). Whether ESPN's server does anything
+    # different with it is a separate, unverified question.
+    client, bench_rb = _client_with_open_slot_roster(monkeypatch, dry_run=False)
+    captured_calls = []
+
+    def fake_post(url, params=None, json=None, headers=None, cookies=None, timeout=None):
+        captured_calls.append(json)
+        bench_rb.lineupSlot = "RB"
+        return _FakeResponse(200, {"status": "EXECUTED"})
+
+    monkeypatch.setattr("app.providers.espn.lineup_client.requests.post", fake_post)
+
+    client.set_lineup(4, "Bench RB", "RB", as_league_manager=True)
+    assert captured_calls[0]["isLeagueManager"] is True
+
+
 def test_dry_run_still_default_and_never_calls_requests_post(monkeypatch):
     client, _ = _client_with_open_slot_roster(monkeypatch, dry_run=True)
     calls = []

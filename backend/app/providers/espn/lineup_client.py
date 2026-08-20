@@ -35,6 +35,15 @@ config.dry_run:
     never enough on its own). Never retries on timeout/error — see
     ESPNWriteTimeoutError's docstring for why that's specifically
     dangerous here.
+
+OWN-TEAM VS. OTHER-TEAM WRITES: every capture so far authenticated as a
+member writing their OWN team's roster. Whether these same credentials
+can write a DIFFERENT team's roster — e.g. a commissioner managing
+another owner's lineup — is unverified; ESPN's real request body does
+carry an `isLeagueManager` flag, which set_lineup()/swap_players() now
+expose as `as_league_manager` (default False, matching every verified
+capture) specifically so that question can be tested deliberately rather
+than guessed at. Until it's tested, assume it does nothing.
 """
 import logging
 from datetime import datetime, timezone
@@ -260,7 +269,12 @@ class ESPNLineupClient:
     # ---- writes (see module docstring for verification status) --------
 
     def set_lineup(
-        self, team_id: int, player_name: str, to_slot: str | int, season: int | None = None
+        self,
+        team_id: int,
+        player_name: str,
+        to_slot: str | int,
+        season: int | None = None,
+        as_league_manager: bool = False,
     ) -> MutationResult:
         plan = self.plan_lineup_change(team_id, player_name, to_slot, season)
         items = self._lineup_change_items(plan)
@@ -272,11 +286,17 @@ class ESPNLineupClient:
             f"league={self.config.league_id} team={team_id} "
             f"player={plan.player.player_id} from_slot={plan.from_slot_id} to_slot={plan.to_slot_id}"
             + (f" displaces={plan.displaced_player.player_id}" if plan.displaced_player else "")
+            + (" as_league_manager=true" if as_league_manager else "")
         )
-        return self._send_mutation(team_id, items, expected, season, description)
+        return self._send_mutation(team_id, items, expected, season, description, as_league_manager)
 
     def swap_players(
-        self, team_id: int, player_a_name: str, player_b_name: str, season: int | None = None
+        self,
+        team_id: int,
+        player_a_name: str,
+        player_b_name: str,
+        season: int | None = None,
+        as_league_manager: bool = False,
     ) -> MutationResult:
         plan = self.plan_swap(team_id, player_a_name, player_b_name, season)
         items = [
@@ -301,8 +321,9 @@ class ESPNLineupClient:
             f"league={self.config.league_id} team={team_id} swap "
             f"player_a={plan.player_a.player_id}(slot={plan.player_a.lineup_slot_id}) "
             f"player_b={plan.player_b.player_id}(slot={plan.player_b.lineup_slot_id})"
+            + (" as_league_manager=true" if as_league_manager else "")
         )
-        return self._send_mutation(team_id, items, expected, season, description)
+        return self._send_mutation(team_id, items, expected, season, description, as_league_manager)
 
     @staticmethod
     def _lineup_change_items(plan: LineupChangePlan) -> list[dict]:
@@ -336,6 +357,7 @@ class ESPNLineupClient:
         expected_slot_by_player_id: dict[int, int],
         season: int | None,
         description: str,
+        as_league_manager: bool = False,
     ) -> MutationResult:
         if self.config.dry_run:
             logger.info("ESPN lineup mutation (DRY RUN, not sent): %s dry_run=true", description)
@@ -363,7 +385,12 @@ class ESPNLineupClient:
 
         year = season or self.config.active_season
         body = {
-            "isLeagueManager": False,
+            # VERIFIED only for the false/own-team case (see
+            # ESPN_LINEUP_WRITE.md). Whether ESPN actually honors true
+            # here to unlock writing another team's roster — the
+            # question as_league_manager exists to test — is NOT
+            # verified; that's exactly what this parameter is for.
+            "isLeagueManager": as_league_manager,
             "teamId": team_id,
             "type": "ROSTER",
             "memberId": self.config.swid,
