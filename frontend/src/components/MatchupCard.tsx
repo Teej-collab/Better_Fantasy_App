@@ -1,11 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import type { MatchupContextSide, MatchupRivalry, WeekMatchupContextItem } from "@/lib/api";
+import type { MatchupContextSide, MatchupRivalry, RecentMeeting, WeekMatchupContextItem } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 
 const STREAK_ICON: Record<string, string> = { hot: " \u{1F525}", cold: " \u{1F976}", neutral: "" };
+
+// One color per tier so different rivalries read as visually distinct
+// at a glance, not just differently-worded copies of the same badge.
+// Falls back to the "Developing" look for any tier value not in this
+// list, rather than erroring on an unexpected string.
+const TIER_BADGE_CLASS: Record<string, string> = {
+  Legendary: "bg-purple-100 text-purple-800 dark:bg-purple-400/20 dark:text-purple-300",
+  Historic: "bg-amber-100 text-amber-800 dark:bg-amber-400/20 dark:text-amber-300",
+  Developing: "bg-slate-100 text-slate-700 dark:bg-slate-400/20 dark:text-slate-300",
+};
 
 // Client component so expand/collapse is free, local UI state — every
 // matchup's full context (rosters, head-to-head, streaks, etc.) is
@@ -108,7 +118,7 @@ function TeamSummary({ side }: { side: MatchupContextSide }) {
 }
 
 function HeadToHeadSection({ matchup }: { matchup: WeekMatchupContextItem }) {
-  const { head_to_head: h2h, home, away, rivalry } = matchup;
+  const { head_to_head: h2h, home, away } = matchup;
   const totalGames = h2h.wins_home + h2h.wins_away + h2h.ties;
 
   return (
@@ -117,23 +127,64 @@ function HeadToHeadSection({ matchup }: { matchup: WeekMatchupContextItem }) {
       {totalGames === 0 ? (
         <p className="text-black/50 dark:text-white/50">First meeting between these two.</p>
       ) : (
-        <p>
-          {home.team_name} {h2h.wins_home} – {h2h.wins_away} {away.team_name}
-          {h2h.ties > 0 && ` (${h2h.ties} tie${h2h.ties > 1 ? "s" : ""})`}
-          {h2h.last_season !== null && (
-            <span className="text-black/50 dark:text-white/50">
-              {" "}
-              &middot; last met {h2h.last_season} Wk {h2h.last_week}
-            </span>
-          )}
-        </p>
+        <>
+          <p>
+            {home.team_name} {h2h.wins_home} – {h2h.wins_away} {away.team_name}
+            {h2h.ties > 0 && ` (${h2h.ties} tie${h2h.ties > 1 ? "s" : ""})`}
+            {h2h.last_season !== null && (
+              <span className="text-black/50 dark:text-white/50">
+                {" "}
+                &middot; last met {h2h.last_season} Wk {h2h.last_week}
+              </span>
+            )}
+          </p>
+          <RecentMeetingsRow meetings={h2h.recent_meetings} home={home} away={away} />
+        </>
       )}
-      {rivalry?.description && (
-        <p className="mt-1 text-black/60 dark:text-white/60">
-          {rivalry.tagline && <span className="italic">&ldquo;{rivalry.tagline}&rdquo; </span>}
-          {rivalry.description}
-        </p>
-      )}
+    </div>
+  );
+}
+
+// Dots, not team names, per the ask — a glanceable form guide (like a
+// sports app's W/L streak indicator) instead of repeating both team
+// names five times. Which side "won" is still available on hover/
+// long-press via the title tooltip, without cluttering the layout by
+// default.
+function RecentMeetingsRow({
+  meetings,
+  home,
+  away,
+}: {
+  meetings: RecentMeeting[];
+  home: MatchupContextSide;
+  away: MatchupContextSide;
+}) {
+  if (meetings.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <span className="text-xs text-black/40 dark:text-white/40">Last {meetings.length}</span>
+      <div className="flex items-center gap-1">
+        {meetings.map((g, i) => (
+          <span
+            key={i}
+            title={`${g.season} Wk ${g.week}: ${
+              g.tie ? "Tie" : g.home_won ? `${home.team_name} won` : `${away.team_name} won`
+            }`}
+            className={
+              "h-2.5 w-2.5 rounded-full " +
+              (g.tie ? "bg-black/20 dark:bg-white/20" : g.home_won ? "bg-sky-500" : "bg-amber-500")
+            }
+          />
+        ))}
+      </div>
+      <span className="flex items-center gap-2 text-xs text-black/40 dark:text-white/40">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-sky-500" /> Home
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-500" /> Away
+        </span>
+      </span>
     </div>
   );
 }
@@ -147,8 +198,12 @@ function GameOfWeekBadge() {
 }
 
 function RivalryBadge({ rivalry }: { rivalry: MatchupRivalry }) {
+  const colorClass = TIER_BADGE_CLASS[rivalry.tier ?? ""] ?? TIER_BADGE_CLASS.Developing;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-800 dark:bg-rose-400/20 dark:text-rose-300">
+    <span
+      title={rivalry.tier ? `${rivalry.tier} rivalry` : undefined}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${colorClass}`}
+    >
       {rivalry.emoji ?? "\u{1F525}"} {rivalry.name}
     </span>
   );

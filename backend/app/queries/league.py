@@ -234,12 +234,30 @@ async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int):
     ties = sum(1 for g in games if g["a_score"] == g["b_score"])
     last_game = games[-1] if games else None
 
+    def _result(g):
+        if g["a_score"] > g["b_score"]:
+            return "a"
+        if g["b_score"] > g["a_score"]:
+            return "b"
+        return "tie"
+
     return {
         "wins_a": wins_a,
         "wins_b": wins_b,
         "ties": ties,
         "last_season": last_game["season"] if last_game else None,
         "last_week": last_game["week"] if last_game else None,
+        # Oldest-to-newest, matching `games`' own order — most recent last.
+        "recent_games": [
+            {
+                "season": g["season"],
+                "week": g["week"],
+                "winner": _result(g),
+                "a_score": float(g["a_score"]),
+                "b_score": float(g["b_score"]),
+            }
+            for g in games[-5:]
+        ],
     }
 
 

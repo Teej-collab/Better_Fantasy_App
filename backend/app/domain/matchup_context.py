@@ -115,12 +115,21 @@ async def build_week_matchup_context(conn, season: int, week: int):
                 "rivalry": _rivalry_dict(rivalry, home_team["owner_id"]) if rivalry else None,
                 "head_to_head": {
                     # get_head_to_head was called with home's owner_id as
-                    # owner_a_id, so wins_a is always home's win count here.
+                    # owner_a_id, so wins_a/"a" is always home's side here.
                     "wins_home": h2h["wins_a"],
                     "wins_away": h2h["wins_b"],
                     "ties": h2h["ties"],
                     "last_season": h2h["last_season"],
                     "last_week": h2h["last_week"],
+                    "recent_meetings": [
+                        {
+                            "season": g["season"],
+                            "week": g["week"],
+                            "home_won": g["winner"] == "a",
+                            "tie": g["winner"] == "tie",
+                        }
+                        for g in h2h["recent_games"]
+                    ],
                 },
                 "home": _side_dict(
                     home_team, m["home_score"], standings_by_team.get(m["home_team_id"]),

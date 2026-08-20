@@ -137,12 +137,21 @@ export type MatchupRivalry = {
   all_time_wins_away: number;
 };
 
+export type RecentMeeting = {
+  season: number;
+  week: number;
+  home_won: boolean;
+  tie: boolean;
+};
+
 export type MatchupHeadToHead = {
   wins_home: number;
   wins_away: number;
   ties: number;
   last_season: number | null;
   last_week: number | null;
+  // Oldest first, most recent last — capped at 5.
+  recent_meetings: RecentMeeting[];
 };
 
 export type WeekMatchupContextItem = {

@@ -93,6 +93,24 @@ async def test_get_head_to_head_counts_wins_and_excludes_unplayed(pool):
     assert h2h["ties"] == 0
     assert h2h["last_season"] == TEST_SEASON
     assert h2h["last_week"] == 2
+    assert [g["winner"] for g in h2h["recent_games"]] == ["a", "b"]  # unplayed excluded, oldest first
+
+
+async def test_get_head_to_head_recent_games_capped_at_five(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        for week in range(1, 8):  # 7 played games
+            await conn.execute(
+                """
+                INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+                VALUES ($1, $2, $3, $4, 100, 90, FALSE)
+                """,
+                TEST_SEASON, week, team_a, team_b,
+            )
+        h2h = await get_head_to_head(conn, owner_a, owner_b)
+    assert h2h["wins_a"] == 7
+    assert len(h2h["recent_games"]) == 5
+    assert [g["week"] for g in h2h["recent_games"]] == [3, 4, 5, 6, 7]  # most recent 5, oldest first
 
 
 async def test_get_rivalry_for_owners_matches_either_order(pool):
@@ -188,6 +206,35 @@ async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(
     assert m["rivalry"]["name"] == "The Rumble"
     assert m["rivalry"]["all_time_wins_home"] == 5  # home (team_a) is owner_a
     assert m["rivalry"]["all_time_wins_away"] == 3
+
+
+async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        # Week 1: team_a (home) wins.
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $2, $3, 110, 90, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        # Week 7: the matchup being displayed — team_a (home) loses.
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 7, $2, $3, 80, 100, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/7/matchup-context")
+    m = resp.json()["matchups"][0]
+    meetings = m["head_to_head"]["recent_meetings"]
+    assert [g["week"] for g in meetings] == [1, 7]
+    assert meetings[0]["home_won"] is True
+    assert meetings[1]["home_won"] is False
+    assert all(g["tie"] is False for g in meetings)
 
 
 async def test_matchup_context_empty_week_returns_empty_list(pool):
