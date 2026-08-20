@@ -22,7 +22,7 @@ allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").spl
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
     # Needed so the browser sends the session cookie on cross-origin
     # requests from the frontend (different port = different origin) to
