@@ -19,8 +19,9 @@ type Sign = {
 /**
  * "The Weekend" landing page — hero title, tagline, and six neon
  * "vacancy sign" nav links, each with its own distinct idle animation
- * per the project owner's spec. No background photo (none available —
- * see conversation) — the room is a stylized CSS gradient instead.
+ * per the project owner's spec. Background photo lives at
+ * public/images/weekend-room.jpg (see globals.css's .weekend-room-bg
+ * for the scrim overlay that keeps text legible over it).
  *
  * Audio: a pour sound (once) + ambient jazz (looping), neither of
  * which exist as files in this repo yet — see the <audio> elements'
@@ -92,6 +93,11 @@ export function WeekendLanding({
               backgroundImage: "linear-gradient(90deg, #fbbf24, #ec4899, #38bdf8)",
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
+              // A thin bright stroke around the gradient fill — real
+              // neon glass reads as near-white hot at the tube itself
+              // with color glowing out from it; a flat gradient fill
+              // alone looks more like colored paint than lit glass.
+              WebkitTextStroke: "1.5px rgba(255,255,255,0.85)",
             }}
           >
             The Weekend
@@ -125,7 +131,7 @@ export function WeekendLanding({
             >
               <span
                 className={`neon-sign neon-sign--${sign.animation} ${satisfy.className} block px-4 py-2.5 text-base sm:px-5 sm:py-3 sm:text-lg`}
-                style={{ ["--sign-delay" as string]: `${i * 0.25}s` } as React.CSSProperties}
+                style={{ ["--sign-delay" as string]: `${i * 0.45}s` } as React.CSSProperties}
               >
                 {sign.animation === "cyan" && <span className="neon-sign__ripple" aria-hidden />}
                 <span className="relative z-10">{sign.label}</span>

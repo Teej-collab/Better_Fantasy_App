@@ -75,46 +75,76 @@ body {
 
 /* ============================================================
    "The Weekend" landing page — WeekendLanding.tsx
-   A stylized (no photo asset) speakeasy backdrop + neon hero title
-   + six neon "vacancy sign" nav links, each with its own distinct
-   idle animation per the project owner's spec.
+   Real photo backdrop (public/images/weekend-room.jpg) + neon hero
+   title + six neon "vacancy sign" nav links, each with its own
+   distinct idle animation per the project owner's spec.
    ============================================================ */
 
 .weekend-room-bg {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 60% 40% at 18% 25%, rgba(140, 85, 35, 0.35), transparent 60%),
-    radial-gradient(ellipse 55% 35% at 78% 15%, rgba(190, 110, 40, 0.22), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 50% 105%, rgba(70, 25, 45, 0.4), transparent 60%),
-    radial-gradient(1px 1px at 12% 20%, rgba(255, 210, 150, 0.8), transparent),
-    radial-gradient(1px 1px at 82% 12%, rgba(255, 210, 150, 0.7), transparent),
-    radial-gradient(1.5px 1.5px at 65% 35%, rgba(255, 210, 150, 0.6), transparent),
-    radial-gradient(1px 1px at 30% 60%, rgba(255, 210, 150, 0.6), transparent),
-    radial-gradient(1px 1px at 90% 55%, rgba(255, 210, 150, 0.5), transparent),
-    linear-gradient(180deg, #1a1108 0%, #150d09 40%, #0c0705 75%, #070404 100%);
+  background-image: url("/images/weekend-room.jpg");
+  background-size: cover;
+  background-position: center;
 }
 
+/* Dark scrim over the photo — darker at top/bottom where the title and
+   sign row sit, lighter in the middle so the room itself still reads.
+   Without this the white/colored text loses contrast against the
+   photo's own bright spots (lamps, glass reflections). */
 .weekend-room-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: repeating-linear-gradient(
-    90deg,
-    rgba(255, 200, 140, 0.035) 0px,
-    rgba(255, 200, 140, 0.035) 2px,
-    transparent 2px,
-    transparent 44px
+  background: linear-gradient(
+    180deg,
+    rgba(5, 3, 2, 0.75) 0%,
+    rgba(5, 3, 2, 0.35) 28%,
+    rgba(5, 3, 2, 0.25) 60%,
+    rgba(5, 3, 2, 0.8) 100%
   );
-  mix-blend-mode: overlay;
 }
 
+/* Neon tube look: a bright near-white core (via -webkit-text-stroke on
+   the title element in WeekendLanding.tsx) plus layered color glow —
+   real neon tubing reads as white-hot at the glass with color radiating
+   outward, which a flat gradient fill alone doesn't capture. Includes a
+   continuous, subtle buzz — real neon signs never sit perfectly still. */
 .weekend-hero-title {
   text-shadow:
-    0 0 8px rgba(255, 255, 255, 0.65),
-    0 0 18px rgba(236, 72, 153, 0.75),
-    0 0 34px rgba(56, 189, 248, 0.55),
-    0 0 55px rgba(249, 115, 22, 0.4);
+    0 0 4px rgba(255, 255, 255, 0.9),
+    0 0 10px rgba(255, 255, 255, 0.6),
+    0 0 22px rgba(236, 72, 153, 0.8),
+    0 0 40px rgba(56, 189, 248, 0.6),
+    0 0 65px rgba(249, 115, 22, 0.45),
+    0 0 95px rgba(236, 72, 153, 0.3);
+  animation: weekend-neon-buzz 4s ease-in-out 2.2s infinite;
+}
+
+@keyframes weekend-neon-buzz {
+  0%,
+  93%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  94% {
+    opacity: 0.85;
+    filter: brightness(0.8);
+  }
+  95% {
+    opacity: 1;
+    filter: brightness(1.1);
+  }
+  96% {
+    opacity: 0.9;
+    filter: brightness(0.85);
+  }
+  97%,
+  99% {
+    opacity: 1;
+    filter: brightness(1);
+  }
 }
 
 .weekend-tagline {
@@ -203,7 +233,7 @@ body {
      element this pseudo-element lives inside — custom properties
      inherit through the DOM (including into pseudo-elements), so this
      picks up the same per-sign stagger without repeating the value. */
-  animation: neon-ripple-sweep 2.6s ease-in-out calc(var(--sign-delay, 0s) + 0.5s) infinite;
+  animation: neon-ripple-sweep 4s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
 }
 
 @keyframes neon-flicker-twice {
@@ -296,32 +326,32 @@ body {
 .neon-sign--blue {
   --neon-color: #38bdf8;
   animation:
-    weekend-fade-in 0.5s ease-out var(--sign-delay, 0s) both,
-    neon-flicker-twice 1.7s ease-out calc(var(--sign-delay, 0s) + 0.5s) 1 forwards;
+    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
+    neon-flicker-twice 2.6s ease-out calc(var(--sign-delay, 0s) + 0.9s) 1 forwards;
 }
 .neon-sign--pink {
   --neon-color: #ec4899;
   animation:
-    weekend-fade-in 0.5s ease-out var(--sign-delay, 0s) both,
-    neon-heartbeat 1.9s ease-in-out calc(var(--sign-delay, 0s) + 0.5s) infinite;
+    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
+    neon-heartbeat 3.2s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
 }
 .neon-sign--gold {
   --neon-color: #facc15;
   animation:
-    weekend-fade-in 0.5s ease-out var(--sign-delay, 0s) both,
-    neon-sparkle 3.4s linear calc(var(--sign-delay, 0s) + 0.5s) infinite;
+    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
+    neon-sparkle 5.5s linear calc(var(--sign-delay, 0s) + 0.9s) infinite;
 }
 .neon-sign--orange {
   --neon-color: #f97316;
   animation:
-    weekend-fade-in 0.5s ease-out var(--sign-delay, 0s) both,
-    neon-wave 4.2s ease-in-out calc(var(--sign-delay, 0s) + 0.5s) infinite;
+    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
+    neon-wave 6.5s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
 }
 .neon-sign--cyan {
   --neon-color: #22d3ee;
-  animation: weekend-fade-in 0.5s ease-out var(--sign-delay, 0s) both;
+  animation: weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both;
 }
 .neon-sign--purple {
   --neon-color: #a855f7;
-  animation: weekend-fade-in 0.6s ease-out var(--sign-delay, 0s) both;
+  animation: weekend-fade-in 1s ease-out var(--sign-delay, 0s) both;
 }
