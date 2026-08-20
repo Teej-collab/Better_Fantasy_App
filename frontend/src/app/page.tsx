@@ -5,9 +5,13 @@ import {
   getMyWeek,
   getNflScoreboard,
   getStandings,
+  getWeekMatchupContext,
   getWeeklyAwards,
+  listRivalries,
   listSeasons,
+  type Rivalry,
   type StandingsRow,
+  type WeekMatchupContextItem,
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
@@ -22,6 +26,10 @@ const SECTION_ACCENT: Record<string, string> = {
   rules: "bg-purple-500",
 };
 
+// Lower = shown first — same escalating hierarchy as the /weekend signs'
+// tier-colored badges (MatchupCard.tsx's TIER_BADGE_CLASS).
+const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
+
 export default async function HomePage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
@@ -35,17 +43,34 @@ export default async function HomePage() {
   let standings: StandingsRow[] = [];
   let weeklyAwards: WeeklyAwards | null = null;
   let weekPlayed = false;
+  let weekMatchups: WeekMatchupContextItem[] = [];
+  let topRivalries: Rivalry[] = [];
 
   if (season !== null) {
     const { current_week } = await getCurrentWeek(season);
     week = current_week && current_week >= 1 ? current_week : 1;
-    const [standingsRes, awardsRes] = await Promise.all([getStandings(season), getWeeklyAwards(season, week)]);
+    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes] = await Promise.all([
+      getStandings(season),
+      getWeeklyAwards(season, week),
+      getWeekMatchupContext(season, week),
+      listRivalries(),
+    ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
+    weekMatchups = matchupContextRes.matchups;
     weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
+    topRivalries = [...rivalriesRes.rivalries]
+      .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
+      .slice(0, 3);
   }
 
-  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed);
+  // "Other" = every matchup except the logged-in owner's own (already
+  // shown in the hero above). When logged out, myWeek is null and
+  // nothing gets excluded — every matchup is "other".
+  const otherMatchups = weekMatchups.filter((m) => m.matchup_id !== myWeek?.matchup?.matchup_id);
+  const rivalryGamesThisWeek = weekMatchups.filter((m) => m.is_rivalry);
+
+  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek);
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,6 +119,79 @@ export default async function HomePage() {
         </section>
       )}
 
+      {otherMatchups.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader
+            color="matchups"
+            title="Other Matchups"
+            href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
+          />
+          <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
+            {otherMatchups.map((m) => (
+              <li key={m.matchup_id}>
+                <a
+                  href={`/matchups/${m.matchup_id}`}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
+                      {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
+                      <span className="truncate">{m.home.team_name}</span>
+                    </span>
+                    <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
+                  </span>
+                  <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
+                    <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
+                    <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {(rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
+          {rivalryGamesThisWeek.length > 0 ? (
+            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
+              {rivalryGamesThisWeek.map((m) => (
+                <li key={m.matchup_id}>
+                  <a
+                    href={`/matchups/${m.matchup_id}`}
+                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span>{m.rivalry?.emoji ?? "⚔️"}</span>
+                      <span className="truncate font-medium">{m.rivalry?.name}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
+                      {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
+              {topRivalries.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span>{r.emoji ?? "⚔️"}</span>
+                    <span className="truncate font-medium">{r.name}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
+                    {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {weekPlayed && weeklyAwards && season !== null && week !== null && (
         <section className="flex flex-col gap-2">
           <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
@@ -124,7 +222,8 @@ function buildTickerItems(
   nflGames: Awaited<ReturnType<typeof getNflScoreboard>>,
   awards: WeeklyAwards | null,
   standings: StandingsRow[],
-  weekPlayed: boolean
+  weekPlayed: boolean,
+  rivalryGamesThisWeek: WeekMatchupContextItem[]
 ): string[] {
   const items: string[] = [];
 
@@ -137,6 +236,10 @@ function buildTickerItems(
     } else {
       items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
     }
+  }
+
+  for (const m of rivalryGamesThisWeek.slice(0, 2)) {
+    items.push(`⚔️ Rivalry Alert: ${m.rivalry?.name ?? `${m.home.team_name} vs ${m.away.team_name}`}`);
   }
 
   if (weekPlayed && awards) {
