@@ -233,30 +233,57 @@ body {
      element this pseudo-element lives inside — custom properties
      inherit through the DOM (including into pseudo-elements), so this
      picks up the same per-sign stagger without repeating the value. */
-  animation: neon-ripple-sweep 4s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
+  animation: neon-ripple-sweep 4s ease-in-out calc(var(--sign-delay, 0s) + 2.4s) infinite;
 }
 
-@keyframes neon-flicker-twice {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  4%,
-  9% {
-    opacity: 0.2;
+/* Shared "genuine neon tube igniting" startup — every sign uses this
+   to power on (not just a fade): dark, a surge as gas ionizes, a stutter
+   back near-off, a second surge/stutter, then a couple of settling
+   overshoots before holding steady. This IS the "flickers to life" feel
+   — signs with their own ongoing idle animation (heartbeat/sparkle/
+   wave/ripple) pick that up right after this finishes; Standings and
+   Rules have none, so they stay lit and steady once this completes. */
+@keyframes neon-power-on {
+  0% {
+    opacity: 0;
+    filter: brightness(0.2);
   }
   6% {
-    opacity: 0.8;
+    opacity: 0.55;
+    filter: brightness(1.9);
   }
-  15%,
-  19% {
-    opacity: 0.25;
+  10% {
+    opacity: 0.05;
+    filter: brightness(0.2);
   }
-  17% {
+  16% {
     opacity: 0.9;
+    filter: brightness(1.7);
   }
-  24% {
+  21% {
+    opacity: 0.15;
+    filter: brightness(0.3);
+  }
+  30% {
     opacity: 1;
+    filter: brightness(1.45);
+  }
+  38% {
+    opacity: 0.55;
+    filter: brightness(0.65);
+  }
+  48% {
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+  60% {
+    opacity: 0.9;
+    filter: brightness(0.92);
+  }
+  75%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
   }
 }
 
@@ -325,33 +352,31 @@ body {
 
 .neon-sign--blue {
   --neon-color: #38bdf8;
-  animation:
-    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
-    neon-flicker-twice 2.6s ease-out calc(var(--sign-delay, 0s) + 0.9s) 1 forwards;
+  animation: neon-power-on 2.4s ease-out var(--sign-delay, 0s) both;
 }
 .neon-sign--pink {
   --neon-color: #ec4899;
   animation:
-    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
-    neon-heartbeat 3.2s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
+    neon-power-on 2.4s ease-out var(--sign-delay, 0s) both,
+    neon-heartbeat 3.2s ease-in-out calc(var(--sign-delay, 0s) + 2.4s) infinite;
 }
 .neon-sign--gold {
   --neon-color: #facc15;
   animation:
-    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
-    neon-sparkle 5.5s linear calc(var(--sign-delay, 0s) + 0.9s) infinite;
+    neon-power-on 2.4s ease-out var(--sign-delay, 0s) both,
+    neon-sparkle 5.5s linear calc(var(--sign-delay, 0s) + 2.4s) infinite;
 }
 .neon-sign--orange {
   --neon-color: #f97316;
   animation:
-    weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both,
-    neon-wave 6.5s ease-in-out calc(var(--sign-delay, 0s) + 0.9s) infinite;
+    neon-power-on 2.4s ease-out var(--sign-delay, 0s) both,
+    neon-wave 6.5s ease-in-out calc(var(--sign-delay, 0s) + 2.4s) infinite;
 }
 .neon-sign--cyan {
   --neon-color: #22d3ee;
-  animation: weekend-fade-in 0.9s ease-out var(--sign-delay, 0s) both;
+  animation: neon-power-on 2.4s ease-out var(--sign-delay, 0s) both;
 }
 .neon-sign--purple {
   --neon-color: #a855f7;
-  animation: weekend-fade-in 1s ease-out var(--sign-delay, 0s) both;
+  animation: neon-power-on 2.4s ease-out var(--sign-delay, 0s) both;
 }

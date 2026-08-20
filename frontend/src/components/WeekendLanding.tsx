@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Great_Vibes, Satisfy } from "next/font/google";
+import { Lobster, Satisfy } from "next/font/google";
 
-const greatVibes = Great_Vibes({ weight: "400", subsets: ["latin"] });
+// Lobster instead of a thin script — thick, bold strokes read as an
+// actual lit marquee sign rather than elegant invitation lettering.
+const lobster = Lobster({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 type SignAnimation = "blue" | "pink" | "gold" | "orange" | "cyan" | "purple";
@@ -88,16 +90,17 @@ export function WeekendLanding({
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-between gap-10 px-4 py-10 text-center sm:py-16">
         <div className="flex flex-col items-center gap-3">
           <h1
-            className={`${greatVibes.className} weekend-hero-title text-6xl leading-none text-transparent sm:text-8xl`}
+            className={`${lobster.className} weekend-hero-title text-6xl leading-none text-transparent sm:text-8xl`}
             style={{
               backgroundImage: "linear-gradient(90deg, #fbbf24, #ec4899, #38bdf8)",
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
-              // A thin bright stroke around the gradient fill — real
-              // neon glass reads as near-white hot at the tube itself
-              // with color glowing out from it; a flat gradient fill
-              // alone looks more like colored paint than lit glass.
-              WebkitTextStroke: "1.5px rgba(255,255,255,0.85)",
+              // A bright stroke around the gradient fill — real neon
+              // glass reads as near-white hot at the tube itself with
+              // color glowing out from it; a flat gradient fill alone
+              // looks more like colored paint than lit glass. Thicker
+              // than before since Lobster's strokes are heavier.
+              WebkitTextStroke: "2.5px rgba(255,255,255,0.9)",
             }}
           >
             The Weekend
@@ -131,7 +134,7 @@ export function WeekendLanding({
             >
               <span
                 className={`neon-sign neon-sign--${sign.animation} ${satisfy.className} block px-4 py-2.5 text-base sm:px-5 sm:py-3 sm:text-lg`}
-                style={{ ["--sign-delay" as string]: `${i * 0.45}s` } as React.CSSProperties}
+                style={{ ["--sign-delay" as string]: `${i * 0.75}s` } as React.CSSProperties}
               >
                 {sign.animation === "cyan" && <span className="neon-sign__ripple" aria-hidden />}
                 <span className="relative z-10">{sign.label}</span>
