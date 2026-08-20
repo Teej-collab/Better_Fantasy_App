@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { getWeeklyAwards, listWeekMatchups, type WeeklyAwards } from "@/lib/api";
+import { getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
+import { MatchupCard } from "@/components/MatchupCard";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -11,11 +12,11 @@ export default async function WeekMatchupsPage({
 }) {
   const { season, week } = await params;
   const [{ matchups }, awards] = await Promise.all([
-    listWeekMatchups(Number(season), Number(week)),
+    getWeekMatchupContext(Number(season), Number(week)),
     getWeeklyAwards(Number(season), Number(week)),
   ]);
   const isPlayoffWeek = matchups.some((m) => m.is_playoff);
-  const played = matchups.some((m) => m.home_score !== null);
+  const played = matchups.some((m) => m.home.score !== null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -43,26 +44,11 @@ export default async function WeekMatchupsPage({
       {matchups.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No matchups for this week.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+        <div className="flex flex-col gap-2">
           {matchups.map((m) => (
-            <li key={m.matchup_id}>
-              <a
-                href={`/matchups/${m.matchup_id}`}
-                className="flex flex-col gap-1 py-3 hover:underline sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-              >
-                <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                  <span className="truncate">{m.home_team_name}</span>
-                  <span className="text-xs text-black/40 sm:text-sm dark:text-white/40">vs</span>
-                  <span className="truncate">{m.away_team_name}</span>
-                </span>
-                <span className="shrink-0 font-mono tabular-nums text-black/70 dark:text-white/70">
-                  {m.home_score !== null ? Number(m.home_score).toFixed(1) : "—"} –{" "}
-                  {m.away_score !== null ? Number(m.away_score).toFixed(1) : "—"}
-                </span>
-              </a>
-            </li>
+            <MatchupCard key={m.matchup_id} matchup={m} />
           ))}
-        </ul>
+        </div>
       )}
 
       {played && <WeeklyAwardsSection awards={awards} />}

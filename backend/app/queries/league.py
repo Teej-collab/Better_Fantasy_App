@@ -189,6 +189,60 @@ async def get_roster(conn, team_id: int, week: int):
     )
 
 
+async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
+    """Ported from Fantasy_Helper's bot/memory/rivalry_graph.py
+    get_rivalry, unchanged: only owner pairs someone has curated into
+    the rivalries table (name/emoji/tagline/tier) match here — most
+    matchups won't. See get_head_to_head below for the general,
+    always-available record that isn't limited to curated pairs."""
+    return await conn.fetchrow(
+        """
+        SELECT r.*, oa.display_name AS owner_a_name, ob.display_name AS owner_b_name
+        FROM rivalries r
+        JOIN owners oa ON oa.owner_id = r.owner_a_id
+        JOIN owners ob ON ob.owner_id = r.owner_b_id
+        WHERE (r.owner_a_id = $1 AND r.owner_b_id = $2) OR (r.owner_a_id = $2 AND r.owner_b_id = $1)
+        """,
+        owner_a_id, owner_b_id,
+    )
+
+
+async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int):
+    """Ported from Fantasy_Helper's scripts/sync_rivalries.py
+    compute_head_to_head, unchanged logic — but called live for ANY
+    owner pair here, not just curated rivalries (that script only ever
+    ran it for the names in rivalry_map.py and cached the result on the
+    rivalries row). Same 0-0-means-unplayed exclusion as get_standings."""
+    games = await conn.fetch(
+        """
+        SELECT m.season, m.week,
+            CASE WHEN th.owner_id = $1 THEN m.home_score ELSE m.away_score END AS a_score,
+            CASE WHEN th.owner_id = $1 THEN m.away_score ELSE m.home_score END AS b_score
+        FROM matchups m
+        JOIN teams_by_season th ON m.home_team_id = th.id
+        JOIN teams_by_season ta ON m.away_team_id = ta.id
+        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+          AND NOT (m.home_score = 0 AND m.away_score = 0)
+          AND ((th.owner_id = $1 AND ta.owner_id = $2) OR (th.owner_id = $2 AND ta.owner_id = $1))
+        ORDER BY m.season, m.week
+        """,
+        owner_a_id, owner_b_id,
+    )
+
+    wins_a = sum(1 for g in games if g["a_score"] > g["b_score"])
+    wins_b = sum(1 for g in games if g["b_score"] > g["a_score"])
+    ties = sum(1 for g in games if g["a_score"] == g["b_score"])
+    last_game = games[-1] if games else None
+
+    return {
+        "wins_a": wins_a,
+        "wins_b": wins_b,
+        "ties": ties,
+        "last_season": last_game["season"] if last_game else None,
+        "last_week": last_game["week"] if last_game else None,
+    }
+
+
 async def list_rivalries(conn):
     return await conn.fetch(
         """

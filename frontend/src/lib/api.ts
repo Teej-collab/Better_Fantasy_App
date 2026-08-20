@@ -60,8 +60,12 @@ export type RosterPlayer = {
   player_name: string;
   position: string | null;
   lineup_slot: string | null;
-  points_scored: string | null;
-  points_projected: string | null;
+  // FastAPI's jsonable_encoder serializes Decimal as a JSON number, not
+  // a string — this type previously said string, which was never
+  // actually true at runtime (Number() on either works, so it went
+  // unnoticed).
+  points_scored: number | null;
+  points_projected: number | null;
 };
 
 export type MatchupDetail = WeekMatchup & {
@@ -107,6 +111,63 @@ export function getStandings(season: number) {
 
 export function listWeekMatchups(season: number, week: number) {
   return get<{ matchups: WeekMatchup[] }>(`/seasons/${season}/weeks/${week}/matchups`);
+}
+
+export type Streak = "hot" | "cold" | "neutral";
+
+export type MatchupContextSide = {
+  team_id: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  score: number | null;
+  record: string | null;
+  streak: Streak;
+  projected_total: number | null;
+  roster: RosterPlayer[];
+};
+
+export type MatchupRivalry = {
+  name: string;
+  emoji: string | null;
+  tagline: string | null;
+  description: string | null;
+  tier: string | null;
+  all_time_wins_home: number;
+  all_time_wins_away: number;
+};
+
+export type MatchupHeadToHead = {
+  wins_home: number;
+  wins_away: number;
+  ties: number;
+  last_season: number | null;
+  last_week: number | null;
+};
+
+export type WeekMatchupContextItem = {
+  matchup_id: number;
+  is_playoff: boolean;
+  is_game_of_the_week: boolean;
+  is_rivalry: boolean;
+  rivalry: MatchupRivalry | null;
+  head_to_head: MatchupHeadToHead;
+  home: MatchupContextSide;
+  away: MatchupContextSide;
+  // The LLM narrative engine hasn't been turned on yet (real API cost
+  // per generation) — always null for now, see TODO.md.
+  narrative: string | null;
+};
+
+export type WeekMatchupContext = {
+  season: number;
+  week: number;
+  game_of_the_week_matchup_id: number | null;
+  matchups: WeekMatchupContextItem[];
+};
+
+export function getWeekMatchupContext(season: number, week: number) {
+  return get<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`);
 }
 
 export function getMatchup(matchupId: number) {

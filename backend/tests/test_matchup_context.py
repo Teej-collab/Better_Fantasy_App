@@ -1,0 +1,196 @@
+from httpx import ASGITransport, AsyncClient
+
+from app.domain.streaks import compute_streak, get_team_streaks
+from app.main import app
+from app.queries.league import get_head_to_head, get_rivalry_for_owners
+from tests.conftest import TEST_SEASON
+
+
+async def _get(path):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.get(path)
+
+
+async def _seed_two_teams(pool, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        owner_a = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-mc-owner-a", "Alice Smith",
+        )
+        owner_b = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-mc-owner-b", "Bob Jones",
+        )
+        team_a = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            season, 201, owner_a, "Team Alpha",
+        )
+        team_b = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            season, 202, owner_b, "Team Beta",
+        )
+    return owner_a, owner_b, team_a, team_b
+
+
+def test_compute_streak_hot_cold_neutral():
+    assert compute_streak([True, True, True]) == "hot"
+    assert compute_streak([False, False, False]) == "cold"
+    assert compute_streak([True, False, True]) == "neutral"
+    assert compute_streak([False, True, True, True]) == "hot"  # only last 3 count
+    assert compute_streak([True, True]) == "neutral"  # fewer than 3 games
+
+
+async def test_get_team_streaks_batched(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        for week, (a_score, b_score) in enumerate([(120, 100), (110, 90), (105, 80)], start=1):
+            await conn.execute(
+                """
+                INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+                VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+                """,
+                TEST_SEASON, week, team_a, team_b, a_score, b_score,
+            )
+
+    streaks = await get_team_streaks(pool, TEST_SEASON, [team_a, team_b])
+    assert streaks[team_a] == "hot"  # won all 3
+    assert streaks[team_b] == "cold"  # lost all 3
+
+
+async def test_get_head_to_head_counts_wins_and_excludes_unplayed(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        # Week 1: team_a (home) beats team_b (away) — owner_a win.
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $2, $3, 120, 100, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        # Week 2: team_a (home) loses to team_b (away) — owner_b win.
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 2, $2, $3, 80, 95, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        # Unplayed (0-0) — must not count.
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 3, $2, $3, 0, 0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+
+    async with pool.acquire() as conn:
+        h2h = await get_head_to_head(conn, owner_a, owner_b)
+    assert h2h["wins_a"] == 1  # week 1
+    assert h2h["wins_b"] == 1  # week 2
+    assert h2h["ties"] == 0
+    assert h2h["last_season"] == TEST_SEASON
+    assert h2h["last_week"] == 2
+
+
+async def test_get_rivalry_for_owners_matches_either_order(pool):
+    owner_a, owner_b, _, _ = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO rivalries (owner_a_id, owner_b_id, all_time_wins_a, all_time_wins_b, name, emoji, tagline, description, tier)
+            VALUES ($1, $2, 5, 3, 'The Rumble', '\U0001f94a', 'tagline', 'description', 'gold')
+            """,
+            owner_a, owner_b,
+        )
+        found_forward = await get_rivalry_for_owners(conn, owner_a, owner_b)
+        found_reversed = await get_rivalry_for_owners(conn, owner_b, owner_a)
+    assert found_forward["name"] == "The Rumble"
+    assert found_reversed["name"] == "The Rumble"
+
+
+async def test_get_rivalry_for_owners_none_when_not_curated(pool):
+    owner_a, owner_b, _, _ = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        found = await get_rivalry_for_owners(conn, owner_a, owner_b)
+    assert found is None
+
+
+async def test_matchup_context_endpoint_shape_without_rivalry(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 5, $2, $3, 120.5, 100.0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
+            VALUES ($1, 5, $2, 'Starter Guy', 'RB', 'RB', 20.5, 18.0)
+            """,
+            TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            """
+            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
+            VALUES ($1, 5, $2, 'Bench Guy', 'WR', 'BE', 10.0, 9.0)
+            """,
+            TEST_SEASON, team_a,
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/matchup-context")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["season"] == TEST_SEASON
+    assert body["week"] == 5
+    assert len(body["matchups"]) == 1
+
+    m = body["matchups"][0]
+    assert m["is_rivalry"] is False
+    assert m["rivalry"] is None
+    assert m["narrative"] is None
+    # The matchup itself is already played (real, non-zero scores) —
+    # it's correctly counted in its own head-to-head history, same as
+    # any other completed game between these two owners would be.
+    assert m["head_to_head"]["wins_home"] == 1
+    assert m["home"]["team_name"] == "Team Alpha"
+    assert m["home"]["projected_total"] == 18.0  # bench excluded from projected total
+    assert [p["player_name"] for p in m["home"]["roster"]] == ["Starter Guy", "Bench Guy"]
+
+
+async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool):
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        # owner_a is rivalry's "a" side with 5 wins; team_a (owner_a) is HOME here.
+        await conn.execute(
+            """
+            INSERT INTO rivalries (owner_a_id, owner_b_id, all_time_wins_a, all_time_wins_b, name, emoji, tagline, description, tier)
+            VALUES ($1, $2, 5, 3, 'The Rumble', '\U0001f94a', 'tagline', 'description', 'gold')
+            """,
+            owner_a, owner_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 6, $2, $3, 120.5, 100.0, FALSE)
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/matchup-context")
+    m = resp.json()["matchups"][0]
+    assert m["is_rivalry"] is True
+    assert m["rivalry"]["name"] == "The Rumble"
+    assert m["rivalry"]["all_time_wins_home"] == 5  # home (team_a) is owner_a
+    assert m["rivalry"]["all_time_wins_away"] == 3
+
+
+async def test_matchup_context_empty_week_returns_empty_list(pool):
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/16/matchup-context")
+    assert resp.status_code == 200
+    assert resp.json()["matchups"] == []

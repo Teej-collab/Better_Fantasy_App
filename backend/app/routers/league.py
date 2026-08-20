@@ -6,6 +6,7 @@ access, appropriate for a single private league's own data.
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db import get_pool
+from app.domain.matchup_context import build_week_matchup_context
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -43,6 +44,14 @@ async def week_matchups(season: int, week: int, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         rows = await queries.list_week_matchups(conn, season, week)
     return {"matchups": [dict(r) for r in rows]}
+
+
+@router.get("/seasons/{season}/weeks/{week}/matchup-context")
+async def week_matchup_context(season: int, week: int, pool=Depends(get_pool)):
+    """Everything the matchup expand-card needs for every matchup in the
+    week, in one call — see app/domain/matchup_context.py."""
+    async with pool.acquire() as conn:
+        return await build_week_matchup_context(conn, season, week)
 
 
 @router.get("/matchups/{matchup_id}")
