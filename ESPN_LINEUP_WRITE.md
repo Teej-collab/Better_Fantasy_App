@@ -17,6 +17,37 @@ Every claim below is labeled:
 - **NEEDS CAPTURE** — cannot be known without a real captured request from
   ESPN's own web app.
 
+## How to actually test this right now
+
+`backend/app/routers/admin_lineup.py` exposes `ESPNLineupClient` as a
+small `X-Admin-Token`-gated HTTP surface (same auth stopgap as
+`/admin/sync`) — nothing else calls this client yet (no Discord command,
+no frontend page), so this is the only way to exercise it before that
+exists:
+
+- `GET /admin/lineup/teams/{team_id}/roster` — team's LIVE roster, from
+  ESPN directly (see "always live" note below).
+- `POST /admin/lineup/teams/{team_id}/set` — body
+  `{"player_name": "...", "to_slot": "RB", "as_league_manager": false}`.
+- `POST /admin/lineup/teams/{team_id}/swap` — body
+  `{"player_a": "...", "player_b": "...", "as_league_manager": false}`.
+
+Safe by default: `ESPN_DRY_RUN` defaults to `true`, so hitting the POST
+endpoints just returns what *would* be sent until you explicitly flip it
+in `.env`.
+
+**Important:** this always reads live from ESPN, never from this app's
+own `rosters` database table — which matters because that table can be
+(and currently is, pre-draft) empty. `rosters` only gets populated by
+the sync pipeline's week-by-week scan, which has two gates that both
+fail for a genuinely scoreless preseason week: the full sync stops
+before saving anything once it hits an all-zero-points week, and the
+live-sync path for week 0 specifically hits a known `espn_api` internal
+error. Neither of those affects this endpoint or the underlying write
+client — confirmed by actually calling it against production: it
+returned a real, full 17-player roster (keepers + auto-fill) for team 4
+even with 0 rows in `rosters` for the 2026 season.
+
 ## What this app can do today
 
 Read-only: fetch a team's live roster straight from ESPN (not our

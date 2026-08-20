@@ -571,6 +571,26 @@ real draft, since the scheduler's auto-refresh is gated to NFL game
 windows, not draft timing). 1 more test (the flag reaching the request
 body), 102 total passing.
 
+Update (Aug 19, same day): you couldn't actually find anything to test
+against — turned out there was no real gap, just no way to see it. Two
+separate things were true at once: (1) our own `rosters` table really is
+empty for 2026 (confirmed: 0 rows) — the full sync's "did this week
+really happen yet" gate stops before saving a scoreless preseason week,
+and the live-sync path hits a known espn_api error for week 0 — so the
+web app's own Team page has nothing to show; and (2) more fundamentally,
+nothing had ever exposed `ESPNLineupClient` outside of Python code —
+Discord commands were explicitly out of scope, so there was literally no
+UI or endpoint to try it from. Added `app/routers/admin_lineup.py`:
+`GET /admin/lineup/teams/{id}/roster` (live from ESPN, bypasses our DB
+entirely — same reason the sync-pipeline gaps above don't affect the
+write feature itself), `POST .../set`, `POST .../swap`, same
+`X-Admin-Token` stopgap auth as `/admin/sync`. Verified live against
+production: team 4 (yours) has a real, full 17-player roster on ESPN
+right now (keepers + auto-fill) — confirms there's real data to test
+against today, pre-draft, you just couldn't see it before. Specific
+lineup-error types now map to sensible HTTP status codes (404/400/409/
+501/502/504) instead of raw 500s. 6 new tests, 108 total passing.
+
 Revisits the "not feasible" write-capability call from Phase 7 at your
 explicit request, this time with a proper investigation instead of
 stopping at "the library we use doesn't support it": re-confirmed

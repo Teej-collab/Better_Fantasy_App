@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_pool
-from app.routers import admin, auth, awards, league, profile
+from app.routers import admin, admin_lineup, auth, awards, league, profile
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -31,6 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(admin.router)
+app.include_router(admin_lineup.router)
 app.include_router(auth.router)
 app.include_router(awards.router)
 app.include_router(league.router)
