@@ -28,6 +28,7 @@ const SECTION_ACCENT: Record<string, string> = {
   players: "bg-cyan-400",
   rules: "bg-purple-500",
   league: "bg-indigo-500",
+  chug: "bg-amber-600",
 };
 
 // Same palette as SECTION_ACCENT, as a soft box-shadow glow behind each
@@ -41,6 +42,7 @@ const SECTION_GLOW: Record<string, string> = {
   players: "#22d3ee",
   rules: "#a855f7",
   league: "#6366f1",
+  chug: "#d97706",
 };
 
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
@@ -617,6 +619,7 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
     { color: "players", href: "/players", label: "Player Cards", description: "Browse every team's trading card" },
     { color: "league", href: "/league", label: "League", description: "Every team and owner this season" },
     { color: "rules", href: "/rules", label: "Rules", description: "Scoring, roster, and league settings" },
+    { color: "chug", href: "/chug", label: "Chug Leaderboard", description: "Who owes chugs, who's paid up" },
   ];
 
   return (

@@ -379,6 +379,32 @@ export async function getNflScoreboard(): Promise<NflGame[]> {
   }
 }
 
+export type ChugLeaderboardRow = {
+  owner_id: number;
+  owner_name: string;
+  owed: number;
+  completed: number;
+  avg_grade: number | null;
+};
+
+export type ChugLeaderboard = {
+  season: number | null;
+  leaderboard: ChugLeaderboardRow[];
+};
+
+// Seasons that actually have a chug_debts row — a subset of listSeasons(),
+// since not every league season has roster data to compute the rule
+// against (e.g. a season that hasn't started yet).
+export function getChugSeasons() {
+  return get<{ seasons: Season[] }>("/chug/seasons");
+}
+
+// season omitted -> all-time (summed across every season), matching the
+// Discord bot's /chug_leaderboard default view.
+export function getChugLeaderboard(season?: number) {
+  return get<ChugLeaderboard>(season !== undefined ? `/chug/leaderboard?season=${season}` : "/chug/leaderboard");
+}
+
 // Same NFL-game-window detection gating the backend's live-sync
 // scheduler (app/game_windows.py) — "is it Game Day" on the homepage
 // always agrees with whether the backend is actually polling ESPN for

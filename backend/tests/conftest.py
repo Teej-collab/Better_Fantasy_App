@@ -35,6 +35,8 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM season_champions WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM season_awards WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM chug_debts WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM chug_scores WHERE season = $1", TEST_SEASON)
         # rivalries.owner_a_id/owner_b_id -> owners.owner_id, so this has to
         # go before deleting owners below (no season column to scope by —
         # every test owner is 'test-%', so that's the only signal here).

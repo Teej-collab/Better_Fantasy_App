@@ -4,15 +4,16 @@ provider, tolerating partial failure the same way Fantasy_Helper's
 refresh_pipeline.py does — one bad season or step doesn't block the rest,
 and the caller gets a full picture of what succeeded.
 
-boom_bust is a derived-stats compute step (not an ESPN fetch — it reads
-whatever's already synced into `rosters`), included here so it stays
-live: every full/live sync recomputes it for that season's actual roster
-data. Other compute_*.py-equivalents (luck, chaos, power rank, bench
-crimes, awards) haven't been ported yet — see TODO.md's Phase 6 "who
-computes this going forward" note.
+boom_bust and chug_debts are both derived-stats compute steps (not an
+ESPN fetch — they read whatever's already synced into `rosters`),
+included here so they stay live: every full/live sync recomputes them
+for that season's actual roster data. Other compute_*.py-equivalents
+(luck, chaos, power rank, bench crimes, awards) haven't been ported yet
+— see TODO.md's Phase 6 "who computes this going forward" note.
 """
 from app.db import get_pool
 from app.domain.boom_bust import compute_boom_bust_for_season, compute_boom_bust_for_single_week
+from app.domain.chug_debt import compute_chug_debts_for_season, compute_chug_debts_for_single_week
 from app.providers.base import FantasyProvider
 
 
@@ -41,6 +42,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             ("matchups", provider.sync_matchups),
             ("rosters", provider.sync_rosters),
             ("boom_bust", compute_boom_bust_for_season),
+            ("chug_debts", compute_chug_debts_for_season),
             ("final_standings", provider.sync_final_standings),
         ):
             try:
@@ -75,6 +77,7 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
         ("matchups", lambda p, s: provider.sync_matchups_for_week(p, s, week)),
         ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
         ("boom_bust", lambda p, s: compute_boom_bust_for_single_week(p, s, week)),
+        ("chug_debts", lambda p, s: compute_chug_debts_for_single_week(p, s, week)),
     ):
         try:
             count = await step(pool, season)

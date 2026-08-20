@@ -97,6 +97,9 @@ async function NavBar() {
           <a href="/rules" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
             Rules
           </a>
+          <a href="/chug" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+            Chug
+          </a>
           <a
             href="/weekend"
             className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
