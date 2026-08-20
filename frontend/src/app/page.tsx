@@ -63,7 +63,7 @@ export default async function HomePage() {
   const me = await getMe(sessionCookie);
   if (!me) {
     const [nflGames, isGameDay] = await Promise.all([getNflScoreboard(), getIsGameDay()]);
-    return <OpeningExperience tickerItems={buildNflTickerItems(nflGames, isGameDay)} isGameDay={isGameDay} />;
+    return <OpeningExperience tickerItems={buildNflTickerItems(nflGames)} isGameDay={isGameDay} />;
   }
 
   const { seasons } = await listSeasons();
@@ -106,14 +106,7 @@ export default async function HomePage() {
   const otherMatchups = weekMatchups.filter((m) => m.matchup_id !== myWeek?.matchup?.matchup_id);
   const rivalryGamesThisWeek = weekMatchups.filter((m) => m.is_rivalry);
 
-  const tickerItems = buildTickerItems(
-    nflGames,
-    weeklyAwards,
-    standings,
-    weekPlayed,
-    rivalryGamesThisWeek,
-    isGameDay
-  );
+  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek);
 
   // Which stagger slot each section lands in — sections that are
   // conditionally absent (e.g. no other matchups this week) just skip
@@ -314,9 +307,14 @@ function Reveal({ index, children }: { index: number; children: ReactNode }) {
 // exact same real NFL data either way, just without the league-specific
 // items (awards/rivalries/standings) a signed-out visitor has no team to
 // care about yet.
-function buildNflTickerItems(nflGames: Awaited<ReturnType<typeof getNflScoreboard>>, isGameDay: boolean): string[] {
+function buildNflTickerItems(nflGames: Awaited<ReturnType<typeof getNflScoreboard>>): string[] {
+  // Every game currently on the scoreboard, not a truncated slice — a
+  // real week's slate is ~16 games and the ticker scrolls continuously,
+  // so there's no real reason to hide the back half of it. Game Day
+  // still matters for scroll *speed* (LiveTicker's fast prop, driven by
+  // isGameDay at the call site), just not for how many games show up.
   const items: string[] = [];
-  for (const g of nflGames.slice(0, isGameDay ? 12 : 8)) {
+  for (const g of nflGames) {
     if (!g.home_team || !g.away_team) continue;
     if (g.state === "in") {
       items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
@@ -334,10 +332,9 @@ function buildTickerItems(
   awards: WeeklyAwards | null,
   standings: StandingsRow[],
   weekPlayed: boolean,
-  rivalryGamesThisWeek: WeekMatchupContextItem[],
-  isGameDay: boolean
+  rivalryGamesThisWeek: WeekMatchupContextItem[]
 ): string[] {
-  const items = buildNflTickerItems(nflGames, isGameDay);
+  const items = buildNflTickerItems(nflGames);
 
   for (const m of rivalryGamesThisWeek.slice(0, 2)) {
     items.push(`⚔️ Rivalry Alert: ${m.rivalry?.name ?? `${m.home.team_name} vs ${m.away.team_name}`}`);

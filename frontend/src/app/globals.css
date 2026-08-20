@@ -517,6 +517,18 @@ body {
   padding-right: max(1rem, env(safe-area-inset-right));
 }
 
+/* Same idea, top/bottom — used by the Weekend League opening screen
+   (OpeningExperience.tsx) for its fixed full-viewport overlay, where
+   both the skip-intro control (top) and the ticker (bottom) would
+   otherwise risk sitting under the notch/dynamic island or being
+   crowded by the home-indicator gesture area on iPhone. */
+.safe-pt {
+  padding-top: max(1.25rem, env(safe-area-inset-top));
+}
+.safe-pb {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise-in {
     opacity: 1;
@@ -612,7 +624,14 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  overflow: hidden;
+  overflow-x: hidden;
+  /* auto, not hidden — on a genuinely cramped viewport (a phone in
+     landscape, or a short browser window) the centered content and the
+     ticker below it are laid out as real flex siblings, never
+     overlapping, but together they can still exceed the viewport
+     height. Scrolling is the fallback so Enter Here and the ticker stay
+     reachable instead of being silently clipped off-screen. */
+  overflow-y: auto;
   background: var(--wl-bg);
   color: var(--wl-text);
 }

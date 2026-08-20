@@ -103,11 +103,25 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
   const showFinal = stage === "final" || stage === "entering";
 
   return (
-    <div className="wl-gate flex items-center justify-center">
+    // A real flex column, not a centered block with an absolutely
+    // positioned ticker layered over it — the centered content is a
+    // flex-1 region that shares the viewport with a genuine trailing
+    // flex child for the ticker, so on a short mobile viewport the two
+    // can never overlap; the browser lays them out, nothing is guessed.
+    <div className="wl-gate flex flex-col">
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
 
+      {stage === "word" && (
+        <button
+          onClick={skipIntro}
+          className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs"
+        >
+          Skip intro →
+        </button>
+      )}
+
       <div
-        className={`wl-scene relative z-10 flex flex-col items-center gap-5 px-6 text-center ${
+        className={`wl-scene relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center sm:gap-5 ${
           stage === "entering" ? "wl-scene--entering" : ""
         }`}
       >
@@ -119,15 +133,15 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
 
         {showFinal && (
           <>
-            <h1 className={`wl-weekend text-6xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
-            <p className={`wl-league -mt-2 text-3xl sm:text-4xl ${satisfy.className}`}>League</p>
-            <p className="wl-tagline max-w-xs text-sm sm:max-w-sm sm:text-base">
+            <h1 className={`wl-weekend text-5xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
+            <p className={`wl-league -mt-1 text-2xl sm:-mt-2 sm:text-4xl ${satisfy.className}`}>League</p>
+            <p className="wl-tagline max-w-[16rem] text-sm sm:max-w-sm sm:text-base">
               Sit back. Relax. Dive into the League.
             </p>
             <button
               onClick={enter}
               disabled={stage === "entering"}
-              className="wl-enter-sign mt-4 px-8 py-3 text-sm font-bold sm:text-base"
+              className="wl-enter-sign mt-3 px-8 py-3.5 text-sm font-bold sm:mt-4 sm:py-3 sm:text-base"
             >
               Enter Here
             </button>
@@ -135,13 +149,7 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
         )}
       </div>
 
-      {stage === "word" && (
-        <button onClick={skipIntro} className="wl-skip-intro absolute top-6 right-6 z-10 text-xs">
-          Skip intro →
-        </button>
-      )}
-
-      <div className="absolute right-4 bottom-6 left-4 z-10 sm:right-8 sm:left-8">
+      <div className="safe-pb relative z-10 px-3 sm:px-8">
         <LiveTicker items={tickerItems} fast={isGameDay} />
       </div>
     </div>
