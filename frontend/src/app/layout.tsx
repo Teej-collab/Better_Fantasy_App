@@ -63,6 +63,9 @@ async function NavBar() {
         <a href="/rules" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
           Rules
         </a>
+        <a href="/weekend" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+          The Weekend
+        </a>
         <AuthStatus />
       </nav>
     </header>

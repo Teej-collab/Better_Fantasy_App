@@ -1,20 +1,309 @@
-import { getCurrentWeek, listSeasons } from "@/lib/api";
-import { WeekendLanding } from "@/components/WeekendLanding";
+import { cookies } from "next/headers";
+import {
+  API_BASE_URL,
+  getCurrentWeek,
+  getMyWeek,
+  getNflScoreboard,
+  getStandings,
+  getWeeklyAwards,
+  listSeasons,
+  type StandingsRow,
+  type WeeklyAwards,
+  type YourWeek,
+} from "@/lib/api";
+import { LiveTicker } from "@/components/LiveTicker";
+
+const SECTION_ACCENT: Record<string, string> = {
+  standings: "bg-sky-500",
+  matchups: "bg-pink-500",
+  awards: "bg-amber-400",
+  rivalries: "bg-orange-500",
+  players: "bg-cyan-400",
+  rules: "bg-purple-500",
+};
 
 export default async function HomePage() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+
   const { seasons } = await listSeasons();
-  const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+  const season = seasons.length > 0 ? Math.max(...seasons) : null;
 
-  let matchupsHref = "/standings";
-  let awardsHref = "/standings";
+  const [myWeek, nflGames] = await Promise.all([getMyWeek(sessionCookie), getNflScoreboard()]);
 
-  if (latestSeason !== null) {
-    // Same "don't default to week 0 preseason" logic as the Team page.
-    const { current_week } = await getCurrentWeek(latestSeason);
-    const week = current_week && current_week >= 1 ? current_week : 1;
-    matchupsHref = `/seasons/${latestSeason}/weeks/${week}`;
-    awardsHref = `/seasons/${latestSeason}/awards`;
+  let week: number | null = null;
+  let standings: StandingsRow[] = [];
+  let weeklyAwards: WeeklyAwards | null = null;
+  let weekPlayed = false;
+
+  if (season !== null) {
+    const { current_week } = await getCurrentWeek(season);
+    week = current_week && current_week >= 1 ? current_week : 1;
+    const [standingsRes, awardsRes] = await Promise.all([getStandings(season), getWeeklyAwards(season, week)]);
+    standings = standingsRes.standings;
+    weeklyAwards = awardsRes;
+    weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
   }
 
-  return <WeekendLanding matchupsHref={matchupsHref} awardsHref={awardsHref} />;
+  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-2">
+        <span className="live-dot" aria-hidden />
+        <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          The Weekend Live
+        </span>
+      </div>
+      <LiveTicker items={tickerItems} />
+
+      {myWeek?.matchup ? (
+        <YourWeekHero myWeek={myWeek} />
+      ) : myWeek ? (
+        <EmptyHero
+          title={myWeek.team_name}
+          message={
+            // ESPN reports current_week as 0 during preseason — not a
+            // real week, same convention as the Team page's fallback.
+            myWeek.week === null || myWeek.week < 1
+              ? "No matchup yet — the season hasn't started."
+              : "No matchup this week (bye week or the schedule isn't set yet)."
+          }
+        />
+      ) : (
+        <SignInHero />
+      )}
+
+      {standings.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader color="standings" title="League Standings" href="/standings" />
+          <ol className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 dark:divide-white/5 dark:border-white/10">
+            {standings.slice(0, 5).map((row, i) => (
+              <li key={row.team_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                  <span className="truncate">{row.team_name}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
+                  {row.wins}-{row.losses}
+                  {row.ties ? `-${row.ties}` : ""}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {weekPlayed && weeklyAwards && season !== null && week !== null && (
+        <section className="flex flex-col gap-2">
+          <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
+          <AwardsPreview awards={weeklyAwards} />
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          Explore
+        </h2>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <NavPill color="standings" href="/standings" label="Standings" />
+          {season !== null && week !== null && (
+            <NavPill color="matchups" href={`/seasons/${season}/weeks/${week}`} label="Matchups" />
+          )}
+          {season !== null && <NavPill color="awards" href={`/seasons/${season}/awards`} label="Awards" />}
+          <NavPill color="rivalries" href="/rivalries" label="Rivalries" />
+          <NavPill color="players" href="/players" label="Player Cards" />
+          <NavPill color="rules" href="/rules" label="Rules" />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function buildTickerItems(
+  nflGames: Awaited<ReturnType<typeof getNflScoreboard>>,
+  awards: WeeklyAwards | null,
+  standings: StandingsRow[],
+  weekPlayed: boolean
+): string[] {
+  const items: string[] = [];
+
+  for (const g of nflGames.slice(0, 8)) {
+    if (!g.home_team || !g.away_team) continue;
+    if (g.state === "in") {
+      items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
+    } else if (g.state === "post") {
+      items.push(`🏁 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} Final`);
+    } else {
+      items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
+    }
+  }
+
+  if (weekPlayed && awards) {
+    if (awards.game_of_the_week) {
+      items.push(`⭐ Game of the Week: ${awards.game_of_the_week.winner} won ${awards.game_of_the_week.score}`);
+    }
+    if (awards.overachiever) {
+      items.push(`📈 ${awards.overachiever.team_name} overachieved by +${awards.overachiever.diff.toFixed(1)}`);
+    }
+    if (awards.biggest_bench_crime) {
+      items.push(
+        `💀 Biggest Bench Crime: ${awards.biggest_bench_crime.team_name} left ${awards.biggest_bench_crime.bench_player} on the bench`
+      );
+    }
+    if (awards.boom_leaders[0]) {
+      items.push(
+        `🔥 ${awards.boom_leaders[0].player_name} boomed for ${Number(awards.boom_leaders[0].points_scored).toFixed(1)}`
+      );
+    }
+  }
+
+  if (standings[0]) {
+    items.push(`👑 ${standings[0].team_name} leads the league`);
+  }
+
+  if (items.length === 0) {
+    items.push("🏈 The Weekend — check back once games kick off");
+  }
+
+  return items;
+}
+
+function YourWeekHero({ myWeek }: { myWeek: YourWeek }) {
+  const m = myWeek.matchup!;
+  const winning = m.my_score !== null && m.opponent_score !== null && m.my_score >= m.opponent_score;
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black p-4 text-white dark:border-white/10">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold tracking-wide text-white/50 uppercase">
+          Your Week{m.is_playoff ? " — Playoffs" : ""}
+        </span>
+        {m.record && <span className="text-xs text-white/50">{m.record}</span>}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <TeamScoreBlock name={myWeek.team_name} score={m.my_score} projected={m.my_projected_total} lead={winning} />
+        <span className="shrink-0 text-white/30">vs</span>
+        <TeamScoreBlock
+          name={m.opponent_team_name}
+          score={m.opponent_score}
+          projected={m.opponent_projected_total}
+          lead={!winning}
+          align="right"
+        />
+      </div>
+
+      {m.win_probability !== null && (
+        <div className="flex flex-col gap-1">
+          <div className="flex justify-between text-xs text-white/50">
+            <span>Win probability</span>
+            <span>{m.win_probability}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-sky-400" style={{ width: `${m.win_probability}%` }} />
+          </div>
+        </div>
+      )}
+
+      <a href={`/matchups/${m.matchup_id}`} className="text-sm text-sky-300 hover:underline">
+        View full matchup →
+      </a>
+    </section>
+  );
+}
+
+function TeamScoreBlock({
+  name,
+  score,
+  projected,
+  lead,
+  align = "left",
+}: {
+  name: string;
+  score: number | null;
+  projected: number;
+  lead: boolean;
+  align?: "left" | "right";
+}) {
+  return (
+    <div className={`flex min-w-0 flex-col ${align === "right" ? "items-end text-right" : "items-start"}`}>
+      <span className="max-w-[10rem] truncate text-sm text-white/70 sm:max-w-[14rem]">{name}</span>
+      <span className={`text-2xl font-bold tabular-nums sm:text-3xl ${lead ? "text-white" : "text-white/60"}`}>
+        {score !== null ? score.toFixed(1) : "—"}
+      </span>
+      <span className="text-xs text-white/40 tabular-nums">Proj {projected.toFixed(1)}</span>
+    </div>
+  );
+}
+
+function EmptyHero({ title, message }: { title: string; message: string }) {
+  return (
+    <section className="flex flex-col gap-1 rounded-xl border border-black/10 p-4 dark:border-white/10">
+      <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+        Your Week
+      </span>
+      <span className="font-medium">{title}</span>
+      <p className="text-sm text-black/50 dark:text-white/50">{message}</p>
+    </section>
+  );
+}
+
+function SignInHero() {
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-black/10 p-4 dark:border-white/10">
+      <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+        Your Week
+      </span>
+      <p className="text-sm text-black/60 dark:text-white/60">
+        Sign in to see your own matchup, score, and win probability right here.
+      </p>
+      <a
+        href={`${API_BASE_URL}/auth/discord/login`}
+        className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
+      >
+        Sign in with Discord
+      </a>
+    </section>
+  );
+}
+
+function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
+  const lines: string[] = [];
+  if (awards.overachiever) lines.push(`Overachiever: ${awards.overachiever.team_name}`);
+  if (awards.meltdown) lines.push(`Meltdown: ${awards.meltdown.team_name}`);
+  if (awards.clutch) lines.push(`Clutch: ${awards.clutch.team_name}`);
+  if (awards.choke) lines.push(`Choke: ${awards.choke.team_name}`);
+
+  if (lines.length === 0) return null;
+  return (
+    <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 text-sm dark:divide-white/5 dark:border-white/10">
+      {lines.map((line, i) => (
+        <li key={i} className="px-3 py-2">
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SectionHeader({ color, title, href }: { color: string; title: string; href: string }) {
+  return (
+    <a href={href} className="flex items-center gap-2 hover:underline">
+      <span className={`h-2 w-2 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
+      <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
+    </a>
+  );
+}
+
+function NavPill({ color, href, label }: { color: string; href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="flex items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${SECTION_ACCENT[color]}`} aria-hidden />
+      {label}
+    </a>
+  );
 }

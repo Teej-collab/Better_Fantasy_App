@@ -387,3 +387,52 @@ body {
   --neon-color: #a855f7;
   animation: neon-power-on 2.4s ease-out var(--sign-delay, 0s) both;
 }
+
+/* ============================================================
+   Homepage — "Your Week" hero + The Weekend Live ticker
+   (app/page.tsx, LiveTicker.tsx). Deliberately restrained per the
+   redesign brief: neon as a small accent (the LIVE dot, the ticker
+   track), not the whole surface — everything else here is a plain
+   card-based dashboard, not a themed room.
+   ============================================================ */
+
+.live-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  animation: live-dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Auto-scrolling marquee — the one deliberately continuous animation
+   on this page, since that's what a ticker actually is. Content is
+   rendered twice by LiveTicker.tsx so translateX(-50%) loops
+   seamlessly; pauses on hover so it's actually readable on desktop. */
+.live-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: live-ticker-scroll 32s linear infinite;
+}
+.live-ticker-track:hover {
+  animation-play-state: paused;
+}
+@keyframes live-ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}

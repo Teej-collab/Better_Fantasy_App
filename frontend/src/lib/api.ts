@@ -309,3 +309,68 @@ export function getWeeklyAwards(season: number, week: number) {
 export function listRivalries() {
   return get<{ rivalries: Rivalry[] }>("/rivalries");
 }
+
+export type YourWeekMatchup = {
+  matchup_id: number;
+  is_playoff: boolean;
+  started: boolean;
+  record: string | null;
+  my_score: number | null;
+  my_projected_total: number;
+  opponent_team_id: number;
+  opponent_team_name: string;
+  opponent_score: number | null;
+  opponent_projected_total: number;
+  // Our own estimate from real inputs (current score + season
+  // projections + league scoring volatility) — ESPN's API doesn't
+  // expose a win-probability field, confirmed directly against their
+  // raw responses. Null until the matchup has real scores to work with.
+  win_probability: number | null;
+};
+
+export type YourWeek = {
+  season: number;
+  week: number | null;
+  team_id: number;
+  team_name: string;
+  matchup: YourWeekMatchup | null;
+};
+
+// Session-aware — only meaningful server-side, where the incoming
+// request's own session cookie can be forwarded. Returns null rather
+// than throwing for "not signed in" / "no team this season", both of
+// which are normal, expected states for a homepage that has to render
+// for logged-out visitors too.
+export async function getMyWeek(sessionCookie: string | undefined): Promise<YourWeek | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/me/week`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export type NflGame = {
+  id: string;
+  name: string;
+  home_team: string | null;
+  home_score: string | null;
+  away_team: string | null;
+  away_score: string | null;
+  state: "pre" | "in" | "post" | null;
+  status_detail: string | null;
+  completed: boolean;
+};
+
+export async function getNflScoreboard(): Promise<NflGame[]> {
+  try {
+    const { games } = await get<{ games: NflGame[] }>("/nfl/scoreboard");
+    return games;
+  } catch {
+    // ESPN's public scoreboard is unauthenticated, external, and not
+    // load-bearing for the rest of the homepage — never let it break
+    // the page if it's briefly unreachable.
+    return [];
+  }
+}
