@@ -765,8 +765,86 @@ and pushed:**
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records
 - [ ] Notifications (design pending)
-- [ ] Chug Analyzer — decide whether/when to bring into the web app
-      (currently Discord-only, real CV pipeline, see MIGRATION_MAP.md)
+- [x] Chug Analyzer, Chug Leaderboard, auto chug debt calculation, and
+      in-app league chat — all shipped Aug 20 2026, see below.
+
+**Chug subsystem + in-app chat, Aug 20 2026.** Full session dedicated to
+these per explicit direction ("let's hold off on launch pages and UI for
+now, focus on chat and all the chug features").
+
+- [x] **Chug Leaderboard + auto chug debt calculation.** Ported the real
+      rule from Fantasy_Helper's bot/stats_engine/chug_debt.py: any
+      active (non-bench, non-IR) roster slot scoring ≤0 points owes its
+      owner one chug. `app/domain/chug_debt.py`, wired into
+      run_full_sync/run_live_sync same as boom_bust. Deliberately scoped
+      to the base rule only — the original bot's carryover_owed was
+      never actually implemented (read in a formula, never written) and
+      deadline_missed/consecutive_missed_weeks were vestigial columns
+      with no logic at all; not porting unfinished logic forward.
+      `app/domain/chug_leaderboard.py` combines chug_debts (owed) with
+      chug_scores (real completions/grades) — past seasons assume 100%
+      completion, active season uses real graded-video counts.
+      `GET /chug/seasons`, `GET /chug/leaderboard`, new `/chug` page.
+      Verified against real production data: chug_debts already had 612
+      real rows (2023-2025); the ported compute_chugs_owed matched all
+      12 real teams for a real week (2025 week 5) with zero mismatches,
+      read-only, no backfill needed. 10 new backend tests.
+- [x] **In-app league chat.** Brand new — no precedent anywhere in
+      either repo. Single league-wide room (no channels/DMs), WebSocket
+      for live delivery + REST for SSR history, both authenticated by
+      the existing session cookie. New `messages` table (migration
+      4b492f773650, applied to production with explicit go-ahead — a
+      disposable local Postgres verified the upgrade/downgrade cycle
+      first). `app/chat/manager.py`: a single in-process connection
+      manager, no Redis — genuinely enough at this league's scale and
+      one-process deployment. New `/chat` page + `ChatRoom.tsx`. Real
+      end-to-end verification with a genuine session for a real owner:
+      sent a real WebSocket message, got the correct broadcast back,
+      confirmed it landed in history, then deleted that one test
+      message. 6 new backend tests (including a real cross-event-loop
+      fix: starlette's TestClient runs WebSocket tests on a different
+      event loop than pytest-asyncio, which broke asyncpg's pooled
+      connections until the pool was reset around those tests).
+- [x] **Chug Analyzer.** The real finding here: the dedicated Python
+      3.11 environment this needs (mediapipe has no working build for
+      the main backend's Python 3.13) didn't exist on this machine yet
+      — not even Fantasy_Helper's own venv311 was set up. Worse, the
+      latest installable mediapipe (1.0.x) has dropped the legacy
+      `mp.solutions` API this pipeline is built on entirely, in favor of
+      a new Tasks API — hit that exact `AttributeError` directly.
+      Resolved by pinning `mediapipe==0.10.21` (the newest version that
+      still has the old API and installs cleanly on Python 3.11/Apple
+      Silicon) in `backend/requirements-chug-analyzer.txt` — see
+      DEVELOPMENT.md's new "Chug Analyzer's second Python environment"
+      section for the exact setup steps, needed on any machine that
+      wants `/chug/upload` to work.
+      `app/chug_analyzer/` (pose_detection.py, scoring.py,
+      audio_analysis.py, analyzer.py) ported verbatim, logic unchanged;
+      `app/providers/chug_analyzer_bridge.py` subprocess-bridges to
+      venv311 exactly like Fantasy_Helper's analyzer_bridge.py.
+      `POST /chug/upload`: session-authenticated, discards the video
+      after scoring (never persisted anywhere, matching the original
+      bot's behavior — chug_scores.video_url stays null). A detected
+      chug is saved into chug_scores; "no contact detected" isn't. No
+      separate "mark complete" step needed, since completion is already
+      derived live from chug_scores by the leaderboard above.
+      5 new backend tests (mocking the analyzer bridge — the real CV
+      pipeline never runs in tests, same discipline as the ESPN write
+      tests), plus a genuinely real end-to-end check: uploaded a
+      synthetic video through the live HTTP endpoint using the actual
+      venv311 subprocess (not mocked), got the correct "no clear chug
+      detected" result, confirmed no stray database row was written.
+
+Incidental fix along the way: the Mac's LAN IP had changed since the
+prior session (192.168.1.81 -> 192.168.153.156), silently breaking all
+server-side rendering — `frontend/.env.local` and `backend/.env` still
+pointed at the old IP. Updated both. Discord sign-in from a phone will
+need the new IP re-registered in the Discord Developer Portal's redirect
+URI the same way as before — not yet done, only needed for phone-based
+Discord login testing.
+
+156 backend tests passing (135 baseline + 10 chug debt/leaderboard + 6
+chat + 5 chug upload).
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
