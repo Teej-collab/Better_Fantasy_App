@@ -32,7 +32,7 @@ export function SettingsForm({ initial }: { initial: MySettings }) {
 
   const [color, setColor] = useState(initial.chat_color);
   const [colorStatus, setColorStatus] = useState<"idle" | "saving" | "error">("idle");
-  const [customHex, setCustomHex] = useState(initial.chat_color ?? "#");
+  const [customHex, setCustomHex] = useState(initial.chat_color ?? "#39ff6a");
 
   async function saveName(e: React.FormEvent) {
     e.preventDefault();
@@ -145,19 +145,25 @@ export function SettingsForm({ initial }: { initial: MySettings }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* The real OS/browser color picker (a palette/wheel, plus an
+              eyedropper on browsers that support it) — nobody should
+              have to know or type a hex code to pick a color. The text
+              readout next to it is just that: a readout, not something
+              meant to be typed into. */}
           <input
-            value={customHex}
+            type="color"
+            value={HEX_PATTERN.test(customHex) ? customHex : "#39ff6a"}
             onChange={(e) => setCustomHex(e.target.value)}
-            placeholder="#39ff6a"
-            maxLength={7}
-            className="w-28 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-black/20"
+            className="h-9 w-9 cursor-pointer rounded border border-black/10 bg-transparent p-0 dark:border-white/10"
+            aria-label="Pick a custom bubble color"
           />
+          <span className="font-mono text-xs text-black/50 dark:text-white/50">{customHex}</span>
           <button
             onClick={() => applyColor(customHex)}
             disabled={!HEX_PATTERN.test(customHex) || colorStatus === "saving"}
             className="rounded-full border border-black/10 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-white/10"
           >
-            Use custom color
+            Use this color
           </button>
         </div>
         {colorStatus === "error" && <p className="text-xs text-red-500">Failed to save — try again.</p>}
