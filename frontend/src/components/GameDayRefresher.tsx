@@ -6,9 +6,10 @@ import { useEffect } from "react";
 // The NFL ticker's scores come from a direct, uncached fetch to ESPN's
 // public scoreboard on every request (app/providers/nfl_scoreboard.py),
 // not from the backend's own live-sync scheduler — so there's no
-// scheduler cadence to match here, just how fresh the ticker should
-// feel while someone's actually watching a live game.
-const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+// scheduler cadence to match here. Lined up with the live ticker's own
+// scroll duration instead (.live-ticker-track--fast, globals.css,
+// 46s) — close enough that a full lap of the ticker is a fresh lap.
+const REFRESH_INTERVAL_MS = 45 * 1000;
 
 /**
  * Renders nothing — only mounted on the homepage while it's a live NFL
