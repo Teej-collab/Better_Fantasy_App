@@ -5,6 +5,7 @@ import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
 import { LiveTicker } from "@/components/LiveTicker";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
+import { GameDayRefresher } from "@/components/GameDayRefresher";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -166,6 +167,13 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: str
       <div className="safe-pb relative z-10 px-3 sm:px-8">
         <LiveTicker items={tickerItems} fast={isGameDay} />
       </div>
+      {/* The signed-in dashboard and the persistent app ticker both
+          auto-refresh during a live window (GameDayRefresher) — this
+          screen never had it, so a signed-out visitor's ticker (this
+          is what a phone sits on if it isn't signed in) was a single
+          snapshot from whenever the page first loaded and never
+          updated no matter how long they sat on it. */}
+      {isGameDay && <GameDayRefresher />}
     </div>
   );
 }
