@@ -31,7 +31,15 @@ export function AuthStatus() {
   }, []);
 
   async function logout() {
-    await fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" });
+    // Two cookies to clear — the backend's own (what this component's
+    // own /auth/me check and the chat WebSocket use) and the frontend's
+    // first-party copy (what every server-rendered page reads — see
+    // app/auth/logout/route.ts). Missing either one leaves the visitor
+    // looking signed-in somewhere.
+    await Promise.all([
+      fetch(`${API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }),
+      fetch("/auth/logout", { method: "POST" }),
+    ]);
     setMe(null);
     // The homepage's signed-out gate (OpeningExperience.tsx) is decided
     // server-side from the session cookie on every request — router.push

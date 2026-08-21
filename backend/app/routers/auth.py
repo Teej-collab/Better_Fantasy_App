@@ -77,7 +77,24 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         is_commissioner=is_commissioner,
     )
 
-    response = RedirectResponse(config.frontend_url)
+    # The session cookie set below (on THIS domain, railway.app) is what
+    # every direct browser->backend call needs (AuthStatus's own /auth/me
+    # poll, the chat WebSocket, chug upload, settings) — that part works
+    # correctly now that it's SameSite=None; Secure. But it can never be
+    # what Next.js's SERVER-SIDE rendering sees: a cookie set on
+    # railway.app is never sent by the browser to a page served from
+    # vercel.app, full stop, regardless of any cookie flag — that's not
+    # something SameSite/Secure can fix, it's just how cookies work
+    # (domain-scoped). Every page that gates on "is this visitor signed
+    # in" server-side (the homepage's front door, chat, chug, settings,
+    # /me/team) reads the session cookie via Next.js's own cookies() —
+    # which only ever sees cookies that exist on the frontend's OWN
+    # domain. So the frontend needs its own first-party copy of the same
+    # token, handed off once here via the URL fragment (never sent to any
+    # server, never appears in access logs or Referer headers, unlike a
+    # query param) — see frontend/src/app/auth/complete/page.tsx, which
+    # reads it and sets the actual first-party cookie itself.
+    response = RedirectResponse(f"{config.frontend_url}/auth/complete#token={token}")
     response.delete_cookie(STATE_COOKIE_NAME)
     response.set_cookie(
         SESSION_COOKIE_NAME, token,

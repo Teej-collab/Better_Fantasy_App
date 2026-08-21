@@ -61,8 +61,16 @@ async def test_callback_creates_session_for_known_league_member(pool, monkeypatc
             follow_redirects=False,
         )
         assert callback_resp.status_code in (302, 307)
-        assert callback_resp.headers["location"] == "http://localhost:3000"
+        # /auth/complete#token=... handoff — see auth.py's module comment
+        # on why the frontend needs its own first-party copy of the
+        # token (this cookie, on the backend's own domain, is real and
+        # still needed for direct browser->backend calls, but a
+        # different domain than the frontend can never see it).
+        location = callback_resp.headers["location"]
+        assert location.startswith("http://localhost:3000/auth/complete#token=")
+        token_from_redirect = location.split("#token=", 1)[1]
         assert "session" in callback_resp.cookies
+        assert callback_resp.cookies["session"] == token_from_redirect
 
         me_resp = await client.get("/auth/me")
         assert me_resp.status_code == 200
