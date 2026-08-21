@@ -61,6 +61,18 @@ export async function NavBar() {
             Rivalries
           </a>
           <a
+            href="/team"
+            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
+          >
+            My Team
+          </a>
+          <a
+            href="/free-agents"
+            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
+          >
+            Free Agents
+          </a>
+          <a
             href="/players"
             className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
           >

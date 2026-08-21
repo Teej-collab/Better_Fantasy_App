@@ -17,14 +17,15 @@ def make_fake_team(team_id, name, owner_member_id, first, last, final_standing=0
 
 
 def make_fake_lineup_player(
-    player_id, name, lineup_slot, eligible_slots, pro_team="KC", injury_status="ACTIVE", schedule=None
+    player_id, name, lineup_slot, eligible_slots, pro_team="KC", injury_status="ACTIVE", schedule=None, stats=None
 ):
     """Stands in for espn_api.football.Player as used by
     app/providers/espn/lineup_client.py. `lineup_slot` and
     `eligible_slots` are espn_api's own label strings (e.g. "BE",
     "RB/WR/TE"), matching what Player.lineupSlot/eligibleSlots actually
     hold — NOT raw slot IDs, since that's the real (asymmetric)
-    POSITION_MAP shape the client has to work with."""
+    POSITION_MAP shape the client has to work with. `stats` mirrors the
+    real Player.stats shape: {week: {"points": ..., "projected_points": ...}}."""
     return SimpleNamespace(
         playerId=player_id,
         name=name,
@@ -33,6 +34,7 @@ def make_fake_lineup_player(
         proTeam=pro_team,
         injuryStatus=injury_status,
         schedule=schedule or {},
+        stats=stats or {},
     )
 
 
@@ -49,6 +51,21 @@ def make_fake_player(name, position, slot, points, projected):
     return SimpleNamespace(
         name=name, position=position, slot_position=slot,
         points=points, projected_points=projected,
+    )
+
+
+def make_fake_free_agent(
+    player_id, name, position, pro_team="KC", injury_status="ACTIVE",
+    percent_owned=0.0, percent_started=0.0, points=0.0, projected_points=0.0,
+):
+    """Stands in for the BoxPlayer objects League.free_agents() returns
+    (app/providers/espn/free_agents.py) — flat points/projected_points
+    attributes, unlike plain Player (see make_fake_lineup_player's note
+    on why roster players carry a nested .stats dict instead)."""
+    return SimpleNamespace(
+        playerId=player_id, name=name, position=position, proTeam=pro_team,
+        injuryStatus=injury_status, percent_owned=percent_owned, percent_started=percent_started,
+        points=points, projected_points=projected_points,
     )
 
 
@@ -69,15 +86,24 @@ class FakeLeague:
 
     def __init__(self, teams=None, reg_season_count=13,
                  scoreboard_by_week=None, box_scores_by_week=None, current_week=1,
-                 position_slot_counts=None):
+                 position_slot_counts=None, free_agent_players=None, faab=False, acquisition_budget=100):
         self.teams = teams or []
         self.settings = SimpleNamespace(
             reg_season_count=reg_season_count,
             position_slot_counts=position_slot_counts or {},
+            faab=faab,
+            acquisition_budget=acquisition_budget,
         )
         self._scoreboard_by_week = scoreboard_by_week or {}
         self._box_scores_by_week = box_scores_by_week or {}
         self.current_week = current_week
+        self._free_agent_players = free_agent_players or []
+
+    def free_agents(self, week=None, size=50, position=None, position_id=None):
+        players = self._free_agent_players
+        if position:
+            players = [p for p in players if p.position == position]
+        return players[:size]
 
     def scoreboard(self, week):
         if week not in self._scoreboard_by_week:

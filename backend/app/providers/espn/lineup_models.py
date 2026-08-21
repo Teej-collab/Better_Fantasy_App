@@ -24,6 +24,12 @@ class RosterEntry:
     # for the lock check — None when espn_api couldn't resolve a
     # schedule entry (e.g. a bye week). See LineupLockedError.
     game_start: datetime | None = None
+    # Real ESPN points for the current week — actual once the game's
+    # played, projected either way. None when ESPN has no stats entry
+    # for this player/week at all (e.g. a bye week), not when the value
+    # is genuinely zero.
+    points_scored: float | None = None
+    points_projected: float | None = None
 
 
 @dataclass(frozen=True)

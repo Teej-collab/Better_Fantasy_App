@@ -23,6 +23,16 @@ async def get_cached_current_week(conn, season: int):
     )
 
 
+async def get_team_for_owner(conn, season: int, owner_id: int):
+    """espn_team_id, not our internal serial team_id — that's the ID
+    ESPNLineupClient's live reads/plans key off of (see app/routers/me.py's
+    /me/team routes)."""
+    return await conn.fetchrow(
+        "SELECT espn_team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
+        season, owner_id,
+    )
+
+
 async def list_teams(conn, season: int):
     return await conn.fetch(
         """

@@ -156,6 +156,17 @@ class ESPNLineupClient:
     def _to_roster_entry(player, current_week: int) -> RosterEntry:
         schedule_entry = getattr(player, "schedule", {}).get(current_week)
         game_start = schedule_entry["date"] if schedule_entry else None
+
+        # ESPN reports current_week = 0 during preseason (not a real
+        # week — see Team page's own current-week fallback, TODO.md
+        # Phase 7) and player.stats[0] under that key holds a
+        # season-aggregate projection, not a real per-week one. Same
+        # fallback to week 1 as everywhere else this comes up.
+        stats_week = current_week if current_week >= 1 else 1
+        week_stats = getattr(player, "stats", {}).get(stats_week, {})
+        points_scored = week_stats.get("points")
+        points_projected = week_stats.get("projected_points")
+
         return RosterEntry(
             player_id=player.playerId,
             player_name=player.name,
@@ -167,6 +178,8 @@ class ESPNLineupClient:
             pro_team=player.proTeam,
             injury_status=player.injuryStatus,
             game_start=game_start,
+            points_scored=points_scored,
+            points_projected=points_projected,
         )
 
     # ---- planning (Phase 6: read, validate, only then allow a write) --

@@ -5,7 +5,21 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_pool
-from app.routers import admin, admin_lineup, auth, awards, chat, chug, game_day, league, me, nfl, profile, settings
+from app.routers import (
+    admin,
+    admin_lineup,
+    auth,
+    awards,
+    chat,
+    chug,
+    free_agents,
+    game_day,
+    league,
+    me,
+    nfl,
+    profile,
+    settings,
+)
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -36,6 +50,7 @@ app.include_router(auth.router)
 app.include_router(awards.router)
 app.include_router(chat.router)
 app.include_router(chug.router)
+app.include_router(free_agents.router)
 app.include_router(game_day.router)
 app.include_router(league.router)
 app.include_router(me.router)

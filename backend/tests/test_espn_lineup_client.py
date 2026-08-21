@@ -44,6 +44,50 @@ def test_get_roster_resolves_bench_and_flex_labels_correctly(espn_config, monkey
     assert entries["Flex Guy"].lineup_slot_id == 23
 
 
+def test_get_roster_includes_real_points_for_the_current_week(espn_config, monkeypatch):
+    roster = [
+        make_fake_lineup_player(
+            1, "Star Player", "RB", ["RB", "BE"],
+            stats={5: {"points": 22.4, "projected_points": 18.0}},
+        )
+    ]
+    _patch(monkeypatch, _team_with_roster(1, roster))  # current_week=5
+
+    client = ESPNLineupClient(espn_config)
+    entry = client.get_roster(1)[0]
+
+    assert entry.points_scored == 22.4
+    assert entry.points_projected == 18.0
+
+
+def test_get_roster_falls_back_to_week_1_stats_during_preseason(espn_config, monkeypatch):
+    roster = [
+        make_fake_lineup_player(
+            1, "Rookie", "RB", ["RB", "BE"],
+            stats={0: {"points": 999.0, "projected_points": 999.0}, 1: {"points": 0.0, "projected_points": 12.3}},
+        )
+    ]
+    team = make_fake_team(1, "Test Team", "test-member-1", "Alice", "Smith", roster=roster)
+    league = FakeLeague(teams=[team], current_week=0)  # preseason -> current_week is 0, not real
+    _patch(monkeypatch, league)
+
+    client = ESPNLineupClient(espn_config)
+    entry = client.get_roster(1)[0]
+
+    assert entry.points_projected == 12.3  # week 1's real entry, not the week-0 aggregate
+
+
+def test_get_roster_points_are_none_without_a_stats_entry(espn_config, monkeypatch):
+    roster = [make_fake_lineup_player(1, "No Stats Yet", "RB", ["RB", "BE"])]  # stats defaults to {}
+    _patch(monkeypatch, _team_with_roster(1, roster))
+
+    client = ESPNLineupClient(espn_config)
+    entry = client.get_roster(1)[0]
+
+    assert entry.points_scored is None
+    assert entry.points_projected is None
+
+
 def test_get_team_not_found_raises(espn_config, monkeypatch):
     _patch(monkeypatch, _team_with_roster(1, []))
     client = ESPNLineupClient(espn_config)

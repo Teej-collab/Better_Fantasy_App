@@ -533,6 +533,104 @@ export function updateChatColor(chatColor: string | null): Promise<void> {
   return _settingsRequest("/chat-color", "PUT", { chat_color: chatColor });
 }
 
+// ---- My Team (real-time ESPN data, lineup preview only — no real
+// submission exists yet, see backend/ESPN_LINEUP_WRITE.md) ----------------
+
+export type EligibleSlot = { id: number; label: string };
+
+export type RosterEntry = {
+  player_id: number;
+  player_name: string;
+  lineup_slot_id: number;
+  lineup_slot_label: string;
+  eligible_slots: EligibleSlot[];
+  pro_team: string;
+  injury_status: string | null;
+  game_start: string | null;
+  is_locked: boolean;
+  points_scored: number | null;
+  points_projected: number | null;
+};
+
+export type MyTeam = {
+  team_name: string;
+  season: number;
+  roster: RosterEntry[];
+};
+
+export async function getMyTeam(): Promise<MyTeam> {
+  const res = await fetch(`${API_BASE_URL}/me/team`, { credentials: "include", cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to load team (${res.status})`);
+  }
+  return res.json();
+}
+
+export type LineupMovePreview = {
+  player: RosterEntry;
+  from_slot: EligibleSlot;
+  to_slot: EligibleSlot;
+  displaced_player: RosterEntry | null;
+};
+
+export async function previewLineupMove(playerName: string, toSlot: string): Promise<LineupMovePreview> {
+  const res = await fetch(`${API_BASE_URL}/me/team/lineup/preview-move`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player_name: playerName, to_slot: toSlot }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
+
+export async function previewLineupSwap(playerA: string, playerB: string): Promise<LineupSwapPreview> {
+  const res = await fetch(`${API_BASE_URL}/me/team/lineup/preview-swap`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player_a: playerA, player_b: playerB }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// ---- Free Agents (read-only — see backend/app/providers/espn/free_agents.py) ----
+
+export type FreeAgent = {
+  player_id: number;
+  name: string;
+  position: string;
+  pro_team: string;
+  injury_status: string | null;
+  percent_owned: number;
+  percent_started: number;
+  projected_points: number | null;
+  points: number | null;
+};
+
+export async function getFreeAgents(position?: string, size = 50): Promise<{ season: number; players: FreeAgent[] }> {
+  const params = new URLSearchParams({ size: String(size) });
+  if (position) params.set("position", position);
+  const { season, players } = await get<{ season: number; players: FreeAgent[] }>(`/free-agents?${params}`);
+  return { season, players };
+}
+
+export type WaiverSettings = { uses_faab: boolean; acquisition_budget: number };
+
+export function getWaiverSettings(): Promise<WaiverSettings> {
+  return get<WaiverSettings>("/free-agents/waiver-settings");
+}
+
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean };
 
 export type ChatReplyPreview = { id: number; owner_name: string; body: string };
