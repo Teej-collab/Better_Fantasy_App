@@ -574,26 +574,6 @@ export async function getMyTeam(): Promise<MyTeam> {
   return res.json();
 }
 
-export type LineupMovePreview = {
-  player: RosterEntry;
-  from_slot: EligibleSlot;
-  to_slot: EligibleSlot;
-  displaced_player: RosterEntry | null;
-};
-
-export async function previewLineupMove(playerName: string, toSlot: string): Promise<LineupMovePreview> {
-  const res = await fetch(`/api/backend/me/team/lineup/preview-move`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_name: playerName, to_slot: toSlot }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
-  }
-  return res.json();
-}
-
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
 
 export async function previewLineupSwap(playerA: string, playerB: string): Promise<LineupSwapPreview> {
