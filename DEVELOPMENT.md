@@ -367,14 +367,46 @@ owner's explicit go-ahead, using each platform's free/hobby tier.
   pick that file up for this build; the real config lives on Railway's
   side (`railway environment config --json` to inspect it).
 
-**Auto-deploy**: both projects are connected directly to the
+**Auto-deploy**: Railway is connected directly to the
 `Teej-collab/Better_Fantasy_App` GitHub repo (main branch) — a normal
-`git push` to main redeploys both automatically, no manual step needed
-either place. This needed two one-time GitHub authorizations that only
-the repo owner could grant (Railway's GitHub App and Vercel's GitHub
-App each needed explicit access to this specific repo — a login being
-connected to an account isn't the same as an App being authorized for
-a repo; hit this exact distinction for both platforms while setting up).
+`git push` to main redeploys it automatically, confirmed working across
+several real pushes. This needed a one-time GitHub authorization only
+the repo owner could grant (Railway's GitHub App needed explicit access
+to this specific repo — a login being connected to an account isn't the
+same as an App being authorized for a repo).
+
+Vercel's git integration was connected the same way, but hit a real
+wall specific to this repo's git setup — see "Git identity vs. Vercel"
+below — and was disconnected again as a result. **Frontend deploys are
+currently manual**: `cd frontend && vercel deploy --prod` after a push.
+Re-connecting it is possible (see below) but wasn't done automatically
+since it required a repo config change outside pure deployment setup.
+
+**Git identity vs. Vercel, Aug 20 2026.** This repo's git identity is
+auto-detected (`Tj Overlin <tjoverlin@Tjs-MacBook-Air.local>` — no
+`user.email` ever explicitly configured, local or global; git falls
+back to `$(whoami)@$(hostname)`), which was a deliberate choice earlier
+in the project and is fine for git itself. It is NOT fine for Vercel
+once a project is git-connected: Vercel blocks any deployment whose
+commit author email isn't a verified email on a real team member's
+account — "Commits were made from a contributor that is not a team
+member" is the exact documented reason (real `seatBlock` field on the
+deployment, `blockCode: TEAM_ACCESS_REQUIRED`, confirmed both via the
+API and the Vercel dashboard's own "Deployment Blocked" screen). This
+blocked EVERY deployment, not just git-triggered ones — even a plain
+`vercel deploy` CLI upload reads the local repo's commit metadata and
+gets the same check, so disconnecting git integration alone didn't fix
+it. `tjoverlin@Tjs-MacBook-Air.local` can never be verified on GitHub
+either — it's not a real, deliverable email address, so there was no
+way to satisfy Vercel's check without changing something. Resolved
+with the project owner's explicit go-ahead: `git config user.email
+"tjoverlin@gmail.com"` **local to this repo only** (no `--global`) —
+every other repo on this Mac keeps the auto-detected identity
+untouched; only this repo's commits going forward carry a real,
+verified email. Commits made before this fix keep their original
+author and can't retroactively satisfy Vercel's check (deliberately
+not rewritten/force-pushed to "fix" history) — only matters for the
+one deploy that prompted this, already resolved by a fresh commit.
 
 **Environment variables**: set directly on each platform (Railway:
 `railway variable set KEY=value --service weekend-league-api -e
