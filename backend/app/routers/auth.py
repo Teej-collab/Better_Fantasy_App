@@ -82,7 +82,7 @@ async def discord_callback(request: Request, code: str | None = None, state: str
     response.set_cookie(
         SESSION_COOKIE_NAME, token,
         httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
-        samesite="lax", secure=config.cookie_secure,
+        samesite=config.cookie_samesite, secure=config.cookie_secure,
     )
     return response
 
@@ -113,6 +113,11 @@ async def me(request: Request):
 
 @router.post("/logout")
 async def logout():
+    # Must match the attributes the cookie was actually set with — a
+    # Secure/SameSite=None cookie won't reliably clear from a delete call
+    # that doesn't also specify them (the browser won't let a "weaker"
+    # Set-Cookie silently override a Secure one).
+    config = SessionConfig()
     response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(SESSION_COOKIE_NAME, samesite=config.cookie_samesite, secure=config.cookie_secure)
     return response

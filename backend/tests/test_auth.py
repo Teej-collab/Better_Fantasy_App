@@ -3,8 +3,8 @@ from httpx import ASGITransport, AsyncClient
 from app.main import app
 
 
-def _client():
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+def _client(base_url="http://test"):
+    return AsyncClient(transport=ASGITransport(app=app), base_url=base_url)
 
 
 def _set_discord_env(monkeypatch):
@@ -123,3 +123,92 @@ async def test_logout_clears_session_cookie(monkeypatch):
         resp = await client.post("/auth/logout")
     assert resp.status_code == 204
     assert resp.cookies.get("session") is None
+
+
+def _set_cookie_header(resp, cookie_name: str) -> str:
+    for raw in resp.headers.get_list("set-cookie"):
+        if raw.startswith(f"{cookie_name}="):
+            return raw
+    raise AssertionError(f"no Set-Cookie for {cookie_name!r} in {resp.headers.get_list('set-cookie')}")
+
+
+async def test_session_cookie_is_lax_not_secure_when_cookie_secure_unset(pool, monkeypatch):
+    """Local dev: frontend and backend share a site (same host, different
+    ports) — SameSite=Lax already lets fetch(credentials:"include") work,
+    and plain HTTP (e.g. a phone on the LAN) can't set a Secure cookie at
+    all, so it must stay off."""
+    _set_discord_env(monkeypatch)
+    monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+    discord_id = 900000002
+    await _seed_owner_with_discord_id(pool, discord_id, "Local Dev User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "localdev"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        callback_resp = await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    raw = _set_cookie_header(callback_resp, "session")
+    assert "samesite=lax" in raw.lower()
+    assert "secure" not in raw.lower()
+
+
+async def test_session_cookie_is_none_and_secure_in_production(pool, monkeypatch):
+    """Real production: frontend (vercel.app) and backend (railway.app)
+    are genuinely different sites — SameSite=Lax would silently never
+    attach the cookie to the frontend's cross-site fetch(credentials:
+    "include") calls (Lax only allows top-level navigations), so a
+    signed-in user would immediately look signed-out again. SameSite=None
+    requires Secure, which real HTTPS provides."""
+    _set_discord_env(monkeypatch)
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    discord_id = 900000003
+    await _seed_owner_with_discord_id(pool, discord_id, "Prod User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "produser"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    # Secure cookies only round-trip through httpx's cookie jar (like a
+    # real browser) over an actual https:// connection — matches real
+    # production, unlike the plain-http default the other tests use.
+    async with _client(base_url="https://test") as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        callback_resp = await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    raw = _set_cookie_header(callback_resp, "session")
+    assert "samesite=none" in raw.lower()
+    assert "secure" in raw.lower()
+
+
+async def test_logout_clears_cookie_with_matching_attributes_in_production(monkeypatch):
+    """A delete_cookie call that doesn't also mark Secure/SameSite=None
+    won't reliably clear a cookie that was set with those attributes —
+    browsers won't let a "weaker" Set-Cookie silently override a Secure
+    one."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    async with _client() as client:
+        resp = await client.post("/auth/logout")
+
+    raw = _set_cookie_header(resp, "session")
+    assert "samesite=none" in raw.lower()
+    assert "secure" in raw.lower()

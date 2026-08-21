@@ -21,6 +21,18 @@ class SessionConfig:
         # over plain http (including from a phone on the LAN), where a
         # Secure cookie won't be set at all.
         self.cookie_secure = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+        # Local dev: frontend and backend share a site (same hostname, just
+        # different ports — tjs-macbook-air.local:3000 / :8000), so
+        # SameSite=Lax already lets the browser attach the cookie to the
+        # frontend's fetch(credentials:"include") calls. Real production
+        # deploys the frontend and backend to two genuinely different
+        # domains (vercel.app / railway.app) — a real cross-SITE request,
+        # which Lax deliberately never attaches cookies to (it only allows
+        # top-level navigations, e.g. the OAuth redirect itself — that part
+        # already worked). Cross-site fetch needs SameSite=None, which
+        # browsers only honor when Secure is also set — exactly the
+        # cookie_secure flag above, so this just follows it.
+        self.cookie_samesite = "none" if self.cookie_secure else "lax"
 
 
 class DiscordAuthConfig(SessionConfig):
