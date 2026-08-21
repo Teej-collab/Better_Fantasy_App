@@ -53,6 +53,12 @@ async def get_nfl_scoreboard() -> list[dict]:
                 "state": status_type.get("state"),  # "pre" | "in" | "post"
                 "status_detail": status_type.get("shortDetail"),
                 "completed": status_type.get("completed", False),
+                # Real ISO8601 UTC kickoff time — e.g. "2026-08-21T00:00Z".
+                # Not surfaced to the frontend (the ticker only needs
+                # status_detail's human string); used by
+                # app/domain/chug_deadline.py to find the real Monday
+                # Night Football kickoff for Jeffrey's Rule's deadline.
+                "date": event.get("date"),
             }
         )
     return games

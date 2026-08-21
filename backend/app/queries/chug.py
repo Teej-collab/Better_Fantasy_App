@@ -52,3 +52,30 @@ async def get_chug_completions(conn):
         GROUP BY owners.owner_id, cs.season
         """
     )
+
+
+async def get_lifetime_completed_by_owner(conn):
+    """Every real, video-graded chug ever, per owner — deliberately
+    uncapped by what was ever owed (unlike get_chug_completions' role in
+    the leaderboard's per-season "completed" column). This is the number
+    an owner should see for "how many chugs have I ever done," including
+    ones posted with nothing owed (see app/domain/chug_standing.py's
+    module docstring — a "for funsies" chug still counts here)."""
+    rows = await conn.fetch(
+        """
+        SELECT owners.owner_id, COUNT(*) AS lifetime_completed
+        FROM chug_scores cs
+        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        GROUP BY owners.owner_id
+        """
+    )
+    return {r["owner_id"]: r["lifetime_completed"] for r in rows}
+
+
+async def get_chug_standing_by_owner(conn, season: int):
+    rows = await conn.fetch(
+        "SELECT owner_id, outstanding_owed, fined_owed, consecutive_missed_weeks "
+        "FROM chug_standing WHERE season = $1",
+        season,
+    )
+    return {r["owner_id"]: dict(r) for r in rows}

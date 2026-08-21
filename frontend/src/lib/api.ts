@@ -436,6 +436,14 @@ export type ChugLeaderboardRow = {
   owed: number;
   completed: number;
   avg_grade: number | null;
+  // Every real chug this owner has ever posted, uncapped by what was
+  // ever owed — see app/domain/chug_standing.py's module docstring.
+  lifetime_completed: number;
+  // Jeffrey's Rule's real running balance for the active season only
+  // (always 0 when viewing a past season) — see chug_standing.
+  outstanding_owed: number;
+  fined_owed: number;
+  fine_amount: number;
 };
 
 export type ChugLeaderboard = {
@@ -454,6 +462,18 @@ export function getChugSeasons() {
 // Discord bot's /chug_leaderboard default view.
 export function getChugLeaderboard(season?: number) {
   return get<ChugLeaderboard>(season !== undefined ? `/chug/leaderboard?season=${season}` : "/chug/leaderboard");
+}
+
+// Commissioner-only — marks a real-life chug fine as paid, clearing it
+// off the owed total. amount omitted clears the entire fine.
+export async function clearChugFine(ownerId: number, amount?: number): Promise<{ cleared: number }> {
+  const qs = amount !== undefined ? `?amount=${amount}` : "";
+  const res = await fetch(`${API_BASE_URL}/chug/standing/${ownerId}/clear-fine${qs}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`Failed to clear fine: ${res.status}`);
+  return res.json();
 }
 
 export type Me = { owner_id: number; display_name: string | null; is_commissioner: boolean };

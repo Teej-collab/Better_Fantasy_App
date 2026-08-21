@@ -146,3 +146,72 @@ async def test_upload_successful_analysis_saves_score_and_cleans_up_temp_file(po
 
     # the temp file the analyzer was handed must not survive the request
     assert not os.path.exists(captured_path["path"])
+
+    # nothing was owed (no chug_standing row seeded) -> the "for funsies"
+    # case, no debt effect either side of the upload.
+    assert body["chugs_owed_before"] == 0
+    assert body["chugs_owed_after"] == 0
+
+
+async def _fake_analysis(video_path):
+    return {
+        "can_to_mouth": True,
+        "duration_seconds": 2.0,
+        "time_score": 8.0,
+        "smoothness_score": 8.0,
+        "hype_score": 7.0,
+        "final": 8.5,
+    }
+
+
+async def test_upload_with_real_debt_pays_it_down(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", _fake_analysis)
+    owner_id = await _seed_owner(pool, 5)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_standing (season, owner_id, outstanding_owed) VALUES ($1, $2, 2)",
+            TEST_SEASON, owner_id,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
+
+    await _cleanup(pool)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["chugs_owed_before"] == 2
+    assert body["chugs_owed_after"] == 1  # paid down by one
+
+
+async def test_upload_with_nothing_owed_is_for_funsies_and_does_not_bank(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", _fake_analysis)
+    owner_id = await _seed_owner(pool, 6)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_standing (season, owner_id, outstanding_owed) VALUES ($1, $2, 0)",
+            TEST_SEASON, owner_id,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
+
+    async with pool.acquire() as conn:
+        lifetime = await conn.fetchval(
+            "SELECT COUNT(*) FROM chug_scores WHERE discord_user_id = $1", _DISCORD_USER_ID
+        )
+    await _cleanup(pool)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["chugs_owed_before"] == 0
+    assert body["chugs_owed_after"] == 0  # never goes negative / doesn't bank
+    assert lifetime == 1  # but it's still a real, counted completion

@@ -16,18 +16,36 @@ to recompute mid-season.
 Order within a season matters: weekly_team_stats' chaos_score reads
 is_boom/is_bust, so boom_bust must run first; season_awards reads
 weekly_team_stats.team_points_projected (via get_expected_score) and
-computes the season champion from final_standings, so it runs last.
+computes the season champion from final_standings, so it runs last;
+chug_standing's accrual reads chug_debts, so it runs after that.
+
+chug_standing's deadline settlement (Jeffrey's Rule doubling — see
+app/domain/chug_standing.py) is handled separately from the per-season
+step loop above: it only ever makes sense for the single active season
+(end_season/end of the range), needs that season's real current week
+(only known once, at the point current_week is already being fetched
+for league_state below), and needs a real ESPN scoreboard fetch to
+check whether Monday Night Football's actual kickoff has passed —
+so it's wired in right alongside the existing current_week/league_state
+best-effort step in both run_full_sync and run_live_sync, not as a
+per-season loop step.
 """
 from app.db import get_pool
 from app.domain.bench_crimes import compute_bench_crimes_for_season, compute_bench_crimes_for_single_week
 from app.domain.boom_bust import compute_boom_bust_for_season, compute_boom_bust_for_single_week
 from app.domain.chug_debt import compute_chug_debts_for_season, compute_chug_debts_for_single_week
+from app.domain.chug_standing import (
+    accrue_weekly_debt_for_season,
+    accrue_weekly_debt_for_single_week,
+    ensure_chug_deadline_settled,
+)
 from app.domain.season_awards import compute_season_awards_for_season
 from app.domain.weekly_team_stats import (
     compute_weekly_team_stats_for_season,
     compute_weekly_team_stats_for_single_week,
 )
 from app.providers.base import FantasyProvider
+from app.providers.nfl_scoreboard import get_nfl_scoreboard
 
 
 async def _update_league_state(pool, season: int, current_week: int) -> None:
@@ -56,6 +74,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             ("rosters", provider.sync_rosters),
             ("boom_bust", compute_boom_bust_for_season),
             ("chug_debts", compute_chug_debts_for_season),
+            ("chug_standing_accrual", accrue_weekly_debt_for_season),
             ("weekly_team_stats", compute_weekly_team_stats_for_season),
             ("bench_crimes", compute_bench_crimes_for_season),
             ("final_standings", provider.sync_final_standings),
@@ -77,6 +96,19 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
         await _update_league_state(pool, end_season, current_week)
     except Exception as e:
         results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
+        current_week = None
+
+    if current_week:
+        try:
+            games = await get_nfl_scoreboard()
+            settled = await ensure_chug_deadline_settled(pool, end_season, current_week, games)
+            results.setdefault(end_season, {})["chug_deadline_settlement"] = {
+                "status": "success", "count": settled,
+            }
+        except Exception as e:
+            results.setdefault(end_season, {})["chug_deadline_settlement"] = {
+                "status": "failed", "detail": str(e),
+            }
 
     return results
 
@@ -94,6 +126,7 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
         ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
         ("boom_bust", lambda p, s: compute_boom_bust_for_single_week(p, s, week)),
         ("chug_debts", lambda p, s: compute_chug_debts_for_single_week(p, s, week)),
+        ("chug_standing_accrual", lambda p, s: accrue_weekly_debt_for_single_week(p, s, week)),
         ("weekly_team_stats", lambda p, s: compute_weekly_team_stats_for_single_week(p, s, week)),
         ("bench_crimes", lambda p, s: compute_bench_crimes_for_single_week(p, s, week)),
     ):
@@ -110,5 +143,20 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
         results["league_state"] = {"status": "success", "count": week}
     except Exception as e:
         results["league_state"] = {"status": "failed", "detail": str(e)}
+
+    # A live sync only ever runs while a real NFL game is live (see
+    # app/scheduler.py) — including, notably, right around a real Monday
+    # night kickoff — so this is exactly when a just-crossed deadline
+    # needs to be caught promptly rather than waiting for the next daily
+    # full sync. get_nfl_scoreboard() here is a second real ESPN call
+    # (the scheduler's own gate already made one to decide to run at
+    # all), accepted for the same reason as everywhere else this session:
+    # it's the public, unauthenticated endpoint, not the private one.
+    try:
+        games = await get_nfl_scoreboard()
+        settled = await ensure_chug_deadline_settled(pool, season, week, games)
+        results["chug_deadline_settlement"] = {"status": "success", "count": settled}
+    except Exception as e:
+        results["chug_deadline_settlement"] = {"status": "failed", "detail": str(e)}
 
     return results

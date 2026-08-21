@@ -1,9 +1,11 @@
 """
-Chug leaderboard + Chug Analyzer upload endpoints. Deliberately doesn't
-yet include the self-serve "mark complete"/weekly-status flow
-(chug_weekly_status) — see TODO.md; completion is derived live from
-chug_scores instead (app/domain/chug_leaderboard.py), so an uploaded
-video is immediately reflected there with no separate step.
+Chug leaderboard + Chug Analyzer upload endpoints. Every signed-in
+owner is already verified against the league (see app/routers/auth.py),
+so a successful upload immediately pays down that owner's real
+outstanding chug debt (app/domain/chug_standing.py's record_completed_chug)
+with no separate "mark complete" step — a real chug posted with nothing
+owed still counts toward lifetime_completed, just with no debt effect
+(the "for funsies" case, an explicit product decision).
 """
 import os
 import tempfile
@@ -15,6 +17,7 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain.chug_leaderboard import build_chug_leaderboard
+from app.domain.chug_standing import clear_fine, record_completed_chug
 from app.providers.chug_analyzer_bridge import run_chug_analysis
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
@@ -92,6 +95,16 @@ async def upload_chug(request: Request, video: UploadFile = File(...), pool=Depe
             result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
         )
 
+        owed_before = await conn.fetchval(
+            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2",
+            active_season, payload["owner_id"],
+        ) or 0
+        await record_completed_chug(conn, active_season, payload["owner_id"])
+        owed_after = await conn.fetchval(
+            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2",
+            active_season, payload["owner_id"],
+        ) or 0
+
     return {
         "can_to_mouth": True,
         "id": row["id"],
@@ -101,4 +114,28 @@ async def upload_chug(request: Request, video: UploadFile = File(...), pool=Depe
         "hype_score": result["hype_score"],
         "final_score": result["final"],
         "created_at": row["created_at"].isoformat(),
+        # Did this chug actually pay down a real debt, or was it "for
+        # funsies" (nothing owed)? owed_before/after let the frontend
+        # say which, instead of guessing.
+        "chugs_owed_before": owed_before,
+        "chugs_owed_after": owed_after,
     }
+
+
+@router.post("/standing/{owner_id}/clear-fine")
+async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = None, pool=Depends(get_pool)):
+    """Commissioner-only: marks a real-life fine payment by reducing
+    fined_owed. A fined chug can only ever be cleared this way — never
+    by completing a real chug (see app/domain/chug_standing.py) — so
+    this is deliberately not self-serve."""
+    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    if not payload.get("is_commissioner"):
+        raise HTTPException(status_code=403, detail="Commissioner only")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        cleared = await clear_fine(conn, active_season, owner_id, amount)
+
+    return {"owner_id": owner_id, "cleared": cleared}

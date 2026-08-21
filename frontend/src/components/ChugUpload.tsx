@@ -14,6 +14,8 @@ type UploadResult =
       hype_score: number;
       final_score: number;
       created_at: string;
+      chugs_owed_before: number;
+      chugs_owed_after: number;
     };
 
 export function ChugUpload() {
@@ -90,6 +92,11 @@ export function ChugUpload() {
           <span className="text-lg font-semibold">🍺 Grade: {result.final_score}/10</span>
           <span className="text-xs text-black/60 dark:text-white/60">
             {result.duration_seconds}s · smoothness {result.smoothness_score}/10 · hype {result.hype_score}/10
+          </span>
+          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+            {result.chugs_owed_before > 0
+              ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
+              : "Nothing owed — logged as a bonus chug for the lifetime count."}
           </span>
         </div>
       )}
