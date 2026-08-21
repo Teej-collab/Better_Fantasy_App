@@ -977,6 +977,47 @@ upcoming one. Fixed before it ever ran for real.
 156 backend tests passing (135 baseline + 10 chug debt/leaderboard + 6
 chat + 5 chug upload).
 
+**My Team + Free Agents, Aug 20 2026 — real user requirement, scoped
+explicitly before building.** The project owner asked for roster
+management and a waiver-wire browsing page. Real ESPN writes are a real
+account-safety concern (unofficial API) already flagged once for lineup
+moves (Phase 7.5 built and dry-run-tested `ESPNLineupClient` months ago
+but has never actually flipped `ESPN_DRY_RUN` off for a real
+submission), and waiver/free-agent writes had never even been
+investigated at all. Rather than guess how far to go, asked directly —
+confirmed: read + preview only for My Team, browse-only for Free
+Agents, actual submission stays a separate future decision for both.
+
+- `/team` — live roster straight from ESPN (never `rosters`, which can
+  be empty pre-draft or stale outside live windows), now showing real
+  points_scored/points_projected per player — `RosterEntry` didn't
+  carry points before. `team.roster` returns plain `Player` objects
+  (points nested in `player.stats[week]`), not the `BoxPlayer` objects
+  `free_agents()` returns (flat `.points`/`.projected_points`) —
+  confirmed the difference against real live ESPN data before writing
+  the extraction code. Falls back to week 1 during preseason
+  (`current_week == 0`), same convention as the Team page's own
+  current-week fallback.
+- Lineup moves/swaps preview via `plan_lineup_change()`/`plan_swap()`
+  directly — pure validation, zero network-write code path involved at
+  all (not just dry-run-flagged) — frontend shows exactly what would
+  happen with an explicit "preview only" banner.
+- `/free-agents` — real ESPN data for this league specifically
+  (`League.free_agents()` already excludes anyone actually rostered
+  here), verified live: real players, real projections, real
+  ownership%. Deliberately doesn't label a player "waivers" vs. "free
+  agent" — checked a live pull first and found `acquisitionType` comes
+  back empty for unrostered players, so that distinction isn't
+  reliably available; shows this league's real, verified waiver rule
+  instead (standard priority, not FAAB — `league.settings.faab ==
+  False`).
+- Extracted `app/routers/lineup_shared.py` out of `admin_lineup.py` so
+  the admin-token surface and the new session-gated `/me/team` routes
+  share one error-mapping/serialization implementation.
+
+30 new/updated backend tests, 240 total passing (local Postgres and
+production). No schema changes.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)
