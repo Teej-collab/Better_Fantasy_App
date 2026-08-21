@@ -55,12 +55,20 @@ class ESPNProvider(FantasyProvider):
                 espn_member_id = owner_info["id"]
                 display_name = f"{owner_info['firstName']} {owner_info['lastName']}".strip()
 
+                # display_name_is_custom: once an owner sets a self-serve
+                # display name (app/routers/settings.py), it survives
+                # every future sync instead of being overwritten back to
+                # the real ESPN name on the next full/live sync — see
+                # migration 893534025217 for the full reasoning.
                 owner_id = await conn.fetchval(
                     """
                     INSERT INTO owners (espn_member_id, display_name)
                     VALUES ($1, $2)
                     ON CONFLICT (espn_member_id)
-                    DO UPDATE SET display_name = EXCLUDED.display_name
+                    DO UPDATE SET display_name = CASE
+                        WHEN owners.display_name_is_custom THEN owners.display_name
+                        ELSE EXCLUDED.display_name
+                    END
                     RETURNING owner_id
                     """,
                     espn_member_id, display_name,

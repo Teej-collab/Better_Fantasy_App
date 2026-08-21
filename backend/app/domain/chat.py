@@ -16,6 +16,7 @@ def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict
         "conversation_id": row["conversation_id"],
         "owner_id": row["owner_id"],
         "owner_name": row["owner_name"],
+        "owner_chat_color": row["owner_chat_color"],
         "body": "This message was deleted." if deleted else row["body"],
         "deleted": deleted,
         "created_at": row["created_at"].isoformat(),
@@ -71,7 +72,7 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
         return []
     rows = await conn.fetch(
         """
-        SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name,
+        SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                m.body, m.created_at, m.deleted_at, m.reply_to_id
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])

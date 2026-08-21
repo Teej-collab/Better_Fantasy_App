@@ -491,6 +491,48 @@ export async function getMe(sessionCookie: string | undefined): Promise<Me | nul
   return res.json();
 }
 
+export type MySettings = {
+  display_name: string;
+  display_name_is_custom: boolean;
+  chat_color: string | null;
+  discord_username: string | null;
+};
+
+export async function getMySettings(sessionCookie: string | undefined): Promise<MySettings | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/settings/me`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function _settingsRequest(path: string, method: string, body?: object): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/settings${path}`, {
+    method,
+    credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+}
+
+export function updateDisplayName(displayName: string): Promise<void> {
+  return _settingsRequest("/display-name", "PUT", { display_name: displayName });
+}
+
+export function resetDisplayName(): Promise<void> {
+  return _settingsRequest("/display-name/reset", "POST");
+}
+
+export function updateChatColor(chatColor: string | null): Promise<void> {
+  return _settingsRequest("/chat-color", "PUT", { chat_color: chatColor });
+}
+
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean };
 
 export type ChatReplyPreview = { id: number; owner_name: string; body: string };
@@ -500,6 +542,7 @@ export type ChatMessage = {
   conversation_id: number;
   owner_id: number;
   owner_name: string;
+  owner_chat_color: string | null;
   body: string;
   deleted: boolean;
   created_at: string;

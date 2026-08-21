@@ -10,6 +10,20 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// A custom bubble color is a per-sender identity choice (see
+// ChatSettings.tsx) — everyone sees it, not just the owner who picked
+// it, so unlike .chat-bubble--mine's fixed white text, the text color
+// has to adapt to whatever background an owner actually chose. Perceived
+// luminance (ITU-R BT.601) is plenty accurate for "is this bubble light
+// or dark," not aiming for color-managed precision.
+function readableTextColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#111111" : "#ffffff";
+}
+
 /** Highlights `@DisplayName` occurrences for every real mention on this
  * message — a plain string find/replace against known mentioned names,
  * not a full rich-text model. The composer already inserted the literal
@@ -100,6 +114,11 @@ export function MessageBubble({
                   ? "chat-bubble--mine"
                   : "chat-bubble--other"
             }`}
+            style={
+              !message.deleted && message.owner_chat_color
+                ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
+                : undefined
+            }
           >
             {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
           </span>

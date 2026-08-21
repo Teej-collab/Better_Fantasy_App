@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import get_pool
-from app.routers import admin, admin_lineup, auth, awards, chat, chug, game_day, league, me, nfl, profile
+from app.routers import admin, admin_lineup, auth, awards, chat, chug, game_day, league, me, nfl, profile, settings
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -22,7 +22,7 @@ allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").spl
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
     # Needed so the browser sends the session cookie on cross-origin
     # requests from the frontend (different port = different origin) to
@@ -41,6 +41,7 @@ app.include_router(league.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(profile.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

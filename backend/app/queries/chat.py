@@ -115,7 +115,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
     if before_id is not None:
         rows = await conn.fetch(
             """
-            SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name,
+            SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    m.body, m.created_at, m.deleted_at, m.reply_to_id
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
@@ -128,7 +128,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
     else:
         rows = await conn.fetch(
             """
-            SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name,
+            SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    m.body, m.created_at, m.deleted_at, m.reply_to_id
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id

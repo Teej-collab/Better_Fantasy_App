@@ -57,7 +57,9 @@ export function AuthStatus() {
 
   return (
     <span className="flex shrink-0 items-center gap-3">
-      <span className="text-black/70 dark:text-white/70">{me.display_name}</span>
+      <a href="/settings" className="text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+        {me.display_name}
+      </a>
       <button
         onClick={logout}
         className="text-black/50 hover:text-black dark:text-white/50 dark:hover:text-white"

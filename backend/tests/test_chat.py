@@ -133,6 +133,26 @@ async def test_messages_pagination_with_before_cursor(pool, monkeypatch):
     assert [m["body"] for m in second_page.json()["messages"]] == ["msg 1", "msg 2"]
 
 
+async def test_messages_include_senders_custom_chat_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 10)
+    b = await _seed_owner(pool, 11)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE owners SET chat_color = '#39ff6a' WHERE owner_id = $1", a)
+        await chat_queries.insert_message(conn, conversation_id, a, "hey", None)
+        await chat_queries.insert_message(conn, conversation_id, b, "hi", None)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(a))
+        resp = await client.get(f"/chat/conversations/{conversation_id}/messages")
+
+    by_owner = {m["owner_id"]: m["owner_chat_color"] for m in resp.json()["messages"]}
+    assert by_owner[a] == "#39ff6a"
+    assert by_owner[b] is None  # never set -> default bubble color on the frontend
+
+
 async def test_start_direct_conversation_rejects_self_and_non_member(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
