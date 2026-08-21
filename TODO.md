@@ -920,6 +920,60 @@ need the new IP re-registered in the Discord Developer Portal's redirect
 URI the same way as before — not yet done, only needed for phone-based
 Discord login testing.
 
+**Jeffrey's Rule finished for real, Aug 20 2026 — real user requirement.**
+The chug rule's deadline-doubling clause had never actually been built,
+in either the old bot or this app: `chug_weekly_status` existed in the
+production schema, but nothing ever wrote its `carryover_owed`/
+`deadline_missed`/`consecutive_missed_weeks` columns (confirmed by
+reading the old bot's `/chug_complete` command — it hardcoded
+`week=1` with a comment admitting "real week comes with automation,"
+never finished). Real project-owner requirements this time, confirmed
+via two clarifying questions before building (fine-conversion handling,
+and running-balance vs. per-week doubling):
+
+- Weekly base debt (`chug_debts`, unchanged) now folds automatically
+  into a real running per-owner balance (new `chug_standing` table) via
+  `accrue_weekly_debt` — idempotent (`chug_debt_accruals` tracks what's
+  already applied), so a stat correction later in the week is picked up
+  as a delta and re-running every 5-minute live-sync tick never
+  double-counts.
+- If that balance isn't paid down by Monday Night Football's real
+  kickoff, it doubles — `app/domain/chug_deadline.py`, same real-ESPN-
+  schedule principle as the Game Day fix above, not a fixed calendar
+  guess. Falls back to a fixed 8:15 PM ET slot only when no real Monday
+  game exists in the current scoreboard snapshot — confirmed this
+  really happens (2026 preseason weeks don't all have one). Up to 3
+  consecutive misses; the miss that hits the cap converts the whole
+  balance into a $10/chug fine instead of doubling again, per the
+  project owner's explicit answer: fines stay counted as "owed" and can
+  only be cleared by a commissioner marking the real payment received
+  (`POST /chug/standing/{id}/clear-fine`) — a real chug never reduces a
+  fine, only cash does.
+- A real, video-verified chug (`POST /chug/upload`) now actually pays
+  down `outstanding_owed` by one when anything's owed, and always counts
+  toward a new `lifetime_completed` total regardless — an owner with
+  nothing owed who posts one anyway gets it counted as a real "for
+  funsies" chug (explicit product decision), never banked against a
+  future week and never pushing the balance negative. Previously the
+  leaderboard's "completed" column silently capped at what was owed,
+  so an extra chug just vanished from view entirely.
+- `chug_deadline_settlements` is both the idempotency marker (never
+  double/fine the same week twice) and a full audit trail of what
+  happened each week per owner.
+- New migration `7d0d160856d7` (three new tables, nothing existing
+  touched) — verified upgrade+downgrade against a disposable local
+  Postgres first, applied to production with explicit go-ahead.
+  `/chug` page now shows "owed right now," a fine badge with a
+  commissioner-only clear button, and a lifetime count per owner.
+
+54 new/updated backend tests, 212 total passing (verified against both
+local Postgres and, after the migration landed, real production). A
+real bug was caught by the test suite itself, not eyeballed: the
+Monday-anchoring math initially used the ISO calendar week (Mon-Sun),
+which gets Thu/Fri/Sat/Sun backwards for an NFL week (Thu-Mon) — a
+Saturday check would have anchored to the PAST Monday instead of the
+upcoming one. Fixed before it ever ran for real.
+
 156 backend tests passing (135 baseline + 10 chug debt/leaderboard + 6
 chat + 5 chug upload).
 
