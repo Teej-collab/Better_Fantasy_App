@@ -9,7 +9,7 @@ import os
 
 from httpx import ASGITransport, AsyncClient
 
-from app.auth.session import create_session_token
+from app.auth.session import create_session_token, create_ticket_token
 from app.main import app
 from tests.conftest import TEST_SEASON
 
@@ -26,6 +26,13 @@ def _session_cookie(owner_id: int):
         _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=_DISCORD_USER_ID, is_commissioner=False
     )
     return {"session": token}
+
+
+def _upload_ticket(owner_id: int):
+    return create_ticket_token(
+        _SESSION_SECRET, purpose="chug_upload", user_id=1, owner_id=owner_id,
+        discord_user_id=_DISCORD_USER_ID, is_commissioner=False,
+    )
 
 
 async def _seed_owner(pool, suffix):
@@ -151,6 +158,44 @@ async def test_upload_successful_analysis_saves_score_and_cleans_up_temp_file(po
     # case, no debt effect either side of the upload.
     assert body["chugs_owed_before"] == 0
     assert body["chugs_owed_after"] == 0
+
+
+async def test_upload_authenticates_via_ticket_when_no_session_cookie(pool, monkeypatch):
+    """The real-world case this exists for: a browser that never sends
+    the session cookie on this cross-site request at all (Safari's ITP)
+    — no cookie on the client at all, only the ticket as a query param."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id = await _seed_owner(pool, 5)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+
+    async def fake_analysis(video_path):
+        return {
+            "can_to_mouth": True,
+            "duration_seconds": 1.8,
+            "time_score": 10,
+            "smoothness_score": 9.5,
+            "hype_score": 7.2,
+            "final": 9.06,
+        }
+
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", fake_analysis)
+
+    async with _client() as client:
+        resp = await client.post(
+            f"/chug/upload?ticket={_upload_ticket(owner_id)}",
+            files={"video": ("clip.mov", b"fake video bytes", "video/quicktime")},
+        )
+    await _cleanup(pool)
+
+    assert resp.status_code == 200
+    assert resp.json()["can_to_mouth"] is True
 
 
 async def _fake_analysis(video_path):

@@ -13,7 +13,7 @@ import tempfile
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
 from app.domain.chug_leaderboard import build_chug_leaderboard
@@ -52,8 +52,17 @@ async def chug_leaderboard(season: int | None = None, pool=Depends(get_pool)):
 
 
 @router.post("/upload")
-async def upload_chug(request: Request, video: UploadFile = File(...), pool=Depends(get_pool)):
+async def upload_chug(
+    request: Request, video: UploadFile = File(...), ticket: str | None = None, pool=Depends(get_pool)
+):
     payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    if payload is None and ticket:
+        # Same fallback as chat_ws — a direct browser->backend upload
+        # is a cross-site request just like the WebSocket handshake,
+        # so it hits the same Safari ITP cookie-blocking problem. See
+        # app/auth/session.py and /auth/ticket in app/routers/auth.py.
+        config = SessionConfig()
+        payload = decode_ticket_token(config.session_secret, ticket, expected_purpose="chug_upload")
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
 

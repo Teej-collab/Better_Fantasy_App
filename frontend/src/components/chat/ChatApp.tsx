@@ -6,6 +6,7 @@ import {
   getChatConversationMessages,
   getChatMembers,
   getChatWebSocketUrl,
+  getChatWsTicket,
   markConversationRead,
   reactToMessage,
   startDirectConversation,
@@ -105,9 +106,16 @@ export function ChatApp({
     let socket: WebSocket;
     const timeouts = typingTimeouts.current;
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
-      socket = new WebSocket(getChatWebSocketUrl());
+      const ticket = await getChatWsTicket();
+      if (cancelled) return;
+      if (!ticket) {
+        // Not actually signed in (or the mint call failed) — nothing
+        // to reconnect toward, so don't loop retrying forever.
+        return;
+      }
+      socket = new WebSocket(getChatWebSocketUrl(ticket));
       socketRef.current = socket;
 
       socket.onopen = () => setConnected(true);

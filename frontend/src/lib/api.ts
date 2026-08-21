@@ -729,20 +729,34 @@ export async function deleteChatMessage(messageId: number): Promise<void> {
   });
 }
 
+// Mints a short-lived ticket via the frontend's own same-origin route
+// (app/auth/ticket/route.ts), which reads the first-party cookie
+// server-side — never touched by Safari's ITP — and forwards it to
+// the backend. Null if the visitor isn't actually signed in (the
+// ticket route reads no cookie at all) or the mint call itself fails.
+export async function getChatWsTicket(): Promise<string | null> {
+  const res = await fetch("/auth/ticket?purpose=ws", { method: "POST" });
+  if (!res.ok) return null;
+  const { ticket } = await res.json();
+  return ticket ?? null;
+}
+
+// Same idea, for the chug video upload (ChugUpload.tsx) — see
+// getChatWsTicket just above.
+export async function getChugUploadTicket(): Promise<string | null> {
+  const res = await fetch("/auth/ticket?purpose=chug_upload", { method: "POST" });
+  if (!res.ok) return null;
+  const { ticket } = await res.json();
+  return ticket ?? null;
+}
+
 // ws:// for a plain http API_BASE_URL, wss:// for https — same origin
-// and port as every other backend call, just a different scheme.
-//
-// KNOWN GAP, not fixed by the /api/backend proxy above: the WS
-// handshake is still a direct cross-site browser request that relies
-// on the backend's cookie, same failure mode ITP causes for every
-// other endpoint this file talks to — an HTTP route handler can't
-// forward a protocol upgrade, so this one needs a different fix
-// (e.g. a same-origin route that mints a short-lived ticket from the
-// first-party cookie, passed as a query param on the WS URL instead
-// of relying on the cookie reaching the handshake). Chat's real-time
-// delivery is affected on the same browsers as the rest of this file
-// was until now; tracked separately, not addressed in this pass.
-export function getChatWebSocketUrl(): string {
-  return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws`;
+// and port as every other backend call, just a different scheme. The
+// WS handshake itself is still a direct cross-site browser request —
+// can't go through the /api/backend proxy (that's plain HTTP, not a
+// protocol upgrade) — so it carries the ticket above in the URL
+// instead of relying on the backend's own cookie reaching it.
+export function getChatWebSocketUrl(ticket: string): string {
+  return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws?ticket=${encodeURIComponent(ticket)}`;
 }
 

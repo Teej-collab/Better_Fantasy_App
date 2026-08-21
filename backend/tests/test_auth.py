@@ -1,5 +1,6 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import decode_ticket_token
 from app.main import app
 
 
@@ -131,6 +132,73 @@ async def test_logout_clears_session_cookie(monkeypatch):
         resp = await client.post("/auth/logout")
     assert resp.status_code == 204
     assert resp.cookies.get("session") is None
+
+
+async def test_ticket_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        resp = await client.post("/auth/ticket", params={"purpose": "ws"})
+    assert resp.status_code == 401
+
+
+async def test_ticket_rejects_unknown_purpose(pool, monkeypatch):
+    _set_discord_env(monkeypatch)
+    discord_id = 900000004
+    await _seed_owner_with_discord_id(pool, discord_id, "Ticket User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "ticketuser"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+        resp = await client.post("/auth/ticket", params={"purpose": "not_a_real_purpose"})
+    assert resp.status_code == 400
+
+
+async def test_ticket_mints_a_purpose_scoped_short_lived_token(pool, monkeypatch):
+    """The real point of a ticket: usable for exactly the purpose it was
+    minted for, and nothing else — a ws ticket can't be replayed as a
+    chug_upload ticket even though both are signed with the same secret."""
+    _set_discord_env(monkeypatch)
+    discord_id = 900000005
+    await _seed_owner_with_discord_id(pool, discord_id, "Ticket User Two")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "ticketusertwo"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+        resp = await client.post("/auth/ticket", params={"purpose": "ws"})
+
+    assert resp.status_code == 200
+    ticket = resp.json()["ticket"]
+
+    secret = "test-secret-thats-at-least-32-bytes-long"
+    payload = decode_ticket_token(secret, ticket, expected_purpose="ws")
+    assert payload is not None
+    assert payload["discord_user_id"] == discord_id
+
+    assert decode_ticket_token(secret, ticket, expected_purpose="chug_upload") is None
 
 
 def _set_cookie_header(resp, cookie_name: str) -> str:

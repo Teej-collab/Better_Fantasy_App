@@ -16,6 +16,7 @@ from app.auth.session import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
     create_session_token,
+    create_ticket_token,
     decode_session_token,
 )
 from app.db import get_pool
@@ -126,6 +127,49 @@ async def me(request: Request):
         "display_name": owner["display_name"] if owner else None,
         "is_commissioner": payload["is_commissioner"],
     }
+
+
+TICKET_PURPOSES = {"ws", "chug_upload"}
+
+
+@router.post("/ticket")
+async def issue_ticket(request: Request, purpose: str):
+    """Mints a short-lived, purpose-scoped token (see app/auth/session.py)
+    for the two real requests that can't carry the session cookie at
+    all: the chat WebSocket handshake (app/routers/chat.py's chat_ws)
+    and the chug video upload (app/routers/chug.py's upload_chug).
+    Both are cross-site browser requests just like /auth/me used to
+    be, so they hit the exact same Safari ITP cookie-blocking problem
+    — but neither can be routed through the frontend's same-origin
+    /api/backend proxy the way a plain fetch was (a WebSocket upgrade
+    can't go through an HTTP proxy, and a real video file would count
+    against Vercel's serverless body-size limit). This endpoint itself
+    IS called through that same-origin proxy pattern though — the
+    frontend's own auth/ticket route reads the visitor's first-party
+    cookie (never touched by ITP) and forwards it here to mint the
+    ticket, which the cross-site request then carries in its URL
+    instead of relying on a cookie reaching it."""
+    if purpose not in TICKET_PURPOSES:
+        raise HTTPException(status_code=400, detail="Invalid ticket purpose")
+
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    ticket = create_ticket_token(
+        config.session_secret,
+        purpose=purpose,
+        user_id=payload["user_id"],
+        owner_id=payload["owner_id"],
+        discord_user_id=payload["discord_user_id"],
+        is_commissioner=payload["is_commissioner"],
+    )
+    return {"ticket": ticket}
 
 
 @router.post("/logout")

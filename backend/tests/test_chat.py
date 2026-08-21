@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from app import db as db_module
-from app.auth.session import create_session_token
+from app.auth.session import create_session_token, create_ticket_token
 from app.main import app
 from app.queries import chat as chat_queries
 from tests.conftest import TEST_SEASON
@@ -19,6 +19,13 @@ def _session_cookie(owner_id: int):
         _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
     )
     return {"session": token}
+
+
+def _ws_ticket(owner_id: int):
+    return create_ticket_token(
+        _SESSION_SECRET, purpose="ws", user_id=1, owner_id=owner_id,
+        discord_user_id=100000 + owner_id, is_commissioner=False,
+    )
 
 
 def _use_fresh_pool_for_websocket():
@@ -305,6 +312,27 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
     assert msg["reply_to"]["id"] == original["id"]
     assert msg["reply_to"]["body"] == "original message"
     assert msg["mentions"] == [a]
+
+
+async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, monkeypatch):
+    """The real-world case this exists for: a browser that never sends
+    the session cookie on this cross-site request at all (Safari's ITP)
+    — the connection carries no cookie, only the ticket in the URL."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 40)
+    b = await _seed_owner(pool, 41)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(f"/chat/ws?ticket={_ws_ticket(b)}") as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "via ticket, not cookie"})
+        received = ws.receive_json()
+    db_module._pool = None
+
+    assert received["type"] == "message"
+    assert received["message"]["owner_id"] == b
+    assert received["message"]["body"] == "via ticket, not cookie"
 
 
 async def test_websocket_filters_mentions_to_real_participants(pool, monkeypatch):

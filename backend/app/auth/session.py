@@ -10,6 +10,18 @@ import jwt
 SESSION_COOKIE_NAME = "session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
+# Short-lived, purpose-scoped tokens for the two real requests that
+# can't carry the session cookie at all: the chat WebSocket handshake
+# and the chug video upload from a browser affected by Safari's ITP
+# (blocks third-party cookies on any cross-site request, cookie flags
+# notwithstanding — see frontend/src/app/auth/ticket/route.ts for the
+# full reasoning). A visitor mints one via their own first-party
+# cookie (which ITP never touches), then hands it to the cross-site
+# request in the URL instead of relying on a cookie reaching it.
+# 60 seconds is only meant to survive the handshake/upload starting,
+# not the whole request — well short of anything replay-worthy.
+TICKET_MAX_AGE_SECONDS = 60
+
 
 def create_session_token(
     secret: str, *, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool
@@ -29,3 +41,32 @@ def decode_session_token(secret: str, token: str) -> dict | None:
         return jwt.decode(token, secret, algorithms=["HS256"])
     except jwt.PyJWTError:
         return None
+
+
+def create_ticket_token(
+    secret: str, *, purpose: str, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool
+) -> str:
+    payload = {
+        "user_id": user_id,
+        "owner_id": owner_id,
+        "discord_user_id": discord_user_id,
+        "is_commissioner": is_commissioner,
+        "purpose": purpose,
+        "exp": int(time.time()) + TICKET_MAX_AGE_SECONDS,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def decode_ticket_token(secret: str, token: str, expected_purpose: str) -> dict | None:
+    """Same secret as a real session token, deliberately — a ticket is
+    just a session token with a `purpose` claim and a much shorter
+    expiry, so no full session token can ever be replayed as a ticket
+    (it has no `purpose` claim, real or forged without the secret) and
+    a ticket for one purpose can't be reused for another."""
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("purpose") != expected_purpose:
+        return None
+    return payload

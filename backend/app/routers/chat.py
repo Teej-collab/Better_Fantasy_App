@@ -20,7 +20,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.chat.manager import manager
 from app.config import _require
 from app.db import get_pool
@@ -174,8 +174,16 @@ async def delete_message(message_id: int, request: Request, pool=Depends(get_poo
 
 
 @router.websocket("/ws")
-async def chat_ws(websocket: WebSocket):
+async def chat_ws(websocket: WebSocket, ticket: str | None = None):
     payload = _decode_session(websocket.cookies.get(SESSION_COOKIE_NAME))
+    if payload is None and ticket:
+        # Cookie-based auth failed (or was never sent — Safari's ITP
+        # blocks it on this exact kind of cross-site request) — fall
+        # back to the short-lived ticket the client mints via its own
+        # first-party cookie instead. See app/auth/session.py and
+        # /auth/ticket in app/routers/auth.py.
+        config = SessionConfig()
+        payload = decode_ticket_token(config.session_secret, ticket, expected_purpose="ws")
     if payload is None:
         await websocket.close(code=4401)
         return

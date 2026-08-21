@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, getChugUploadTicket } from "@/lib/api";
 
 type UploadResult =
   | { can_to_mouth: false; message: string }
@@ -18,16 +18,15 @@ type UploadResult =
       chugs_owed_after: number;
     };
 
-// KNOWN GAP: still fetches the backend directly with credentials:
-// "include", same cross-site-cookie problem AuthStatus/MyTeamApp/etc.
-// had until the /api/backend proxy (lib/api.ts) fixed it for them —
-// deliberately NOT routed through that proxy here, since forwarding a
-// real video file through a Vercel serverless function would count
-// against its request-body size limit, which today's direct-to-
-// backend upload never hits. Needs a different fix (e.g. a same-
-// origin route that mints a short-lived upload ticket from the
-// first-party cookie, passed as a query param instead of relying on
-// the cookie reaching this fetch) — tracked separately.
+// Still fetches the backend directly (not through the /api/backend
+// proxy AuthStatus/MyTeamApp/etc. use) — forwarding a real video file
+// through a Vercel serverless function would count against its
+// request-body size limit, which this direct-to-backend upload never
+// hits. Auth works the same way regardless: a short-lived ticket
+// (getChugUploadTicket, minted via the frontend's own first-party
+// cookie — never touched by Safari's ITP) carried as a query param,
+// instead of relying on the backend's cookie reaching this
+// cross-site fetch at all.
 export function ChugUpload() {
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -43,9 +42,11 @@ export function ChugUpload() {
     form.append("video", file);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/chug/upload`, {
+      const ticket = await getChugUploadTicket();
+      if (!ticket) throw new Error("Not signed in");
+
+      const res = await fetch(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}`, {
         method: "POST",
-        credentials: "include",
         body: form,
       });
       if (!res.ok) {
