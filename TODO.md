@@ -1018,6 +1018,72 @@ Agents, actual submission stays a separate future decision for both.
 30 new/updated backend tests, 240 total passing (local Postgres and
 production). No schema changes.
 
+**Production stabilization, Aug 20-21 2026 — real bugs hit live, all fixed
+and verified.** After the first real production deploy, you hit a chain of
+issues in quick succession:
+
+- [x] **Vercel deploys silently blocked by commit-author-email
+      verification.** The auto-detected local git identity
+      (`tjoverlin@Tjs-MacBook-Air.local`) isn't a real, deliverable
+      address, so Vercel refused to build any commit authored by it —
+      git-triggered or CLI. Fixed with your go-ahead: `git config
+      user.email` set locally to this repo only (not `--global`, so no
+      other repo on the machine is affected).
+- [x] **Production sign-in stuck on "Signing you in…" forever.** Two
+      stacked causes. First, the session cookie needed `SameSite=None;
+      Secure` to survive the cross-site hop from Discord's OAuth
+      callback (`railway.app`) to the frontend (`vercel.app`) — fixed.
+      Second, a `railway.app` cookie is never visible to Next.js's
+      server-side rendering on `vercel.app` regardless of cookie flags
+      (that's not a flag problem, it's how cookies work) — every
+      SSR-gated page (homepage, chat, chug, settings, My Team) needs its
+      *own* first-party copy. Added a one-time cross-domain handoff:
+      the backend redirects to `/auth/complete#token=...` (URL fragment
+      — never sent to any server, never logged), and a small client page
+      there hands the token to a same-origin route that sets the actual
+      first-party cookie.
+- [x] **Root Directory misconfigured on the (newly created) Vercel
+      project — builds failing with "No Next.js version detected."**
+      The project's Root Directory defaulted to the repo root instead of
+      `frontend/`, so every build ran `npm install`/`next build` in a
+      directory with no `package.json`. Corrected via the Vercel API
+      (dashboard has no CLI equivalent for this one setting), verified
+      with a real deploy that then succeeded and served the fix above.
+- [x] **Mobile: nav bar always said "Sign in with Discord" even when
+      genuinely signed in.** `AuthStatus` and `ChatNavBadge` (the two
+      client-side pieces of an otherwise all-server-rendered app)
+      checked sign-in status by fetching the backend directly from the
+      browser with `credentials: "include"`. Safari's Intelligent
+      Tracking Prevention (mobile Safari and iOS Chrome) blocks
+      third-party cookies on `fetch`/`XHR` by default, `SameSite=None`
+      or not — so that request silently came back unauthenticated on
+      mobile even though every server-rendered page (which reads the
+      first-party cookie directly, no browser round-trip involved) knew
+      the visitor was signed in. Fixed by adding same-origin proxy
+      routes (`/auth/me`, `/chat/conversations`) that read the
+      first-party cookie server-side and forward it to the backend —
+      same pattern `page.tsx`/`ChatApp.tsx` already used for SSR — and
+      pointing both client components at those instead of the backend
+      directly.
+- [x] **Abysmal load times on every page.** The Railway backend was
+      running in Amsterdam (`ams`, Railway's default region) while the
+      Vercel frontend renders from Virginia (`iad1`) and the Postgres
+      database (Supabase) lives in Oregon (`us-west-2`) — every page
+      load paid a transatlantic round trip per backend call, and most
+      pages make 4-5 sequential backend calls, each itself running
+      multiple DB queries. Moved the Railway service to `us-west2`
+      (Oregon), co-located with the database, since DB round trips
+      multiply *within* a single request while the Vercel-to-backend
+      hop only happens once per call. Verified via a real redeploy
+      (`SUCCESS`) and a measured homepage TTFB drop of roughly 780ms →
+      420ms warm on the signed-out (2-backend-call) path alone — a
+      signed-in page's 4-5-call, DB-heavy path should improve by
+      considerably more.
+
+All five verified live in production, including a real phone sign-in
+after the fix. No schema changes, no new backend tests (infra/config +
+one new frontend proxy pattern, not new application logic).
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)
