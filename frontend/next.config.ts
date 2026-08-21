@@ -21,6 +21,11 @@ function lanDevOrigin(): string[] {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: lanDevOrigin(),
+  // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's
+  // own public CDN, no API key involved.
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "a.espncdn.com" }],
+  },
 };
 
 export default nextConfig;

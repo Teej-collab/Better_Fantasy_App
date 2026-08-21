@@ -220,6 +220,45 @@ async def test_matchup_detail_includes_both_rosters(pool):
     assert [p["player_name"] for p in body["away_roster"]] == ["Backup Guy"]
 
 
+async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
+    team_a, team_b = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        matchup_id = await conn.fetchval(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 1, $2, $3, 120.5, 100.0, FALSE)
+            RETURNING id
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO rosters
+                (season, week, team_id, player_name, position, lineup_slot, points_scored,
+                 points_projected, espn_player_id, pro_team)
+            VALUES ($1, 1, $2, 'Star Runner', 'RB', 'RB', 20.5, 18.0, 4567, 'KC')
+            """,
+            TEST_SEASON, team_a,
+        )
+        # A row synced before this column existed — player_id/pro_team stay
+        # NULL rather than erroring, same as any pre-migration historical row.
+        await conn.execute(
+            """
+            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
+            VALUES ($1, 1, $2, 'Backup Guy', 'WR', 'WR', 10.0, 9.0)
+            """,
+            TEST_SEASON, team_b,
+        )
+
+    resp = await _get(f"/matchups/{matchup_id}")
+    body = resp.json()
+    assert body["home_roster"][0]["player_id"] == 4567
+    assert body["home_roster"][0]["pro_team"] == "KC"
+    assert body["away_roster"][0]["player_id"] is None
+    assert body["away_roster"][0]["pro_team"] is None
+
+
 async def test_matchup_detail_404_for_unknown_id(pool):
     resp = await _get("/matchups/999999999")
     assert resp.status_code == 404
@@ -231,8 +270,10 @@ async def test_team_roster_endpoint(pool):
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-            VALUES ($1, 3, $2, 'Star Runner', 'RB', 'RB', 20.5, 18.0)
+            INSERT INTO rosters
+                (season, week, team_id, player_name, position, lineup_slot, points_scored,
+                 points_projected, espn_player_id, pro_team)
+            VALUES ($1, 3, $2, 'Star Runner', 'RB', 'RB', 20.5, 18.0, 4567, 'KC')
             """,
             TEST_SEASON, team_a,
         )
@@ -243,6 +284,8 @@ async def test_team_roster_endpoint(pool):
     assert body["team"]["team_name"] == "Team Alpha"
     assert body["week"] == 3
     assert [p["player_name"] for p in body["roster"]] == ["Star Runner"]
+    assert body["roster"][0]["player_id"] == 4567
+    assert body["roster"][0]["pro_team"] == "KC"
 
 
 async def test_team_detail_404_for_unknown_id(pool):

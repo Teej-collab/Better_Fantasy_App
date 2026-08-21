@@ -76,6 +76,11 @@ export type RosterPlayer = {
   // unnoticed).
   points_scored: number | null;
   points_projected: number | null;
+  // Only present for rows synced after the espn_player_id/pro_team
+  // columns were added — null for historical weeks until a full resync
+  // backfills them. PlayerHeadshot.tsx falls back to initials when null.
+  player_id: number | null;
+  pro_team: string | null;
 };
 
 export type MatchupDetail = WeekMatchup & {

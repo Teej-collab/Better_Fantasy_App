@@ -223,7 +223,8 @@ _SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR"]
 async def get_roster(conn, team_id: int, week: int):
     rows = await conn.fetch(
         """
-        SELECT player_name, position, lineup_slot, points_scored, points_projected
+        SELECT player_name, position, lineup_slot, points_scored, points_projected,
+               espn_player_id AS player_id, pro_team
         FROM rosters
         WHERE team_id = $1 AND week = $2
         """,

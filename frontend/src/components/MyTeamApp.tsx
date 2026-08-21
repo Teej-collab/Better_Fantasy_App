@@ -10,6 +10,8 @@ import {
   type MyTeam,
   type RosterEntry,
 } from "@/lib/api";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { nflTeamName } from "@/lib/nfl-teams";
 
 const BENCH_SLOTS = new Set(["BE", "IR"]);
 
@@ -29,23 +31,26 @@ function RosterRow({
   return (
     <li className="flex flex-col gap-2 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-2 truncate text-sm font-medium">
-            {entry.player_name}
-            {entry.is_locked && (
-              <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase dark:bg-white/10">
-                Locked
-              </span>
-            )}
-            {entry.injury_status && entry.injury_status !== "ACTIVE" && (
-              <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                {entry.injury_status}
-              </span>
-            )}
-          </span>
-          <span className="text-xs text-black/50 dark:text-white/50">
-            {entry.lineup_slot_label} · {entry.pro_team}
-          </span>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <PlayerHeadshot playerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+          <div className="flex min-w-0 flex-col">
+            <span className="flex items-center gap-2 truncate text-sm font-medium">
+              {entry.player_name}
+              {entry.is_locked && (
+                <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase dark:bg-white/10">
+                  Locked
+                </span>
+              )}
+              {entry.injury_status && entry.injury_status !== "ACTIVE" && (
+                <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+                  {entry.injury_status}
+                </span>
+              )}
+            </span>
+            <span className="text-xs text-black/50 dark:text-white/50">
+              {entry.lineup_slot_label} · {nflTeamName(entry.pro_team) ?? entry.pro_team}
+            </span>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
           <div className="flex flex-col items-end">

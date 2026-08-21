@@ -148,8 +148,10 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool):
         )
         await conn.execute(
             """
-            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-            VALUES ($1, 5, $2, 'Starter Guy', 'RB', 'RB', 20.5, 18.0)
+            INSERT INTO rosters
+                (season, week, team_id, player_name, position, lineup_slot, points_scored,
+                 points_projected, espn_player_id, pro_team)
+            VALUES ($1, 5, $2, 'Starter Guy', 'RB', 'RB', 20.5, 18.0, 4567, 'KC')
             """,
             TEST_SEASON, team_a,
         )
@@ -179,6 +181,9 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool):
     assert m["home"]["team_name"] == "Team Alpha"
     assert m["home"]["projected_total"] == 18.0  # bench excluded from projected total
     assert [p["player_name"] for p in m["home"]["roster"]] == ["Starter Guy", "Bench Guy"]
+    assert m["home"]["roster"][0]["player_id"] == 4567
+    assert m["home"]["roster"][0]["pro_team"] == "KC"
+    assert m["home"]["roster"][1]["player_id"] is None  # not stored for this row — no error, just absent
 
 
 async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool):

@@ -42,6 +42,8 @@ def _roster_list(roster_rows):
             "lineup_slot": r["lineup_slot"],
             "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
             "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
+            "player_id": r["player_id"],
+            "pro_team": r["pro_team"],
         }
         for r in roster_rows
     ]

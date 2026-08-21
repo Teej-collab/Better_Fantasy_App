@@ -240,10 +240,12 @@ class ESPNProvider(FantasyProvider):
             await conn.execute(
                 """
                 INSERT INTO rosters
-                    (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    (season, week, team_id, player_name, position, lineup_slot, points_scored,
+                     points_projected, espn_player_id, pro_team)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """,
                 season, week, team_db_id, player.name, player.position,
                 player.slot_position,
                 Decimal(str(round(player.points, 2))), Decimal(str(round(player.projected_points, 2))),
+                player.playerId, player.proTeam,
             )

@@ -1,4 +1,6 @@
 import { getFreeAgents, getWaiverSettings } from "@/lib/api";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { nflTeamName } from "@/lib/nfl-teams";
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 
@@ -54,6 +56,7 @@ export default async function FreeAgentsPage({
             <li key={p.player_id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
               <span className="flex min-w-0 items-center gap-3">
                 <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.name} size={36} />
                 <span className="flex min-w-0 flex-col">
                   <span className="flex items-center gap-1.5 truncate font-medium">
                     {p.name}
@@ -64,7 +67,7 @@ export default async function FreeAgentsPage({
                     )}
                   </span>
                   <span className="text-xs text-black/50 dark:text-white/50">
-                    {p.position} · {p.pro_team}
+                    {p.position} · {nflTeamName(p.pro_team) ?? p.pro_team}
                   </span>
                 </span>
               </span>

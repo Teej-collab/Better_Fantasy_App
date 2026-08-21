@@ -47,10 +47,11 @@ def make_fake_matchup(home_team_id, away_team_id, home_score, away_score):
     )
 
 
-def make_fake_player(name, position, slot, points, projected):
+def make_fake_player(name, position, slot, points, projected, player_id=1, pro_team="KC"):
     return SimpleNamespace(
         name=name, position=position, slot_position=slot,
         points=points, projected_points=projected,
+        playerId=player_id, proTeam=pro_team,
     )
 
 
