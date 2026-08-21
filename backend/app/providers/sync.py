@@ -4,16 +4,29 @@ provider, tolerating partial failure the same way Fantasy_Helper's
 refresh_pipeline.py does — one bad season or step doesn't block the rest,
 and the caller gets a full picture of what succeeded.
 
-boom_bust and chug_debts are both derived-stats compute steps (not an
-ESPN fetch — they read whatever's already synced into `rosters`),
-included here so they stay live: every full/live sync recomputes them
-for that season's actual roster data. Other compute_*.py-equivalents
-(luck, chaos, power rank, bench crimes, awards) haven't been ported yet
-— see TODO.md's Phase 6 "who computes this going forward" note.
+boom_bust, chug_debts, weekly_team_stats, and bench_crimes are all
+derived-stats compute steps (not an ESPN fetch — they read whatever's
+already synced into `rosters`/`matchups`), included here so they stay
+live: every full/live sync recomputes them for that season's actual
+data. season_awards is season-scoped rather than per-week (like
+final_standings), so it's a full-sync-only step, not part of live sync
+— see app/domain/season_awards.py's module docstring for why it's safe
+to recompute mid-season.
+
+Order within a season matters: weekly_team_stats' chaos_score reads
+is_boom/is_bust, so boom_bust must run first; season_awards reads
+weekly_team_stats.team_points_projected (via get_expected_score) and
+computes the season champion from final_standings, so it runs last.
 """
 from app.db import get_pool
+from app.domain.bench_crimes import compute_bench_crimes_for_season, compute_bench_crimes_for_single_week
 from app.domain.boom_bust import compute_boom_bust_for_season, compute_boom_bust_for_single_week
 from app.domain.chug_debt import compute_chug_debts_for_season, compute_chug_debts_for_single_week
+from app.domain.season_awards import compute_season_awards_for_season
+from app.domain.weekly_team_stats import (
+    compute_weekly_team_stats_for_season,
+    compute_weekly_team_stats_for_single_week,
+)
 from app.providers.base import FantasyProvider
 
 
@@ -43,7 +56,10 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             ("rosters", provider.sync_rosters),
             ("boom_bust", compute_boom_bust_for_season),
             ("chug_debts", compute_chug_debts_for_season),
+            ("weekly_team_stats", compute_weekly_team_stats_for_season),
+            ("bench_crimes", compute_bench_crimes_for_season),
             ("final_standings", provider.sync_final_standings),
+            ("season_awards", compute_season_awards_for_season),
         ):
             try:
                 count = await step(pool, season)
@@ -78,6 +94,8 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
         ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
         ("boom_bust", lambda p, s: compute_boom_bust_for_single_week(p, s, week)),
         ("chug_debts", lambda p, s: compute_chug_debts_for_single_week(p, s, week)),
+        ("weekly_team_stats", lambda p, s: compute_weekly_team_stats_for_single_week(p, s, week)),
+        ("bench_crimes", lambda p, s: compute_bench_crimes_for_single_week(p, s, week)),
     ):
         try:
             count = await step(pool, season)

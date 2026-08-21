@@ -394,6 +394,56 @@ question — nothing in this app's pipeline computes those yet, so they'll
 go stale once the 2026 season starts unless something else (the old bot,
 or a future port) keeps running for them specifically.
 
+**Fully answered, Aug 20 2026 — the remaining gap closed.** `chug_debts`
+was ported and wired in earlier the same day (see the Chug subsystem
+entry below). The rest — `weekly_team_stats` (power_rank/luck_score/
+chaos_score/team_points_projected), `bench_crimes`, and `season_awards`
+(plus `season_champions`, a small related concern) — ported this pass:
+
+- `app/domain/weekly_team_stats.py` — power_rank, luck_score,
+  chaos_score, team_points_projected, ported unchanged from
+  `bot/stats_engine/power_rank.py`/`luck.py`/`chaos.py`/
+  `team_projections.py`. Deliberately doesn't compute `clutch_score`/
+  `choke_score` — those columns exist in the schema but have no reader
+  anywhere in this app (their only consumer in Fantasy_Helper is
+  `narrative_engine`/`recap_embed.py`, both explicitly out of scope —
+  confirmed by grepping this app's own code before assuming, not
+  guessed).
+- `app/domain/bench_crimes.py` — ported unchanged from
+  `bot/stats_engine/bench_crime.py`. No unique constraint on
+  `(season, week, team_id)`, so a recompute deletes and re-inserts that
+  team's rows rather than upserting, matching the original script.
+- `app/domain/season_awards.py` — all 7 season-award computations
+  (clutch/choke, over/underachiever, boom/bust week, snakebit/luckiest
+  win, streaks, bullseye, highway robbery) plus
+  `determine_and_save_season_awards`, ported unchanged from
+  `bot/awards_engine/season_awards.py`/`determine_season_awards.py`.
+  Every underlying query already scopes to real, played, regular-season
+  games (`home_score > 0 AND is_playoff = FALSE`), so — confirmed by
+  reading the actual queries, not assumed — it's safe to recompute every
+  full sync, not just once at season end; awards just reflect "the
+  season so far" and update as more weeks are played, the same way
+  power_rank already behaves. Also ported `season_champions`
+  (derived from `final_standings.final_rank = 1`, a no-op until a
+  season's playoffs actually finish).
+- Wired into `app/providers/sync.py`: `weekly_team_stats` and
+  `bench_crimes` are per-week steps in both `run_full_sync` and
+  `run_live_sync` (ordered after `boom_bust`, since chaos_score reads
+  `is_boom`/`is_bust`); `season_awards` is a full-sync-only step (like
+  `final_standings`, not per-current-week), ordered last since it reads
+  both `weekly_team_stats.team_points_projected` and `final_standings`.
+- Removed `scripts/backfill_season_derived_stats.py` — the stopgap this
+  TODO note originally pointed at, which depended on a sibling
+  `Fantasy_Helper` checkout via `sys.path` injection. Superseded by the
+  real port; no longer needed and no longer correct to keep around as a
+  second, drifting implementation of the same logic.
+- 25 new backend tests (9 weekly_team_stats, 7 bench_crimes, 9
+  season_awards), all passing against real Postgres (fake
+  `TEST_SEASON = 1900` data, same discipline as every other domain
+  test). Not yet backfilled/verified against real 2026 data, since the
+  season hasn't started — nothing real to compute yet. Full existing
+  suite (192 tests total) still green after this change.
+
 13 new backend tests (profile: 4, awards/rivalries: 3, plus the
 domain/query modules they exercise), 37 total passing. Verified
 extensively against real production data (team profiles, career stats,
