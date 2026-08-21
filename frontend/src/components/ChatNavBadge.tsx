@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, type ChatConversation } from "@/lib/api";
+import type { ChatConversation } from "@/lib/api";
 
 /**
  * Client-side, same reason AuthStatus is: the nav bar is otherwise a
@@ -12,12 +12,18 @@ import { API_BASE_URL, type ChatConversation } from "@/lib/api";
  * pages return 401 harmlessly here). Reflects unread state as of when
  * the current page loaded, not a live push — ChatApp.tsx's own
  * WebSocket keeps counts live while /chat itself is open.
+ *
+ * Goes through the frontend's own /chat/conversations proxy (not the
+ * backend directly) for the same reason AuthStatus goes through
+ * /auth/me now — a direct browser->backend fetch depends on the
+ * browser sending the backend's cross-site cookie, which Safari's ITP
+ * blocks on mobile regardless of SameSite=None.
  */
 export function ChatNavBadge() {
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/chat/conversations`, { credentials: "include" })
+    fetch("/chat/conversations")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { conversations: ChatConversation[] } | null) => {
         if (!data) return;

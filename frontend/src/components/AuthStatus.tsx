@@ -12,10 +12,15 @@ type Me = {
 
 /**
  * Client component, not a server component like the rest of this app —
- * "am I logged in" depends on a session cookie the browser holds for the
- * backend's origin, which a Next.js server component (fetching from the
- * Node process, not the browser) has no access to. This is the one piece
- * of the app that talks to the backend directly from the browser.
+ * "am I logged in" depends on a per-visitor cookie, which a server
+ * component (rendered once on the Node process, not per-browser) has
+ * no way to read reactively here. Hits the frontend's own /auth/me
+ * route (same-origin) rather than the backend directly — a direct
+ * browser->backend fetch depends on the browser actually sending the
+ * backend's cross-site cookie, which Safari's Intelligent Tracking
+ * Prevention (mobile Safari and iOS Chrome) blocks by default even
+ * with SameSite=None, silently reading as "signed out" for a visitor
+ * who very much is signed in. See app/auth/me/route.ts.
  */
 export function AuthStatus() {
   const router = useRouter();
@@ -23,7 +28,7 @@ export function AuthStatus() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/auth/me`, { credentials: "include" })
+    fetch("/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then(setMe)
       .catch(() => setMe(null))
@@ -31,9 +36,10 @@ export function AuthStatus() {
   }, []);
 
   async function logout() {
-    // Two cookies to clear — the backend's own (what this component's
-    // own /auth/me check and the chat WebSocket use) and the frontend's
-    // first-party copy (what every server-rendered page reads — see
+    // Two cookies to clear — the backend's own (what the chat WebSocket
+    // and other direct browser->backend calls use) and the frontend's
+    // first-party copy (what every server-rendered page, and this
+    // component's own /auth/me check, actually reads — see
     // app/auth/logout/route.ts). Missing either one leaves the visitor
     // looking signed-in somewhere.
     await Promise.all([
