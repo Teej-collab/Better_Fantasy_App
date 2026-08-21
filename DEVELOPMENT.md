@@ -353,7 +353,11 @@ use the app without a laptop running locally — set up with the project
 owner's explicit go-ahead, using each platform's free/hobby tier.
 
 - **Frontend**: Vercel, project `weekend-league-web`, root directory
-  `frontend`. Live at **https://weekend-league-web.vercel.app**.
+  `frontend`. Live at **https://weekend-league-web.vercel.app**. SSO
+  deployment protection (on by default for new Vercel projects) was
+  explicitly disabled — it would have gated the whole public-facing
+  site behind a Vercel login, which defeats the actual point of this
+  deployment (a friend without a Vercel account viewing it).
 - **Backend**: Railway, project `weekend-league-api`, root directory
   `/backend`, builder Railpack (auto-detected Python 3.13 from
   `backend/.python-version`). Live at
