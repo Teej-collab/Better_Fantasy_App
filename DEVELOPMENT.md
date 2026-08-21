@@ -346,6 +346,54 @@ proper look once the page set stabilizes.
 
 ---
 
+## Production Deployment (Aug 20 2026)
+
+Real, live deployment so anyone (not just people on the same LAN) can
+use the app without a laptop running locally — set up with the project
+owner's explicit go-ahead, using each platform's free/hobby tier.
+
+- **Frontend**: Vercel, project `weekend-league-web`, root directory
+  `frontend`. Live at **https://weekend-league-web.vercel.app**.
+- **Backend**: Railway, project `weekend-league-api`, root directory
+  `/backend`, builder Railpack (auto-detected Python 3.13 from
+  `backend/.python-version`). Live at
+  **https://weekend-league-api-production.up.railway.app**. Deploy
+  config (start command, health check path) is set as Railway service
+  config via the CLI, not a committed `railway.toml` — Railpack didn't
+  pick that file up for this build; the real config lives on Railway's
+  side (`railway environment config --json` to inspect it).
+
+**Auto-deploy**: both projects are connected directly to the
+`Teej-collab/Better_Fantasy_App` GitHub repo (main branch) — a normal
+`git push` to main redeploys both automatically, no manual step needed
+either place. This needed two one-time GitHub authorizations that only
+the repo owner could grant (Railway's GitHub App and Vercel's GitHub
+App each needed explicit access to this specific repo — a login being
+connected to an account isn't the same as an App being authorized for
+a repo; hit this exact distinction for both platforms while setting up).
+
+**Environment variables**: set directly on each platform (Railway:
+`railway variable set KEY=value --service weekend-league-api -e
+production`; Vercel: `vercel env add KEY production`), not committed
+anywhere. The backend's production env mirrors local `.env` with three
+real differences: `SESSION_COOKIE_SECURE=true` (real HTTPS now, so the
+session cookie can be marked Secure — local dev stays `false` since
+that's plain HTTP), `DISCORD_REDIRECT_URI` pointed at the Railway
+domain (a second redirect URI was added in the Discord Developer
+Portal alongside the local one — both work, so local dev sign-in is
+unaffected), and `CORS_ALLOWED_ORIGINS`/`FRONTEND_URL` pointed at the
+Vercel domain instead of the LAN hostname.
+
+**Known gap, not fixed**: the Chug Analyzer's separate Python 3.11 +
+mediapipe environment isn't part of this deployment — Railway (like
+most simple PaaS hosts) runs one runtime per service, and bundling a
+second Python environment would need a custom Docker image. Explicit
+scope decision when this was set up: ship without it (`/chug/upload`
+just won't work in production yet), treat adding it as a real fast-follow
+rather than a blocker. Everything else works identically to local dev.
+
+---
+
 ## Notes
 
 - `backend/.env` and `frontend/.env*` are gitignored — never commit real
