@@ -8,10 +8,14 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-// Same as get(), but forwards the session cookie — for endpoints that
-// require the caller to be signed in (chat messages, etc.).
+// Same as get(), but for endpoints that require the caller to be
+// signed in (chat messages, etc.) — routed through /api/backend (see
+// app/api/backend/[...path]/route.ts) rather than straight to the
+// backend, since a direct browser fetch depends on the browser
+// sending the backend's cross-site cookie, which Safari's ITP blocks
+// by default even with SameSite=None.
 async function authedGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", credentials: "include" });
+  const res = await fetch(`/api/backend${path}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`GET ${path} failed: ${res.status}`);
   }
@@ -473,9 +477,8 @@ export function getChugLeaderboard(season?: number) {
 // off the owed total. amount omitted clears the entire fine.
 export async function clearChugFine(ownerId: number, amount?: number): Promise<{ cleared: number }> {
   const qs = amount !== undefined ? `?amount=${amount}` : "";
-  const res = await fetch(`${API_BASE_URL}/chug/standing/${ownerId}/clear-fine${qs}`, {
+  const res = await fetch(`/api/backend/chug/standing/${ownerId}/clear-fine${qs}`, {
     method: "POST",
-    credentials: "include",
   });
   if (!res.ok) throw new Error(`Failed to clear fine: ${res.status}`);
   return res.json();
@@ -514,9 +517,8 @@ export async function getMySettings(sessionCookie: string | undefined): Promise<
 }
 
 async function _settingsRequest(path: string, method: string, body?: object): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/settings${path}`, {
+  const res = await fetch(`/api/backend/settings${path}`, {
     method,
-    credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -564,7 +566,7 @@ export type MyTeam = {
 };
 
 export async function getMyTeam(): Promise<MyTeam> {
-  const res = await fetch(`${API_BASE_URL}/me/team`, { credentials: "include", cache: "no-store" });
+  const res = await fetch(`/api/backend/me/team`, { cache: "no-store" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Failed to load team (${res.status})`);
@@ -580,9 +582,8 @@ export type LineupMovePreview = {
 };
 
 export async function previewLineupMove(playerName: string, toSlot: string): Promise<LineupMovePreview> {
-  const res = await fetch(`${API_BASE_URL}/me/team/lineup/preview-move`, {
+  const res = await fetch(`/api/backend/me/team/lineup/preview-move`, {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ player_name: playerName, to_slot: toSlot }),
   });
@@ -596,9 +597,8 @@ export async function previewLineupMove(playerName: string, toSlot: string): Pro
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
 
 export async function previewLineupSwap(playerA: string, playerB: string): Promise<LineupSwapPreview> {
-  const res = await fetch(`${API_BASE_URL}/me/team/lineup/preview-swap`, {
+  const res = await fetch(`/api/backend/me/team/lineup/preview-swap`, {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ player_a: playerA, player_b: playerB }),
   });
@@ -692,16 +692,15 @@ export async function getChatConversationMessages(
 }
 
 export async function getChatMembers(): Promise<ChatMember[]> {
-  const res = await fetch(`${API_BASE_URL}/chat/members`, { credentials: "include" });
+  const res = await fetch(`/api/backend/chat/members`);
   if (!res.ok) return [];
   const { members } = await res.json();
   return members;
 }
 
 export async function startDirectConversation(ownerId: number): Promise<number> {
-  const res = await fetch(`${API_BASE_URL}/chat/conversations/direct`, {
+  const res = await fetch(`/api/backend/chat/conversations/direct`, {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ owner_id: ownerId }),
   });
@@ -711,30 +710,38 @@ export async function startDirectConversation(ownerId: number): Promise<number> 
 }
 
 export async function markConversationRead(conversationId: number): Promise<void> {
-  await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/read`, {
+  await fetch(`/api/backend/chat/conversations/${conversationId}/read`, {
     method: "POST",
-    credentials: "include",
   });
 }
 
 export async function reactToMessage(messageId: number, emoji: string): Promise<void> {
-  await fetch(`${API_BASE_URL}/chat/messages/${messageId}/react`, {
+  await fetch(`/api/backend/chat/messages/${messageId}/react`, {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ emoji }),
   });
 }
 
 export async function deleteChatMessage(messageId: number): Promise<void> {
-  await fetch(`${API_BASE_URL}/chat/messages/${messageId}`, {
+  await fetch(`/api/backend/chat/messages/${messageId}`, {
     method: "DELETE",
-    credentials: "include",
   });
 }
 
 // ws:// for a plain http API_BASE_URL, wss:// for https — same origin
 // and port as every other backend call, just a different scheme.
+//
+// KNOWN GAP, not fixed by the /api/backend proxy above: the WS
+// handshake is still a direct cross-site browser request that relies
+// on the backend's cookie, same failure mode ITP causes for every
+// other endpoint this file talks to — an HTTP route handler can't
+// forward a protocol upgrade, so this one needs a different fix
+// (e.g. a same-origin route that mints a short-lived ticket from the
+// first-party cookie, passed as a query param on the WS URL instead
+// of relying on the cookie reaching the handshake). Chat's real-time
+// delivery is affected on the same browsers as the rest of this file
+// was until now; tracked separately, not addressed in this pass.
 export function getChatWebSocketUrl(): string {
   return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws`;
 }

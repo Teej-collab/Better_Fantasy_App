@@ -18,6 +18,16 @@ type UploadResult =
       chugs_owed_after: number;
     };
 
+// KNOWN GAP: still fetches the backend directly with credentials:
+// "include", same cross-site-cookie problem AuthStatus/MyTeamApp/etc.
+// had until the /api/backend proxy (lib/api.ts) fixed it for them —
+// deliberately NOT routed through that proxy here, since forwarding a
+// real video file through a Vercel serverless function would count
+// against its request-body size limit, which today's direct-to-
+// backend upload never hits. Needs a different fix (e.g. a same-
+// origin route that mints a short-lived upload ticket from the
+// first-party cookie, passed as a query param instead of relying on
+// the cookie reaching this fetch) — tracked separately.
 export function ChugUpload() {
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
