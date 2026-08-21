@@ -1,4 +1,4 @@
-import { buildNflTickerItems, getIsGameDay, getNflScoreboard } from "@/lib/api";
+import { buildNflTickerItems, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 
@@ -17,7 +17,8 @@ import { GameDayRefresher } from "@/components/GameDayRefresher";
  * there indefinitely on a page nobody navigated away from.
  */
 export async function AppTickerBar() {
-  const [nflGames, isGameDay] = await Promise.all([getNflScoreboard(), getIsGameDay()]);
+  const nflGames = await getNflScoreboard();
+  const isGameDay = isNflGameLive(nflGames);
   return (
     <div className="safe-px mx-auto w-full max-w-4xl pt-3">
       <LiveTicker items={buildNflTickerItems(nflGames)} fast={isGameDay} />

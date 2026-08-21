@@ -12,12 +12,12 @@ import { useEffect } from "react";
 const REFRESH_INTERVAL_MS = 45 * 1000;
 
 /**
- * Renders nothing — only mounted on the homepage while it's a live NFL
- * game window (see getIsGameDay), and just calls router.refresh() on
- * an interval so the server-rendered data (scores, ticker, win
+ * Renders nothing — only mounted while a real NFL game is live (see
+ * isNflGameLive, lib/api.ts), and just calls router.refresh() on an
+ * interval so the server-rendered data (scores, ticker, win
  * probability) actually updates without the user having to reload.
- * Outside a game window this component isn't rendered at all, so
- * there's no background polling the rest of the time.
+ * Outside a live game this component isn't rendered at all, so there's
+ * no background polling the rest of the time.
  */
 export function GameDayRefresher() {
   const router = useRouter();

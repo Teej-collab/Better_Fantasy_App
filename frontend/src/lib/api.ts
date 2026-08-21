@@ -389,6 +389,22 @@ export async function getNflScoreboard(): Promise<NflGame[]> {
   }
 }
 
+// Real Game Day detection: true iff a real NFL game is in progress
+// right now, per ESPN's own live status for each game. Derived locally
+// from the same scoreboard data every caller already fetches via
+// getNflScoreboard() (buildNflTickerItems, below) instead of a second
+// backend round trip — every call site needed both together anyway, so
+// a separate GET /game-day fetch was just doubling the real ESPN calls
+// per page load for no benefit. Same logic as the backend's own
+// is_nfl_game_live (app/providers/nfl_scoreboard.py), which the
+// live-sync scheduler and this endpoint's callers both rely on staying
+// in agreement — this replaced a day-of-week/hour heuristic (see
+// TODO.md, Aug 19 2026) that could miss a real game outside its fixed
+// windows or false-positive on an empty evening inside them.
+export function isNflGameLive(nflGames: NflGame[]): boolean {
+  return nflGames.some((g) => g.state === "in");
+}
+
 // Shared by the persistent site-wide ticker (layout.tsx), the signed-out
 // gate's own ticker (OpeningExperience.tsx via page.tsx), and the
 // homepage dashboard's richer ticker — the exact same real NFL data
@@ -557,15 +573,3 @@ export function getChatWebSocketUrl(): string {
   return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws`;
 }
 
-// Same NFL-game-window detection gating the backend's live-sync
-// scheduler (app/game_windows.py) — "is it Game Day" on the homepage
-// always agrees with whether the backend is actually polling ESPN for
-// fresh scores right now.
-export async function getIsGameDay(): Promise<boolean> {
-  try {
-    const { is_game_day } = await get<{ is_game_day: boolean }>("/game-day");
-    return is_game_day;
-  } catch {
-    return false;
-  }
-}

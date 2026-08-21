@@ -8,19 +8,27 @@ whatever DATABASE_URL happens to be configured:
   ARCHITECTURE.md). Meant for a slow cadence (default: daily).
 - Live sync (ENABLE_LIVE_SYNC_SCHEDULER): re-syncs just the current
   week's matchups/rosters + boom/bust, fast enough to poll frequently
-  during live games. Gated to actual NFL game windows
-  (app/game_windows.py) by default so an unofficial API isn't polled
-  around the clock for no reason — a deliberate decision, not an
-  oversight (discussed with the project owner Aug 19 2026).
+  during live games. Gated to whether a real NFL game is actually live
+  right now (app/providers/nfl_scoreboard.py's is_nfl_game_live, backed
+  by ESPN's own public scoreboard) so the *private, unofficial* fantasy
+  API isn't polled around the clock for no reason — a deliberate
+  decision, not an oversight (discussed with the project owner Aug 19
+  2026). This replaced a day-of-week/hour heuristic (app/game_windows.py,
+  removed Aug 20 2026) that could both miss a real game outside its
+  fixed windows and false-positive on an empty evening inside them —
+  see TODO.md. The public scoreboard check itself runs every tick
+  regardless of day/time; it's a lightweight, unauthenticated, already
+  widely-used-elsewhere endpoint, unlike the fantasy API this gate
+  protects.
 """
 import logging
 import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.game_windows import is_within_nfl_game_window
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
 from app.providers.sync import run_full_sync, run_live_sync
 
 logger = logging.getLogger(__name__)
@@ -38,7 +46,8 @@ async def _run_full_sync_job():
 
 
 async def _run_live_sync_job():
-    if not is_within_nfl_game_window():
+    games = await get_nfl_scoreboard()
+    if not is_nfl_game_live(games):
         return
 
     espn_config = ESPNConfig()

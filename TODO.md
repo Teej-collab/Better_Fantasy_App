@@ -798,7 +798,7 @@ and pushed:**
 - [ ] Homepage still not fully satisfying to the project owner as of
       Aug 19 2026 despite the motion pass above — needs another look,
       scope TBD.
-- [ ] **Game Day detection uses a fixed weekly schedule, not real game
+- [x] **Game Day detection uses a fixed weekly schedule, not real game
       times.** `app/game_windows.py` only checks day-of-week + hour range
       (Thu 19-24, Sun 12-24, Mon 19-24 ET) — it never looks at ESPN's
       actual schedule. Two real consequences: a game outside those hours
@@ -811,6 +811,33 @@ and pushed:**
       and the actual schedule**, not just this fixed-window heuristic, so
       this should be solved as a real "pull ESPN's schedule" capability
       rather than patched narrowly for Game Day alone.
+
+**Resolved, Aug 20 2026.** Real detection, not a heuristic:
+`is_nfl_game_live(games)` (`app/providers/nfl_scoreboard.py`) checks
+whether any game on ESPN's own public scoreboard has `state == "in"` —
+the same real, already-integrated scoreboard feed the ticker itself
+uses, not a separate "pull the schedule" system. Both prior consumers
+now share this one real source of truth instead of drifting:
+`app/scheduler.py`'s live-sync gate (fetches the scoreboard every tick
+instead of a zero-I/O day/hour check — an acceptable trade since this
+hits ESPN's public, unauthenticated endpoint, not the private fantasy
+API this gate protects from being over-polled) and `GET /game-day`
+(`app/routers/game_day.py`). `app/game_windows.py` and its test file
+were deleted outright, not left around unused.
+
+Frontend got an efficiency fix alongside the accuracy fix: every real
+call site (`(home)/page.tsx` x2, `AppTickerBar.tsx`) already fetched
+`getNflScoreboard()` and `getIsGameDay()` together — two separate ESPN
+round trips per page load for data that only ever needed one. Replaced
+`getIsGameDay()` with a pure `isNflGameLive(nflGames)` (`lib/api.ts`)
+computed from the scoreboard data already being fetched — no second
+network call, and `GET /game-day` itself still exists as a real,
+correct, independently-usable endpoint for anything that only needs
+the flag.
+
+6 new/updated backend tests (`is_nfl_game_live` unit tests plus
+`/game-day` against a faked live/not-live scoreboard), full suite
+still green.
 
 ## PHASE 8 — LEAGUE FEATURES
 - [ ] League history / records

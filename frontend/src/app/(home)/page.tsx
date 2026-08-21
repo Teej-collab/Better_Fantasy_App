@@ -3,13 +3,13 @@ import { cookies } from "next/headers";
 import {
   buildNflTickerItems,
   getCurrentWeek,
-  getIsGameDay,
   getMe,
   getMyWeek,
   getNflScoreboard,
   getStandings,
   getWeekMatchupContext,
   getWeeklyAwards,
+  isNflGameLive,
   listRivalries,
   listSeasons,
   type Rivalry,
@@ -63,18 +63,17 @@ export default async function HomePage() {
   // OpeningExperience.tsx.
   const me = await getMe(sessionCookie);
   if (!me) {
-    const [nflGames, isGameDay] = await Promise.all([getNflScoreboard(), getIsGameDay()]);
-    return <OpeningExperience tickerItems={buildNflTickerItems(nflGames)} isGameDay={isGameDay} />;
+    const nflGames = await getNflScoreboard();
+    return (
+      <OpeningExperience tickerItems={buildNflTickerItems(nflGames)} isGameDay={isNflGameLive(nflGames)} />
+    );
   }
 
   const { seasons } = await listSeasons();
   const season = seasons.length > 0 ? Math.max(...seasons) : null;
 
-  const [myWeek, nflGames, isGameDay] = await Promise.all([
-    getMyWeek(sessionCookie),
-    getNflScoreboard(),
-    getIsGameDay(),
-  ]);
+  const [myWeek, nflGames] = await Promise.all([getMyWeek(sessionCookie), getNflScoreboard()]);
+  const isGameDay = isNflGameLive(nflGames);
 
   let week: number | null = null;
   let standings: StandingsRow[] = [];

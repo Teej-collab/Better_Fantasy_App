@@ -5,8 +5,8 @@ This is deliberately separate from app/providers/espn/adapter.py (our
 sync pipeline's read adapter, which writes into OUR database on a
 schedule) and from raw espn_api.football.League. A lineup mutation must
 always plan against ESPN's actual live state, not our DB — the DB is
-only synced during NFL game windows (see app/game_windows.py) and can be
-stale outside them, e.g. right after a waiver add clears. Every read
+only synced while a real NFL game is live (see app/scheduler.py) and can
+be stale outside that, e.g. right after a waiver add clears. Every read
 here goes straight to ESPN, live, every time.
 
 WRITE STATUS: implemented, gated behind config.dry_run (default True) —

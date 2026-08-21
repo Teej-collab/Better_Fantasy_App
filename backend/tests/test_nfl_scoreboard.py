@@ -1,7 +1,20 @@
 """Never hits the real ESPN scoreboard endpoint in tests — httpx.AsyncClient
 is replaced with a fake that returns a canned response, same principle
 as the ESPN lineup-write tests never sending a real request."""
-from app.providers.nfl_scoreboard import get_nfl_scoreboard
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
+
+
+def test_is_nfl_game_live_true_when_any_game_in_progress():
+    games = [{"state": "pre"}, {"state": "in"}, {"state": "post"}]
+    assert is_nfl_game_live(games) is True
+
+
+def test_is_nfl_game_live_false_when_nothing_in_progress():
+    assert is_nfl_game_live([{"state": "pre"}, {"state": "post"}]) is False
+
+
+def test_is_nfl_game_live_false_with_no_games():
+    assert is_nfl_game_live([]) is False
 
 _FAKE_RESPONSE = {
     "events": [
