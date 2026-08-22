@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { listSeasons } from "@/lib/api";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
 // Purple, matching the "rules" entry in the homepage's own
 // SECTION_ACCENT/SECTION_GLOW palette ((home)/page.tsx) — every rule
@@ -26,9 +28,13 @@ const TOC: RuleLink[] = [
   { id: "commissioner", emoji: "⚖️", title: "Commissioner Clause" },
 ];
 
-export default function RulesPage() {
+export default async function RulesPage() {
+  const { seasons } = await listSeasons();
+  const latestSeason = Math.max(...seasons);
+
   return (
     <div className="flex flex-col gap-6">
+      <LeagueSubNav active="rules" awardsHref={`/seasons/${latestSeason}/awards`} />
       {/* Same soft brand-colored wash as the signed-in homepage
           (.home-ambient, (home)/page.tsx) — reused here rather than
           redefined so this page reads as part of the same design

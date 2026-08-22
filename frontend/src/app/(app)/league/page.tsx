@@ -1,4 +1,5 @@
 import { listSeasons, listTeams } from "@/lib/api";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
 export default async function LeaguePage({
   searchParams,
@@ -14,6 +15,7 @@ export default async function LeaguePage({
 
   return (
     <div className="flex flex-col gap-4">
+      <LeagueSubNav active="overview" awardsHref={`/seasons/${latestSeason}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">League</h1>
         <div className="flex gap-x-3 text-sm">

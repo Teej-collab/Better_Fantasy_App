@@ -1,4 +1,5 @@
 import { getStandings, listSeasons, type StandingsRow } from "@/lib/api";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
 export default async function StandingsPage({
   searchParams,
@@ -18,6 +19,7 @@ export default async function StandingsPage({
 
   return (
     <div className="flex flex-col gap-4">
+      <LeagueSubNav active="standings" awardsHref={`/seasons/${latestSeason}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Standings</h1>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">

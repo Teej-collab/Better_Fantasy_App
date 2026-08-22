@@ -1,99 +1,77 @@
-import { listSeasons } from "@/lib/api";
+import { cookies } from "next/headers";
+import {
+  getCurrentWeek,
+  getMe,
+  getMyWeek,
+  getNflScoreboard,
+  isNflGameLive,
+  listSeasons,
+} from "@/lib/api";
+import { BrandMark } from "@/components/BrandMark";
+import { PrimaryNav } from "@/components/nav/PrimaryNav";
+import { BottomNav } from "@/components/nav/BottomNav";
 import { AuthStatus } from "@/components/AuthStatus";
-import { ChatNavBadge } from "@/components/ChatNavBadge";
 
 /**
  * Shared by app/(app)/layout.tsx and app/(home)/layout.tsx — every
  * route except /weekend, which lives outside both groups specifically
  * so it never receives this chrome at all (not even server-rendered —
  * see those layouts' own comments for why that distinction matters).
+ *
+ * Session-aware (reads the first-party cookie server-side, same
+ * `getMe(sessionCookie)` every page.tsx already uses — not the
+ * client-side /auth/me check AuthStatus.tsx does for the account menu
+ * itself, which this deliberately leaves untouched) for two things
+ * only: which primary destinations to show (League/Matchups/Players
+ * are genuinely public today — their routers have no auth gate — so
+ * they stay visible signed out; My Team/Chat do not, matching each
+ * page's own existing sign-in gate), and the signed-in visitor's own
+ * live-matchup state for the LIVE marks on My Team/Matchups.
+ *
+ * getMyWeek + getNflScoreboard are the exact same calls
+ * app/(home)/page.tsx already makes for its own "your week" hero —
+ * getNflScoreboard() is a plain fetch(), and Next's per-request fetch
+ * memoization means calling it here too (in addition to
+ * AppTickerBar's own identical call) hits the network once per page
+ * render, not twice.
  */
 export async function NavBar() {
-  const { seasons } = await listSeasons();
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+
+  const [{ seasons }, me, myWeek, nflGames] = await Promise.all([
+    listSeasons(),
+    getMe(sessionCookie),
+    getMyWeek(sessionCookie),
+    getNflScoreboard(),
+  ]);
+  const signedIn = me !== null;
   const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
 
+  let matchupsHref = "/standings"; // only reachable if a league has no seasons synced at all yet
+  let awardsHref = "/rivalries";
+  if (latestSeason !== null) {
+    const { current_week } = await getCurrentWeek(latestSeason);
+    const week = current_week && current_week >= 1 ? current_week : 1;
+    matchupsHref = `/seasons/${latestSeason}/weeks/${week}`;
+    awardsHref = `/seasons/${latestSeason}/awards`;
+  }
+
+  const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
+
   return (
-    <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
-      <nav className="safe-px mx-auto flex max-w-4xl items-center gap-3 py-3 text-sm">
-        <a href="/" className="shrink-0 font-semibold">
-          <span className="sm:hidden">WL</span>
-          <span className="hidden sm:inline">Weekend League</span>
-        </a>
-        {/* Single-row horizontal scroller on narrow screens instead of
-            wrapping to 2-3 lines — same overscroll-containment technique
-            as CardDeck.tsx's player deck, so a swipe here can't leak into
-            page-level scroll/navigation. Reverts to a normal wrapping row
-            once there's room (sm:), since these 6 links plus the brand
-            already fit on one line at that width. */}
-        <div className="flex min-w-0 flex-1 touch-pan-x items-center gap-x-4 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
-          <a
-            href="/standings"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Standings
-          </a>
-          <a
-            href="/league"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            League
-          </a>
-          {latestSeason !== null && (
-            <a
-              href={`/seasons/${latestSeason}/weeks/1`}
-              className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-            >
-              Matchups
-            </a>
-          )}
-          {latestSeason !== null && (
-            <a
-              href={`/seasons/${latestSeason}/awards`}
-              className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-            >
-              Awards
-            </a>
-          )}
-          <a
-            href="/rivalries"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Rivalries
-          </a>
-          <a
-            href="/team"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            My Team
-          </a>
-          <a
-            href="/free-agents"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Free Agents
-          </a>
-          <a
-            href="/players"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            Players
-          </a>
-          <a href="/rules" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
-            Rules
-          </a>
-          <a href="/chug" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
-            Chug
-          </a>
-          <ChatNavBadge />
-          <a
-            href="/weekend"
-            className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-          >
-            The Weekend
-          </a>
-        </div>
-        <AuthStatus />
-      </nav>
-    </header>
+    <>
+      <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
+        <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 py-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <BrandMark href={signedIn ? "/team" : "/"} />
+            <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
+            <PrimaryNav signedIn={signedIn} matchupsHref={matchupsHref} myMatchupLive={myMatchupLive} />
+          </div>
+          <AuthStatus />
+        </nav>
+      </header>
+      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} awardsHref={awardsHref} myMatchupLive={myMatchupLive} />
+    </>
   );
 }

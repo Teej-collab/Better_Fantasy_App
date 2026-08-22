@@ -17,11 +17,19 @@ import type { ReactNode } from "react";
  * a near-full-height canvas, not a narrow centered column with a lot of
  * dead space on desktop, so it gets a wider max-width and tighter
  * vertical padding instead of the standard treatment.
+ *
+ * Extra bottom padding below `sm:` clears NavBar's fixed BottomNav
+ * (same breakpoint BottomNav itself hides at) — otherwise the last
+ * bit of every page's content would render underneath it. ChatApp.tsx
+ * already computes its own exact height as `100dvh` minus the known
+ * header/ticker chrome (`h-[calc(100dvh-3.5rem)]`) rather than relying
+ * on container padding, so it gets the bottom nav's height subtracted
+ * the same way instead of double-padding on top of that calculation.
  */
 export function PageShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   if (pathname === "/chat") {
     return <main className="safe-px mx-auto w-full max-w-5xl flex-1 py-4">{children}</main>;
   }
-  return <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-6">{children}</main>;
+  return <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
 }

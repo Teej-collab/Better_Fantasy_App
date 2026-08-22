@@ -1,5 +1,6 @@
 import { getCareerProfile, getOwnerBadges, listOwners, listSeasons } from "@/lib/api";
 import { CardDeck } from "@/components/CardDeck";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
 export default async function PlayersPage() {
   const [{ owners }, { seasons }] = await Promise.all([listOwners(), listSeasons()]);
@@ -14,8 +15,11 @@ export default async function PlayersPage() {
     })
   );
 
+  const latestSeason = Math.max(...seasons);
+
   return (
     <div className="flex flex-col gap-6">
+      <LeagueSubNav active="playerCards" awardsHref={`/seasons/${latestSeason}/awards`} />
       <div>
         <h1 className="text-2xl font-semibold">Player Cards</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
