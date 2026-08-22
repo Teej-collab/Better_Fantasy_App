@@ -17,6 +17,7 @@ downstream effect, not just a cosmetic one. Reject rather than sanitize:
 this is a small, low-stakes field with an unambiguous valid format, so
 there's no reason to guess at what the user "meant."
 """
+import datetime
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,6 +26,7 @@ from pydantic import BaseModel
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
+from app.queries import owner_preferences as preferences_queries
 from app.queries import settings as settings_queries
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -102,3 +104,63 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
     async with pool.acquire() as conn:
         await settings_queries.set_chat_color(conn, payload["owner_id"], color)
     return {"chat_color": color}
+
+
+@router.get("/preferences")
+async def get_preferences(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        return await preferences_queries.get_preferences(conn, payload["owner_id"])
+
+
+class PreferencesPatch(BaseModel):
+    """Every field optional — only fields actually present in the
+    request body (model_dump(exclude_unset=True) below) get applied,
+    so a client can PATCH a single toggle without resending the rest.
+    sunday_mode is deliberately not settable here — only through
+    POST /preferences/sunday-mode below, which also enforces it's one
+    of the three real presets."""
+
+    notify_direct_messages: bool | None = None
+    notify_league_chat: bool | None = None
+    notify_mentions: bool | None = None
+    notify_replies: bool | None = None
+    quiet_hours_enabled: bool | None = None
+    quiet_hours_start: datetime.time | None = None
+    quiet_hours_end: datetime.time | None = None
+    read_receipts_enabled: bool | None = None
+    typing_indicators_enabled: bool | None = None
+    message_previews_enabled: bool | None = None
+    mention_highlighting_enabled: bool | None = None
+    neon_intensity: str | None = None
+    reduced_motion: bool | None = None
+
+
+_VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
+
+
+@router.put("/preferences")
+async def update_preferences(body: PreferencesPatch, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+
+    patch = body.model_dump(exclude_unset=True)
+    if "neon_intensity" in patch and patch["neon_intensity"] not in _VALID_NEON_INTENSITIES:
+        raise HTTPException(status_code=400, detail=f"neon_intensity must be one of {sorted(_VALID_NEON_INTENSITIES)}")
+
+    async with pool.acquire() as conn:
+        return await preferences_queries.update_preferences(conn, payload["owner_id"], patch)
+
+
+class SundayModeBody(BaseModel):
+    preset: str
+
+
+@router.post("/preferences/sunday-mode")
+async def apply_sunday_mode(body: SundayModeBody, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    if body.preset not in preferences_queries.SUNDAY_MODE_PRESETS:
+        raise HTTPException(
+            status_code=400, detail=f"preset must be one of {sorted(preferences_queries.SUNDAY_MODE_PRESETS)}"
+        )
+    async with pool.acquire() as conn:
+        return await preferences_queries.apply_sunday_mode(conn, payload["owner_id"], body.preset)

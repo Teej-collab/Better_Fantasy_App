@@ -49,6 +49,11 @@ async def cleanup_test_season(pool):
             "DELETE FROM rivalries WHERE owner_a_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%') "
             "OR owner_b_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
+        # owner_preferences.owner_id -> owners.owner_id, one row per owner,
+        # no season column to scope by (same reasoning as rivalries above).
+        await conn.execute(
+            "DELETE FROM owner_preferences WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
         # Chat v2: reactions/mentions reference messages, so they go first;
         # conversation_participants references conversations, so it goes
         # before the orphaned-direct-conversation cleanup. Tests never touch

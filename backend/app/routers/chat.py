@@ -26,6 +26,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
 from app.queries import chat as chat_queries
+from app.queries import owner_preferences as preferences_queries
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -105,10 +106,19 @@ async def mark_conversation_read(conversation_id: int, request: Request, pool=De
             raise HTTPException(status_code=403, detail="Not a participant in this conversation")
         latest_id = await chat_queries.get_latest_message_id(conn, conversation_id)
         if latest_id is not None:
+            # last_read_message_id itself always updates, regardless of
+            # the Read Receipts preference below — it's what this
+            # owner's OWN unread count is computed from (get_messages
+            # via chat_domain), not just a signal to other people.
             await chat_queries.mark_read(conn, conversation_id, payload["owner_id"], latest_id)
             participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+            read_receipts_enabled = (await preferences_queries.get_preferences(conn, payload["owner_id"]))[
+                "read_receipts_enabled"
+            ]
 
-    if latest_id is not None:
+    # Read Receipts OFF means everyone else simply never finds out this
+    # owner read anything — the broadcast just doesn't go out.
+    if latest_id is not None and read_receipts_enabled:
         await manager.broadcast_to_owners(
             [p for p in participant_ids if p != payload["owner_id"]],
             {
@@ -240,15 +250,22 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
             elif event_type == "typing":
                 async with pool.acquire() as conn:
                     participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
-                await manager.broadcast_to_owners(
-                    [p for p in participant_ids if p != owner_id],
-                    {
-                        "type": "typing",
-                        "conversation_id": conversation_id,
-                        "owner_id": owner_id,
-                        "owner_name": owner_name or "Someone",
-                    },
-                )
+                    typing_indicators_enabled = (await preferences_queries.get_preferences(conn, owner_id))[
+                        "typing_indicators_enabled"
+                    ]
+                # Enforced server-side, not just skipped client-side — a
+                # modified client sending "typing" anyway still can't
+                # reveal this owner's typing state to anyone else.
+                if typing_indicators_enabled:
+                    await manager.broadcast_to_owners(
+                        [p for p in participant_ids if p != owner_id],
+                        {
+                            "type": "typing",
+                            "conversation_id": conversation_id,
+                            "owner_id": owner_id,
+                            "owner_name": owner_name or "Someone",
+                        },
+                    )
     except WebSocketDisconnect:
         pass
     finally:

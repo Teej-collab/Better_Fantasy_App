@@ -3,8 +3,10 @@ from httpx import ASGITransport, AsyncClient
 
 from app import db as db_module
 from app.auth.session import create_session_token, create_ticket_token
+from app.chat.manager import manager as chat_manager
 from app.main import app
 from app.queries import chat as chat_queries
+from app.queries import owner_preferences as preferences_queries
 from tests.conftest import TEST_SEASON
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -233,6 +235,68 @@ async def test_mark_read_zeroes_unread_count(pool, monkeypatch):
     assert b_conv["unread_count"] == 0
 
 
+async def test_mark_read_broadcasts_a_read_event_by_default(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 41)
+    b = await _seed_owner(pool, 42)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        await chat_queries.insert_message(conn, conversation_id, a, "read me", None)
+
+    broadcasts = []
+
+    async def fake_broadcast(owner_ids, event):
+        broadcasts.append((owner_ids, event))
+
+    monkeypatch.setattr(chat_manager, "broadcast_to_owners", fake_broadcast)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(b))
+        resp = await client.post(f"/chat/conversations/{conversation_id}/read")
+
+    assert resp.status_code == 200
+    assert len(broadcasts) == 1
+    owner_ids, event = broadcasts[0]
+    assert owner_ids == [a]
+    assert event["type"] == "read"
+
+
+async def test_mark_read_suppresses_broadcast_when_read_receipts_disabled(pool, monkeypatch):
+    """The owner's OWN unread tracking (last_read_message_id) still
+    updates — Read Receipts off only means nobody ELSE finds out."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 43)
+    b = await _seed_owner(pool, 44)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        await chat_queries.insert_message(conn, conversation_id, a, "read me", None)
+        await preferences_queries.update_preferences(conn, b, {"read_receipts_enabled": False})
+
+    broadcasts = []
+
+    async def fake_broadcast(owner_ids, event):
+        broadcasts.append((owner_ids, event))
+
+    monkeypatch.setattr(chat_manager, "broadcast_to_owners", fake_broadcast)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(b))
+        resp = await client.post(f"/chat/conversations/{conversation_id}/read")
+
+        from app.domain.chat import get_conversations_summary
+
+        async with pool.acquire() as conn:
+            b_view = await get_conversations_summary(conn, b)
+
+    assert resp.status_code == 200
+    assert resp.json()["last_read_message_id"] is not None
+    assert broadcasts == []  # nothing broadcast to anyone
+    b_conv = next(c for c in b_view if c["id"] == conversation_id)
+    assert b_conv["unread_count"] == 0  # b's own unread state still updated
+
+
 async def test_react_toggles_and_rejects_invalid_emoji(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     a = await _seed_owner(pool, 17)
@@ -304,7 +368,7 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
             }
         )
         received = ws.receive_json()
-    db_module._pool = None
+    _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     msg = received["message"]
@@ -328,7 +392,7 @@ async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, m
     with client.websocket_connect(f"/chat/ws?ticket={_ws_ticket(b)}") as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "via ticket, not cookie"})
         received = ws.receive_json()
-    db_module._pool = None
+    _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     assert received["message"]["owner_id"] == b
@@ -347,7 +411,7 @@ async def test_websocket_filters_mentions_to_real_participants(pool, monkeypatch
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hi", "mentions": [outsider]})
         received = ws.receive_json()
-    db_module._pool = None
+    _use_fresh_pool_for_websocket()
 
     assert received["message"]["mentions"] == []  # outsider isn't a participant, silently dropped
 
@@ -367,18 +431,24 @@ async def test_websocket_ignores_messages_to_conversation_you_are_not_in(pool, m
         # from a real participant afterward and confirm ONLY that one shows
         # up, proving the outsider's message was dropped, not just delayed.
         pass
-    db_module._pool = None
+    _use_fresh_pool_for_websocket()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT body FROM messages WHERE conversation_id = $1", conversation_id)
     assert [r["body"] for r in rows] == []  # never persisted
 
 
-async def test_websocket_typing_does_not_error_and_is_not_echoed_to_sender(pool, monkeypatch):
+async def test_websocket_typing_is_not_echoed_to_sender_and_is_suppressed_when_disabled(pool, monkeypatch):
     """Full round trip through the real WS protocol path for a single
-    connection — confirms the server accepts a typing event and doesn't
-    crash or echo it back to the sender. The actual "who gets the
-    broadcast" targeting logic (participants minus the sender) is
+    connection — confirms the server accepts a typing event, doesn't
+    crash or echo it back to the sender, AND (this owner has typing
+    indicators disabled) never actually broadcasts it to anyone. Spies
+    on the real broadcast_to_owners with call-through preserved, so the
+    "message" sent right after typing still arrives over the real WS —
+    proving the connection stayed alive and the loop kept processing,
+    not just that the typing event was silently swallowed by a broken
+    handler. One connection only, deliberately: the actual "who gets
+    the broadcast" targeting logic (participants minus the sender) is
     covered more precisely below, at the connection-manager level —
     two *simultaneous* TestClient WebSocket connections hit a real
     test-harness limitation (each spins its own thread/event loop, and
@@ -390,20 +460,34 @@ async def test_websocket_typing_does_not_error_and_is_not_echoed_to_sender(pool,
     b = await _seed_owner(pool, 30)
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
+    async with pool.acquire() as conn:
+        await preferences_queries.update_preferences(conn, a, {"typing_indicators_enabled": False})
+
+    broadcasts = []
+    real_broadcast = chat_manager.broadcast_to_owners
+
+    async def spy_broadcast(owner_ids, event):
+        broadcasts.append(event["type"])
+        await real_broadcast(owner_ids, event)
+
+    monkeypatch.setattr(chat_manager, "broadcast_to_owners", spy_broadcast)
+
     _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws_a:
         ws_a.send_json({"type": "typing", "conversation_id": conversation_id})
-        # Prove the typing event wasn't echoed back to its own sender by
-        # sending a real chat message right after — if typing HAD been
-        # echoed, it would arrive first and this assertion would fail on
-        # the wrong event type.
+        # Prove the typing event wasn't echoed back to its own sender (and
+        # that the connection is still alive) by sending a real chat
+        # message right after — if typing HAD been echoed, it would
+        # arrive first and this assertion would fail on the wrong event type.
         ws_a.send_json({"type": "message", "conversation_id": conversation_id, "body": "after typing"})
         received = ws_a.receive_json()
-    db_module._pool = None
+    _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     assert received["message"]["body"] == "after typing"
+    assert "typing" not in broadcasts  # suppressed — this owner disabled it
+    assert "message" in broadcasts  # the real broadcast path still works
 
 
 async def test_connection_manager_broadcasts_only_to_specified_owners():
