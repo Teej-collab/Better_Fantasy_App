@@ -7,12 +7,14 @@ import {
   getChatMembers,
   getChatWebSocketUrl,
   getChatWsTicket,
+  getPreferences,
   markConversationRead,
   reactToMessage,
   startDirectConversation,
   type ChatConversation,
   type ChatMember,
   type ChatMessage,
+  type OwnerPreferences,
 } from "@/lib/api";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageThread } from "@/components/chat/MessageThread";
@@ -41,6 +43,10 @@ export function ChatApp({
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [connected, setConnected] = useState(false);
   const [showNewMessage, setShowNewMessage] = useState(false);
+  // Settings > Chat — message-preview and mention-highlighting default
+  // to on (matching the backend's own defaults) until the real values
+  // load, so there's no flash of "off" before the fetch resolves.
+  const [preferences, setPreferences] = useState<OwnerPreferences | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -59,6 +65,10 @@ export function ChatApp({
 
   useEffect(() => {
     getChatMembers().then(setMembers);
+  }, []);
+
+  useEffect(() => {
+    getPreferences().then(setPreferences).catch(() => {});
   }, []);
 
   const loadConversationMessages = useCallback(async (conversationId: number) => {
@@ -296,6 +306,7 @@ export function ChatApp({
         <ConversationList
           conversations={conversations}
           selectedId={selectedId}
+          messagePreviewsEnabled={preferences?.message_previews_enabled ?? true}
           onSelect={selectConversation}
           onNewMessage={() => setShowNewMessage(true)}
         />
@@ -308,6 +319,7 @@ export function ChatApp({
             messages={messagesByConversation[selectedConversation.id] ?? []}
             members={members}
             myOwnerId={myOwnerId}
+            mentionHighlightingEnabled={preferences?.mention_highlighting_enabled ?? true}
             typingUsers={typingByConversation[selectedConversation.id] ?? []}
             connected={connected}
             hasMoreOlder={hasMoreByConversation[selectedConversation.id] ?? false}

@@ -18,6 +18,20 @@
   --wl-text: #f5f4ec;
   --wl-text-secondary: #93a396;
   --wl-live: #ef4444;
+
+  /* Settings > Appearance > Neon Intensity — multiplies purely
+     decorative glow (currently .home-ambient's background wash), not
+     text/border contrast or anything load-bearing for readability.
+     Set via a data-neon attribute on <html> (see layout.tsx), which
+     RootLayout reads from a small non-httpOnly cookie so it applies
+     before first paint instead of flashing standard-then-adjusting. */
+  --wl-glow-scale: 1;
+}
+[data-neon="subtle"] {
+  --wl-glow-scale: 0.5;
+}
+[data-neon="high"] {
+  --wl-glow-scale: 1.6;
 }
 
 @theme inline {
@@ -422,6 +436,7 @@ body {
   inset: 0;
   z-index: -10;
   pointer-events: none;
+  opacity: var(--wl-glow-scale);
   background-image:
     radial-gradient(600px circle at 15% -10%, rgba(56, 189, 248, 0.1), transparent 60%),
     radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.08), transparent 60%),
@@ -541,6 +556,29 @@ body {
   .live-dot {
     animation: none;
   }
+}
+
+/* Settings > Appearance > Animations = Reduced — an explicit override
+   layered on top of (never weaker than) the OS-level query above, not
+   a replacement for it: prefers-reduced-motion still applies
+   regardless of this setting. Same selectors as that query, applied
+   by a class instead of a media query so a visitor can ask for less
+   motion even when their OS reports none. Scoped to the general,
+   persistent app chrome — not the one-time signed-out opening
+   sequence (weekend-neon-buzz, wl-word-power-on, etc.), which nobody
+   setting this in Settings can even be looking at (Settings only
+   exists once signed in, i.e. already past that sequence). */
+.motion-reduced .rise-in {
+  opacity: 1;
+  animation: none;
+}
+.motion-reduced .hero-live-glow,
+.motion-reduced .score-pop,
+.motion-reduced .live-ticker-track,
+.motion-reduced .weekend-hero-title,
+.motion-reduced .live-dot,
+.motion-reduced .chat-typing-dot {
+  animation: none;
 }
 
 /* Vivid, pulsing red only during an actual live NFL game window
@@ -1080,6 +1118,13 @@ body {
   font-weight: 600;
   color: var(--wl-accent);
   background: color-mix(in srgb, var(--wl-accent) 14%, transparent);
+}
+
+/* A message that mentions the viewer (Settings > Chat > Mention
+   Notifications) — a ring, not a recolor, so it reads clearly even
+   for a custom-colored bubble already using --wl-accent-dim itself. */
+.chat-bubble--mentions-me {
+  box-shadow: 0 0 0 2px var(--wl-accent);
 }
 
 @keyframes chat-typing-bounce {

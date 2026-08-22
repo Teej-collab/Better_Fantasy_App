@@ -6,11 +6,15 @@ import { formatConversationListTimestamp } from "@/lib/chatFormat";
 export function ConversationList({
   conversations,
   selectedId,
+  messagePreviewsEnabled,
   onSelect,
   onNewMessage,
 }: {
   conversations: ChatConversation[];
   selectedId: number | null;
+  // Settings > Chat > Message Previews — the viewer's own choice for
+  // their own list, no one else is affected by it.
+  messagePreviewsEnabled: boolean;
   onSelect: (id: number) => void;
   onNewMessage: () => void;
 }) {
@@ -43,8 +47,17 @@ export function ConversationList({
           {conversations.map((c) => {
             const title = c.type === "league" ? "Weekend League" : (c.other_owner_name ?? "Direct Message");
             const subtitle =
-              c.type === "league" ? `${c.member_count} managers` : c.last_message ? c.last_message.body : "";
-            const preview = c.last_message ? `${c.last_message.owner_name}: ${c.last_message.body}` : subtitle;
+              c.type === "league"
+                ? `${c.member_count} managers`
+                : c.last_message && messagePreviewsEnabled
+                  ? c.last_message.body
+                  : "";
+            const preview =
+              c.last_message && messagePreviewsEnabled
+                ? `${c.last_message.owner_name}: ${c.last_message.body}`
+                : c.last_message
+                  ? "New message"
+                  : subtitle;
 
             return (
               <li key={c.id}>

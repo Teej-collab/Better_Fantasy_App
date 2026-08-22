@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMySettings } from "@/lib/api";
-import { SettingsForm } from "@/components/SettingsForm";
+import { SettingsShell } from "@/components/settings/SettingsShell";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ section?: string }> }) {
+  const { section } = await searchParams;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
   const settings = await getMySettings(sessionCookie);
@@ -27,7 +28,7 @@ export default async function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Settings</h1>
-      <SettingsForm initial={settings} />
+      <SettingsShell initial={settings} section={section} />
     </div>
   );
 }

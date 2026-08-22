@@ -13,6 +13,7 @@ export function MessageThread({
   messages,
   members,
   myOwnerId,
+  mentionHighlightingEnabled,
   typingUsers,
   connected,
   hasMoreOlder,
@@ -27,6 +28,7 @@ export function MessageThread({
   messages: ChatMessage[];
   members: ChatMember[];
   myOwnerId: number;
+  mentionHighlightingEnabled: boolean;
   typingUsers: { owner_id: number; owner_name: string }[];
   connected: boolean;
   hasMoreOlder: boolean;
@@ -127,6 +129,7 @@ export function MessageThread({
               message={m}
               mine={m.owner_id === myOwnerId}
               grouped={isGroupedWithPrevious(m, messages[i - 1])}
+              highlightMention={mentionHighlightingEnabled && m.mentions.includes(myOwnerId)}
               memberNames={memberNames}
               onReply={setReplyTo}
               onReact={onReact}

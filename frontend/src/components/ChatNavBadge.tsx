@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ChatConversation } from "@/lib/api";
+import { getPreferences, type ChatConversation } from "@/lib/api";
 
 /**
  * Client-side, same reason AuthStatus is: the nav bar is otherwise a
@@ -18,18 +18,28 @@ import type { ChatConversation } from "@/lib/api";
  * /auth/me now — a direct browser->backend fetch depends on the
  * browser sending the backend's cross-site cookie, which Safari's ITP
  * blocks on mobile regardless of SameSite=None.
+ *
+ * Excludes a conversation type from the count entirely if the visitor
+ * has muted it (Settings > Notifications > Messages) — the one real,
+ * observable-today effect of those preferences, ahead of any actual
+ * push delivery existing to gate.
  */
 export function ChatNavBadge() {
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
-    fetch("/chat/conversations")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { conversations: ChatConversation[] } | null) => {
-        if (!data) return;
-        setUnread(data.conversations.reduce((sum, c) => sum + c.unread_count, 0));
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch("/chat/conversations").then((res) => (res.ok ? res.json() : null)),
+      getPreferences().catch(() => null),
+    ]).then(([data, prefs]: [{ conversations: ChatConversation[] } | null, Awaited<ReturnType<typeof getPreferences>> | null]) => {
+      if (!data) return;
+      const total = data.conversations.reduce((sum, c) => {
+        if (prefs && c.type === "league" && !prefs.notify_league_chat) return sum;
+        if (prefs && c.type === "direct" && !prefs.notify_direct_messages) return sum;
+        return sum + c.unread_count;
+      }, 0);
+      setUnread(total);
+    });
   }, []);
 
   return (

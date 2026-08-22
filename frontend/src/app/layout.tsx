@@ -40,9 +40,34 @@ export const viewport: Viewport = {
 // itself) is what actually guarantees /weekend never receives — or even
 // server-fetches the data behind — chrome it shouldn't have. See
 // app/(app)/layout.tsx's comment for the full reasoning.
+// Settings > Appearance (Neon Intensity, Animations) — mirrored into
+// small non-httpOnly cookies the moment either setting changes (see
+// AppearanceSection.tsx), applied here via a blocking inline script
+// instead of reading them server-side in this layout: RootLayout wraps
+// every route, so calling cookies() here would force the *entire* app
+// into dynamic rendering — including pages with no per-visitor data at
+// all (e.g. /auth/complete) that are static today. A synchronous
+// script in <head>, before <body> paints, avoids that same "flash of
+// wrong intensity/motion" with zero cost to static generation — the
+// standard technique (same one theme-switchers use for dark mode).
+const APPEARANCE_SCRIPT = `
+(function () {
+  try {
+    var m = document.cookie.match(/(?:^|; )wl_neon=([^;]+)/);
+    document.documentElement.setAttribute("data-neon", m ? m[1] : "standard");
+    if (/(?:^|; )wl_motion=reduced(?:;|$)/.test(document.cookie)) {
+      document.documentElement.classList.add("motion-reduced");
+    }
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

@@ -540,6 +540,57 @@ export function updateChatColor(chatColor: string | null): Promise<void> {
   return _settingsRequest("/chat-color", "PUT", { chat_color: chatColor });
 }
 
+// ---- Notification / chat / appearance preferences (Settings > Notifications,
+// Settings > Chat, Settings > Appearance) — one owner_preferences row per
+// owner, see backend/app/queries/owner_preferences.py for the real shape
+// and defaults these mirror. quiet_hours_start/end round-trip as
+// "HH:MM:SS" (backend's datetime.time serialization) — callers that feed
+// them into a native <input type="time"> should slice to "HH:MM".
+
+export type SundayMode = "full_send" | "game_day" | "leave_me_alone";
+
+export type OwnerPreferences = {
+  notify_direct_messages: boolean;
+  notify_league_chat: boolean;
+  notify_mentions: boolean;
+  notify_replies: boolean;
+  sunday_mode: SundayMode | null;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  read_receipts_enabled: boolean;
+  typing_indicators_enabled: boolean;
+  message_previews_enabled: boolean;
+  mention_highlighting_enabled: boolean;
+  neon_intensity: "subtle" | "standard" | "high";
+  reduced_motion: boolean;
+};
+
+async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {
+  const res = await fetch(`/api/backend/settings/preferences${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export function getPreferences(): Promise<OwnerPreferences> {
+  return _preferencesRequest("", "GET");
+}
+
+export function updatePreferences(patch: Partial<OwnerPreferences>): Promise<OwnerPreferences> {
+  return _preferencesRequest("", "PUT", patch);
+}
+
+export function applySundayMode(preset: SundayMode): Promise<OwnerPreferences> {
+  return _preferencesRequest("/sunday-mode", "POST", { preset });
+}
+
 // ---- My Team (real-time ESPN data, lineup preview only — no real
 // submission exists yet, see backend/ESPN_LINEUP_WRITE.md) ----------------
 
