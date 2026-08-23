@@ -43,6 +43,21 @@ class AmbiguousDisplacementError(ESPNLineupError):
     second player instead of guessing."""
 
 
+class PlayerAlreadyRosteredError(ESPNLineupError):
+    """The player being added is already on this team's roster — adding
+    them again isn't a real operation, unlike a lineup move."""
+
+
+class RosterFullError(ESPNLineupError):
+    """The roster is already at its full configured size (every real
+    slot, starting and bench, counted — see
+    ESPNLineupClient._roster_capacity) and no player to drop was given.
+    Distinct from every other planning error: it isn't a dead end, it's
+    a real decision the caller needs to make — the mapped HTTP status
+    (409) tells the frontend to prompt for a drop rather than just
+    showing a plain error."""
+
+
 class WriteNotVerifiedError(ESPNLineupError):
     """Raised instead of ever sending a lineup mutation to ESPN. The
     write endpoint/method/body is not yet verified against a real

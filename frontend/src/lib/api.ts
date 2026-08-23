@@ -640,7 +640,12 @@ export async function previewLineupSwap(playerA: string, playerB: string): Promi
   return res.json();
 }
 
-// ---- Free Agents (read-only — see backend/app/providers/espn/free_agents.py) ----
+// ---- Free Agents (browsing is read-only — see backend/app/providers/
+// espn/free_agents.py — but adding one is now previewable, same
+// PREVIEW-ONLY pattern as the lineup move/swap calls above: validates
+// against your real live roster and shows exactly what would happen,
+// never actually submits anything to ESPN. See
+// backend/app/providers/espn/lineup_client.py's plan_add_player.) ----
 
 export type FreeAgent = {
   player_id: number;
@@ -659,6 +664,51 @@ export async function getFreeAgents(position?: string, size = 50): Promise<{ sea
   if (position) params.set("position", position);
   const { season, players } = await get<{ season: number; players: FreeAgent[] }>(`/free-agents?${params}`);
   return { season, players };
+}
+
+export type AddFreeAgentPreview = {
+  added_player: { player_id: number; player_name: string; position: string; pro_team: string };
+  roster_size_before: number;
+  roster_capacity: number;
+  // The one player who'd need to be dropped to make room — null means
+  // your roster already had an open spot.
+  dropped_player: RosterEntry | null;
+};
+
+export type AddFreeAgentResult =
+  | { status: "ok"; preview: AddFreeAgentPreview }
+  // Your roster is already full — call previewAddFreeAgent again with
+  // dropPlayerName set once the visitor picks who to drop.
+  | { status: "roster_full"; detail: string };
+
+export async function previewAddFreeAgent(
+  player: Pick<FreeAgent, "player_id" | "name" | "position" | "pro_team">,
+  dropPlayerName?: string
+): Promise<AddFreeAgentResult> {
+  const res = await fetch(`/api/backend/me/team/free-agents/preview-add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      player_id: player.player_id,
+      player_name: player.name,
+      position: player.position,
+      pro_team: player.pro_team,
+      drop_player_name: dropPlayerName ?? null,
+    }),
+  });
+
+  if (res.status === 409) {
+    const data = await res.json().catch(() => null);
+    if (data?.error === "roster_full") {
+      return { status: "roster_full", detail: data.detail as string };
+    }
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+  }
+  const preview = (await res.json()) as AddFreeAgentPreview;
+  return { status: "ok", preview };
 }
 
 export type WaiverSettings = { uses_faab: boolean; acquisition_budget: number };

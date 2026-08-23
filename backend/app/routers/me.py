@@ -6,6 +6,7 @@ below). Same cookie-decode pattern as /auth/me (app/routers/auth.py);
 kept separate since this is homepage/dashboard data, not identity itself.
 """
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
@@ -14,6 +15,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain.your_week import build_your_week
 from app.providers.espn.lineup_client import ESPNLineupClient
+from app.providers.espn.lineup_exceptions import RosterFullError
 from app.providers.espn.slots import slot_label
 from app.queries import league as league_queries
 from app.routers.lineup_shared import map_lineup_error, roster_entry_dict
@@ -132,4 +134,69 @@ async def preview_lineup_swap(body: LineupSwapPreviewRequest, request: Request):
     return {
         "player_a": roster_entry_dict(plan.player_a),
         "player_b": roster_entry_dict(plan.player_b),
+    }
+
+
+class AddFreeAgentPreviewRequest(BaseModel):
+    player_id: int
+    player_name: str
+    position: str
+    pro_team: str
+    # Only required once a first preview call comes back roster_full —
+    # the frontend then re-calls with this set once the visitor picks
+    # who to drop.
+    drop_player_name: str | None = None
+
+
+@router.post("/team/free-agents/preview-add")
+async def preview_add_free_agent(body: AddFreeAgentPreviewRequest, request: Request):
+    """PREVIEW ONLY — see preview_lineup_move's docstring above; same
+    deliberate scoping decision, just for a different (and never
+    investigated) ESPN write — see app/providers/espn/free_agents.py's
+    module note and ESPN_LINEUP_WRITE.md. This only validates against
+    the live roster (does the added player already exist there? is
+    there an open bench spot, or does something need to be dropped?)
+    and reports exactly what adding this player would do — nothing is
+    ever sent to ESPN.
+
+    RosterFullError gets its own response shape (not the generic
+    map_lineup_error 409) — "needs a drop" is a real decision for the
+    frontend to act on, not just an error to display, and a bare 409
+    status code can't tell that apart from an unrelated conflict."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
+
+    client = ESPNLineupClient()
+    try:
+        plan = client.plan_add_player(
+            espn_team_id,
+            body.player_id,
+            body.player_name,
+            body.position,
+            body.pro_team,
+            body.drop_player_name,
+            active_season,
+        )
+    except RosterFullError as e:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "roster_full",
+                "detail": str(e),
+            },
+        )
+    except Exception as e:
+        raise map_lineup_error(e) from e
+
+    return {
+        "added_player": {
+            "player_id": plan.added_player_id,
+            "player_name": plan.added_player_name,
+            "position": plan.added_position,
+            "pro_team": plan.added_pro_team,
+        },
+        "roster_size_before": plan.roster_size_before,
+        "roster_capacity": plan.roster_capacity,
+        "dropped_player": roster_entry_dict(plan.dropped_player) if plan.dropped_player else None,
     }

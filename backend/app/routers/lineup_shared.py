@@ -15,7 +15,9 @@ from app.providers.espn.lineup_exceptions import (
     InvalidSlotError,
     LineupLockedError,
     MutationVerificationFailedError,
+    PlayerAlreadyRosteredError,
     PlayerNotFoundError,
+    RosterFullError,
     SlotIneligibleError,
     TeamNotFoundError,
     WriteNotVerifiedError,
@@ -52,8 +54,10 @@ def map_lineup_error(e: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(e))
     if isinstance(e, (InvalidSlotError, SlotIneligibleError, AmbiguousDisplacementError)):
         return HTTPException(status_code=400, detail=str(e))
-    if isinstance(e, LineupLockedError):
+    if isinstance(e, (LineupLockedError, RosterFullError)):
         return HTTPException(status_code=409, detail=str(e))
+    if isinstance(e, PlayerAlreadyRosteredError):
+        return HTTPException(status_code=400, detail=str(e))
     if isinstance(e, WriteNotVerifiedError):
         return HTTPException(status_code=501, detail=str(e))
     if isinstance(e, ESPNWriteTimeoutError):
