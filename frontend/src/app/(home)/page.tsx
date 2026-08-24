@@ -5,6 +5,7 @@ import {
   buildNflTickerItems,
   getCurrentWeek,
   getMe,
+  getMyPreferences,
   getMyWeek,
   getNflScoreboard,
   getStandings,
@@ -23,9 +24,40 @@ import {
   type YourWeek,
 } from "@/lib/api";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+// The homepage's six reorderable dashboard cards, in the app's own
+// default order — same set backend/app/routers/settings.py validates
+// home_card_order against. A card only ever renders when its own data
+// condition is true (see how `cards` is built below); this array is
+// just the fallback order for whichever cards are actually present,
+// used both as the very first visit's order (before an owner has
+// dragged anything) and to fill in any card missing from an owner's
+// saved order (a stale save, or a new card type added after they set
+// theirs).
+const DEFAULT_CARD_ORDER = ["yourWeek", "standings", "matchups", "rivalries", "awards", "discover"];
+
+function mergeCardOrder(saved: string | null | undefined, validKeys: string[]): string[] {
+  let order: string[] = [];
+  if (saved) {
+    try {
+      const parsed: unknown = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        order = parsed.filter((k): k is string => typeof k === "string" && validKeys.includes(k));
+      }
+    } catch {
+      // Malformed saved value — fall through to the default order below
+      // rather than breaking the whole homepage over one bad cookie/row.
+    }
+  }
+  for (const key of DEFAULT_CARD_ORDER) {
+    if (validKeys.includes(key) && !order.includes(key)) order.push(key);
+  }
+  return order;
+}
 
 const SECTION_ACCENT: Record<string, string> = {
   standings: "bg-sky-500",
@@ -77,7 +109,11 @@ export default async function HomePage() {
   const { seasons } = await listSeasons();
   const season = seasons.length > 0 ? Math.max(...seasons) : null;
 
-  const [myWeek, nflGames] = await Promise.all([getMyWeek(sessionCookie), getNflScoreboard()]);
+  const [myWeek, nflGames, myPreferences] = await Promise.all([
+    getMyWeek(sessionCookie),
+    getNflScoreboard(),
+    getMyPreferences(sessionCookie),
+  ]);
   const isGameDay = isNflGameLive(nflGames);
 
   let week: number | null = null;
@@ -116,12 +152,164 @@ export default async function HomePage() {
 
   const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek);
 
-  // Which stagger slot each section lands in — sections that are
-  // conditionally absent (e.g. no other matchups this week) just skip
-  // their slot rather than leaving a gap, since delay only matters
-  // relative to what's actually rendered.
-  let revealIndex = 0;
-  const nextReveal = () => revealIndex++;
+  // The six reorderable dashboard cards — only the ones with something
+  // real to show this week end up in this map at all (same conditions
+  // this page always used to gate each section with), so a stale or
+  // partial saved order can never conjure up a card whose data isn't
+  // there. See HomeCardDeck.tsx for how these actually get reordered
+  // and DEFAULT_CARD_ORDER above for the merge-with-saved-order logic.
+  const cards: Record<string, ReactNode> = {};
+
+  cards.yourWeek = myWeek?.matchup ? (
+    <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
+  ) : myWeek ? (
+    <EmptyHero
+      title={myWeek.team_name}
+      message={
+        // ESPN reports current_week as 0 during preseason — not a real
+        // week, same convention as the Team page's fallback.
+        myWeek.week === null || myWeek.week < 1
+          ? "No matchup yet — the season hasn't started."
+          : "No matchup this week (bye week or the schedule isn't set yet)."
+      }
+    />
+  ) : (
+    // Reaching this branch means /me/week itself failed even though
+    // getMe (above) confirmed a valid session — a transient fetch
+    // error, not "not signed in" (that's already handled by the early
+    // OpeningExperience return before this component fetches anything
+    // else).
+    <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
+  );
+
+  if (standings.length > 0) {
+    cards.standings = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader color="standings" title="League Standings" href="/standings" />
+        <ol
+          className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+          style={panelGlowStyle(SECTION_COLORS.standings)}
+        >
+          {standings.slice(0, 5).map((row, i) => (
+            <li key={row.team_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                <span className="truncate">{row.team_name}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
+                {row.wins}-{row.losses}
+                {row.ties ? `-${row.ties}` : ""}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
+
+  if (otherMatchups.length > 0) {
+    cards.matchups = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader
+          color="matchups"
+          title="Other Matchups"
+          href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
+        />
+        <ul
+          className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+          style={panelGlowStyle(SECTION_COLORS.matchups)}
+        >
+          {otherMatchups.map((m) => {
+            const started =
+              m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
+            return (
+              <li key={m.matchup_id}>
+                <Link
+                  href={`/matchups/${m.matchup_id}`}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                >
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      {isGameDay && started && <span className="live-dot" aria-hidden />}
+                      {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
+                      {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
+                      <span className="truncate">{m.home.team_name}</span>
+                    </span>
+                    <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
+                  </span>
+                  <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
+                    <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
+                    <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    );
+  }
+
+  if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
+    cards.rivalries = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
+        {rivalryGamesThisWeek.length > 0 ? (
+          <ul
+            className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+            style={panelGlowStyle(SECTION_COLORS.rivalries)}
+          >
+            {rivalryGamesThisWeek.map((m) => (
+              <li key={m.matchup_id}>
+                <Link
+                  href={`/matchups/${m.matchup_id}`}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span>{m.rivalry?.emoji ?? "⚔️"}</span>
+                    <span className="truncate font-medium">{m.rivalry?.name}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
+                    {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul
+            className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+            style={panelGlowStyle(SECTION_COLORS.rivalries)}
+          >
+            {topRivalries.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span>{r.emoji ?? "⚔️"}</span>
+                  <span className="truncate font-medium">{r.name}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
+                  {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    );
+  }
+
+  if (weekPlayed && weeklyAwards && season !== null && week !== null) {
+    cards.awards = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
+        <AwardsPreview awards={weeklyAwards} />
+      </section>
+    );
+  }
+
+  cards.discover = <DiscoveryGrid season={season} week={week} />;
+
+  const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,7 +321,7 @@ export default async function HomePage() {
       <div className="home-ambient" aria-hidden />
       {isGameDay && <GameDayRefresher />}
 
-      <Reveal index={nextReveal()}>
+      <div className="rise-in">
         <div className="flex items-center gap-2">
           <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
           <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
@@ -149,175 +337,13 @@ export default async function HomePage() {
           <LiveTicker items={tickerItems} fast={isGameDay} />
           {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
         </div>
-      </Reveal>
+      </div>
 
-      <Reveal index={nextReveal()}>
-        {myWeek?.matchup ? (
-          <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
-        ) : myWeek ? (
-          <EmptyHero
-            title={myWeek.team_name}
-            message={
-              // ESPN reports current_week as 0 during preseason — not a
-              // real week, same convention as the Team page's fallback.
-              myWeek.week === null || myWeek.week < 1
-                ? "No matchup yet — the season hasn't started."
-                : "No matchup this week (bye week or the schedule isn't set yet)."
-            }
-          />
-        ) : (
-          // Reaching this branch means /me/week itself failed even though
-          // getMe (above) confirmed a valid session — a transient fetch
-          // error, not "not signed in" (that's already handled by the
-          // early OpeningExperience return before this component fetches
-          // anything else).
-          <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
-        )}
-      </Reveal>
-
-      {standings.length > 0 && (
-        <Reveal index={nextReveal()}>
-          <section className="flex flex-col gap-2">
-            <SectionHeader color="standings" title="League Standings" href="/standings" />
-            <ol
-              className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-              style={panelGlowStyle(SECTION_COLORS.standings)}
-            >
-              {standings.slice(0, 5).map((row, i) => (
-                <li
-                  key={row.team_id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
-                    <span className="truncate">{row.team_name}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
-                    {row.wins}-{row.losses}
-                    {row.ties ? `-${row.ties}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </Reveal>
-      )}
-
-      {otherMatchups.length > 0 && (
-        <Reveal index={nextReveal()}>
-          <section className="flex flex-col gap-2">
-            <SectionHeader
-              color="matchups"
-              title="Other Matchups"
-              href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
-            />
-            <ul
-              className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-              style={panelGlowStyle(SECTION_COLORS.matchups)}
-            >
-              {otherMatchups.map((m) => {
-                const started =
-                  m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
-                return (
-                  <li key={m.matchup_id}>
-                    <Link
-                      href={`/matchups/${m.matchup_id}`}
-                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
-                    >
-                      <span className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5">
-                          {isGameDay && started && <span className="live-dot" aria-hidden />}
-                          {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
-                          {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
-                          <span className="truncate">{m.home.team_name}</span>
-                        </span>
-                        <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
-                      </span>
-                      <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
-                        <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
-                        <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        </Reveal>
-      )}
-
-      {(rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && (
-        <Reveal index={nextReveal()}>
-          <section className="flex flex-col gap-2">
-            <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
-            {rivalryGamesThisWeek.length > 0 ? (
-              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-                style={panelGlowStyle(SECTION_COLORS.rivalries)}>
-                {rivalryGamesThisWeek.map((m) => (
-                  <li key={m.matchup_id}>
-                    <Link
-                      href={`/matchups/${m.matchup_id}`}
-                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span>{m.rivalry?.emoji ?? "⚔️"}</span>
-                        <span className="truncate font-medium">{m.rivalry?.name}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                        {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-                style={panelGlowStyle(SECTION_COLORS.rivalries)}>
-                {topRivalries.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span>{r.emoji ?? "⚔️"}</span>
-                      <span className="truncate font-medium">{r.name}</span>
-                    </span>
-                    <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                      {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </Reveal>
-      )}
-
-      {weekPlayed && weeklyAwards && season !== null && week !== null && (
-        <Reveal index={nextReveal()}>
-          <section className="flex flex-col gap-2">
-            <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
-            <AwardsPreview awards={weeklyAwards} />
-          </section>
-        </Reveal>
-      )}
-
-      <Reveal index={nextReveal()}>
-        <DiscoveryGrid season={season} week={week} />
-      </Reveal>
+      <HomeCardDeck initialOrder={cardOrder} cards={cards} />
     </div>
   );
 }
 
-// One-shot staggered fade/rise on first paint — pure CSS (globals.css's
-// .rise-in), no client JS needed, so this stays a server component.
-// Each top-level homepage section gets a slightly later delay than the
-// one before it, so the page visibly "wakes up" section by section
-// instead of just appearing all at once.
-function Reveal({ index, children }: { index: number; children: ReactNode }) {
-  return (
-    <div className="rise-in" style={{ animationDelay: `${index * 70}ms` }}>
-      {children}
-    </div>
-  );
-}
 
 function buildTickerItems(
   nflGames: Awaited<ReturnType<typeof getNflScoreboard>>,

@@ -331,6 +331,36 @@ export function getWeeklyAwards(season: number, week: number) {
   return get<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`);
 }
 
+export type RecordEntry = {
+  owner_id: number;
+  owner_name: string;
+  team_name: string;
+  season: number;
+  week: number | null;
+  value: number;
+  opponent_team_name: string | null;
+  opponent_score: number | null;
+  // Only present on the "Biggest Blowout" category — the winner's own
+  // score, alongside opponent_score for the loser's.
+  own_score?: number;
+};
+
+export type RecordCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  unit: string;
+  entries: RecordEntry[];
+};
+
+// All-time, not season-scoped — same content regardless of which
+// season's Awards page you're looking at. Computed live on every
+// request (app/domain/records.py), not cached, so a newly-broken
+// record shows up here the moment it's synced.
+export function getRecordBook() {
+  return get<{ categories: RecordCategory[] }>("/records");
+}
+
 export function listRivalries() {
   return get<{ rivalries: Rivalry[] }>("/rivalries");
 }
@@ -604,6 +634,21 @@ export async function getMySettings(sessionCookie: string | undefined): Promise<
   return res.json();
 }
 
+// Server-side counterpart to getPreferences() below — same direct-to-
+// backend-with-explicit-cookie pattern as getMySettings/getMe, for
+// server components (like (home)/page.tsx) that need the owner's
+// preferences during SSR and can't use the client-only /api/backend
+// proxy getPreferences() relies on.
+export async function getMyPreferences(sessionCookie: string | undefined): Promise<OwnerPreferences | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/settings/preferences`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 async function _settingsRequest(path: string, method: string, body?: object): Promise<void> {
   const res = await fetch(`/api/backend/settings${path}`, {
     method,
@@ -653,6 +698,12 @@ export type OwnerPreferences = {
   neon_intensity: "subtle" | "standard" | "high";
   reduced_motion: boolean;
   accent_color: string | null;
+  // JSON-encoded array of home dashboard card keys (HomeCardDeck.tsx),
+  // e.g. '["standings","yourWeek",...]' — null means "use the default
+  // order". Stored as a raw string, not string[], because that's
+  // exactly what the backend stores and returns; parsing only happens
+  // where it's actually rendered (HomeCardDeck.tsx).
+  home_card_order: string | null;
 };
 
 async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {
@@ -678,6 +729,13 @@ export function updatePreferences(patch: Partial<OwnerPreferences>): Promise<Own
 
 export function applySundayMode(preset: SundayMode): Promise<OwnerPreferences> {
   return _preferencesRequest("/sunday-mode", "POST", { preset });
+}
+
+// HomeCardDeck.tsx's own save call — just a thin wrapper over
+// updatePreferences so callers don't have to remember to JSON-encode
+// the array themselves.
+export function updateHomeCardOrder(order: string[]): Promise<OwnerPreferences> {
+  return updatePreferences({ home_card_order: JSON.stringify(order) });
 }
 
 // ---- My Team (real-time ESPN data, lineup preview only — no real

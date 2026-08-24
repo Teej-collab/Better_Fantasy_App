@@ -14,13 +14,6 @@ const TAB_COLOR = {
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
 
-// A dot, not a color change, next to the label — same "never color
-// alone" reasoning as PrimaryNav's LiveMark, just compact enough for
-// the bottom bar's tight vertical rhythm.
-function LiveDot() {
-  return <span className="live-dot absolute top-1 right-[calc(50%-1.1rem)]" aria-hidden />;
-}
-
 /**
  * Fixed bottom bar — mobile only (hidden sm: and up, where PrimaryNav
  * takes over). Five permanent destinations exactly per the brief: My
@@ -30,32 +23,37 @@ function LiveDot() {
  * reading like a real app tab bar). Safe-area padding keeps it clear
  * of the iPhone home indicator; PageShell.tsx adds matching bottom
  * padding to page content so nothing renders hidden underneath it.
+ *
+ * The bar itself carries a neon glow along its top edge now (the same
+ * default accent every .neon-panel falls back to — see globals.css's
+ * --user-accent/--wl-accent chain), replacing the old plain border-
+ * black/10 dark:border-white/10 hairline. With the whole bar reading
+ * as lit, the separate small live-game dot that used to sit in the
+ * corner of the My Team/Matchups icons was dropped as redundant —
+ * each tab's own color (from NavLink's aria-current glow) is already
+ * doing the "something's going on here" signaling on its own.
  */
 export function BottomNav({
   signedIn,
   matchupsHref,
   awardsHref,
-  myMatchupLive,
 }: {
   signedIn: boolean;
   matchupsHref: string;
   awardsHref: string;
-  myMatchupLive: boolean;
 }) {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 flex border-t border-black/10 bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden dark:border-white/10"
+      className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
+      style={{
+        borderTop: "1px solid color-mix(in srgb, var(--user-accent, var(--wl-accent)) 55%, transparent)",
+        boxShadow:
+          "0 0 10px color-mix(in srgb, var(--user-accent, var(--wl-accent)) 40%, transparent), 0 0 1px color-mix(in srgb, var(--user-accent, var(--wl-accent)) 70%, transparent)",
+      }}
     >
       {signedIn && (
-        <NavLink
-          href="/team"
-          section="team"
-          activeClassName={`relative ${ACTIVE_ITEM}`}
-          inactiveClassName={`relative ${INACTIVE_ITEM}`}
-          color={TAB_COLOR.team}
-        >
-          {myMatchupLive && <LiveDot />}
+        <NavLink href="/team" section="team" activeClassName={ACTIVE_ITEM} inactiveClassName={INACTIVE_ITEM} color={TAB_COLOR.team}>
           <TeamIcon className="h-6 w-6" />
           My Team
         </NavLink>
@@ -67,11 +65,10 @@ export function BottomNav({
       <NavLink
         href={matchupsHref}
         section="matchups"
-        activeClassName={`relative ${ACTIVE_ITEM}`}
-        inactiveClassName={`relative ${INACTIVE_ITEM}`}
+        activeClassName={ACTIVE_ITEM}
+        inactiveClassName={INACTIVE_ITEM}
         color={TAB_COLOR.matchups}
       >
-        {myMatchupLive && <LiveDot />}
         <MatchupsIcon className="h-6 w-6" />
         Matchups
       </NavLink>

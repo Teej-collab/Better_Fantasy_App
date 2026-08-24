@@ -116,9 +116,30 @@ body::before {
    — the owner's own chosen accent color (Settings > Appearance),
    which itself falls back to --wl-accent (Neon Green) when the owner
    hasn't picked one. See layout.tsx's APPEARANCE_SCRIPT for how
-   --user-accent gets set before first paint. */
+   --user-accent gets set before first paint.
+
+   Background is Cosmic (--wl-bg) with a slight tint of --panel-glow
+   mixed in — a "neon glass" wash, not a flat color and not the
+   near-transparent black/[0.015] dark:white/[0.03] tint these panels
+   used before the starfield background (body::before) existed. That
+   near-transparent version let the busy starfield show straight
+   through every panel, which is exactly what made text and content
+   hard to read against it; this replaces it with a background solid
+   enough to guarantee legibility, wins over any bg-black/dark:bg-white
+   utility a caller still has via the same unlayered-beats-layered
+   mechanism .neon-panel's border/box-shadow already relies on. A touch
+   of transparency + backdrop-filter keeps it reading as glass instead
+   of a flat card, without threatening readability the way full
+   transparency did. */
 .neon-panel {
   --panel-glow: var(--user-accent, var(--wl-accent));
+  background-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--panel-glow) 10%, var(--wl-bg) 90%) 94%,
+    transparent
+  );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid color-mix(in srgb, var(--panel-glow) 35%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--panel-glow) 8%, transparent),

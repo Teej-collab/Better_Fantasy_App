@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getSeasonAwards, listSeasons } from "@/lib/api";
+import { getRecordBook, getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { RecordBook } from "@/components/RecordBook";
 
 export default async function SeasonAwardsPage({
   params,
@@ -8,8 +9,11 @@ export default async function SeasonAwardsPage({
   params: Promise<{ season: string }>;
 }) {
   const { season } = await params;
-  const { seasons } = await listSeasons();
-  const { champion, awards } = await getSeasonAwards(Number(season));
+  const [{ seasons }, { champion, awards }, { categories }] = await Promise.all([
+    listSeasons(),
+    getSeasonAwards(Number(season)),
+    getRecordBook(),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -65,6 +69,8 @@ export default async function SeasonAwardsPage({
           ))}
         </ul>
       )}
+
+      <RecordBook categories={categories} />
     </div>
   );
 }

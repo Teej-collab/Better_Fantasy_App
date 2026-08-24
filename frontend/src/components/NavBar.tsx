@@ -71,7 +71,7 @@ export async function NavBar() {
           <AuthStatus />
         </nav>
       </header>
-      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} awardsHref={awardsHref} myMatchupLive={myMatchupLive} />
+      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} awardsHref={awardsHref} />
     </>
   );
 }
