@@ -6,7 +6,7 @@ import { resetDisplayName, updateChatColor, updateDisplayName, type MySettings }
 import { readableTextColor } from "@/components/chat/MessageBubble";
 
 // Named, curated palette — drawn from the design system itself
-// (Weekend Green is literally --wl-accent, White/Neutral is --wl-text)
+// (Neon Green is literally --wl-accent, White/Neutral is --wl-text)
 // plus the most-used presets from the previous picker's swatch list,
 // trimmed to a named seven instead of an arbitrary ten-plus-a-raw-
 // color-wheel. No free-form <input type="color"> — every message
@@ -15,7 +15,7 @@ import { readableTextColor } from "@/components/chat/MessageBubble";
 // text color per background, so any color on this list is guaranteed
 // legible by construction, not by hand-picking "safe" hues.
 const CHAT_COLOR_PRESETS: { name: string; hex: string }[] = [
-  { name: "Weekend Green", hex: "#39ff6a" },
+  { name: "Neon Green", hex: "#39ff14" },
   { name: "Electric Blue", hex: "#0ea5e9" },
   { name: "Hot Pink", hex: "#ec4899" },
   { name: "Golden Yellow", hex: "#fbbf24" },
@@ -24,7 +24,7 @@ const CHAT_COLOR_PRESETS: { name: string; hex: string }[] = [
   { name: "White/Neutral", hex: "#f5f4ec" },
 ];
 
-const DEFAULT_BUBBLE_COLOR = "#1c8a3e"; // --wl-accent-dim, the app's own default bubble color
+const DEFAULT_BUBBLE_COLOR = "#1f890b"; // --wl-accent-dim, the app's own default bubble color
 
 export function ProfileSection({ initial }: { initial: MySettings }) {
   const router = useRouter();

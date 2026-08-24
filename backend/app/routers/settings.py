@@ -99,7 +99,7 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
 
     color = body.chat_color
     if color is not None and not _HEX_COLOR_RE.match(color):
-        raise HTTPException(status_code=400, detail="chat_color must be a 6-digit hex color like #39ff6a, or null")
+        raise HTTPException(status_code=400, detail="chat_color must be a 6-digit hex color like #39ff14, or null")
 
     async with pool.acquire() as conn:
         await settings_queries.set_chat_color(conn, payload["owner_id"], color)

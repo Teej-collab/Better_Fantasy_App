@@ -18,18 +18,16 @@ export const metadata: Metadata = {
 };
 
 // viewportFit: "cover" lets the page draw under the notch/dynamic
-// island/home-indicator on iPhone instead of leaving a plain white or
-// black bar there — the .safe-px class (globals.css) then keeps actual
-// content clear of that area. themeColor matches the browser chrome
-// (status bar / URL bar) to the page background per color scheme, so
-// the app reads as a real app rather than a page floating in a
-// mismatched browser frame on a phone home screen.
+// island/home-indicator on iPhone instead of leaving a plain bar there
+// — the .safe-px class (globals.css) then keeps actual content clear
+// of that area. themeColor matches the browser chrome (status bar /
+// URL bar) to the page background — a single value, not one per color
+// scheme, since the app is always the Cosmic dark theme regardless of
+// the visitor's OS setting (see globals.css's theme note and the
+// `dark` class below).
 export const viewport: Viewport = {
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-  ],
+  themeColor: "#23212c",
 };
 
 // Deliberately minimal — just the true document shell. The actual app
@@ -64,7 +62,7 @@ const APPEARANCE_SCRIPT = `
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
       </head>

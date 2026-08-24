@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* The whole app is one deliberate dark theme ("Cosmic" background,
+   Neon Green accent) rather than following the visitor's OS light/dark
+   setting — same "always dark by design" call the gated opening
+   experience already made, now extended to every page. Every dark:
+   utility used across the app (462+ call sites) already exists and is
+   already tuned for a dark surface; switching the dark variant from
+   Tailwind's default media-query strategy to a permanent class means
+   all of that styling applies unconditionally instead of writing a
+   parallel light theme by hand. See app/layout.tsx, which puts the
+   `dark` class on <html> permanently — nothing ever removes it. */
+@custom-variant dark (&:is(.dark *));
 
-  /* Weekend League — the gated opening/auth experience's design tokens
-     (OpeningExperience.tsx, AuthScreen.tsx). Deliberately distinct from
-     /weekend's older bar-themed neon signage: near-black/charcoal
-     surfaces, a single neon-green accent (not the old multi-color
-     palette), restrained everywhere else. Same values in light and
-     dark mode on purpose — this experience is always dark, by design,
-     regardless of the visitor's system theme. */
-  --wl-bg: #030402;
-  --wl-surface: #0c110d;
-  --wl-accent: #39ff6a;
-  --wl-accent-dim: #1c8a3e;
+:root {
+  --background: #23212c;
+  --foreground: #f5f4ec;
+
+  /* Weekend League design tokens (used across the whole app, not just
+     the gated opening/auth experience anymore — see the theme note
+     above). "Cosmic" background, "Neon Green" accent. */
+  --wl-bg: #23212c;
+  --wl-surface: #2c2a37;
+  --wl-accent: #39ff14;
+  --wl-accent-dim: #1f890b;
   --wl-text: #f5f4ec;
   --wl-text-secondary: #93a396;
   --wl-live: #ef4444;
@@ -39,13 +47,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -134,10 +135,10 @@ body {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(5, 3, 2, 0.75) 0%,
-    rgba(5, 3, 2, 0.35) 28%,
-    rgba(5, 3, 2, 0.25) 60%,
-    rgba(5, 3, 2, 0.8) 100%
+    rgba(35, 33, 44, 0.75) 0%,
+    rgba(35, 33, 44, 0.35) 28%,
+    rgba(35, 33, 44, 0.25) 60%,
+    rgba(35, 33, 44, 0.8) 100%
   );
 }
 
@@ -442,14 +443,6 @@ body {
     radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.08), transparent 60%),
     radial-gradient(700px circle at 50% 100%, rgba(250, 204, 21, 0.05), transparent 60%);
 }
-@media (prefers-color-scheme: light) {
-  .home-ambient {
-    background-image:
-      radial-gradient(600px circle at 15% -10%, rgba(56, 189, 248, 0.06), transparent 60%),
-      radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.05), transparent 60%),
-      radial-gradient(700px circle at 50% 100%, rgba(250, 204, 21, 0.04), transparent 60%);
-  }
-}
 
 /* One-shot staggered entrance for the homepage's top-level sections
    (page.tsx's Reveal wrapper sets animation-delay per section via
@@ -712,11 +705,11 @@ body {
 }
 .wl-ambient::before {
   background-image:
-    radial-gradient(900px circle at 20% 0%, rgba(57, 255, 106, 0.06), transparent 55%),
-    radial-gradient(1100px circle at 50% 120%, rgba(57, 255, 106, 0.045), transparent 60%);
+    radial-gradient(900px circle at 20% 0%, rgba(57, 255, 20, 0.06), transparent 55%),
+    radial-gradient(1100px circle at 50% 120%, rgba(57, 255, 20, 0.045), transparent 60%);
 }
 .wl-ambient::after {
-  background-image: radial-gradient(820px circle at 82% 2%, rgba(57, 255, 106, 0.055), transparent 55%);
+  background-image: radial-gradient(820px circle at 82% 2%, rgba(57, 255, 20, 0.055), transparent 55%);
 }
 .wl-ambient--lit {
   opacity: 1;
@@ -784,7 +777,7 @@ body {
   letter-spacing: 0.08em;
   text-shadow:
     0 0 8px rgba(245, 244, 236, 0.5),
-    0 0 24px rgba(57, 255, 106, 0.35);
+    0 0 24px rgba(57, 255, 20, 0.35);
 }
 /* Per-word variation — no two ignitions identical, and each a touch
    snappier than the last to build anticipation toward WEEKEND
@@ -850,10 +843,10 @@ body {
   letter-spacing: 0.03em;
   color: var(--wl-accent);
   text-shadow:
-    0 0 6px rgba(57, 255, 106, 0.9),
-    0 0 18px rgba(57, 255, 106, 0.7),
-    0 0 46px rgba(57, 255, 106, 0.45),
-    0 0 90px rgba(57, 255, 106, 0.25);
+    0 0 6px rgba(57, 255, 20, 0.9),
+    0 0 18px rgba(57, 255, 20, 0.7),
+    0 0 46px rgba(57, 255, 20, 0.45),
+    0 0 90px rgba(57, 255, 20, 0.25);
   animation:
     wl-weekend-power-on 1.8s ease-out both,
     wl-neon-buzz 5s ease-in-out 1.8s infinite;
@@ -1028,8 +1021,8 @@ body {
   background: radial-gradient(
     circle,
     rgba(245, 244, 236, 0.95) 0%,
-    rgba(57, 255, 106, 0.55) 28%,
-    rgba(57, 255, 106, 0) 68%
+    rgba(57, 255, 20, 0.55) 28%,
+    rgba(57, 255, 20, 0) 68%
   );
   animation: wl-bloom 0.9s cubic-bezier(0.5, 0, 0.75, 0) forwards;
   will-change: transform, opacity;
@@ -1103,13 +1096,8 @@ body {
   color: #ffffff;
 }
 .chat-bubble--other {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: inherit;
-}
-@media (prefers-color-scheme: dark) {
-  .chat-bubble--other {
-    background: rgba(255, 255, 255, 0.08);
-  }
 }
 
 .chat-mention {
