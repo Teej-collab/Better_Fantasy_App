@@ -77,7 +77,7 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
   }
 
   return (
-    <ol className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+    <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
       {players.map((p, i) => (
         <li key={p.player_id}>
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">

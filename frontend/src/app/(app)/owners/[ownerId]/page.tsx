@@ -134,7 +134,7 @@ function Badges({
 
 function PeriodCard({ title, summary }: { title: string; summary: PeriodSummary | null }) {
   return (
-    <div className="rounded-lg border border-black/10 p-4 dark:border-white/10">
+    <div className="neon-panel rounded-lg p-4">
       <h3 className="mb-2 text-sm font-medium text-black/60 dark:text-white/60">{title}</h3>
       {summary ? (
         <dl className="grid grid-cols-3 gap-2 text-sm">

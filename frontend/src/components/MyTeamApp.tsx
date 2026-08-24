@@ -186,7 +186,7 @@ export function MyTeamApp() {
 
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
-        <ul className="rounded-lg border border-black/10 bg-black/[0.015] px-4 dark:border-white/10 dark:bg-white/[0.03]">
+        <ul className="neon-panel rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]">
           {starters.map((e) => (
             <RosterRow
               key={e.player_id}
@@ -201,7 +201,7 @@ export function MyTeamApp() {
 
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h2>
-        <ul className="rounded-lg border border-black/10 bg-black/[0.015] px-4 dark:border-white/10 dark:bg-white/[0.03]">
+        <ul className="neon-panel rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]">
           {bench.map((e) => (
             <RosterRow
               key={e.player_id}

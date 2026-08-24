@@ -101,7 +101,7 @@ export function NotificationsSection() {
         </p>
       )}
 
-      <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Sunday Mode</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
@@ -135,7 +135,7 @@ export function NotificationsSection() {
         </p>
       </section>
 
-      <section className="flex flex-col gap-1 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <h2 className="text-sm font-semibold tracking-wide uppercase">Messages</h2>
         <div className="mt-2 flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {MESSAGE_TOGGLES.map((t) => (
@@ -150,7 +150,7 @@ export function NotificationsSection() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-1 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold tracking-wide uppercase">Fantasy Activity</h2>
           <span className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/50">
@@ -167,7 +167,7 @@ export function NotificationsSection() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow
           label="Quiet Hours"
           description="Saved now so it's ready the moment push notifications ship — Weekend League doesn't send push notifications yet, so there's nothing to suppress today."

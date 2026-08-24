@@ -12,7 +12,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     return (
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-semibold">Settings</h1>
-        <section className="flex flex-col gap-2 rounded-xl border border-black/10 p-4 dark:border-white/10">
+        <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
           <p className="text-sm text-black/60 dark:text-white/60">Sign in to manage your settings.</p>
           <a
             href={`${API_BASE_URL}/auth/discord/login`}

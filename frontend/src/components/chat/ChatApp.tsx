@@ -308,7 +308,7 @@ export function ChatApp({
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="relative flex h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] overflow-hidden rounded-none border border-black/10 sm:h-[calc(100dvh-6rem)] sm:rounded-xl dark:border-white/10">
+    <div className="neon-panel relative flex h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl">
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
         <ConversationList
           conversations={conversations}

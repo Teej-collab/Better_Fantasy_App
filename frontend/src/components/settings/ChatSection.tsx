@@ -78,7 +78,7 @@ export function ChatSection() {
         </p>
       )}
 
-      <section className="flex flex-col divide-y divide-black/5 rounded-xl border border-black/10 bg-black/[0.015] px-5 shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col divide-y divide-black/5 rounded-xl bg-black/[0.015] px-5 dark:divide-white/5 dark:bg-white/[0.03]">
         {CHAT_TOGGLES.map((t) => (
           <ToggleRow
             key={t.key}

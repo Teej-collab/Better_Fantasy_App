@@ -26,7 +26,7 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
   const { home, away } = matchup;
 
   return (
-    <div className="rounded-lg border border-black/10 dark:border-white/10">
+    <div className="neon-panel rounded-lg">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

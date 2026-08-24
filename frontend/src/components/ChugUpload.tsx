@@ -65,7 +65,7 @@ export function ChugUpload() {
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-xl border border-black/10 bg-black/[0.015] p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+    <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Submit a Chug
       </span>

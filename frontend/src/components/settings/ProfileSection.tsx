@@ -91,7 +91,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
         <p className="text-sm text-black/50 dark:text-white/50">How you appear throughout Weekend League.</p>
       </div>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Display Name</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
@@ -131,7 +131,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
         )}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Chat Bubble Color</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">

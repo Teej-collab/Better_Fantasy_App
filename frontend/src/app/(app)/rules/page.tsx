@@ -377,7 +377,7 @@ function RuleSection({
   return (
     <section
       id={id}
-      className="scroll-mt-4 flex flex-col gap-3 rounded-xl border border-black/10 bg-black/[0.015] p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none"
+      className="neon-panel scroll-mt-4 flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]"
     >
       <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase">
         <span className={`h-2 w-2 shrink-0 rounded-full ${ACCENT_DOT}`} style={{ boxShadow: `0 0 6px ${ACCENT_GLOW}` }} aria-hidden />

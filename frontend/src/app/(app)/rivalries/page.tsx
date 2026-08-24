@@ -15,7 +15,7 @@ export default async function RivalriesPage() {
       ) : (
         <ul className="flex flex-col gap-4">
           {rivalries.map((r) => (
-            <li key={r.id} className="rounded-lg border border-black/10 p-4 dark:border-white/10">
+            <li key={r.id} className="neon-panel rounded-lg p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <h2 className="font-medium">
                   {r.emoji && <span className="mr-1">{r.emoji}</span>}

@@ -170,7 +170,7 @@ export default async function HomePage() {
         <Reveal index={nextReveal()}>
           <section className="flex flex-col gap-2">
             <SectionHeader color="standings" title="League Standings" href="/standings" />
-            <ol className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+            <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
               {standings.slice(0, 5).map((row, i) => (
                 <li
                   key={row.team_id}
@@ -199,7 +199,7 @@ export default async function HomePage() {
               title="Other Matchups"
               href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
             />
-            <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+            <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
               {otherMatchups.map((m) => {
                 const started =
                   m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
@@ -236,7 +236,7 @@ export default async function HomePage() {
           <section className="flex flex-col gap-2">
             <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
             {rivalryGamesThisWeek.length > 0 ? (
-              <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
                 {rivalryGamesThisWeek.map((m) => (
                   <li key={m.matchup_id}>
                     <a
@@ -255,7 +255,7 @@ export default async function HomePage() {
                 ))}
               </ul>
             ) : (
-              <ul className="flex flex-col divide-y divide-black/5 rounded-lg border border-black/10 bg-black/[0.015] shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
                 {topRivalries.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                     <span className="flex min-w-0 items-center gap-2">
@@ -352,8 +352,8 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
 
   return (
     <section
-      className={`flex flex-col gap-3 rounded-xl border bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white ${
-        isLive ? "hero-live-glow border-red-500/50" : "border-black/10 dark:border-white/10"
+      className={`flex flex-col gap-3 rounded-xl bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white ${
+        isLive ? "hero-live-glow border border-red-500/50" : "neon-panel"
       }`}
     >
       <div className="flex items-center justify-between">
@@ -428,7 +428,7 @@ function TeamScoreBlock({
 
 function EmptyHero({ title, message }: { title: string; message: string }) {
   return (
-    <section className="flex flex-col gap-1 rounded-xl border border-black/10 bg-black/[0.015] p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+    <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Your Week
       </span>
