@@ -64,7 +64,7 @@ export async function NavBar() {
       <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
         <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 py-3">
           <div className="flex min-w-0 items-center gap-1">
-            <BrandMark href={signedIn ? "/team" : "/"} />
+            <BrandMark href="/" />
             <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
             <PrimaryNav signedIn={signedIn} matchupsHref={matchupsHref} myMatchupLive={myMatchupLive} />
           </div>
