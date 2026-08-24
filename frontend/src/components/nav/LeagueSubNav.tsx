@@ -1,4 +1,4 @@
-export type LeagueTab = "overview" | "standings" | "playerCards" | "awards" | "rivalries" | "rules";
+export type LeagueTab = "overview" | "standings" | "playerCards" | "awards" | "rivalries" | "rules" | "chug";
 
 const LABELS: Record<LeagueTab, string> = {
   overview: "Overview",
@@ -7,12 +7,13 @@ const LABELS: Record<LeagueTab, string> = {
   awards: "Awards",
   rivalries: "Rivalries",
   rules: "Rules",
+  chug: "Chug",
 };
 
 /**
  * Rendered manually at the top of each League-family page (League,
- * Standings, Player Cards, Awards, Rivalries, Rules) rather than via a
- * shared route-group layout — keeps this additive (one line per page)
+ * Standings, Player Cards, Awards, Rivalries, Rules, Chug) rather than
+ * via a shared route-group layout — keeps this additive (one line per page)
  * instead of restructuring how those routes are organized. No
  * usePathname() needed: each page already knows which tab it is, so
  * `active` is just passed in directly — a plain server component, no
@@ -29,6 +30,7 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
     { key: "awards", href: awardsHref },
     { key: "rivalries", href: "/rivalries" },
     { key: "rules", href: "/rules" },
+    { key: "chug", href: "/chug" },
   ];
 
   return (
