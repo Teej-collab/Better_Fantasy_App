@@ -27,6 +27,7 @@ _DEFAULT_PREFERENCES = {
     "mention_highlighting_enabled": True,
     "neon_intensity": "standard",
     "reduced_motion": False,
+    "accent_color": None,
 }
 
 # Every real column except owner_id itself — used to build a full

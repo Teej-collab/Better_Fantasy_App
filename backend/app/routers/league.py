@@ -6,6 +6,7 @@ access, appropriate for a single private league's own data.
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db import get_pool
+from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_week_matchup_context
 from app.queries import league as queries
 
@@ -52,6 +53,15 @@ async def week_matchup_context(season: int, week: int, pool=Depends(get_pool)):
     week, in one call — see app/domain/matchup_context.py."""
     async with pool.acquire() as conn:
         return await build_week_matchup_context(conn, season, week)
+
+
+@router.get("/seasons/{season}/weeks/{week}/ticker")
+async def week_ticker(season: int, week: int, pool=Depends(get_pool)):
+    """Lightweight feed for the league scores ticker (as opposed to
+    /matchup-context, which is much heavier) — see
+    app/domain/league_ticker.py."""
+    async with pool.acquire() as conn:
+        return await get_week_ticker_data(conn, season, week)
 
 
 @router.get("/matchups/{matchup_id}")

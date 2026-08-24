@@ -130,6 +130,33 @@ async def test_put_preferences_rejects_invalid_neon_intensity(pool, monkeypatch)
     assert resp.status_code == 400
 
 
+async def test_put_preferences_sets_and_clears_accent_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 11)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.put("/settings/preferences", json={"accent_color": "#0ea5e9"})
+        assert resp.status_code == 200
+        assert resp.json()["accent_color"] == "#0ea5e9"
+
+        # null clears back to "use the app default" — not a no-op patch.
+        resp = await client.put("/settings/preferences", json={"accent_color": None})
+        assert resp.status_code == 200
+        assert resp.json()["accent_color"] is None
+
+
+async def test_put_preferences_rejects_invalid_accent_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 12)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.put("/settings/preferences", json={"accent_color": "not-a-color"})
+
+    assert resp.status_code == 400
+
+
 async def test_sunday_mode_endpoint_rejects_unknown_preset(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 8)
