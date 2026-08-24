@@ -1,8 +1,25 @@
 import pytest
 import pytest_asyncio
 
+from app import db as db_module
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
+
+# Pools stashed here by tests/test_chat.py and tests/test_gamecast_router.py's
+# _use_fresh_pool_for_websocket() helper, to be closed on the NEXT test's
+# setup rather than immediately. Those helpers reset db_module._pool mid-test
+# (WebSocket tests run the ASGI app on its own event loop via starlette's
+# TestClient, so the pool has to be recreated on that loop) — but the pool
+# being discarded is still the exact object this same test's own `pool`
+# fixture and cleanup_test_season teardown (below) are holding a reference
+# to and will still use before the test finishes. Closing it immediately
+# breaks that teardown ("pool is closed"); leaking it forever exhausts
+# Postgres's max_connections a couple dozen WebSocket tests into a full
+# suite run (TooManyConnectionsError). Closing it here, at the start of the
+# NEXT test — after the test that stashed it, and all of that test's own
+# fixture teardown, have fully finished — is the one point in time where
+# it's both safe and prompt.
+_pending_pool_close: list = []
 
 # MUST be a season number that can never be a real league season, ever.
 # cleanup_test_season below runs after every single test and does an
@@ -19,7 +36,17 @@ TEST_SEASON = 1900
 
 
 @pytest_asyncio.fixture
-async def pool():
+async def _close_pool_stashed_by_a_websocket_test():
+    if _pending_pool_close:
+        old_pool = _pending_pool_close.pop()
+        try:
+            await old_pool.close()
+        except Exception:
+            pass
+
+
+@pytest_asyncio.fixture
+async def pool(_close_pool_stashed_by_a_websocket_test):
     return await get_pool()
 
 
@@ -53,6 +80,12 @@ async def cleanup_test_season(pool):
         # no season column to scope by (same reasoning as rivalries above).
         await conn.execute(
             "DELETE FROM owner_preferences WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        # push_subscriptions.owner_id -> owners.owner_id, same reasoning —
+        # no season column, one/many rows per owner, must go before the
+        # owner DELETE below or it FK-violates.
+        await conn.execute(
+            "DELETE FROM push_subscriptions WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         # Chat v2: reactions/mentions reference messages, so they go first;
         # conversation_participants references conversations, so it goes

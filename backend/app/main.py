@@ -14,10 +14,12 @@ from app.routers import (
     chug,
     free_agents,
     game_day,
+    gamecast,
     league,
     me,
     nfl,
     profile,
+    push,
     settings,
 )
 from app.scheduler import start_scheduler, stop_scheduler
@@ -52,10 +54,12 @@ app.include_router(chat.router)
 app.include_router(chug.router)
 app.include_router(free_agents.router)
 app.include_router(game_day.router)
+app.include_router(gamecast.router)
 app.include_router(league.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(profile.router)
+app.include_router(push.router)
 app.include_router(settings.router)
 
 

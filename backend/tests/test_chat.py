@@ -30,11 +30,30 @@ def _ws_ticket(owner_id: int):
     )
 
 
-def _use_fresh_pool_for_websocket():
+async def _use_fresh_pool_for_websocket():
     """starlette's TestClient runs the ASGI app on its own event loop in a
     background thread — asyncpg's pool is bound to the loop it was
     created on, so the module-level singleton has to be cleared before
-    and after a WebSocket test (see chat v1's original note on this)."""
+    and after a WebSocket test (see chat v1's original note on this).
+    The outgoing pool is handed off to conftest's _pending_pool_close
+    rather than closed here directly — this same object is still what
+    this test's own `pool` fixture and cleanup_test_season teardown are
+    holding a reference to and will use before the test finishes, so
+    closing it now would break that; leaking it forever exhausts
+    Postgres's max_connections a few dozen WebSocket tests into a full
+    suite run. conftest.py's `pool` fixture closes it for us at the
+    start of the next test that requests a pool, once it's genuinely
+    safe to."""
+    # Bare `import conftest`, not `tests.conftest` — there's no
+    # tests/__init__.py, so pytest itself loads this file as the
+    # top-level module `conftest` (confirmed via sys.modules); a dotted
+    # `tests.conftest` import creates a second, disconnected module
+    # instance with its own empty _pending_pool_close, silently
+    # defeating this whole mechanism.
+    import conftest
+
+    if db_module._pool is not None:
+        conftest._pending_pool_close.append(db_module._pool)
     db_module._pool = None
 
 
@@ -355,7 +374,7 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
     async with pool.acquire() as conn:
         original = await chat_queries.insert_message(conn, conversation_id, a, "original message", None)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
         ws.send_json(
@@ -368,7 +387,7 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
             }
         )
         received = ws.receive_json()
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     msg = received["message"]
@@ -387,12 +406,12 @@ async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, m
     b = await _seed_owner(pool, 41)
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect(f"/chat/ws?ticket={_ws_ticket(b)}") as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "via ticket, not cookie"})
         received = ws.receive_json()
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     assert received["message"]["owner_id"] == b
@@ -408,12 +427,12 @@ async def test_websocket_send_with_valid_image_url_persists_it(pool, monkeypatch
     conversation_id = await _seed_direct_conversation(pool, a, b)
     image_url = f"https://{CHAT_IMAGE_HOST}/chat/some-photo.jpg"
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "", "image_url": image_url})
         received = ws.receive_json()
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     assert received["message"]["image_url"] == image_url
     assert received["message"]["body"] == ""
@@ -425,7 +444,7 @@ async def test_websocket_drops_image_url_from_untrusted_host(pool, monkeypatch):
     b = await _seed_owner(pool, 63)
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
         # No body, and the image_url doesn't match our Blob store's
@@ -439,7 +458,7 @@ async def test_websocket_drops_image_url_from_untrusted_host(pool, monkeypatch):
                 "image_url": "https://evil.example.com/tracker.png",
             }
         )
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT body, image_url FROM messages WHERE conversation_id = $1", conversation_id)
@@ -453,12 +472,12 @@ async def test_websocket_filters_mentions_to_real_participants(pool, monkeypatch
     outsider = await _seed_owner(pool, 25)
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hi", "mentions": [outsider]})
         received = ws.receive_json()
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     assert received["message"]["mentions"] == []  # outsider isn't a participant, silently dropped
 
@@ -470,7 +489,7 @@ async def test_websocket_ignores_messages_to_conversation_you_are_not_in(pool, m
     outsider = await _seed_owner(pool, 28)
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(outsider)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "sneaky"})
@@ -478,7 +497,7 @@ async def test_websocket_ignores_messages_to_conversation_you_are_not_in(pool, m
         # from a real participant afterward and confirm ONLY that one shows
         # up, proving the outsider's message was dropped, not just delayed.
         pass
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT body FROM messages WHERE conversation_id = $1", conversation_id)
@@ -519,7 +538,7 @@ async def test_websocket_typing_is_not_echoed_to_sender_and_is_suppressed_when_d
 
     monkeypatch.setattr(chat_manager, "broadcast_to_owners", spy_broadcast)
 
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws_a:
         ws_a.send_json({"type": "typing", "conversation_id": conversation_id})
@@ -529,7 +548,7 @@ async def test_websocket_typing_is_not_echoed_to_sender_and_is_suppressed_when_d
         # arrive first and this assertion would fail on the wrong event type.
         ws_a.send_json({"type": "message", "conversation_id": conversation_id, "body": "after typing"})
         received = ws_a.receive_json()
-    _use_fresh_pool_for_websocket()
+    await _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
     assert received["message"]["body"] == "after typing"

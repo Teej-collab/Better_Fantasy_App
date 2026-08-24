@@ -1,7 +1,7 @@
 """
-Two independent scheduled jobs, both off by default so running the
-backend locally doesn't silently start hitting ESPN and writing to
-whatever DATABASE_URL happens to be configured:
+Three independent scheduled jobs, all off by default so running the
+backend locally doesn't silently start hitting ESPN/a live-game
+provider and writing to whatever DATABASE_URL happens to be configured:
 
 - Full sync (ENABLE_ESPN_SYNC_SCHEDULER): the complete historical scan,
   replaces Fantasy_Helper's in-process discord.ext.tasks loop (see
@@ -20,12 +20,25 @@ whatever DATABASE_URL happens to be configured:
   regardless of day/time; it's a lightweight, unauthenticated, already
   widely-used-elsewhere endpoint, unlike the fantasy API this gate
   protects.
+- Gamecast (ENABLE_GAMECAST_SCHEDULER): polls the configured live-NFL-
+  game provider (Sportradar, or the mock simulation — see app/gamecast/
+  providers/__init__.py) for every currently-subscribed game, updates
+  the in-memory live-game cache, and pushes the result over WebSocket
+  to anyone watching. Same is_nfl_game_live gate as live sync, plus its
+  own inner check — only games someone's actually connected to
+  (GamecastConnectionManager.live_game_ids()) get polled, not the
+  provider's entire live slate, so an idle Gamecast feature with zero
+  viewers costs nothing beyond the one lightweight scoreboard check
+  every tick.
 """
 import logging
 import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.db import get_pool
+from app.gamecast import service as gamecast_service
+from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
@@ -58,6 +71,29 @@ async def _run_live_sync_job():
     logger.info("Live sync finished (season=%s week=%s): %s", season, week, results)
 
 
+async def _run_gamecast_poll_job():
+    games = await get_nfl_scoreboard()
+    if not is_nfl_game_live(games):
+        return
+
+    game_ids = gamecast_manager.live_game_ids()
+    if not game_ids:
+        return  # nobody's actually watching a Gamecast right now
+
+    pool = await get_pool()
+    for game_id in game_ids:
+        async with pool.acquire() as conn:
+            try:
+                game, fantasy_events = await gamecast_service.refresh_game(conn, game_id)
+            except Exception:
+                logger.exception("Gamecast poll failed for game_id=%s", game_id)
+                continue
+        await gamecast_manager.broadcast_to_game(game_id, {"type": "game_state", "game": game.model_dump(mode="json")})
+        for event in fantasy_events:
+            await gamecast_manager.broadcast_to_game(game_id, event)
+    logger.info("Gamecast poll finished for %d live game(s)", len(game_ids))
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -75,6 +111,15 @@ def start_scheduler():
         logger.info(
             "Live ESPN sync scheduler started (every %d minutes, only during NFL game windows)",
             interval_minutes,
+        )
+        started_any = True
+
+    if os.getenv("ENABLE_GAMECAST_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_seconds = int(os.getenv("GAMECAST_POLL_INTERVAL_SECONDS", "15"))
+        _scheduler.add_job(_run_gamecast_poll_job, "interval", seconds=interval_seconds, id="gamecast_poll")
+        logger.info(
+            "Gamecast poll scheduler started (every %d seconds, only during NFL game windows with active viewers)",
+            interval_seconds,
         )
         started_any = True
 

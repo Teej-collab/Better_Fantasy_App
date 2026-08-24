@@ -127,7 +127,11 @@ class PreferencesPatch(BaseModel):
     so a client can PATCH a single toggle without resending the rest.
     sunday_mode is deliberately not settable here — only through
     POST /preferences/sunday-mode below, which also enforces it's one
-    of the three real presets."""
+    of the three real presets. push_enabled is likewise deliberately
+    absent — it's owned by POST /push/subscribe and /push/unsubscribe
+    (app/routers/push.py), which set it to reflect whether the owner
+    actually has an active device subscribed, not a value a client
+    could set independently of reality."""
 
     notify_direct_messages: bool | None = None
     notify_league_chat: bool | None = None
@@ -142,6 +146,10 @@ class PreferencesPatch(BaseModel):
     mention_highlighting_enabled: bool | None = None
     neon_intensity: str | None = None
     reduced_motion: bool | None = None
+    notify_game_alerts: bool | None = None
+    notify_my_players: bool | None = None
+    notify_fantasy_team: bool | None = None
+    notify_league: bool | None = None
     accent_color: str | None = None
     home_card_order: str | None = None
 

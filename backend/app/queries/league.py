@@ -240,6 +240,30 @@ async def get_roster(conn, team_id: int, week: int):
     )
 
 
+async def get_rostered_players_by_pro_team(conn, season: int, week: int, pro_teams: list[str]):
+    """Every fantasy-rostered player (any owner's team, any lineup slot)
+    whose real NFL team is in `pro_teams` — the cross-reference
+    Gamecast's fantasy-impact panel needs (app/gamecast/service.py):
+    given a live game between two real NFL teams, which fantasy owners
+    actually have skin in it. Unlike get_roster (one fantasy team_id at
+    a time), this is scoped by real-world pro_team across every fantasy
+    team in the league at once."""
+    if not pro_teams:
+        return []
+    return await conn.fetch(
+        """
+        SELECT r.player_name, r.position, r.lineup_slot, r.points_scored, r.points_projected,
+               r.espn_player_id AS player_id, r.pro_team,
+               t.id AS team_id, t.team_name, o.owner_id, o.display_name AS owner_name
+        FROM rosters r
+        JOIN teams_by_season t ON t.id = r.team_id
+        JOIN owners o ON o.owner_id = t.owner_id
+        WHERE t.season = $1 AND r.week = $2 AND r.pro_team = ANY($3::text[])
+        """,
+        season, week, pro_teams,
+    )
+
+
 async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
     """Ported from Fantasy_Helper's bot/memory/rivalry_graph.py
     get_rivalry, unchanged: only owner pairs someone has curated into

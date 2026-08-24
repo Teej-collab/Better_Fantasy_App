@@ -9,3 +9,4 @@ espn_api
 apscheduler
 httpx
 pyjwt
+pywebpush

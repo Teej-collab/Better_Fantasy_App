@@ -29,6 +29,17 @@ _DEFAULT_PREFERENCES = {
     "reduced_motion": False,
     "accent_color": None,
     "home_card_order": None,
+    # Push notifications (migration 6a96fdae6d6c). push_enabled is
+    # managed by app/routers/push.py's subscribe/unsubscribe flow, not
+    # set directly through PATCH /settings/preferences (see settings.py)
+    # — it should always reflect "does this owner have at least one
+    # active device subscribed," not a value that could drift from
+    # reality if set independently.
+    "push_enabled": False,
+    "notify_game_alerts": True,
+    "notify_my_players": False,
+    "notify_fantasy_team": True,
+    "notify_league": True,
 }
 
 # Every real column except owner_id itself — used to build a full
