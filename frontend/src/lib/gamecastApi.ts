@@ -159,3 +159,25 @@ export function findGamecastId(
   const match = liveGames.find((g) => g.home_team_abbr === homeAbbr && g.away_team_abbr === awayAbbr);
   return match?.game_id ?? null;
 }
+
+// Links an NFL scoreboard ticker item to its Gamecast, when one exists
+// for that game — matched by team-abbreviation pair (findGamecastId,
+// above). Shared by AppTickerBar.tsx (the persistent site-wide ticker)
+// and (home)/page.tsx's own richer ticker, so a game is clickable into
+// Gamecast the same way no matter which of the two tickers you're
+// looking at. Additive only: an item with no Gamecast match (or a
+// non-NFL item, like a rivalry/awards blurb — those never have a `key`
+// matching any nflGames[].id) is returned completely unchanged, so a
+// Gamecast outage or empty live-games list never breaks either ticker.
+export function withGamecastLinks<T extends { key: string; href?: string }>(
+  items: T[],
+  nflGames: { id: string; home_team: string | null; away_team: string | null }[],
+  liveGames: GamecastLiveGameSummary[]
+): T[] {
+  const byId = new Map(nflGames.map((g) => [g.id, g]));
+  return items.map((item) => {
+    const nflGame = byId.get(item.key);
+    const gamecastId = nflGame ? findGamecastId(nflGame.home_team, nflGame.away_team, liveGames) : null;
+    return gamecastId ? { ...item, href: `/gamecast/${gamecastId}` } : item;
+  });
+}

@@ -28,6 +28,7 @@ import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
+import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 // The homepage's six reorderable dashboard cards, in the app's own
@@ -101,19 +102,23 @@ export default async function HomePage() {
   // OpeningExperience.tsx.
   const me = await getMe(sessionCookie);
   if (!me) {
-    const nflGames = await getNflScoreboard();
+    const [nflGames, gamecastGames] = await Promise.all([getNflScoreboard(), getLiveGames()]);
     return (
-      <OpeningExperience tickerItems={buildNflTickerItems(nflGames)} isGameDay={isNflGameLive(nflGames)} />
+      <OpeningExperience
+        tickerItems={withGamecastLinks(buildNflTickerItems(nflGames), nflGames, gamecastGames)}
+        isGameDay={isNflGameLive(nflGames)}
+      />
     );
   }
 
   const { seasons } = await listSeasons();
   const season = seasons.length > 0 ? Math.max(...seasons) : null;
 
-  const [myWeek, nflGames, myPreferences] = await Promise.all([
+  const [myWeek, nflGames, myPreferences, gamecastGames] = await Promise.all([
     getMyWeek(sessionCookie),
     getNflScoreboard(),
     getMyPreferences(sessionCookie),
+    getLiveGames(),
   ]);
   const isGameDay = isNflGameLive(nflGames);
 
@@ -151,7 +156,11 @@ export default async function HomePage() {
   const otherMatchups = weekMatchups.filter((m) => m.matchup_id !== myWeek?.matchup?.matchup_id);
   const rivalryGamesThisWeek = weekMatchups.filter((m) => m.is_rivalry);
 
-  const tickerItems = buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek);
+  const tickerItems = withGamecastLinks(
+    buildTickerItems(nflGames, weeklyAwards, standings, weekPlayed, rivalryGamesThisWeek),
+    nflGames,
+    gamecastGames
+  );
 
   // The six reorderable dashboard cards — only the ones with something
   // real to show this week end up in this map at all (same conditions

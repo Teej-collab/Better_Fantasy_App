@@ -6,26 +6,10 @@ import {
   getWeekLeagueTicker,
   isNflGameLive,
   listSeasons,
-  type NflGame,
-  type TickerItem,
 } from "@/lib/api";
-import { findGamecastId, getLiveGames, type GamecastLiveGameSummary } from "@/lib/gamecastApi";
+import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
-
-// Links an NFL ticker item to its Gamecast, when one exists for that
-// game — matched by team-abbreviation pair (see findGamecastId).
-// Additive only: an item with no Gamecast match is returned unchanged,
-// so a Gamecast outage or empty live-games list never breaks the
-// scoreboard ticker itself.
-function withGamecastLinks(items: TickerItem[], nflGames: NflGame[], liveGameIds: GamecastLiveGameSummary[]): TickerItem[] {
-  const byId = new Map(nflGames.map((g) => [g.id, g]));
-  return items.map((item) => {
-    const nflGame = byId.get(item.key);
-    const gamecastId = nflGame ? findGamecastId(nflGame.home_team, nflGame.away_team, liveGameIds) : null;
-    return gamecastId ? { ...item, href: `/gamecast/${gamecastId}` } : item;
-  });
-}
 
 /**
  * The persistent site-wide ticker(s) — used only by app/(app)/layout.tsx,
@@ -60,14 +44,19 @@ export async function AppTickerBar() {
 
   let leagueTicker = null;
   if (latestSeason !== null) {
+    // ESPN reports current_week as 0 during preseason — not a real
+    // week, same convention as (home)/page.tsx's own fallback (and the
+    // Team page's). This used to fall back to `null` here instead of
+    // `1`, which meant the league ticker silently disappeared from
+    // every page except Home during preseason, even though real week-1
+    // matchup data already existed — Home's own ticker never had this
+    // bug since it already used the `: 1` fallback.
     const { current_week } = await getCurrentWeek(latestSeason);
-    const week = current_week && current_week >= 1 ? current_week : null;
-    if (week !== null) {
-      const ticker = await getWeekLeagueTicker(latestSeason, week);
-      const items = buildLeagueTickerItems(ticker);
-      if (items.length > 0) {
-        leagueTicker = <LiveTicker items={items} fast={isGameDay} />;
-      }
+    const week = current_week && current_week >= 1 ? current_week : 1;
+    const ticker = await getWeekLeagueTicker(latestSeason, week);
+    const items = buildLeagueTickerItems(ticker);
+    if (items.length > 0) {
+      leagueTicker = <LiveTicker items={items} fast={isGameDay} />;
     }
   }
 
