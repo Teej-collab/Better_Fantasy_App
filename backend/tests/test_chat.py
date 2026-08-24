@@ -399,6 +399,53 @@ async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, m
     assert received["message"]["body"] == "via ticket, not cookie"
 
 
+async def test_websocket_send_with_valid_image_url_persists_it(pool, monkeypatch):
+    from app.config import CHAT_IMAGE_HOST
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 60)
+    b = await _seed_owner(pool, 61)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    image_url = f"https://{CHAT_IMAGE_HOST}/chat/some-photo.jpg"
+
+    _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "", "image_url": image_url})
+        received = ws.receive_json()
+    _use_fresh_pool_for_websocket()
+
+    assert received["message"]["image_url"] == image_url
+    assert received["message"]["body"] == ""
+
+
+async def test_websocket_drops_image_url_from_untrusted_host(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 62)
+    b = await _seed_owner(pool, 63)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
+        # No body, and the image_url doesn't match our Blob store's
+        # host — the whole send should be silently dropped, same as an
+        # empty text-only send.
+        ws.send_json(
+            {
+                "type": "message",
+                "conversation_id": conversation_id,
+                "body": "",
+                "image_url": "https://evil.example.com/tracker.png",
+            }
+        )
+    _use_fresh_pool_for_websocket()
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT body, image_url FROM messages WHERE conversation_id = $1", conversation_id)
+    assert list(rows) == []
+
+
 async def test_websocket_filters_mentions_to_real_participants(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     a = await _seed_owner(pool, 23)

@@ -1,10 +1,17 @@
 "use client";
 
+import { upload } from "@vercel/blob/client";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMember, ChatMessage } from "@/lib/api";
 
 const MAX_LENGTH = 2000;
 const TYPING_DEBOUNCE_MS = 2000;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+type PendingImage =
+  | { status: "uploading"; previewUrl: string }
+  | { status: "done"; previewUrl: string; url: string }
+  | { status: "error" };
 
 export function MessageComposer({
   members,
@@ -16,13 +23,15 @@ export function MessageComposer({
   members: ChatMember[];
   replyTo: ChatMessage | null;
   onCancelReply: () => void;
-  onSend: (body: string, mentions: number[]) => void;
+  onSend: (body: string, mentions: number[], imageUrl: string | null) => void;
   onTyping: () => void;
 }) {
   const [value, setValue] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingSentAt = useRef(0);
 
   useEffect(() => {
@@ -61,16 +70,42 @@ export function MessageComposer({
     inputRef.current?.focus();
   }
 
+  async function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !ALLOWED_IMAGE_TYPES.includes(file.type)) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingImage({ status: "uploading", previewUrl });
+    try {
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/chat/upload",
+      });
+      setPendingImage({ status: "done", previewUrl, url: blob.url });
+    } catch {
+      setPendingImage({ status: "error" });
+    }
+  }
+
+  function removeImage() {
+    if (pendingImage && "previewUrl" in pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    setPendingImage(null);
+  }
+
   function send() {
     const body = value.trim();
-    if (!body) return;
+    const imageUrl = pendingImage?.status === "done" ? pendingImage.url : null;
+    if (!body && !imageUrl) return;
+    if (pendingImage?.status === "uploading") return;
     const mentions = [...pendingMentions.entries()]
       .filter(([name]) => body.includes(`@${name}`))
       .map(([, id]) => id);
-    onSend(body, mentions);
+    onSend(body, mentions, imageUrl);
     setValue("");
     setPendingMentions(new Map());
     setMentionQuery(null);
+    removeImage();
   }
 
   return (
@@ -84,6 +119,31 @@ export function MessageComposer({
             onClick={onCancelReply}
             aria-label="Cancel reply"
             className="shrink-0 text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {pendingImage && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-black/[0.04] p-1.5 dark:bg-white/[0.06]">
+          {pendingImage.status === "error" ? (
+            <span className="px-2 text-xs text-red-500">Upload failed.</span>
+          ) : (
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md">
+              <img src={pendingImage.previewUrl} alt="" className="h-full w-full object-cover" />
+              {pendingImage.status === "uploading" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white">
+                  Uploading…
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={removeImage}
+            aria-label="Remove image"
+            className="ml-auto mr-1 shrink-0 text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
           >
             ✕
           </button>
@@ -112,6 +172,21 @@ export function MessageComposer({
         }}
         className="flex items-end gap-2"
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_IMAGE_TYPES.join(",")}
+          onChange={pickImage}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Add image"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
+        >
+          +
+        </button>
         <textarea
           ref={inputRef}
           value={value}
@@ -130,7 +205,7 @@ export function MessageComposer({
         />
         <button
           type="submit"
-          disabled={!value.trim()}
+          disabled={!value.trim() && pendingImage?.status !== "done"}
           aria-label="Send"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--wl-accent-dim)] text-white transition-transform active:scale-90 disabled:opacity-30"
         >

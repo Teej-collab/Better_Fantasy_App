@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import type { ChatMessage } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
@@ -111,22 +112,36 @@ export function MessageBubble({
             </button>
           )}
 
-          <span
-            className={`chat-bubble rounded-2xl px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
-              message.deleted
-                ? "italic text-black/40 dark:text-white/40"
-                : mine
-                  ? "chat-bubble--mine"
-                  : "chat-bubble--other"
-            } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
-            style={
-              !message.deleted && message.owner_chat_color
-                ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
-                : undefined
-            }
-          >
-            {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
-          </span>
+          {!message.deleted && message.image_url && (
+            <a href={message.image_url} target="_blank" rel="noopener noreferrer">
+              <Image
+                src={message.image_url}
+                alt="Attached image"
+                width={400}
+                height={400}
+                className="h-auto max-h-72 w-auto max-w-full rounded-xl"
+              />
+            </a>
+          )}
+
+          {(message.deleted || message.body) && (
+            <span
+              className={`chat-bubble rounded-2xl px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
+                message.deleted
+                  ? "italic text-black/40 dark:text-white/40"
+                  : mine
+                    ? "chat-bubble--mine"
+                    : "chat-bubble--other"
+              } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
+              style={
+                !message.deleted && message.owner_chat_color
+                  ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
+                  : undefined
+              }
+            >
+              {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
+            </span>
+          )}
 
           {message.reactions.length > 0 && (
             <div className="flex flex-wrap gap-1">

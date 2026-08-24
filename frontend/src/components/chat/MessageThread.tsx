@@ -33,7 +33,7 @@ export function MessageThread({
   connected: boolean;
   hasMoreOlder: boolean;
   onLoadOlder: () => void;
-  onSend: (body: string, mentions: number[], replyToId: number | null) => void;
+  onSend: (body: string, mentions: number[], replyToId: number | null, imageUrl: string | null) => void;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
   onTyping: () => void;
@@ -164,8 +164,8 @@ export function MessageThread({
           members={members}
           replyTo={replyTo}
           onCancelReply={() => setReplyTo(null)}
-          onSend={(body, mentions) => {
-            onSend(body, mentions, replyTo?.id ?? null);
+          onSend={(body, mentions, imageUrl) => {
+            onSend(body, mentions, replyTo?.id ?? null, imageUrl);
             setReplyTo(null);
           }}
           onTyping={onTyping}

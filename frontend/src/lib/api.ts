@@ -728,6 +728,7 @@ export type ChatMessage = {
   owner_name: string;
   owner_chat_color: string | null;
   body: string;
+  image_url: string | null;
   deleted: boolean;
   created_at: string;
   reply_to: ChatReplyPreview | null;

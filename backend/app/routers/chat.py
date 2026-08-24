@@ -19,10 +19,12 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
+from urllib.parse import urlparse
+
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.chat.manager import manager
-from app.config import _require
+from app.config import CHAT_IMAGE_HOST, _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
 from app.queries import chat as chat_queries
@@ -33,6 +35,17 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MAX_MESSAGE_LENGTH = 2000
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_REACTIONS = {"😂", "🔥", "💀", "👍", "❤️", "😭"}
+
+
+def _validate_image_url(value) -> str | None:
+    """Only ever persist a link to our own Blob store, over HTTPS —
+    never trust an arbitrary URL a client sends over the socket."""
+    if not isinstance(value, str) or not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != CHAT_IMAGE_HOST:
+        return None
+    return value
 
 
 def _decode_session(token: str | None) -> dict | None:
@@ -227,7 +240,8 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
 
             if event_type == "message":
                 body = str(data.get("body", "")).strip()
-                if not body or len(body) > MAX_MESSAGE_LENGTH:
+                image_url = _validate_image_url(data.get("image_url"))
+                if (not body and not image_url) or len(body) > MAX_MESSAGE_LENGTH:
                     continue
                 reply_to_id = data.get("reply_to_id")
                 if not isinstance(reply_to_id, int):
@@ -241,7 +255,9 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                     # people actually in this conversation can be mentioned.
                     valid_mentions = [m for m in mentions if m in participant_ids]
 
-                    row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, reply_to_id)
+                    row = await chat_queries.insert_message(
+                        conn, conversation_id, owner_id, body, reply_to_id, image_url
+                    )
                     await chat_queries.insert_mentions(conn, row["id"], valid_mentions)
                     message = await chat_domain.get_single_message(conn, row["id"], owner_id)
 

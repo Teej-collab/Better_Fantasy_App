@@ -18,6 +18,7 @@ def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict
         "owner_name": row["owner_name"],
         "owner_chat_color": row["owner_chat_color"],
         "body": "This message was deleted." if deleted else row["body"],
+        "image_url": None if deleted else row["image_url"],
         "deleted": deleted,
         "created_at": row["created_at"].isoformat(),
         "reply_to": reply_to,
@@ -39,7 +40,9 @@ async def get_conversation_messages(conn, conversation_id: int, before_id: int |
         r["id"]: {
             "id": r["id"],
             "owner_name": r["owner_name"],
-            "body": "This message was deleted." if r["deleted_at"] is not None else r["body"],
+            "body": "This message was deleted."
+            if r["deleted_at"] is not None
+            else (r["body"] or ("📷 Photo" if r["image_url"] else "")),
         }
         for r in reply_rows
     }
@@ -73,7 +76,7 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
     rows = await conn.fetch(
         """
         SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
-               m.body, m.created_at, m.deleted_at, m.reply_to_id
+               m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])
         ORDER BY m.id
@@ -86,7 +89,9 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
         r["id"]: {
             "id": r["id"],
             "owner_name": r["owner_name"],
-            "body": "This message was deleted." if r["deleted_at"] is not None else r["body"],
+            "body": "This message was deleted."
+            if r["deleted_at"] is not None
+            else (r["body"] or ("📷 Photo" if r["image_url"] else "")),
         }
         for r in reply_rows
     }
@@ -110,10 +115,16 @@ async def get_conversations_summary(conn, owner_id: int):
     for r in rows:
         last_message = None
         if r["last_message_id"] is not None:
+            deleted = r["last_message_deleted_at"] is not None
+            body = r["last_message_body"]
+            if deleted:
+                body = "This message was deleted."
+            elif not body and r["last_message_image_url"]:
+                body = "📷 Photo"
             last_message = {
                 "id": r["last_message_id"],
                 "owner_name": r["last_message_owner_name"],
-                "body": "This message was deleted." if r["last_message_deleted_at"] is not None else r["last_message_body"],
+                "body": body,
                 "created_at": r["last_message_at"].isoformat(),
             }
         result.append(

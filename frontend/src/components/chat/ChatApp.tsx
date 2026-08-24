@@ -248,10 +248,17 @@ export function ChatApp({
 
   // ---- actions --------------------------------------------------------------
 
-  function sendMessage(body: string, mentions: number[], replyToId: number | null) {
+  function sendMessage(body: string, mentions: number[], replyToId: number | null, imageUrl: string | null) {
     if (selectedId === null || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
     socketRef.current.send(
-      JSON.stringify({ type: "message", conversation_id: selectedId, body, mentions, reply_to_id: replyToId })
+      JSON.stringify({
+        type: "message",
+        conversation_id: selectedId,
+        body,
+        mentions,
+        reply_to_id: replyToId,
+        image_url: imageUrl,
+      })
     );
   }
 

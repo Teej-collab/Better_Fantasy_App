@@ -72,7 +72,7 @@ async def list_conversations_for_owner(conn, owner_id: int):
         ),
         last_message AS (
             SELECT DISTINCT ON (m.conversation_id)
-                m.conversation_id, m.id, m.body, m.created_at, m.deleted_at, o.display_name AS owner_name
+                m.conversation_id, m.id, m.body, m.image_url, m.created_at, m.deleted_at, o.display_name AS owner_name
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             ORDER BY m.conversation_id, m.created_at DESC
@@ -88,7 +88,7 @@ async def list_conversations_for_owner(conn, owner_id: int):
         )
         SELECT
             c.id, c.type,
-            lm.id AS last_message_id, lm.body AS last_message_body, lm.created_at AS last_message_at,
+            lm.id AS last_message_id, lm.body AS last_message_body, lm.image_url AS last_message_image_url, lm.created_at AS last_message_at,
             lm.deleted_at AS last_message_deleted_at, lm.owner_name AS last_message_owner_name,
             COALESCE(u.unread_count, 0) AS unread_count,
             (SELECT COUNT(*) FROM conversation_participants cp WHERE cp.conversation_id = c.id) AS member_count,
@@ -116,7 +116,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
         rows = await conn.fetch(
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.id < $2
@@ -129,7 +129,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
         rows = await conn.fetch(
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1
@@ -146,7 +146,7 @@ async def get_messages_by_id(conn, message_ids: list[int]):
         return []
     return await conn.fetch(
         """
-        SELECT m.id, o.display_name AS owner_name, m.body, m.deleted_at
+        SELECT m.id, o.display_name AS owner_name, m.body, m.image_url, m.deleted_at
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])
         """,
@@ -178,14 +178,16 @@ async def get_mentions_for_messages(conn, message_ids: list[int]):
     )
 
 
-async def insert_message(conn, conversation_id: int, owner_id: int, body: str, reply_to_id: int | None):
+async def insert_message(
+    conn, conversation_id: int, owner_id: int, body: str, reply_to_id: int | None, image_url: str | None = None
+):
     return await conn.fetchrow(
         """
-        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id
+        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url
         """,
-        conversation_id, owner_id, body, reply_to_id,
+        conversation_id, owner_id, body, reply_to_id, image_url,
     )
 
 

@@ -21,10 +21,16 @@ function lanDevOrigin(): string[] {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: lanDevOrigin(),
-  // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's
-  // own public CDN, no API key involved.
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "a.espncdn.com" }],
+    remotePatterns: [
+      // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's
+      // own public CDN, no API key involved.
+      { protocol: "https", hostname: "a.espncdn.com" },
+      // Chat image attachments (MessageComposer.tsx / MessageBubble.tsx) —
+      // the Vercel Blob store provisioned for this app; see app/config.py's
+      // CHAT_IMAGE_HOST for the backend-side counterpart of this allowlist.
+      { protocol: "https", hostname: "ls7srleyqyy06rjq.public.blob.vercel-storage.com" },
+    ],
   },
 };
 
