@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCareerProfile, getOwnerBadges, listOwners, listSeasons } from "@/lib/api";
 import { CardDeck } from "@/components/CardDeck";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -30,13 +31,13 @@ export default async function PlayersPage() {
 
       <div className="flex flex-wrap gap-2 text-sm">
         {[...seasons].reverse().map((season) => (
-          <a
+          <Link
             key={season}
             href={`/standings?season=${season}`}
             className="rounded-full border border-black/10 px-3 py-1.5 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
           >
             {season}
-          </a>
+          </Link>
         ))}
       </div>
 

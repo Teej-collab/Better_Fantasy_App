@@ -70,7 +70,20 @@ const APPEARANCE_SCRIPT = `
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      // APPEARANCE_SCRIPT below sets data-neon and (sometimes)
+      // motion-reduced/--user-accent on this element before React
+      // hydrates, on purpose (that's what avoids a flash of the wrong
+      // intensity/motion/color) — React only knows about the
+      // server-rendered version without those, and would otherwise log
+      // a hydration mismatch for a difference this element is supposed
+      // to have. Standard suppressHydrationWarning use case: it only
+      // silences the warning on this one element, not any real
+      // mismatch in its children.
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
       </head>

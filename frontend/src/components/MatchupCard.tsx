@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { MatchupContextSide, MatchupRivalry, RecentMeeting, WeekMatchupContextItem } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
@@ -101,12 +102,12 @@ function NarrativeSection({ narrative }: { narrative: string | null }) {
 function TeamSummary({ side }: { side: MatchupContextSide }) {
   return (
     <div className="flex flex-col gap-0.5 text-sm">
-      <a href={`/teams/${side.team_id}`} className="font-medium hover:underline">
+      <Link href={`/teams/${side.team_id}`} className="font-medium hover:underline">
         {side.team_name}
-      </a>
-      <a href={`/owners/${side.owner_id}`} className="text-black/50 hover:underline dark:text-white/50">
+      </Link>
+      <Link href={`/owners/${side.owner_id}`} className="text-black/50 hover:underline dark:text-white/50">
         {side.owner_name}
-      </a>
+      </Link>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-black/60 dark:text-white/60">
         {side.record && <span>{side.record}</span>}
         {side.streak !== "neutral" && (

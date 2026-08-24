@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export type LeagueTab = "overview" | "standings" | "playerCards" | "awards" | "rivalries" | "rules" | "chug";
 
 const LABELS: Record<LeagueTab, string> = {
@@ -49,26 +51,26 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
 
   return (
     <div className="mb-4 flex flex-col gap-2">
-      <a
+      <Link
         href="/league"
         className="flex w-fit items-center gap-1 text-sm text-black/50 sm:hidden dark:text-white/50"
       >
         ‹ League
-      </a>
+      </Link>
       <nav
         aria-label="League sections"
         className="flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => (
-          <a
+          <Link
             key={tab.key}
             href={tab.href}
             aria-current={tab.key === active ? "page" : undefined}
-            className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 dark:text-white/60"
+            className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
             style={{ ["--nav-color" as string]: TAB_COLOR[tab.key] }}
           >
             {LABELS[tab.key]}
-          </a>
+          </Link>
         ))}
       </nav>
     </div>

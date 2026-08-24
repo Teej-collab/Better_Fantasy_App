@@ -60,6 +60,39 @@ body {
      sizing quirk in a child from ever dragging the whole page (header
      included) along with it. */
   overflow-x: hidden;
+  /* Real element, positioned relative to the pseudo-element below —
+     not load-bearing (fixed positions relative to the viewport
+     regardless), just documents the relationship. */
+  position: relative;
+}
+
+/* Site-wide starfield backdrop — public/images/cosmic-bg.webp, behind
+   every page. A real fixed-position layer (inset: 0), not the CSS
+   background-attachment: fixed property — that property has a long
+   history of being unreliable on mobile Safari (it was unsupported
+   entirely before iOS 13 and still repaints/jumps on some versions
+   during scroll); a plain position: fixed element doesn't have that
+   problem and is what .home-ambient below already uses successfully
+   app-wide today. inset: 0 (not a percentage/vh height) so this always
+   matches the current viewport exactly, regardless of how tall a given
+   page's actual content is — background-size: cover on body itself
+   would instead scale against body's full scrollable height, which
+   varies page to page and would size the image inconsistently.
+   z-index sits below .home-ambient's own -10 so the homepage's colored
+   glows layer on top of this, not the reverse. Solid var(--background)
+   underneath still shows through the moment before the image decodes
+   (or if it fails to load at all), so there's no flash of the wrong
+   color either way. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -20;
+  background-image: url("/images/cosmic-bg.webp");
+  background-size: cover;
+  background-position: top center;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* Shared glowing-border treatment for the app's content panels —
@@ -95,29 +128,38 @@ body {
 
 /* Shared nav-tab treatment — PrimaryNav, BottomNav, ChatNavLink,
    LeagueSubNav. Each tab sets its own --nav-color (see lib/
-   neonPalette.ts for the shared 7-color list); this class turns that
-   into a hover preview and a colored glow + tint on the active tab
-   (driven by aria-current, which every one of those components already
-   sets correctly for its own active-state logic — no separate active/
-   inactive branching needed here). Structural classes (padding,
-   rounding, flex layout) stay on each caller's own className; this is
-   color only. */
+   neonPalette.ts for the shared 7-color list). Every tab is always lit
+   in its own color — a real neon bar sign always glows, not just when
+   you're standing under it — with the current page reading as a
+   brighter, boxed-in sign (tinted background + ring + stronger glow)
+   rather than the only one lit. Structural classes (padding, rounding,
+   flex layout) stay on each caller's own className; this is color
+   only, and wins over any leftover text-black/60-style utility a
+   caller still has (unlayered custom CSS beats Tailwind's layered
+   utilities regardless of source order, so no need to strip those). */
 .neon-navlink {
+  color: var(--nav-color);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--nav-color) 55%, transparent);
   transition:
     color 0.2s ease,
     background-color 0.2s ease,
-    box-shadow 0.2s ease;
+    box-shadow 0.2s ease,
+    text-shadow 0.2s ease;
 }
 .neon-navlink:hover {
-  color: var(--nav-color);
+  text-shadow:
+    0 0 3px color-mix(in srgb, var(--nav-color) 90%, transparent),
+    0 0 10px color-mix(in srgb, var(--nav-color) 70%, transparent);
   background-color: color-mix(in srgb, var(--nav-color) 8%, transparent);
 }
 .neon-navlink[aria-current="page"] {
-  color: var(--nav-color);
-  background-color: color-mix(in srgb, var(--nav-color) 14%, transparent);
+  background-color: color-mix(in srgb, var(--nav-color) 16%, transparent);
+  text-shadow:
+    0 0 4px color-mix(in srgb, var(--nav-color) 95%, transparent),
+    0 0 14px color-mix(in srgb, var(--nav-color) 75%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--nav-color) 45%, transparent),
-    0 0 10px color-mix(in srgb, var(--nav-color) 40%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--nav-color) 55%, transparent),
+    0 0 12px color-mix(in srgb, var(--nav-color) 45%, transparent);
 }
 
 /* Team profile card "trading card" look — TeamProfileCard.tsx. Two
@@ -686,6 +728,19 @@ body {
 }
 .live-ticker-track:hover {
   animation-play-state: paused;
+}
+
+/* Team-name segments in the ticker (LiveTicker.tsx) — the team's real
+   color is the fill (set inline per segment), this just outlines it in
+   white so a dark team color (navy, purple, brown) still reads clearly
+   against the ticker's own black background instead of nearly
+   vanishing into it. */
+.ticker-team {
+  font-weight: 700;
+  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.85);
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 3px rgba(255, 255, 255, 0.5);
 }
 
 /* Homepage Discover section's flagship card into /weekend — a small,

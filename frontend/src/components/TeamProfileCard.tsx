@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   getSeasonProfile,
   type CareerProfile,
@@ -91,13 +92,13 @@ function CardHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
       <div className="min-w-0">
-        <a
+        <Link
           href={`/owners/${owner.owner_id}`}
           className="block truncate text-lg font-bold text-amber-300 hover:underline"
           style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
         >
           {owner.latest_team_name}
-        </a>
+        </Link>
         <p className="text-sm text-sky-200">{owner.display_name}</p>
       </div>
       <select

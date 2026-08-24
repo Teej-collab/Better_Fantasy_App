@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listRivalries, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -31,15 +32,15 @@ export default async function RivalriesPage() {
               {r.tagline && <p className="mt-1 text-sm italic text-black/60 dark:text-white/60">{r.tagline}</p>}
               {r.description && <p className="mt-2 text-sm text-black/70 dark:text-white/70">{r.description}</p>}
               <div className="mt-3 flex items-center justify-between text-sm">
-                <a href={`/owners/${r.owner_a_id}`} className="hover:underline">
+                <Link href={`/owners/${r.owner_a_id}`} className="hover:underline">
                   {r.owner_a_name}
-                </a>
+                </Link>
                 <span className="tabular-nums text-black/50 dark:text-white/50">
                   {r.all_time_wins_a}-{r.all_time_wins_b}
                 </span>
-                <a href={`/owners/${r.owner_b_id}`} className="hover:underline">
+                <Link href={`/owners/${r.owner_b_id}`} className="hover:underline">
                   {r.owner_b_name}
-                </a>
+                </Link>
               </div>
             </li>
           ))}

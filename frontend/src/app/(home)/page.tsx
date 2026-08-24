@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import {
   buildNflTickerItems,
   getCurrentWeek,
@@ -219,7 +220,7 @@ export default async function HomePage() {
                   m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
                 return (
                   <li key={m.matchup_id}>
-                    <a
+                    <Link
                       href={`/matchups/${m.matchup_id}`}
                       className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
                     >
@@ -236,7 +237,7 @@ export default async function HomePage() {
                         <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
                         <span className="block">{m.away.score !== null ? m.away.score.toFixed(1) : "—"}</span>
                       </span>
-                    </a>
+                    </Link>
                   </li>
                 );
               })}
@@ -254,7 +255,7 @@ export default async function HomePage() {
                 style={panelGlowStyle(SECTION_COLORS.rivalries)}>
                 {rivalryGamesThisWeek.map((m) => (
                   <li key={m.matchup_id}>
-                    <a
+                    <Link
                       href={`/matchups/${m.matchup_id}`}
                       className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
                     >
@@ -265,7 +266,7 @@ export default async function HomePage() {
                       <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                         {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
                       </span>
-                    </a>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -409,9 +410,9 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
         </div>
       )}
 
-      <a href={`/matchups/${m.matchup_id}`} className="text-sm text-sky-300 hover:underline">
+      <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-sky-300 hover:underline">
         View full matchup →
-      </a>
+      </Link>
     </section>
   );
 }
@@ -568,14 +569,14 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
 
 function SectionHeader({ color, title, href }: { color: string; title: string; href: string }) {
   return (
-    <a href={href} className="flex items-center gap-2 hover:underline">
+    <Link href={href} className="flex items-center gap-2 hover:underline">
       <span
         className={`h-2 w-2 rounded-full ${SECTION_ACCENT[color]}`}
         style={{ boxShadow: `0 0 6px ${SECTION_GLOW[color]}` }}
         aria-hidden
       />
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
-    </a>
+    </Link>
   );
 }
 
@@ -622,7 +623,7 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
     <section className="flex flex-col gap-2">
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Discover</h2>
 
-      <a
+      <Link
         href="/weekend"
         className="discover-weekend-card flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.03] p-4 transition-transform active:scale-[0.98]"
       >
@@ -637,7 +638,7 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
         <span className="shrink-0 text-fuchsia-500 dark:text-fuchsia-400" aria-hidden>
           →
         </span>
-      </a>
+      </Link>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {tiles.map((t) => (
@@ -650,7 +651,7 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
 
 function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
   return (
-    <a
+    <Link
       href={href}
       className="flex flex-col gap-0.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
     >
@@ -663,6 +664,6 @@ function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
         {label}
       </span>
       <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>
-    </a>
+    </Link>
   );
 }

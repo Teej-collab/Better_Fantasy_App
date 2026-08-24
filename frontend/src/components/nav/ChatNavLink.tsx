@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useUnreadChatCount } from "@/lib/useUnreadChatCount";
 import { isSectionActive } from "@/components/nav/NavLink";
 import { ChatIcon } from "@/components/nav/icons";
@@ -24,10 +25,10 @@ export function ChatNavLink({ variant }: { variant: "primary" | "bottom" }) {
 
   if (variant === "bottom") {
     return (
-      <a
+      <Link
         href="/chat"
         aria-current={active ? "page" : undefined}
-        className="neon-navlink relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] text-black/45 dark:text-white/45"
+        className="neon-navlink relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]"
         style={navColorStyle}
       >
         <ChatIcon className="h-6 w-6" strokeWidth={active ? 2 : 1.75} />
@@ -37,15 +38,15 @@ export function ChatNavLink({ variant }: { variant: "primary" | "bottom" }) {
             {unread > 99 ? "99+" : unread}
           </span>
         )}
-      </a>
+      </Link>
     );
   }
 
   return (
-    <a
+    <Link
       href="/chat"
       aria-current={active ? "page" : undefined}
-      className="neon-navlink relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 dark:text-white/60"
+      className="neon-navlink relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium"
       style={navColorStyle}
     >
       Chat
@@ -54,6 +55,6 @@ export function ChatNavLink({ variant }: { variant: "primary" | "bottom" }) {
           {unread > 99 ? "99+" : unread}
         </span>
       )}
-    </a>
+    </Link>
   );
 }

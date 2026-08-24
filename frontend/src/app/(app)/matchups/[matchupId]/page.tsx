@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getMatchup } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
@@ -34,11 +35,11 @@ export default async function MatchupPage({
 
 function TeamScore({ teamId, name, score }: { teamId: number; name: string; score: string | null }) {
   return (
-    <a href={`/teams/${teamId}`} className="flex items-baseline gap-2 hover:underline">
+    <Link href={`/teams/${teamId}`} className="flex items-baseline gap-2 hover:underline">
       <span>{name}</span>
       <span className="font-mono tabular-nums text-black/70 dark:text-white/70">
         {score !== null ? Number(score).toFixed(1) : "—"}
       </span>
-    </a>
+    </Link>
   );
 }

@@ -12,7 +12,7 @@ const TAB_COLOR = {
 };
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
-const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] text-black/45 dark:text-white/45";
+const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
 
 // A dot, not a color change, next to the label — same "never color
 // alone" reasoning as PrimaryNav's LiveMark, just compact enough for

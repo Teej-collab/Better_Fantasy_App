@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 // Which primary destination a given URL belongs to — same pattern
@@ -55,13 +56,13 @@ export function NavLink({
   const pathname = usePathname();
   const active = isSectionActive(section, pathname);
   return (
-    <a
+    <Link
       href={href}
       aria-current={active ? "page" : undefined}
       className={`neon-navlink ${active ? activeClassName : inactiveClassName}`}
       style={{ ["--nav-color" as string]: color }}
     >
       {children}
-    </a>
+    </Link>
   );
 }

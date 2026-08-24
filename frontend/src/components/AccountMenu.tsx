@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { clearSession } from "@/lib/logout";
 
 export type Me = { owner_id: number; display_name: string | null; is_commissioner: boolean };
@@ -133,7 +134,7 @@ export function AccountMenu({ me }: { me: Me }) {
                   <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
                 )}
                 {item.href ? (
-                  <a
+                  <Link
                     ref={(el) => {
                       itemRefs.current[i] = el;
                     }}
@@ -143,7 +144,7 @@ export function AccountMenu({ me }: { me: Me }) {
                     className="block rounded-lg px-3 py-2.5 text-sm text-black/80 outline-none transition-colors hover:bg-black/5 focus-visible:bg-black/5 sm:py-2 dark:text-white/80 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
                   >
                     {item.label}
-                  </a>
+                  </Link>
                 ) : (
                   <button
                     ref={(el) => {

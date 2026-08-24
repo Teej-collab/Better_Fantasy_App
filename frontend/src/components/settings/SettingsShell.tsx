@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { MySettings } from "@/lib/api";
 import { ProfileSection } from "@/components/settings/ProfileSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
@@ -39,7 +40,7 @@ export function SettingsShell({ initial, section }: { initial: MySettings; secti
         className={`flex-col gap-0.5 sm:flex sm:w-52 sm:shrink-0 ${section ? "hidden sm:flex" : "flex"}`}
       >
         {SECTIONS.map((s) => (
-          <a
+          <Link
             key={s.key}
             href={`/settings?section=${s.key}`}
             aria-current={active === s.key ? "page" : undefined}
@@ -53,18 +54,18 @@ export function SettingsShell({ initial, section }: { initial: MySettings; secti
             <span aria-hidden className="text-black/30 sm:hidden dark:text-white/30">
               ›
             </span>
-          </a>
+          </Link>
         ))}
       </nav>
 
       <div className={`min-w-0 flex-1 ${section ? "block" : "hidden sm:block"}`}>
         {section && (
-          <a
+          <Link
             href="/settings"
             className="mb-4 inline-flex items-center gap-1 text-sm text-black/50 sm:hidden dark:text-white/50"
           >
             ‹ Settings
-          </a>
+          </Link>
         )}
         {active === "profile" && <ProfileSection initial={initial} />}
         {active === "notifications" && <NotificationsSection />}

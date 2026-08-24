@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { MoreIcon } from "@/components/nav/icons";
 
 type Group = { heading: string; links: { href: string; label: string }[] };
@@ -106,7 +107,7 @@ export function MoreSheet({ awardsHref }: { awardsHref: string }) {
                   {group.heading}
                 </h2>
                 {group.links.map((link, li) => (
-                  <a
+                  <Link
                     key={link.href}
                     ref={gi === 0 && li === 0 ? firstLinkRef : undefined}
                     href={link.href}
@@ -115,7 +116,7 @@ export function MoreSheet({ awardsHref }: { awardsHref: string }) {
                     className="rounded-lg px-3 py-2.5 text-sm text-black/80 outline-none transition-colors hover:bg-black/5 focus-visible:bg-black/5 dark:text-white/80 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
                   >
                     {link.label}
-                  </a>
+                  </Link>
                 ))}
               </div>
             ))}

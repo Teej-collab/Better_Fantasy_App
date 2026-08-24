@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCurrentWeek, getTeam, getTeamRoster } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 
@@ -39,9 +40,9 @@ export default async function TeamPage({
       <div>
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
-          <a href={`/owners/${team.owner_id}?season=${team.season}`} className="hover:underline">
+          <Link href={`/owners/${team.owner_id}?season=${team.season}`} className="hover:underline">
             {team.owner_name}
-          </a>
+          </Link>
           {" — "}
           {team.season} season
         </p>
@@ -49,7 +50,7 @@ export default async function TeamPage({
 
       <div className="flex flex-wrap gap-2 text-sm">
         {WEEK_OPTIONS.map((w) => (
-          <a
+          <Link
             key={w}
             href={`/teams/${teamId}?week=${w}`}
             className={
@@ -59,7 +60,7 @@ export default async function TeamPage({
             }
           >
             Wk {w}
-          </a>
+          </Link>
         ))}
       </div>
 

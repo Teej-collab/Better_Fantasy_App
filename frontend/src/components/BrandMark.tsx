@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 // The header brand mark — the real emblem now (public/images/
 // weekend-league-emblem.png): neon-green "WEEKEND" arced over a blue
@@ -12,7 +13,7 @@ import Image from "next/image";
 // text (used elsewhere, e.g. the sign-in gate) is untouched.
 export function BrandMark({ href }: { href: string }) {
   return (
-    <a href={href} className="flex shrink-0 items-center gap-2 text-[color:var(--foreground)]">
+    <Link href={href} className="flex shrink-0 items-center gap-2 text-[color:var(--foreground)]">
       <Image
         src="/images/weekend-league-emblem.png"
         alt="Weekend League"
@@ -25,6 +26,6 @@ export function BrandMark({ href }: { href: string }) {
           full wordmark returns once there's room, same breakpoint the
           old bare-text brand mark used. */}
       <span className="hidden text-base font-semibold tracking-tight sm:inline">Weekend League</span>
-    </a>
+    </Link>
   );
 }

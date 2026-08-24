@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   getCareerProfile,
   getOwnerBadges,
@@ -43,7 +44,7 @@ export default async function OwnerProfilePage({
           <h2 className="font-medium">Season</h2>
           <div className="flex flex-wrap gap-x-3 text-sm">
             {[...seasons].reverse().map((s) => (
-              <a
+              <Link
                 key={s}
                 href={`/owners/${ownerId}?season=${s}`}
                 className={
@@ -53,7 +54,7 @@ export default async function OwnerProfilePage({
                 }
               >
                 {s}
-              </a>
+              </Link>
             ))}
           </div>
         </div>

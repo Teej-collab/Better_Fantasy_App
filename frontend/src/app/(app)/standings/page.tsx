@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getStandings, listSeasons, type StandingsRow } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -25,7 +26,7 @@ export default async function StandingsPage({
         <h1 className="text-2xl font-semibold">Standings</h1>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
           {[...seasons].reverse().map((s) => (
-            <a
+            <Link
               key={s}
               href={`/standings?season=${s}`}
               className={
@@ -35,7 +36,7 @@ export default async function StandingsPage({
               }
             >
               {s}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -79,9 +80,9 @@ function StandingsListRow({ row, rank }: { row: StandingsRow; rank: number }) {
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="w-6 shrink-0 tabular-nums text-black/40 dark:text-white/40">{rank}</span>
         <div className="min-w-0">
-          <a href={`/teams/${row.team_id}`} className="font-medium hover:underline">
+          <Link href={`/teams/${row.team_id}`} className="font-medium hover:underline">
             {row.team_name}
-          </a>
+          </Link>
           {isChampion && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
               🏆 Champion

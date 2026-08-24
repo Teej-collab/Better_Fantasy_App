@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
@@ -203,12 +204,12 @@ export default async function RulesPage() {
           League expectation: miniature beers, partial pours, &ldquo;technicalities,&rdquo; and
           fraudulent beverage containers will be judged accordingly by the league.
         </Callout>
-        <a
+        <Link
           href="/chug"
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400"
         >
           → View the live Chug Leaderboard
-        </a>
+        </Link>
       </RuleSection>
 
       <RuleSection id="sweaty-parlay" emoji="🎰" title="The Sweaty Parlay Rule">
@@ -236,12 +237,12 @@ export default async function RulesPage() {
           <li>General propaganda</li>
         </ul>
         <p>The league thrives on storytelling and participation.</p>
-        <a
+        <Link
           href="/chat"
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400"
         >
           → Post it in League Chat
-        </a>
+        </Link>
       </RuleSection>
 
       <RuleSection id="kings-cup" emoji="👑" title="King's Cup Rule">

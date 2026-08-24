@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getFreeAgents, getWaiverSettings } from "@/lib/api";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
 
@@ -31,16 +32,16 @@ export default async function FreeAgentsPage({
       </div>
 
       <div className="flex flex-wrap gap-x-3 text-sm">
-        <a
+        <Link
           href="/free-agents"
           className={
             !position ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
           }
         >
           All
-        </a>
+        </Link>
         {POSITIONS.map((p) => (
-          <a
+          <Link
             key={p}
             href={`/free-agents?position=${encodeURIComponent(p)}`}
             className={
@@ -48,7 +49,7 @@ export default async function FreeAgentsPage({
             }
           >
             {p}
-          </a>
+          </Link>
         ))}
       </div>
 

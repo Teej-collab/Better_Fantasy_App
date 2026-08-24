@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Lobster, Satisfy } from "next/font/google";
+import Link from "next/link";
 
 // Lobster instead of a thin script — thick, bold strokes read as an
 // actual lit marquee sign rather than elegant invitation lettering.
@@ -126,7 +127,7 @@ export function WeekendLanding({
           className="flex flex-wrap items-end justify-center gap-x-4 gap-y-8 sm:gap-x-6"
         >
           {signs.map((sign, i) => (
-            <a
+            <Link
               key={sign.label}
               href={sign.href}
               style={{ transform: `rotate(${sign.tilt}deg)` }}
@@ -139,7 +140,7 @@ export function WeekendLanding({
                 {sign.animation === "cyan" && <span className="neon-sign__ripple" aria-hidden />}
                 <span className="relative z-10">{sign.label}</span>
               </span>
-            </a>
+            </Link>
           ))}
         </nav>
       </div>

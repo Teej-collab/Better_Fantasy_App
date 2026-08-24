@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { MatchupCard } from "@/components/MatchupCard";
@@ -27,7 +28,7 @@ export default async function WeekMatchupsPage({
 
       <div className="flex flex-wrap gap-2 text-sm">
         {WEEK_OPTIONS.map((w) => (
-          <a
+          <Link
             key={w}
             href={`/seasons/${season}/weeks/${w}`}
             className={
@@ -37,7 +38,7 @@ export default async function WeekMatchupsPage({
             }
           >
             {w}
-          </a>
+          </Link>
         ))}
       </div>
 

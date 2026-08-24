@@ -3,7 +3,8 @@ import { ChatNavLink } from "@/components/nav/ChatNavLink";
 
 // One color per primary destination, from the app's shared 7-color
 // neon palette (lib/neonPalette.ts) — .neon-navlink (globals.css)
-// turns this into each tab's own hover preview + active glow.
+// always renders each tab in its own color, like a lit neon sign, with
+// the active tab reading as the brighter/boxed one.
 const TAB_COLOR = {
   team: "#a855f7", // Neon Purple
   league: "#0ea5e9", // Neon Blue
@@ -13,7 +14,7 @@ const TAB_COLOR = {
 };
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
-const INACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 dark:text-white/60";
+const INACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
 
 // A "Live" mark, not just a colored dot — accessibility requires state
 // never rest on color alone, and this is a live-game indicator, not a

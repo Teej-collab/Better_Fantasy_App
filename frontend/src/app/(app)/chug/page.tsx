@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { getChugLeaderboard, getChugSeasons, getMe, listSeasons } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
@@ -32,16 +33,16 @@ export default async function ChugLeaderboardPage({
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">🍺 Chug Leaderboard</h1>
         <div className="flex flex-wrap gap-x-3 text-sm">
-          <a
+          <Link
             href="/chug"
             className={
               season === undefined ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
             }
           >
             All-Time
-          </a>
+          </Link>
           {[...seasons].reverse().map((s) => (
-            <a
+            <Link
               key={s}
               href={`/chug?season=${s}`}
               className={
@@ -49,7 +50,7 @@ export default async function ChugLeaderboardPage({
               }
             >
               {s}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -72,9 +73,9 @@ export default async function ChugLeaderboardPage({
               <div className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
-                  <a href={`/owners/${row.owner_id}`} className="truncate font-medium hover:underline">
+                  <Link href={`/owners/${row.owner_id}`} className="truncate font-medium hover:underline">
                     {row.owner_name}
-                  </a>
+                  </Link>
                 </span>
                 <span className="flex shrink-0 items-center gap-4 tabular-nums text-black/70 dark:text-white/70">
                   <span>

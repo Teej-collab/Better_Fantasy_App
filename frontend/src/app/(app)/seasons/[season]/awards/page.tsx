@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
@@ -17,7 +18,7 @@ export default async function SeasonAwardsPage({
         <h1 className="text-2xl font-semibold">Awards</h1>
         <div className="flex flex-wrap gap-x-3 text-sm">
           {[...seasons].reverse().map((s) => (
-            <a
+            <Link
               key={s}
               href={`/seasons/${s}/awards`}
               className={
@@ -27,7 +28,7 @@ export default async function SeasonAwardsPage({
               }
             >
               {s}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -37,9 +38,9 @@ export default async function SeasonAwardsPage({
           <span className="text-2xl">🏆</span>
           <div>
             <p className="font-medium">{champion.team_name}</p>
-            <a href={`/owners/${champion.owner_id}`} className="text-sm text-black/60 hover:underline dark:text-white/60">
+            <Link href={`/owners/${champion.owner_id}`} className="text-sm text-black/60 hover:underline dark:text-white/60">
               {champion.owner_name}
-            </a>
+            </Link>
           </div>
         </div>
       )}
@@ -54,12 +55,12 @@ export default async function SeasonAwardsPage({
                 <p className="font-medium">{a.award_type}</p>
                 {a.detail && <p className="text-sm text-black/50 dark:text-white/50">{a.detail}</p>}
               </div>
-              <a
+              <Link
                 href={`/owners/${a.owner_id}`}
                 className="shrink-0 text-sm text-black/70 hover:underline dark:text-white/70"
               >
                 {a.owner_name}
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listSeasons, listTeams } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
@@ -20,7 +21,7 @@ export default async function LeaguePage({
         <h1 className="text-2xl font-semibold">League</h1>
         <div className="flex gap-x-3 text-sm">
           {[...seasons].reverse().map((s) => (
-            <a
+            <Link
               key={s}
               href={`/league?season=${s}`}
               className={
@@ -30,7 +31,7 @@ export default async function LeaguePage({
               }
             >
               {s}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -38,9 +39,9 @@ export default async function LeaguePage({
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
         {teams.map((team) => (
           <li key={team.team_id} className="flex items-center justify-between gap-3 py-3">
-            <a href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
+            <Link href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
               {team.team_name}
-            </a>
+            </Link>
             <span className="shrink-0 text-sm text-black/60 dark:text-white/60">{team.owner_name}</span>
           </li>
         ))}
