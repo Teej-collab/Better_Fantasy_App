@@ -18,6 +18,7 @@ this is a small, low-stakes field with an unambiguous valid format, so
 there's no reason to guess at what the user "meant."
 """
 import datetime
+import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -33,6 +34,13 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _DISPLAY_NAME_MAX_LENGTH = 40
+
+# The homepage's six reorderable dashboard cards (see (home)/page.tsx's
+# HomeCardDeck) — home_card_order stores a JSON array drawn from this
+# set. Validated here, not just trusted from the client, since a
+# malformed value would otherwise silently break the homepage for
+# whoever's account it landed on.
+_VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "matchups", "rivalries", "awards", "discover"}
 
 
 def _decode_session(token: str | None) -> dict | None:
@@ -135,6 +143,7 @@ class PreferencesPatch(BaseModel):
     neon_intensity: str | None = None
     reduced_motion: bool | None = None
     accent_color: str | None = None
+    home_card_order: str | None = None
 
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
@@ -149,6 +158,21 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"neon_intensity must be one of {sorted(_VALID_NEON_INTENSITIES)}")
     if patch.get("accent_color") is not None and not _HEX_COLOR_RE.match(patch["accent_color"]):
         raise HTTPException(status_code=400, detail="accent_color must be a 6-digit hex color like #39ff14, or null")
+    if patch.get("home_card_order") is not None:
+        try:
+            order = json.loads(patch["home_card_order"])
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="home_card_order must be a JSON array of card keys")
+        if (
+            not isinstance(order, list)
+            or not all(isinstance(k, str) for k in order)
+            or not set(order) <= _VALID_HOME_CARD_KEYS
+            or len(order) != len(set(order))
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"home_card_order must be a JSON array of unique keys from {sorted(_VALID_HOME_CARD_KEYS)}",
+            )
 
     async with pool.acquire() as conn:
         return await preferences_queries.update_preferences(conn, payload["owner_id"], patch)

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.db import get_pool
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_week_matchup_context
+from app.domain.records import get_record_book
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -62,6 +63,16 @@ async def week_ticker(season: int, week: int, pool=Depends(get_pool)):
     app/domain/league_ticker.py."""
     async with pool.acquire() as conn:
         return await get_week_ticker_data(conn, season, week)
+
+
+@router.get("/records")
+async def record_book(pool=Depends(get_pool)):
+    """All-time record book — top 3 per category, computed live on every
+    request (see app/domain/records.py) so a new result shows up here
+    the instant it's synced, not on some separate refresh cadence. Not
+    season-scoped — spans the league's whole history."""
+    async with pool.acquire() as conn:
+        return await get_record_book(conn)
 
 
 @router.get("/matchups/{matchup_id}")

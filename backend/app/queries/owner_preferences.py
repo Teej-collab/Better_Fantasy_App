@@ -28,6 +28,7 @@ _DEFAULT_PREFERENCES = {
     "neon_intensity": "standard",
     "reduced_motion": False,
     "accent_color": None,
+    "home_card_order": None,
 }
 
 # Every real column except owner_id itself — used to build a full

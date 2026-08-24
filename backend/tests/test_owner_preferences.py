@@ -157,6 +157,46 @@ async def test_put_preferences_rejects_invalid_accent_color(pool, monkeypatch):
     assert resp.status_code == 400
 
 
+async def test_put_preferences_sets_and_clears_home_card_order(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 13)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        order = '["standings","yourWeek","matchups","rivalries","awards","discover"]'
+        resp = await client.put("/settings/preferences", json={"home_card_order": order})
+        assert resp.status_code == 200
+        assert resp.json()["home_card_order"] == order
+
+        resp = await client.put("/settings/preferences", json={"home_card_order": None})
+        assert resp.status_code == 200
+        assert resp.json()["home_card_order"] is None
+
+
+async def test_put_preferences_rejects_invalid_home_card_order(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 14)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+
+        not_json = await client.put("/settings/preferences", json={"home_card_order": "not-json"})
+        assert not_json.status_code == 400
+
+        unknown_key = await client.put(
+            "/settings/preferences", json={"home_card_order": '["standings","not-a-real-card"]'}
+        )
+        assert unknown_key.status_code == 400
+
+        duplicate = await client.put(
+            "/settings/preferences", json={"home_card_order": '["standings","standings"]'}
+        )
+        assert duplicate.status_code == 400
+
+        not_a_list = await client.put("/settings/preferences", json={"home_card_order": '"standings"'})
+        assert not_a_list.status_code == 400
+
+
 async def test_sunday_mode_endpoint_rejects_unknown_preset(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 8)
