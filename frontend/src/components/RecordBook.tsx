@@ -20,13 +20,14 @@ function contextLine(entry: RecordEntry): string {
 
 /**
  * All-time record book — one card per category (app/domain/records.py),
- * each a top-3 leaderboard. Lives on the Awards page (seasons/[season]/
- * awards/page.tsx), unlike everything else there this section is never
- * season-scoped: same content no matter which season's awards you're
- * viewing, since these span the league's whole history. Fetched fresh
- * on every page load (no caching anywhere in the chain), so a newly-
- * broken record shows up the moment it's synced — nothing here needs
- * a manual refresh or recompute step.
+ * each a top-3 leaderboard. Lives on its own "All-Time Records" tab
+ * under Awards (seasons/[season]/awards/all-time/page.tsx), a pinned tab
+ * in AwardsTabs.tsx alongside every season's own tab — unlike a specific
+ * season's awards, this is never season-scoped: same content no matter
+ * which season you were last looking at, since these span the league's
+ * whole history. Fetched fresh on every page load (no caching anywhere
+ * in the chain), so a newly-broken record shows up the moment it's
+ * synced — nothing here needs a manual refresh or recompute step.
  */
 export function RecordBook({ categories }: { categories: RecordCategory[] }) {
   const withEntries = categories.filter((c) => c.entries.length > 0);

@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getRecordBook, getSeasonAwards, listSeasons } from "@/lib/api";
+import { getSeasonAwards, listSeasons } from "@/lib/api";
+import { AwardsTabs } from "@/components/AwardsTabs";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
-import { RecordBook } from "@/components/RecordBook";
 
 export default async function SeasonAwardsPage({
   params,
@@ -9,10 +9,9 @@ export default async function SeasonAwardsPage({
   params: Promise<{ season: string }>;
 }) {
   const { season } = await params;
-  const [{ seasons }, { champion, awards }, { categories }] = await Promise.all([
+  const [{ seasons }, { champion, awards }] = await Promise.all([
     listSeasons(),
     getSeasonAwards(Number(season)),
-    getRecordBook(),
   ]);
 
   return (
@@ -20,21 +19,7 @@ export default async function SeasonAwardsPage({
       <LeagueSubNav active="awards" awardsHref={`/seasons/${season}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
-        <div className="flex flex-wrap gap-x-3 text-sm">
-          {[...seasons].reverse().map((s) => (
-            <Link
-              key={s}
-              href={`/seasons/${s}/awards`}
-              className={
-                String(s) === season
-                  ? "font-semibold underline"
-                  : "text-black/60 hover:underline dark:text-white/60"
-              }
-            >
-              {s}
-            </Link>
-          ))}
-        </div>
+        <AwardsTabs seasons={seasons} activeSeason={season} activeTab="season" />
       </div>
 
       {champion && (
@@ -69,8 +54,6 @@ export default async function SeasonAwardsPage({
           ))}
         </ul>
       )}
-
-      <RecordBook categories={categories} />
     </div>
   );
 }

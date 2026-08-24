@@ -1,0 +1,33 @@
+import { getRecordBook, listSeasons } from "@/lib/api";
+import { AwardsTabs } from "@/components/AwardsTabs";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { RecordBook } from "@/components/RecordBook";
+
+/**
+ * The All-Time Records tab of Awards — a pinned tab in AwardsTabs
+ * alongside every season, not one more season itself (the record book
+ * spans the league's whole history, see RecordBook.tsx). Kept under
+ * /seasons/[season]/awards/ rather than a standalone /awards/all-time
+ * route so the URL still carries which season you were last looking
+ * at, matching the season tabs right next to it.
+ */
+export default async function AllTimeRecordsPage({
+  params,
+}: {
+  params: Promise<{ season: string }>;
+}) {
+  const { season } = await params;
+  const [{ seasons }, { categories }] = await Promise.all([listSeasons(), getRecordBook()]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <LeagueSubNav active="awards" awardsHref={`/seasons/${season}/awards`} />
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <h1 className="text-2xl font-semibold">Awards</h1>
+        <AwardsTabs seasons={seasons} activeSeason={season} activeTab="all-time" />
+      </div>
+
+      <RecordBook categories={categories} />
+    </div>
+  );
+}

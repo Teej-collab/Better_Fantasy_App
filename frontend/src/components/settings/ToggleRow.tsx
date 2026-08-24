@@ -32,12 +32,12 @@ export function ToggleRow({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wl-accent)] disabled:cursor-not-allowed disabled:opacity-40 ${
-          checked ? "bg-[var(--wl-accent-dim)]" : "bg-black/15 dark:bg-white/15"
+          checked ? "bg-[var(--wl-accent)]" : "bg-black/20 dark:bg-white/25"
         }`}
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-            checked ? "translate-x-[1.375rem]" : "translate-x-0.5"
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-5" : "translate-x-0"
           }`}
         />
       </button>
