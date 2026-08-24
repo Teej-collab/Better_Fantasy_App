@@ -10,10 +10,13 @@ import {
   getWeekMatchupContext,
   getWeeklyAwards,
   isNflGameLive,
+  buildLeagueTickerItems,
+  getWeekLeagueTicker,
   listRivalries,
   listSeasons,
   type Rivalry,
   type StandingsRow,
+  type TickerItem,
   type WeekMatchupContextItem,
   type WeeklyAwards,
   type YourWeek,
@@ -21,6 +24,7 @@ import {
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const SECTION_ACCENT: Record<string, string> = {
   standings: "bg-sky-500",
@@ -81,15 +85,17 @@ export default async function HomePage() {
   let weekPlayed = false;
   let weekMatchups: WeekMatchupContextItem[] = [];
   let topRivalries: Rivalry[] = [];
+  let leagueTickerItems: TickerItem[] = [];
 
   if (season !== null) {
     const { current_week } = await getCurrentWeek(season);
     week = current_week && current_week >= 1 ? current_week : 1;
-    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes] = await Promise.all([
+    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker] = await Promise.all([
       getStandings(season),
       getWeeklyAwards(season, week),
       getWeekMatchupContext(season, week),
       listRivalries(),
+      getWeekLeagueTicker(season, week),
     ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
@@ -98,6 +104,7 @@ export default async function HomePage() {
     topRivalries = [...rivalriesRes.rivalries]
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
       .slice(0, 3);
+    leagueTickerItems = buildLeagueTickerItems(leagueTicker);
   }
 
   // "Other" = every matchup except the logged-in owner's own (already
@@ -137,8 +144,9 @@ export default async function HomePage() {
             </span>
           )}
         </div>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-col gap-2">
           <LiveTicker items={tickerItems} fast={isGameDay} />
+          {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
         </div>
       </Reveal>
 
@@ -170,7 +178,10 @@ export default async function HomePage() {
         <Reveal index={nextReveal()}>
           <section className="flex flex-col gap-2">
             <SectionHeader color="standings" title="League Standings" href="/standings" />
-            <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+            <ol
+              className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+              style={panelGlowStyle(SECTION_COLORS.standings)}
+            >
               {standings.slice(0, 5).map((row, i) => (
                 <li
                   key={row.team_id}
@@ -199,7 +210,10 @@ export default async function HomePage() {
               title="Other Matchups"
               href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
             />
-            <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+            <ul
+              className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+              style={panelGlowStyle(SECTION_COLORS.matchups)}
+            >
               {otherMatchups.map((m) => {
                 const started =
                   m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
@@ -236,7 +250,8 @@ export default async function HomePage() {
           <section className="flex flex-col gap-2">
             <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
             {rivalryGamesThisWeek.length > 0 ? (
-              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+                style={panelGlowStyle(SECTION_COLORS.rivalries)}>
                 {rivalryGamesThisWeek.map((m) => (
                   <li key={m.matchup_id}>
                     <a
@@ -255,7 +270,8 @@ export default async function HomePage() {
                 ))}
               </ul>
             ) : (
-              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+              <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+                style={panelGlowStyle(SECTION_COLORS.rivalries)}>
                 {topRivalries.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                     <span className="flex min-w-0 items-center gap-2">
@@ -308,38 +324,38 @@ function buildTickerItems(
   standings: StandingsRow[],
   weekPlayed: boolean,
   rivalryGamesThisWeek: WeekMatchupContextItem[]
-): string[] {
+): TickerItem[] {
   const items = buildNflTickerItems(nflGames);
+  const text = (key: string, body: string) => items.push({ key, segments: [{ text: body }] });
 
-  for (const m of rivalryGamesThisWeek.slice(0, 2)) {
-    items.push(`⚔️ Rivalry Alert: ${m.rivalry?.name ?? `${m.home.team_name} vs ${m.away.team_name}`}`);
-  }
+  rivalryGamesThisWeek.slice(0, 2).forEach((m, i) => {
+    text(`rivalry-${i}`, `⚔️ Rivalry Alert: ${m.rivalry?.name ?? `${m.home.team_name} vs ${m.away.team_name}`}`);
+  });
 
   if (weekPlayed && awards) {
     if (awards.game_of_the_week) {
-      items.push(`⭐ Game of the Week: ${awards.game_of_the_week.winner} won ${awards.game_of_the_week.score}`);
+      text("gotw", `⭐ Game of the Week: ${awards.game_of_the_week.winner} won ${awards.game_of_the_week.score}`);
     }
     if (awards.overachiever) {
-      items.push(`📈 ${awards.overachiever.team_name} overachieved by +${awards.overachiever.diff.toFixed(1)}`);
+      text("overachiever", `📈 ${awards.overachiever.team_name} overachieved by +${awards.overachiever.diff.toFixed(1)}`);
     }
     if (awards.biggest_bench_crime) {
-      items.push(
+      text(
+        "bench-crime",
         `💀 Biggest Bench Crime: ${awards.biggest_bench_crime.team_name} left ${awards.biggest_bench_crime.bench_player} on the bench`
       );
     }
     if (awards.boom_leaders[0]) {
-      items.push(
-        `🔥 ${awards.boom_leaders[0].player_name} boomed for ${awards.boom_leaders[0].points_scored.toFixed(1)}`
-      );
+      text("boom", `🔥 ${awards.boom_leaders[0].player_name} boomed for ${awards.boom_leaders[0].points_scored.toFixed(1)}`);
     }
   }
 
   if (standings[0]) {
-    items.push(`👑 ${standings[0].team_name} leads the league`);
+    text("leader", `👑 ${standings[0].team_name} leads the league`);
   }
 
   if (items.length === 0) {
-    items.push("🏈 The Weekend — check back once games kick off");
+    text("empty", "🏈 The Weekend — check back once games kick off");
   }
 
   return items;

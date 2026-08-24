@@ -1,3 +1,5 @@
+import { nflTeamColor } from "@/lib/nfl-teams";
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function get<T>(path: string): Promise<T> {
@@ -414,29 +416,115 @@ export function isNflGameLive(nflGames: NflGame[]): boolean {
   return nflGames.some((g) => g.state === "in");
 }
 
+// One ticker entry, rendered as a run of same-line text segments —
+// most segments are plain (no color), but a team abbreviation segment
+// carries that team's real color (nfl-teams.ts's NFL_TEAM_COLORS), so
+// LiveTicker.tsx can render it in place without re-parsing the string.
+export type TickerSegment = { text: string; color?: string };
+export type TickerItem = { key: string; segments: TickerSegment[] };
+
+function teamSegment(abbr: string): TickerSegment {
+  const color = nflTeamColor(abbr);
+  return color ? { text: abbr, color } : { text: abbr };
+}
+
 // Shared by the persistent site-wide ticker (layout.tsx), the signed-out
 // gate's own ticker (OpeningExperience.tsx via page.tsx), and the
 // homepage dashboard's richer ticker — the exact same real NFL data
 // everywhere, just without the league-specific items (awards/rivalries/
 // standings) that only make sense in the homepage's own context.
-export function buildNflTickerItems(nflGames: NflGame[]): string[] {
+export function buildNflTickerItems(nflGames: NflGame[]): TickerItem[] {
   // Every game currently on the scoreboard, not a truncated slice — a
   // real week's slate is ~16 games and the ticker scrolls continuously,
   // so there's no real reason to hide the back half of it. Game Day
   // still matters for scroll *speed* (LiveTicker's fast prop, driven by
   // isGameDay at the call site), just not for how many games show up.
-  const items: string[] = [];
+  const items: TickerItem[] = [];
   for (const g of nflGames) {
     if (!g.home_team || !g.away_team) continue;
     if (g.state === "in") {
-      items.push(`🏈 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} (${g.status_detail ?? "Live"})`);
+      items.push({
+        key: g.id,
+        segments: [
+          { text: "🏈 " },
+          teamSegment(g.away_team),
+          { text: ` ${g.away_score} — ` },
+          teamSegment(g.home_team),
+          { text: ` ${g.home_score} (${g.status_detail ?? "Live"})` },
+        ],
+      });
     } else if (g.state === "post") {
-      items.push(`🏁 ${g.away_team} ${g.away_score} — ${g.home_team} ${g.home_score} Final`);
+      items.push({
+        key: g.id,
+        segments: [
+          { text: "🏁 " },
+          teamSegment(g.away_team),
+          { text: ` ${g.away_score} — ` },
+          teamSegment(g.home_team),
+          { text: ` ${g.home_score} Final` },
+        ],
+      });
     } else {
-      items.push(`🏈 ${g.away_team} @ ${g.home_team} — ${g.status_detail ?? "Upcoming"}`);
+      items.push({
+        key: g.id,
+        segments: [
+          { text: "🏈 " },
+          teamSegment(g.away_team),
+          { text: " @ " },
+          teamSegment(g.home_team),
+          { text: ` — ${g.status_detail ?? "Upcoming"}` },
+        ],
+      });
     }
   }
   return items;
+}
+
+// ---- League scores + top-scorer ticker (the "second ticker") -------------
+
+export type LeagueTickerTopScorer = { player_name: string; points_scored: number };
+
+export type LeagueTickerItem = {
+  matchup_id: number;
+  home_team_name: string;
+  home_score: number | null;
+  home_top_scorer: LeagueTickerTopScorer | null;
+  away_team_name: string;
+  away_score: number | null;
+  away_top_scorer: LeagueTickerTopScorer | null;
+};
+
+// Deliberately its own lightweight endpoint (app/domain/league_ticker.py)
+// rather than reusing getWeekMatchupContext — that call also computes
+// streaks/head-to-head/rivalry data this ticker never needs, and this
+// renders on every app page (AppTickerBar.tsx), not just the ones
+// already paying for the heavier call.
+export async function getWeekLeagueTicker(season: number, week: number): Promise<{ items: LeagueTickerItem[] }> {
+  try {
+    return await get<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`);
+  } catch {
+    return { items: [] };
+  }
+}
+
+function leagueTickerSideText(teamName: string, score: number | null, top: LeagueTickerTopScorer | null): string {
+  const scoreText = score !== null ? score.toFixed(1) : "—";
+  const topText = top ? ` (⭐ ${top.player_name} ${top.points_scored.toFixed(1)})` : "";
+  return `${teamName} ${scoreText}${topText}`;
+}
+
+// Each owner's own top scorer shown on their own side of the matchup —
+// not just whichever of the two scored higher — so a blowout's losing
+// side still gets credit for its own best performer.
+export function buildLeagueTickerItems(data: { items: LeagueTickerItem[] }): TickerItem[] {
+  return data.items.map((m) => ({
+    key: `league-${m.matchup_id}`,
+    segments: [
+      {
+        text: `🏆 ${leagueTickerSideText(m.home_team_name, m.home_score, m.home_top_scorer)} vs ${leagueTickerSideText(m.away_team_name, m.away_score, m.away_top_scorer)}`,
+      },
+    ],
+  }));
 }
 
 export type ChugLeaderboardRow = {
@@ -564,6 +652,7 @@ export type OwnerPreferences = {
   mention_highlighting_enabled: boolean;
   neon_intensity: "subtle" | "standard" | "high";
   reduced_motion: boolean;
+  accent_color: string | null;
 };
 
 async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {

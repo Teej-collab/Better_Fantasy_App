@@ -40,17 +40,27 @@ export function NavLink({
   children,
   activeClassName,
   inactiveClassName,
+  color,
 }: {
   href: string;
   section: NavSection;
   children: ReactNode;
   activeClassName: string;
   inactiveClassName: string;
+  // This tab's own color from the shared neon palette (lib/
+  // neonPalette.ts) — drives .neon-navlink's hover/active glow
+  // (globals.css) via the --nav-color custom property.
+  color: string;
 }) {
   const pathname = usePathname();
   const active = isSectionActive(section, pathname);
   return (
-    <a href={href} aria-current={active ? "page" : undefined} className={active ? activeClassName : inactiveClassName}>
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`neon-navlink ${active ? activeClassName : inactiveClassName}`}
+      style={{ ["--nav-color" as string]: color }}
+    >
       {children}
     </a>
   );

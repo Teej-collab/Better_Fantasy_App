@@ -5,6 +5,7 @@ import {
   listSeasons,
   type PeriodSummary,
 } from "@/lib/api";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function OwnerProfilePage({
   params,
@@ -134,7 +135,7 @@ function Badges({
 
 function PeriodCard({ title, summary }: { title: string; summary: PeriodSummary | null }) {
   return (
-    <div className="neon-panel rounded-lg p-4">
+    <div className="neon-panel rounded-lg p-4" style={panelGlowStyle(SECTION_COLORS.league)}>
       <h3 className="mb-2 text-sm font-medium text-black/60 dark:text-white/60">{title}</h3>
       {summary ? (
         <dl className="grid grid-cols-3 gap-2 text-sm">

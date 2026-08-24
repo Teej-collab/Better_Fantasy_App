@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getPreferences, updatePreferences, type OwnerPreferences } from "@/lib/api";
 import { ToggleRow } from "@/components/settings/ToggleRow";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const CHAT_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
   {
@@ -78,7 +79,10 @@ export function ChatSection() {
         </p>
       )}
 
-      <section className="neon-panel flex flex-col divide-y divide-black/5 rounded-xl bg-black/[0.015] px-5 dark:divide-white/5 dark:bg-white/[0.03]">
+      <section
+        className="neon-panel flex flex-col divide-y divide-black/5 rounded-xl bg-black/[0.015] px-5 dark:divide-white/5 dark:bg-white/[0.03]"
+        style={panelGlowStyle(SECTION_COLORS.chat)}
+      >
         {CHAT_TOGGLES.map((t) => (
           <ToggleRow
             key={t.key}

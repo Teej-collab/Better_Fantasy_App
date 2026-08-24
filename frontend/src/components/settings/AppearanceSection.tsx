@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getPreferences, updatePreferences, type OwnerPreferences } from "@/lib/api";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
+import { NEON_PALETTE } from "@/lib/neonPalette";
 
 const NEON_LEVELS: { key: OwnerPreferences["neon_intensity"]; label: string }[] = [
   { key: "subtle", label: "Subtle" },
@@ -16,6 +17,25 @@ const NEON_LEVELS: { key: OwnerPreferences["neon_intensity"]; label: string }[] 
 // just a UI preference, so no httpOnly/Secure needed.
 function setPreferenceCookie(name: string, value: string) {
   document.cookie = `${name}=${value}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+}
+
+// Same idea as neon_intensity/reduced_motion above, but for a value
+// (not a fixed enum) that also has to actually take effect immediately
+// — every .neon-panel reads --user-accent, so setting it here is what
+// makes every box on the page re-color the instant you pick a swatch,
+// not just on the next full page load. null clears back to the app
+// default (Neon Green, --wl-accent) by removing the override entirely
+// rather than setting it to that hex explicitly — same value, but this
+// way a future default change doesn't leave "cleared" accounts stuck
+// on today's green.
+function applyAccentColor(hex: string | null) {
+  if (hex) {
+    document.documentElement.style.setProperty("--user-accent", hex);
+    setPreferenceCookie("wl_accent", hex);
+  } else {
+    document.documentElement.style.removeProperty("--user-accent");
+    setPreferenceCookie("wl_accent", "");
+  }
 }
 
 export function AppearanceSection() {
@@ -63,6 +83,23 @@ export function AppearanceSection() {
       setPrefs(previous);
       document.documentElement.classList.toggle("motion-reduced", previous.reduced_motion);
       setPreferenceCookie("wl_motion", previous.reduced_motion ? "reduced" : "full");
+      setError("Couldn't save that change — try again.");
+    }
+  }
+
+  async function setAccentColor(hex: string | null) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, accent_color: hex });
+    applyAccentColor(hex);
+    try {
+      const updated = await updatePreferences({ accent_color: hex });
+      setPrefs(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      applyAccentColor(previous.accent_color);
       setError("Couldn't save that change — try again.");
     }
   }
@@ -138,6 +175,45 @@ export function AppearanceSection() {
               }`}
             >
               {level.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Accent Color</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            The glow color for boxes that aren&apos;t already tied to a league section (Standings, Rivalries, and
+            so on keep their own color regardless of this choice).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent Color">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.accent_color === null}
+            onClick={() => setAccentColor(null)}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.accent_color === null ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: "#39ff14" }} aria-hidden />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+          </button>
+          {NEON_PALETTE.filter((p) => p.name !== "Neon Green").map((preset) => (
+            <button
+              key={preset.hex}
+              type="button"
+              role="radio"
+              aria-checked={prefs.accent_color?.toLowerCase() === preset.hex}
+              onClick={() => setAccentColor(preset.hex)}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                prefs.accent_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+              }`}
+            >
+              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
             </button>
           ))}
         </div>

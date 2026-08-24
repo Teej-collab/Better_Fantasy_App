@@ -65,20 +65,59 @@ body {
 /* Shared glowing-border treatment for the app's content panels —
    leaderboards, rosters, matchup cards, rivalry cards, profile/
    settings sections. Replaces the plain border-black/10 dark:border-
-   white/10 pairing those containers used before with the same accent
-   glow the rest of the neon-cosmic theme already carries elsewhere
-   (buttons, mentions, the sign-in gate), so panels read as part of one
-   theme instead of a bare box outline. Border + shadow only — every
-   caller keeps its own rounded-, bg-, and divide- utilities; deliberately
-   NOT applied to buttons, inputs, dropdowns, or small repeated grid
-   tiles (award/discovery tiles, payout tiles) — glowing every small
-   element at once reads as noise, not "alive." */
+   white/10 pairing those containers used before with a colored accent
+   glow, so panels read as part of the neon-cosmic theme instead of a
+   bare box outline. Border + shadow only — every caller keeps its own
+   rounded-, bg-, and divide- utilities; deliberately NOT applied to
+   buttons, inputs, dropdowns, or small repeated grid tiles (award/
+   discovery tiles, payout tiles) — glowing every small element at once
+   reads as noise, not "alive."
+
+   Color is driven by --panel-glow, not hardcoded to --wl-accent: a
+   caller belonging to an established section (Standings, Rivalries,
+   etc.) sets --panel-glow inline to that section's own existing color
+   (the same hex home/page.tsx's SECTION_GLOW already uses for that
+   section's dot/tile glow), so the box and its section agree. A
+   caller with no section of its own (My Team, Settings, sign-in gate
+   cards) leaves --panel-glow unset and falls through to --user-accent
+   — the owner's own chosen accent color (Settings > Appearance),
+   which itself falls back to --wl-accent (Neon Green) when the owner
+   hasn't picked one. See layout.tsx's APPEARANCE_SCRIPT for how
+   --user-accent gets set before first paint. */
 .neon-panel {
-  border: 1px solid color-mix(in srgb, var(--wl-accent) 35%, transparent);
+  --panel-glow: var(--user-accent, var(--wl-accent));
+  border: 1px solid color-mix(in srgb, var(--panel-glow) 35%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--wl-accent) 8%, transparent),
-    0 0 14px color-mix(in srgb, var(--wl-accent) 14%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--panel-glow) 8%, transparent),
+    0 0 14px color-mix(in srgb, var(--panel-glow) 14%, transparent),
     0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Shared nav-tab treatment — PrimaryNav, BottomNav, ChatNavLink,
+   LeagueSubNav. Each tab sets its own --nav-color (see lib/
+   neonPalette.ts for the shared 7-color list); this class turns that
+   into a hover preview and a colored glow + tint on the active tab
+   (driven by aria-current, which every one of those components already
+   sets correctly for its own active-state logic — no separate active/
+   inactive branching needed here). Structural classes (padding,
+   rounding, flex layout) stay on each caller's own className; this is
+   color only. */
+.neon-navlink {
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.neon-navlink:hover {
+  color: var(--nav-color);
+  background-color: color-mix(in srgb, var(--nav-color) 8%, transparent);
+}
+.neon-navlink[aria-current="page"] {
+  color: var(--nav-color);
+  background-color: color-mix(in srgb, var(--nav-color) 14%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--nav-color) 45%, transparent),
+    0 0 10px color-mix(in srgb, var(--nav-color) 40%, transparent);
 }
 
 /* Team profile card "trading card" look — TeamProfileCard.tsx. Two

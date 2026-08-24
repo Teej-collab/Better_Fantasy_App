@@ -3,6 +3,7 @@ import { getChugLeaderboard, getChugSeasons, getMe, listSeasons } from "@/lib/ap
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function ChugLeaderboardPage({
   searchParams,
@@ -62,7 +63,10 @@ export default async function ChugLeaderboardPage({
       {leaderboard.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No chug data yet.</p>
       ) : (
-        <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+        <ol
+          className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+          style={panelGlowStyle(SECTION_COLORS.chug)}
+        >
           {leaderboard.map((row, i) => (
             <li key={row.owner_id} className="flex flex-col gap-1.5 px-4 py-3 text-sm">
               <div className="flex items-center justify-between gap-3">

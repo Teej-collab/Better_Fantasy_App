@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { API_BASE_URL, getChugUploadTicket } from "@/lib/api";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 type UploadResult =
   | { can_to_mouth: false; message: string }
@@ -65,7 +66,10 @@ export function ChugUpload() {
   }
 
   return (
-    <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+    <section
+      className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]"
+      style={panelGlowStyle(SECTION_COLORS.chug)}
+    >
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Submit a Chug
       </span>

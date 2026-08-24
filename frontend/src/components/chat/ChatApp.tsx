@@ -19,6 +19,7 @@ import {
 import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { NewMessageModal } from "@/components/chat/NewMessageModal";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const RECONNECT_DELAY_MS = 2000;
 const TYPING_CLEAR_MS = 3000;
@@ -308,7 +309,10 @@ export function ChatApp({
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="neon-panel relative flex h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl">
+    <div
+      className="neon-panel relative flex h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+      style={panelGlowStyle(SECTION_COLORS.chat)}
+    >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
         <ConversationList
           conversations={conversations}

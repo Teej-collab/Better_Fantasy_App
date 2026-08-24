@@ -10,6 +10,20 @@ const LABELS: Record<LeagueTab, string> = {
   chug: "Chug",
 };
 
+// One color per tab from the app's shared 7-color neon palette (lib/
+// neonPalette.ts) — matches each tab's own established section color
+// where one already exists (Standings/Rivalries/Rules/Chug's box glow,
+// sectionColors.ts) so the tab and its page agree.
+const TAB_COLOR: Record<LeagueTab, string> = {
+  overview: "#39ff14", // Neon Green
+  standings: "#0ea5e9", // Neon Blue
+  playerCards: "#22d3ee", // Neon Lightning Blue
+  awards: "#facc15", // Neon Yellow
+  rivalries: "#f97316", // Neon Orange
+  rules: "#a855f7", // Neon Purple
+  chug: "#ec4899", // Neon Pink
+};
+
 /**
  * Rendered manually at the top of each League-family page (League,
  * Standings, Player Cards, Awards, Rivalries, Rules, Chug) rather than
@@ -50,11 +64,8 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
             key={tab.key}
             href={tab.href}
             aria-current={tab.key === active ? "page" : undefined}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-              tab.key === active
-                ? "bg-black/[0.06] text-[color:var(--foreground)] dark:bg-white/[0.08]"
-                : "text-black/60 hover:bg-black/[0.03] hover:text-black dark:text-white/60 dark:hover:bg-white/[0.04] dark:hover:text-white"
-            }`}
+            className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 dark:text-white/60"
+            style={{ ["--nav-color" as string]: TAB_COLOR[tab.key] }}
           >
             {LABELS[tab.key]}
           </a>

@@ -1,5 +1,6 @@
 import { getStandings, listSeasons, type StandingsRow } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function StandingsPage({
   searchParams,
@@ -43,20 +44,25 @@ export default async function StandingsPage({
         {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
       </p>
 
-      {/* Column headers only from sm up — on mobile each row labels itself */}
-      <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
-        <span className="w-6 shrink-0" />
-        <span className="flex-1">Team</span>
-        <span className="w-20 shrink-0 text-right">W-L-T</span>
-        <span className="w-16 shrink-0 text-right">PF</span>
-        <span className="w-16 shrink-0 text-right">PA</span>
-      </div>
+      <div
+        className="neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
+        style={panelGlowStyle(SECTION_COLORS.standings)}
+      >
+        {/* Column headers only from sm up — on mobile each row labels itself */}
+        <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
+          <span className="w-6 shrink-0" />
+          <span className="flex-1">Team</span>
+          <span className="w-20 shrink-0 text-right">W-L-T</span>
+          <span className="w-16 shrink-0 text-right">PF</span>
+          <span className="w-16 shrink-0 text-right">PA</span>
+        </div>
 
-      <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-        {standings.map((row, i) => (
-          <StandingsListRow key={row.team_id} row={row} rank={i + 1} />
-        ))}
-      </ul>
+        <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+          {standings.map((row, i) => (
+            <StandingsListRow key={row.team_id} row={row} rank={i + 1} />
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { listRivalries, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function RivalriesPage() {
   const [{ rivalries }, { seasons }] = await Promise.all([listRivalries(), listSeasons()]);
@@ -15,7 +16,7 @@ export default async function RivalriesPage() {
       ) : (
         <ul className="flex flex-col gap-4">
           {rivalries.map((r) => (
-            <li key={r.id} className="neon-panel rounded-lg p-4">
+            <li key={r.id} className="neon-panel rounded-lg p-4" style={panelGlowStyle(SECTION_COLORS.rivalries)}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <h2 className="font-medium">
                   {r.emoji && <span className="mr-1">{r.emoji}</span>}

@@ -38,16 +38,20 @@ export const viewport: Viewport = {
 // itself) is what actually guarantees /weekend never receives — or even
 // server-fetches the data behind — chrome it shouldn't have. See
 // app/(app)/layout.tsx's comment for the full reasoning.
-// Settings > Appearance (Neon Intensity, Animations) — mirrored into
-// small non-httpOnly cookies the moment either setting changes (see
-// AppearanceSection.tsx), applied here via a blocking inline script
-// instead of reading them server-side in this layout: RootLayout wraps
-// every route, so calling cookies() here would force the *entire* app
-// into dynamic rendering — including pages with no per-visitor data at
-// all (e.g. /auth/complete) that are static today. A synchronous
-// script in <head>, before <body> paints, avoids that same "flash of
-// wrong intensity/motion" with zero cost to static generation — the
-// standard technique (same one theme-switchers use for dark mode).
+// Settings > Appearance (Neon Intensity, Animations, Accent Color) —
+// mirrored into small non-httpOnly cookies the moment any setting
+// changes (see AppearanceSection.tsx), applied here via a blocking
+// inline script instead of reading them server-side in this layout:
+// RootLayout wraps every route, so calling cookies() here would force
+// the *entire* app into dynamic rendering — including pages with no
+// per-visitor data at all (e.g. /auth/complete) that are static today.
+// A synchronous script in <head>, before <body> paints, avoids that
+// same "flash of wrong intensity/motion/color" with zero cost to
+// static generation — the standard technique (same one theme-switchers
+// use for dark mode). wl_accent sets --user-accent, which every
+// .neon-panel without its own section color falls back to
+// (globals.css) — a strict hex check before setProperty so a malformed
+// or hand-edited cookie can't leave the property set to garbage.
 const APPEARANCE_SCRIPT = `
 (function () {
   try {
@@ -55,6 +59,10 @@ const APPEARANCE_SCRIPT = `
     document.documentElement.setAttribute("data-neon", m ? m[1] : "standard");
     if (/(?:^|; )wl_motion=reduced(?:;|$)/.test(document.cookie)) {
       document.documentElement.classList.add("motion-reduced");
+    }
+    var a = document.cookie.match(/(?:^|; )wl_accent=([^;]+)/);
+    if (a && /^#[0-9a-fA-F]{6}$/.test(a[1])) {
+      document.documentElement.style.setProperty("--user-accent", a[1]);
     }
   } catch (e) {}
 })();

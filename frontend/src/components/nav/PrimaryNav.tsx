@@ -1,9 +1,19 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 
-const ACTIVE = "flex items-center gap-1.5 rounded-full bg-black/[0.06] px-3 py-1.5 text-sm font-medium text-[color:var(--foreground)] dark:bg-white/[0.08]";
-const INACTIVE =
-  "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 transition-colors hover:bg-black/[0.03] hover:text-black dark:text-white/60 dark:hover:bg-white/[0.04] dark:hover:text-white";
+// One color per primary destination, from the app's shared 7-color
+// neon palette (lib/neonPalette.ts) — .neon-navlink (globals.css)
+// turns this into each tab's own hover preview + active glow.
+const TAB_COLOR = {
+  team: "#a855f7", // Neon Purple
+  league: "#0ea5e9", // Neon Blue
+  matchups: "#ec4899", // Neon Pink
+  chat: "#39ff14", // Neon Green
+  players: "#22d3ee", // Neon Lightning Blue
+};
+
+const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
+const INACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-black/60 dark:text-white/60";
 
 // A "Live" mark, not just a colored dot — accessibility requires state
 // never rest on color alone, and this is a live-game indicator, not a
@@ -38,24 +48,36 @@ export function PrimaryNav({
   return (
     <div className="hidden items-center gap-1 sm:flex">
       {signedIn && (
-        <NavLink href="/team" section="team" activeClassName={ACTIVE} inactiveClassName={INACTIVE}>
+        <NavLink href="/team" section="team" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.team}>
           <span className="flex flex-col items-start leading-none">
             My Team
             {myMatchupLive && <LiveMark />}
           </span>
         </NavLink>
       )}
-      <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE}>
+      <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.league}>
         League
       </NavLink>
-      <NavLink href={matchupsHref} section="matchups" activeClassName={ACTIVE} inactiveClassName={INACTIVE}>
+      <NavLink
+        href={matchupsHref}
+        section="matchups"
+        activeClassName={ACTIVE}
+        inactiveClassName={INACTIVE}
+        color={TAB_COLOR.matchups}
+      >
         <span className="flex flex-col items-start leading-none">
           Matchups
           {myMatchupLive && <LiveMark />}
         </span>
       </NavLink>
       {signedIn && <ChatNavLink variant="primary" />}
-      <NavLink href="/free-agents" section="players" activeClassName={ACTIVE} inactiveClassName={INACTIVE}>
+      <NavLink
+        href="/free-agents"
+        section="players"
+        activeClassName={ACTIVE}
+        inactiveClassName={INACTIVE}
+        color={TAB_COLOR.players}
+      >
         Players
       </NavLink>
     </div>

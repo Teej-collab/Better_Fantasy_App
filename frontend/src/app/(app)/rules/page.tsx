@@ -378,6 +378,7 @@ function RuleSection({
     <section
       id={id}
       className="neon-panel scroll-mt-4 flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]"
+      style={{ ["--panel-glow" as string]: ACCENT_GLOW }}
     >
       <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase">
         <span className={`h-2 w-2 shrink-0 rounded-full ${ACCENT_DOT}`} style={{ boxShadow: `0 0 6px ${ACCENT_GLOW}` }} aria-hidden />

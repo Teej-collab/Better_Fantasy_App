@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { MatchupContextSide, MatchupRivalry, RecentMeeting, WeekMatchupContextItem } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
+import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const STREAK_ICON: Record<string, string> = { hot: " \u{1F525}", cold: " \u{1F976}", neutral: "" };
 
@@ -26,7 +27,7 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
   const { home, away } = matchup;
 
   return (
-    <div className="neon-panel rounded-lg">
+    <div className="neon-panel rounded-lg" style={panelGlowStyle(SECTION_COLORS.matchups)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

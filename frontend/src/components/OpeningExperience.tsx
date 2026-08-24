@@ -6,6 +6,7 @@ import { AuthScreen } from "@/components/AuthScreen";
 import { LiveTicker } from "@/components/LiveTicker";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import type { TickerItem } from "@/lib/api";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -41,7 +42,7 @@ type Stage = "dark" | "word" | "final" | "entering" | "auth";
  * in." It drops away once Enter Here is clicked; AuthScreen itself
  * stays clean per the brief's own "the form itself should be clean."
  */
-export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: string[]; isGameDay: boolean }) {
+export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: TickerItem[]; isGameDay: boolean }) {
   const [stage, setStage] = useState<Stage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);

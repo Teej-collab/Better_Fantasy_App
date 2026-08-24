@@ -3,9 +3,16 @@ import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { MoreSheet } from "@/components/nav/MoreSheet";
 import { TeamIcon, LeagueIcon, MatchupsIcon } from "@/components/nav/icons";
 
-const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium text-[color:var(--foreground)]";
-const INACTIVE_ITEM =
-  "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] text-black/45 transition-colors dark:text-white/45";
+// Same palette as PrimaryNav.tsx's TAB_COLOR — the desktop and mobile
+// navs agree on which color means which destination.
+const TAB_COLOR = {
+  team: "#a855f7", // Neon Purple
+  league: "#0ea5e9", // Neon Blue
+  matchups: "#ec4899", // Neon Pink
+};
+
+const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
+const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] text-black/45 dark:text-white/45";
 
 // A dot, not a color change, next to the label — same "never color
 // alone" reasoning as PrimaryNav's LiveMark, just compact enough for
@@ -41,13 +48,19 @@ export function BottomNav({
       className="fixed inset-x-0 bottom-0 z-30 flex border-t border-black/10 bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden dark:border-white/10"
     >
       {signedIn && (
-        <NavLink href="/team" section="team" activeClassName={`relative ${ACTIVE_ITEM}`} inactiveClassName={`relative ${INACTIVE_ITEM}`}>
+        <NavLink
+          href="/team"
+          section="team"
+          activeClassName={`relative ${ACTIVE_ITEM}`}
+          inactiveClassName={`relative ${INACTIVE_ITEM}`}
+          color={TAB_COLOR.team}
+        >
           {myMatchupLive && <LiveDot />}
           <TeamIcon className="h-6 w-6" />
           My Team
         </NavLink>
       )}
-      <NavLink href="/league" section="league" activeClassName={ACTIVE_ITEM} inactiveClassName={INACTIVE_ITEM}>
+      <NavLink href="/league" section="league" activeClassName={ACTIVE_ITEM} inactiveClassName={INACTIVE_ITEM} color={TAB_COLOR.league}>
         <LeagueIcon className="h-6 w-6" />
         League
       </NavLink>
@@ -56,6 +69,7 @@ export function BottomNav({
         section="matchups"
         activeClassName={`relative ${ACTIVE_ITEM}`}
         inactiveClassName={`relative ${INACTIVE_ITEM}`}
+        color={TAB_COLOR.matchups}
       >
         {myMatchupLive && <LiveDot />}
         <MatchupsIcon className="h-6 w-6" />
