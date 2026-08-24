@@ -16,6 +16,7 @@ Every route checks conversation membership server-side
 never trusts the client's own idea of which conversations it can see.
 """
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
@@ -27,10 +28,12 @@ from app.chat.manager import manager
 from app.config import CHAT_IMAGE_HOST, _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
+from app.notifications import dispatcher, formatter
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 2000
 DEFAULT_PAGE_SIZE = 50
@@ -196,6 +199,48 @@ async def delete_message(message_id: int, request: Request, pool=Depends(get_poo
     return {"status": "deleted"}
 
 
+async def _push_notify_new_message(
+    conversation_id: int, sender_id: int, sender_name: str, body: str,
+    reply_to_id: int | None, mentioned_ids: list[int], participant_ids: list[int],
+) -> None:
+    """Web Push side effect of a chat message, alongside the WebSocket
+    broadcast above — reuses the same owner_preferences categories the
+    Notifications settings page already exposes (notify_direct_messages/
+    notify_league_chat/notify_mentions/notify_replies), so this is
+    activating existing preference plumbing, not inventing new toggles.
+    Never lets a notification failure break the chat send itself — the
+    WebSocket broadcast above has already happened by the time this
+    runs, so a bug or a dead push provider here can't cost anyone their
+    message."""
+    others = [p for p in participant_ids if p != sender_id and not manager.is_connected(p)]
+    if not others:
+        return
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            reply_target_owner_id = None
+            if reply_to_id is not None:
+                original = await chat_queries.get_message_owner_and_conversation(conn, reply_to_id)
+                reply_target_owner_id = original["owner_id"] if original else None
+            conversation_type = await chat_queries.get_conversation_type(conn, conversation_id)
+
+            for recipient_id in others:
+                if recipient_id in mentioned_ids:
+                    category, build = "notify_mentions", formatter.chat_mention
+                elif recipient_id == reply_target_owner_id:
+                    category, build = "notify_replies", formatter.chat_reply
+                elif conversation_type == "direct":
+                    category, build = "notify_direct_messages", formatter.chat_direct_message
+                else:
+                    category, build = "notify_league_chat", formatter.chat_league_message
+
+                prefs = await preferences_queries.get_preferences(conn, recipient_id)
+                if prefs["push_enabled"] and prefs[category]:
+                    await dispatcher.send_to_owner(conn, recipient_id, build(sender_name, body))
+    except Exception:
+        logger.exception("Push notification for chat message in conversation_id=%s failed", conversation_id)
+
+
 @router.websocket("/ws")
 async def chat_ws(websocket: WebSocket, ticket: str | None = None):
     payload = _decode_session(websocket.cookies.get(SESSION_COOKIE_NAME))
@@ -262,6 +307,9 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                     message = await chat_domain.get_single_message(conn, row["id"], owner_id)
 
                 await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
+                await _push_notify_new_message(
+                    conversation_id, owner_id, owner_name or "Someone", body, reply_to_id, valid_mentions, participant_ids
+                )
 
             elif event_type == "typing":
                 async with pool.acquire() as conn:

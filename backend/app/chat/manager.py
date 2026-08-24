@@ -32,6 +32,13 @@ class ChatConnectionManager:
         if not conns:
             del self._connections[owner_id]
 
+    def is_connected(self, owner_id: int) -> bool:
+        """True if this owner has at least one open chat WebSocket right
+        now — used to skip push notifications for people already
+        watching chat live (app/routers/chat.py's message handler),
+        rather than double-notifying someone with the app open."""
+        return bool(self._connections.get(owner_id))
+
     async def send_to_owner(self, owner_id: int, message: dict) -> None:
         dead = []
         for ws in list(self._connections.get(owner_id, ())):

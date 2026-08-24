@@ -9,6 +9,10 @@ async def get_league_conversation_id(conn) -> int:
     return await conn.fetchval("SELECT id FROM conversations WHERE type = 'league'")
 
 
+async def get_conversation_type(conn, conversation_id: int) -> str | None:
+    return await conn.fetchval("SELECT type FROM conversations WHERE id = $1", conversation_id)
+
+
 async def is_participant(conn, conversation_id: int, owner_id: int) -> bool:
     row = await conn.fetchrow(
         "SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND owner_id = $2",

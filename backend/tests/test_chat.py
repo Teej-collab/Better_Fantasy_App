@@ -397,6 +397,154 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
     assert msg["mentions"] == [a]
 
 
+async def test_websocket_message_pushes_to_an_offline_recipient(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+        return 1
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    a = await _seed_owner(pool, 23)
+    b = await _seed_owner(pool, 24)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    async with pool.acquire() as conn:
+        await preferences_queries.update_preferences(conn, a, {"push_enabled": True, "notify_direct_messages": True})
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "you there?"})
+        ws.receive_json()
+        # The WS handler processes one frame fully (including the push
+        # dispatch, awaited after the broadcast) before it loops back to
+        # receive the next — round-tripping a second, throwaway message
+        # here guarantees the first message's push dispatch has actually
+        # finished by the time we check `sent` below, rather than racing
+        # the `with` block's teardown against that still-running await.
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    # The flush message's own push dispatch may or may not have landed
+    # yet by the time the WS connection tears down — only the first
+    # message's push is guaranteed complete (proven by having received
+    # the flush's own broadcast, which the server can only send after
+    # fully finishing the first message's handler, push dispatch
+    # included) — so assert on that first entry only.
+    assert len(sent) >= 1
+    owner_id, payload = sent[0]
+    assert owner_id == a
+    assert payload["data"]["type"] == "chat_direct_message"
+    assert "you there?" in payload["body"]
+
+
+async def test_websocket_message_skips_push_when_recipient_preference_is_off(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    a = await _seed_owner(pool, 25)
+    b = await _seed_owner(pool, 26)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    # push_enabled defaults to False — a never subscribed, so nothing should send.
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hello"})
+        ws.receive_json()
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert sent == []
+
+
+async def test_websocket_message_does_not_push_to_a_currently_connected_recipient(pool, monkeypatch):
+    """Someone with chat open right now sees the message over the socket
+    already — pushing too would just be noise. Simulated by monkeypatching
+    is_connected() rather than opening two real simultaneous WebSocket
+    connections through TestClient's single background-thread event
+    loop, which is fragile under concurrent asyncpg use."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+    monkeypatch.setattr(chat_router.manager, "is_connected", lambda owner_id: owner_id == a)
+
+    a = await _seed_owner(pool, 27)
+    b = await _seed_owner(pool, 28)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    async with pool.acquire() as conn:
+        await preferences_queries.update_preferences(conn, a, {"push_enabled": True, "notify_direct_messages": True})
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hey"})
+        ws.receive_json()
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert sent == []
+
+
+async def test_websocket_message_with_mention_uses_the_mention_category(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    a = await _seed_owner(pool, 29)
+    b = await _seed_owner(pool, 30)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    async with pool.acquire() as conn:
+        # notify_direct_messages OFF, notify_mentions ON — proves the
+        # mention category is chosen over the direct-message one, not
+        # just that push fired at all.
+        await preferences_queries.update_preferences(
+            conn, a, {"push_enabled": True, "notify_direct_messages": False, "notify_mentions": True}
+        )
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "@Chatter check this out", "mentions": [a]})
+        ws.receive_json()
+        # Flush — a plain, non-mention message; a's notify_direct_messages
+        # is off, so this shouldn't add a second entry to `sent`.
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert len(sent) == 1
+    owner_id, payload = sent[0]
+    assert owner_id == a
+    assert payload["data"]["type"] == "chat_mention"
+
+
 async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, monkeypatch):
     """The real-world case this exists for: a browser that never sends
     the session cookie on this cross-site request at all (Safari's ITP)
