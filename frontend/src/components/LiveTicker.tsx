@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { TickerItem } from "@/lib/api";
 
 /**
@@ -27,19 +28,30 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
       }`}
     >
       <div className={`live-ticker-track py-2.5 ${fast ? "live-ticker-track--fast" : ""}`}>
-        {[...items, ...items].map((item, i) => (
-          <span key={`${item.key}-${i}`} className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90">
-            {item.segments.map((seg, j) =>
-              seg.color ? (
-                <span key={j} className="ticker-team" style={{ color: seg.color }}>
-                  {seg.text}
-                </span>
-              ) : (
-                <span key={j}>{seg.text}</span>
-              )
-            )}
-          </span>
-        ))}
+        {[...items, ...items].map((item, i) => {
+          const content = item.segments.map((seg, j) =>
+            seg.color ? (
+              <span key={j} className="ticker-team" style={{ color: seg.color }}>
+                {seg.text}
+              </span>
+            ) : (
+              <span key={j}>{seg.text}</span>
+            )
+          );
+          return item.href ? (
+            <Link
+              key={`${item.key}-${i}`}
+              href={item.href}
+              className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90 underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+            >
+              {content}
+            </Link>
+          ) : (
+            <span key={`${item.key}-${i}`} className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90">
+              {content}
+            </span>
+          );
+        })}
       </div>
     </div>
   );

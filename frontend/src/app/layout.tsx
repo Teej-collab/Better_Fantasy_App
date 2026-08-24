@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,6 +16,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Weekend League",
   description: "League standings, matchups, and rosters.",
+  manifest: "/manifest.json",
+  // Lets iOS treat a Home Screen install as a standalone app (own
+  // window, no Safari chrome) instead of just a bookmark — required
+  // for push notifications to work at all on iPhone/iPad, which only
+  // deliver web push to an installed PWA, never to Safari itself.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Weekend League",
+  },
 };
 
 // viewportFit: "cover" lets the page draw under the notch/dynamic
@@ -87,7 +98,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }

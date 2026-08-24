@@ -451,7 +451,12 @@ export function isNflGameLive(nflGames: NflGame[]): boolean {
 // carries that team's real color (nfl-teams.ts's NFL_TEAM_COLORS), so
 // LiveTicker.tsx can render it in place without re-parsing the string.
 export type TickerSegment = { text: string; color?: string };
-export type TickerItem = { key: string; segments: TickerSegment[] };
+// href is optional — set by AppTickerBar.tsx when a live NFL game also
+// has a Gamecast available for it (see lib/gamecastApi.ts), so that
+// one item becomes a real link instead of plain text. Every other
+// ticker item (awards/rivalries blurbs, games with no Gamecast yet)
+// leaves this unset and renders exactly as before.
+export type TickerItem = { key: string; segments: TickerSegment[]; href?: string };
 
 function teamSegment(abbr: string): TickerSegment {
   const color = nflTeamColor(abbr);
@@ -704,6 +709,15 @@ export type OwnerPreferences = {
   // exactly what the backend stores and returns; parsing only happens
   // where it's actually rendered (HomeCardDeck.tsx).
   home_card_order: string | null;
+  // Reflects whether the owner has at least one active push
+  // subscription — set by the backend from POST /push/subscribe and
+  // /push/unsubscribe (app/routers/push.py), never written directly
+  // through updatePreferences (see that endpoint's own comment).
+  push_enabled: boolean;
+  notify_game_alerts: boolean;
+  notify_my_players: boolean;
+  notify_fantasy_team: boolean;
+  notify_league: boolean;
 };
 
 async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {

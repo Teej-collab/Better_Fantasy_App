@@ -8,6 +8,16 @@ import {
   type OwnerPreferences,
   type SundayMode,
 } from "@/lib/api";
+import {
+  getNotificationPermission,
+  isIosDevice,
+  isInstalledStandalone,
+  isPushSupported,
+  isSubscribedOnThisDevice,
+  sendTestNotification,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from "@/lib/push";
 import { ToggleRow } from "@/components/settings/ToggleRow";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
 
@@ -24,25 +34,102 @@ const MESSAGE_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   { key: "notify_replies", label: "Replies to my messages", description: "Someone replies directly to something you sent." },
 ];
 
-const FANTASY_TOGGLES = [
-  "Touchdowns",
-  "Player scoring events",
-  "Game starting",
-  "Red-zone activity",
-  "Matchup lead changes",
-  "Final scores",
+const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
+  { key: "notify_game_alerts", label: "Game Alerts", description: "A game you're watching kicks off or wraps up." },
+  { key: "notify_my_players", label: "My Players", description: "One of your rostered players scores or has a notable play." },
+  { key: "notify_fantasy_team", label: "My Fantasy Team", description: "Your matchup lead changes, for better or worse." },
+  { key: "notify_league", label: "League", description: "Important league-wide announcements." },
 ];
+
+type PushUiState = {
+  supported: boolean;
+  iosNeedsInstall: boolean;
+  permission: NotificationPermission | "unsupported";
+  subscribedHere: boolean;
+};
 
 export function NotificationsSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [push, setPush] = useState<PushUiState | null>(null);
+  const [priming, setPriming] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+
   useEffect(() => {
     getPreferences()
       .then(setPrefs)
       .catch(() => setError("Couldn't load your notification settings."));
   }, []);
+
+  useEffect(() => {
+    refreshPushState();
+  }, []);
+
+  async function refreshPushState() {
+    const supported = isPushSupported();
+    if (!supported) {
+      setPush({ supported: false, iosNeedsInstall: isIosDevice() && !isInstalledStandalone(), permission: "unsupported", subscribedHere: false });
+      return;
+    }
+    const [permission, subscribedHere] = await Promise.all([
+      Promise.resolve(getNotificationPermission()),
+      isSubscribedOnThisDevice(),
+    ]);
+    setPush({
+      supported: true,
+      iosNeedsInstall: isIosDevice() && !isInstalledStandalone(),
+      permission,
+      subscribedHere,
+    });
+  }
+
+  async function enablePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      await subscribeToPush();
+      setPriming(false);
+      await Promise.all([refreshPushState(), getPreferences().then(setPrefs)]);
+      flashSaved();
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : "Couldn't enable push notifications.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function disablePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      await unsubscribeFromPush();
+      await Promise.all([refreshPushState(), getPreferences().then(setPrefs)]);
+      flashSaved();
+    } catch {
+      setPushError("Couldn't turn off push notifications — try again.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function testPush() {
+    setPushBusy(true);
+    setPushError(null);
+    setTestResult(null);
+    try {
+      const { delivered, attempted } = await sendTestNotification();
+      setTestResult(delivered > 0 ? "Sent — check this device." : `Couldn't deliver (0 of ${attempted} devices reachable).`);
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : "Couldn't send a test notification.");
+    } finally {
+      setPushBusy(false);
+      setTimeout(() => setTestResult(null), 4000);
+    }
+  }
 
   function flashSaved() {
     setSaved(true);
@@ -150,19 +237,120 @@ export function NotificationsSection() {
         </div>
       </section>
 
-      <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Fantasy Activity</h2>
-          <span className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/50">
-            Coming soon
-          </span>
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Push Notifications</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            Real-time alerts on this device, even when Weekend League isn&apos;t open.
+          </p>
         </div>
+
+        {push === null && <p className="text-xs text-black/40 dark:text-white/40">Checking this device…</p>}
+
+        {push && !push.supported && !push.iosNeedsInstall && (
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Push notifications aren&apos;t supported in this browser.
+          </p>
+        )}
+
+        {push && push.iosNeedsInstall && (
+          <p className="text-xs text-black/50 dark:text-white/50">
+            On iPhone/iPad, add Weekend League to your Home Screen first (Share → Add to Home Screen) — iOS only
+            delivers push notifications to an installed app, not a browser tab.
+          </p>
+        )}
+
+        {push && push.supported && !push.iosNeedsInstall && (
+          <>
+            {push.subscribedHere ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-black/60 dark:text-white/60">✓ Enabled on this device.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={testPush}
+                    disabled={pushBusy}
+                    className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/[0.05]"
+                  >
+                    Send test notification
+                  </button>
+                  <button
+                    type="button"
+                    onClick={disablePush}
+                    disabled={pushBusy}
+                    className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/[0.05]"
+                  >
+                    Turn off on this device
+                  </button>
+                  {testResult && <span className="text-xs text-black/50 dark:text-white/50">{testResult}</span>}
+                </div>
+              </div>
+            ) : priming ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-[var(--wl-accent)]/30 bg-[color-mix(in_srgb,var(--wl-accent)_8%,transparent)] p-3">
+                <p className="text-xs text-black/70 dark:text-white/70">
+                  Your browser will ask for notification permission next — allow it to get real-time alerts for the
+                  things you turn on below.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={enablePush}
+                    disabled={pushBusy}
+                    className="rounded-lg bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {pushBusy ? "Enabling…" : "Continue"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriming(false)}
+                    disabled={pushBusy}
+                    className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/[0.05]"
+                  >
+                    Not now
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPriming(true)}
+                className="self-start rounded-lg bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Enable push notifications
+              </button>
+            )}
+            {push.permission === "denied" && !push.subscribedHere && (
+              <p className="text-xs text-red-500">
+                Notifications are blocked for this site in your browser settings — enable them there to turn this on.
+              </p>
+            )}
+          </>
+        )}
+
+        {pushError && (
+          <p role="alert" className="text-xs text-red-500">
+            {pushError}
+          </p>
+        )}
+      </section>
+
+      <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <h2 className="text-sm font-semibold tracking-wide uppercase">Fantasy Activity</h2>
         <p className="mb-2 text-xs text-black/50 dark:text-white/50">
-          Live scoring events aren&apos;t wired up yet — these will turn on once they are.
+          {prefs.push_enabled
+            ? "What push notifications you get, by category."
+            : "Turn on push notifications above to receive these."}
         </p>
         <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-          {FANTASY_TOGGLES.map((label) => (
-            <ToggleRow key={label} label={label} checked={false} disabled onChange={() => {}} />
+          {FANTASY_TOGGLES.map((t) => (
+            <ToggleRow
+              key={t.key}
+              label={t.label}
+              description={t.description}
+              checked={Boolean(prefs[t.key])}
+              disabled={!prefs.push_enabled}
+              onChange={(checked) => patch({ [t.key]: checked })}
+            />
           ))}
         </div>
       </section>

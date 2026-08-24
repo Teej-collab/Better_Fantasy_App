@@ -6,9 +6,26 @@ import {
   getWeekLeagueTicker,
   isNflGameLive,
   listSeasons,
+  type NflGame,
+  type TickerItem,
 } from "@/lib/api";
+import { findGamecastId, getLiveGames, type GamecastLiveGameSummary } from "@/lib/gamecastApi";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+
+// Links an NFL ticker item to its Gamecast, when one exists for that
+// game — matched by team-abbreviation pair (see findGamecastId).
+// Additive only: an item with no Gamecast match is returned unchanged,
+// so a Gamecast outage or empty live-games list never breaks the
+// scoreboard ticker itself.
+function withGamecastLinks(items: TickerItem[], nflGames: NflGame[], liveGameIds: GamecastLiveGameSummary[]): TickerItem[] {
+  const byId = new Map(nflGames.map((g) => [g.id, g]));
+  return items.map((item) => {
+    const nflGame = byId.get(item.key);
+    const gamecastId = nflGame ? findGamecastId(nflGame.home_team, nflGame.away_team, liveGameIds) : null;
+    return gamecastId ? { ...item, href: `/gamecast/${gamecastId}` } : item;
+  });
+}
 
 /**
  * The persistent site-wide ticker(s) — used only by app/(app)/layout.tsx,
@@ -32,9 +49,14 @@ import { GameDayRefresher } from "@/components/GameDayRefresher";
  * indefinitely on a page nobody navigated away from.
  */
 export async function AppTickerBar() {
-  const [nflGames, { seasons }] = await Promise.all([getNflScoreboard(), listSeasons()]);
+  const [nflGames, { seasons }, gamecastGames] = await Promise.all([
+    getNflScoreboard(),
+    listSeasons(),
+    getLiveGames(),
+  ]);
   const isGameDay = isNflGameLive(nflGames);
   const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+  const nflTickerItems = withGamecastLinks(buildNflTickerItems(nflGames), nflGames, gamecastGames);
 
   let leagueTicker = null;
   if (latestSeason !== null) {
@@ -51,7 +73,7 @@ export async function AppTickerBar() {
 
   return (
     <div className="safe-px mx-auto flex w-full max-w-4xl flex-col gap-2 pt-3">
-      <LiveTicker items={buildNflTickerItems(nflGames)} fast={isGameDay} />
+      <LiveTicker items={nflTickerItems} fast={isGameDay} />
       {leagueTicker}
       {isGameDay && <GameDayRefresher />}
     </div>
