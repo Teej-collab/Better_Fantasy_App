@@ -585,6 +585,53 @@ body::before {
   animation: rise-in 0.5s ease-out forwards;
 }
 
+/* Pull-to-refresh (PullToRefresh.tsx) — a collapsed-height strip above
+   the page content that grows as the visitor pulls down, revealing an
+   arrow/spinner + label. transition on height/opacity only (both cheap
+   for the browser to animate) so it stays smooth even mid-gesture. */
+.pull-to-refresh-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+.pull-to-refresh-glyph {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--wl-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.pull-to-refresh-arrow {
+  display: inline-block;
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+.pull-to-refresh-spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, var(--wl-accent) 30%, transparent);
+  border-top-color: var(--wl-accent);
+  animation: pull-to-refresh-spin 0.7s linear infinite;
+}
+@keyframes pull-to-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pull-to-refresh-spinner {
+    animation: none;
+  }
+}
+.motion-reduced .pull-to-refresh-spinner {
+  animation: none;
+}
+
 /* Your Week hero: a soft pulsing red glow around the whole card while
    a game is actually live, echoing .live-dot's own pulse cadence, so
    "this matters right now" reads at a glance before you even look at
@@ -682,11 +729,11 @@ body::before {
    a replacement for it: prefers-reduced-motion still applies
    regardless of this setting. Same selectors as that query, applied
    by a class instead of a media query so a visitor can ask for less
-   motion even when their OS reports none. Scoped to the general,
-   persistent app chrome — not the one-time signed-out opening
-   sequence (weekend-neon-buzz, wl-word-power-on, etc.), which nobody
-   setting this in Settings can even be looking at (Settings only
-   exists once signed in, i.e. already past that sequence). */
+   motion even when their OS reports none. Scoped here to the general,
+   persistent app chrome — the app-entry sequence (wl-word-power-on,
+   weekend-neon-buzz, etc.) has its own matching .motion-reduced block
+   further down, right after .wl-tagline, so it's easy to find
+   alongside the OS-level query it mirrors. */
 .motion-reduced .rise-in {
   opacity: 1;
   animation: none;
@@ -1041,6 +1088,21 @@ body::before {
   animation: rise-in 0.9s ease-out 0.6s both;
 }
 
+/* "Welcome Back, TJ" — the authenticated half of the app-entry sequence
+   (WelcomeBackStage.tsx), shown in place of Enter Here. Same accent
+   color and neon-glow family as .wl-weekend (just lighter, since this
+   is a sub-headline continuing that same sign, not a second logo) so it
+   reads as the logo itself speaking, not a separate UI element. */
+.wl-welcome-back {
+  opacity: 0;
+  color: var(--wl-accent);
+  text-shadow:
+    0 0 4px rgba(57, 255, 20, 0.85),
+    0 0 12px rgba(57, 255, 20, 0.55),
+    0 0 28px rgba(57, 255, 20, 0.3);
+  animation: rise-in 0.9s ease-out 0.6s both;
+}
+
 /* Enter Here — a physical neon sign with a slow, slightly irregular
    "electrical" idle glow (not a clean sine wave) that brightens on
    hover/press — the mobile affordance, since there's no hover there. */
@@ -1203,6 +1265,7 @@ body::before {
   .wl-weekend,
   .wl-league-wrap,
   .wl-tagline,
+  .wl-welcome-back,
   .wl-enter-sign,
   .wl-enter-sign::after,
   .wl-scene,
@@ -1218,6 +1281,7 @@ body::before {
   .wl-weekend,
   .wl-league-wrap,
   .wl-tagline,
+  .wl-welcome-back,
   .wl-auth-enter {
     opacity: 1;
     transform: none;
@@ -1225,6 +1289,46 @@ body::before {
   .wl-ambient {
     opacity: 1;
   }
+}
+
+/* Settings > Appearance > Animations = Reduced — an explicit override
+   layered on top of (never weaker than) the OS-level query above, not a
+   replacement for it: prefers-reduced-motion still applies regardless of
+   this setting. Same rules as that query, applied by a class instead so
+   a visitor can ask for less motion even when their OS reports none.
+   This used to be scoped to only the general app chrome, on the theory
+   that "nobody signed in can be looking at the signed-out opening
+   sequence, since Settings only exists once signed in" — no longer
+   true now that AppEntry.tsx/HomeWelcomeBackEntry.tsx play this same
+   sequence for authenticated boots too, so the wl-* classes need to
+   respect this setting exactly like the OS query above. */
+.motion-reduced .wl-word,
+.motion-reduced .wl-weekend,
+.motion-reduced .wl-league-wrap,
+.motion-reduced .wl-tagline,
+.motion-reduced .wl-welcome-back,
+.motion-reduced .wl-enter-sign,
+.motion-reduced .wl-enter-sign::after,
+.motion-reduced .wl-scene,
+.motion-reduced .wl-bloom,
+.motion-reduced .wl-auth-enter,
+.motion-reduced .wl-ambient,
+.motion-reduced .wl-ambient--lit::before,
+.motion-reduced .wl-ambient--lit::after {
+  animation: none !important;
+  transition: none !important;
+}
+.motion-reduced .wl-word,
+.motion-reduced .wl-weekend,
+.motion-reduced .wl-league-wrap,
+.motion-reduced .wl-tagline,
+.motion-reduced .wl-welcome-back,
+.motion-reduced .wl-auth-enter {
+  opacity: 1;
+  transform: none;
+}
+.motion-reduced .wl-ambient {
+  opacity: 1;
 }
 
 /* ============================================================

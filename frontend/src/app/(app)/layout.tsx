@@ -1,6 +1,8 @@
 import { NavBar } from "@/components/NavBar";
+import { AppEntry } from "@/components/AppEntry";
 import { AppTickerBar } from "@/components/AppTickerBar";
 import { PageShell } from "@/components/PageShell";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 /**
  * The standard app chrome (nav bar + persistent ticker + the padded
@@ -24,7 +26,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <>
       <NavBar />
       <AppTickerBar />
-      <PageShell>{children}</PageShell>
+      <PullToRefresh>
+        <AppEntry>
+          <PageShell>{children}</PageShell>
+        </AppEntry>
+      </PullToRefresh>
     </>
   );
 }

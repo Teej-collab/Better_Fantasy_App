@@ -1,5 +1,6 @@
 import { NavBar } from "@/components/NavBar";
 import { PageShell } from "@/components/PageShell";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 /**
  * / keeps the standard nav bar but skips the persistent AppTickerBar —
@@ -15,7 +16,9 @@ export default function HomeLayout({ children }: { children: React.ReactNode }) 
   return (
     <>
       <NavBar />
-      <PageShell>{children}</PageShell>
+      <PullToRefresh>
+        <PageShell>{children}</PageShell>
+      </PullToRefresh>
     </>
   );
 }

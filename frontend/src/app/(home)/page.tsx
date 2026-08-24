@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeCardDeck } from "@/components/HomeCardDeck";
+import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -312,35 +313,37 @@ export default async function HomePage() {
   const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Fixed behind everything, ignores PageShell's centered column so
-          it washes the full viewport — three soft brand-colored glows,
-          restrained compared to /weekend's full neon treatment per the
-          brief ("neon as accent, not the whole design"). This is the
-          fix for the homepage reading as a flat black-and-white screen. */}
-      <div className="home-ambient" aria-hidden />
-      {isGameDay && <GameDayRefresher />}
+    <HomeWelcomeBackEntry displayName={me.display_name}>
+      <div className="flex flex-col gap-6">
+        {/* Fixed behind everything, ignores PageShell's centered column so
+            it washes the full viewport — three soft brand-colored glows,
+            restrained compared to /weekend's full neon treatment per the
+            brief ("neon as accent, not the whole design"). This is the
+            fix for the homepage reading as a flat black-and-white screen. */}
+        <div className="home-ambient" aria-hidden />
+        {isGameDay && <GameDayRefresher />}
 
-      <div className="rise-in">
-        <div className="flex items-center gap-2">
-          <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
-          <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-            The Weekend Live
-          </span>
-          {isGameDay && (
-            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
-              Game Day
+        <div className="rise-in">
+          <div className="flex items-center gap-2">
+            <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
+            <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+              The Weekend Live
             </span>
-          )}
+            {isGameDay && (
+              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
+                Game Day
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-col gap-2">
+            <LiveTicker items={tickerItems} fast={isGameDay} />
+            {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+          </div>
         </div>
-        <div className="mt-2 flex flex-col gap-2">
-          <LiveTicker items={tickerItems} fast={isGameDay} />
-          {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
-        </div>
-      </div>
 
-      <HomeCardDeck initialOrder={cardOrder} cards={cards} />
-    </div>
+        <HomeCardDeck initialOrder={cardOrder} cards={cards} />
+      </div>
+    </HomeWelcomeBackEntry>
   );
 }
 

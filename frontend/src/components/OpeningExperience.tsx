@@ -1,26 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
 import { LiveTicker } from "@/components/LiveTicker";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { markBootedThisPageLoad } from "@/lib/appBoot";
 import type { TickerItem } from "@/lib/api";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
-const WORDS = ["WELCOME", "TO", "THE"];
-// Each word ignites a little quicker than the last — an accelerating
-// cadence that builds anticipation toward WEEKEND instead of a
-// metronomic repeat.
-const WORD_INTERVALS_MS = [1300, 1150, 1000];
-const INITIAL_DARK_BEAT_MS = 300;
-const SEEN_INTRO_KEY = "wl_intro_seen";
 const ENTER_TRANSITION_MS = 900;
 
-type Stage = "dark" | "word" | "final" | "entering" | "auth";
+type PostIntroStage = "entering" | "auth" | null;
 
 /**
  * The mandatory front door for a signed-out visitor (app/page.tsx
@@ -43,71 +38,38 @@ type Stage = "dark" | "word" | "final" | "entering" | "auth";
  * stays clean per the brief's own "the form itself should be clean."
  */
 export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: TickerItem[]; isGameDay: boolean }) {
-  const [stage, setStage] = useState<Stage>("dark");
-  const [wordIndex, setWordIndex] = useState(0);
-  const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { stage, wordIndex, skip, markSeen } = useWeekendIntro();
+  const [postStage, setPostStage] = useState<PostIntroStage>(null);
 
   useEffect(() => {
+    // This front door is only ever shown at the start of a real page load
+    // (a signed-out visitor has no authenticated route to soft-navigate
+    // back from), so there's no remount-without-reload case to guard
+    // against the way AppEntry.tsx has to — marking booted here just
+    // keeps the flag accurate in case Enter Here leads somewhere that
+    // checks it.
+    markBootedThisPageLoad();
     const nav = document.getElementById("site-nav");
     nav?.setAttribute("inert", "");
     return () => nav?.removeAttribute("inert");
   }, []);
 
-  useEffect(() => {
-    // Every stage change happens inside a timeout callback, never
-    // synchronously in the effect body itself — both because that's the
-    // correct React pattern (avoids a cascading render on mount) and
-    // because it gives the screen a genuine brief pure-dark beat before
-    // light 1 fires, matching section 4's "the screen begins almost
-    // completely black."
-    const startTimeout = setTimeout(() => {
-      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const seenBefore = localStorage.getItem(SEEN_INTRO_KEY) === "1";
-
-      if (prefersReduced || seenBefore) {
-        setStage("final");
-        return;
-      }
-
-      setStage("word");
-      let i = 0;
-      const advance = () => {
-        i++;
-        if (i < WORDS.length) {
-          setWordIndex(i);
-          timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[i]));
-        } else {
-          timeouts.current.push(setTimeout(() => setStage("final"), WORD_INTERVALS_MS[WORDS.length - 1]));
-        }
-      };
-      timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[0]));
-    }, INITIAL_DARK_BEAT_MS);
-
-    timeouts.current.push(startTimeout);
-    return () => {
-      timeouts.current.forEach(clearTimeout);
-      timeouts.current = [];
-    };
-  }, []);
-
   function skipIntro() {
-    timeouts.current.forEach(clearTimeout);
-    localStorage.setItem(SEEN_INTRO_KEY, "1");
-    setStage("final");
+    skip();
   }
 
   function enter() {
-    localStorage.setItem(SEEN_INTRO_KEY, "1");
-    setStage("entering");
-    setTimeout(() => setStage("auth"), ENTER_TRANSITION_MS);
+    markSeen();
+    setPostStage("entering");
+    setTimeout(() => setPostStage("auth"), ENTER_TRANSITION_MS);
   }
 
-  if (stage === "auth") {
-    return <AuthScreen onBack={() => setStage("final")} />;
+  if (postStage === "auth") {
+    return <AuthScreen onBack={() => setPostStage(null)} />;
   }
 
-  const showFinal = stage === "final" || stage === "entering";
-  const entering = stage === "entering";
+  const showFinal = stage === "final" || postStage === "entering";
+  const entering = postStage === "entering";
 
   return (
     // A real flex column, not a centered block with an absolutely
