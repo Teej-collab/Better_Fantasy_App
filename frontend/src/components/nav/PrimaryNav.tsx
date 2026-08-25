@@ -11,6 +11,7 @@ import { DESTINATIONS } from "@/lib/navDestinations";
 const TAB_COLOR = {
   team: DESTINATIONS.team.color,
   league: DESTINATIONS.league.color,
+  home: DESTINATIONS.home.color,
   matchups: DESTINATIONS.matchups.color,
   freeAgents: DESTINATIONS.freeAgents.color,
 };
@@ -60,6 +61,9 @@ export function PrimaryNav({
       )}
       <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.league}>
         League
+      </NavLink>
+      <NavLink href="/" section="home" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.home}>
+        Home
       </NavLink>
       <NavLink
         href={matchupsHref}

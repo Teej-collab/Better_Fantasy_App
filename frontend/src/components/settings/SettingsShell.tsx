@@ -4,6 +4,7 @@ import { ProfileSection } from "@/components/settings/ProfileSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
 import { ChatSection } from "@/components/settings/ChatSection";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
+import { NavigationSection } from "@/components/settings/NavigationSection";
 import { AccountSection } from "@/components/settings/AccountSection";
 
 const SECTIONS = [
@@ -11,6 +12,7 @@ const SECTIONS = [
   { key: "notifications", label: "Notifications" },
   { key: "chat", label: "Chat" },
   { key: "appearance", label: "Appearance" },
+  { key: "navigation", label: "Navigation" },
   { key: "account", label: "Account & Security" },
 ] as const;
 
@@ -71,6 +73,7 @@ export function SettingsShell({ initial, section }: { initial: MySettings; secti
         {active === "notifications" && <NotificationsSection />}
         {active === "chat" && <ChatSection />}
         {active === "appearance" && <AppearanceSection />}
+        {active === "navigation" && <NavigationSection />}
         {active === "account" && <AccountSection initial={initial} />}
       </div>
     </div>

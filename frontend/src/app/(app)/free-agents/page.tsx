@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getFreeAgents, getWaiverSettings } from "@/lib/api";
+import { awardsHrefFor, getFreeAgents, getWaiverSettings, listSeasons, safeLatestSeason } from "@/lib/api";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
+import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 
@@ -11,13 +12,16 @@ export default async function FreeAgentsPage({
 }) {
   const { position } = await searchParams;
 
-  const [{ players }, waiverSettings] = await Promise.all([
+  const [{ players }, waiverSettings, { seasons }] = await Promise.all([
     getFreeAgents(position, 50),
     getWaiverSettings(),
+    listSeasons(),
   ]);
+  const latestSeason = safeLatestSeason(seasons);
 
   return (
     <div className="flex flex-col gap-4">
+      <LeagueSubNav active="freeAgents" awardsHref={awardsHrefFor(latestSeason)} />
       <h1 className="text-2xl font-semibold">Free Agents</h1>
 
       <p className="text-sm text-black/50 dark:text-white/50">

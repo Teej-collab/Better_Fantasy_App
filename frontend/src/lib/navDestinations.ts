@@ -20,6 +20,7 @@
 export type DestinationKey =
   | "team"
   | "league"
+  | "home"
   | "standings"
   | "matchups"
   | "playerCards"
@@ -38,6 +39,12 @@ export type Destination = {
 
 export const DESTINATIONS: Record<DestinationKey, Destination> = {
   team: { key: "team", label: "My Team", color: "#a855f7" },
+  // Home isn't "owned" by any one topic the way every other destination
+  // here is — a clean neutral white/silver glow instead of stealing a
+  // hue from something it isn't, matching the existing "White/Neutral"
+  // chat-color preset (ProfileSection.tsx) as this app's one other
+  // established "no particular section" identity.
+  home: { key: "home", label: "Home", color: "#f5f4ec" },
   // Was rendered as blue in PrimaryNav/BottomNav, green in LeagueSubNav's
   // "Overview" tab, and indigo in SECTION_COLORS/the League page's own
   // panel glow — indigo wins since it never collided with anything else.
@@ -70,11 +77,26 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   chug: { key: "chug", label: "Chug", color: "#d97706" },
 };
 
-export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "matchups", "chat", "freeAgents"];
+export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat", "freeAgents"];
+
+// The mobile bottom bar's 5 fixed slots (BottomNav.tsx) — this is the
+// DEFAULT order only; an owner can reorder these 5 (never add/remove
+// one) via Settings > Navigation, persisted as owner_preferences'
+// bottom_nav_order. Free Agents is deliberately not a candidate here
+// (see LEAGUE_SUBNAV_ORDER below) — the mobile "More" sheet that used
+// to hold it is gone entirely, not replaced by a slot choice.
+export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
+
+// Free Agents moved in here (was mobile's "More" sheet's only entry
+// with no other mobile path once that sheet was removed) — every
+// other former More-sheet destination (Standings, Awards, Rivalries,
+// Rules, Chug) was already reachable through this same sub-nav once on
+// any League-family page.
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
   "playerCards",
+  "freeAgents",
   "awards",
   "rivalries",
   "rules",

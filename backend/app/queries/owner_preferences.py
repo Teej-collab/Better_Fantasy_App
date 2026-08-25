@@ -29,6 +29,16 @@ _DEFAULT_PREFERENCES = {
     "reduced_motion": False,
     "accent_color": None,
     "home_card_order": None,
+    # None on all three below means "use the app's hardcoded default" —
+    # same convention as home_card_order. home_hidden_cards is
+    # deliberately its own list rather than "omit from home_card_order",
+    # since the merge logic (frontend's mergeCardOrder) needs to tell
+    # "owner explicitly hid this" apart from "this card type didn't
+    # exist yet when they last saved an order" — the latter must still
+    # auto-appear, the former must not.
+    "bottom_nav_order": None,
+    "home_hidden_cards": None,
+    "home_desktop_layout": None,
     # Push notifications (migration 6a96fdae6d6c). push_enabled is
     # managed by app/routers/push.py's subscribe/unsubscribe flow, not
     # set directly through PATCH /settings/preferences (see settings.py)

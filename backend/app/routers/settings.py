@@ -44,6 +44,19 @@ _TEAM_NAME_MAX_LENGTH = 40
 # whoever's account it landed on.
 _VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "matchups", "rivalries", "awards", "discover"}
 
+# The mobile bottom nav's fixed 5 slots (lib/navDestinations.ts's
+# MOBILE_NAV_ORDER on the frontend) — bottom_nav_order only ever
+# reorders these 5, never adds/removes one, so validation requires an
+# exact permutation rather than home_card_order's subset check.
+_VALID_BOTTOM_NAV_KEYS = {"team", "league", "home", "matchups", "chat"}
+
+# Sane upper bounds for a react-grid-layout position/size — not tied to
+# any particular column count, just guards against a garbage/hostile
+# payload (e.g. a negative or absurdly large span) reaching the
+# database; the real grid width is a frontend rendering concern.
+_MAX_GRID_COORD = 100
+_MAX_GRID_SPAN = 20
+
 
 def _decode_session(token: str | None) -> dict | None:
     if not token:
@@ -197,6 +210,9 @@ class PreferencesPatch(BaseModel):
     notify_league: bool | None = None
     accent_color: str | None = None
     home_card_order: str | None = None
+    bottom_nav_order: str | None = None
+    home_hidden_cards: str | None = None
+    home_desktop_layout: str | None = None
 
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
@@ -226,6 +242,53 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
                 status_code=400,
                 detail=f"home_card_order must be a JSON array of unique keys from {sorted(_VALID_HOME_CARD_KEYS)}",
             )
+    if patch.get("home_hidden_cards") is not None:
+        try:
+            hidden = json.loads(patch["home_hidden_cards"])
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="home_hidden_cards must be a JSON array of card keys")
+        if (
+            not isinstance(hidden, list)
+            or not all(isinstance(k, str) for k in hidden)
+            or not set(hidden) <= _VALID_HOME_CARD_KEYS
+            or len(hidden) != len(set(hidden))
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"home_hidden_cards must be a JSON array of unique keys from {sorted(_VALID_HOME_CARD_KEYS)}",
+            )
+    if patch.get("bottom_nav_order") is not None:
+        try:
+            nav_order = json.loads(patch["bottom_nav_order"])
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="bottom_nav_order must be a JSON array of nav keys")
+        if not isinstance(nav_order, list) or set(nav_order) != _VALID_BOTTOM_NAV_KEYS or len(nav_order) != len(_VALID_BOTTOM_NAV_KEYS):
+            raise HTTPException(
+                status_code=400,
+                detail=f"bottom_nav_order must contain exactly these keys, in any order: {sorted(_VALID_BOTTOM_NAV_KEYS)}",
+            )
+    if patch.get("home_desktop_layout") is not None:
+        try:
+            layout = json.loads(patch["home_desktop_layout"])
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="home_desktop_layout must be a JSON array of layout items")
+        if not isinstance(layout, list):
+            raise HTTPException(status_code=400, detail="home_desktop_layout must be a JSON array of layout items")
+        seen_keys = set()
+        for item in layout:
+            if (
+                not isinstance(item, dict)
+                or item.get("i") not in _VALID_HOME_CARD_KEYS
+                or item["i"] in seen_keys
+                or not all(isinstance(item.get(f), int) and not isinstance(item.get(f), bool) for f in ("x", "y", "w", "h"))
+                or item["x"] < 0 or item["y"] < 0 or item["x"] > _MAX_GRID_COORD or item["y"] > _MAX_GRID_COORD
+                or item["w"] < 1 or item["h"] < 1 or item["w"] > _MAX_GRID_SPAN or item["h"] > _MAX_GRID_SPAN
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Each home_desktop_layout item needs a valid card key `i` and integer x/y/w/h within bounds",
+                )
+            seen_keys.add(item["i"])
 
     async with pool.acquire() as conn:
         return await preferences_queries.update_preferences(conn, payload["owner_id"], patch)

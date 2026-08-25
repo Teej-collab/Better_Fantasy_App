@@ -34,6 +34,16 @@ export function TeamIcon(props: IconProps) {
   );
 }
 
+export function HomeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4 11 12 4l8 7" />
+      <path d="M6 9.5V20h12V9.5" />
+      <path d="M10 20v-6h4v6" />
+    </svg>
+  );
+}
+
 export function LeagueIcon(props: IconProps) {
   return (
     <svg {...base(props)}>
@@ -64,12 +74,3 @@ export function ChatIcon(props: IconProps) {
   );
 }
 
-export function MoreIcon(props: IconProps) {
-  return (
-    <svg {...base(props)}>
-      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}

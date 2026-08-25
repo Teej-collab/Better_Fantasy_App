@@ -197,6 +197,136 @@ async def test_put_preferences_rejects_invalid_home_card_order(pool, monkeypatch
         assert not_a_list.status_code == 400
 
 
+async def test_put_preferences_sets_and_clears_bottom_nav_order(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 15)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        order = '["chat","team","home","league","matchups"]'
+        resp = await client.put("/settings/preferences", json={"bottom_nav_order": order})
+        assert resp.status_code == 200
+        assert resp.json()["bottom_nav_order"] == order
+
+        resp = await client.put("/settings/preferences", json={"bottom_nav_order": None})
+        assert resp.status_code == 200
+        assert resp.json()["bottom_nav_order"] is None
+
+
+async def test_put_preferences_rejects_invalid_bottom_nav_order(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 16)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+
+        # missing "home" — not a permutation of the fixed 5
+        missing_one = await client.put(
+            "/settings/preferences", json={"bottom_nav_order": '["team","league","matchups","chat"]'}
+        )
+        assert missing_one.status_code == 400
+
+        # a key that isn't one of the 5 bottom-nav destinations
+        unknown_key = await client.put(
+            "/settings/preferences",
+            json={"bottom_nav_order": '["team","league","home","matchups","freeAgents"]'},
+        )
+        assert unknown_key.status_code == 400
+
+        duplicate = await client.put(
+            "/settings/preferences", json={"bottom_nav_order": '["team","team","home","matchups","chat"]'}
+        )
+        assert duplicate.status_code == 400
+
+
+async def test_put_preferences_sets_and_clears_home_hidden_cards(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 17)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        hidden = '["awards","discover"]'
+        resp = await client.put("/settings/preferences", json={"home_hidden_cards": hidden})
+        assert resp.status_code == 200
+        assert resp.json()["home_hidden_cards"] == hidden
+
+        resp = await client.put("/settings/preferences", json={"home_hidden_cards": None})
+        assert resp.status_code == 200
+        assert resp.json()["home_hidden_cards"] is None
+
+
+async def test_put_preferences_rejects_invalid_home_hidden_cards(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 18)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+
+        unknown_key = await client.put(
+            "/settings/preferences", json={"home_hidden_cards": '["not-a-real-card"]'}
+        )
+        assert unknown_key.status_code == 400
+
+        not_a_list = await client.put("/settings/preferences", json={"home_hidden_cards": '"awards"'})
+        assert not_a_list.status_code == 400
+
+
+async def test_put_preferences_sets_and_clears_home_desktop_layout(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 19)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        layout = '[{"i":"standings","x":0,"y":0,"w":2,"h":2},{"i":"awards","x":2,"y":0,"w":1,"h":1}]'
+        resp = await client.put("/settings/preferences", json={"home_desktop_layout": layout})
+        assert resp.status_code == 200
+        assert resp.json()["home_desktop_layout"] == layout
+
+        resp = await client.put("/settings/preferences", json={"home_desktop_layout": None})
+        assert resp.status_code == 200
+        assert resp.json()["home_desktop_layout"] is None
+
+
+async def test_put_preferences_rejects_invalid_home_desktop_layout(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 20)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+
+        unknown_key = await client.put(
+            "/settings/preferences",
+            json={"home_desktop_layout": '[{"i":"not-a-real-card","x":0,"y":0,"w":1,"h":1}]'},
+        )
+        assert unknown_key.status_code == 400
+
+        negative_coord = await client.put(
+            "/settings/preferences",
+            json={"home_desktop_layout": '[{"i":"standings","x":-1,"y":0,"w":1,"h":1}]'},
+        )
+        assert negative_coord.status_code == 400
+
+        zero_span = await client.put(
+            "/settings/preferences",
+            json={"home_desktop_layout": '[{"i":"standings","x":0,"y":0,"w":0,"h":1}]'},
+        )
+        assert zero_span.status_code == 400
+
+        duplicate_key = await client.put(
+            "/settings/preferences",
+            json={
+                "home_desktop_layout": '[{"i":"standings","x":0,"y":0,"w":1,"h":1},'
+                '{"i":"standings","x":1,"y":0,"w":1,"h":1}]'
+            },
+        )
+        assert duplicate_key.status_code == 400
+
+        not_a_list = await client.put(
+            "/settings/preferences", json={"home_desktop_layout": '{"i":"standings"}'}
+        )
+        assert not_a_list.status_code == 400
+
+
 async def test_sunday_mode_endpoint_rejects_unknown_preset(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 8)

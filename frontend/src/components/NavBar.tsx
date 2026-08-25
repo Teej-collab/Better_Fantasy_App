@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import {
-  awardsHrefFor,
   getCurrentWeek,
   getMe,
+  getMyPreferences,
   getMyWeek,
   getNflScoreboard,
   isNflGameLive,
@@ -43,11 +43,12 @@ export async function NavBar() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [{ seasons }, me, myWeek, nflGames] = await Promise.all([
+  const [{ seasons }, me, myWeek, nflGames, myPreferences] = await Promise.all([
     listSeasons(),
     getMe(sessionCookie),
     getMyWeek(sessionCookie),
     getNflScoreboard(),
+    getMyPreferences(sessionCookie),
   ]);
   const signedIn = me !== null;
   const latestSeason = safeLatestSeason(seasons);
@@ -58,9 +59,21 @@ export async function NavBar() {
     week = resolveWeek(current_week);
   }
   const matchupsHref = matchupsHrefFor(latestSeason, week);
-  const awardsHref = awardsHrefFor(latestSeason);
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
+
+  // bottom_nav_order is stored as a raw JSON-encoded string (same
+  // convention as home_card_order) — parsed once here rather than in
+  // BottomNav itself, since this is the one place already doing the
+  // session-aware server fetch.
+  let bottomNavOrder: string[] | null = null;
+  if (myPreferences?.bottom_nav_order) {
+    try {
+      bottomNavOrder = JSON.parse(myPreferences.bottom_nav_order);
+    } catch {
+      bottomNavOrder = null;
+    }
+  }
 
   return (
     <>
@@ -74,7 +87,7 @@ export async function NavBar() {
           <AuthStatus />
         </nav>
       </header>
-      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} awardsHref={awardsHref} />
+      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} order={bottomNavOrder} />
     </>
   );
 }

@@ -785,6 +785,22 @@ export type OwnerPreferences = {
   // exactly what the backend stores and returns; parsing only happens
   // where it's actually rendered (HomeCardDeck.tsx).
   home_card_order: string | null;
+  // JSON-encoded array of the 5 mobile bottom-nav destination keys
+  // (BottomNav.tsx), in the owner's chosen order — null means "use
+  // MOBILE_NAV_ORDER" (lib/navDestinations.ts). Same raw-string
+  // convention as home_card_order.
+  bottom_nav_order: string | null;
+  // JSON-encoded array of home dashboard card keys the owner has
+  // deliberately hidden — deliberately separate from home_card_order
+  // rather than "just omit it from the order," so mergeCardOrder() can
+  // still auto-append a genuinely new card type introduced later
+  // while respecting a real hide. Null means "nothing hidden."
+  home_hidden_cards: string | null;
+  // JSON-encoded react-grid-layout layout array (HomeGridDesktop.tsx),
+  // e.g. '[{"i":"standings","x":0,"y":0,"w":2,"h":2},...]' — null
+  // means "use the computed default grid." Independent from
+  // home_card_order since desktop needs position/size, not just order.
+  home_desktop_layout: string | null;
   // Reflects whether the owner has at least one active push
   // subscription — set by the backend from POST /push/subscribe and
   // /push/unsubscribe (app/routers/push.py), never written directly
@@ -826,6 +842,25 @@ export function applySundayMode(preset: SundayMode): Promise<OwnerPreferences> {
 // the array themselves.
 export function updateHomeCardOrder(order: string[]): Promise<OwnerPreferences> {
   return updatePreferences({ home_card_order: JSON.stringify(order) });
+}
+
+// BottomNav's reorder UI (Settings > Navigation) — same thin-wrapper
+// convention as updateHomeCardOrder.
+export function updateBottomNavOrder(order: string[]): Promise<OwnerPreferences> {
+  return updatePreferences({ bottom_nav_order: JSON.stringify(order) });
+}
+
+// HomeCardDeck.tsx's "Edit Home" mode hide/show — same convention.
+export function updateHomeHiddenCards(hidden: string[]): Promise<OwnerPreferences> {
+  return updatePreferences({ home_hidden_cards: JSON.stringify(hidden) });
+}
+
+// react-grid-layout's own layout item shape (HomeGridDesktop.tsx).
+export type HomeGridLayoutItem = { i: string; x: number; y: number; w: number; h: number };
+
+// HomeGridDesktop.tsx's onLayoutChange save call — same convention.
+export function updateHomeDesktopLayout(layout: HomeGridLayoutItem[]): Promise<OwnerPreferences> {
+  return updatePreferences({ home_desktop_layout: JSON.stringify(layout) });
 }
 
 // ---- My Team (real-time ESPN data, lineup preview only — no real

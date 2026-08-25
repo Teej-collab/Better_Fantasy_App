@@ -45,6 +45,18 @@ import { DESTINATIONS, type DestinationKey } from "@/lib/navDestinations";
 // theirs).
 const DEFAULT_CARD_ORDER = ["yourWeek", "standings", "matchups", "rivalries", "awards", "discover"];
 
+// Human-readable labels for HomeCardDeck's "+ Add Box" picker — the
+// picker needs to name a card even while it's hidden (and so has no
+// rendered content to read a title from).
+const CARD_LABELS: Record<string, string> = {
+  yourWeek: "Your Week",
+  standings: "League Standings",
+  matchups: "Other Matchups",
+  rivalries: "Rivalries",
+  awards: "This Week's Awards",
+  discover: "Discover",
+};
+
 function mergeCardOrder(saved: string | null | undefined, validKeys: string[]): string[] {
   let order: string[] = [];
   if (saved) {
@@ -126,6 +138,25 @@ export default async function HomePage() {
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
   }
 
+  // Cards the owner has deliberately removed via "Edit Home" mode
+  // (HomeCardDeck.tsx) — checked below at each card's own assignment,
+  // not by skipping these fetches: standings/weeklyAwards/weekMatchups
+  // are also read by the always-visible ticker just above (see
+  // buildTickerItems and leagueTickerItems), so they can't be skipped
+  // just because their OWN card is hidden — only Your Week, Standings,
+  // Matchups, Rivalries, Awards, and Discover as literal dashboard
+  // cards are ever gated on this.
+  let hiddenCards: Set<string> = new Set();
+  if (myPreferences?.home_hidden_cards) {
+    try {
+      const parsed: unknown = JSON.parse(myPreferences.home_hidden_cards);
+      if (Array.isArray(parsed)) hiddenCards = new Set(parsed.filter((k): k is string => typeof k === "string"));
+    } catch {
+      // Malformed saved value — treat as "nothing hidden" rather than
+      // breaking the homepage over one bad row.
+    }
+  }
+
   // "Other" = every matchup except the logged-in owner's own (already
   // shown in the hero above). When logged out, myWeek is null and
   // nothing gets excluded — every matchup is "other".
@@ -146,29 +177,31 @@ export default async function HomePage() {
   // and DEFAULT_CARD_ORDER above for the merge-with-saved-order logic.
   const cards: Record<string, ReactNode> = {};
 
-  cards.yourWeek = myWeek?.matchup ? (
-    <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
-  ) : myWeek ? (
-    <EmptyHero
-      title={myWeek.team_name}
-      message={
-        // ESPN reports current_week as 0 during preseason — not a real
-        // week, same convention as the Team page's fallback.
-        myWeek.week === null || myWeek.week < 1
-          ? "No matchup yet — the season hasn't started."
-          : "No matchup this week (bye week or the schedule isn't set yet)."
-      }
-    />
-  ) : (
-    // Reaching this branch means /me/week itself failed even though
-    // getMe (above) confirmed a valid session — a transient fetch
-    // error, not "not signed in" (that's already handled by the early
-    // OpeningExperience return before this component fetches anything
-    // else).
-    <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
-  );
+  if (!hiddenCards.has("yourWeek")) {
+    cards.yourWeek = myWeek?.matchup ? (
+      <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
+    ) : myWeek ? (
+      <EmptyHero
+        title={myWeek.team_name}
+        message={
+          // ESPN reports current_week as 0 during preseason — not a real
+          // week, same convention as the Team page's fallback.
+          myWeek.week === null || myWeek.week < 1
+            ? "No matchup yet — the season hasn't started."
+            : "No matchup this week (bye week or the schedule isn't set yet)."
+        }
+      />
+    ) : (
+      // Reaching this branch means /me/week itself failed even though
+      // getMe (above) confirmed a valid session — a transient fetch
+      // error, not "not signed in" (that's already handled by the early
+      // OpeningExperience return before this component fetches anything
+      // else).
+      <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
+    );
+  }
 
-  if (standings.length > 0) {
+  if (standings.length > 0 && !hiddenCards.has("standings")) {
     cards.standings = (
       <section className="flex flex-col gap-2">
         <SectionHeader color="standings" title="League Standings" href="/standings" />
@@ -193,7 +226,7 @@ export default async function HomePage() {
     );
   }
 
-  if (otherMatchups.length > 0) {
+  if (otherMatchups.length > 0 && !hiddenCards.has("matchups")) {
     cards.matchups = (
       <section className="flex flex-col gap-2">
         <SectionHeader
@@ -236,7 +269,7 @@ export default async function HomePage() {
     );
   }
 
-  if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
+  if ((rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && !hiddenCards.has("rivalries")) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
         <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
@@ -284,7 +317,7 @@ export default async function HomePage() {
     );
   }
 
-  if (weekPlayed && weeklyAwards && season !== null && week !== null) {
+  if (weekPlayed && weeklyAwards && season !== null && week !== null && !hiddenCards.has("awards")) {
     cards.awards = (
       <section className="flex flex-col gap-2">
         <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
@@ -293,7 +326,7 @@ export default async function HomePage() {
     );
   }
 
-  cards.discover = <DiscoveryGrid />;
+  if (!hiddenCards.has("discover")) cards.discover = <DiscoveryGrid />;
 
   const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
 
@@ -326,7 +359,18 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <HomeCardDeck initialOrder={cardOrder} cards={cards} />
+        <HomeCardDeck
+          // Forces a real remount (not just a prop update) whenever the
+          // set of currently-visible cards changes — specifically after
+          // "Add Box" triggers router.refresh(), so HomeCardDeck's own
+          // useState initializers see the newly-un-hidden card's real
+          // content rather than reconciling against stale local state.
+          key={Object.keys(cards).sort().join(",")}
+          initialOrder={cardOrder}
+          cards={cards}
+          hiddenCards={[...hiddenCards]}
+          cardLabels={CARD_LABELS}
+        />
       </div>
     </HomeWelcomeBackEntry>
   );
