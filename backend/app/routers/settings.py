@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.config import _require
 from app.db import get_pool
 from app.queries import owner_preferences as preferences_queries
 from app.queries import settings as settings_queries
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _DISPLAY_NAME_MAX_LENGTH = 40
+_TEAM_NAME_MAX_LENGTH = 40
 
 # The homepage's six reorderable dashboard cards (see (home)/page.tsx's
 # HomeCardDeck) — home_card_order stores a JSON array drawn from this
@@ -60,8 +62,9 @@ def _require_session(request: Request) -> dict:
 @router.get("/me")
 async def get_my_settings(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        row = await settings_queries.get_settings(conn, payload["owner_id"])
+        row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
     if row is None:
         raise HTTPException(status_code=404, detail="Owner not found")
     return dict(row)
@@ -91,9 +94,10 @@ async def update_display_name(body: DisplayNameBody, request: Request, pool=Depe
 @router.post("/display-name/reset")
 async def reset_display_name(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         await settings_queries.reset_display_name(conn, payload["owner_id"])
-        row = await settings_queries.get_settings(conn, payload["owner_id"])
+        row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
     return {"display_name": row["display_name"]}
 
 
@@ -112,6 +116,47 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
     async with pool.acquire() as conn:
         await settings_queries.set_chat_color(conn, payload["owner_id"], color)
     return {"chat_color": color}
+
+
+class TeamNameBody(BaseModel):
+    team_name: str
+
+
+@router.put("/team-name")
+async def update_team_name(body: TeamNameBody, request: Request, pool=Depends(get_pool)):
+    """Renames the signed-in owner's team for the active season only —
+    same "current season" scope as /me/team and the rest of the
+    session-aware endpoints. Does NOT propagate to ESPN's own copy of
+    the name (see ESPN_LINEUP_WRITE.md for why that's a separate,
+    unverified write endpoint) — this only ever updates our own
+    database, and team_name_is_custom (see the migration of the same
+    name) keeps the next ESPN sync from overwriting it back."""
+    payload = _require_session(request)
+
+    name = body.team_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Team name can't be empty")
+    if len(name) > _TEAM_NAME_MAX_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Team name must be {_TEAM_NAME_MAX_LENGTH} characters or fewer")
+    if any(ord(c) < 32 for c in name):
+        raise HTTPException(status_code=400, detail="Team name can't contain control characters")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        updated = await settings_queries.set_team_name(conn, payload["owner_id"], active_season, name)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"No team found for the {active_season} season")
+    return {"team_name": name}
+
+
+@router.post("/team-name/reset")
+async def reset_team_name(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        await settings_queries.reset_team_name(conn, payload["owner_id"], active_season)
+        team_name = await settings_queries.get_team_name(conn, payload["owner_id"], active_season)
+    return {"team_name": team_name}
 
 
 @router.get("/preferences")

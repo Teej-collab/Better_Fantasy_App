@@ -650,6 +650,10 @@ export type MySettings = {
   display_name_is_custom: boolean;
   chat_color: string | null;
   discord_username: string | null;
+  // Both null when the signed-in owner has no team row for the active
+  // season yet (e.g. before this season's ESPN sync has run).
+  team_name: string | null;
+  team_name_is_custom: boolean | null;
 };
 
 export async function getMySettings(sessionCookie: string | undefined): Promise<MySettings | null> {
@@ -699,6 +703,20 @@ export function resetDisplayName(): Promise<void> {
 
 export function updateChatColor(chatColor: string | null): Promise<void> {
   return _settingsRequest("/chat-color", "PUT", { chat_color: chatColor });
+}
+
+// Renames the signed-in owner's team for the current season only —
+// updates our own database immediately everywhere the app shows a team
+// name (standings, league, rosters...). Does NOT push the new name to
+// ESPN's own copy — that's a separate, not-yet-built sync (see
+// ESPN_LINEUP_WRITE.md for why a team-rename write needs its own real
+// captured request before it can be built safely).
+export function updateTeamName(teamName: string): Promise<void> {
+  return _settingsRequest("/team-name", "PUT", { team_name: teamName });
+}
+
+export function resetTeamName(): Promise<void> {
+  return _settingsRequest("/team-name/reset", "POST");
 }
 
 // ---- Notification / chat / appearance preferences (Settings > Notifications,

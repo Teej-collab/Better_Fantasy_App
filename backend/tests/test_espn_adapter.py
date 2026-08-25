@@ -129,6 +129,32 @@ async def test_sync_teams_preserves_a_custom_display_name(pool, espn_config, mon
     assert name == "Self-Serve Name"
 
 
+async def test_sync_teams_preserves_a_custom_team_name(pool, espn_config, monkeypatch):
+    fake_teams = [make_fake_team(1, "Team One", "test-member-custom-team", "Alice", "Smith")]
+    fake_league = FakeLeague(teams=fake_teams)
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
+
+    provider = ESPNProvider(espn_config)
+    await provider.sync_teams(pool, TEST_SEASON)  # real ESPN name first
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE teams_by_season SET team_name = 'Self-Serve Team Name', team_name_is_custom = TRUE "
+            "WHERE season = $1 AND espn_team_id = 1",
+            TEST_SEASON,
+        )
+
+    # A later sync (e.g. the daily full sync, or a live tick) must not
+    # silently revert the owner's own choice back to "Team One".
+    await provider.sync_teams(pool, TEST_SEASON)
+
+    async with pool.acquire() as conn:
+        name = await conn.fetchval(
+            "SELECT team_name FROM teams_by_season WHERE season = $1 AND espn_team_id = 1", TEST_SEASON
+        )
+    assert name == "Self-Serve Team Name"
+
+
 async def test_sync_matchups_saves_and_skips_bye_week(pool, espn_config, monkeypatch):
     fake_teams = [
         make_fake_team(1, "Team One", "test-member-1", "Alice", "Smith"),

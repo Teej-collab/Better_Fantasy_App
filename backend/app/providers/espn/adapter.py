@@ -74,12 +74,20 @@ class ESPNProvider(FantasyProvider):
                     espn_member_id, display_name,
                 )
 
+                # team_name_is_custom: same idea as display_name_is_custom
+                # above — once an owner sets a self-serve team name
+                # (app/routers/settings.py), it survives every future
+                # sync instead of being overwritten back to the real ESPN
+                # name on the next full/live sync.
                 await conn.execute(
                     """
                     INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name)
                     VALUES ($1, $2, $3, $4)
                     ON CONFLICT (season, espn_team_id)
-                    DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = EXCLUDED.team_name
+                    DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = CASE
+                        WHEN teams_by_season.team_name_is_custom THEN teams_by_season.team_name
+                        ELSE EXCLUDED.team_name
+                    END
                     """,
                     season, team.team_id, owner_id, team.team_name,
                 )
