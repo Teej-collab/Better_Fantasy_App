@@ -18,6 +18,18 @@ import {
  * top, dark glass stat panels below. See globals.css's .cosmic-frame/
  * .cosmic-bg for the background implementation.
  *
+ * Tap-to-flip: the front face is just identity (photo, team/owner
+ * name, champion ribbon) so browsing CardDeck.tsx's Cover Flow deck
+ * never needs any vertical scrolling; every stat box lives on the
+ * back, revealed only when `flipped` is true. `flipped` and the actual
+ * tap handling both live in CardDeck.tsx, not here — this component is
+ * purely presentational about which face shows (see globals.css's
+ * .flip-outer/.flip-inner/.flip-face for the 3D mechanics). The season/
+ * career selector and the "View full profile" link both live on the
+ * back and stop click propagation, so using them doesn't also flip the
+ * card shut (CardDeck.tsx toggles flip from a click anywhere else on
+ * the card).
+ *
  * Career/season toggle mirrors Fantasy_Helper's Discord /team_profile
  * embed exactly on purpose (dropdown: "Overall (Career)" + each season) —
  * that's the reference the project owner pointed to originally. Career
@@ -31,10 +43,12 @@ export function TeamProfileCard({
   owner,
   initialCareer,
   initialBadges,
+  flipped,
 }: {
   owner: Owner;
   initialCareer: CareerProfile;
   initialBadges: OwnerBadges;
+  flipped: boolean;
 }) {
   const [selected, setSelected] = useState<"career" | number>("career");
   const [seasonCache, setSeasonCache] = useState<Record<number, SeasonProfile | null>>({});
@@ -61,62 +75,82 @@ export function TeamProfileCard({
   return (
     <div className="cosmic-frame overflow-hidden rounded-2xl">
       <div className="cosmic-bg relative rounded-[13px] p-4">
-        <div className="relative z-10 flex flex-col gap-3">
-          <CardHeader owner={owner} selected={selected} onSelect={selectSeason} />
-          <OwnerPhoto name={owner.display_name} ownerId={owner.owner_id} />
-          {isChampion && <ChampionRibbon years={initialBadges.championship_years} />}
+        <div className="flip-outer relative z-10 h-[460px] sm:h-[500px]">
+          <div className={`flip-inner ${flipped ? "flip-inner--flipped" : ""}`}>
+            <div className="flip-face flex flex-col items-center justify-center gap-3 overflow-hidden">
+              <CardFront owner={owner} isChampion={isChampion} championYears={initialBadges.championship_years} />
+            </div>
 
-          {selected === "career" ? (
-            <CosmicCareerView profile={initialCareer} badges={initialBadges} />
-          ) : loading ? (
-            <p className="text-center text-sm text-white/60">Loading {selected}…</p>
-          ) : seasonProfile ? (
-            <CosmicSeasonView profile={seasonProfile} season={selected} />
-          ) : (
-            <p className="text-center text-sm text-white/60">No data for {selected}.</p>
-          )}
+            <div className="flip-face flip-face--back flex flex-col gap-3 overflow-y-auto">
+              <div className="flex items-start justify-between gap-2">
+                <Link
+                  href={`/owners/${owner.owner_id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="min-w-0 truncate text-sm font-semibold text-amber-300 hover:underline"
+                  style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
+                >
+                  View full profile →
+                </Link>
+                <select
+                  value={String(selected)}
+                  onChange={(e) => selectSeason(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 rounded-md border border-white/20 bg-black/50 px-2 py-1 text-sm text-white backdrop-blur-sm"
+                >
+                  <option value="career" className="bg-black text-white">
+                    Career
+                  </option>
+                  {[...owner.seasons].reverse().map((s) => (
+                    <option key={s} value={s} className="bg-black text-white">
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selected === "career" ? (
+                <CosmicCareerView profile={initialCareer} badges={initialBadges} />
+              ) : loading ? (
+                <p className="text-center text-sm text-white/60">Loading {selected}…</p>
+              ) : seasonProfile ? (
+                <CosmicSeasonView profile={seasonProfile} season={selected} />
+              ) : (
+                <p className="text-center text-sm text-white/60">No data for {selected}.</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function CardHeader({
+function CardFront({
   owner,
-  selected,
-  onSelect,
+  isChampion,
+  championYears,
 }: {
   owner: Owner;
-  selected: "career" | number;
-  onSelect: (value: string) => void;
+  isChampion: boolean;
+  championYears: number[];
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-      <div className="min-w-0">
-        <Link
-          href={`/owners/${owner.owner_id}`}
-          className="block truncate text-lg font-bold text-amber-300 hover:underline"
+    <>
+      <div className="min-w-0 max-w-full text-center">
+        <p
+          className="truncate text-lg font-bold text-amber-300"
           style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
         >
           {owner.latest_team_name}
-        </Link>
+        </p>
         <p className="text-sm text-sky-200">{owner.display_name}</p>
       </div>
-      <select
-        value={String(selected)}
-        onChange={(e) => onSelect(e.target.value)}
-        className="shrink-0 rounded-md border border-white/20 bg-black/50 px-2 py-1 text-sm text-white backdrop-blur-sm"
-      >
-        <option value="career" className="bg-black text-white">
-          Career
-        </option>
-        {[...owner.seasons].reverse().map((s) => (
-          <option key={s} value={s} className="bg-black text-white">
-            {s}
-          </option>
-        ))}
-      </select>
-    </div>
+      <OwnerPhoto name={owner.display_name} ownerId={owner.owner_id} />
+      {isChampion && <ChampionRibbon years={championYears} />}
+      <span className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-medium text-white/50">
+        Tap for stats
+      </span>
+    </>
   );
 }
 

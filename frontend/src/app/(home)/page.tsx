@@ -703,7 +703,8 @@ function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
   return (
     <Link
       href={href}
-      className="flex flex-col gap-0.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
+      className="neon-panel flex flex-col gap-0.5 rounded-lg bg-black/[0.015] p-3 transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:bg-white/[0.03] dark:hover:bg-white/5 dark:active:bg-white/10"
+      style={panelGlowStyle(SECTION_COLORS[color])}
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 5px ${hex}` }} aria-hidden />

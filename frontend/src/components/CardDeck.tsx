@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TeamProfileCard } from "@/components/TeamProfileCard";
 import type { CareerProfile, Owner, OwnerBadges } from "@/lib/api";
 
@@ -37,25 +37,37 @@ const MIN_OPACITY = 0.55;
  * is invisible since both copies are pixel-identical — the coverflow
  * math above just keeps running through that jump unaffected, since it
  * only ever looks at the *current* scrollLeft, never a remembered one.
+ *
+ * Tap-to-flip: tapping whichever card is currently centered flips it
+ * to its stat-filled back face (TeamProfileCard.tsx); tapping any other
+ * card scrolls it to center first instead — the same two-step feel as
+ * classic Cover Flow (iTunes), and it means a swipe that ends with a
+ * finger lifting over a non-centered card can't accidentally flip it.
+ * Only one card is ever flipped at a time.
  */
 export function CardDeck({ cards }: { cards: CardData[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const setWidthRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const [flippedIndex, setFlippedIndex] = useState<number | null>(null);
 
-  const applyCoverflow = useCallback(() => {
+  // Shared by the per-frame coverflow loop and the click handler below,
+  // so "which card counts as centered" is computed exactly one way.
+  const getFocusIndex = useCallback(() => {
     const el = scrollRef.current;
     const first = cardRefs.current[0];
     const second = cardRefs.current[1];
-    if (!el || !first || !second) return;
-
+    if (!el || !first || !second) return null;
     const step = second.offsetLeft - first.offsetLeft;
-    if (step <= 0) return;
+    if (step <= 0) return null;
     const cardWidth = first.offsetWidth;
-    // Fractional index of whichever card is currently centered in the
-    // viewport — not necessarily a whole number while mid-scroll.
-    const p = (el.scrollLeft + el.clientWidth / 2 - cardWidth / 2) / step;
+    return (el.scrollLeft + el.clientWidth / 2 - cardWidth / 2) / step;
+  }, []);
+
+  const applyCoverflow = useCallback(() => {
+    const p = getFocusIndex();
+    if (p === null) return;
 
     cardRefs.current.forEach((card, i) => {
       if (!card) return;
@@ -70,7 +82,20 @@ export function CardDeck({ cards }: { cards: CardData[] }) {
       card.style.opacity = String(opacity);
       card.style.zIndex = String(1000 - Math.round(ad * 100));
     });
-  }, []);
+  }, [getFocusIndex]);
+
+  const handleCardClick = useCallback(
+    (i: number) => {
+      const p = getFocusIndex();
+      const isCentered = p !== null && Math.round(p) === i;
+      if (!isCentered) {
+        cardRefs.current[i]?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+        return;
+      }
+      setFlippedIndex((prev) => (prev === i ? null : i));
+    },
+    [getFocusIndex]
+  );
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -130,10 +155,11 @@ export function CardDeck({ cards }: { cards: CardData[] }) {
           ref={(node) => {
             cardRefs.current[i] = node;
           }}
-          className="w-[90%] shrink-0 sm:w-[420px]"
+          onClick={() => handleCardClick(i)}
+          className="w-[90%] shrink-0 cursor-pointer sm:w-[420px]"
           style={{ willChange: "transform, opacity" }}
         >
-          <TeamProfileCard owner={owner} initialCareer={career} initialBadges={badges} />
+          <TeamProfileCard owner={owner} initialCareer={career} initialBadges={badges} flipped={flippedIndex === i} />
         </div>
       ))}
     </div>
