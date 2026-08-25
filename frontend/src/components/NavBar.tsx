@@ -82,8 +82,12 @@ export async function NavBar() {
             app runs with viewport-fit=cover and a translucent iOS status
             bar (layout.tsx), so nothing reserves that space by default;
             without it, the header sits partly underneath the status
-            bar/notch instead of below it. */}
-        <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+            bar/notch instead of below it. The extra +0.75rem on top of
+            the raw inset is deliberate breathing room — the bare safe
+            area alone (env(safe-area-inset-top)) reaches exactly the
+            bottom edge of the status bar, no gap at all, which reads as
+            cramped/glued-to-the-status-bar rather than a proper header. */}
+        <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3">
           <div className="flex min-w-0 items-center gap-1">
             <BrandMark href="/" />
             <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
