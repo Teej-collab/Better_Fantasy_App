@@ -42,7 +42,7 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
             <Link
               key={`${item.key}-${i}`}
               href={item.href}
-              className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90 underline decoration-white/30 underline-offset-2 hover:decoration-white/70"
+              className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90 hover:text-white"
             >
               {content}
             </Link>

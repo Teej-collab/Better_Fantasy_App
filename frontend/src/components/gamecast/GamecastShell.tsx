@@ -107,12 +107,12 @@ export function GamecastShell({
         <CurrentDrive game={game} />
       </div>
 
-      <PlayByPlay game={game} />
-
       <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
         <ScoringSummary game={game} />
         <FantasyImpact game={game} isSignedIn={isSignedIn} />
       </div>
+
+      <PlayByPlay game={game} />
     </div>
   );
 }

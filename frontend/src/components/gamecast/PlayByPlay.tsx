@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { nflTeamColor } from "@/lib/nfl-teams";
 import type { GamecastPlay, LiveGame } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -27,13 +30,30 @@ const EMPHASIS_STYLE: Record<"score" | "turnover" | "big", string> = {
  * before" bookkeeping needed for that to be true.
  */
 export function PlayByPlay({ game }: { game: LiveGame }) {
+  // Collapsed by default — the play-by-play list is the longest thing
+  // on the page and, unlike Scoring/Fantasy Impact above it, isn't
+  // usually what someone opens Gamecast to check first. One tap away
+  // rather than always taking up the scroll.
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <div className="neon-panel flex flex-col gap-3 rounded-xl p-4 sm:p-5" style={panelGlowStyle(SECTION_COLORS.chat)}>
-      <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Live Play-by-Play</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Live Play-by-Play</h2>
+        {game.plays.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="shrink-0 rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 hover:bg-black/5 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
+          >
+            {expanded ? "Hide plays" : `Show plays (${game.plays.length})`}
+          </button>
+        )}
+      </div>
 
       {game.plays.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No plays yet.</p>
-      ) : (
+      ) : !expanded ? null : (
         <ol className="flex flex-col gap-2">
           {game.plays.map((play) => {
             const emphasis = emphasisFor(play);
