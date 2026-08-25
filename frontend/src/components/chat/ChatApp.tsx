@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   deleteChatMessage,
   getChatConversationMessages,
@@ -48,6 +48,47 @@ export function ChatApp({
   // to on (matching the backend's own defaults) until the real values
   // load, so there's no flash of "off" before the fetch resolves.
   const [preferences, setPreferences] = useState<OwnerPreferences | null>(null);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Mobile has no room to spare, so the panel's height has to be exact:
+  // `100dvh` minus whatever chrome actually rendered above it (NavBar's
+  // header, plus AppTickerBar's ticker strip(s) — one when there's no
+  // current-week league data, two when there is) minus the fixed
+  // BottomNav below it. The ticker's height isn't a fixed constant we
+  // can bake into a Tailwind class the way the header's is, so instead
+  // of guessing it, this measures the panel's real distance from the
+  // top of the viewport after mount and lets that stand in for "all the
+  // chrome above me, however tall it turned out to be." Getting this
+  // wrong doesn't just look off — the leftover height renders the
+  // composer underneath the fixed BottomNav, which no amount of
+  // scrolling can ever reveal since a fixed element covers the same
+  // screen-space band regardless of scroll position. `null` here means
+  // "not measured yet (or we're at sm: and up, where there's no fixed
+  // BottomNav and the desktop `sm:h-[...]` class already handles it)" —
+  // the JSX below falls back to the old fixed-header-only estimate for
+  // that brief pre-hydration window.
+  const [mobileHeight, setMobileHeight] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 640px)");
+
+    function measure() {
+      if (desktopQuery.matches || !panelRef.current) {
+        setMobileHeight(null);
+        return;
+      }
+      const top = panelRef.current.getBoundingClientRect().top;
+      setMobileHeight(`calc(100dvh - ${top}px - 4.5rem - env(safe-area-inset-bottom))`);
+    }
+
+    measure();
+    window.addEventListener("resize", measure);
+    desktopQuery.addEventListener("change", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      desktopQuery.removeEventListener("change", measure);
+    };
+  }, []);
 
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -310,8 +351,11 @@ export function ChatApp({
 
   return (
     <div
-      className="neon-panel relative flex h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
-      style={panelGlowStyle(SECTION_COLORS.chat)}
+      ref={panelRef}
+      className={`neon-panel relative flex overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl ${
+        mobileHeight ? "" : "h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))]"
+      }`}
+      style={{ ...panelGlowStyle(SECTION_COLORS.chat), ...(mobileHeight ? { height: mobileHeight } : {}) }}
     >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
         <ConversationList

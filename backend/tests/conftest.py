@@ -1,5 +1,18 @@
+import os
+
 import pytest
 import pytest_asyncio
+
+# Forces app/gamecast/providers/__init__.py's factory to the deterministic,
+# no-network mock provider (fixed game ids "mock-kc-buf"/"mock-sf-dal",
+# always in-progress) for the whole test run — set before any test module
+# imports app.main / touches the gamecast router, since the factory caches
+# whichever provider it picks as a singleton on first use. Without this,
+# tests would hit the real ESPNNFLDataProvider (the default outside tests
+# now — see that module's docstring) against a real network, which is both
+# slow/flaky in CI and would 404 immediately since "mock-kc-buf" isn't a
+# real ESPN event id.
+os.environ.setdefault("GAMECAST_PROVIDER", "mock")
 
 from app import db as db_module
 from app.db import get_pool

@@ -36,8 +36,18 @@ export const metadata: Metadata = {
 // scheme, since the app is always the Cosmic dark theme regardless of
 // the visitor's OS setting (see globals.css's theme note and the
 // `dark` class below).
+//
+// interactiveWidget: "resizes-content" tells the browser to actually
+// shrink the layout viewport (not just the visual viewport) when the
+// on-screen keyboard opens. Without it, every 100dvh-based height —
+// ChatApp.tsx's message pane, BottomNav's `fixed bottom-0` — keeps
+// sizing against the pre-keyboard viewport, so the composer (and the
+// bottom nav below it) gets pushed down behind the keyboard and out of
+// reach instead of the page reflowing above it, on Android Chrome and
+// iOS Safari 17.4+.
 export const viewport: Viewport = {
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: "#23212c",
 };
 
