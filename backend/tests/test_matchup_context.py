@@ -240,6 +240,8 @@ async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool):
     assert meetings[0]["home_won"] is True
     assert meetings[1]["home_won"] is False
     assert all(g["tie"] is False for g in meetings)
+    assert meetings[0]["home_score"] == 110.0 and meetings[0]["away_score"] == 90.0
+    assert meetings[1]["home_score"] == 80.0 and meetings[1]["away_score"] == 100.0
 
 
 async def test_matchup_context_empty_week_returns_empty_list(pool):

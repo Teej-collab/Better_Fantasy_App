@@ -147,19 +147,22 @@ function HeadToHeadSection({ matchup }: { matchup: WeekMatchupContextItem }) {
               </span>
             )}
           </p>
-          <RecentMeetingsRow meetings={h2h.recent_meetings} home={home} away={away} />
+          <RecentMeetingsTable meetings={h2h.recent_meetings} home={home} away={away} />
         </>
       )}
     </div>
   );
 }
 
-// Dots, not team names, per the ask — a glanceable form guide (like a
-// sports app's W/L streak indicator) instead of repeating both team
-// names five times. Which side "won" is still available on hover/
-// long-press via the title tooltip, without cluttering the layout by
-// default.
-function RecentMeetingsRow({
+// One row per past meeting between these same two teams, most-recent
+// first — unlike an NFL "last five games" table (two teams' unrelated
+// schedules against different opponents, shown as two columns), our
+// head-to-head is a single shared timeline between the same two teams,
+// so this is one table, not two, and there's no "OPP" column since it's
+// always each other. The winning side's score is bolded/colored per
+// meeting — the team names in the header row anchor which column is
+// which without repeating them on every line.
+function RecentMeetingsTable({
   meetings,
   home,
   away,
@@ -170,30 +173,35 @@ function RecentMeetingsRow({
 }) {
   if (meetings.length === 0) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-2">
-      <span className="text-xs text-black/40 dark:text-white/40">Last {meetings.length}</span>
-      <div className="flex items-center gap-1">
-        {meetings.map((g, i) => (
-          <span
-            key={i}
-            title={`${g.season} Wk ${g.week}: ${
-              g.tie ? "Tie" : g.home_won ? `${home.team_name} won` : `${away.team_name} won`
-            }`}
-            className={
-              "h-2.5 w-2.5 rounded-full " +
-              (g.tie ? "bg-black/20 dark:bg-white/20" : g.home_won ? "bg-sky-500" : "bg-amber-500")
-            }
-          />
-        ))}
+    <div className="mt-2 overflow-hidden rounded-lg border border-black/10 dark:border-white/10">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-black/10 bg-black/[0.02] px-3 py-1.5 text-xs font-semibold text-black/50 dark:border-white/10 dark:bg-white/[0.03] dark:text-white/50">
+        <span className="truncate text-right">{home.team_name}</span>
+        <span className="shrink-0 tracking-wide uppercase">Last {meetings.length}</span>
+        <span className="truncate">{away.team_name}</span>
       </div>
-      <span className="flex items-center gap-2 text-xs text-black/40 dark:text-white/40">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-sky-500" /> Home
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-amber-500" /> Away
-        </span>
-      </span>
+      <ol className="divide-y divide-black/5 dark:divide-white/5">
+        {[...meetings].reverse().map((g, i) => (
+          <li key={i} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-2">
+            <span
+              className={`text-right font-mono tabular-nums ${
+                g.home_won && !g.tie ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-black/60 dark:text-white/60"
+              }`}
+            >
+              {g.home_score.toFixed(1)}
+            </span>
+            <span className="shrink-0 text-center text-xs text-black/40 dark:text-white/40">
+              {g.season} Wk{g.week}
+            </span>
+            <span
+              className={`font-mono tabular-nums ${
+                !g.home_won && !g.tie ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-black/60 dark:text-white/60"
+              }`}
+            >
+              {g.away_score.toFixed(1)}
+            </span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

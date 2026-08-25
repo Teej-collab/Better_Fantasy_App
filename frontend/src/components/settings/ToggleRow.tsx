@@ -3,6 +3,16 @@
 // A real switch (role="switch", not a styled checkbox pretending to
 // be one) — state is conveyed by thumb position as well as color, so
 // it still reads correctly without relying on color alone.
+//
+// The track carries .glass-surface (globals.css) — a frosted-glass
+// look (backdrop blur, inset top highlight) inspired by Apple's
+// "Liquid Glass" material, using plain CSS backdrop-filter rather than
+// an SVG-refraction library: reliable on every browser this app
+// targets (including mobile Safari, where a true refraction effect
+// degrades or disappears). It doesn't touch the checked/unchecked
+// background logic below at all — .glass-surface deliberately sets no
+// background-color or border of its own, so this component keeps full
+// control of both.
 export function ToggleRow({
   label,
   description,
@@ -31,8 +41,10 @@ export function ToggleRow({
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wl-accent)] disabled:cursor-not-allowed disabled:opacity-40 ${
-          checked ? "bg-[var(--wl-accent)]" : "bg-black/20 dark:bg-white/25"
+        className={`glass-surface relative h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--wl-accent)] disabled:cursor-not-allowed disabled:opacity-40 ${
+          checked
+            ? "border-[var(--wl-accent)]/60 bg-[var(--wl-accent)]"
+            : "border-black/10 bg-black/20 dark:border-white/15 dark:bg-white/25"
         }`}
       >
         <span

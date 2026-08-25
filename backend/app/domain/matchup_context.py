@@ -129,6 +129,8 @@ async def build_week_matchup_context(conn, season: int, week: int):
                             "week": g["week"],
                             "home_won": g["winner"] == "a",
                             "tie": g["winner"] == "tie",
+                            "home_score": g["a_score"],
+                            "away_score": g["b_score"],
                         }
                         for g in h2h["recent_games"]
                     ],

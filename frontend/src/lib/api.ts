@@ -196,6 +196,8 @@ export type RecentMeeting = {
   week: number;
   home_won: boolean;
   tie: boolean;
+  home_score: number;
+  away_score: number;
 };
 
 export type MatchupHeadToHead = {

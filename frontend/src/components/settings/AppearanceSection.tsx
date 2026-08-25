@@ -160,6 +160,10 @@ export function AppearanceSection() {
             How strong Weekend League&apos;s decorative glow reads — never affects text or contrast.
           </p>
         </div>
+        {/* Each pill carries .glass-surface (globals.css, ToggleRow.tsx's
+            comment has the full rationale) for a frosted-glass look —
+            purely additive on top of the selected/unselected border and
+            background classes below, which stay exactly as they were. */}
         <div className="flex gap-2" role="radiogroup" aria-label="Neon Intensity">
           {NEON_LEVELS.map((level) => (
             <button
@@ -168,7 +172,7 @@ export function AppearanceSection() {
               role="radio"
               aria-checked={prefs.neon_intensity === level.key}
               onClick={() => setNeonIntensity(level.key)}
-              className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`glass-surface rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                 prefs.neon_intensity === level.key
                   ? "border-[var(--wl-accent)] text-black dark:text-white"
                   : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"

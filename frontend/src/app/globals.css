@@ -147,6 +147,27 @@ body::before {
     0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
+/* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
+   refraction — see ToggleRow.tsx's comment for why) for Settings'
+   toggle tracks and the Neon Intensity segmented control. Deliberately
+   sets NO background-color or border of its own — every caller keeps
+   its own existing checked/unchecked (or selected/unselected)
+   background AND border classes fully in control (a shared border here
+   would fight a caller's own conditional border-color utility at equal
+   CSS specificity), so the interaction/state model never changes, only
+   the surface gains a blurred backdrop and an inset top highlight for
+   the "light hitting glass from above" look. --glass-tint follows the
+   same --user-accent/--wl-accent fallback chain as .neon-panel so the
+   highlight tint follows the owner's own chosen accent color too. */
+.glass-surface {
+  --glass-tint: var(--user-accent, var(--wl-accent));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 25%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--glass-tint) 12%, transparent);
+}
+
 /* Shared nav-tab treatment — PrimaryNav, BottomNav, ChatNavLink,
    LeagueSubNav. Each tab sets its own --nav-color (see lib/
    neonPalette.ts for the shared 7-color list). Every tab is always lit
