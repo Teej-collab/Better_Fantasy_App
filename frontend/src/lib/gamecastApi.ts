@@ -99,12 +99,8 @@ export type LiveGame = {
 export type GamecastLiveGameSummary = {
   game_id: string;
   status: GamecastStatus;
-  home_team_abbr: string;
-  home_team_name: string;
-  home_score: number;
-  away_team_abbr: string;
-  away_team_name: string;
-  away_score: number;
+  home_team: GamecastTeamScore;
+  away_team: GamecastTeamScore;
   period: number | null;
   period_label: string | null;
   clock: string | null;
@@ -156,7 +152,7 @@ export function findGamecastId(
   liveGames: GamecastLiveGameSummary[]
 ): string | null {
   if (!homeAbbr || !awayAbbr) return null;
-  const match = liveGames.find((g) => g.home_team_abbr === homeAbbr && g.away_team_abbr === awayAbbr);
+  const match = liveGames.find((g) => g.home_team.abbr === homeAbbr && g.away_team.abbr === awayAbbr);
   return match?.game_id ?? null;
 }
 
