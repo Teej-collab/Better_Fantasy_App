@@ -1,20 +1,17 @@
-import { getCurrentWeek, listSeasons } from "@/lib/api";
+import { awardsHrefFor, getCurrentWeek, listSeasons, matchupsHrefFor, resolveWeek, safeLatestSeason } from "@/lib/api";
 import { WeekendLanding } from "@/components/WeekendLanding";
 
 export default async function WeekendPage() {
   const { seasons } = await listSeasons();
-  const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+  const latestSeason = safeLatestSeason(seasons);
 
-  let matchupsHref = "/standings";
-  let awardsHref = "/standings";
-
+  let week: number | null = null;
   if (latestSeason !== null) {
-    // Same "don't default to week 0 preseason" logic as the Team page.
     const { current_week } = await getCurrentWeek(latestSeason);
-    const week = current_week && current_week >= 1 ? current_week : 1;
-    matchupsHref = `/seasons/${latestSeason}/weeks/${week}`;
-    awardsHref = `/seasons/${latestSeason}/awards`;
+    week = resolveWeek(current_week);
   }
+  const matchupsHref = matchupsHrefFor(latestSeason, week);
+  const awardsHref = awardsHrefFor(latestSeason);
 
   return <WeekendLanding matchupsHref={matchupsHref} awardsHref={awardsHref} />;
 }

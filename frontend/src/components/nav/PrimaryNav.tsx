@@ -1,16 +1,18 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
+import { DESTINATIONS } from "@/lib/navDestinations";
 
-// One color per primary destination, from the app's shared 7-color
-// neon palette (lib/neonPalette.ts) — .neon-navlink (globals.css)
-// always renders each tab in its own color, like a lit neon sign, with
-// the active tab reading as the brighter/boxed one.
+// .neon-navlink (globals.css) always renders each tab in its own color,
+// like a lit neon sign, with the active tab reading as the brighter/
+// boxed one. Colors come from lib/navDestinations.ts — the one shared
+// source every nav surface reads from, so a destination can't render a
+// different color here than it does in BottomNav/LeagueSubNav/its own
+// page panel.
 const TAB_COLOR = {
-  team: "#a855f7", // Neon Purple
-  league: "#0ea5e9", // Neon Blue
-  matchups: "#ec4899", // Neon Pink
-  chat: "#39ff14", // Neon Green
-  players: "#22d3ee", // Neon Lightning Blue
+  team: DESTINATIONS.team.color,
+  league: DESTINATIONS.league.color,
+  matchups: DESTINATIONS.matchups.color,
+  freeAgents: DESTINATIONS.freeAgents.color,
 };
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
@@ -77,9 +79,9 @@ export function PrimaryNav({
         section="players"
         activeClassName={ACTIVE}
         inactiveClassName={INACTIVE}
-        color={TAB_COLOR.players}
+        color={TAB_COLOR.freeAgents}
       >
-        Players
+        Free Agents
       </NavLink>
     </div>
   );

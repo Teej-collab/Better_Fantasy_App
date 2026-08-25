@@ -16,6 +16,8 @@ import {
   getWeekLeagueTicker,
   listRivalries,
   listSeasons,
+  resolveWeek,
+  safeLatestSeason,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -30,6 +32,7 @@ import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { DESTINATIONS, type DestinationKey } from "@/lib/navDestinations";
 
 // The homepage's six reorderable dashboard cards, in the app's own
 // default order — same set backend/app/routers/settings.py validates
@@ -61,33 +64,6 @@ function mergeCardOrder(saved: string | null | undefined, validKeys: string[]): 
   return order;
 }
 
-const SECTION_ACCENT: Record<string, string> = {
-  standings: "bg-sky-500",
-  matchups: "bg-pink-500",
-  awards: "bg-amber-400",
-  rivalries: "bg-orange-500",
-  players: "bg-cyan-400",
-  rules: "bg-purple-500",
-  league: "bg-indigo-500",
-  chug: "bg-amber-600",
-  chat: "bg-lime-500",
-};
-
-// Same palette as SECTION_ACCENT, as a soft box-shadow glow behind each
-// section header's dot instead of a flat CSS color utility (box-shadow
-// can't reference a bg-* class's color directly).
-const SECTION_GLOW: Record<string, string> = {
-  standings: "#0ea5e9",
-  matchups: "#ec4899",
-  awards: "#fbbf24",
-  rivalries: "#f97316",
-  players: "#22d3ee",
-  rules: "#a855f7",
-  league: "#6366f1",
-  chug: "#d97706",
-  chat: "#84cc16",
-};
-
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
 // tier-colored badges (MatchupCard.tsx's TIER_BADGE_CLASS).
 const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
@@ -112,7 +88,7 @@ export default async function HomePage() {
   }
 
   const { seasons } = await listSeasons();
-  const season = seasons.length > 0 ? Math.max(...seasons) : null;
+  const season = safeLatestSeason(seasons);
 
   const [myWeek, nflGames, myPreferences, gamecastGames] = await Promise.all([
     getMyWeek(sessionCookie),
@@ -132,7 +108,7 @@ export default async function HomePage() {
 
   if (season !== null) {
     const { current_week } = await getCurrentWeek(season);
-    week = current_week && current_week >= 1 ? current_week : 1;
+    week = resolveWeek(current_week);
     const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker] = await Promise.all([
       getStandings(season),
       getWeeklyAwards(season, week),
@@ -317,7 +293,7 @@ export default async function HomePage() {
     );
   }
 
-  cards.discover = <DiscoveryGrid season={season} week={week} />;
+  cards.discover = <DiscoveryGrid />;
 
   const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
 
@@ -605,56 +581,33 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   );
 }
 
-function SectionHeader({ color, title, href }: { color: string; title: string; href: string }) {
+function SectionHeader({ color, title, href }: { color: DestinationKey; title: string; href: string }) {
+  const hex = DESTINATIONS[color].color;
   return (
     <Link href={href} className="flex items-center gap-2 hover:underline">
-      <span
-        className={`h-2 w-2 rounded-full ${SECTION_ACCENT[color]}`}
-        style={{ boxShadow: `0 0 6px ${SECTION_GLOW[color]}` }}
-        aria-hidden
-      />
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 6px ${hex}` }} aria-hidden />
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
     </Link>
   );
 }
 
-type DiscoveryTile = { color: string; href: string; label: string; description: string };
+type DiscoveryTile = { color: DestinationKey; href: string; label: string; description: string };
 
-// Everywhere else in the league you can go from here — deliberately
-// broader than the top nav bar (which this section duplicates on
-// purpose, since a returning visitor scrolling the homepage shouldn't
-// have to scroll back up to find their way around). The Weekend gets
-// its own flagship card above the grid since it's the site's one
+// A curated shortcut list, NOT a full duplicate of the top nav bar
+// anymore — League, Matchups, Chat are already top-level tabs on both
+// PrimaryNav (desktop) and BottomNav (mobile), and Awards already has
+// its own dedicated homepage card just above this one when there's a
+// current season. What's left here is exactly the set that otherwise
+// requires detouring through League's own sub-nav first. The Weekend
+// gets its own flagship card above the grid since it's the site's one
 // major "atmosphere" destination, not just another data page.
-function DiscoveryGrid({ season, week }: { season: number | null; week: number | null }) {
+function DiscoveryGrid() {
   const tiles: DiscoveryTile[] = [
     { color: "standings", href: "/standings", label: "Standings", description: "Full league standings and records" },
-    ...(season !== null && week !== null
-      ? [
-          {
-            color: "matchups",
-            href: `/seasons/${season}/weeks/${week}`,
-            label: "Matchups",
-            description: "This week's matchups across the league",
-          },
-        ]
-      : []),
-    ...(season !== null
-      ? [
-          {
-            color: "awards",
-            href: `/seasons/${season}/awards`,
-            label: "Awards",
-            description: "Weekly awards and season honors",
-          },
-        ]
-      : []),
     { color: "rivalries", href: "/rivalries", label: "Rivalries", description: "All-time rivalry history and grudges" },
-    { color: "players", href: "/players", label: "Player Cards", description: "Browse every team's trading card" },
-    { color: "league", href: "/league", label: "League", description: "Every team and owner this season" },
+    { color: "playerCards", href: "/players", label: "Player Cards", description: "Browse every team's trading card" },
     { color: "rules", href: "/rules", label: "Rules", description: "Scoring, roster, and league settings" },
     { color: "chug", href: "/chug", label: "Chug Leaderboard", description: "Who owes chugs, who's paid up" },
-    { color: "chat", href: "/chat", label: "League Chat", description: "Talk to the league, live" },
   ];
 
   return (
@@ -688,17 +641,14 @@ function DiscoveryGrid({ season, week }: { season: number | null; week: number |
 }
 
 function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
+  const hex = DESTINATIONS[color].color;
   return (
     <Link
       href={href}
       className="flex flex-col gap-0.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${SECTION_ACCENT[color]}`}
-          style={{ boxShadow: `0 0 5px ${SECTION_GLOW[color]}` }}
-          aria-hidden
-        />
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 5px ${hex}` }} aria-hidden />
         {label}
       </span>
       <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>

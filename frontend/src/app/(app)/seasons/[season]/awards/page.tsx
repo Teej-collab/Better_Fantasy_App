@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSeasonAwards, listSeasons } from "@/lib/api";
-import { AwardsTabs } from "@/components/AwardsTabs";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function SeasonAwardsPage({
@@ -20,7 +20,12 @@ export default async function SeasonAwardsPage({
       <LeagueSubNav active="awards" awardsHref={`/seasons/${season}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
-        <AwardsTabs seasons={seasons} activeSeason={season} activeTab="season" />
+        <SeasonTabs
+          seasons={seasons}
+          activeSeason={season}
+          hrefFor={(s) => `/seasons/${s}/awards`}
+          extraTab={{ label: "All-Time Records", href: `/seasons/${season}/awards/all-time`, active: false }}
+        />
       </div>
 
       {champion && (

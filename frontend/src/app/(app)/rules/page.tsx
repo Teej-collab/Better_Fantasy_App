@@ -1,14 +1,15 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { listSeasons } from "@/lib/api";
+import { awardsHrefFor, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { DESTINATIONS } from "@/lib/navDestinations";
 
-// Purple, matching the "rules" entry in the homepage's own
-// SECTION_ACCENT/SECTION_GLOW palette ((home)/page.tsx) — every rule
-// card below reuses that same accent so this page reads as part of the
-// same design system, not a one-off.
-const ACCENT_DOT = "bg-purple-500";
-const ACCENT_GLOW = "#a855f7";
+// Matches the "rules" entry in lib/navDestinations.ts (the shared color
+// source every nav surface and content panel now reads from) — every
+// rule card below reuses that same accent so this page reads as part
+// of the same design system, not a one-off.
+const ACCENT_DOT = "bg-lime-500";
+const ACCENT_GLOW = DESTINATIONS.rules.color;
 
 type RuleLink = { id: string; emoji: string; title: string };
 
@@ -31,11 +32,11 @@ const TOC: RuleLink[] = [
 
 export default async function RulesPage() {
   const { seasons } = await listSeasons();
-  const latestSeason = Math.max(...seasons);
+  const latestSeason = safeLatestSeason(seasons);
 
   return (
     <div className="flex flex-col gap-6">
-      <LeagueSubNav active="rules" awardsHref={`/seasons/${latestSeason}/awards`} />
+      <LeagueSubNav active="rules" awardsHref={awardsHrefFor(latestSeason)} />
       {/* Same soft brand-colored wash as the signed-in homepage
           (.home-ambient, (home)/page.tsx) — reused here rather than
           redefined so this page reads as part of the same design
@@ -206,7 +207,7 @@ export default async function RulesPage() {
         </Callout>
         <Link
           href="/chug"
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-lime-600 hover:underline dark:text-lime-400"
         >
           → View the live Chug Leaderboard
         </Link>
@@ -239,7 +240,7 @@ export default async function RulesPage() {
         <p>The league thrives on storytelling and participation.</p>
         <Link
           href="/chat"
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-lime-600 hover:underline dark:text-lime-400"
         >
           → Post it in League Chat
         </Link>
@@ -425,11 +426,11 @@ function PayoutTile({ emoji, label, value }: { emoji: string; label: string; val
 
 // A callout for the "this has teeth" lines — deadline consequences,
 // commissioner-discretion warnings — set apart from ordinary body text
-// with the same purple accent as everything else on this page.
+// with the same lime accent as everything else on this page.
 function Callout({ children }: { children: ReactNode }) {
   return (
     <div
-      className="rounded-lg border-l-2 bg-purple-500/5 px-3 py-2 text-sm text-black/70 dark:text-white/70"
+      className="rounded-lg border-l-2 bg-lime-500/5 px-3 py-2 text-sm text-black/70 dark:text-white/70"
       style={{ borderColor: ACCENT_GLOW }}
     >
       {children}
@@ -444,7 +445,7 @@ function Callout({ children }: { children: ReactNode }) {
 function Manifesto({ children }: { children: ReactNode }) {
   return (
     <blockquote
-      className="rounded-xl border border-purple-500/20 bg-purple-500/[0.04] p-5 text-center text-sm text-balance text-black/70 italic dark:text-white/80"
+      className="rounded-xl border border-lime-500/20 bg-lime-500/[0.04] p-5 text-center text-sm text-balance text-black/70 italic dark:text-white/80"
       style={{ textShadow: `0 0 18px color-mix(in srgb, ${ACCENT_GLOW} 25%, transparent)` }}
     >
       {children}

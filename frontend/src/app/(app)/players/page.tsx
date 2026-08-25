@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { getCareerProfile, getOwnerBadges, listOwners, listSeasons } from "@/lib/api";
+import { awardsHrefFor, getCareerProfile, getOwnerBadges, listOwners, listSeasons, safeLatestSeason } from "@/lib/api";
 import { CardDeck } from "@/components/CardDeck";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 
 export default async function PlayersPage() {
   const [{ owners }, { seasons }] = await Promise.all([listOwners(), listSeasons()]);
@@ -16,11 +16,11 @@ export default async function PlayersPage() {
     })
   );
 
-  const latestSeason = Math.max(...seasons);
+  const latestSeason = safeLatestSeason(seasons);
 
   return (
     <div className="flex flex-col gap-6">
-      <LeagueSubNav active="playerCards" awardsHref={`/seasons/${latestSeason}/awards`} />
+      <LeagueSubNav active="playerCards" awardsHref={awardsHrefFor(latestSeason)} />
       <div>
         <h1 className="text-2xl font-semibold">Player Cards</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
@@ -29,17 +29,7 @@ export default async function PlayersPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        {[...seasons].reverse().map((season) => (
-          <Link
-            key={season}
-            href={`/standings?season=${season}`}
-            className="rounded-full border border-black/10 px-3 py-1.5 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-          >
-            {season}
-          </Link>
-        ))}
-      </div>
+      <SeasonTabs seasons={seasons} activeSeason={null} hrefFor={(s) => `/standings?season=${s}`} />
 
       <CardDeck
         cards={cards.filter(

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentWeek, getTeam, getTeamRoster } from "@/lib/api";
+import { getCurrentWeek, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
@@ -27,7 +27,7 @@ export default async function TeamPage({
     week = Number(weekParam);
   } else {
     const { current_week } = await getCurrentWeek(team.season);
-    week = current_week && current_week >= 1 ? current_week : 1;
+    week = resolveWeek(current_week);
   }
 
   const { roster } = await getTeamRoster(Number(teamId), week);

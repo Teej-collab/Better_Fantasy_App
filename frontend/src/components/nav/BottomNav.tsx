@@ -2,13 +2,15 @@ import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { MoreSheet } from "@/components/nav/MoreSheet";
 import { TeamIcon, LeagueIcon, MatchupsIcon } from "@/components/nav/icons";
+import { DESTINATIONS } from "@/lib/navDestinations";
 
-// Same palette as PrimaryNav.tsx's TAB_COLOR — the desktop and mobile
-// navs agree on which color means which destination.
+// Same source as PrimaryNav.tsx's TAB_COLOR (lib/navDestinations.ts) —
+// the desktop and mobile navs agree on which color means which
+// destination.
 const TAB_COLOR = {
-  team: "#a855f7", // Neon Purple
-  league: "#0ea5e9", // Neon Blue
-  matchups: "#ec4899", // Neon Pink
+  team: DESTINATIONS.team.color,
+  league: DESTINATIONS.league.color,
+  matchups: DESTINATIONS.matchups.color,
 };
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";

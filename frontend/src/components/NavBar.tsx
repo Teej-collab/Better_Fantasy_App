@@ -1,11 +1,15 @@
 import { cookies } from "next/headers";
 import {
+  awardsHrefFor,
   getCurrentWeek,
   getMe,
   getMyWeek,
   getNflScoreboard,
   isNflGameLive,
   listSeasons,
+  matchupsHrefFor,
+  resolveWeek,
+  safeLatestSeason,
 } from "@/lib/api";
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryNav } from "@/components/nav/PrimaryNav";
@@ -46,16 +50,15 @@ export async function NavBar() {
     getNflScoreboard(),
   ]);
   const signedIn = me !== null;
-  const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+  const latestSeason = safeLatestSeason(seasons);
 
-  let matchupsHref = "/standings"; // only reachable if a league has no seasons synced at all yet
-  let awardsHref = "/rivalries";
+  let week: number | null = null;
   if (latestSeason !== null) {
     const { current_week } = await getCurrentWeek(latestSeason);
-    const week = current_week && current_week >= 1 ? current_week : 1;
-    matchupsHref = `/seasons/${latestSeason}/weeks/${week}`;
-    awardsHref = `/seasons/${latestSeason}/awards`;
+    week = resolveWeek(current_week);
   }
+  const matchupsHref = matchupsHrefFor(latestSeason, week);
+  const awardsHref = awardsHrefFor(latestSeason);
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
 

@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { getChugLeaderboard, getChugSeasons, getMe, listSeasons } from "@/lib/api";
+import { awardsHrefFor, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function ChugLeaderboardPage({
@@ -23,36 +24,21 @@ export default async function ChugLeaderboardPage({
     getMe(sessionCookie),
     listSeasons(),
   ]);
-  const latestSeason = allSeasons.length > 0 ? Math.max(...allSeasons) : new Date().getFullYear();
+  const latestSeason = safeLatestSeason(allSeasons);
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="chug" awardsHref={`/seasons/${latestSeason}/awards`} />
+      <LeagueSubNav active="chug" awardsHref={awardsHrefFor(latestSeason)} />
       {me && <ChugUpload />}
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">🍺 Chug Leaderboard</h1>
-        <div className="flex flex-wrap gap-x-3 text-sm">
-          <Link
-            href="/chug"
-            className={
-              season === undefined ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
-            }
-          >
-            All-Time
-          </Link>
-          {[...seasons].reverse().map((s) => (
-            <Link
-              key={s}
-              href={`/chug?season=${s}`}
-              className={
-                s === season ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
-              }
-            >
-              {s}
-            </Link>
-          ))}
-        </div>
+        <SeasonTabs
+          seasons={seasons}
+          activeSeason={season ?? null}
+          hrefFor={(s) => `/chug?season=${s}`}
+          extraTab={{ label: "All-Time", href: "/chug", active: season === undefined }}
+        />
       </div>
 
       <p className="text-sm text-black/50 dark:text-white/50">

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getStandings, listSeasons, type StandingsRow } from "@/lib/api";
+import { awardsHrefFor, getStandings, listSeasons, safeLatestSeason, type StandingsRow } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function StandingsPage({
@@ -9,11 +10,11 @@ export default async function StandingsPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const { seasons } = await listSeasons();
-  const latestSeason = Math.max(...seasons);
+  const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { standings } = await getStandings(season);
+  const { standings } = season !== null ? await getStandings(season) : { standings: [] };
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
   // regular-season record when it's not — see app/queries/league.py.
@@ -21,24 +22,10 @@ export default async function StandingsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="standings" awardsHref={`/seasons/${latestSeason}/awards`} />
+      <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Standings</h1>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-          {[...seasons].reverse().map((s) => (
-            <Link
-              key={s}
-              href={`/standings?season=${s}`}
-              className={
-                s === season
-                  ? "font-semibold underline"
-                  : "text-black/60 hover:underline dark:text-white/60"
-              }
-            >
-              {s}
-            </Link>
-          ))}
-        </div>
+        <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />
       </div>
 
       <p className="text-xs text-black/50 dark:text-white/50">

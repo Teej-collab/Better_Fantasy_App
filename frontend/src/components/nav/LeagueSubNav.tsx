@@ -1,30 +1,7 @@
 import Link from "next/link";
+import { DESTINATIONS, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
 
-export type LeagueTab = "overview" | "standings" | "playerCards" | "awards" | "rivalries" | "rules" | "chug";
-
-const LABELS: Record<LeagueTab, string> = {
-  overview: "Overview",
-  standings: "Standings",
-  playerCards: "Player Cards",
-  awards: "Awards",
-  rivalries: "Rivalries",
-  rules: "Rules",
-  chug: "Chug",
-};
-
-// One color per tab from the app's shared 7-color neon palette (lib/
-// neonPalette.ts) — matches each tab's own established section color
-// where one already exists (Standings/Rivalries/Rules/Chug's box glow,
-// sectionColors.ts) so the tab and its page agree.
-const TAB_COLOR: Record<LeagueTab, string> = {
-  overview: "#39ff14", // Neon Green
-  standings: "#0ea5e9", // Neon Blue
-  playerCards: "#22d3ee", // Neon Lightning Blue
-  awards: "#facc15", // Neon Yellow
-  rivalries: "#f97316", // Neon Orange
-  rules: "#a855f7", // Neon Purple
-  chug: "#ec4899", // Neon Pink
-};
+export type LeagueTab = Exclude<DestinationKey, "team" | "matchups" | "chat" | "freeAgents">;
 
 /**
  * Rendered manually at the top of each League-family page (League,
@@ -38,16 +15,20 @@ const TAB_COLOR: Record<LeagueTab, string> = {
  * the primary header, this is purely the mobile "how do I get back"
  * affordance from spec §23.
  */
+const STATIC_HREF: Record<Exclude<LeagueTab, "awards">, string> = {
+  league: "/league",
+  standings: "/standings",
+  playerCards: "/players",
+  rivalries: "/rivalries",
+  rules: "/rules",
+  chug: "/chug",
+};
+
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
-  const tabs: { key: LeagueTab; href: string }[] = [
-    { key: "overview", href: "/league" },
-    { key: "standings", href: "/standings" },
-    { key: "playerCards", href: "/players" },
-    { key: "awards", href: awardsHref },
-    { key: "rivalries", href: "/rivalries" },
-    { key: "rules", href: "/rules" },
-    { key: "chug", href: "/chug" },
-  ];
+  const tabs = (LEAGUE_SUBNAV_ORDER as LeagueTab[]).map((key) => ({
+    key,
+    href: key === "awards" ? awardsHref : STATIC_HREF[key],
+  }));
 
   return (
     <div className="mb-4 flex flex-col gap-2">
@@ -67,9 +48,9 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
             href={tab.href}
             aria-current={tab.key === active ? "page" : undefined}
             className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-            style={{ ["--nav-color" as string]: TAB_COLOR[tab.key] }}
+            style={{ ["--nav-color" as string]: DESTINATIONS[tab.key].color }}
           >
-            {LABELS[tab.key]}
+            {DESTINATIONS[tab.key].label}
           </Link>
         ))}
       </nav>

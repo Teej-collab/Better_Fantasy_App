@@ -1,11 +1,11 @@
 import { getAwardLeaderboards, getRecordBook, listSeasons } from "@/lib/api";
 import { AwardLeaderboards } from "@/components/AwardLeaderboards";
-import { AwardsTabs } from "@/components/AwardsTabs";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { RecordBook } from "@/components/RecordBook";
 
 /**
- * The All-Time Records tab of Awards — a pinned tab in AwardsTabs
+ * The All-Time Records tab of Awards — a pinned tab in SeasonTabs
  * alongside every season, not one more season itself (the record book
  * spans the league's whole history, see RecordBook.tsx). Kept under
  * /seasons/[season]/awards/ rather than a standalone /awards/all-time
@@ -29,7 +29,12 @@ export default async function AllTimeRecordsPage({
       <LeagueSubNav active="awards" awardsHref={`/seasons/${season}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
-        <AwardsTabs seasons={seasons} activeSeason={season} activeTab="all-time" />
+        <SeasonTabs
+          seasons={seasons}
+          activeSeason={null}
+          hrefFor={(s) => `/seasons/${s}/awards`}
+          extraTab={{ label: "All-Time Records", href: `/seasons/${season}/awards/all-time`, active: true }}
+        />
       </div>
 
       <RecordBook categories={categories} />

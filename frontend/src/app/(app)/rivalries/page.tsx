@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { listRivalries, listSeasons } from "@/lib/api";
+import { awardsHrefFor, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function RivalriesPage() {
   const [{ rivalries }, { seasons }] = await Promise.all([listRivalries(), listSeasons()]);
-  const latestSeason = Math.max(...seasons);
+  const latestSeason = safeLatestSeason(seasons);
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="rivalries" awardsHref={`/seasons/${latestSeason}/awards`} />
+      <LeagueSubNav active="rivalries" awardsHref={awardsHrefFor(latestSeason)} />
       <h1 className="text-2xl font-semibold">Rivalries</h1>
 
       {rivalries.length === 0 ? (

@@ -22,7 +22,7 @@ function contextLine(entry: RecordEntry): string {
  * All-time record book — one card per category (app/domain/records.py),
  * each a top-3 leaderboard. Lives on its own "All-Time Records" tab
  * under Awards (seasons/[season]/awards/all-time/page.tsx), a pinned tab
- * in AwardsTabs.tsx alongside every season's own tab — unlike a specific
+ * in SeasonTabs.tsx alongside every season's own tab — unlike a specific
  * season's awards, this is never season-scoped: same content no matter
  * which season you were last looking at, since these span the league's
  * whole history. Fetched fresh on every page load (no caching anywhere

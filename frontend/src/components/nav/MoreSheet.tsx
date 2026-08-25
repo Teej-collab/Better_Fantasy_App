@@ -6,27 +6,35 @@ import { MoreIcon } from "@/components/nav/icons";
 
 type Group = { heading: string; links: { href: string; label: string }[] };
 
-const GROUPS: Group[] = [
-  {
-    heading: "Fantasy",
-    links: [
-      { href: "/players", label: "Player Cards" },
-      { href: "/free-agents", label: "Free Agents" },
-    ],
-  },
-  {
-    heading: "League",
-    links: [
-      { href: "/seasons/latest/awards", label: "Awards" },
-      { href: "/rivalries", label: "Rivalries" },
-      { href: "/rules", label: "Rules" },
-    ],
-  },
-  {
-    heading: "Other",
-    links: [{ href: "/chug", label: "Chug Leaderboard" }],
-  },
-];
+// awardsHref is threaded straight into the config (not string-matched
+// against a placeholder afterward) — the season it points at is only
+// known at render time, but the link itself is a real prop, not a
+// literal that has to be found-and-replaced. Also closes a real gap:
+// Standings had no entry anywhere in this sheet before.
+function buildGroups(awardsHref: string): Group[] {
+  return [
+    {
+      heading: "Fantasy",
+      links: [
+        { href: "/players", label: "Player Cards" },
+        { href: "/free-agents", label: "Free Agents" },
+      ],
+    },
+    {
+      heading: "League",
+      links: [
+        { href: "/standings", label: "Standings" },
+        { href: awardsHref, label: "Awards" },
+        { href: "/rivalries", label: "Rivalries" },
+        { href: "/rules", label: "Rules" },
+      ],
+    },
+    {
+      heading: "Other",
+      links: [{ href: "/chug", label: "Chug Leaderboard" }],
+    },
+  ];
+}
 
 /**
  * Mobile-only secondary-feature access, replacing what used to just be
@@ -69,11 +77,7 @@ export function MoreSheet({ awardsHref }: { awardsHref: string }) {
     };
   }, [open]);
 
-  const groups = GROUPS.map((g) =>
-    g.heading === "League"
-      ? { ...g, links: g.links.map((l) => (l.href === "/seasons/latest/awards" ? { ...l, href: awardsHref } : l)) }
-      : g
-  );
+  const groups = buildGroups(awardsHref);
 
   return (
     <>

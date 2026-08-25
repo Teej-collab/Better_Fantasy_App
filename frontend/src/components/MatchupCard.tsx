@@ -85,6 +85,13 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
             <RosterList title={home.team_name} players={home.roster} showProjected />
             <RosterList title={away.team_name} players={away.roster} showProjected />
           </div>
+
+          <Link
+            href={`/matchups/${matchup.matchup_id}`}
+            className="self-start text-sm font-medium text-black/60 hover:underline dark:text-white/60"
+          >
+            View full matchup →
+          </Link>
         </div>
       )}
     </div>

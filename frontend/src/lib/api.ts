@@ -122,6 +122,39 @@ export function getCurrentWeek(season: number) {
   return get<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`);
 }
 
+// `Math.max(...seasons)` on an empty array is `-Infinity` in JS, not an
+// error — silently producing a broken link like `/seasons/-Infinity/awards`
+// on a fresh league with nothing synced yet. This is the one place that
+// logic lives now, returning `null` instead so every call site is forced
+// to branch on "no season yet" rather than trusting a numeric-looking
+// value that secretly isn't one.
+export function safeLatestSeason(seasons: number[]): number | null {
+  return seasons.length > 0 ? Math.max(...seasons) : null;
+}
+
+// ESPN reports current_week as 0 during preseason (not a real week) —
+// the same fallback to week 1 that used to be copy-pasted identically
+// across NavBar.tsx, AppTickerBar.tsx, the homepage, /weekend, and the
+// Team page.
+export function resolveWeek(currentWeek: number | null | undefined): number {
+  return currentWeek && currentWeek >= 1 ? currentWeek : 1;
+}
+
+// Where "Awards"/"Matchups" send you when no season has synced yet at
+// all — one canonical answer instead of NavBar and /weekend disagreeing
+// (they used to fall back to /rivalries and /standings respectively).
+export const NO_SEASON_FALLBACK_HREF = "/standings";
+
+export function awardsHrefFor(latestSeason: number | null): string {
+  return latestSeason !== null ? `/seasons/${latestSeason}/awards` : NO_SEASON_FALLBACK_HREF;
+}
+
+export function matchupsHrefFor(latestSeason: number | null, week: number | null): string {
+  return latestSeason !== null && week !== null
+    ? `/seasons/${latestSeason}/weeks/${week}`
+    : NO_SEASON_FALLBACK_HREF;
+}
+
 export function listTeams(season: number) {
   return get<{ teams: Team[] }>(`/seasons/${season}/teams`);
 }

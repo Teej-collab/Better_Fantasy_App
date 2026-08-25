@@ -1,11 +1,12 @@
-import Link from "next/link";
 import {
   getCareerProfile,
   getOwnerBadges,
   getSeasonProfile,
   listSeasons,
+  safeLatestSeason,
   type PeriodSummary,
 } from "@/lib/api";
+import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export default async function OwnerProfilePage({
@@ -18,12 +19,12 @@ export default async function OwnerProfilePage({
   const { ownerId } = await params;
   const ownerIdNum = Number(ownerId);
   const { seasons } = await listSeasons();
-  const latestSeason = Math.max(...seasons);
+  const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
   const [seasonProfile, career, badges] = await Promise.all([
-    getSeasonProfile(ownerIdNum, season),
+    season !== null ? getSeasonProfile(ownerIdNum, season) : Promise.resolve(null),
     getCareerProfile(ownerIdNum),
     getOwnerBadges(ownerIdNum),
   ]);
@@ -42,21 +43,7 @@ export default async function OwnerProfilePage({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
           <h2 className="font-medium">Season</h2>
-          <div className="flex flex-wrap gap-x-3 text-sm">
-            {[...seasons].reverse().map((s) => (
-              <Link
-                key={s}
-                href={`/owners/${ownerId}?season=${s}`}
-                className={
-                  s === season
-                    ? "font-semibold underline"
-                    : "text-black/60 hover:underline dark:text-white/60"
-                }
-              >
-                {s}
-              </Link>
-            ))}
-          </div>
+          <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/owners/${ownerId}?season=${s}`} />
         </div>
 
         {seasonProfile ? (

@@ -6,6 +6,8 @@ import {
   getWeekLeagueTicker,
   isNflGameLive,
   listSeasons,
+  resolveWeek,
+  safeLatestSeason,
 } from "@/lib/api";
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { LiveTicker } from "@/components/LiveTicker";
@@ -39,20 +41,13 @@ export async function AppTickerBar() {
     getLiveGames(),
   ]);
   const isGameDay = isNflGameLive(nflGames);
-  const latestSeason = seasons.length > 0 ? Math.max(...seasons) : null;
+  const latestSeason = safeLatestSeason(seasons);
   const nflTickerItems = withGamecastLinks(buildNflTickerItems(nflGames), nflGames, gamecastGames);
 
   let leagueTicker = null;
   if (latestSeason !== null) {
-    // ESPN reports current_week as 0 during preseason — not a real
-    // week, same convention as (home)/page.tsx's own fallback (and the
-    // Team page's). This used to fall back to `null` here instead of
-    // `1`, which meant the league ticker silently disappeared from
-    // every page except Home during preseason, even though real week-1
-    // matchup data already existed — Home's own ticker never had this
-    // bug since it already used the `: 1` fallback.
     const { current_week } = await getCurrentWeek(latestSeason);
-    const week = current_week && current_week >= 1 ? current_week : 1;
+    const week = resolveWeek(current_week);
     const ticker = await getWeekLeagueTicker(latestSeason, week);
     const items = buildLeagueTickerItems(ticker);
     if (items.length > 0) {
