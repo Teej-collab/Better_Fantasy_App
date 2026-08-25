@@ -172,6 +172,8 @@ function CardFront({
 // else keeps the initials placeholder below.
 const OWNER_PHOTOS: Record<number, string> = {
   5: "/images/owners/clay-felice.png", // Clay Felice
+  44: "/images/owners/brian-thomas.png", // Brian Thomas
+  12: "/images/owners/ian-parkinson.png", // Ian Parkinson
 };
 
 function OwnerPhotoFill({ name, ownerId }: { name: string; ownerId: number }) {
