@@ -12,6 +12,10 @@ const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WELCOME_HOLD_MS = 1100;
 const REVEAL_TRANSITION_MS = 900;
+// Absolute backstop — see AppEntry.tsx's identical constant/effect for
+// why: the real dashboard must never stay hidden behind the splash
+// indefinitely, no matter what could theoretically wedge `stage`.
+const MAX_BOOT_MS = 6000;
 
 /**
  * The authenticated counterpart to OpeningExperience.tsx — (home)/page.tsx
@@ -61,6 +65,15 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
     const nav = document.getElementById("site-nav");
     nav?.setAttribute("inert", "");
     return () => nav?.removeAttribute("inert");
+  }, [revealed]);
+
+  useEffect(() => {
+    if (revealed) return;
+    const failsafe = setTimeout(() => {
+      setRevealedAfterBoot(true);
+      markBootedThisPageLoad();
+    }, MAX_BOOT_MS);
+    return () => clearTimeout(failsafe);
   }, [revealed]);
 
   if (revealed) return <>{children}</>;

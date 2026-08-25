@@ -131,20 +131,15 @@ function OwnerPhoto({ name, ownerId }: { name: string; ownerId: number }) {
   const photo = OWNER_PHOTOS[ownerId];
 
   if (photo) {
-    // Baseball-card style: a tall rectangular portrait rather than the
-    // cropped circle everyone else gets — the owner's own reference
-    // photo already has its own neon frame baked in, so this just gives
-    // it room and a bit of its own lift off the card background.
+    // Baseball-card style: a tall rectangular portrait filling most of
+    // the card's width, rather than the cropped circle everyone else
+    // gets. The reference photo already has its own neon-rainbow frame
+    // baked in (matches this app's own cosmic-frame look exactly), so
+    // no extra CSS border/glow is added here — that would just draw a
+    // second, competing frame around the one already in the image.
     return (
       <div className="flex justify-center py-1">
-        <Image
-          src={photo}
-          alt={name}
-          width={337}
-          height={462}
-          className="h-56 w-auto rounded-xl border border-white/15 object-cover"
-          style={{ boxShadow: "0 0 30px rgba(255,255,255,0.15)" }}
-        />
+        <Image src={photo} alt={name} width={337} height={462} className="h-auto w-full rounded-lg" />
       </div>
     );
   }

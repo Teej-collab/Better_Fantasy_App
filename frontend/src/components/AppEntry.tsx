@@ -17,6 +17,12 @@ const REVEAL_TRANSITION_MS = 900;
 // has its own, independent auth gating; this component only controls
 // entry *timing*, never access).
 const AUTH_CHECK_TIMEOUT_MS = 3000;
+// Absolute backstop: whatever else could theoretically wedge the intro
+// (useWeekendIntro's `stage` never reaching "final", a future bug in
+// either effect below), the real page — header, account menu, all of
+// it — must never stay hidden behind the splash indefinitely. Well
+// past every other timing constant here combined.
+const MAX_BOOT_MS = 6000;
 
 type AuthState = "checking" | "authenticated" | "unauthenticated";
 
@@ -107,6 +113,15 @@ export function AppEntry({ children }: { children: ReactNode }) {
     const nav = document.getElementById("site-nav");
     nav?.setAttribute("inert", "");
     return () => nav?.removeAttribute("inert");
+  }, [revealed]);
+
+  useEffect(() => {
+    if (revealed) return;
+    const failsafe = setTimeout(() => {
+      setRevealedAfterBoot(true);
+      markBootedThisPageLoad();
+    }, MAX_BOOT_MS);
+    return () => clearTimeout(failsafe);
   }, [revealed]);
 
   if (revealed) return <>{children}</>;

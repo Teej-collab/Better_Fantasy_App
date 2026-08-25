@@ -47,7 +47,20 @@ export function useWeekendIntro() {
     // pattern (avoids a cascading render on mount) and what gives the
     // screen a genuine brief pure-dark beat before light 1 fires.
     const startTimeout = setTimeout(() => {
-      const seenBefore = localStorage.getItem(SEEN_INTRO_KEY) === "1";
+      // localStorage can throw (Safari private browsing with all
+      // website data blocked, some locked-down PWA/webview contexts)
+      // — this read used to be unguarded, so a throw here left `stage`
+      // stuck at "dark" forever: the reveal effects below only ever
+      // fire once `stage` reaches "final", so a page that can't read
+      // localStorage never revealed the real app at all (no header, no
+      // account menu, nothing but the dark intro background).
+      let seenBefore = false;
+      try {
+        seenBefore = localStorage.getItem(SEEN_INTRO_KEY) === "1";
+      } catch {
+        // Can't tell — default to showing the intro rather than
+        // leaving the page stuck.
+      }
 
       if (prefersReducedMotion() || seenBefore) {
         setStage("final");
@@ -77,12 +90,21 @@ export function useWeekendIntro() {
 
   function skip() {
     timeouts.current.forEach(clearTimeout);
-    localStorage.setItem(SEEN_INTRO_KEY, "1");
+    try {
+      localStorage.setItem(SEEN_INTRO_KEY, "1");
+    } catch {
+      // Same storage-restricted contexts as above — skipping the
+      // animation this once still works, it just won't be remembered.
+    }
     setStage("final");
   }
 
   function markSeen() {
-    localStorage.setItem(SEEN_INTRO_KEY, "1");
+    try {
+      localStorage.setItem(SEEN_INTRO_KEY, "1");
+    } catch {
+      // See skip() above.
+    }
   }
 
   return { stage, wordIndex, skip, markSeen };
