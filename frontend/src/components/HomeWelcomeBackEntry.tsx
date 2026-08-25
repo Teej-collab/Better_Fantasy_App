@@ -5,7 +5,7 @@ import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
 import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
-import { markBootedThisPageLoad, useBootGeneration, useHasBootedSnapshot } from "@/lib/appBoot";
+import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -26,20 +26,11 @@ const REVEAL_TRANSITION_MS = 900;
  *
  * Skipped entirely on a soft client-side navigation back to '/' within an
  * already-running app (hasBootedThisPageLoad()) — only a genuine page
- * load/reload/PWA-launch plays this, or a pull-to-refresh
- * (usePullToRefresh.ts), which bumps useBootGeneration() below to force
- * a clean remount that replays the sequence without a real page reload.
+ * load/reload/PWA-launch plays this. Pull-to-refresh (usePullToRefresh.ts)
+ * deliberately does NOT replay this sequence — it just re-fetches data
+ * in place, so refreshing never reads as the app restarting.
  */
 export function HomeWelcomeBackEntry({ displayName, children }: { displayName: string | null; children: ReactNode }) {
-  const generation = useBootGeneration();
-  return (
-    <HomeWelcomeBackEntryInner key={generation} displayName={displayName}>
-      {children}
-    </HomeWelcomeBackEntryInner>
-  );
-}
-
-function HomeWelcomeBackEntryInner({ displayName, children }: { displayName: string | null; children: ReactNode }) {
   const { stage, wordIndex } = useWeekendIntro();
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);

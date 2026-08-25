@@ -65,6 +65,7 @@ export function HomeCardDeck({
   const [localHidden, setLocalHidden] = useState<string[]>(hiddenCards);
   const [editing, setEditing] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const visibleOrder = useMemo(() => order.filter((key) => !localHidden.includes(key)), [order, localHidden]);
 
@@ -91,14 +92,21 @@ export function HomeCardDeck({
   }
 
   function removeCard(key: string) {
+    setError(null);
     const next = [...localHidden, key];
     setLocalHidden(next);
     updateHomeHiddenCards(next).catch(() => {
-      // Same swallowed-background-save convention as reordering.
+      // Unlike reordering (where a stale order is harmless — it just
+      // falls back to the last save that worked), a failed hide/show
+      // save is worth surfacing: the card would otherwise silently
+      // reappear on the owner's next visit with no explanation.
+      setLocalHidden((prev) => prev.filter((k) => k !== key));
+      setError("Couldn't hide that box — try again.");
     });
   }
 
   function addCard(key: string) {
+    setError(null);
     const next = localHidden.filter((k) => k !== key);
     setLocalHidden(next);
     setShowPicker(false);
@@ -109,6 +117,7 @@ export function HomeCardDeck({
         // — otherwise the UI would claim a box is back while the saved
         // preference still says it's hidden.
         setLocalHidden((prev) => (prev.includes(key) ? prev : [...prev, key]));
+        setError("Couldn't bring that box back — try again.");
       });
   }
 
@@ -162,6 +171,12 @@ export function HomeCardDeck({
           )}
         </div>
       )}
+
+      {error && (
+        <p role="alert" className="text-center text-xs text-red-500">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -186,38 +201,44 @@ function DraggableCard({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="group relative">
-      {/* A dedicated handle, not the whole card — dragging the card
-          body itself would fight with real clicks/links inside it
-          (a team name, "View full matchup →", etc.). Positioned to sit
-          just above each card without shifting its own layout. */}
-      <button
-        type="button"
-        aria-label="Drag to reorder"
-        className="absolute -top-1 right-0 flex h-6 w-6 -translate-y-full cursor-grab items-center justify-center rounded-md text-black/40 opacity-100 transition-opacity active:cursor-grabbing dark:text-white/40 sm:text-black/25 sm:opacity-0 sm:group-hover:opacity-100 sm:hover:text-black/50 dark:sm:text-white/25 dark:sm:hover:text-white/50"
-        {...attributes}
-        {...listeners}
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
-          <circle cx="6" cy="5" r="1.4" />
-          <circle cx="6" cy="10" r="1.4" />
-          <circle cx="6" cy="15" r="1.4" />
-          <circle cx="13" cy="5" r="1.4" />
-          <circle cx="13" cy="10" r="1.4" />
-          <circle cx="13" cy="15" r="1.4" />
-        </svg>
-      </button>
-      {editing && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Remove this box"
-          className="absolute -top-1 right-7 flex h-6 w-6 -translate-y-full items-center justify-center rounded-md text-red-500/70 hover:text-red-500"
-        >
-          ✕
-        </button>
-      )}
+    <div ref={setNodeRef} style={style} className="relative">
       {children}
+      {/* Only in edit mode, so normal browsing has zero extra chrome —
+          both controls anchored to this card's own top-right corner
+          (poking slightly outside it), not floating in the gap above
+          the card the way they used to, which collided with the
+          previous card's own content and the "Edit Home"/"Done"
+          toggle and is exactly what made this read as cluttered. A
+          solid background chip (not just a bare icon) keeps both
+          legible against any card's own content underneath. */}
+      {editing && (
+        <div className="absolute -top-2 -right-2 z-20 flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Drag to reorder"
+            className="flex h-7 w-7 cursor-grab items-center justify-center rounded-full border border-black/10 bg-[var(--background)] text-black/60 shadow-sm active:cursor-grabbing dark:border-white/10 dark:text-white/60"
+            {...attributes}
+            {...listeners}
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
+              <circle cx="6" cy="5" r="1.4" />
+              <circle cx="6" cy="10" r="1.4" />
+              <circle cx="6" cy="15" r="1.4" />
+              <circle cx="13" cy="5" r="1.4" />
+              <circle cx="13" cy="10" r="1.4" />
+              <circle cx="13" cy="15" r="1.4" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove this box"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-red-500/30 bg-[var(--background)] text-red-500 shadow-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -28,24 +28,6 @@ export function markBootedThisPageLoad(): void {
   booted = true;
 }
 
-// Bumped by pull-to-refresh (see usePullToRefresh.ts) to force the boot
-// sequence to replay without a real page reload — AppEntry.tsx and
-// HomeWelcomeBackEntry.tsx each key an inner component on this value, so
-// changing it unmounts and remounts that inner component, cleanly
-// resetting every bit of its local state (including useWeekendIntro's own
-// timers) rather than trying to manually rewind each piece by hand.
-let bootGeneration = 0;
-const bootGenerationListeners = new Set<() => void>();
-
-// Pull-to-refresh and any other "start over" action call this instead of
-// mutating the flag directly, so the intent (replay the boot sequence) is
-// named at the call site.
-export function resetBootForRefresh(): void {
-  booted = false;
-  bootGeneration++;
-  bootGenerationListeners.forEach((listener) => listener());
-}
-
 const noSubscription = () => () => {};
 const alwaysNotBootedOnServer = () => false;
 
@@ -61,23 +43,4 @@ const alwaysNotBootedOnServer = () => false;
 // component's first client render decides what to do with it.
 export function useHasBootedSnapshot(): boolean {
   return useSyncExternalStore(noSubscription, hasBootedThisPageLoad, alwaysNotBootedOnServer);
-}
-
-const zero = () => 0;
-
-// AppEntry.tsx / HomeWelcomeBackEntry.tsx read this and use it as a React
-// `key` on their inner implementation component, so a pull-to-refresh
-// (resetBootForRefresh()) forces a clean remount that replays the full
-// boot sequence. Same value on server and first client render (0) — it
-// only ever changes after a client-side pull-to-refresh, well past
-// hydration, so there's nothing to mismatch.
-export function useBootGeneration(): number {
-  return useSyncExternalStore(
-    (onStoreChange) => {
-      bootGenerationListeners.add(onStoreChange);
-      return () => bootGenerationListeners.delete(onStoreChange);
-    },
-    () => bootGeneration,
-    zero
-  );
 }

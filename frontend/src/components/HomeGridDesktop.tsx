@@ -74,6 +74,7 @@ export function HomeGridDesktop({
   const [localHidden, setLocalHidden] = useState<string[]>(hiddenCards);
   const [editing, setEditing] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function handleLayoutChange(next: Layout) {
     const plain: HomeGridLayoutItem[] = next.map((item) => ({
@@ -92,12 +93,17 @@ export function HomeGridDesktop({
   }
 
   function removeCard(key: string) {
+    setError(null);
     const next = [...localHidden, key];
     setLocalHidden(next);
-    updateHomeHiddenCards(next).catch(() => {});
+    updateHomeHiddenCards(next).catch(() => {
+      setLocalHidden((prev) => prev.filter((k) => k !== key));
+      setError("Couldn't hide that box — try again.");
+    });
   }
 
   function addCard(key: string) {
+    setError(null);
     const next = localHidden.filter((k) => k !== key);
     setLocalHidden(next);
     setShowPicker(false);
@@ -105,6 +111,7 @@ export function HomeGridDesktop({
       .then(() => router.refresh())
       .catch(() => {
         setLocalHidden((prev) => (prev.includes(key) ? prev : [...prev, key]));
+        setError("Couldn't bring that box back — try again.");
       });
   }
 
@@ -137,7 +144,7 @@ export function HomeGridDesktop({
                     <button
                       type="button"
                       aria-label="Drag to move or resize"
-                      className="grid-drag-handle absolute top-1 left-1 z-10 flex h-6 w-6 cursor-grab items-center justify-center rounded-md bg-[var(--background)]/80 text-black/40 active:cursor-grabbing dark:text-white/40"
+                      className="grid-drag-handle absolute top-1 left-1 z-10 flex h-7 w-7 cursor-grab items-center justify-center rounded-full border border-black/10 bg-[var(--background)] text-black/60 shadow-sm active:cursor-grabbing dark:border-white/10 dark:text-white/60"
                     >
                       <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden>
                         <circle cx="6" cy="5" r="1.4" />
@@ -152,7 +159,7 @@ export function HomeGridDesktop({
                       type="button"
                       onClick={() => removeCard(key)}
                       aria-label="Remove this box"
-                      className="absolute top-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--background)]/80 text-red-500/70 hover:text-red-500"
+                      className="absolute top-1 right-1 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-red-500/30 bg-[var(--background)] text-red-500 shadow-sm"
                     >
                       ✕
                     </button>
@@ -190,6 +197,12 @@ export function HomeGridDesktop({
             </div>
           )}
         </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-center text-xs text-red-500">
+          {error}
+        </p>
       )}
     </div>
   );

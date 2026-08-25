@@ -87,9 +87,9 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
         setPullState("refreshing");
         setPullDistance(PULL_THRESHOLD_PX);
         refreshRef.current();
-        // The boot sequence replaying is itself the "refresh finished"
-        // signal to the visitor — this timer just retires the pull
-        // indicator once that's had time to take over the screen.
+        // router.refresh() doesn't expose a promise/completion signal of
+        // its own, so this is just a reasonable minimum-visible duration
+        // for the spinner before retiring the pull indicator.
         setTimeout(() => {
           pullStateRef.current = "idle";
           setPullState("idle");

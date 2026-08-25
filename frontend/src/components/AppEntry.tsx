@@ -5,7 +5,7 @@ import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
 import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
-import { markBootedThisPageLoad, useBootGeneration, useHasBootedSnapshot } from "@/lib/appBoot";
+import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
@@ -45,18 +45,11 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
  * any soft client-side navigation within an already-running app
  * (hasBootedThisPageLoad()), so ordinary nav (Home -> Matchups ->
  * Awards -> Home) stays instant. Only a genuine page load, reload, or
- * PWA launch plays this — or a pull-to-refresh (usePullToRefresh.ts),
- * which is why the actual implementation is keyed on useBootGeneration()
- * below: bumping that value force-remounts AppEntryInner, cleanly resetting
- * every bit of its local state (including useWeekendIntro's own timers)
- * so the full sequence replays without a real page reload.
+ * PWA launch plays this. Pull-to-refresh (usePullToRefresh.ts)
+ * deliberately does NOT replay this sequence — it just re-fetches data
+ * in place, so refreshing never reads as the app restarting.
  */
 export function AppEntry({ children }: { children: ReactNode }) {
-  const generation = useBootGeneration();
-  return <AppEntryInner key={generation}>{children}</AppEntryInner>;
-}
-
-function AppEntryInner({ children }: { children: ReactNode }) {
   const { stage, wordIndex } = useWeekendIntro();
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [displayName, setDisplayName] = useState<string | null>(null);
