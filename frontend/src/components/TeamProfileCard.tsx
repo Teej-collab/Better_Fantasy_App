@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   getSeasonProfile,
@@ -62,7 +63,7 @@ export function TeamProfileCard({
       <div className="cosmic-bg relative rounded-[13px] p-4">
         <div className="relative z-10 flex flex-col gap-3">
           <CardHeader owner={owner} selected={selected} onSelect={selectSeason} />
-          <OwnerPhoto name={owner.display_name} />
+          <OwnerPhoto name={owner.display_name} ownerId={owner.owner_id} />
           {isChampion && <ChampionRibbon years={initialBadges.championship_years} />}
 
           {selected === "career" ? (
@@ -119,7 +120,35 @@ function CardHeader({
   );
 }
 
-function OwnerPhoto({ name }: { name: string }) {
+// No `photo_url` field on Owner yet — real photos are dropped in here
+// one at a time as owners send them in, keyed by owner_id. Everyone
+// else keeps the circular-initials placeholder below.
+const OWNER_PHOTOS: Record<number, string> = {
+  5: "/images/owners/clay-felice.png", // Clay Felice
+};
+
+function OwnerPhoto({ name, ownerId }: { name: string; ownerId: number }) {
+  const photo = OWNER_PHOTOS[ownerId];
+
+  if (photo) {
+    // Baseball-card style: a tall rectangular portrait rather than the
+    // cropped circle everyone else gets — the owner's own reference
+    // photo already has its own neon frame baked in, so this just gives
+    // it room and a bit of its own lift off the card background.
+    return (
+      <div className="flex justify-center py-1">
+        <Image
+          src={photo}
+          alt={name}
+          width={337}
+          height={462}
+          className="h-56 w-auto rounded-xl border border-white/15 object-cover"
+          style={{ boxShadow: "0 0 30px rgba(255,255,255,0.15)" }}
+        />
+      </div>
+    );
+  }
+
   const initials =
     name
       .split(" ")
@@ -131,8 +160,8 @@ function OwnerPhoto({ name }: { name: string }) {
 
   return (
     <div className="flex justify-center py-1">
-      {/* Placeholder until real owner photos exist — swap for
-          <img src={owner.photo_url}> once that field is wired up. */}
+      {/* Placeholder until a real photo exists for this owner — add it
+          to OWNER_PHOTOS above once one comes in. */}
       <div
         className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-white/25 bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 text-3xl font-bold text-white"
         style={{ boxShadow: "0 0 30px rgba(255,255,255,0.15)" }}

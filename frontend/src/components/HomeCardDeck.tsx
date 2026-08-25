@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { updateHomeCardOrder, updateHomeHiddenCards } from "@/lib/api";
+import { AddBoxSheet } from "@/components/AddBoxSheet";
 
 /**
  * Lets a signed-in owner drag-and-drop reorder the home dashboard's
@@ -146,30 +147,19 @@ export function HomeCardDeck({
       </DndContext>
 
       {editing && (
-        <div className="relative">
+        <>
           <button
             type="button"
-            onClick={() => setShowPicker((v) => !v)}
+            onClick={() => setShowPicker(true)}
             disabled={localHidden.length === 0}
             className="w-full rounded-xl border border-dashed border-black/15 py-4 text-sm font-medium text-black/50 hover:bg-black/[0.02] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/15 dark:text-white/50 dark:hover:bg-white/[0.02]"
           >
             {localHidden.length === 0 ? "Everything's already showing" : "+ Add Box"}
           </button>
           {showPicker && localHidden.length > 0 && (
-            <div className="absolute inset-x-0 top-full z-10 mt-1 flex flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-neutral-900">
-              {localHidden.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => addCard(key)}
-                  className="px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                >
-                  {cardLabels[key] ?? key}
-                </button>
-              ))}
-            </div>
+            <AddBoxSheet options={localHidden} labels={cardLabels} onPick={addCard} onClose={() => setShowPicker(false)} />
           )}
-        </div>
+        </>
       )}
 
       {error && (
