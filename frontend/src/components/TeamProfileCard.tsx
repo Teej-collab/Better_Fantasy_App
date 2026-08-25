@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import {
   getSeasonProfile,
   type CareerProfile,
@@ -24,11 +23,16 @@ import {
  * back, revealed only when `flipped` is true. `flipped` and the actual
  * tap handling both live in CardDeck.tsx, not here — this component is
  * purely presentational about which face shows (see globals.css's
- * .flip-outer/.flip-inner/.flip-face for the 3D mechanics). The season/
- * career selector and the "View full profile" link both live on the
- * back and stop click propagation, so using them doesn't also flip the
- * card shut (CardDeck.tsx toggles flip from a click anywhere else on
- * the card).
+ * .flip-outer/.flip-inner/.flip-face for the 3D mechanics). The
+ * season/career selector on the back stops click propagation, so using
+ * it doesn't also flip the card shut (CardDeck.tsx toggles flip from a
+ * click anywhere else on the card).
+ *
+ * Each face's own content sits in a plain inner wrapper, never directly
+ * on the `.flip-face` element itself — see globals.css's comment on
+ * why (an iOS Safari bug where overflow/rounded-corner clipping on the
+ * same element as `backface-visibility: hidden` can let that face's
+ * content bleed through when it should be hidden).
  *
  * Career/season toggle mirrors Fantasy_Helper's Discord /team_profile
  * embed exactly on purpose (dropdown: "Overall (Career)" + each season) —
@@ -77,46 +81,34 @@ export function TeamProfileCard({
       <div className="cosmic-bg relative rounded-[13px] p-4">
         <div className="flip-outer relative z-10 h-[460px] sm:h-[500px]">
           <div className={`flip-inner ${flipped ? "flip-inner--flipped" : ""}`}>
-            <div className="flip-face overflow-hidden rounded-lg">
-              <CardFront owner={owner} isChampion={isChampion} championYears={initialBadges.championship_years} />
+            <div className="flip-face">
+              <div className="h-full w-full overflow-hidden rounded-lg">
+                <CardFront owner={owner} isChampion={isChampion} championYears={initialBadges.championship_years} />
+              </div>
             </div>
 
-            <div className="flip-face flip-face--back flex flex-col gap-3 overflow-y-auto">
-              <div className="flex items-start justify-between gap-2">
-                <Link
-                  href={`/owners/${owner.owner_id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="min-w-0 truncate text-sm font-semibold text-amber-300 hover:underline"
-                  style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
-                >
-                  View full profile →
-                </Link>
-                <select
-                  value={String(selected)}
-                  onChange={(e) => selectSeason(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="shrink-0 rounded-md border border-white/20 bg-black/50 px-2 py-1 text-sm text-white backdrop-blur-sm"
-                >
-                  <option value="career" className="bg-black text-white">
-                    Career
-                  </option>
-                  {[...owner.seasons].reverse().map((s) => (
-                    <option key={s} value={s} className="bg-black text-white">
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="flip-face flip-face--back">
+              <div
+                className="touch-pan-y flex h-full w-full flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg [-webkit-overflow-scrolling:touch]"
+              >
+                <CardBack
+                  owner={owner}
+                  isChampion={isChampion}
+                  championYears={initialBadges.championship_years}
+                  selected={selected}
+                  onSelect={selectSeason}
+                />
 
-              {selected === "career" ? (
-                <CosmicCareerView profile={initialCareer} badges={initialBadges} />
-              ) : loading ? (
-                <p className="text-center text-sm text-white/60">Loading {selected}…</p>
-              ) : seasonProfile ? (
-                <CosmicSeasonView profile={seasonProfile} season={selected} />
-              ) : (
-                <p className="text-center text-sm text-white/60">No data for {selected}.</p>
-              )}
+                {selected === "career" ? (
+                  <CosmicCareerView profile={initialCareer} badges={initialBadges} />
+                ) : loading ? (
+                  <p className="text-center text-sm text-white/60">Loading {selected}…</p>
+                ) : seasonProfile ? (
+                  <CosmicSeasonView profile={seasonProfile} season={selected} />
+                ) : (
+                  <p className="text-center text-sm text-white/60">No data for {selected}.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -143,11 +135,11 @@ function CardFront({
 }) {
   return (
     <div className="relative h-full w-full">
-      <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} />
+      <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} sizes="(max-width: 640px) 90vw, 420px" />
 
       {isChampion && (
         <div className="absolute inset-x-0 top-0 flex justify-center pt-3">
-          <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-amber-300 backdrop-blur-sm">
+          <span className="flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-amber-300">
             👑 {championYears.join(", ")}
           </span>
         </div>
@@ -167,6 +159,60 @@ function CardFront({
   );
 }
 
+/**
+ * The back's header row: a small circular echo of the front's photo
+ * (no team name this time — that's a front-only detail per the project
+ * owner's request) plus the champion crown again, rendered fresh here
+ * rather than inherited from the front face, so it reads right-way-up
+ * instead of relying on any bleed-through from the flip (see this
+ * file's and globals.css's comments on that Safari bug). The season/
+ * career selector stops click propagation so picking a season doesn't
+ * also flip the card shut.
+ */
+function CardBack({
+  owner,
+  isChampion,
+  championYears,
+  selected,
+  onSelect,
+}: {
+  owner: Owner;
+  isChampion: boolean;
+  championYears: number[];
+  selected: "career" | number;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full ring-1 ring-white/25">
+          <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} sizes="40px" compact />
+        </div>
+        {isChampion && (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+            👑 {championYears.join(", ")}
+          </span>
+        )}
+      </div>
+      <select
+        value={String(selected)}
+        onChange={(e) => onSelect(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        className="shrink-0 rounded-md border border-white/20 bg-black/50 px-2 py-1 text-sm text-white backdrop-blur-sm"
+      >
+        <option value="career" className="bg-black text-white">
+          Career
+        </option>
+        {[...owner.seasons].reverse().map((s) => (
+          <option key={s} value={s} className="bg-black text-white">
+            {s}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // No `photo_url` field on Owner yet — real photos are dropped in here
 // one at a time as owners send them in, keyed by owner_id. Everyone
 // else keeps the initials placeholder below.
@@ -174,21 +220,28 @@ const OWNER_PHOTOS: Record<number, string> = {
   5: "/images/owners/clay-felice.png", // Clay Felice
   44: "/images/owners/brian-thomas.png", // Brian Thomas
   12: "/images/owners/ian-parkinson.png", // Ian Parkinson
+  3: "/images/owners/bailey-hawn.png", // Bailey Hawn
+  11: "/images/owners/bowmen-solari.png", // Bowmen "Bo" Solari
+  10: "/images/owners/jeffrey-horak.png", // Jeffrey "Jeff" Horak
+  8: "/images/owners/aaron-wylie.png", // Aaron Wylie
+  15: "/images/owners/aaron-roberts.png", // Aaron Roberts
 };
 
-function OwnerPhotoFill({ name, ownerId }: { name: string; ownerId: number }) {
+function OwnerPhotoFill({
+  name,
+  ownerId,
+  sizes,
+  compact = false,
+}: {
+  name: string;
+  ownerId: number;
+  sizes: string;
+  compact?: boolean;
+}) {
   const photo = OWNER_PHOTOS[ownerId];
 
   if (photo) {
-    return (
-      <Image
-        src={photo}
-        alt={name}
-        fill
-        sizes="(max-width: 640px) 90vw, 420px"
-        className="object-cover"
-      />
-    );
+    return <Image src={photo} alt={name} fill sizes={sizes} className="object-cover" />;
   }
 
   const initials =
@@ -203,7 +256,9 @@ function OwnerPhotoFill({ name, ownerId }: { name: string; ownerId: number }) {
   return (
     // Placeholder until a real photo exists for this owner — add it to
     // OWNER_PHOTOS above once one comes in.
-    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 text-6xl font-bold text-white">
+    <div
+      className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 font-bold text-white ${compact ? "text-xs" : "text-6xl"}`}
+    >
       {initials}
     </div>
   );
