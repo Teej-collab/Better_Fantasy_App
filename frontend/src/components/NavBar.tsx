@@ -78,7 +78,12 @@ export async function NavBar() {
   return (
     <>
       <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
-        <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 py-3">
+        {/* pt- accounts for the notch/Dynamic Island/status bar — this
+            app runs with viewport-fit=cover and a translucent iOS status
+            bar (layout.tsx), so nothing reserves that space by default;
+            without it, the header sits partly underneath the status
+            bar/notch instead of below it. */}
+        <nav className="safe-px mx-auto flex max-w-5xl items-center justify-between gap-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
           <div className="flex min-w-0 items-center gap-1">
             <BrandMark href="/" />
             <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
