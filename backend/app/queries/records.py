@@ -10,9 +10,19 @@ instead of a snapshot that needs a recompute job.
 a 0-0 matchup means the game hasn't been played yet (not a real 0-0
 final), so single-week records exclude those; season totals don't need
 the same exclusion since an unplayed week's 0 just doesn't move a sum.
+
+Every query here is also regular-season only (m.is_playoff = FALSE),
+matching the convention app/domain/season_awards.py and
+app/domain/team_profile.py already use — the record book is meant to
+compare seasons on equal footing, and only every team plays the same
+number of regular-season games; playoff weeks are a single elimination
+bracket a handful of teams reach, so mixing them in would let a
+three-week playoff run's score sit next to a fourteen-week regular
+season's as if they were the same kind of record.
 """
 
 _UNPLAYED = "NOT (m.home_score = 0 AND m.away_score = 0)"
+_REGULAR_SEASON = "m.is_playoff = FALSE"
 
 
 async def top_single_week_scores(conn, limit: int, *, descending: bool):
@@ -22,11 +32,11 @@ async def top_single_week_scores(conn, limit: int, *, descending: bool):
         WITH sides AS (
             SELECT m.season, m.week, m.home_team_id AS team_id, m.home_score AS score
             FROM matchups m
-            WHERE m.home_score IS NOT NULL AND {_UNPLAYED}
+            WHERE m.home_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
             UNION ALL
             SELECT m.season, m.week, m.away_team_id AS team_id, m.away_score AS score
             FROM matchups m
-            WHERE m.away_score IS NOT NULL AND {_UNPLAYED}
+            WHERE m.away_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
         )
         SELECT s.season, s.week, s.score, t.team_name, o.owner_id, o.display_name AS owner_name
         FROM sides s
@@ -56,7 +66,7 @@ async def top_blowouts(conn, limit: int):
         JOIN teams_by_season ta ON ta.id = m.away_team_id
         JOIN owners oh ON oh.owner_id = th.owner_id
         JOIN owners oa ON oa.owner_id = ta.owner_id
-        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL AND {_UNPLAYED}
+        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
         ORDER BY margin DESC
         LIMIT $1
         """,
@@ -66,13 +76,13 @@ async def top_blowouts(conn, limit: int):
 
 async def top_season_point_totals(conn, limit: int):
     return await conn.fetch(
-        """
+        f"""
         WITH sides AS (
             SELECT m.season, m.home_team_id AS team_id, m.home_score AS score
-            FROM matchups m WHERE m.home_score IS NOT NULL
+            FROM matchups m WHERE m.home_score IS NOT NULL AND {_REGULAR_SEASON}
             UNION ALL
             SELECT m.season, m.away_team_id AS team_id, m.away_score AS score
-            FROM matchups m WHERE m.away_score IS NOT NULL
+            FROM matchups m WHERE m.away_score IS NOT NULL AND {_REGULAR_SEASON}
         ),
         season_totals AS (
             SELECT season, team_id, SUM(score) AS total_points
