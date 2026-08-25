@@ -18,6 +18,7 @@ import {
   listSeasons,
   resolveWeek,
   safeLatestSeason,
+  type HomeGridLayoutItem,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -26,7 +27,7 @@ import {
   type YourWeek,
 } from "@/lib/api";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
-import { HomeCardDeck } from "@/components/HomeCardDeck";
+import { HomeDashboard } from "@/components/HomeDashboard";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
@@ -330,6 +331,18 @@ export default async function HomePage() {
 
   const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
 
+  // Desktop-only grid position/size — a separate shape from
+  // home_card_order (mobile's ordered list), see HomeGridDesktop.tsx.
+  let desktopLayout: HomeGridLayoutItem[] | null = null;
+  if (myPreferences?.home_desktop_layout) {
+    try {
+      const parsed: unknown = JSON.parse(myPreferences.home_desktop_layout);
+      if (Array.isArray(parsed)) desktopLayout = parsed as HomeGridLayoutItem[];
+    } catch {
+      desktopLayout = null;
+    }
+  }
+
   return (
     <HomeWelcomeBackEntry displayName={me.display_name}>
       <div className="flex flex-col gap-6">
@@ -359,17 +372,18 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <HomeCardDeck
+        <HomeDashboard
           // Forces a real remount (not just a prop update) whenever the
           // set of currently-visible cards changes — specifically after
-          // "Add Box" triggers router.refresh(), so HomeCardDeck's own
+          // "Add Box" triggers router.refresh(), so the mounted shell's
           // useState initializers see the newly-un-hidden card's real
           // content rather than reconciling against stale local state.
-          key={Object.keys(cards).sort().join(",")}
+          dashboardKey={Object.keys(cards).sort().join(",")}
           initialOrder={cardOrder}
           cards={cards}
           hiddenCards={[...hiddenCards]}
           cardLabels={CARD_LABELS}
+          savedDesktopLayout={desktopLayout}
         />
       </div>
     </HomeWelcomeBackEntry>
