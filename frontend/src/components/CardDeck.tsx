@@ -43,14 +43,14 @@ const MIN_OPACITY = 0.55;
  * card scrolls it to center first instead — the same two-step feel as
  * classic Cover Flow (iTunes), and it means a swipe that ends with a
  * finger lifting over a non-centered card can't accidentally flip it.
- * Only one card is ever flipped at a time.
+ * Any number of cards can be flipped open at once, independently.
  */
 export function CardDeck({ cards }: { cards: CardData[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const setWidthRef = useRef(0);
   const rafRef = useRef<number | null>(null);
-  const [flippedIndex, setFlippedIndex] = useState<number | null>(null);
+  const [flippedIndices, setFlippedIndices] = useState<ReadonlySet<number>>(() => new Set());
 
   // Shared by the per-frame coverflow loop and the click handler below,
   // so "which card counts as centered" is computed exactly one way.
@@ -92,7 +92,15 @@ export function CardDeck({ cards }: { cards: CardData[] }) {
         cardRefs.current[i]?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
         return;
       }
-      setFlippedIndex((prev) => (prev === i ? null : i));
+      setFlippedIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(i)) {
+          next.delete(i);
+        } else {
+          next.add(i);
+        }
+        return next;
+      });
     },
     [getFocusIndex]
   );
@@ -159,7 +167,7 @@ export function CardDeck({ cards }: { cards: CardData[] }) {
           className="w-[90%] shrink-0 cursor-pointer sm:w-[420px]"
           style={{ willChange: "transform, opacity" }}
         >
-          <TeamProfileCard owner={owner} initialCareer={career} initialBadges={badges} flipped={flippedIndex === i} />
+          <TeamProfileCard owner={owner} initialCareer={career} initialBadges={badges} flipped={flippedIndices.has(i)} />
         </div>
       ))}
     </div>

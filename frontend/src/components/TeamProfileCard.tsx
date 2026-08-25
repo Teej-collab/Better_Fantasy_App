@@ -77,7 +77,7 @@ export function TeamProfileCard({
       <div className="cosmic-bg relative rounded-[13px] p-4">
         <div className="flip-outer relative z-10 h-[460px] sm:h-[500px]">
           <div className={`flip-inner ${flipped ? "flip-inner--flipped" : ""}`}>
-            <div className="flip-face flex flex-col items-center justify-center gap-3 overflow-hidden">
+            <div className="flip-face overflow-hidden rounded-lg">
               <CardFront owner={owner} isChampion={isChampion} championYears={initialBadges.championship_years} />
             </div>
 
@@ -125,6 +125,13 @@ export function TeamProfileCard({
   );
 }
 
+/**
+ * The photo fills the entire front face edge-to-edge — team/owner name
+ * sit in a gradient scrim over the bottom of the photo, and (if the
+ * owner has ever won it all) a crown badge with the championship
+ * year(s) sits over the top, rather than any of these being separate
+ * boxes stacked above/below a smaller photo.
+ */
 function CardFront({
   owner,
   isChampion,
@@ -135,46 +142,50 @@ function CardFront({
   championYears: number[];
 }) {
   return (
-    <>
-      <div className="min-w-0 max-w-full text-center">
+    <div className="relative h-full w-full">
+      <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} />
+
+      {isChampion && (
+        <div className="absolute inset-x-0 top-0 flex justify-center pt-3">
+          <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-amber-300 backdrop-blur-sm">
+            👑 {championYears.join(", ")}
+          </span>
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pt-10 pb-3 text-center">
         <p
-          className="truncate text-lg font-bold text-amber-300"
+          className="min-w-0 max-w-full truncate text-lg font-bold text-amber-300"
           style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
         >
           {owner.latest_team_name}
         </p>
         <p className="text-sm text-sky-200">{owner.display_name}</p>
+        <span className="mt-1 text-[11px] font-medium text-white/50">Tap for stats</span>
       </div>
-      <OwnerPhoto name={owner.display_name} ownerId={owner.owner_id} />
-      {isChampion && <ChampionRibbon years={championYears} />}
-      <span className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-medium text-white/50">
-        Tap for stats
-      </span>
-    </>
+    </div>
   );
 }
 
 // No `photo_url` field on Owner yet — real photos are dropped in here
 // one at a time as owners send them in, keyed by owner_id. Everyone
-// else keeps the circular-initials placeholder below.
+// else keeps the initials placeholder below.
 const OWNER_PHOTOS: Record<number, string> = {
   5: "/images/owners/clay-felice.png", // Clay Felice
 };
 
-function OwnerPhoto({ name, ownerId }: { name: string; ownerId: number }) {
+function OwnerPhotoFill({ name, ownerId }: { name: string; ownerId: number }) {
   const photo = OWNER_PHOTOS[ownerId];
 
   if (photo) {
-    // Baseball-card style: a tall rectangular portrait filling most of
-    // the card's width, rather than the cropped circle everyone else
-    // gets. The reference photo already has its own neon-rainbow frame
-    // baked in (matches this app's own cosmic-frame look exactly), so
-    // no extra CSS border/glow is added here — that would just draw a
-    // second, competing frame around the one already in the image.
     return (
-      <div className="flex justify-center py-1">
-        <Image src={photo} alt={name} width={337} height={462} className="h-auto w-full rounded-lg" />
-      </div>
+      <Image
+        src={photo}
+        alt={name}
+        fill
+        sizes="(max-width: 640px) 90vw, 420px"
+        className="object-cover"
+      />
     );
   }
 
@@ -188,24 +199,11 @@ function OwnerPhoto({ name, ownerId }: { name: string; ownerId: number }) {
       .toUpperCase() || "?";
 
   return (
-    <div className="flex justify-center py-1">
-      {/* Placeholder until a real photo exists for this owner — add it
-          to OWNER_PHOTOS above once one comes in. */}
-      <div
-        className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-white/25 bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 text-3xl font-bold text-white"
-        style={{ boxShadow: "0 0 30px rgba(255,255,255,0.15)" }}
-      >
-        {initials}
-      </div>
+    // Placeholder until a real photo exists for this owner — add it to
+    // OWNER_PHOTOS above once one comes in.
+    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 text-6xl font-bold text-white">
+      {initials}
     </div>
-  );
-}
-
-function ChampionRibbon({ years }: { years: number[] }) {
-  return (
-    <span className="mx-auto inline-flex w-fit items-center gap-1 rounded-full bg-amber-400/20 px-3 py-1 text-xs font-semibold text-amber-300 ring-1 ring-amber-300/40">
-      🏆 {years.length > 1 ? `${years.length}x Champion` : "Champion"} ({years.join(", ")})
-    </span>
   );
 }
 
