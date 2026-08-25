@@ -37,3 +37,35 @@ async def get_season_champion(conn, season: int):
         """,
         season,
     )
+
+
+async def award_win_counts(conn):
+    """Every owner's win count per season_awards.award_type, across every
+    season — the raw material for the All-Time Records page's award
+    leaderboards (app/domain/awards_all_time.py groups this by award_type
+    and keeps each one's top winners). Ties (same win count) both show up
+    for a type, same as records.py's top-N leaderboards."""
+    return await conn.fetch(
+        """
+        SELECT sa.award_type, o.owner_id, o.display_name AS owner_name, COUNT(*) AS wins
+        FROM season_awards sa
+        JOIN owners o ON o.owner_id = sa.owner_id
+        GROUP BY sa.award_type, o.owner_id, o.display_name
+        ORDER BY sa.award_type, wins DESC
+        """
+    )
+
+
+async def championship_win_counts(conn):
+    """Same idea as award_win_counts, for season_champions — a separate
+    table/concept (see season_awards.py's module docstring), so it isn't
+    just another award_type row to group."""
+    return await conn.fetch(
+        """
+        SELECT o.owner_id, o.display_name AS owner_name, COUNT(*) AS wins
+        FROM season_champions sc
+        JOIN owners o ON o.owner_id = sc.owner_id
+        GROUP BY o.owner_id, o.display_name
+        ORDER BY wins DESC
+        """
+    )

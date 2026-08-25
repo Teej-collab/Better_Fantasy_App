@@ -361,6 +361,29 @@ export function getRecordBook() {
   return get<{ categories: RecordCategory[] }>("/records");
 }
 
+export type AwardWinner = {
+  owner_id: number;
+  owner_name: string;
+  wins: number;
+};
+
+export type AwardLeaderboardCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  winners: AwardWinner[];
+};
+
+// Companion to getRecordBook() — "who's won this yearly award the most,
+// across the league's whole history" for every award type
+// app/domain/season_awards.py hands out, plus Season Champion
+// (app/domain/awards_all_time.py). Always returns every award type the
+// league offers, even ones nobody's won yet (an empty `winners` list),
+// unlike the record book's categories which hide entirely when empty.
+export function getAwardLeaderboards() {
+  return get<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time");
+}
+
 export function listRivalries() {
   return get<{ rivalries: Rivalry[] }>("/rivalries");
 }

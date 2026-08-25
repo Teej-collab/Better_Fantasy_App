@@ -8,7 +8,7 @@ MIGRATION_MAP.md.
 from fastapi import APIRouter, Depends
 
 from app.db import get_pool
-from app.domain import team_profile, weekly_awards
+from app.domain import awards_all_time, team_profile, weekly_awards
 from app.queries import awards as awards_queries
 from app.queries import league as league_queries
 
@@ -24,6 +24,12 @@ async def season_awards(season: int, pool=Depends(get_pool)):
         "champion": dict(champion) if champion is not None else None,
         "awards": [dict(a) for a in awards],
     }
+
+
+@router.get("/awards/all-time")
+async def all_time_awards(pool=Depends(get_pool)):
+    async with pool.acquire() as conn:
+        return await awards_all_time.get_award_leaderboards(conn)
 
 
 @router.get("/seasons/{season}/weeks/{week}/awards")
