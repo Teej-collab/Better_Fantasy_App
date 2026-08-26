@@ -15,6 +15,7 @@ from app.routers import (
     free_agents,
     game_day,
     gamecast,
+    keepers,
     league,
     me,
     nfl,
@@ -55,6 +56,7 @@ app.include_router(chug.router)
 app.include_router(free_agents.router)
 app.include_router(game_day.router)
 app.include_router(gamecast.router)
+app.include_router(keepers.router)
 app.include_router(league.router)
 app.include_router(me.router)
 app.include_router(nfl.router)

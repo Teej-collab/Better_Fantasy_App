@@ -29,7 +29,8 @@ export type DestinationKey =
   | "awards"
   | "rivalries"
   | "rules"
-  | "chug";
+  | "chug"
+  | "keepers";
 
 export type Destination = {
   key: DestinationKey;
@@ -75,6 +76,9 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // which renders in the primary nav at the same time. Unifies onto
   // SECTION_COLORS' existing amber instead.
   chug: { key: "chug", label: "Chug", color: "#d97706" },
+  // A fresh hue — doesn't render alongside any other destination in a
+  // context where a collision would matter (own sub-nav tab only).
+  keepers: { key: "keepers", label: "Keepers", color: "#10b981" },
 };
 
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat", "freeAgents"];
@@ -101,6 +105,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "rivalries",
   "rules",
   "chug",
+  "keepers",
 ];
 
 // /gamecast/[gameId] is deliberately absent from this config — it's

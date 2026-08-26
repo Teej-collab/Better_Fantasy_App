@@ -1114,3 +1114,85 @@ export function getChatWebSocketUrl(ticket: string): string {
   return `${API_BASE_URL.replace(/^http/, "ws")}/chat/ws?ticket=${encodeURIComponent(ticket)}`;
 }
 
+// ---- Keeper league (Settings-adjacent /keepers page) — see
+// backend/app/routers/keepers.py. Scoped entirely to the session's own
+// owner_id server-side; there's no owner_id param anywhere here.
+export type KeeperRules = {
+  season: number;
+  max_keepers: number;
+  max_consecutive_years: number | null;
+  keeper_deadline: string | null;
+  locked_at: string | null;
+  is_open: boolean;
+};
+
+export type KeeperPoolPlayer = {
+  espn_player_id: number;
+  player_name: string;
+  position: string | null;
+  pro_team: string | null;
+  // False once max_consecutive_years has already been hit for this
+  // player — the picker greys these out instead of letting them get
+  // picked and rejected by the PUT below.
+  eligible: boolean;
+  consecutive_years_if_kept: number;
+};
+
+export type KeeperSelection = {
+  id: number;
+  season: number;
+  owner_id: number;
+  espn_player_id: number;
+  player_name: string;
+  consecutive_years_kept: number;
+  espn_synced_at: string | null;
+  created_at: string;
+};
+
+export type MyKeepers = {
+  rules: KeeperRules;
+  roster_pool: KeeperPoolPlayer[];
+  selections: KeeperSelection[];
+};
+
+async function _keepersRequest<T>(path: string, method: string, body?: object): Promise<T> {
+  const res = await fetch(`/api/backend/keepers${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export function getMyKeepers(): Promise<MyKeepers> {
+  return _keepersRequest("/me", "GET");
+}
+
+export function updateMyKeepers(espnPlayerIds: number[]): Promise<{ selections: KeeperSelection[] }> {
+  return _keepersRequest("/me", "PUT", { espn_player_ids: espnPlayerIds });
+}
+
+// Commissioner-only — backend/app/routers/keepers.py checks
+// is_commissioner itself; these just surface a 403 as a thrown Error
+// like every other request helper here if a non-commissioner calls them.
+export function setKeeperRules(rules: {
+  season: number;
+  max_keepers: number;
+  max_consecutive_years: number | null;
+  keeper_deadline: string | null;
+}): Promise<KeeperRules> {
+  return _keepersRequest("/rules", "PUT", rules);
+}
+
+export function lockKeeperRules(season: number): Promise<KeeperRules> {
+  return _keepersRequest("/rules/lock", "POST", { season });
+}
+
+export function unlockKeeperRules(season: number): Promise<KeeperRules> {
+  return _keepersRequest("/rules/unlock", "POST", { season });
+}
+

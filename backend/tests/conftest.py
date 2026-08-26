@@ -68,7 +68,10 @@ async def cleanup_test_season(pool):
     yield
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
-        await conn.execute("DELETE FROM rosters WHERE season = $1", TEST_SEASON)
+        # TEST_SEASON - 1 too, not just TEST_SEASON: keeper tests
+        # (test_keepers.py) seed a "prior season" roster to pick keepers
+        # from, the first tests in this suite to need that concept.
+        await conn.execute("DELETE FROM rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
@@ -122,7 +125,17 @@ async def cleanup_test_season(pool):
             "DELETE FROM conversations WHERE type = 'direct' "
             "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
         )
-        await conn.execute("DELETE FROM teams_by_season WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM teams_by_season WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # keeper_selections.owner_id -> owners.owner_id, so it goes before
+        # the owner DELETE below like rivalries/owner_preferences above —
+        # by owner (test-% pattern) rather than by season since a keeper
+        # test may write rows for TEST_SEASON *and* TEST_SEASON - 1 (last
+        # year's picks, for carryover tests). league_keeper_rules has no
+        # owner_id column, so that one's still scoped by season directly.
+        await conn.execute(
+            "DELETE FROM keeper_selections WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute("DELETE FROM league_keeper_rules WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         # owners.user_id -> users.id, so capture which users are linked to
         # test owners *before* deleting those owners, then delete the
         # users afterward — deleting users first would violate the FK.
