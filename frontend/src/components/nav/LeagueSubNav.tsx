@@ -1,35 +1,32 @@
 import Link from "next/link";
-import { DESTINATIONS, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
+import { DESTINATIONS, DESTINATION_HREF, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
 
-export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers">;
+export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers" | "freeAgents">;
+
+// "League" reads fine as a top-level destination, but repeating the
+// same word as the first tab *inside* the page you already tapped
+// "League" to reach ("League > League") is redundant — this is the
+// only label override any tab here needs.
+const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
+  league: "Overview",
+};
 
 /**
  * Rendered manually at the top of each League-family page (League,
- * Standings, Player Cards, Awards, Rivalries, Rules, Chug) rather than
- * via a shared route-group layout — keeps this additive (one line per page)
- * instead of restructuring how those routes are organized. No
- * usePathname() needed: each page already knows which tab it is, so
- * `active` is just passed in directly — a plain server component, no
- * client JS for something this simple. `‹ League` only shows on
- * mobile (sm:hidden) — desktop already has "League" one click away in
- * the primary header, this is purely the mobile "how do I get back"
- * affordance from spec §23.
+ * Standings, Player Cards, Awards, Rivalries, Rules, Chug, Power
+ * Rankings) rather than via a shared route-group layout — keeps this
+ * additive (one line per page) instead of restructuring how those
+ * routes are organized. No usePathname() needed: each page already
+ * knows which tab it is, so `active` is just passed in directly — a
+ * plain server component, no client JS for something this simple.
+ * `‹ League` only shows on mobile (sm:hidden) — desktop already has
+ * "League" one click away in the primary header, this is purely the
+ * mobile "how do I get back" affordance from spec §23.
  */
-const STATIC_HREF: Record<Exclude<LeagueTab, "awards">, string> = {
-  league: "/league",
-  standings: "/standings",
-  playerCards: "/players",
-  freeAgents: "/free-agents",
-  rivalries: "/rivalries",
-  rules: "/rules",
-  chug: "/chug",
-  powerRankings: "/power-rankings",
-};
-
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
   const tabs = (LEAGUE_SUBNAV_ORDER as LeagueTab[]).map((key) => ({
     key,
-    href: key === "awards" ? awardsHref : STATIC_HREF[key],
+    href: key === "awards" ? awardsHref : DESTINATION_HREF[key]!,
   }));
 
   return (
@@ -52,7 +49,7 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
             className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
             style={{ ["--nav-color" as string]: DESTINATIONS[tab.key].color }}
           >
-            {DESTINATIONS[tab.key].label}
+            {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
           </Link>
         ))}
       </nav>

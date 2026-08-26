@@ -13,7 +13,6 @@ const TAB_COLOR = {
   league: DESTINATIONS.league.color,
   home: DESTINATIONS.home.color,
   matchups: DESTINATIONS.matchups.color,
-  freeAgents: DESTINATIONS.freeAgents.color,
 };
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
@@ -33,12 +32,16 @@ function LiveMark() {
 }
 
 /**
- * Desktop header row — five text destinations, no icons (the mobile
- * bottom nav is where icons carry weight; here plain, clean typography
- * does). Matchups/My Team's LIVE mark reflects the signed-in visitor's
- * own matchup (myMatchupLive, computed once in NavBar.tsx from
- * getMyWeek + the same isGameDay the ticker already computes) — not a
- * generic "some game somewhere is live" signal.
+ * Desktop header row — the same 5 destinations the mobile bottom bar
+ * has (My Team, League, Home, Matchups, Chat), plain text instead of
+ * icons (the mobile bar is where icons carry weight; here clean
+ * typography does). Free Agents used to be a 6th item here even though
+ * it wasn't in the mobile bar — now consistently lives under My
+ * Team's own sub-nav (MyTeamSubNav.tsx) on both. Matchups/My Team's
+ * LIVE mark reflects the signed-in visitor's own matchup
+ * (myMatchupLive, computed once in NavBar.tsx from getMyWeek + the
+ * same isGameDay the ticker already computes) — not a generic "some
+ * game somewhere is live" signal.
  */
 export function PrimaryNav({
   signedIn,
@@ -78,15 +81,6 @@ export function PrimaryNav({
         </span>
       </NavLink>
       {signedIn && <ChatNavLink variant="primary" />}
-      <NavLink
-        href="/free-agents"
-        section="players"
-        activeClassName={ACTIVE}
-        inactiveClassName={INACTIVE}
-        color={TAB_COLOR.freeAgents}
-      >
-        Free Agents
-      </NavLink>
     </div>
   );
 }

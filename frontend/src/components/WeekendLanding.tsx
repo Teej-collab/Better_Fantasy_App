@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Lobster, Satisfy } from "next/font/google";
 import Link from "next/link";
+import { DESTINATIONS, DESTINATION_HREF } from "@/lib/navDestinations";
 
 // Lobster instead of a thin script — thick, bold strokes read as an
 // actual lit marquee sign rather than elegant invitation lettering.
@@ -72,13 +73,19 @@ export function WeekendLanding({
     };
   }, []);
 
+  // Six hand-picked destinations, one per idle animation this page
+  // knows how to do — a curated highlight reel, not an attempt at
+  // matching League's sub-nav 1:1 (that's what Discover on Home does).
+  // Labels/hrefs still come from lib/navDestinations.ts's shared maps
+  // rather than being retyped here, so a label change or route move
+  // elsewhere can't leave this page showing something stale.
   const signs: Sign[] = [
-    { label: "Standings", href: "/standings", animation: "blue", tilt: -2 },
-    { label: "Matchups", href: matchupsHref, animation: "pink", tilt: 1.5 },
-    { label: "Awards", href: awardsHref, animation: "gold", tilt: -1.5 },
-    { label: "Rivalries", href: "/rivalries", animation: "orange", tilt: 2 },
-    { label: "Player Cards", href: "/players", animation: "cyan", tilt: -2 },
-    { label: "Rules", href: "/rules", animation: "purple", tilt: 1.5 },
+    { label: DESTINATIONS.standings.label, href: DESTINATION_HREF.standings!, animation: "blue", tilt: -2 },
+    { label: DESTINATIONS.matchups.label, href: matchupsHref, animation: "pink", tilt: 1.5 },
+    { label: DESTINATIONS.awards.label, href: awardsHref, animation: "gold", tilt: -1.5 },
+    { label: DESTINATIONS.rivalries.label, href: DESTINATION_HREF.rivalries!, animation: "orange", tilt: 2 },
+    { label: DESTINATIONS.playerCards.label, href: DESTINATION_HREF.playerCards!, animation: "cyan", tilt: -2 },
+    { label: DESTINATIONS.rules.label, href: DESTINATION_HREF.rules!, animation: "purple", tilt: 1.5 },
   ];
 
   return (

@@ -85,32 +85,61 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   powerRankings: { key: "powerRankings", label: "Power Rankings", color: "#3b82f6" },
 };
 
-export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat", "freeAgents"];
+// Static hrefs shared by every nav surface that needs one — the single
+// place a route lives so LeagueSubNav, Home's Discover tiles, and
+// /weekend's vacancy signs can't drift into three different subsets
+// with three different href strings the way they used to (Power
+// Rankings shipped in LeagueSubNav and was simply forgotten on the
+// other two, since each kept its own hand-copied list). `awards` is
+// deliberately absent — its href depends on the latest season
+// (awardsHrefFor in lib/api.ts), so every caller that needs it passes
+// that in separately rather than this map pretending it's static.
+// `matchups`/`home` are also absent for the same reason (`matchups`
+// depends on the current season/week; `home` is just "/").
+export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
+  team: "/team",
+  league: "/league",
+  standings: "/standings",
+  playerCards: "/players",
+  freeAgents: "/free-agents",
+  chat: "/chat",
+  rivalries: "/rivalries",
+  rules: "/rules",
+  chug: "/chug",
+  keepers: "/keepers",
+  powerRankings: "/power-rankings",
+};
+
+export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
 
 // The mobile bottom bar's 5 fixed slots (BottomNav.tsx) — this is the
 // DEFAULT order only; an owner can reorder these 5 (never add/remove
 // one) via Settings > Navigation, persisted as owner_preferences'
-// bottom_nav_order. Free Agents is deliberately not a candidate here
-// (see LEAGUE_SUBNAV_ORDER below) — the mobile "More" sheet that used
-// to hold it is gone entirely, not replaced by a slot choice.
+// bottom_nav_order.
 export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
 
-// Free Agents moved in here (was mobile's "More" sheet's only entry
-// with no other mobile path once that sheet was removed) — every
-// other former More-sheet destination (Standings, Awards, Rivalries,
-// Rules, Chug) was already reachable through this same sub-nav once on
-// any League-family page.
+// League-family destinations — everything that's "browse the league,"
+// as opposed to "manage my own roster" (My Team's own sub-nav:
+// Roster/Keepers/Free Agents — see MyTeamSubNav.tsx). This is also the
+// one list Home's Discover tiles and /weekend's vacancy signs both
+// read from now, instead of each keeping its own copy.
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
   "playerCards",
-  "freeAgents",
   "awards",
   "rivalries",
   "rules",
   "chug",
   "powerRankings",
 ];
+
+// My Team's own sub-nav (MyTeamSubNav.tsx) — the "my own roster"
+// destinations, as opposed to LEAGUE_SUBNAV_ORDER's "browse the
+// league" ones. `team` itself (labeled "Roster" there) is first but
+// isn't repeated here since it's the page these tabs sit on top of,
+// not a link to itself.
+export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["keepers", "freeAgents"];
 
 // /gamecast/[gameId] is deliberately absent from this config — it's
 // reachable only via the live ticker's dynamic linking (see

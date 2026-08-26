@@ -33,7 +33,7 @@ import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
-import { DESTINATIONS, type DestinationKey } from "@/lib/navDestinations";
+import { DESTINATION_HREF, DESTINATIONS, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
 
 // The homepage's six reorderable dashboard cards, in the app's own
 // default order — same set backend/app/routers/settings.py validates
@@ -651,22 +651,43 @@ function SectionHeader({ color, title, href }: { color: DestinationKey; title: s
 
 type DiscoveryTile = { color: DestinationKey; href: string; label: string; description: string };
 
-// A curated shortcut list, NOT a full duplicate of the top nav bar
-// anymore — League, Matchups, Chat are already top-level tabs on both
-// PrimaryNav (desktop) and BottomNav (mobile), and Awards already has
-// its own dedicated homepage card just above this one when there's a
-// current season. What's left here is exactly the set that otherwise
-// requires detouring through League's own sub-nav first. The Weekend
-// gets its own flagship card above the grid since it's the site's one
-// major "atmosphere" destination, not just another data page.
+// One line of custom copy per tile — the one thing LEAGUE_SUBNAV_ORDER
+// itself doesn't carry (a pill label is enough context in a nav row;
+// a homepage tile wants a real description). Every League-family
+// destination needs an entry here except the two excluded below, so a
+// newly-added one (like Power Rankings was) doesn't silently show up
+// with blank/missing copy.
+const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
+  standings: "Full league standings and records",
+  rivalries: "All-time rivalry history and grudges",
+  playerCards: "Browse every team's trading card",
+  rules: "Scoring, roster, and league settings",
+  chug: "Who owes chugs, who's paid up",
+  powerRankings: "Who's actually good this week, plus Luck and Strength of Schedule",
+};
+
+// Derived from LEAGUE_SUBNAV_ORDER (lib/navDestinations.ts) — the same
+// list League's own sub-nav, Home's Discover tiles here, and
+// /weekend's vacancy signs all read from now, instead of each keeping
+// its own hand-copied subset that drifts out of sync the moment
+// something new (like Power Rankings) gets added to just one of them.
+// "league" and "awards" are excluded here specifically: League itself
+// is already a top-level tab on both PrimaryNav and BottomNav, and
+// Awards already has its own dedicated homepage card just above this
+// one when there's a current season — everything else in that shared
+// list is a genuine shortcut that would otherwise require detouring
+// through League's own sub-nav first. The Weekend gets its own
+// flagship card above the grid since it's the site's one major
+// "atmosphere" destination, not just another data page.
+const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards"]);
+
 function DiscoveryGrid() {
-  const tiles: DiscoveryTile[] = [
-    { color: "standings", href: "/standings", label: "Standings", description: "Full league standings and records" },
-    { color: "rivalries", href: "/rivalries", label: "Rivalries", description: "All-time rivalry history and grudges" },
-    { color: "playerCards", href: "/players", label: "Player Cards", description: "Browse every team's trading card" },
-    { color: "rules", href: "/rules", label: "Rules", description: "Scoring, roster, and league settings" },
-    { color: "chug", href: "/chug", label: "Chug Leaderboard", description: "Who owes chugs, who's paid up" },
-  ];
+  const tiles: DiscoveryTile[] = LEAGUE_SUBNAV_ORDER.filter((key) => !DISCOVER_EXCLUDED.has(key)).map((key) => ({
+    color: key,
+    href: DESTINATION_HREF[key]!,
+    label: DESTINATIONS[key].label,
+    description: DISCOVER_DESCRIPTIONS[key] ?? DESTINATIONS[key].label,
+  }));
 
   return (
     <section className="flex flex-col gap-2">
