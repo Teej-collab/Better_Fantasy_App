@@ -17,7 +17,11 @@ import { useIntroSound } from "@/lib/useIntroSound";
 // time), then a can opening immediately followed by a pour once
 // WEEKEND League itself appears — triggered from the exact same
 // timeout callbacks that drive the visuals, so both stay in lockstep
-// automatically for every consumer of this hook.
+// automatically. `sound` (default true) lets a consumer opt out of the
+// audio entirely while keeping the same visual sequence — AppEntry.tsx
+// does, since per the project owner this sound should only ever play
+// on the actual sign-in screen and the "Welcome Back" reveal into
+// Home, not on a reload of an arbitrary already-signed-in page.
 export const WORDS = ["WELCOME", "TO", "THE"];
 // Each word ignites a little quicker than the last — an accelerating
 // cadence that builds anticipation toward WEEKEND instead of a metronomic
@@ -44,11 +48,11 @@ export function prefersReducedMotion(): boolean {
   return /(?:^|; )wl_motion=reduced(?:;|$)/.test(document.cookie);
 }
 
-export function useWeekendIntro() {
+export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const { playLightSwitch, playCanThenPour } = useIntroSound();
+  const { playLightSwitch, playCanThenPour } = useIntroSound(sound);
 
   useEffect(() => {
     // Every stage change happens inside a timeout callback, never

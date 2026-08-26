@@ -46,14 +46,27 @@ const CAN_OPENING_DURATION_MS = 1100;
  * interaction anywhere during the sequence, sound still won't play —
  * that's an unconditional browser policy no web page can override, not
  * a bug. It should stop being silent well before long, though.
+ *
+ * `enabled` (default true) — AppEntry.tsx (the boot sequence that
+ * replays on a reload of ANY signed-in page — team, chat, matchups,
+ * every route it wraps) passes false: per the project owner, this
+ * sound should only ever play on the actual sign-in screen
+ * (OpeningExperience.tsx) and the "Welcome Back" reveal into Home
+ * (HomeWelcomeBackEntry.tsx), not on a reload of an arbitrary page.
+ * Still always called (React's rules of hooks — no conditional hook
+ * calls), just skips creating/preloading the three audio files
+ * entirely when disabled, so AppEntry.tsx's every-route reach doesn't
+ * mean fetching audio nobody will ever hear on most page loads.
  */
-export function useIntroSound() {
+export function useIntroSound(enabled: boolean = true) {
   const lightSwitchRef = useRef<HTMLAudioElement | null>(null);
   const canRef = useRef<HTMLAudioElement | null>(null);
   const pourRef = useRef<HTMLAudioElement | null>(null);
   const pendingRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const lightSwitch = new Audio(LIGHT_SWITCH_SRC);
     const can = new Audio(CAN_OPENING_SRC);
     const pour = new Audio(POUR_SRC);
@@ -74,7 +87,7 @@ export function useIntroSound() {
       window.removeEventListener("pointerdown", retryPending);
       window.removeEventListener("keydown", retryPending);
     };
-  }, []);
+  }, [enabled]);
 
   function playLightSwitch() {
     const el = lightSwitchRef.current;
