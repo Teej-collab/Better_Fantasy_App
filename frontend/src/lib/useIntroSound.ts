@@ -21,21 +21,37 @@ const CAN_OPENING_DURATION_MS = 1100;
  * opening immediately followed by a pour once the WEEKEND League
  * wordmark itself appears.
  *
- * Browsers block audio-with-sound autoplay until the visitor has
- * interacted with the page at all — same constraint
- * WeekendLanding.tsx already works around for its own pour/jazz
- * sounds. Each play attempt here is a best-effort `.play().catch(() =>
- * {})`: on a visitor's very first, cold load this may not produce
- * sound at all (nothing to do about that — it's the browser's policy,
- * not a bug), but once this origin has any autoplay trust (which
- * browsers grant per-origin over time, and which a standalone
- * installed PWA is often more lenient about than a fresh browser tab)
- * it plays normally.
+ * Browsers block audio-with-sound autoplay until the document has had
+ * a genuine user gesture — but AppEntry.tsx/HomeWelcomeBackEntry.tsx's
+ * boot sequence plays entirely automatically on page load, with no
+ * button of its own to tap. Two things work around that as best as a
+ * web page can:
+ *
+ * 1. introAudioUnlock.ts's app-wide warm-up listener (mounted once in
+ *    RootLayout, every route) claims the *first* gesture on any fresh
+ *    page load — a tap on the nav, a link, anywhere — for an audio
+ *    unlock, before the boot sequence even gets a chance to need one.
+ *    Once *any* gesture-triggered play succeeds on a document, that
+ *    whole document stays unlocked for the rest of its lifetime
+ *    (Chrome/Safari both work this way), so this alone can make a
+ *    *later* reload's boot sequence play with sound even though
+ *    nothing was tapped during the sequence itself that time.
+ * 2. Failing that, this hook arms its own one-time listener for a tap
+ *    *during* the sequence (same pattern WeekendLanding.tsx already
+ *    uses for its own pour/jazz sounds) and replays whichever sound
+ *    most recently got blocked the moment that happens — everything
+ *    from that tap onward then plays normally too.
+ *
+ * On a visitor's very first-ever cold load on this origin, with zero
+ * interaction anywhere during the sequence, sound still won't play —
+ * that's an unconditional browser policy no web page can override, not
+ * a bug. It should stop being silent well before long, though.
  */
 export function useIntroSound() {
   const lightSwitchRef = useRef<HTMLAudioElement | null>(null);
   const canRef = useRef<HTMLAudioElement | null>(null);
   const pourRef = useRef<HTMLAudioElement | null>(null);
+  const pendingRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const lightSwitch = new Audio(LIGHT_SWITCH_SRC);
@@ -47,6 +63,17 @@ export function useIntroSound() {
     lightSwitchRef.current = lightSwitch;
     canRef.current = can;
     pourRef.current = pour;
+
+    const retryPending = () => {
+      pendingRef.current?.();
+      pendingRef.current = null;
+    };
+    window.addEventListener("pointerdown", retryPending, { once: true });
+    window.addEventListener("keydown", retryPending, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", retryPending);
+      window.removeEventListener("keydown", retryPending);
+    };
   }, []);
 
   function playLightSwitch() {
@@ -54,7 +81,9 @@ export function useIntroSound() {
     if (!el) return;
     el.currentTime = 0;
     el.volume = 0.5;
-    el.play().catch(() => {});
+    el.play().catch(() => {
+      pendingRef.current = playLightSwitch;
+    });
   }
 
   function playCanThenPour() {
@@ -63,7 +92,9 @@ export function useIntroSound() {
     if (!can || !pour) return;
     can.currentTime = 0;
     can.volume = 0.7;
-    can.play().catch(() => {});
+    can.play().catch(() => {
+      pendingRef.current = playCanThenPour;
+    });
     window.setTimeout(() => {
       pour.currentTime = 0;
       pour.volume = 0.7;

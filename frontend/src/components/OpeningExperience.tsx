@@ -85,12 +85,18 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: Tic
       {entering && <div className="wl-bloom" aria-hidden />}
 
       {stage === "word" && (
-        <button
-          onClick={skipIntro}
-          className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs"
-        >
-          Skip intro →
-        </button>
+        <>
+          <button
+            onClick={skipIntro}
+            className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs"
+          >
+            Skip intro →
+          </button>
+          {/* Not itself the unlock — any tap anywhere already claims
+              it (useIntroSound.ts) — just an invitation for an early
+              one so more of the sequence plays with sound. */}
+          <p className="safe-pt safe-px absolute top-0 left-0 z-10 text-xs text-white/40">🔈 Tap for sound</p>
+        </>
       )}
 
       <div

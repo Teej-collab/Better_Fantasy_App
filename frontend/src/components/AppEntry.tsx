@@ -144,6 +144,14 @@ export function AppEntry({ children }: { children: ReactNode }) {
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
       {revealing && <div className="wl-bloom" aria-hidden />}
 
+      {stage === "word" && (
+        // Not a button — any tap anywhere on this screen already
+        // unlocks sound (see useIntroSound.ts), this just invites an
+        // early one so more of the sequence has a chance to play with
+        // it instead of none, on a page load with no other gesture.
+        <p className="safe-pt safe-px absolute top-0 left-0 z-10 text-xs text-white/40">🔈 Tap for sound</p>
+      )}
+
       <div
         className={`wl-scene relative z-10 flex flex-col items-center justify-center gap-4 px-6 py-8 text-center sm:gap-5 ${
           revealing ? "wl-scene--entering" : ""
