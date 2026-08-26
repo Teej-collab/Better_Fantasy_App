@@ -32,14 +32,21 @@ async def _debug_summary_shape(event_id: str):
     result = {"top_level_keys": list(data.keys()), "boxscore_keys": list(boxscore.keys())}
     if players_section:
         team_entry = players_section[0]
-        result["players_team_entry_keys"] = list(team_entry.keys())
         stat_categories = team_entry.get("statistics", [])
-        result["stat_category_names"] = [c.get("name") for c in stat_categories]
-        if stat_categories:
-            first_cat = stat_categories[0]
-            result["first_category_keys"] = list(first_cat.keys())
-            result["first_category_labels"] = first_cat.get("labels")
-            athletes = first_cat.get("athletes", [])
-            if athletes:
-                result["first_athlete_sample"] = athletes[0]
+        result["all_categories"] = {
+            c.get("name"): {"keys": c.get("keys"), "labels": c.get("labels")} for c in stat_categories
+        }
+        rec_cat = next((c for c in stat_categories if c.get("name") == "receiving"), None)
+        if rec_cat and rec_cat.get("athletes"):
+            result["receiving_athlete_sample"] = rec_cat["athletes"][0]
+        def_cat = next((c for c in stat_categories if c.get("name") == "defensive"), None)
+        if def_cat and def_cat.get("athletes"):
+            result["defensive_athlete_sample"] = def_cat["athletes"][0]
+
+    teams_section = boxscore.get("teams", [])
+    if teams_section:
+        team0 = teams_section[0]
+        result["team_stats_keys"] = list(team0.keys())
+        stats = team0.get("statistics", [])
+        result["team_stat_names"] = [s.get("name") for s in stats]
     return result
