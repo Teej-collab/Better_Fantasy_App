@@ -917,8 +917,8 @@ export function updateHomeDesktopLayout(layout: HomeGridLayoutItem[]): Promise<O
   return updatePreferences({ home_desktop_layout: JSON.stringify(layout) });
 }
 
-// ---- My Team (real-time ESPN data, lineup preview only — no real
-// submission exists yet, see backend/ESPN_LINEUP_WRITE.md) ----------------
+// ---- My Team (real-time ESPN data — preview a swap first, then submit
+// it for real; see backend/ESPN_LINEUP_WRITE.md) --------------------------
 
 export type EligibleSlot = { id: number; label: string };
 
@@ -962,6 +962,24 @@ export async function previewLineupSwap(playerA: string, playerB: string): Promi
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export type LineupMutationResult = { attempted: boolean; dry_run: boolean; verified: boolean; detail: string };
+
+// Real write — submits to ESPN and verifies by re-reading the live
+// roster (see lineup_client.py). Always the caller's own team, resolved
+// server-side from the session.
+export async function submitLineupSwap(playerA: string, playerB: string): Promise<LineupMutationResult> {
+  const res = await fetch(`/api/backend/me/team/lineup/swap`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ player_a: playerA, player_b: playerB }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Swap failed (${res.status})`);
   }
   return res.json();
 }

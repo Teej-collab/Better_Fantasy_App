@@ -170,6 +170,128 @@ async def test_preview_move_requires_session(pool):
     assert resp.status_code == 401
 
 
+async def test_submit_move_dry_run_by_default(pool, monkeypatch):
+    _set_espn_env(monkeypatch)  # ESPN_DRY_RUN unset -> defaults true
+    owner_id = await _seed_owner_with_team(pool, 10, espn_team_id=50)
+    roster = [make_fake_lineup_player(1, "Bench RB", "BE", ["RB", "BE"])]
+    team = make_fake_team(50, "My Team 10", "test-member-1", "Alice", "Smith", roster=roster)
+    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/move", json={"player_name": "Bench RB", "to_slot": "RB"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dry_run"] is True
+    assert body["attempted"] is False
+
+
+async def test_submit_move_requires_session(pool):
+    async with _client() as client:
+        resp = await client.post("/me/team/lineup/move", json={"player_name": "X", "to_slot": "RB"})
+    assert resp.status_code == 401
+
+
+async def test_submit_swap_dry_run_by_default(pool, monkeypatch):
+    _set_espn_env(monkeypatch)
+    owner_id = await _seed_owner_with_team(pool, 11, espn_team_id=51)
+    roster = [
+        make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
+        make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
+    ]
+    team = make_fake_team(51, "My Team 11", "test-member-1", "Alice", "Smith", roster=roster)
+    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/swap", json={"player_a": "Starter", "player_b": "Bencher"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dry_run"] is True
+    assert body["attempted"] is False
+
+
+async def test_submit_swap_requires_session(pool):
+    async with _client() as client:
+        resp = await client.post("/me/team/lineup/swap", json={"player_a": "X", "player_b": "Y"})
+    assert resp.status_code == 401
+
+
+async def test_submit_move_falls_back_to_friendly_message_on_auth_rejection(pool, monkeypatch):
+    """See me.py's CROSS-OWNER CREDENTIAL CAVEAT: a write ESPN rejects
+    with 401/403 (plausibly because the app's single ESPN session can't
+    write this owner's roster) surfaces as a plain, actionable message
+    instead of a raw 502."""
+    from app.providers.espn.lineup_exceptions import ESPNWriteHTTPError
+    from app.providers.espn.lineup_client import ESPNLineupClient
+
+    _set_espn_env(monkeypatch)
+    owner_id = await _seed_owner_with_team(pool, 14, espn_team_id=54)
+
+    def _raise(*args, **kwargs):
+        raise ESPNWriteHTTPError(403, "Forbidden")
+
+    monkeypatch.setattr(ESPNLineupClient, "set_lineup", _raise)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/move", json={"player_name": "X", "to_slot": "RB"})
+
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["error"] == "not_authorized_for_this_team"
+    assert "ESPN app" in body["detail"]
+
+
+async def test_submit_swap_falls_back_to_friendly_message_on_unverified_write(pool, monkeypatch):
+    from app.providers.espn.lineup_exceptions import MutationVerificationFailedError
+    from app.providers.espn.lineup_client import ESPNLineupClient
+
+    _set_espn_env(monkeypatch)
+    owner_id = await _seed_owner_with_team(pool, 15, espn_team_id=55)
+
+    def _raise(*args, **kwargs):
+        raise MutationVerificationFailedError("not applied")
+
+    monkeypatch.setattr(ESPNLineupClient, "swap_players", _raise)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/swap", json={"player_a": "X", "player_b": "Y"})
+
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["error"] == "not_verified"
+    assert "ESPN app" in body["detail"]
+
+
+async def test_submit_swap_only_ever_targets_the_callers_own_team(pool, monkeypatch):
+    """The whole safety property of this endpoint: team_id is resolved
+    server-side from the session's owner_id, never accepted from the
+    request body — confirmed here by seeding two owners with two
+    different espn_team_ids and checking the swap plans against the
+    caller's team (52), not the other owner's (53)."""
+    _set_espn_env(monkeypatch)
+    owner_id = await _seed_owner_with_team(pool, 12, espn_team_id=52)
+    await _seed_owner_with_team(pool, 13, espn_team_id=53)
+    roster = [
+        make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
+        make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
+    ]
+    team_52 = make_fake_team(52, "My Team 12", "test-member-1", "Alice", "Smith", roster=roster)
+    team_53 = make_fake_team(53, "My Team 13", "test-member-2", "Bob", "Jones", roster=[])
+    _patch_league(monkeypatch, FakeLeague(teams=[team_52, team_53], current_week=5))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/swap", json={"player_a": "Starter", "player_b": "Bencher"})
+
+    assert resp.status_code == 200
+    assert resp.json()["dry_run"] is True
+
+
 def _add_body(**overrides):
     body = {"player_id": 999, "player_name": "Free Agent Guy", "position": "RB", "pro_team": "KC"}
     body.update(overrides)

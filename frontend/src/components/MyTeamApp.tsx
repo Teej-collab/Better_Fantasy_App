@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMyTeam, previewLineupSwap, type LineupSwapPreview, type MyTeam, type RosterEntry } from "@/lib/api";
+import {
+  getMyTeam,
+  previewLineupSwap,
+  submitLineupSwap,
+  type LineupSwapPreview,
+  type MyTeam,
+  type RosterEntry,
+} from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { nflTeamName } from "@/lib/nfl-teams";
 
@@ -102,6 +109,9 @@ export function MyTeamApp() {
   const [selected, setSelected] = useState<RosterEntry | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<string | null>(null);
 
   useEffect(() => {
     getMyTeam()
@@ -109,9 +119,29 @@ export function MyTeamApp() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load your team"));
   }, []);
 
+  function confirmSwap() {
+    if (!swapPreview) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    submitLineupSwap(swapPreview.player_a.player_name, swapPreview.player_b.player_name)
+      .then((result) => {
+        if (!result.verified) {
+          setSubmitError(result.detail);
+          return;
+        }
+        setSubmitted(`Swapped ${swapPreview.player_a.player_name} and ${swapPreview.player_b.player_name}.`);
+        setSwapPreview(null);
+        return getMyTeam().then(setTeam);
+      })
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "Swap failed"))
+      .finally(() => setSubmitting(false));
+  }
+
   function toggleSwapSelect(entry: RosterEntry) {
     setSwapPreview(null);
     setPreviewError(null);
+    setSubmitError(null);
+    setSubmitted(null);
 
     if (selected === null) {
       setSelected(entry);
@@ -158,23 +188,33 @@ export function MyTeamApp() {
         <span className="text-xs text-black/40 dark:text-white/40">Live from ESPN</span>
       </div>
 
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 text-xs text-black/70 dark:text-white/70">
-        Swaps below are <strong>previews only</strong> — they show exactly what would happen, but nothing is
-        actually submitted to ESPN yet. Make the real change in the ESPN app for now.
-      </div>
-
       {previewing && <p className="text-xs text-black/50 dark:text-white/50">Checking…</p>}
       {previewError && <p className="text-xs text-red-500">{previewError}</p>}
+      {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+      {submitted && <p className="text-xs text-emerald-600 dark:text-emerald-400">{submitted}</p>}
 
       {swapPreview && (
         <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-3 text-sm">
-          <button onClick={() => setSwapPreview(null)} className="float-right text-xs text-black/40 dark:text-white/40">
-            ✕
-          </button>
           <p>
-            Would swap <strong>{swapPreview.player_a.player_name}</strong> ({swapPreview.player_a.lineup_slot_label})
-            with <strong>{swapPreview.player_b.player_name}</strong> ({swapPreview.player_b.lineup_slot_label}).
+            Swap <strong>{swapPreview.player_a.player_name}</strong> ({swapPreview.player_a.lineup_slot_label})
+            with <strong>{swapPreview.player_b.player_name}</strong> ({swapPreview.player_b.lineup_slot_label})?
           </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={confirmSwap}
+              disabled={submitting}
+              className="rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {submitting ? "Submitting…" : "Confirm swap"}
+            </button>
+            <button
+              onClick={() => setSwapPreview(null)}
+              disabled={submitting}
+              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 disabled:opacity-50 dark:border-white/10 dark:text-white/60"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

@@ -19,22 +19,31 @@ Every claim below is labeled:
 
 ## How to actually test this right now
 
-`backend/app/routers/admin_lineup.py` exposes `ESPNLineupClient` as a
-small commissioner-session-gated HTTP surface (same `is_commissioner`
-gate as `/admin/sync`) — nothing else calls this client yet (no Discord
-command, no frontend page), so this is the only way to exercise it
-before that exists:
+Two HTTP surfaces call `ESPNLineupClient`'s write path now:
 
-- `GET /admin/lineup/teams/{team_id}/roster` — team's LIVE roster, from
-  ESPN directly (see "always live" note below).
-- `POST /admin/lineup/teams/{team_id}/set` — body
-  `{"player_name": "...", "to_slot": "RB", "as_league_manager": false}`.
-- `POST /admin/lineup/teams/{team_id}/swap` — body
-  `{"player_a": "...", "player_b": "...", "as_league_manager": false}`.
+- `backend/app/routers/admin_lineup.py` — commissioner-session-gated
+  (same `is_commissioner` gate as `/admin/sync`), any `team_id`. A
+  testing/commissioner-override tool, not the owner-facing path.
+  - `GET /admin/lineup/teams/{team_id}/roster`
+  - `POST /admin/lineup/teams/{team_id}/set` — body
+    `{"player_name": "...", "to_slot": "RB", "as_league_manager": false}`.
+  - `POST /admin/lineup/teams/{team_id}/swap` — body
+    `{"player_a": "...", "player_b": "...", "as_league_manager": false}`.
+- `backend/app/routers/me.py` — session-gated, **owner-facing, real
+  submission for everyone**. `team_id` is never accepted from the
+  caller; it's resolved server-side from the signed-in owner's own
+  `espn_team_id`, same discipline as every other `/me/*` route.
+  `frontend/src/components/MyTeamApp.tsx` drives this as a two-step
+  preview-then-confirm flow (preview endpoints below, then the real
+  submit).
+  - `POST /me/team/lineup/preview-move` / `preview-swap` — preview only,
+    never sends anything to ESPN.
+  - `POST /me/team/lineup/move` — body `{"player_name": "...", "to_slot": "RB"}`.
+  - `POST /me/team/lineup/swap` — body `{"player_a": "...", "player_b": "..."}`.
 
-Safe by default: `ESPN_DRY_RUN` defaults to `true`, so hitting the POST
-endpoints just returns what *would* be sent until you explicitly flip it
-in `.env`.
+Safe by default: `ESPN_DRY_RUN` defaults to `true`, so hitting any of the
+POST endpoints above just returns what *would* be sent until it's
+explicitly flipped in `.env` (or the environment's real config).
 
 **Important:** this always reads live from ESPN, never from this app's
 own `rosters` database table — which matters because that table can be
@@ -326,6 +335,23 @@ rejects each. Two outcomes:
 
 This test hasn't been run yet — status here will move to VERIFIED once
 it has.
+
+**Decision (Aug 2026):** rather than block the owner-facing Submit
+feature (`/me/team/lineup/move`/`swap`, see that router's module
+docstring) on running this test first, it ships to every owner now with
+a graceful fallback: a write ESPN rejects for an auth-flavored reason
+(401/403), or that comes back looking successful but a follow-up roster
+read shows never actually applied, is caught and turned into a plain
+"couldn't submit — use the ESPN app for now" message instead of a raw
+error, and logged distinctly (`ESPN lineup write rejected (auth)...` /
+`...not verified after send...`) so real usage reveals which owners it
+actually works for. Watch those log lines after rollout — if they show
+up for every owner except team 4 (the credential holder), that's this
+question answered "rejected" by real traffic, and the per-owner
+credential design becomes the real next step. If they don't show up at
+all, the single commissioner credential apparently covers the whole
+league and this section can move to VERIFIED with no further design
+work needed.
 
 If either of those needs chasing down later, the capture process below
 is kept for reference — same DevTools steps, same redaction rule.
