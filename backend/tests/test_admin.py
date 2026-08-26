@@ -1,39 +1,45 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
 from app.main import app
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _post_sync(headers=None, path="/admin/sync"):
+
+def _session_cookie(owner_id: int, is_commissioner: bool):
+    token = create_session_token(
+        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=900000 + owner_id, is_commissioner=is_commissioner
+    )
+    return {"session": token}
+
+
+async def _post_sync(cookies=None, path="/admin/sync"):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.post(path, headers=headers or {})
+        if cookies:
+            client.cookies.update(cookies)
+        return await client.post(path)
 
 
-async def test_sync_disabled_when_token_not_configured(monkeypatch):
-    monkeypatch.delenv("ADMIN_SYNC_TOKEN", raising=False)
+async def test_sync_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     response = await _post_sync()
-    assert response.status_code == 501
+    assert response.status_code == 401
 
 
-async def test_sync_rejects_wrong_token(monkeypatch):
-    monkeypatch.setenv("ADMIN_SYNC_TOKEN", "correct-token")
-    response = await _post_sync(headers={"X-Admin-Token": "wrong-token"})
+async def test_sync_rejects_non_commissioner(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False))
     assert response.status_code == 403
 
 
-async def test_sync_rejects_missing_token_header(monkeypatch):
-    monkeypatch.setenv("ADMIN_SYNC_TOKEN", "correct-token")
-    response = await _post_sync()
-    assert response.status_code == 403
-
-
-async def test_live_sync_disabled_when_token_not_configured(monkeypatch):
-    monkeypatch.delenv("ADMIN_SYNC_TOKEN", raising=False)
+async def test_live_sync_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     response = await _post_sync(path="/admin/sync/live")
-    assert response.status_code == 501
+    assert response.status_code == 401
 
 
-async def test_live_sync_rejects_wrong_token(monkeypatch):
-    monkeypatch.setenv("ADMIN_SYNC_TOKEN", "correct-token")
-    response = await _post_sync(headers={"X-Admin-Token": "wrong-token"}, path="/admin/sync/live")
+async def test_live_sync_rejects_non_commissioner(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/sync/live")
     assert response.status_code == 403

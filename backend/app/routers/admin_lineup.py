@@ -1,5 +1,5 @@
 """
-Admin-gated HTTP surface for app/providers/espn/lineup_client.py.
+Commissioner-gated HTTP surface for app/providers/espn/lineup_client.py.
 
 Nothing calls ESPNLineupClient anywhere else yet except app/routers/me.py's
 /me/team routes (session-gated, always the signed-in owner's own team) —
@@ -7,26 +7,27 @@ Discord commands were explicitly out of scope for the lineup-write
 investigation (see ESPN_LINEUP_WRITE.md), so without this router there
 was no way to actually exercise set_lineup()/swap_players() except by
 running Python directly. This exists purely so the write feature can be
-tested (via curl or Postman) against ANY team_id before any real UI
-existed on top of it.
+tested against ANY team_id — a commissioner acting on behalf of the
+league, not a self-service owner endpoint (that's /me/team's job).
 
 Deliberately reads LIVE from ESPN via ESPNLineupClient, never from our
 own `rosters` table — that table can be genuinely empty pre-draft (the
 sync pipeline's "has this week really happened yet" gates mean it saves
 nothing for a scoreless preseason week), but ESPN's live team.roster is
 available regardless, which is exactly why this feature never needed our
-DB in the first place. Same X-Admin-Token stopgap auth as admin.py, for
-the same reason: real auth (Phase 5) doesn't cover this yet.
+DB in the first place. Same is_commissioner session gate as admin.py —
+this used to run on the old X-Admin-Token stopgap before Phase 5's real
+auth existed; migrated once Phase 5 was confirmed working (Aug 19, 2026).
 
 Safe by default: ESPN_DRY_RUN defaults to true, so hitting the mutation
 endpoints here just logs and returns what WOULD be sent until that's
 explicitly turned off in .env.
 """
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.providers.espn.lineup_client import ESPNLineupClient
-from app.routers.admin import _check_admin_token
+from app.routers.admin import _require_commissioner
 from app.routers.lineup_shared import map_lineup_error, roster_entry_dict
 
 router = APIRouter(prefix="/admin/lineup", tags=["admin"])
@@ -47,9 +48,9 @@ class SwapRequest(BaseModel):
 
 
 @router.get("/teams/{team_id}/roster")
-async def live_roster(team_id: int, season: int | None = None, x_admin_token: str | None = Header(default=None)):
+async def live_roster(team_id: int, request: Request, season: int | None = None):
     """LIVE from ESPN, not our DB — see module docstring for why."""
-    _check_admin_token(x_admin_token)
+    _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         roster = client.get_roster(team_id, season)
@@ -59,8 +60,8 @@ async def live_roster(team_id: int, season: int | None = None, x_admin_token: st
 
 
 @router.post("/teams/{team_id}/set")
-async def set_lineup(team_id: int, body: SetLineupRequest, x_admin_token: str | None = Header(default=None)):
-    _check_admin_token(x_admin_token)
+async def set_lineup(team_id: int, body: SetLineupRequest, request: Request):
+    _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         result = client.set_lineup(
@@ -77,8 +78,8 @@ async def set_lineup(team_id: int, body: SetLineupRequest, x_admin_token: str | 
 
 
 @router.post("/teams/{team_id}/swap")
-async def swap_players(team_id: int, body: SwapRequest, x_admin_token: str | None = Header(default=None)):
-    _check_admin_token(x_admin_token)
+async def swap_players(team_id: int, body: SwapRequest, request: Request):
+    _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         result = client.swap_players(

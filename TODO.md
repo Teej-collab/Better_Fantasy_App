@@ -840,8 +840,22 @@ the flag.
 still green.
 
 ## PHASE 8 — LEAGUE FEATURES
-- [ ] League history / records
-- [ ] Notifications (design pending)
+- [x] League history / records — this checkbox was stale; the League
+      Record Book (`app/domain/records.py`, `app/queries/records.py`,
+      top-3-per-category, computed live) and the All-Time Awards
+      leaderboard (`app/domain/awards_all_time.py`) both already
+      existed and are live on `/seasons/[season]/awards/all-time`.
+      Corrected Aug 26 2026 — see that day's entry below for
+      everything else shipped the same week this was noticed.
+- [x] Notifications (design pending) — also stale. `app/routers/push.py`
+      (subscribe/unsubscribe/VAPID), `app/notifications/dispatcher.py`
+      + `formatter.py`, and the full Settings > Notifications section
+      (toggles, Sunday Mode presets, push subscribe) are all built and
+      wired. One real, narrower gap still open, not this whole item:
+      the `game_day`/`leave_me_alone` Sunday Mode presets are currently
+      identical, since no real "Fantasy Activity" event notifications
+      (score alerts, close-game alerts) exist yet to tell them apart —
+      tracked as its own small item, Aug 26 2026 entry below.
 - [x] Chug Analyzer, Chug Leaderboard, auto chug debt calculation, and
       in-app league chat — all shipped Aug 20 2026, see below.
 
@@ -1083,6 +1097,110 @@ issues in quick succession:
 All five verified live in production, including a real phone sign-in
 after the fix. No schema changes, no new backend tests (infra/config +
 one new frontend proxy pattern, not new application logic).
+
+**Nav/mobile/feature session, Aug 22-26 2026.** Not logged day-by-day —
+a long, mostly owner-driven iterative session covering a lot of ground,
+summarized here so it isn't lost. Roughly in the order it happened:
+
+- [x] **Mobile PWA fixes**: chat composer unreachable behind the
+      keyboard (viewport + `interactive-widget: resizes-content`);
+      header rendering under the iPhone notch/status bar
+      (`viewport-fit=cover` needs its own `safe-area-inset-top` padding,
+      it isn't automatic); the boot/intro animation permanently getting
+      stuck (an unguarded `localStorage` read that can throw in
+      storage-restricted contexts, e.g. private browsing, left the real
+      app — header and all — hidden behind the splash forever); a
+      6s absolute failsafe added on top of that fix regardless, so this
+      class of bug can't fully lock a visitor out again; pull-to-refresh
+      no longer replays the whole boot animation, just refetches data.
+- [x] **Full nav/IA audit and restructure**: consolidated four
+      independently-drifting color maps into one `lib/navDestinations.ts`
+      source of truth; fixed several broken/`-Infinity` links; removed
+      the mobile "More" sheet entirely (Free Agents/Keepers moved under
+      My Team's own new sub-nav instead, alongside Roster — both are
+      "manage my own team" actions, not league-wide browsing); relabeled
+      LeagueSubNav's redundant "League > League" first tab to "Overview";
+      Home's Discover tiles and `/weekend`'s vacancy signs now read
+      league-family links from the same shared list LeagueSubNav does,
+      instead of three independently hand-copied, drifting subsets.
+- [x] **Player Cards redesign**: Cover Flow-style 3D swipe deck (scroll-
+      driven, not a fixed timer); tap-to-flip — front is just photo/team/
+      owner name + a champion crown, back has every stat, revealed only
+      once the card is centered; real reference photos added for every
+      owner but two.
+- [x] **Keeper League** (new): `league_keeper_rules` + `keeper_selections`
+      tables, owner-facing keeper picker (`/keepers`, from prior
+      season's own roster, `espn_player_id`-tracked so a repeat keeper
+      correctly increments its consecutive-years count), commissioner
+      rule config + lock. ESPN write-back deliberately not attempted —
+      needs its own reverse-engineering capture spike first (see
+      `backend/app/routers/keepers.py`'s module docstring).
+- [x] **Power Rankings / Luck Index / Strength of Schedule** (new):
+      `power_rank`/`luck_score` already existed per-week, per-season,
+      already backfilled — just never surfaced as a real feature before
+      (buried as one stat on a career profile). Added `weekly_team_stats.sos`
+      (average win% of every regular-season opponent faced), wired into
+      the same compute step power_rank/luck_score already use, backfilled
+      for every historical season via a real full re-sync. New
+      `/power-rankings` page: this week's ranked list with movement
+      arrows, a season trend table, and an all-time leaderboard computed
+      live (same no-separate-table convention as the record book).
+- [x] **Live-update timing tightened**: `GAMECAST_POLL_INTERVAL_SECONDS`
+      15 → 4; the fantasy-points live sync converted from
+      `LIVE_SYNC_INTERVAL_MINUTES` (default 5 min) to
+      `LIVE_SYNC_INTERVAL_SECONDS` (default 60) so a live touchdown
+      reflects as fantasy points much closer to real time. Confirmed via
+      code audit (not yet a real live game) that Gamecast's own poll and
+      the fantasy-points sync are two genuinely separate mechanisms —
+      Gamecast's "Fantasy Impact" panel is only ever as fresh as the
+      separate sync job's last run, not its own poll interval. Also
+      confirmed `ENABLE_GAMECAST_SCHEDULER` shows no evidence of being
+      turned on in production, unlike live sync — needs a direct check/
+      fix in Railway's env vars, not something visible from the repo.
+- [x] **Boot intro sound effects** (new): a light-switch cue per word as
+      WELCOME/TO/THE ignite, then a can-opening-then-pour once the
+      WEEKEND League wordmark appears — but only on the actual sign-in
+      screen and the "Welcome Back" reveal into Home, never on a
+      reload/deep-link landing on any other signed-in page. Browsers
+      block audio-with-sound autoplay without a prior gesture on that
+      page load — an app-wide one-time tap/keypress listener
+      (`lib/introAudioUnlock.ts`, mounted in `RootLayout`) claims the
+      first gesture anywhere in the app for an audio unlock, so a later
+      reload's boot sequence has a real chance of playing with sound
+      even with nothing tapped during that specific sequence.
+- [x] **Admin auth cleanup**: `/admin/sync`, `/admin/sync/live`, and
+      `/admin/lineup/*` migrated off the old shared-secret
+      `X-Admin-Token`/`ADMIN_SYNC_TOKEN` stopgap onto the real
+      `is_commissioner` session flag (Phase 5's actual auth, which had
+      landed everywhere else already but never got backported to these
+      two files). `ADMIN_SYNC_TOKEN` removed from `.env`/`.env.example`;
+      worth removing from Railway's production env vars too, now unused.
+
+**Known gaps flagged, not yet fixed:**
+- 5 of 16 owners still have no `discord_user_id` and can't log in
+  (Aaron Roberts, Bailey Hawn, Brian Thomas, Ligmuh Bauhs, Tyler
+  Dailey) — same gap Phase 5 originally flagged, still open, needs
+  their real Discord IDs before it's fixable.
+- Sunday Mode's `game_day`/`leave_me_alone` presets are still
+  identical (see the Phase 8 Notifications note above) — no real
+  Fantasy Activity events exist yet to tell them apart.
+- `GamecastShell.tsx` has a comment claiming a REST-polling fallback
+  exists for signed-out visitors whose WebSocket ticket can't be
+  minted — no such fallback actually exists in the code, it just stops
+  updating. Found during this session's audit, not yet fixed.
+
+**Confirmed as real, still-open decisions from this session** (see
+Phases 9/10 below — status unchanged, explicitly reaffirmed rather than
+silently dropped): multi-league support and additional data providers
+(Yahoo/Sleeper) remain real future goals, not scheduled now.
+
+**In progress as of this entry** (see this session's own plan for full
+detail): taking ESPN lineup writes live for real (owner-facing submit
+button, `ESPN_DRY_RUN` off in production); building real weekly AI
+recap generation (Claude, fully automatic per matchup); fixing the Chug
+Analyzer's production video-scoring gap (needs a custom Docker image on
+Railway, since its mediapipe dependency needs a second Python runtime
+Railway's single-runtime-per-service default doesn't support).
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything

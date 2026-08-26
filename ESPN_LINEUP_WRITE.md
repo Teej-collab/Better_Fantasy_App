@@ -20,10 +20,10 @@ Every claim below is labeled:
 ## How to actually test this right now
 
 `backend/app/routers/admin_lineup.py` exposes `ESPNLineupClient` as a
-small `X-Admin-Token`-gated HTTP surface (same auth stopgap as
-`/admin/sync`) — nothing else calls this client yet (no Discord command,
-no frontend page), so this is the only way to exercise it before that
-exists:
+small commissioner-session-gated HTTP surface (same `is_commissioner`
+gate as `/admin/sync`) — nothing else calls this client yet (no Discord
+command, no frontend page), so this is the only way to exercise it
+before that exists:
 
 - `GET /admin/lineup/teams/{team_id}/roster` — team's LIVE roster, from
   ESPN directly (see "always live" note below).

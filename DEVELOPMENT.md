@@ -175,10 +175,12 @@ separate, deliberate step:
 
 1. Fill in `ESPN_LEAGUE_ID`, `ESPN_S2`, `ESPN_SWID`, `ACTIVE_SEASON`, and
    `LEAGUE_START_SEASON` in `backend/.env` (your own values — never paste
-   these into chat; see Notes below). `ADMIN_SYNC_TOKEN` too, if using the
-   HTTP endpoint.
+   these into chat; see Notes below).
 2. Trigger it manually, either:
-   - `POST /admin/sync` with header `X-Admin-Token: <your ADMIN_SYNC_TOKEN>`
+   - `POST /admin/sync` while signed in as the commissioner (session
+     cookie, `is_commissioner` — see `app/routers/admin.py`; this used
+     to run on a shared-secret `X-Admin-Token` stopgap before Phase 5's
+     real auth existed, migrated once Phase 5 was confirmed working),
      while the backend is running, or
    - a small script that constructs `ESPNProvider()` and calls
      `app.providers.sync.run_full_sync(...)` directly.
@@ -202,17 +204,21 @@ week scan), then recomputes boom/bust for just that week. Re-running it
 naturally picks up roster/lineup changes too, since roster sync always
 replaces that week's data wholesale.
 
-- **Manual trigger:** `POST /admin/sync/live` (same `X-Admin-Token`
-  header as `/admin/sync`). Ignores the game-window gate — if you're
+- **Manual trigger:** `POST /admin/sync/live` (same commissioner-session
+  gate as `/admin/sync`). Ignores the game-window gate — if you're
   asking for it directly, it runs.
 - **Scheduled:** off by default (`ENABLE_LIVE_SYNC_SCHEDULER=true` to
-  turn on). When on, it ticks every `LIVE_SYNC_INTERVAL_MINUTES`
-  (default 5) but only actually calls ESPN during an NFL game window
-  (`app/game_windows.py`: Thursday/Sunday/Monday evenings, generously
-  bounded — doesn't cover the rare Saturday-only late-season slate).
-  This gating was a deliberate choice, not an oversight: ESPN's API is
-  unofficial (see ARCHITECTURE.md) and there's no reason to poll it at
-  3am on a Tuesday.
+  turn on). When on, it ticks every `LIVE_SYNC_INTERVAL_SECONDS`
+  (default 60 — tightened from an original default of 5 minutes so a
+  live touchdown reflects as fantasy points much closer to real time)
+  but only actually calls ESPN when a real NFL game is currently live,
+  per `app/providers/nfl_scoreboard.py`'s `is_nfl_game_live` (backed by
+  ESPN's own public scoreboard) — this replaced an earlier day/hour
+  heuristic (`app/game_windows.py`, removed) that could both miss a
+  real game outside its fixed windows and false-positive on an empty
+  evening inside them. This gating was a deliberate choice, not an
+  oversight: ESPN's fantasy API is unofficial (see ARCHITECTURE.md)
+  and there's no reason to poll it at 3am on a Tuesday.
 
 **Not yet verified against a real live game** — as of this writing the
 2026 season hasn't started (`get_current_week` correctly returns 0), so
