@@ -37,13 +37,25 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   client.py). There's also a manual POST /admin/players/sync trigger
   for the first-ever ingestion so it doesn't have to wait on a cron
   tick.
+- Draft clock (ENABLE_DRAFT_CLOCK_SCHEDULER): every tick, autopicks any
+  team whose pick_time_limit has expired with no pick made and
+  broadcasts the result over the draft WebSocket (app/draft/manager.py).
+  A tight 2-second interval, not 60s/24h like the sync jobs above — a
+  countdown clock hitting zero needs to feel immediate during a live
+  draft. This must be turned on in production well before the real
+  draft date; it defaults off like everything else here.
 """
 import logging
 import os
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.config import _require
 from app.db import get_pool
+from app.domain import draft_engine
+from app.domain.draft_exceptions import DraftError
+from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
@@ -107,6 +119,24 @@ async def _run_sleeper_player_sync_job():
     logger.info("Sleeper player sync finished: %d players upserted", count)
 
 
+async def _run_draft_clock_job():
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        config = await conn.fetchrow("SELECT status, current_pick_deadline FROM draft_config WHERE season = $1", season)
+        if config is None or config["status"] != "in_progress" or config["current_pick_deadline"] is None:
+            return
+        if config["current_pick_deadline"] > datetime.now(timezone.utc):
+            return
+        try:
+            result = await draft_engine.autopick(conn, season)
+        except DraftError:
+            logger.exception("Draft autopick failed for season=%s", season)
+            return
+    await draft_manager.broadcast_to_draft(season, {"type": "pick_made", **result})
+    logger.info("Draft autopick: season=%s pick=%s", season, result["pick"]["pick_number"])
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -146,6 +176,11 @@ def start_scheduler():
     if os.getenv("ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
         _scheduler.add_job(_run_sleeper_player_sync_job, "interval", hours=24, id="sleeper_player_sync")
         logger.info("Sleeper player sync scheduler started (every 24 hours)")
+        started_any = True
+
+    if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(_run_draft_clock_job, "interval", seconds=2, id="draft_clock")
+        logger.info("Draft clock scheduler started (every 2 seconds)")
         started_any = True
 
     if started_any:

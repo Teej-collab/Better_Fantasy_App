@@ -128,9 +128,15 @@ export async function getGameState(gameId: string): Promise<LiveGame | null> {
 
 // Same same-origin ticket-mint pattern as getChatWsTicket (lib/api.ts)
 // — /auth/ticket/route.ts already forwards an arbitrary `purpose` to
-// the backend, so no new Next.js route was needed for this.
+// the backend, so no new Next.js route was needed for this. Purpose
+// must be exactly "ws" — the backend's TICKET_PURPOSES only allows
+// "ws"/"chug_upload" and every WS route (chat/gamecast/draft) decodes
+// expecting the literal purpose "ws", not a per-feature string. This
+// was "gamecast_ws" before, which the backend always rejected with a
+// 400 — silently breaking Gamecast's WS ticket mint for everyone and
+// forcing the REST-polling fallback below on every real page load.
 export async function getGamecastWsTicket(): Promise<string | null> {
-  const res = await fetch("/auth/ticket?purpose=gamecast_ws", { method: "POST" });
+  const res = await fetch("/auth/ticket?purpose=ws", { method: "POST" });
   if (!res.ok) return null;
   const { ticket } = await res.json();
   return ticket ?? null;

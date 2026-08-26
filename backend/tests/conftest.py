@@ -125,6 +125,11 @@ async def cleanup_test_season(pool):
             "DELETE FROM conversations WHERE type = 'direct' "
             "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
         )
+        # current_rosters/draft_picks reference teams_by_season(id), so
+        # they have to go before the teams_by_season DELETE below.
+        await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM draft_picks WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM draft_config WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM teams_by_season WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         # keeper_selections.owner_id -> owners.owner_id, so it goes before
         # the owner DELETE below like rivalries/owner_preferences above —

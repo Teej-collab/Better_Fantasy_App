@@ -12,6 +12,7 @@ from app.routers import (
     awards,
     chat,
     chug,
+    draft,
     free_agents,
     game_day,
     gamecast,
@@ -53,6 +54,7 @@ app.include_router(auth.router)
 app.include_router(awards.router)
 app.include_router(chat.router)
 app.include_router(chug.router)
+app.include_router(draft.router)
 app.include_router(free_agents.router)
 app.include_router(game_day.router)
 app.include_router(gamecast.router)
