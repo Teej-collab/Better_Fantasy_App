@@ -1,37 +1,40 @@
 """
 Session-aware "my stuff" endpoints — the homepage hero
-(app/domain/your_week.py) and My Team (roster + real ESPN projections,
-lineup-change previews, and real lineup SUBMISSION — see module note on
-/team/lineup/* below). Same cookie-decode pattern as /auth/me
-(app/routers/auth.py); kept separate since this is homepage/dashboard
-data, not identity itself.
+(app/domain/your_week.py) and My Team (roster + real lineup/free-agent
+management). Same cookie-decode pattern as /auth/me (app/routers/auth.py);
+kept separate since this is homepage/dashboard data, not identity itself.
 
-/team/lineup/move and /team/lineup/swap are real writes (ESPNLineupClient
-.set_lineup()/.swap_players()), gated by ESPN_DRY_RUN like every other
-caller of those methods — always scoped to the signed-in owner's own
-espn_team_id, resolved server-side from the session, never accepted from
-the request body (same discipline as _require_my_espn_team_id everywhere
-else in this file). Mirrors admin_lineup.py's set/swap endpoints, minus
-team_id (implicit: always "me") and minus as_league_manager (never
-applicable to an owner submitting their own lineup).
+/team/lineup/* is backed entirely by our own `current_rosters` table
+(app/domain/lineup_engine.py) — this used to go through ESPNLineupClient
+(a real write to ESPN's private API), which this app retired once it
+became clear a single shared ESPN session can't act on every owner's
+behalf (see git history / ESPN_LINEUP_WRITE.md for the full story).
+There is no external write anymore for lineup moves, so there's no
+credential problem, no dry-run flag, and no cross-owner fallback
+message to worry about — a lineup move is just a plain DB UPDATE.
 
-CROSS-OWNER CREDENTIAL CAVEAT (see ESPN_LINEUP_WRITE.md's "Open question:
-does one member's credentials cover other teams?"): every write this app
-sends authenticates with a single ESPN session (ESPN_S2/SWID in the
-environment — the commissioner's own login), regardless of which owner
-is signed in when they hit Submit. Whether ESPN actually allows those
-credentials to write a DIFFERENT owner's roster is genuinely unverified.
-Per the project owner's explicit call (Aug 2026), this ships to everyone
-anyway rather than waiting on that answer — but a write that ESPN
-rejects for exactly this reason (an auth-flavored HTTP error, or a
-200-looking response that a follow-up roster read shows never actually
-applied) is caught by _submit_lineup_fallback_response below and turned
-into a plain "couldn't submit, use the ESPN app for now" message instead
-of a raw error, and logged distinctly so real traffic can reveal which
-owners it actually works for.
+/team/free-agents/* is a genuine two-track situation right now, not an
+oversight:
+  - /team/free-agents/preview-add is the OLD path — still ESPN-sourced
+    (the public free-agent browse list at /free-agents, and
+    FreeAgentsList.tsx's Add button, both use ESPN's numeric player_id).
+    It was always preview-only (nothing has ever really submitted an
+    ESPN free-agent claim), so leaving it as-is is not a regression.
+  - /team/free-agents (GET) and /team/free-agents/add (POST) are the
+    NEW path — Sleeper-sourced (sleeper_player_id), backed by
+    current_rosters, and /add is a REAL write. Nothing in the frontend
+    calls these yet: the public free-agent browse list's ESPN player_id
+    doesn't reliably cross-reference to a sleeper_player_id (the
+    players.espn_player_id crosswalk is only partially populated — see
+    app/providers/sleeper/ingest.py's canary log). Reconciling the two
+    (most likely: rebuilding the free-agent browse list itself on the
+    Sleeper-sourced `players` pool) is real follow-up work, not done
+    here — flagged in TODO.md rather than rushed.
+
+Every endpoint resolves owner_id (and from it, team_id) from the
+session — never trusts a client-supplied team/owner id, same discipline
+as keepers.py/settings.py.
 """
-import logging
-
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -40,54 +43,24 @@ from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
+from app.domain import lineup_engine
+from app.domain.lineup_exceptions import (
+    AmbiguousDisplacementError,
+    LineupError,
+    PlayerAlreadyRosteredError,
+    PlayerNotDraftableError,
+    PlayerNotOnRosterError,
+    RosterConfigNotFoundError,
+    RosterFullError,
+    SlotIneligibleError,
+)
 from app.domain.your_week import build_your_week
 from app.providers.espn.lineup_client import ESPNLineupClient
-from app.providers.espn.lineup_exceptions import (
-    ESPNWriteHTTPError,
-    MutationVerificationFailedError,
-    RosterFullError,
-)
-from app.providers.espn.slots import slot_label
+from app.providers.espn.lineup_exceptions import RosterFullError as ESPNRosterFullError
 from app.queries import league as league_queries
 from app.routers.lineup_shared import map_lineup_error, roster_entry_dict
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/me", tags=["me"])
-
-
-def _submit_lineup_fallback_response(e: Exception, owner_id: int, espn_team_id: int) -> JSONResponse | None:
-    """Returns a friendly fallback response for the two failure shapes a
-    cross-owner credential rejection would plausibly take, or None if
-    this isn't one of those (caller falls back to map_lineup_error).
-    See module docstring's CROSS-OWNER CREDENTIAL CAVEAT."""
-    if isinstance(e, ESPNWriteHTTPError) and e.status_code in (401, 403):
-        logger.warning(
-            "ESPN lineup write rejected (auth) for owner_id=%s espn_team_id=%s status=%s — "
-            "likely the cross-owner credential limitation, see ESPN_LINEUP_WRITE.md",
-            owner_id, espn_team_id, e.status_code,
-        )
-        return JSONResponse(
-            status_code=403,
-            content={
-                "error": "not_authorized_for_this_team",
-                "detail": "Couldn't submit this change through the app right now — please make it directly in the ESPN app for now.",
-            },
-        )
-    if isinstance(e, MutationVerificationFailedError):
-        logger.warning(
-            "ESPN lineup write not verified after send for owner_id=%s espn_team_id=%s — "
-            "possible silent no-op, see ESPN_LINEUP_WRITE.md",
-            owner_id, espn_team_id,
-        )
-        return JSONResponse(
-            status_code=409,
-            content={
-                "error": "not_verified",
-                "detail": "ESPN accepted the request but the change didn't apply — please make it directly in the ESPN app for now.",
-            },
-        )
-    return None
 
 
 def _require_session(request: Request) -> dict:
@@ -101,13 +74,45 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
-async def _require_my_espn_team_id(owner_id: int, active_season: int) -> int:
+async def _require_my_team(owner_id: int, active_season: int) -> tuple[int, str]:
+    """Internal team_id (teams_by_season.id — what current_rosters keys
+    on), not espn_team_id. Every /me/team/* route needs this instead
+    now that nothing here calls ESPN."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        team = await league_queries.get_team_for_owner(conn, active_season, owner_id)
+        team = await conn.fetchrow(
+            "SELECT id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
+            active_season, owner_id,
+        )
     if team is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")
-    return team["espn_team_id"], team["team_name"]
+    return team["id"], team["team_name"]
+
+
+def _map_lineup_error(e: Exception) -> HTTPException:
+    if isinstance(e, PlayerNotOnRosterError):
+        return HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, (SlotIneligibleError, AmbiguousDisplacementError)):
+        return HTTPException(status_code=400, detail=str(e))
+    if isinstance(e, RosterConfigNotFoundError):
+        return HTTPException(status_code=409, detail=str(e))
+    if isinstance(e, PlayerNotDraftableError):
+        return HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, PlayerAlreadyRosteredError):
+        return HTTPException(status_code=400, detail=str(e))
+    return HTTPException(status_code=400, detail=str(e))
+
+
+def _roster_entry_dict(entry: dict) -> dict:
+    return {
+        "player_id": entry["sleeper_player_id"],
+        "player_name": entry["player_name"],
+        "lineup_slot": entry["lineup_slot"],
+        "position": entry["position"],
+        "pro_team": entry["pro_team"],
+        "injury_status": entry["injury_status"],
+        "acquired_via": entry["acquired_via"],
+    }
 
 
 @router.get("/week")
@@ -126,138 +131,176 @@ async def week(request: Request):
 
 @router.get("/team")
 async def my_team(request: Request):
-    """LIVE from ESPN, not our DB — same reason as /admin/lineup/teams/{id}/roster
-    (app/routers/admin_lineup.py's module docstring): our `rosters` table
-    can be genuinely empty (pre-draft) or stale (only synced while a real
-    game is live), but ESPN's own live roster is always current."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, team_name = await _require_my_espn_team_id(payload["owner_id"], active_season)
+    team_id, team_name = await _require_my_team(payload["owner_id"], active_season)
 
-    client = ESPNLineupClient()
-    try:
-        roster = client.get_roster(espn_team_id, active_season)
-    except Exception as e:
-        raise map_lineup_error(e) from e
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        roster = await lineup_engine.get_roster(conn, active_season, team_id)
 
     return {
         "team_name": team_name,
         "season": active_season,
-        "roster": [roster_entry_dict(e) for e in roster],
-    }
-
-
-class LineupMovePreviewRequest(BaseModel):
-    player_name: str
-    to_slot: str
-
-
-class LineupSwapPreviewRequest(BaseModel):
-    player_a: str
-    player_b: str
-
-
-@router.post("/team/lineup/preview-move")
-async def preview_lineup_move(body: LineupMovePreviewRequest, request: Request):
-    """PREVIEW ONLY — validates the move against ESPN's live roster and
-    slot rules and describes exactly what would happen, but never
-    submits anything to ESPN. This calls ESPNLineupClient.plan_lineup_change
-    directly (not set_lineup), which is pure validation with no dry-run/
-    real-write machinery involved at all — the deliberate choice made
-    with the project owner when this feature was scoped (real ESPN
-    lineup submission has never been turned on anywhere in this project;
-    see ESPN_LINEUP_WRITE.md)."""
-    payload = _require_session(request)
-    active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
-
-    client = ESPNLineupClient()
-    try:
-        plan = client.plan_lineup_change(espn_team_id, body.player_name, body.to_slot, active_season)
-    except Exception as e:
-        raise map_lineup_error(e) from e
-
-    return {
-        "player": roster_entry_dict(plan.player),
-        "from_slot": {"id": plan.from_slot_id, "label": slot_label(plan.from_slot_id)},
-        "to_slot": {"id": plan.to_slot_id, "label": slot_label(plan.to_slot_id)},
-        "displaced_player": roster_entry_dict(plan.displaced_player) if plan.displaced_player else None,
-    }
-
-
-@router.post("/team/lineup/preview-swap")
-async def preview_lineup_swap(body: LineupSwapPreviewRequest, request: Request):
-    """PREVIEW ONLY — see preview_lineup_move's docstring."""
-    payload = _require_session(request)
-    active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
-
-    client = ESPNLineupClient()
-    try:
-        plan = client.plan_swap(espn_team_id, body.player_a, body.player_b, active_season)
-    except Exception as e:
-        raise map_lineup_error(e) from e
-
-    return {
-        "player_a": roster_entry_dict(plan.player_a),
-        "player_b": roster_entry_dict(plan.player_b),
+        "roster": [_roster_entry_dict(e) for e in roster],
     }
 
 
 class LineupMoveRequest(BaseModel):
-    player_name: str
+    sleeper_player_id: str
     to_slot: str
 
 
 class LineupSwapRequest(BaseModel):
-    player_a: str
-    player_b: str
+    sleeper_player_id_a: str
+    sleeper_player_id_b: str
+
+
+@router.post("/team/lineup/preview-move")
+async def preview_lineup_move(body: LineupMoveRequest, request: Request):
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            plan = await lineup_engine.plan_move(conn, active_season, team_id, body.sleeper_player_id, body.to_slot)
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+
+    return {
+        "player": _roster_entry_dict(plan["player"]),
+        "from_slot": plan["from_slot"],
+        "to_slot": plan["to_slot"],
+        "displaced_player": _roster_entry_dict(plan["displaced_player"]) if plan["displaced_player"] else None,
+    }
+
+
+@router.post("/team/lineup/preview-swap")
+async def preview_lineup_swap(body: LineupSwapRequest, request: Request):
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            plan = await lineup_engine.plan_swap(
+                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b
+            )
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+
+    return {
+        "player_a": _roster_entry_dict(plan["player_a"]),
+        "player_b": _roster_entry_dict(plan["player_b"]),
+    }
 
 
 @router.post("/team/lineup/move")
 async def submit_lineup_move(body: LineupMoveRequest, request: Request):
-    """Real write — see module docstring. Always the caller's own team."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
 
-    client = ESPNLineupClient()
+    pool = await get_pool()
     try:
-        result = client.set_lineup(espn_team_id, body.player_name, body.to_slot, active_season)
-    except Exception as e:
-        fallback = _submit_lineup_fallback_response(e, payload["owner_id"], espn_team_id)
-        if fallback is not None:
-            return fallback
-        raise map_lineup_error(e) from e
-    return {
-        "attempted": result.attempted,
-        "dry_run": result.dry_run,
-        "verified": result.verified,
-        "detail": result.detail,
-    }
+        async with pool.acquire() as conn:
+            roster = await lineup_engine.move_player(conn, active_season, team_id, body.sleeper_player_id, body.to_slot)
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+    return {"roster": [_roster_entry_dict(e) for e in roster]}
 
 
 @router.post("/team/lineup/swap")
 async def submit_lineup_swap(body: LineupSwapRequest, request: Request):
-    """Real write — see module docstring. Always the caller's own team."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
 
-    client = ESPNLineupClient()
+    pool = await get_pool()
     try:
-        result = client.swap_players(espn_team_id, body.player_a, body.player_b, active_season)
-    except Exception as e:
-        fallback = _submit_lineup_fallback_response(e, payload["owner_id"], espn_team_id)
-        if fallback is not None:
-            return fallback
-        raise map_lineup_error(e) from e
+        async with pool.acquire() as conn:
+            roster = await lineup_engine.swap_players(
+                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b
+            )
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+    return {"roster": [_roster_entry_dict(e) for e in roster]}
+
+
+class FreeAgentAddRequest(BaseModel):
+    sleeper_player_id: str
+    # Only required once a first attempt comes back roster_full — the
+    # frontend then re-calls with this set once the visitor picks who
+    # to drop.
+    drop_sleeper_player_id: str | None = None
+
+
+@router.post("/team/free-agents/add")
+async def add_free_agent(body: FreeAgentAddRequest, request: Request):
+    """Real write — no more PREVIEW ONLY. RosterFullError gets its own
+    response shape (not the generic 400) — "needs a drop" is a real
+    decision for the frontend to act on, not just an error to display."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            result = await lineup_engine.add_free_agent(
+                conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id
+            )
+    except RosterFullError as e:
+        return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+
     return {
-        "attempted": result.attempted,
-        "dry_run": result.dry_run,
-        "verified": result.verified,
-        "detail": result.detail,
+        "roster": [_roster_entry_dict(e) for e in result["roster"]],
+        "dropped_player": _roster_entry_dict(result["dropped_player"]) if result["dropped_player"] else None,
     }
+
+
+@router.get("/team/free-agents")
+async def list_free_agents(request: Request, position: str | None = None, search: str | None = None):
+    """The undrafted (season-wide) pool, same shape as /draft/pool minus
+    the drafted flag — everyone on this list is by definition
+    available."""
+    _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+
+    query = """
+        SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status
+        FROM players p
+        WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
+            SELECT sleeper_player_id FROM current_rosters WHERE season = $1
+        )
+    """
+    params: list = [active_season]
+    if position:
+        query += f" AND p.position = ${len(params) + 1}"
+        params.append(position)
+    if search:
+        query += f" AND p.full_name ILIKE ${len(params) + 1}"
+        params.append(f"%{search}%")
+    query += " ORDER BY p.search_rank ASC NULLS LAST, p.full_name ASC"
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+    return {"players": [dict(r) for r in rows]}
+
+
+async def _require_my_espn_team_id(owner_id: int, active_season: int) -> int:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        team = await league_queries.get_team_for_owner(conn, active_season, owner_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="No team found for this owner")
+    return team["espn_team_id"]
 
 
 class AddFreeAgentPreviewRequest(BaseModel):
@@ -265,30 +308,21 @@ class AddFreeAgentPreviewRequest(BaseModel):
     player_name: str
     position: str
     pro_team: str
-    # Only required once a first preview call comes back roster_full —
-    # the frontend then re-calls with this set once the visitor picks
-    # who to drop.
     drop_player_name: str | None = None
 
 
 @router.post("/team/free-agents/preview-add")
 async def preview_add_free_agent(body: AddFreeAgentPreviewRequest, request: Request):
-    """PREVIEW ONLY — see preview_lineup_move's docstring above; same
-    deliberate scoping decision, just for a different (and never
-    investigated) ESPN write — see app/providers/espn/free_agents.py's
-    module note and ESPN_LINEUP_WRITE.md. This only validates against
-    the live roster (does the added player already exist there? is
-    there an open bench spot, or does something need to be dropped?)
-    and reports exactly what adding this player would do — nothing is
-    ever sent to ESPN.
-
-    RosterFullError gets its own response shape (not the generic
-    map_lineup_error 409) — "needs a drop" is a real decision for the
-    frontend to act on, not just an error to display, and a bare 409
-    status code can't tell that apart from an unrelated conflict."""
+    """OLD, ESPN-sourced path — PREVIEW ONLY, see module docstring's
+    two-track explanation. Feeds FreeAgentsList.tsx (the public
+    /free-agents browse page), which still lists ESPN's free-agent pool
+    (with real ownership%/projections ESPN computes) — nothing here has
+    ever submitted a real claim to ESPN, so this being preview-only is
+    unchanged behavior, not a regression from the ESPN-independence
+    pivot."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id, _ = await _require_my_espn_team_id(payload["owner_id"], active_season)
+    espn_team_id = await _require_my_espn_team_id(payload["owner_id"], active_season)
 
     client = ESPNLineupClient()
     try:
@@ -301,14 +335,8 @@ async def preview_add_free_agent(body: AddFreeAgentPreviewRequest, request: Requ
             body.drop_player_name,
             active_season,
         )
-    except RosterFullError as e:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "error": "roster_full",
-                "detail": str(e),
-            },
-        )
+    except ESPNRosterFullError as e:
+        return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
     except Exception as e:
         raise map_lineup_error(e) from e
 

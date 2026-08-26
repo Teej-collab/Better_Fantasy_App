@@ -917,23 +917,22 @@ export function updateHomeDesktopLayout(layout: HomeGridLayoutItem[]): Promise<O
   return updatePreferences({ home_desktop_layout: JSON.stringify(layout) });
 }
 
-// ---- My Team (real-time ESPN data — preview a swap first, then submit
-// it for real; see backend/ESPN_LINEUP_WRITE.md) --------------------------
-
-export type EligibleSlot = { id: number; label: string };
+// ---- My Team (backed by our own current_rosters table now, not a live
+// ESPN read — see backend/app/domain/lineup_engine.py. player_id is a
+// Sleeper player id (string) rather than ESPN's numeric one. No
+// points_scored/points_projected fields yet — this app has no scoring
+// engine of its own until Phase D of the project plan lands. Swaps are
+// still a preview-then-confirm two-step, but the "confirm" step is now
+// a plain DB write, not an ESPN submission.) --------------------------
 
 export type RosterEntry = {
-  player_id: number;
+  player_id: string;
   player_name: string;
-  lineup_slot_id: number;
-  lineup_slot_label: string;
-  eligible_slots: EligibleSlot[];
-  pro_team: string;
+  lineup_slot: string;
+  position: string;
+  pro_team: string | null;
   injury_status: string | null;
-  game_start: string | null;
-  is_locked: boolean;
-  points_scored: number | null;
-  points_projected: number | null;
+  acquired_via: string;
 };
 
 export type MyTeam = {
@@ -953,11 +952,11 @@ export async function getMyTeam(): Promise<MyTeam> {
 
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
 
-export async function previewLineupSwap(playerA: string, playerB: string): Promise<LineupSwapPreview> {
+export async function previewLineupSwap(playerAId: string, playerBId: string): Promise<LineupSwapPreview> {
   const res = await fetch(`/api/backend/me/team/lineup/preview-swap`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_a: playerA, player_b: playerB }),
+    body: JSON.stringify({ sleeper_player_id_a: playerAId, sleeper_player_id_b: playerBId }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -966,16 +965,15 @@ export async function previewLineupSwap(playerA: string, playerB: string): Promi
   return res.json();
 }
 
-export type LineupMutationResult = { attempted: boolean; dry_run: boolean; verified: boolean; detail: string };
+export type LineupMutationResult = { roster: RosterEntry[] };
 
-// Real write — submits to ESPN and verifies by re-reading the live
-// roster (see lineup_client.py). Always the caller's own team, resolved
-// server-side from the session.
-export async function submitLineupSwap(playerA: string, playerB: string): Promise<LineupMutationResult> {
+// Real write — a plain current_rosters UPDATE, no external call.
+// Always the caller's own team, resolved server-side from the session.
+export async function submitLineupSwap(playerAId: string, playerBId: string): Promise<LineupMutationResult> {
   const res = await fetch(`/api/backend/me/team/lineup/swap`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_a: playerA, player_b: playerB }),
+    body: JSON.stringify({ sleeper_player_id_a: playerAId, sleeper_player_id_b: playerBId }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -984,12 +982,10 @@ export async function submitLineupSwap(playerA: string, playerB: string): Promis
   return res.json();
 }
 
-// ---- Free Agents (browsing is read-only — see backend/app/providers/
-// espn/free_agents.py — but adding one is now previewable, same
-// PREVIEW-ONLY pattern as the lineup move/swap calls above: validates
-// against your real live roster and shows exactly what would happen,
-// never actually submits anything to ESPN. See
-// backend/app/providers/espn/lineup_client.py's plan_add_player.) ----
+// ---- Free Agents (this team's own add flow — /me/team/free-agents* —
+// is now a real write against current_rosters, backed by the Sleeper-
+// sourced `players` pool, not ESPN. The league-wide /free-agents browse
+// endpoints below are unchanged/still ESPN-sourced for now.) ----------
 
 export type FreeAgent = {
   player_id: number;
@@ -1010,13 +1006,34 @@ export async function getFreeAgents(position?: string, size = 50): Promise<{ sea
   return { season, players };
 }
 
+// Shape of a roster entry as returned by the OLD, still-ESPN-sourced
+// /team/free-agents/preview-add endpoint specifically (see api.ts's
+// module note above RosterEntry) — distinct from RosterEntry (which is
+// now current_rosters-shaped) because this one comes straight from
+// ESPN's live roster read and carries ESPN's own fields
+// (lineup_slot_label, eligible_slots, live points) that current_rosters
+// doesn't have yet.
+export type EspnRosterEntry = {
+  player_id: number;
+  player_name: string;
+  lineup_slot_id: number;
+  lineup_slot_label: string;
+  eligible_slots: { id: number; label: string }[];
+  pro_team: string;
+  injury_status: string | null;
+  game_start: string | null;
+  is_locked: boolean;
+  points_scored: number | null;
+  points_projected: number | null;
+};
+
 export type AddFreeAgentPreview = {
   added_player: { player_id: number; player_name: string; position: string; pro_team: string };
   roster_size_before: number;
   roster_capacity: number;
   // The one player who'd need to be dropped to make room — null means
   // your roster already had an open spot.
-  dropped_player: RosterEntry | null;
+  dropped_player: EspnRosterEntry | null;
 };
 
 export type AddFreeAgentResult =

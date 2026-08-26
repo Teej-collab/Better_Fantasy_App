@@ -28,8 +28,7 @@ from app.domain.draft_exceptions import (
     PlayerAlreadyDraftedError,
     PlayerNotDraftableError,
 )
-
-_STARTER_SLOTS = ("QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K")
+from app.domain.roster_slots import total_draftable_slots
 
 
 def _config_dict(row) -> dict:
@@ -57,13 +56,6 @@ def plan_snake_order(draft_order: list[int], rounds: int) -> list[tuple[int, int
             picks.append((pick_number, round_num, round_pick, owner_id))
             pick_number += 1
     return picks
-
-
-def total_draftable_slots(roster_slots: dict[str, int]) -> int:
-    """Bench + every starter slot, excluding IR — IR is never filled by
-    the initial draft (this league's real rule, confirmed by the
-    owner's ESPN scoring screenshots: IR is filled later via waivers)."""
-    return sum(roster_slots.get(s, 0) for s in _STARTER_SLOTS) + roster_slots.get("BE", 0)
 
 
 async def create_draft(

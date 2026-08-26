@@ -11,8 +11,7 @@ shape (1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX, 1 D/ST, 1 K, then bench), taking
 the best-ranked available player eligible for whichever slot is still
 open, falling back to best-overall once every starting slot is filled.
 """
-POSITION_TO_SLOT_LABEL = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "K", "DEF": "D/ST"}
-_FLEX_ELIGIBLE = {"RB", "WR", "TE"}
+from app.domain.roster_slots import FLEX_ELIGIBLE_POSITIONS, FLEX_SLOT_LABEL, POSITION_TO_SLOT_LABEL
 
 
 def _next_needed_slot(rostered_positions: list[str], roster_slots: dict[str, int]) -> str | None:
@@ -32,12 +31,12 @@ def _next_needed_slot(rostered_positions: list[str], roster_slots: dict[str, int
         if counts[exact_slot] < required:
             return exact_slot
 
-    flex_required = roster_slots.get("RB/WR/TE", 0)
+    flex_required = roster_slots.get(FLEX_SLOT_LABEL, 0)
     flex_used = max(0, counts["RB"] - roster_slots.get("RB", 0)) \
         + max(0, counts["WR"] - roster_slots.get("WR", 0)) \
         + max(0, counts["TE"] - roster_slots.get("TE", 0))
     if flex_used < flex_required:
-        return "RB/WR/TE"
+        return FLEX_SLOT_LABEL
 
     for exact_slot in ("D/ST", "K"):
         required = roster_slots.get(exact_slot, 0)
@@ -45,7 +44,7 @@ def _next_needed_slot(rostered_positions: list[str], roster_slots: dict[str, int
             return exact_slot
 
     bench_required = roster_slots.get("BE", 0)
-    starters_required = sum(roster_slots.get(s, 0) for s in ("QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K"))
+    starters_required = sum(roster_slots.get(s, 0) for s in ("QB", "RB", "WR", "TE", FLEX_SLOT_LABEL, "D/ST", "K"))
     if len(rostered_positions) < starters_required + bench_required:
         return "BE"
 
@@ -69,8 +68,8 @@ def choose_autopick(
     if needed_slot is None or needed_slot == "BE":
         return available_players[0]  # best overall
 
-    if needed_slot == "RB/WR/TE":
-        eligible = [p for p in available_players if p["position"] in _FLEX_ELIGIBLE]
+    if needed_slot == FLEX_SLOT_LABEL:
+        eligible = [p for p in available_players if p["position"] in FLEX_ELIGIBLE_POSITIONS]
     else:
         wanted_position = next(
             (pos for pos, label in POSITION_TO_SLOT_LABEL.items() if label == needed_slot), None

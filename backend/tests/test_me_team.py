@@ -1,3 +1,5 @@
+import json
+
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
@@ -6,6 +8,7 @@ from tests.conftest import TEST_SEASON
 from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
+_ROSTER_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR/TE": 1, "D/ST": 1, "K": 1, "BE": 2}
 
 
 def _client():
@@ -37,11 +40,43 @@ async def _seed_owner_with_team(pool, suffix, espn_team_id):
             "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
             f"test-meteam-owner-{suffix}", f"Owner {suffix}",
         )
-        await conn.execute(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+        team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
             TEST_SEASON, espn_team_id, owner_id, f"My Team {suffix}",
         )
-    return owner_id
+    return owner_id, team_id
+
+
+async def _ensure_roster_config(pool):
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1", TEST_SEASON)
+        if not exists:
+            await conn.execute(
+                "INSERT INTO draft_config (season, draft_order, roster_slots) VALUES ($1, $2, $3)",
+                TEST_SEASON, [], json.dumps(_ROSTER_SLOTS),
+            )
+
+
+async def _seed_player(pool, suffix, position="RB", draftable=True):
+    sleeper_id = f"test-meteam-player-{suffix}"
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
+            VALUES ($1, $2, $3, $4, 'KC', 'Active', $5)
+            """,
+            sleeper_id, f"Test Player {suffix}", position, [position], draftable,
+        )
+    return sleeper_id
+
+
+async def _seed_roster_entry(pool, team_id, sleeper_player_id, lineup_slot="BE", acquired_via="draft"):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, team_id, sleeper_player_id, lineup_slot, acquired_via,
+        )
 
 
 async def test_my_team_requires_session(pool):
@@ -51,8 +86,8 @@ async def test_my_team_requires_session(pool):
 
 
 async def test_my_team_404s_without_a_team_this_season(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = None
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(
             "INSERT INTO owners (espn_member_id, display_name) VALUES ('test-meteam-noteam', 'No Team') "
@@ -65,16 +100,12 @@ async def test_my_team_404s_without_a_team_this_season(pool, monkeypatch):
     assert resp.status_code == 404
 
 
-async def test_my_team_returns_live_roster_with_projections(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 1, espn_team_id=41)
-    roster = [
-        make_fake_lineup_player(
-            1, "My Star", "RB", ["RB", "BE"], stats={5: {"points": 20.0, "projected_points": 15.5}}
-        )
-    ]
-    team = make_fake_team(41, "My Team 1", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+async def test_my_team_returns_roster_from_current_rosters(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "roster1", espn_team_id=101)
+    player = await _seed_player(pool, "roster1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
@@ -82,214 +113,198 @@ async def test_my_team_returns_live_roster_with_projections(pool, monkeypatch):
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["team_name"] == "My Team 1"
-    assert body["roster"][0]["player_name"] == "My Star"
-    assert body["roster"][0]["points_projected"] == 15.5
+    assert body["team_name"] == "My Team roster1"
+    assert body["roster"][0]["player_id"] == player
+    assert body["roster"][0]["lineup_slot"] == "RB"
 
 
-async def test_preview_move_never_calls_espn_write_endpoint(pool, monkeypatch):
-    """The whole point of preview-move: it uses plan_lineup_change, which
-    has no network write path at all — confirmed here by never even
-    setting up anything an HTTP write call could hit, only the read-side
-    fake League."""
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 2, espn_team_id=42)
-    roster = [make_fake_lineup_player(1, "Bench RB", "BE", ["RB", "BE"])]
-    team = make_fake_team(42, "My Team 2", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5, position_slot_counts={"RB": 1, "BE": 5}))
+async def test_preview_move_reports_no_displacement_to_open_slot(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "move1", espn_team_id=102)
+    player = await _seed_player(pool, "move1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/preview-move", json={"player_name": "Bench RB", "to_slot": "RB"})
+        resp = await client.post(
+            "/me/team/lineup/preview-move", json={"sleeper_player_id": player, "to_slot": "RB"}
+        )
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["player"]["player_name"] == "Bench RB"
-    assert body["from_slot"]["label"] == "BE"
-    assert body["to_slot"]["label"] == "RB"
+    assert body["to_slot"] == "RB"
     assert body["displaced_player"] is None
 
 
-async def test_preview_move_reports_displacement(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 3, espn_team_id=43)
-    roster = [
-        make_fake_lineup_player(1, "Bench RB", "BE", ["RB", "BE"]),
-        make_fake_lineup_player(2, "Starting RB", "RB", ["RB", "BE"]),
-    ]
-    team = make_fake_team(43, "My Team 3", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5, position_slot_counts={"RB": 1, "BE": 5}))
+async def test_preview_move_reports_displacement_when_slot_full(pool, monkeypatch):
+    # QB has capacity 1 in _ROSTER_SLOTS — a clean single-occupant
+    # displacement case, unlike RB (capacity 2), where a 3rd player
+    # moving in would be genuinely ambiguous (which of 2 gets bumped).
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "move2", espn_team_id=103)
+    bench_qb = await _seed_player(pool, "move2a", position="QB")
+    starter_qb = await _seed_player(pool, "move2b", position="QB")
+    await _seed_roster_entry(pool, team_id, bench_qb, lineup_slot="BE")
+    await _seed_roster_entry(pool, team_id, starter_qb, lineup_slot="QB")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/preview-move", json={"player_name": "Bench RB", "to_slot": "RB"})
+        resp = await client.post(
+            "/me/team/lineup/preview-move", json={"sleeper_player_id": bench_qb, "to_slot": "QB"}
+        )
 
     assert resp.status_code == 200
-    assert resp.json()["displaced_player"]["player_name"] == "Starting RB"
+    assert resp.json()["displaced_player"]["player_id"] == starter_qb
 
 
 async def test_preview_move_rejects_ineligible_slot(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 4, espn_team_id=44)
-    roster = [make_fake_lineup_player(1, "WR Only", "BE", ["WR", "BE"])]
-    team = make_fake_team(44, "My Team 4", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5, position_slot_counts={"RB": 1, "BE": 5}))
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "move3", espn_team_id=104)
+    wr_only = await _seed_player(pool, "move3", position="WR")
+    await _seed_roster_entry(pool, team_id, wr_only, lineup_slot="BE")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/preview-move", json={"player_name": "WR Only", "to_slot": "RB"})
+        resp = await client.post(
+            "/me/team/lineup/preview-move", json={"sleeper_player_id": wr_only, "to_slot": "QB"}
+        )
+
+    assert resp.status_code == 400
+
+
+async def test_preview_move_ambiguous_displacement_when_slot_has_multiple_occupants(pool, monkeypatch):
+    # RB has capacity 2 — with both RB starter slots already filled, a
+    # 3rd player moving in is genuinely ambiguous (which of 2 gets
+    # bumped) rather than a clean single displacement.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "move3b", espn_team_id=113)
+    bench_rb = await _seed_player(pool, "move3b_bench", position="RB")
+    starter_rb1 = await _seed_player(pool, "move3b_s1", position="RB")
+    starter_rb2 = await _seed_player(pool, "move3b_s2", position="RB")
+    await _seed_roster_entry(pool, team_id, bench_rb, lineup_slot="BE")
+    await _seed_roster_entry(pool, team_id, starter_rb1, lineup_slot="RB")
+    await _seed_roster_entry(pool, team_id, starter_rb2, lineup_slot="RB")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post(
+            "/me/team/lineup/preview-move", json={"sleeper_player_id": bench_rb, "to_slot": "RB"}
+        )
 
     assert resp.status_code == 400
 
 
 async def test_preview_swap(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 5, espn_team_id=45)
-    roster = [
-        make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
-        make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
-    ]
-    team = make_fake_team(45, "My Team 5", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "move4", espn_team_id=105)
+    starter = await _seed_player(pool, "move4a", position="RB")
+    bencher = await _seed_player(pool, "move4b", position="RB")
+    await _seed_roster_entry(pool, team_id, starter, lineup_slot="RB")
+    await _seed_roster_entry(pool, team_id, bencher, lineup_slot="BE")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
         resp = await client.post(
-            "/me/team/lineup/preview-swap", json={"player_a": "Starter", "player_b": "Bencher"}
+            "/me/team/lineup/preview-swap",
+            json={"sleeper_player_id_a": starter, "sleeper_player_id_b": bencher},
         )
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["player_a"]["player_name"] == "Starter"
-    assert body["player_b"]["player_name"] == "Bencher"
+    assert body["player_a"]["player_id"] == starter
+    assert body["player_b"]["player_id"] == bencher
 
 
 async def test_preview_move_requires_session(pool):
     async with _client() as client:
-        resp = await client.post("/me/team/lineup/preview-move", json={"player_name": "X", "to_slot": "RB"})
+        resp = await client.post("/me/team/lineup/preview-move", json={"sleeper_player_id": "x", "to_slot": "RB"})
     assert resp.status_code == 401
 
 
-async def test_submit_move_dry_run_by_default(pool, monkeypatch):
-    _set_espn_env(monkeypatch)  # ESPN_DRY_RUN unset -> defaults true
-    owner_id = await _seed_owner_with_team(pool, 10, espn_team_id=50)
-    roster = [make_fake_lineup_player(1, "Bench RB", "BE", ["RB", "BE"])]
-    team = make_fake_team(50, "My Team 10", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+async def test_submit_move_updates_current_rosters(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "submit1", espn_team_id=106)
+    player = await _seed_player(pool, "submit1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/move", json={"player_name": "Bench RB", "to_slot": "RB"})
+        resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": player, "to_slot": "RB"})
 
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["dry_run"] is True
-    assert body["attempted"] is False
+    roster = resp.json()["roster"]
+    moved = next(r for r in roster if r["player_id"] == player)
+    assert moved["lineup_slot"] == "RB"
 
 
 async def test_submit_move_requires_session(pool):
     async with _client() as client:
-        resp = await client.post("/me/team/lineup/move", json={"player_name": "X", "to_slot": "RB"})
+        resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": "x", "to_slot": "RB"})
     assert resp.status_code == 401
 
 
-async def test_submit_swap_dry_run_by_default(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 11, espn_team_id=51)
-    roster = [
-        make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
-        make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
-    ]
-    team = make_fake_team(51, "My Team 11", "test-member-1", "Alice", "Smith", roster=roster)
-    _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
+async def test_submit_swap_updates_both_players(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "submit2", espn_team_id=107)
+    starter = await _seed_player(pool, "submit2a", position="RB")
+    bencher = await _seed_player(pool, "submit2b", position="RB")
+    await _seed_roster_entry(pool, team_id, starter, lineup_slot="RB")
+    await _seed_roster_entry(pool, team_id, bencher, lineup_slot="BE")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/swap", json={"player_a": "Starter", "player_b": "Bencher"})
+        resp = await client.post(
+            "/me/team/lineup/swap",
+            json={"sleeper_player_id_a": starter, "sleeper_player_id_b": bencher},
+        )
 
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["dry_run"] is True
-    assert body["attempted"] is False
+    roster = {r["player_id"]: r["lineup_slot"] for r in resp.json()["roster"]}
+    assert roster[starter] == "BE"
+    assert roster[bencher] == "RB"
 
 
 async def test_submit_swap_requires_session(pool):
     async with _client() as client:
-        resp = await client.post("/me/team/lineup/swap", json={"player_a": "X", "player_b": "Y"})
+        resp = await client.post(
+            "/me/team/lineup/swap", json={"sleeper_player_id_a": "x", "sleeper_player_id_b": "y"}
+        )
     assert resp.status_code == 401
 
 
-async def test_submit_move_falls_back_to_friendly_message_on_auth_rejection(pool, monkeypatch):
-    """See me.py's CROSS-OWNER CREDENTIAL CAVEAT: a write ESPN rejects
-    with 401/403 (plausibly because the app's single ESPN session can't
-    write this owner's roster) surfaces as a plain, actionable message
-    instead of a raw 502."""
-    from app.providers.espn.lineup_exceptions import ESPNWriteHTTPError
-    from app.providers.espn.lineup_client import ESPNLineupClient
-
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 14, espn_team_id=54)
-
-    def _raise(*args, **kwargs):
-        raise ESPNWriteHTTPError(403, "Forbidden")
-
-    monkeypatch.setattr(ESPNLineupClient, "set_lineup", _raise)
+async def test_lineup_moves_only_ever_target_the_callers_own_team(pool, monkeypatch):
+    """team_id is resolved server-side from the session's owner_id,
+    never accepted from the request body — confirmed by seeding two
+    owners with two different teams and checking a move against the
+    caller's own roster only touches their own current_rosters row."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_a, team_a = await _seed_owner_with_team(pool, "cross_a", espn_team_id=108)
+    owner_b, team_b = await _seed_owner_with_team(pool, "cross_b", espn_team_id=109)
+    player_a = await _seed_player(pool, "cross_a", position="RB")
+    await _seed_roster_entry(pool, team_a, player_a, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/move", json={"player_name": "X", "to_slot": "RB"})
+        client.cookies.update(_session_cookie(owner_b))
+        resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": player_a, "to_slot": "RB"})
 
-    assert resp.status_code == 403
-    body = resp.json()
-    assert body["error"] == "not_authorized_for_this_team"
-    assert "ESPN app" in body["detail"]
-
-
-async def test_submit_swap_falls_back_to_friendly_message_on_unverified_write(pool, monkeypatch):
-    from app.providers.espn.lineup_exceptions import MutationVerificationFailedError
-    from app.providers.espn.lineup_client import ESPNLineupClient
-
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 15, espn_team_id=55)
-
-    def _raise(*args, **kwargs):
-        raise MutationVerificationFailedError("not applied")
-
-    monkeypatch.setattr(ESPNLineupClient, "swap_players", _raise)
-
-    async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/swap", json={"player_a": "X", "player_b": "Y"})
-
-    assert resp.status_code == 409
-    body = resp.json()
-    assert body["error"] == "not_verified"
-    assert "ESPN app" in body["detail"]
-
-
-async def test_submit_swap_only_ever_targets_the_callers_own_team(pool, monkeypatch):
-    """The whole safety property of this endpoint: team_id is resolved
-    server-side from the session's owner_id, never accepted from the
-    request body — confirmed here by seeding two owners with two
-    different espn_team_ids and checking the swap plans against the
-    caller's team (52), not the other owner's (53)."""
-    _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 12, espn_team_id=52)
-    await _seed_owner_with_team(pool, 13, espn_team_id=53)
-    roster = [
-        make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
-        make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
-    ]
-    team_52 = make_fake_team(52, "My Team 12", "test-member-1", "Alice", "Smith", roster=roster)
-    team_53 = make_fake_team(53, "My Team 13", "test-member-2", "Bob", "Jones", roster=[])
-    _patch_league(monkeypatch, FakeLeague(teams=[team_52, team_53], current_week=5))
-
-    async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
-        resp = await client.post("/me/team/lineup/swap", json={"player_a": "Starter", "player_b": "Bencher"})
-
-    assert resp.status_code == 200
-    assert resp.json()["dry_run"] is True
+    # owner_b doesn't have player_a on their roster at all.
+    assert resp.status_code == 404
 
 
 def _add_body(**overrides):
@@ -300,7 +315,7 @@ def _add_body(**overrides):
 
 async def test_preview_add_free_agent_with_open_roster_spot(pool, monkeypatch):
     _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 6, espn_team_id=46)
+    owner_id, _ = await _seed_owner_with_team(pool, 6, espn_team_id=46)
     roster = [make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"])]
     team = make_fake_team(46, "My Team 6", "test-member-1", "Alice", "Smith", roster=roster)
     _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5, position_slot_counts={"RB": 1, "BE": 5}))
@@ -319,7 +334,7 @@ async def test_preview_add_free_agent_with_open_roster_spot(pool, monkeypatch):
 
 async def test_preview_add_free_agent_roster_full_without_drop_returns_roster_full(pool, monkeypatch):
     _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 7, espn_team_id=47)
+    owner_id, _ = await _seed_owner_with_team(pool, 7, espn_team_id=47)
     roster = [
         make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
         make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
@@ -338,7 +353,7 @@ async def test_preview_add_free_agent_roster_full_without_drop_returns_roster_fu
 
 async def test_preview_add_free_agent_roster_full_with_drop_succeeds(pool, monkeypatch):
     _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 8, espn_team_id=48)
+    owner_id, _ = await _seed_owner_with_team(pool, 8, espn_team_id=48)
     roster = [
         make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
         make_fake_lineup_player(2, "Bencher", "BE", ["RB", "BE"]),
@@ -361,7 +376,7 @@ async def test_preview_add_free_agent_roster_full_with_drop_succeeds(pool, monke
 
 async def test_preview_add_free_agent_rejects_already_rostered_player(pool, monkeypatch):
     _set_espn_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 9, espn_team_id=49)
+    owner_id, _ = await _seed_owner_with_team(pool, 9, espn_team_id=49)
     roster = [make_fake_lineup_player(999, "Already Mine", "RB", ["RB", "BE"])]
     team = make_fake_team(49, "My Team 9", "test-member-1", "Alice", "Smith", roster=roster)
     _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5, position_slot_counts={"RB": 1, "BE": 5}))
@@ -379,3 +394,109 @@ async def test_preview_add_free_agent_requires_session(pool):
     async with _client() as client:
         resp = await client.post("/me/team/free-agents/preview-add", json=_add_body())
     assert resp.status_code == 401
+
+
+async def test_new_free_agents_list_excludes_rostered_players(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa1", espn_team_id=110)
+    rostered = await _seed_player(pool, "fa1_rostered", position="WR")
+    available = await _seed_player(pool, "fa1_available", position="WR")
+    await _seed_roster_entry(pool, team_id, rostered, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team/free-agents", params={"position": "WR"})
+
+    assert resp.status_code == 200
+    ids = {p["sleeper_player_id"] for p in resp.json()["players"]}
+    assert available in ids
+    assert rostered not in ids
+
+
+async def test_add_free_agent_real_write_with_open_spot(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa2", espn_team_id=111)
+    player = await _seed_player(pool, "fa2", position="WR")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert any(r["player_id"] == player for r in body["roster"])
+    assert body["dropped_player"] is None
+
+
+async def test_add_free_agent_rejects_already_rostered_player(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa3", espn_team_id=112)
+    player = await _seed_player(pool, "fa3", position="WR")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
+
+    assert resp.status_code == 400
+
+
+async def test_add_free_agent_requires_session(pool):
+    async with _client() as client:
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": "x"})
+    assert resp.status_code == 401
+
+
+async def _seed_tiny_roster_config(pool):
+    # A 1-spot roster (just enough for one WR, no bench) — cheap way to
+    # exercise the roster_full path without seeding a full 12-slot team.
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO draft_config (season, draft_order, roster_slots) VALUES ($1, $2, $3)",
+            TEST_SEASON, [], json.dumps({"WR": 1, "BE": 0}),
+        )
+
+
+async def test_add_free_agent_roster_full_without_drop_returns_roster_full(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _seed_tiny_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa4", espn_team_id=114)
+    already_on_roster = await _seed_player(pool, "fa4_existing", position="WR")
+    await _seed_roster_entry(pool, team_id, already_on_roster, lineup_slot="WR")
+    new_player = await _seed_player(pool, "fa4_new", position="WR")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": new_player})
+
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "roster_full"
+
+
+async def test_add_free_agent_roster_full_with_drop_succeeds(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _seed_tiny_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa5", espn_team_id=115)
+    already_on_roster = await _seed_player(pool, "fa5_existing", position="WR")
+    await _seed_roster_entry(pool, team_id, already_on_roster, lineup_slot="WR")
+    new_player = await _seed_player(pool, "fa5_new", position="WR")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post(
+            "/me/team/free-agents/add",
+            json={"sleeper_player_id": new_player, "drop_sleeper_player_id": already_on_roster},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dropped_player"]["player_id"] == already_on_roster
+    assert any(r["player_id"] == new_player for r in body["roster"])
+    assert not any(r["player_id"] == already_on_roster for r in body["roster"])

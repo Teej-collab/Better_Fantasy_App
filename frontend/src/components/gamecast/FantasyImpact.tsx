@@ -8,22 +8,20 @@ import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 const MAX_PLAYERS = 6;
 
 /**
- * "Who from this game is on my team, and how are they doing" — the
- * one section that's genuinely The Weekend's own, not an ESPN Gamecast
- * clone. Deliberately does NOT compute a per-play fantasy point delta
- * itself: this app has no scoring-rules engine of its own (points_
- * scored is always ESPN's own already-computed number, copied
- * verbatim — see app/providers/espn/adapter.py), so inventing a delta
- * here would be exactly the "second independent scoring system" this
- * feature was told not to build. Instead: real players mentioned in
- * recent plays, cross-referenced by name against the signed-in
+ * "Who from this game is on my team" — the one section that's
+ * genuinely The Weekend's own, not an ESPN Gamecast clone. Deliberately
+ * does NOT compute or show a fantasy point value here: this app has no
+ * scoring-rules engine of its own yet (see the project plan's Phase D —
+ * current_rosters has no live points until that lands), and inventing
+ * one here would be exactly the "second independent scoring system"
+ * this feature was told not to build. Instead: real players mentioned
+ * in recent plays, cross-referenced by name against the signed-in
  * owner's own roster (no shared player-ID space between this app's
- * ESPN-sourced roster and whatever provider Gamecast's play data comes
- * from, so name matching — case-insensitive — is the only link
- * available) to show that player's real, already-computed points_
- * scored for the week and flag them as "YOUR TEAM". Everyone else just
- * shows the play they were involved in, honestly, with no fabricated
- * number attached.
+ * Sleeper-sourced roster and whatever provider Gamecast's play data
+ * comes from, so name matching — case-insensitive — is the only link
+ * available) and flagged as "YOUR TEAM". Everyone else just shows the
+ * play they were involved in, honestly, with no fabricated number
+ * attached.
  */
 export function FantasyImpact({ game, isSignedIn }: { game: LiveGame; isSignedIn: boolean }) {
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
@@ -83,9 +81,6 @@ export function FantasyImpact({ game, isSignedIn }: { game: LiveGame; isSignedIn
                   </span>
                 )}
               </div>
-              {mine && mine.points_scored !== null && (
-                <span className="tabular-nums text-black/70 dark:text-white/70">{mine.points_scored.toFixed(1)} pts so far this week</span>
-              )}
               <span className="truncate text-xs text-black/50 dark:text-white/50">{p.latestPlay}</span>
             </li>
           );

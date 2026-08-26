@@ -1,5 +1,19 @@
 # ESPN Lineup Write Investigation
 
+**Superseded (Aug 26, 2026):** `/me/team/lineup/move`/`swap` no longer
+call any of the write path documented below — they're a plain
+`current_rosters` DB update now (`backend/app/domain/lineup_engine.py`),
+part of a broader pivot off ESPN's private API for draft/rosters/
+lineups entirely (see `TODO.md`'s "ESPN independence pivot" entry for
+why: the single-shared-ESPN-session problem this doc's own "Open
+question" section below flagged turned out to be real in production).
+`ESPNLineupClient`/`lineup_client.py` itself isn't deleted yet — it's
+kept for `admin_lineup.py`'s commissioner override tool and the still-
+ESPN-sourced free-agent browse preview — but the core lineup-write
+capability this document is about is retired. Left in place as a
+historical record of the real capture work, not as active documentation
+of what the app currently does.
+
 Status as of 2026-08-19: **both single-player lineup moves and two-player
 swaps/displacements are implemented and verified against real ESPN
 captures.** This document records what's actually known about ESPN

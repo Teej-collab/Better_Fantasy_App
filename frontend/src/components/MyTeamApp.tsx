@@ -11,38 +11,9 @@ import {
 } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { nflTeamName } from "@/lib/nfl-teams";
+import { BENCH_SLOT_LABEL, canSwapSlots, starterSortIndex } from "@/lib/rosterSlots";
 
-const BENCH_SLOTS = new Set(["BE", "IR"]);
-
-// ESPN's own starter display order — QB, RB, RB, WR, WR, TE, FLEX,
-// D/ST, K. This league's flex slot is stored as "RB/WR/TE" (its
-// actual eligibility), not "FLEX" — same real slot label the backend
-// already sorts by for historical box scores (app/queries/league.py's
-// _SLOT_ORDER). Anything not in this list (bench/IR) sorts last, but
-// starters is already filtered to exclude those before this runs.
-const STARTER_SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K"];
-
-function starterSortIndex(slotLabel: string): number {
-  const i = STARTER_SLOT_ORDER.indexOf(slotLabel);
-  return i === -1 ? STARTER_SLOT_ORDER.length : i;
-}
-
-// Two players can trade places iff each is actually eligible for the
-// slot the other currently occupies — the real rule a swap has to
-// satisfy, and exactly what "QB=QB, RB=RB/FLEX, WR=WR/FLEX,
-// TE=TE/FLEX, D/ST=D/ST, K=K" amounts to once you account for the
-// real flex slot: an RB's own eligible_slots already include both the
-// RB slot and the flex slot (same for WR/TE), while QB/D-ST/K are
-// only ever eligible for their own single slot. Driven by each
-// player's real eligible_slots (straight from ESPN, already fetched
-// for the "Move to" preview this replaced) rather than a hardcoded
-// position table, so it stays correct for any eligibility quirk ESPN
-// itself has, not just the common case.
-function canSwap(a: RosterEntry, b: RosterEntry): boolean {
-  const aFitsBsSlot = a.eligible_slots.some((s) => s.id === b.lineup_slot_id);
-  const bFitsAsSlot = b.eligible_slots.some((s) => s.id === a.lineup_slot_id);
-  return aFitsBsSlot && bFitsAsSlot;
-}
+const BENCH_SLOTS = new Set([BENCH_SLOT_LABEL, "IR"]);
 
 function RosterRow({
   entry,
@@ -58,15 +29,10 @@ function RosterRow({
   return (
     <li className="flex items-center justify-between gap-3 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
       <div className="flex min-w-0 items-center gap-2.5">
-        <PlayerHeadshot playerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+        <PlayerHeadshot playerId={null} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         <div className="flex min-w-0 flex-col">
           <span className="flex items-center gap-2 truncate text-sm font-medium">
             {entry.player_name}
-            {entry.is_locked && (
-              <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase dark:bg-white/10">
-                Locked
-              </span>
-            )}
             {entry.injury_status && entry.injury_status !== "ACTIVE" && (
               <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
                 {entry.injury_status}
@@ -74,15 +40,11 @@ function RosterRow({
             )}
           </span>
           <span className="text-xs text-black/50 dark:text-white/50">
-            {entry.lineup_slot_label} · {nflTeamName(entry.pro_team) ?? entry.pro_team}
+            {entry.lineup_slot} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
           </span>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
-        <div className="flex flex-col items-end">
-          <span className="font-semibold">{entry.points_scored ?? "—"}</span>
-          <span className="text-black/40 dark:text-white/40">proj {entry.points_projected ?? "—"}</span>
-        </div>
         <button
           onClick={() => onToggleSwapSelect(entry)}
           disabled={swapDisabled}
@@ -123,15 +85,11 @@ export function MyTeamApp() {
     if (!swapPreview) return;
     setSubmitting(true);
     setSubmitError(null);
-    submitLineupSwap(swapPreview.player_a.player_name, swapPreview.player_b.player_name)
+    submitLineupSwap(swapPreview.player_a.player_id, swapPreview.player_b.player_id)
       .then((result) => {
-        if (!result.verified) {
-          setSubmitError(result.detail);
-          return;
-        }
         setSubmitted(`Swapped ${swapPreview.player_a.player_name} and ${swapPreview.player_b.player_name}.`);
         setSwapPreview(null);
-        return getMyTeam().then(setTeam);
+        setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
       })
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "Swap failed"))
       .finally(() => setSubmitting(false));
@@ -154,10 +112,10 @@ export function MyTeamApp() {
     // Any other row rendered as clickable is already a qualifying
     // partner (see swapDisabled below) — this defensively no-ops if
     // it somehow isn't, rather than firing an invalid preview.
-    if (!canSwap(selected, entry)) return;
+    if (!canSwapSlots(selected.position, selected.lineup_slot, entry.position, entry.lineup_slot)) return;
 
     setPreviewing(true);
-    previewLineupSwap(selected.player_name, entry.player_name)
+    previewLineupSwap(selected.player_id, entry.player_id)
       .then((result) => {
         setSwapPreview(result);
         setSelected(null);
@@ -177,15 +135,14 @@ export function MyTeamApp() {
   }
 
   const starters = team.roster
-    .filter((e) => !BENCH_SLOTS.has(e.lineup_slot_label))
-    .sort((a, b) => starterSortIndex(a.lineup_slot_label) - starterSortIndex(b.lineup_slot_label));
-  const bench = team.roster.filter((e) => BENCH_SLOTS.has(e.lineup_slot_label));
+    .filter((e) => !BENCH_SLOTS.has(e.lineup_slot))
+    .sort((a, b) => starterSortIndex(a.lineup_slot) - starterSortIndex(b.lineup_slot));
+  const bench = team.roster.filter((e) => BENCH_SLOTS.has(e.lineup_slot));
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
-        <span className="text-xs text-black/40 dark:text-white/40">Live from ESPN</span>
       </div>
 
       {previewing && <p className="text-xs text-black/50 dark:text-white/50">Checking…</p>}
@@ -196,8 +153,8 @@ export function MyTeamApp() {
       {swapPreview && (
         <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-3 text-sm">
           <p>
-            Swap <strong>{swapPreview.player_a.player_name}</strong> ({swapPreview.player_a.lineup_slot_label})
-            with <strong>{swapPreview.player_b.player_name}</strong> ({swapPreview.player_b.lineup_slot_label})?
+            Swap <strong>{swapPreview.player_a.player_name}</strong> ({swapPreview.player_a.lineup_slot})
+            with <strong>{swapPreview.player_b.player_name}</strong> ({swapPreview.player_b.lineup_slot})?
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -232,7 +189,11 @@ export function MyTeamApp() {
               key={e.player_id}
               entry={e}
               selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={e.is_locked || (selected !== null && selected.player_id !== e.player_id && !canSwap(selected, e))}
+              swapDisabled={
+                selected !== null &&
+                selected.player_id !== e.player_id &&
+                !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
+              }
               onToggleSwapSelect={toggleSwapSelect}
             />
           ))}
@@ -247,7 +208,11 @@ export function MyTeamApp() {
               key={e.player_id}
               entry={e}
               selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={e.is_locked || (selected !== null && selected.player_id !== e.player_id && !canSwap(selected, e))}
+              swapDisabled={
+                selected !== null &&
+                selected.player_id !== e.player_id &&
+                !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
+              }
               onToggleSwapSelect={toggleSwapSelect}
             />
           ))}

@@ -1222,6 +1222,89 @@ scoring gap (needs a custom Docker image on Railway, since its
 mediapipe dependency needs a second Python runtime Railway's single-
 runtime-per-service default doesn't support).
 
+---
+
+## ESPN independence pivot — draft, rosters, lineups (Aug 26, 2026)
+
+**Why**: the Part 1 lineup-write feature above went live and immediately
+failed for real: it authenticates every owner's write with a single
+shared ESPN session (the commissioner's own cookies), and ESPN silently
+rejects writes to a different owner's roster. Rather than build
+per-owner ESPN credential collection (real, ugly scope), the project
+owner made the call to stop depending on ESPN's private/cookie-
+authenticated fantasy API for draft, rosters, and lineup management
+entirely — keeping ESPN only for the free public NFL scoreboard
+(Gamecast, "did a rostered player just score"). Full plan in this
+session's own plan file; summarized here for anyone reading this doc
+cold.
+
+**Also time-critical**: this league's actual snake draft for the season
+starting September 2026 is Saturday, September 5 — the draft had never
+happened yet when this pivot started, which is what made an in-app
+draft tool for the real thing (not just a future-season nice-to-have)
+suddenly urgent.
+
+- [x] **Phase A — Player database**: new `players` table, the first
+      canonical NFL-player dimension table this app has had, sourced
+      from Sleeper's free/keyless player API
+      (`backend/app/providers/sleeper/`) instead of ESPN — includes a
+      native `espn_id` crosswalk field for cross-referencing this app's
+      existing ESPN-era historical data. Scheduled daily
+      (`ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER`, on in production) plus a
+      manual `POST /admin/players/sync` trigger. Real run: 11,985
+      players, 1,007 currently draftable (preseason roster churn means
+      this tightens up as teams cut to 53 before the draft).
+- [x] **Phase B — Real-time draft**: `draft_config`/`draft_picks`
+      tables, snake order, transaction-safe turn engine
+      (`backend/app/domain/draft_engine.py` — `FOR UPDATE`-serialized
+      picks, keeper-round auto-skip, commissioner undo-last-pick), pure
+      autopick sorted by Sleeper's `search_rank` (no rankings system of
+      our own exists yet), full WebSocket draft room at `/draft`
+      mirroring Gamecast's connection-manager pattern. Commissioner can
+      reset the whole draft (config/picks/seeded rosters) and redo the
+      order at any status — added specifically so a real mock draft can
+      be run to test the room, then wiped clean before the real one
+      ("I dont want to create the draft order yet, unless i am able to
+      change it... run a mock draft to test if possible").
+      Also fixed along the way: `gamecastApi.ts`'s WS ticket mint was
+      requesting an invalid purpose string, so Gamecast's WebSocket had
+      been silently failing and falling back to no live updates at all
+      for everyone — not related to this pivot, just found while
+      building the draft's own WS auth from the same pattern.
+- [x] **Phase C — In-app rosters/lineups**: new `current_rosters` table
+      (seeded incrementally as draft picks are made). `/me/team` and
+      `/team/lineup/move`/`swap` now read/write `current_rosters`
+      directly (`backend/app/domain/lineup_engine.py`) instead of
+      calling `ESPNLineupClient` — a lineup move is a plain DB UPDATE
+      now, no external write, no shared-credential problem, no dry-run
+      flag. This is what actually fixes the bug that started this pivot.
+      `/team/free-agents/add` is a new real write against the same
+      table. **Deliberately NOT done**: the public `/free-agents` browse
+      page and `FreeAgentsList.tsx` still use ESPN's free-agent listing
+      (kept as-is, still preview-only, not a regression) — its ESPN
+      numeric player_id doesn't reliably cross-reference to a
+      `sleeper_player_id` yet (the crosswalk is only partially
+      populated), so reconciling the browse list onto the Sleeper-
+      sourced pool is real follow-up work, not rushed here.
+      `admin_lineup.py`'s commissioner override tool also still targets
+      ESPN — flagged as a slim, lower-priority thing to repoint later,
+      not deleted.
+- [ ] **Phase D — Scoring engine**: not started. Needs a verification
+      spike first (does ESPN's public boxscore expose full per-player
+      stat lines?), `league_scoring_rules`/`player_week_stats` tables,
+      and this league's actual scoring rules transcribed in (captured
+      from the owner's ESPN settings screenshots this session — full
+      PPR, 0.04/0.1 pt per pass/rush-rec yard, standard TD/turnover
+      values — 3 minor buckets, D/ST points/yards-allowed edge tiers
+      and the FG-missed-50+ value, weren't fully captured and need
+      confirming). `current_rosters`/`RosterEntry` has no live points
+      field at all right now — deliberately honest rather than
+      fabricated (see `FantasyImpact.tsx`'s own note).
+- [ ] **Phase E — Gamecast fantasy-impact rewire**: not started, blocked
+      on Phase D (needs `player_week_stats` to diff against instead of
+      the legacy `rosters.points_scored`).
+- [ ] **Phase F — Matchup scoring**: not started, blocked on Phase D.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)

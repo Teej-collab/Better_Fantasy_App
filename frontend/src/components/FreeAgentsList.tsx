@@ -145,7 +145,7 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
                         className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/10"
                       >
                         {entry.player_name}
-                        <span className="ml-1 text-black/40 dark:text-white/40">({entry.lineup_slot_label})</span>
+                        <span className="ml-1 text-black/40 dark:text-white/40">({entry.lineup_slot})</span>
                       </button>
                     ))}
                   </div>
