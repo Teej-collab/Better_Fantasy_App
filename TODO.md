@@ -1321,10 +1321,42 @@ suddenly urgent.
       `current_rosters`/`RosterEntry` still has no live points field at
       all right now — deliberately honest rather than fabricated (see
       `FantasyImpact.tsx`'s own note) until that wiring happens.
-- [ ] **Phase E — Gamecast fantasy-impact rewire**: not started, blocked
-      on Phase D (needs `player_week_stats` to diff against instead of
-      the legacy `rosters.points_scored`).
-- [ ] **Phase F — Matchup scoring**: not started, blocked on Phase D.
+- [x] **Phase E — Gamecast fantasy-impact rewire**: `_diff_fantasy_impact`
+      (`app/gamecast/service.py`) now diffs `player_week_stats.
+      fantasy_points` via a new `queries/league.py::
+      get_current_rostered_players_by_pro_team` (current_rosters +
+      players + player_week_stats), keyed by `sleeper_player_id`
+      instead of the old player_name workaround — a real, always-
+      present id now, unlike the legacy table's partial espn_player_id
+      backfill that forced that workaround in the first place.
+      **Found and fixed a real live bug while verifying team-
+      abbreviation alignment** (the plan's own explicit ask): Sleeper's
+      raw data uses `WAS` for Washington, but ESPN's convention — used
+      everywhere else in this app (`frontend/src/lib/nfl-teams.ts`,
+      Gamecast's own `team_abbr` fields) — uses `WSH`. Left alone, the
+      fantasy-impact panel would have silently shown nothing for every
+      Washington game. Normalized at ingestion
+      (`app/providers/sleeper/ingest.py`'s `_TEAM_ABBR_NORMALIZE`) and
+      re-run against production (Jacksonville already matched on both —
+      `JAX` — no other mismatches found across all 32 teams).
+- [x] **Phase F — Matchup scoring**: new `app/domain/matchup_scoring.py`
+      sums each team's *starting* `current_rosters` slots'
+      `player_week_stats.fantasy_points` and writes
+      `matchups.home_score`/`away_score` directly. Matchup *pairing*
+      (who plays whom) deliberately still comes from
+      `provider.sync_matchups` — a read, never had the credential
+      problem this pivot exists to fix — this only overwrites the score
+      fields afterward. `test_gamecast_service.py` rewritten off the
+      legacy `rosters` table (3 tests), new `test_matchup_scoring.py`
+      (4 tests), plus 4 new tests locking in the WSH normalization —
+      15 passing across all three files.
+      **Not yet wired to anything real**: nothing currently calls
+      `compute_week_stats`/`compute_matchup_scores_for_week` for an
+      actual week — that needs the "which ESPN event ids belong to
+      fantasy week N" mapping (still open, see Phase D) and a real
+      orchestration entrypoint (a scheduled job or admin trigger,
+      mirroring `app/scheduler.py`'s existing sync jobs) once there's
+      real game data worth computing against.
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
