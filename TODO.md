@@ -1289,17 +1289,33 @@ suddenly urgent.
       `admin_lineup.py`'s commissioner override tool also still targets
       ESPN — flagged as a slim, lower-priority thing to repoint later,
       not deleted.
-- [ ] **Phase D — Scoring engine**: not started. Needs a verification
-      spike first (does ESPN's public boxscore expose full per-player
-      stat lines?), `league_scoring_rules`/`player_week_stats` tables,
-      and this league's actual scoring rules transcribed in (captured
-      from the owner's ESPN settings screenshots this session — full
-      PPR, 0.04/0.1 pt per pass/rush-rec yard, standard TD/turnover
-      values — 3 minor buckets, D/ST points/yards-allowed edge tiers
-      and the FG-missed-50+ value, weren't fully captured and need
-      confirming). `current_rosters`/`RosterEntry` has no live points
-      field at all right now — deliberately honest rather than
-      fabricated (see `FantasyImpact.tsx`'s own note).
+- [x] **Phase D — Scoring engine (individual players)**: verification
+      spike confirmed ESPN's public boxscore exposes full per-player
+      stat lines (`SCORING_ENGINE_SOURCE.md`) — no third-party fallback
+      provider needed. `league_scoring_rules` (this league's real
+      scoring, transcribed from the owner's ESPN settings screenshots —
+      4 values weren't fully captured/confirmed and were seeded as
+      documented interpolated guesses, see the migration's own
+      docstring) and `player_week_stats` tables, `app/domain/
+      scoring_engine.py` (pure formula), `app/providers/nfl_stats/
+      espn_public.py` (raw stat fetch + mapping for the verified bulk
+      categories), `app/domain/weekly_stats.py` (orchestration: fetch →
+      crosswalk to sleeper_player_id → compute → store, idempotent).
+      14 tests passing.
+      **Not done, deliberately scoped out**: team D/ST scoring (needs
+      its own aggregation design — points/yards-allowed tiers,
+      cross-referencing the opponent's stats — not just a per-player
+      stat line); rare events not present in ESPN's stat tables at all
+      (2pt conversions, blocked kicks, safeties, FG-by-distance —
+      would need `scoringPlays`/play-by-play parsing, see
+      `SCORING_ENGINE_SOURCE.md`); the "which ESPN event ids belong to
+      fantasy week N" mapping (callers currently supply event_ids
+      directly); wiring this into `current_rosters`/`RosterEntry` so
+      My Team actually shows live points, and into matchup scoring
+      (Phase F). `current_rosters`/`RosterEntry` still has no live
+      points field at all right now — deliberately honest rather than
+      fabricated (see `FantasyImpact.tsx`'s own note) until that wiring
+      happens.
 - [ ] **Phase E — Gamecast fantasy-impact rewire**: not started, blocked
       on Phase D (needs `player_week_stats` to diff against instead of
       the legacy `rosters.points_scored`).
