@@ -47,7 +47,13 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
     try {
       const state = await getDraftState();
       setDraftState(state);
+      setLoadError(null);
     } catch (e) {
+      // Clears any stale draftState too — a reset (see
+      // DraftSetupPanel's "Reset draft") makes GET /draft/state 404
+      // again, and the old config/picks must not keep showing as if
+      // still real.
+      setDraftState(null);
       setLoadError(e instanceof Error ? e.message : "Failed to load draft");
     }
   };

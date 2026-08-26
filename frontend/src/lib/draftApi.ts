@@ -133,6 +133,13 @@ export async function undoLastPick(): Promise<{ undone_pick: DraftPick; config: 
   return post("/draft/undo-last-pick");
 }
 
+// Wipes the whole draft (config, every pick, seeded rosters) so the
+// commissioner can redo a mock draft or change the order/roster shape
+// before the real one — see app/domain/draft_engine.py's reset_draft.
+export async function resetDraft(): Promise<{ ok: true }> {
+  return post("/draft/reset");
+}
+
 // Same same-origin ticket-mint pattern as getGamecastWsTicket
 // (gamecastApi.ts) — purpose must be exactly "ws".
 export async function getDraftWsTicket(): Promise<string | null> {

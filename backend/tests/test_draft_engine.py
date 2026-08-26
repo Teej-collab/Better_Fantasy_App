@@ -8,6 +8,7 @@ import itertools
 
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
+    DraftAlreadyExistsError,
     DraftNotFoundError,
     NothingToUndoError,
     NotYourTurnError,
@@ -253,3 +254,55 @@ async def test_draft_completes_when_all_picks_made(pool):
 
     assert result["config"]["status"] == "complete"
     assert result["config"]["completed_at"] is not None
+
+
+async def test_create_draft_refuses_to_overwrite_existing_config(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "dup_a")
+    owner_b, _ = await _seed_owner_and_team(pool, "dup_b")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        try:
+            await draft_engine.create_draft(conn, TEST_SEASON, [owner_b, owner_a], _ROSTER_SLOTS)
+            assert False, "expected DraftAlreadyExistsError"
+        except DraftAlreadyExistsError:
+            pass
+
+
+async def test_reset_draft_clears_config_picks_and_rosters(pool):
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    player = await _seed_player(pool, "reset1")
+
+    async with pool.acquire() as conn:
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player)
+        await draft_engine.reset_draft(conn, TEST_SEASON)
+
+        config = await conn.fetchval("SELECT count(*) FROM draft_config WHERE season = $1", TEST_SEASON)
+        picks = await conn.fetchval("SELECT count(*) FROM draft_picks WHERE season = $1", TEST_SEASON)
+        team_id = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", TEST_SEASON, owner_a
+        )
+        rosters = await conn.fetchval(
+            "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2", TEST_SEASON, team_id
+        )
+
+    assert config == 0
+    assert picks == 0
+    assert rosters == 0
+
+
+async def test_reset_then_create_draft_with_a_new_order_succeeds(pool):
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+
+    async with pool.acquire() as conn:
+        await draft_engine.reset_draft(conn, TEST_SEASON)
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_b, owner_a], _ROSTER_SLOTS)
+        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1", TEST_SEASON)
+
+    assert config["draft_order"] == [owner_b, owner_a]
+    assert config["status"] == "not_started"
+
+
+async def test_reset_draft_is_a_noop_when_nothing_exists(pool):
+    async with pool.acquire() as conn:
+        await draft_engine.reset_draft(conn, TEST_SEASON)  # must not raise

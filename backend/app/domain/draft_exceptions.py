@@ -12,6 +12,10 @@ class DraftNotFoundError(DraftError):
     pass
 
 
+class DraftAlreadyExistsError(DraftError):
+    pass
+
+
 class DraftNotInProgressError(DraftError):
     pass
 

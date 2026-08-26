@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { pauseDraft, resumeDraft, setupDraft, startDraft, undoLastPick, type DraftConfig } from "@/lib/draftApi";
+import { pauseDraft, resetDraft, resumeDraft, setupDraft, startDraft, undoLastPick, type DraftConfig } from "@/lib/draftApi";
 import type { Team } from "@/lib/api";
 
 // This league's real ESPN roster shape (confirmed from the
@@ -40,6 +40,14 @@ export function DraftSetupPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  function confirmReset() {
+    const message =
+      config?.status === "complete" || config?.status === "in_progress"
+        ? "This wipes every pick and roster this draft has made — for real, not just a mock. Reset anyway?"
+        : "This deletes the current draft order and setup. Reset?";
+    if (window.confirm(message)) run(resetDraft);
   }
 
   if (!config) {
@@ -82,9 +90,14 @@ export function DraftSetupPanel({
     );
   }
 
+  const teamNameByOwner = new Map(teams.map((t) => [t.owner_id, t.team_name]));
+
   return (
     <section className="neon-panel flex flex-wrap items-center gap-2 rounded-xl p-4">
       {error && <p className="w-full text-xs text-red-500">{error}</p>}
+      <p className="w-full text-xs text-black/50 dark:text-white/50">
+        Draft order: {config.draft_order.map((id, i) => `${i + 1}. ${teamNameByOwner.get(id) ?? id}`).join(" · ")}
+      </p>
       {config.status === "not_started" && (
         <button
           onClick={() => run(startDraft)}
@@ -122,6 +135,13 @@ export function DraftSetupPanel({
         </button>
       )}
       {config.status === "complete" && <span className="text-xs text-black/50 dark:text-white/50">Draft complete.</span>}
+      <button
+        onClick={confirmReset}
+        disabled={busy}
+        className="rounded-full border border-red-500/30 px-3 py-1 text-xs font-medium text-red-500 disabled:opacity-40"
+      >
+        Reset draft
+      </button>
     </section>
   );
 }

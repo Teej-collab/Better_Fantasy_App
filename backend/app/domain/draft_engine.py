@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.domain.draft_autopick import choose_autopick
 from app.domain.draft_exceptions import (
+    DraftAlreadyExistsError,
     DraftNotFoundError,
     DraftNotInProgressError,
     NothingToUndoError,
@@ -68,8 +69,20 @@ def total_draftable_slots(roster_slots: dict[str, int]) -> int:
 async def create_draft(
     conn, season: int, draft_order: list[int], roster_slots: dict, pick_time_limit_seconds: int = 90
 ) -> None:
-    rounds = total_draftable_slots(roster_slots)
+    """Refuses to overwrite an existing draft_config for this season —
+    call reset_draft() first if you need to change the order or roster
+    shape (e.g. after a mock draft, or the commissioner changing their
+    mind before the real one). This is deliberately a hard stop, not a
+    silent overwrite: draft_picks/current_rosters rows from a real
+    draft are exactly the kind of data a silent re-setup could quietly
+    destroy."""
     async with conn.transaction():
+        exists = await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1", season)
+        if exists:
+            raise DraftAlreadyExistsError(
+                f"A draft already exists for season {season} — reset it first if you want to change the order"
+            )
+        rounds = total_draftable_slots(roster_slots)
         await conn.execute(
             """
             INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots)
@@ -331,3 +344,21 @@ async def undo_last_pick(conn, season: int) -> dict:
             last_pick["pick_number"], deadline, season,
         )
         return {"undone_pick": dict(last_pick), "config": _config_dict(new_config)}
+
+
+async def reset_draft(conn, season: int) -> None:
+    """Wipes this season's draft entirely — config, every pick
+    (keeper-prefilled or live), and every current_rosters row that
+    draft seeded — so the commissioner can run a real mock draft to
+    test the room, then start clean for the real one, or just change
+    the draft order/roster shape before it's actually started. Works
+    regardless of status (not_started/in_progress/paused/complete) —
+    this is a deliberate commissioner-only nuke button, same trust
+    level as undo_last_pick, just bigger in scope. No-op (not an
+    error) if no draft exists yet for this season."""
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM current_rosters WHERE season = $1 AND acquired_via IN ('draft', 'keeper')", season
+        )
+        await conn.execute("DELETE FROM draft_picks WHERE season = $1", season)
+        await conn.execute("DELETE FROM draft_config WHERE season = $1", season)

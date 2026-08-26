@@ -23,6 +23,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
+    DraftAlreadyExistsError,
     DraftError,
     DraftNotFoundError,
     DraftNotInProgressError,
@@ -57,6 +58,8 @@ def _map_draft_error(e: Exception) -> HTTPException:
     if isinstance(e, (PlayerNotDraftableError, PlayerAlreadyDraftedError)):
         return HTTPException(status_code=400, detail=str(e))
     if isinstance(e, NothingToUndoError):
+        return HTTPException(status_code=409, detail=str(e))
+    if isinstance(e, DraftAlreadyExistsError):
         return HTTPException(status_code=409, detail=str(e))
     return HTTPException(status_code=400, detail=str(e))
 
@@ -110,15 +113,37 @@ class SetupRequest(BaseModel):
 
 @router.post("/setup")
 async def setup_draft(body: SetupRequest, request: Request):
+    """Refuses to overwrite an existing draft (see create_draft's
+    docstring) — call POST /draft/reset first to change the order or
+    roster shape, whether that's redoing a mock draft or genuinely
+    reconfiguring before the real one."""
+    _require_commissioner(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await draft_engine.create_draft(
+                conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds
+            )
+            state = await draft_queries.get_draft_state(conn, season)
+    except DraftError as e:
+        raise _map_draft_error(e) from e
+    return state
+
+
+@router.post("/reset")
+async def reset_draft(request: Request):
+    """Wipes this season's draft entirely (config, every pick,
+    every current_rosters row it seeded) regardless of status — see
+    draft_engine.reset_draft's docstring. Use this to redo a mock draft
+    or change the order/roster shape before the real one."""
     _require_commissioner(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await draft_engine.create_draft(
-            conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds
-        )
-        state = await draft_queries.get_draft_state(conn, season)
-    return state
+        await draft_engine.reset_draft(conn, season)
+    await manager.broadcast_to_draft(season, {"type": "draft_reset"})
+    return {"ok": True}
 
 
 class KeeperSeedRequest(BaseModel):
