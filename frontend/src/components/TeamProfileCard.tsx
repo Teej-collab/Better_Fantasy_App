@@ -88,9 +88,7 @@ export function TeamProfileCard({
             </div>
 
             <div className="flip-face flip-face--back">
-              <div
-                className="touch-pan-y flex h-full w-full flex-col gap-3 overflow-y-auto overscroll-contain rounded-lg [-webkit-overflow-scrolling:touch]"
-              >
+              <div className="flex h-full w-full flex-col gap-3 overflow-hidden rounded-lg">
                 <CardBack
                   owner={owner}
                   isChampion={isChampion}
