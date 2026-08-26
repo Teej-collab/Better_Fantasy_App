@@ -12,8 +12,12 @@ the router, matching this app's established "validate in the router,
 not the database" convention for preference-shaped data.
 
 espn_player_id (not player_name text) is the identity used to carry a
-keeper forward year over year — see get_owner_roster_pool and
-get_prior_season_selections.
+keeper forward year over year — see get_prior_season_selections. The
+roster POOL an owner picks a keeper from is no longer sourced here —
+app/routers/keepers.py's _get_live_roster_pool reads ESPN's live
+roster directly instead of this app's own `rosters` table (which only
+syncs by real NFL week, so it'd be many months stale by keeper-
+selection time — see that function's docstring for the full reasoning).
 """
 
 
@@ -88,28 +92,6 @@ async def replace_selections(conn, season: int, owner_id: int, players: list[dic
                 season, owner_id, p["espn_player_id"], p["player_name"], p.get("consecutive_years_kept", 1),
             )
     return await get_selections(conn, season, owner_id)
-
-
-async def get_owner_roster_pool(conn, owner_id: int, source_season: int):
-    """The players an owner can choose a keeper from for `source_season
-    + 1` — this owner's own roster as of the latest synced week of
-    `source_season` (the most recently completed season), deduplicated
-    by player. Distinct because a player can appear on multiple weeks'
-    rosters; only espn_player_id/player_name/position are needed for a
-    picker, not week-by-week performance."""
-    return await conn.fetch(
-        """
-        SELECT DISTINCT ON (r.espn_player_id) r.espn_player_id, r.player_name, r.position, r.pro_team
-        FROM rosters r
-        JOIN teams_by_season t ON t.id = r.team_id
-        WHERE t.owner_id = $1 AND t.season = $2 AND r.espn_player_id IS NOT NULL
-          AND r.week = (
-              SELECT MAX(week) FROM rosters r2 WHERE r2.team_id = r.team_id
-          )
-        ORDER BY r.espn_player_id, r.player_name
-        """,
-        owner_id, source_season,
-    )
 
 
 async def get_prior_season_selections(conn, owner_id: int, prior_season: int):
