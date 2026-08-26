@@ -30,6 +30,13 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   provider's entire live slate, so an idle Gamecast feature with zero
   viewers costs nothing beyond the one lightweight scoreboard check
   every tick.
+- Sleeper player sync (ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER): refreshes
+  the `players` table from Sleeper's free player API once a day —
+  Sleeper's own docs require at most one pull a day, so this interval
+  is a hard ceiling, not a tuning knob (see app/providers/sleeper/
+  client.py). There's also a manual POST /admin/players/sync trigger
+  for the first-ever ingestion so it doesn't have to wait on a cron
+  tick.
 """
 import logging
 import os
@@ -42,6 +49,7 @@ from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
+from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
 
 logger = logging.getLogger(__name__)
@@ -94,6 +102,11 @@ async def _run_gamecast_poll_job():
     logger.info("Gamecast poll finished for %d live game(s)", len(game_ids))
 
 
+async def _run_sleeper_player_sync_job():
+    count = await sync_players(await get_pool())
+    logger.info("Sleeper player sync finished: %d players upserted", count)
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -128,6 +141,11 @@ def start_scheduler():
             "Gamecast poll scheduler started (every %d seconds, only during NFL game windows with active viewers)",
             interval_seconds,
         )
+        started_any = True
+
+    if os.getenv("ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(_run_sleeper_player_sync_job, "interval", hours=24, id="sleeper_player_sync")
+        logger.info("Sleeper player sync scheduler started (every 24 hours)")
         started_any = True
 
     if started_any:

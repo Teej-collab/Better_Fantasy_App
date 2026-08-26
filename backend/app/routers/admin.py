@@ -11,8 +11,10 @@ from fastapi import APIRouter, HTTPException, Request
 
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.db import get_pool
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
+from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -60,3 +62,15 @@ async def trigger_live_sync(request: Request):
     week = await provider.get_current_week(season)
     results = await run_live_sync(provider, season, week)
     return {"season": season, "week": week, "results": results}
+
+
+@router.post("/players/sync")
+async def trigger_player_sync(request: Request):
+    """Manual trigger for the Sleeper player-database ingestion (see
+    app/providers/sleeper/ingest.py) — run this by hand right after it
+    ships rather than waiting for the daily scheduled job's first tick,
+    since the draft player pool depends on this table being populated."""
+    _require_commissioner(request)
+
+    count = await sync_players(await get_pool())
+    return {"players_upserted": count}

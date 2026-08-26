@@ -148,6 +148,10 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
         if linked_user_ids:
             await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", linked_user_ids)
+        # players has no season/owner column (it's a global Sleeper-sourced
+        # reference table, not per-season) — test rows use a 'test-%'
+        # sleeper_player_id prefix, same convention as owners.espn_member_id.
+        await conn.execute("DELETE FROM players WHERE sleeper_player_id LIKE 'test-%'")
 
 
 @pytest.fixture
