@@ -264,6 +264,42 @@ async def get_rostered_players_by_pro_team(conn, season: int, week: int, pro_tea
     )
 
 
+async def get_current_rostered_players_by_pro_team(conn, season: int, week: int, pro_teams: list[str]):
+    """Same role as get_rostered_players_by_pro_team above (Gamecast's
+    fantasy-impact panel: given a live game between two real NFL teams,
+    which fantasy owners have skin in it) but sourced from the
+    ESPN-independence pivot's own tables — current_rosters/players for
+    who's on which team, player_week_stats for this week's computed
+    points (Phase D's own scoring engine, not ESPN's) — instead of the
+    legacy ESPN-synced `rosters` table. Keyed by sleeper_player_id
+    (returned as player_id), not player_name — current_rosters/players
+    always has a real stable id, unlike the old table's partial
+    espn_player_id backfill that forced service.py's name-keyed
+    workaround.
+
+    LEFT JOINs player_week_stats since a player who hasn't recorded any
+    computed stats yet this week (game not started, or Phase D's
+    known gaps) should still appear with 0 points, not be silently
+    dropped from the panel."""
+    if not pro_teams:
+        return []
+    return await conn.fetch(
+        """
+        SELECT p.sleeper_player_id AS player_id, p.full_name AS player_name, p.position,
+               cr.lineup_slot, p.pro_team, COALESCE(pws.fantasy_points, 0) AS points_scored,
+               t.id AS team_id, t.team_name, o.owner_id, o.display_name AS owner_name
+        FROM current_rosters cr
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        JOIN teams_by_season t ON t.id = cr.team_id
+        JOIN owners o ON o.owner_id = t.owner_id
+        LEFT JOIN player_week_stats pws
+            ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND p.pro_team = ANY($3::text[])
+        """,
+        season, week, pro_teams,
+    )
+
+
 async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
     """Ported from Fantasy_Helper's bot/memory/rivalry_graph.py
     get_rivalry, unchanged: only owner pairs someone has curated into

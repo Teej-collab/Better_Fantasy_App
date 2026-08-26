@@ -3,12 +3,13 @@ The live-game service — the one place in the app that holds current
 Gamecast state in memory (dict[game_id, LiveGame]), refreshed by the
 scheduler's poll job (app/scheduler.py's gamecast job) or on-demand by
 a cache-miss REST/WS request, and computes fantasy-impact deltas by
-diffing ESPN's own already-synced rosters.points_scored over time —
-not by inventing a second scoring system (see the architecture plan:
-this app has no fantasy scoring rules engine at all, points_scored is
-always ESPN's own already-computed number, copied verbatim during
-sync; comparing two snapshots of that same number over time is a
-diff, not new scoring logic).
+diffing player_week_stats.fantasy_points over time — Phase D's own
+scoring engine output (app/domain/scoring_engine.py), not ESPN's. This
+used to diff ESPN's already-synced rosters.points_scored (see git
+history) back when this app had no scoring engine of its own; now that
+it does, comparing two snapshots of the computed points over time is
+still just a diff, not new scoring logic — the computation itself
+lives entirely in Phase D's own modules, not here.
 
 Deliberately no database table for live game state — it's ephemeral by
 nature (a snapshot of something still changing), and correct again on
@@ -23,12 +24,11 @@ from app.queries import league as queries
 
 _current_state: dict[str, LiveGame] = {}
 
-# Last-seen points_scored per game_id -> player_name -> points. Keyed
-# by name rather than espn_player_id: that column is only populated for
-# weeks synced after it was added (see api.ts's RosterPlayer.player_id
-# comment on the frontend side of this same gap) — name is always
-# present, and a same-name collision within one real NFL team's active
-# roster is rare enough not to matter for a purely informational panel.
+# Last-seen fantasy_points per game_id -> sleeper_player_id -> points.
+# Keyed by sleeper_player_id (a real, always-present stable id — unlike
+# the legacy `rosters` table's espn_player_id, which was only partially
+# backfilled and forced a player_name-keyed workaround here before the
+# ESPN-independence pivot).
 _last_points: dict[str, dict[str, float]] = {}
 
 
@@ -59,14 +59,14 @@ async def _diff_fantasy_impact(conn, game: LiveGame) -> list[dict]:
     if week is None:
         return []
 
-    rows = await queries.get_rostered_players_by_pro_team(
+    rows = await queries.get_current_rostered_players_by_pro_team(
         conn, season, week, [game.home_team.abbr, game.away_team.abbr]
     )
     baseline = _last_points.setdefault(game.game_id, {})
     events: list[dict] = []
     for row in rows:
         current = float(row["points_scored"]) if row["points_scored"] is not None else 0.0
-        key = row["player_name"]
+        key = row["player_id"]
         previous = baseline.get(key)
         if previous is not None and current != previous:
             events.append(

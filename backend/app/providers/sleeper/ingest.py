@@ -22,6 +22,26 @@ _EXCLUDED_STATUSES = {
     "Inactive", "Practice Squad", "Injured Reserve", "PUP", "Non Football Injury", "Suspended",
 }
 
+# Sleeper and ESPN disagree on exactly one NFL team abbreviation:
+# Washington is "WAS" in Sleeper's raw data but "WSH" everywhere ESPN's
+# own convention is used in this app (frontend/src/lib/nfl-teams.ts,
+# any legacy ESPN-sourced pro_team value, Gamecast's team_abbr fields).
+# Confirmed by a real ingestion run returning "WAS" while the
+# established frontend team list — already the app-wide convention
+# before this pivot — uses "WSH". Left unnormalized, Gamecast's
+# fantasy-impact panel would silently show nothing for any Washington
+# game (its pro_team query would never match). Normalize at ingestion
+# so every table (players.pro_team, and the DEF row's own
+# sleeper_player_id) stays on the one convention the rest of the app
+# already uses, rather than carrying two spellings for the same team.
+_TEAM_ABBR_NORMALIZE = {"WAS": "WSH"}
+
+
+def _normalize_team_abbr(abbr: str | None) -> str | None:
+    if abbr is None:
+        return None
+    return _TEAM_ABBR_NORMALIZE.get(abbr, abbr)
+
 
 def _is_draftable(position: str, fantasy_positions: list, status: str | None, pro_team: str | None) -> bool:
     if position not in _DRAFTABLE_POSITIONS:
@@ -42,16 +62,20 @@ def _is_draftable(position: str, fantasy_positions: list, status: str | None, pr
 def _normalize(sleeper_id: str, raw: dict) -> dict:
     position = raw.get("position") or ""
     fantasy_positions = raw.get("fantasy_positions") or []
-    pro_team = raw.get("team")
+    pro_team = _normalize_team_abbr(raw.get("team"))
     status = raw.get("status")
 
     if position == "DEF":
         # Real Sleeper data keys DEF entries by team abbreviation (so
-        # sleeper_id == pro_team in practice), but derive the name from
-        # the `team` field itself rather than the dict key — the key is
-        # an identity, not guaranteed-abbreviation, and test fixtures
-        # need a 'test-' prefixed key regardless (see conftest.py's
-        # cleanup convention).
+        # sleeper_id == pro_team in practice) — normalize this id the
+        # same way as pro_team above, so e.g. Washington's DEF row is
+        # identified as "WSH" (matching current_rosters/draft_picks
+        # references elsewhere) not "WAS". Name is derived from the
+        # (already-normalized) pro_team rather than the raw dict key —
+        # the raw key is an identity, not guaranteed-abbreviation, and
+        # test fixtures need a 'test-' prefixed key regardless (see
+        # conftest.py's cleanup convention).
+        sleeper_id = _normalize_team_abbr(sleeper_id)
         full_name = team_full_name(pro_team or sleeper_id)
         first_name, last_name = None, None
     else:

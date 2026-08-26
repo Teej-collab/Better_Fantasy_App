@@ -118,3 +118,42 @@ async def test_sync_players_updates_changed_fields_on_rerun(pool, monkeypatch):
         row = await conn.fetchrow("SELECT * FROM players WHERE sleeper_player_id = 'test-1'")
     assert row["status"] == "Inactive"
     assert row["is_draftable"] is False
+
+
+# ---- team-abbreviation normalization (pure, no DB — see ingest.py's
+# _TEAM_ABBR_NORMALIZE docstring: a real ingestion run confirmed
+# Sleeper's raw data disagrees with ESPN's convention for Washington
+# specifically). Deliberately not going through sync_players()/the DB
+# here — a fake payload keyed "WAS" would upsert a real "WSH" row,
+# colliding with whatever a real ingestion run already wrote for the
+# actual Washington Commanders, unlike every other test in this file's
+# safely 'test-'-prefixed fake ids. -----------------------------------
+
+def test_normalize_team_abbr_maps_washington_to_espn_convention():
+    assert ingest._normalize_team_abbr("WAS") == "WSH"
+
+
+def test_normalize_team_abbr_leaves_other_teams_unchanged():
+    assert ingest._normalize_team_abbr("SF") == "SF"
+    assert ingest._normalize_team_abbr("JAX") == "JAX"  # matches on both Sleeper and ESPN already
+
+
+def test_normalize_team_abbr_passes_through_none():
+    assert ingest._normalize_team_abbr(None) is None
+
+
+def test_normalize_maps_a_skill_players_pro_team():
+    row = ingest._normalize("test-was-player", {
+        "position": "QB", "fantasy_positions": ["QB"], "team": "WAS", "status": "Active",
+        "full_name": "Test Commander", "espn_id": 1,
+    })
+    assert row["pro_team"] == "WSH"
+
+
+def test_normalize_maps_a_def_entrys_own_id_and_name():
+    row = ingest._normalize("WAS", {
+        "position": "DEF", "fantasy_positions": ["DEF"], "team": "WAS", "status": None,
+    })
+    assert row["sleeper_player_id"] == "WSH"
+    assert row["pro_team"] == "WSH"
+    assert row["full_name"] == "Washington Commanders"

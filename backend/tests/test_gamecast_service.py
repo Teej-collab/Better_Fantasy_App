@@ -4,6 +4,10 @@ Gamecast that touches the DB. This deliberately does NOT seed a second
 season anywhere (see conftest.py's TEST_SEASON comment): every owner/
 team/roster row here lives under TEST_SEASON only, exactly like
 tests/test_records.py and friends.
+
+Sources current_rosters/players/player_week_stats now (the
+ESPN-independence pivot's own tables), not the legacy ESPN-synced
+`rosters` table this used to diff against.
 """
 from app.gamecast import service
 from app.gamecast.models import GameStatus, LiveGame, TeamRef
@@ -28,13 +32,35 @@ async def _seed_team(pool, owner_id, suffix, season=TEST_SEASON):
         )
 
 
-async def _seed_roster_player(pool, team_id, week, player_name, pro_team, points_scored, season=TEST_SEASON):
+async def _seed_rostered_player(pool, team_id, sleeper_id, player_name, pro_team, points_scored, week=1, season=TEST_SEASON):
+    """Seeds all three tables a rostered player with a computed weekly
+    score now spans: players (identity), current_rosters (who owns
+    them), player_week_stats (this week's computed points)."""
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, "
-            "points_scored, points_projected, pro_team) "
-            "VALUES ($1, $2, $3, $4, 'WR', 'WR', $5, $5, $6)",
-            season, week, team_id, player_name, points_scored, pro_team,
+            """
+            INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
+            VALUES ($1, $2, 'WR', ARRAY['WR'], $3, 'Active', TRUE)
+            """,
+            sleeper_id, player_name, pro_team,
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, 'WR', 'draft')",
+            season, team_id, sleeper_id,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, $2, $3, '{}', $4)",
+            season, week, sleeper_id, points_scored,
+        )
+
+
+async def _update_points(pool, sleeper_id, points_scored, week=1, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE player_week_stats SET fantasy_points = $1 WHERE season = $2 AND week = $3 AND sleeper_player_id = $4",
+            points_scored, season, week, sleeper_id,
         )
 
 
@@ -71,7 +97,7 @@ async def test_diff_fantasy_impact_emits_nothing_on_first_poll_but_deltas_on_the
     owner_id = await _seed_owner(pool, 1)
     team_id = await _seed_team(pool, owner_id, 1)
     await _seed_league_state(pool, week=1)
-    await _seed_roster_player(pool, team_id, week=1, player_name="Mahomes", pro_team="KC", points_scored=6.0)
+    await _seed_rostered_player(pool, team_id, "test-gc-mahomes", "Mahomes", "KC", points_scored=6.0)
 
     game = _fake_game()
     service._last_points.pop(game.game_id, None)  # isolate from any other test's state
@@ -80,11 +106,7 @@ async def test_diff_fantasy_impact_emits_nothing_on_first_poll_but_deltas_on_the
         first_events = await service._diff_fantasy_impact(conn, game)
         assert first_events == []  # no prior baseline yet — nothing to diff against
 
-        async with pool.acquire() as conn2:
-            await conn2.execute(
-                "UPDATE rosters SET points_scored = 12.5 WHERE season = $1 AND team_id = $2 AND player_name = 'Mahomes'",
-                TEST_SEASON, team_id,
-            )
+        await _update_points(pool, "test-gc-mahomes", 12.5)
         second_events = await service._diff_fantasy_impact(conn, game)
 
     assert len(second_events) == 1
@@ -110,18 +132,14 @@ async def test_diff_fantasy_impact_ignores_players_on_pro_teams_not_in_this_game
     team_id = await _seed_team(pool, owner_id, 2)
     await _seed_league_state(pool, week=1)
     # Rostered player is on SF, but the game being diffed is KC @ BUF.
-    await _seed_roster_player(pool, team_id, week=1, player_name="Purdy", pro_team="SF", points_scored=3.0)
+    await _seed_rostered_player(pool, team_id, "test-gc-purdy", "Purdy", "SF", points_scored=3.0)
 
     game = _fake_game()
     service._last_points.pop(game.game_id, None)
 
     async with pool.acquire() as conn:
         await service._diff_fantasy_impact(conn, game)
-        async with pool.acquire() as conn2:
-            await conn2.execute(
-                "UPDATE rosters SET points_scored = 20.0 WHERE season = $1 AND team_id = $2 AND player_name = 'Purdy'",
-                TEST_SEASON, team_id,
-            )
+        await _update_points(pool, "test-gc-purdy", 20.0)
         events = await service._diff_fantasy_impact(conn, game)
 
     assert events == []
