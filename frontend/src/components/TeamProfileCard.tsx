@@ -223,6 +223,12 @@ const OWNER_PHOTOS: Record<number, string> = {
   10: "/images/owners/jeffrey-horak.png", // Jeffrey "Jeff" Horak
   8: "/images/owners/aaron-wylie.png", // Aaron Wylie
   15: "/images/owners/aaron-roberts.png", // Aaron Roberts
+  20: "/images/owners/tyler-dailey.png", // Tyler Dailey
+  9: "/images/owners/james-hogan.png", // James "Jimmy" Hogan
+  2: "/images/owners/lorenzo-cachia.png", // Lorenzo Cachia
+  1: "/images/owners/niko.png", // Niko
+  4: "/images/owners/tj.png", // TJ
+  7: "/images/owners/ryan-horak.png", // Ryan Horak
 };
 
 function OwnerPhotoFill({
