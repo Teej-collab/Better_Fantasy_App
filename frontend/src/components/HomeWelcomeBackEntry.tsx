@@ -4,18 +4,24 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
-import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { WORDS, prefersReducedMotion, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WELCOME_HOLD_MS = 1100;
+// See AppEntry.tsx's identical constant for why — lets the can-opening-
+// then-pour sound (useIntroSound.ts) play out over the wordmark before
+// the reveal transition begins. Skipped for prefers-reduced-motion.
+const EXTENDED_HOLD_MS = 3600;
 const REVEAL_TRANSITION_MS = 900;
 // Absolute backstop — see AppEntry.tsx's identical constant/effect for
 // why: the real dashboard must never stay hidden behind the splash
-// indefinitely, no matter what could theoretically wedge `stage`.
-const MAX_BOOT_MS = 6000;
+// indefinitely, no matter what could theoretically wedge `stage`. The
+// word-by-word buildup alone (useWeekendIntro.ts) takes ~3.75s before
+// EXTENDED_HOLD_MS and REVEAL_TRANSITION_MS even start.
+const MAX_BOOT_MS = 12000;
 
 /**
  * The authenticated counterpart to OpeningExperience.tsx — (home)/page.tsx
@@ -49,6 +55,7 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
 
   useEffect(() => {
     if (revealed || stage !== "final") return;
+    const holdMs = prefersReducedMotion() ? WELCOME_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
@@ -56,7 +63,7 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
         markBootedThisPageLoad();
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
-    }, WELCOME_HOLD_MS);
+    }, holdMs);
     return () => clearTimeout(holdTimeout);
   }, [stage, revealed]);
 

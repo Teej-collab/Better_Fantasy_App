@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useIntroSound } from "@/lib/useIntroSound";
 
 // Shared by OpeningExperience.tsx (signed-out front door) and the
 // authenticated app-entry sequence (AppEntry.tsx, HomeWelcomeBackEntry.tsx)
@@ -10,6 +11,13 @@ import { useEffect, useRef, useState } from "react";
 // OpeningExperience.tsx, which used to own this timing machinery outright,
 // so both entry points share one implementation instead of two copies
 // drifting apart.
+//
+// Also owns this sequence's sound effects (useIntroSound.ts) — a
+// light-switch "click" per word (stadium lights coming on one at a
+// time), then a can opening immediately followed by a pour once
+// WEEKEND League itself appears — triggered from the exact same
+// timeout callbacks that drive the visuals, so both stay in lockstep
+// automatically for every consumer of this hook.
 export const WORDS = ["WELCOME", "TO", "THE"];
 // Each word ignites a little quicker than the last — an accelerating
 // cadence that builds anticipation toward WEEKEND instead of a metronomic
@@ -40,6 +48,7 @@ export function useWeekendIntro() {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { playLightSwitch, playCanThenPour } = useIntroSound();
 
   useEffect(() => {
     // Every stage change happens inside a timeout callback, never
@@ -63,19 +72,31 @@ export function useWeekendIntro() {
       }
 
       if (prefersReducedMotion() || seenBefore) {
+        // No sound here — this is deliberately the abbreviated path
+        // (accessibility preference, or a repeat signed-out visitor),
+        // so it skips the light-switch/can-opening/pour cues along
+        // with the word-by-word buildup they're timed to, not just the
+        // visuals.
         setStage("final");
         return;
       }
 
       setStage("word");
+      playLightSwitch(); // WELCOME
       let i = 0;
       const advance = () => {
         i++;
         if (i < WORDS.length) {
           setWordIndex(i);
+          playLightSwitch(); // TO, then THE — one "light" per word.
           timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[i]));
         } else {
-          timeouts.current.push(setTimeout(() => setStage("final"), WORD_INTERVALS_MS[WORDS.length - 1]));
+          timeouts.current.push(
+            setTimeout(() => {
+              setStage("final");
+              playCanThenPour();
+            }, WORD_INTERVALS_MS[WORDS.length - 1])
+          );
         }
       };
       timeouts.current.push(setTimeout(advance, WORD_INTERVALS_MS[0]));
@@ -86,6 +107,10 @@ export function useWeekendIntro() {
       timeouts.current.forEach(clearTimeout);
       timeouts.current = [];
     };
+    // playLightSwitch/playCanThenPour read stable refs internally
+    // (useIntroSound.ts) — this effect is deliberately mount-only, same
+    // as every other timer-driving effect in this file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function skip() {

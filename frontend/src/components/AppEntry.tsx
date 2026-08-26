@@ -4,13 +4,21 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
-import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { WORDS, prefersReducedMotion, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WELCOME_HOLD_MS = 1100;
+// The full "throw you into the app" experience — can-opening-then-pour
+// (useIntroSound.ts) plays out over the WEEKEND League wordmark before
+// the reveal transition begins, instead of cutting it off early.
+// Skipped in favor of the short WELCOME_HOLD_MS above for
+// prefers-reduced-motion, same as the word-by-word buildup itself is
+// (see useWeekendIntro.ts) — the escape hatch this slower entrance
+// leans on.
+const EXTENDED_HOLD_MS = 3600;
 const REVEAL_TRANSITION_MS = 900;
 // Never let a slow/failed auth check hold the boot sequence hostage —
 // past this, proceed as if unauthenticated (the page underneath already
@@ -21,8 +29,10 @@ const AUTH_CHECK_TIMEOUT_MS = 3000;
 // (useWeekendIntro's `stage` never reaching "final", a future bug in
 // either effect below), the real page — header, account menu, all of
 // it — must never stay hidden behind the splash indefinitely. Well
-// past every other timing constant here combined.
-const MAX_BOOT_MS = 6000;
+// past every other timing constant here combined — the word-by-word
+// buildup alone (useWeekendIntro.ts) takes ~3.75s before EXTENDED_HOLD_MS
+// and REVEAL_TRANSITION_MS even start.
+const MAX_BOOT_MS = 12000;
 
 type AuthState = "checking" | "authenticated" | "unauthenticated";
 
@@ -96,7 +106,8 @@ export function AppEntry({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (revealed || stage !== "final" || authState === "checking") return;
-    const holdMs = authState === "authenticated" ? WELCOME_HOLD_MS : 0;
+    const holdMs =
+      authState !== "authenticated" ? 0 : prefersReducedMotion() ? WELCOME_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
