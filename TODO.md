@@ -1194,13 +1194,33 @@ Phases 9/10 below — status unchanged, explicitly reaffirmed rather than
 silently dropped): multi-league support and additional data providers
 (Yahoo/Sleeper) remain real future goals, not scheduled now.
 
+- [x] **ESPN lineup writes, live for real (Part 1)**: `/me/team/lineup/
+      move` and `/swap` — every signed-in owner can now submit a real
+      lineup change for their own team (session-resolved `team_id`,
+      never accepted from the request body), not just preview one.
+      `MyTeamApp.tsx`'s swap flow is a real two-step preview-then-
+      confirm now. `ESPN_DRY_RUN` flipped to `false` in Railway
+      production (Aug 26, 2026) — this is the first time this app has
+      ever sent a real write to ESPN.
+      **Caveat, shipped deliberately rather than blocking on it:** every
+      write authenticates with a single ESPN session (the commissioner's
+      own `ESPN_S2`/`SWID`), and whether that can write a DIFFERENT
+      owner's roster was never verified before shipping (see
+      `ESPN_LINEUP_WRITE.md`'s "Open question" section). A write ESPN
+      rejects for that reason surfaces as a friendly "use the ESPN app
+      for now" message (not a broken error) and logs distinctly
+      (`ESPN lineup write rejected (auth)...` / `...not verified after
+      send...`) — watch Railway logs after rollout to learn the real
+      scope of the limitation; if it turns out only team 4 (TJ, the
+      credential holder) can actually submit, per-owner ESPN credentials
+      becomes real near-term scope, not just a noted caveat.
+
 **In progress as of this entry** (see this session's own plan for full
-detail): taking ESPN lineup writes live for real (owner-facing submit
-button, `ESPN_DRY_RUN` off in production); building real weekly AI
-recap generation (Claude, fully automatic per matchup); fixing the Chug
-Analyzer's production video-scoring gap (needs a custom Docker image on
-Railway, since its mediapipe dependency needs a second Python runtime
-Railway's single-runtime-per-service default doesn't support).
+detail): building real weekly AI recap generation (Claude, fully
+automatic per matchup); fixing the Chug Analyzer's production video-
+scoring gap (needs a custom Docker image on Railway, since its
+mediapipe dependency needs a second Python runtime Railway's single-
+runtime-per-service default doesn't support).
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
