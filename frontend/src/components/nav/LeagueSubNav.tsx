@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DESTINATIONS, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
 
-export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat">;
+export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers">;
 
 /**
  * Rendered manually at the top of each League-family page (League,
@@ -23,7 +23,6 @@ const STATIC_HREF: Record<Exclude<LeagueTab, "awards">, string> = {
   rivalries: "/rivalries",
   rules: "/rules",
   chug: "/chug",
-  keepers: "/keepers",
   powerRankings: "/power-rankings",
 };
 

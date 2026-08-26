@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
+import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 
 export default async function MyTeamPage() {
   const cookieStore = await cookies();
@@ -10,6 +11,7 @@ export default async function MyTeamPage() {
   if (!me) {
     return (
       <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="team" />
         <h1 className="text-2xl font-semibold">My Team</h1>
         <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
           <p className="text-sm text-black/60 dark:text-white/60">Sign in to see your team.</p>
@@ -24,5 +26,10 @@ export default async function MyTeamPage() {
     );
   }
 
-  return <MyTeamApp />;
+  return (
+    <div className="flex flex-col gap-4">
+      <MyTeamSubNav active="team" />
+      <MyTeamApp />
+    </div>
+  );
 }

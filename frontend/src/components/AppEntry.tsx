@@ -4,13 +4,21 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
-import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { WORDS, prefersReducedMotion, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WELCOME_HOLD_MS = 1100;
+// The full "throw you into the app" experience — can-opening-then-pour
+// (useIntroSound.ts) plays out over the WEEKEND League wordmark before
+// the reveal transition begins, instead of cutting it off early.
+// Skipped in favor of the short WELCOME_HOLD_MS above for
+// prefers-reduced-motion, same as the word-by-word buildup itself is
+// (see useWeekendIntro.ts) — the escape hatch this slower entrance
+// leans on.
+const EXTENDED_HOLD_MS = 3600;
 const REVEAL_TRANSITION_MS = 900;
 // Never let a slow/failed auth check hold the boot sequence hostage —
 // past this, proceed as if unauthenticated (the page underneath already
@@ -21,8 +29,10 @@ const AUTH_CHECK_TIMEOUT_MS = 3000;
 // (useWeekendIntro's `stage` never reaching "final", a future bug in
 // either effect below), the real page — header, account menu, all of
 // it — must never stay hidden behind the splash indefinitely. Well
-// past every other timing constant here combined.
-const MAX_BOOT_MS = 6000;
+// past every other timing constant here combined — the word-by-word
+// buildup alone (useWeekendIntro.ts) takes ~3.75s before EXTENDED_HOLD_MS
+// and REVEAL_TRANSITION_MS even start.
+const MAX_BOOT_MS = 12000;
 
 type AuthState = "checking" | "authenticated" | "unauthenticated";
 
@@ -55,16 +65,15 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
  * deliberately does NOT replay this sequence — it just re-fetches data
  * in place, so refreshing never reads as the app restarting.
  *
- * Sound off (`useWeekendIntro({ sound: false })`) — per the project
- * owner, the light-switch/can-opening/pour cues should only ever play
- * on the actual sign-in screen (OpeningExperience.tsx) and the
- * "Welcome Back" reveal into Home (HomeWelcomeBackEntry.tsx), not on a
- * reload of an arbitrary already-signed-in page, which is every route
- * this component wraps. Visuals are unaffected — same silent buildup
- * either way.
+ * Sound on (useWeekendIntro.ts's default) — per the project owner, the
+ * light-switch/can-opening/pour cues should play on every fresh boot
+ * of the app while signed in, wherever it lands (this component covers
+ * every route except Home — see HomeWelcomeBackEntry.tsx for that
+ * one), not just Home specifically. It never replays on ordinary
+ * in-app navigation either way (see hasBootedThisPageLoad() above).
  */
 export function AppEntry({ children }: { children: ReactNode }) {
-  const { stage, wordIndex } = useWeekendIntro({ sound: false });
+  const { stage, wordIndex } = useWeekendIntro();
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -104,7 +113,8 @@ export function AppEntry({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (revealed || stage !== "final" || authState === "checking") return;
-    const holdMs = authState === "authenticated" ? WELCOME_HOLD_MS : 0;
+    const holdMs =
+      authState !== "authenticated" ? 0 : prefersReducedMotion() ? WELCOME_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
@@ -140,6 +150,14 @@ export function AppEntry({ children }: { children: ReactNode }) {
     <div className="wl-gate flex flex-col items-center justify-center">
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
       {revealing && <div className="wl-bloom" aria-hidden />}
+
+      {stage === "word" && (
+        // Not a button — any tap anywhere on this screen already
+        // unlocks sound (see useIntroSound.ts), this just invites an
+        // early one so more of the sequence has a chance to play with
+        // it instead of none, on a page load with no other gesture.
+        <p className="safe-pt safe-px absolute top-0 left-0 z-10 text-xs text-white/40">🔈 Tap for sound</p>
+      )}
 
       <div
         className={`wl-scene relative z-10 flex flex-col items-center justify-center gap-4 px-6 py-8 text-center sm:gap-5 ${

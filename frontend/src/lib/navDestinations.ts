@@ -109,7 +109,6 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "rivalries",
   "rules",
   "chug",
-  "keepers",
   "powerRankings",
 ];
 
