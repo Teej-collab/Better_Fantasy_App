@@ -24,6 +24,7 @@ const STATIC_HREF: Record<Exclude<LeagueTab, "awards">, string> = {
   rules: "/rules",
   chug: "/chug",
   keepers: "/keepers",
+  powerRankings: "/power-rankings",
 };
 
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {

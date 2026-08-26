@@ -6,21 +6,23 @@ compute_chaos_scores.py, compute_team_projections.py (the write-side
 scripts, combined here into one per-week compute step instead of four
 separate full-history scans — see MIGRATION_MAP.md).
 
-Fills in the four weekly_team_stats columns the app actually reads
-(power_rank, luck_score, chaos_score, team_points_projected — clutch_score/
-choke_score exist in the schema but have no reader anywhere in this app,
-same as Fantasy_Helper's own narrative_engine/recap_embed being out of
-scope, so they're not computed here). Scoped to one season/week per call,
-like boom_bust.py and chug_debt.py, so it can run as a normal sync-pipeline
-step instead of rescanning all of history every time.
+Fills in five of the weekly_team_stats columns the app actually reads
+(power_rank, luck_score, chaos_score, team_points_projected, sos —
+clutch_score/choke_score exist in the schema but have no reader
+anywhere in this app, same as Fantasy_Helper's own
+narrative_engine/recap_embed being out of scope, so they're not
+computed here). Scoped to one season/week per call, like boom_bust.py
+and chug_debt.py, so it can run as a normal sync-pipeline step instead
+of rescanning all of history every time.
 
-Order matters within a week: power_rank/luck_score/chaos_score all use
-INSERT ... ON CONFLICT so any of them can create the row first; power
-rank additionally depends on final scores existing for every week up to
-and including the one being ranked (it only ever looks backward), so it's
-naturally correct to compute for the current week once that week's own
-matchups are in. team_points_projected has no such dependency — it's
-summed straight from that week's own roster rows.
+Order matters within a week: power_rank/luck_score/chaos_score/sos all
+use INSERT ... ON CONFLICT so any of them can create the row first;
+power rank and sos additionally depend on final scores existing for
+every week up to and including the one being ranked (both only ever
+look backward), so they're naturally correct to compute for the
+current week once that week's own matchups are in.
+team_points_projected has no such dependency — it's summed straight
+from that week's own roster rows.
 """
 
 
@@ -191,6 +193,60 @@ async def compute_chaos_scores_for_week(conn, season: int, week: int) -> int:
     return len(team_rows)
 
 
+async def compute_sos_for_week(conn, season: int, week: int) -> int:
+    """Strength of schedule through this week, regular season only
+    (same convention the record book/all-time pages use) — for each
+    team, the average win percentage of every opponent it's actually
+    played so far. Higher = the team's opponents have collectively won
+    more of their own games, i.e. a harder schedule. A team's own
+    win_pct (needed as "the opponent's win_pct" when scoring everyone
+    else) is computed the same regular-season/played-games-only way
+    compute_power_ranks_for_week computes it, just filtered to
+    non-playoff games to match the record-book convention."""
+    team_rows = await conn.fetch("SELECT id FROM teams_by_season WHERE season = $1", season)
+    team_ids = [t["id"] for t in team_rows]
+
+    win_pct_by_team: dict[int, float] = {}
+    for team_id in team_ids:
+        games = await conn.fetch(
+            """
+            SELECT
+                CASE WHEN home_team_id = $1 THEN home_score ELSE away_score END AS my_score,
+                CASE WHEN home_team_id = $1 THEN away_score ELSE home_score END AS opp_score
+            FROM matchups
+            WHERE season = $2 AND week <= $3
+              AND (home_team_id = $1 OR away_team_id = $1)
+              AND is_playoff = FALSE
+              AND home_score > 0
+            """,
+            team_id, season, week,
+        )
+        if games:
+            wins = sum(1 for g in games if g["my_score"] > g["opp_score"])
+            win_pct_by_team[team_id] = wins / len(games)
+
+    count = 0
+    for team_id in team_ids:
+        opponents = await conn.fetch(
+            """
+            SELECT CASE WHEN home_team_id = $1 THEN away_team_id ELSE home_team_id END AS opponent_id
+            FROM matchups
+            WHERE season = $2 AND week <= $3
+              AND (home_team_id = $1 OR away_team_id = $1)
+              AND is_playoff = FALSE
+              AND home_score > 0
+            """,
+            team_id, season, week,
+        )
+        opp_win_pcts = [win_pct_by_team[o["opponent_id"]] for o in opponents if o["opponent_id"] in win_pct_by_team]
+        if not opp_win_pcts:
+            continue
+        sos = round(sum(opp_win_pcts) / len(opp_win_pcts), 3)
+        await _upsert_stat(conn, season, week, team_id, "sos", sos)
+        count += 1
+    return count
+
+
 async def compute_team_projected_for_week(conn, season: int, week: int) -> int:
     team_rows = await conn.fetch(
         "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2", season, week
@@ -210,13 +266,14 @@ async def compute_team_projected_for_week(conn, season: int, week: int) -> int:
 
 
 async def compute_weekly_team_stats_for_week(conn, season: int, week: int) -> int:
-    """All four columns for one week, in one call — the normal
+    """All five columns for one week, in one call — the normal
     sync-pipeline entry point (see app/providers/sync.py)."""
     counts = [
         await compute_power_ranks_for_week(conn, season, week),
         await compute_luck_scores_for_week(conn, season, week),
         await compute_chaos_scores_for_week(conn, season, week),
         await compute_team_projected_for_week(conn, season, week),
+        await compute_sos_for_week(conn, season, week),
     ]
     return max(counts)
 

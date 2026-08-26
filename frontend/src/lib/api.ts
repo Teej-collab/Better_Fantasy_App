@@ -419,6 +419,60 @@ export function getAwardLeaderboards() {
   return get<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time");
 }
 
+// ---- Power Rankings / Luck Index / Strength of Schedule
+// (app/domain/power_rankings.py) — reads the power_rank/luck_score/sos
+// columns app/domain/weekly_team_stats.py already computes and stores
+// on every sync, backfilled for every historical season a full sync
+// has run against.
+export type WeekPowerRanking = {
+  team_id: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  power_rank: number;
+  luck_score: number | null;
+  sos: number | null;
+  // Positive = moved up vs. last week, negative = moved down, null if
+  // there's no prior week to compare against (e.g. week 1).
+  movement: number | null;
+};
+
+export function getWeekPowerRankings(season: number, week: number) {
+  return get<{ rankings: WeekPowerRanking[] }>(`/seasons/${season}/weeks/${week}/power-rankings`);
+}
+
+export function getLatestPowerRankingsWeek(season: number) {
+  return get<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`);
+}
+
+export type PowerRankTrendTeam = {
+  team_id: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  weeks: { week: number; power_rank: number }[];
+};
+
+export function getSeasonPowerRankingsTrend(season: number) {
+  return get<{ teams: PowerRankTrendTeam[] }>(`/seasons/${season}/power-rankings/trend`);
+}
+
+export type PowerRankingsAllTimeEntry = { owner_id: number; owner_name: string; value: number };
+export type PowerRankingsAllTimeCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  unit: string;
+  entries: PowerRankingsAllTimeEntry[];
+};
+
+// Companion to getRecordBook() — computed live on every request (no
+// separate table, same convention), all-time career averages/counts
+// across the league's whole history, not season-scoped.
+export function getAllTimePowerRankings() {
+  return get<{ categories: PowerRankingsAllTimeCategory[] }>("/power-rankings/all-time");
+}
+
 export function listRivalries() {
   return get<{ rivalries: Rivalry[] }>("/rivalries");
 }

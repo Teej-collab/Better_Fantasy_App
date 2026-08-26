@@ -2,6 +2,7 @@ from app.domain.weekly_team_stats import (
     compute_chaos_score,
     compute_luck_score,
     compute_power_ranks,
+    compute_sos_for_week,
     compute_weekly_team_stats_for_season,
     compute_weekly_team_stats_for_week,
 )
@@ -78,7 +79,7 @@ async def test_compute_weekly_team_stats_for_week_fills_all_columns(pool):
         rows = {
             r["team_id"]: r
             for r in await conn.fetch(
-                "SELECT team_id, power_rank, luck_score, chaos_score, team_points_projected "
+                "SELECT team_id, power_rank, luck_score, chaos_score, team_points_projected, sos "
                 "FROM weekly_team_stats WHERE season = $1 AND week = 1",
                 TEST_SEASON,
             )
@@ -92,6 +93,51 @@ async def test_compute_weekly_team_stats_for_week_fills_all_columns(pool):
     # outscored, loser was outscored) -> no luck involved either way.
     assert float(rows[team_a]["luck_score"]) == 0.0
     assert float(rows[team_b]["luck_score"]) == 0.0
+    # A's only opponent (B) is 0-1 through week 1 -> A's SOS is 0. B's
+    # only opponent (A) is 1-0 -> B's SOS is 1.
+    assert float(rows[team_a]["sos"]) == 0.0
+    assert float(rows[team_b]["sos"]) == 1.0
+
+
+async def test_compute_sos_excludes_playoff_games(pool):
+    _, team_a = await _seed_team(pool, 7)
+    _, team_b = await _seed_team(pool, 8)
+    _, team_c = await _seed_team(pool, 9)
+
+    async with pool.acquire() as conn:
+        # Regular season: A beats B (A is 1-0), sets B's SOS input.
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score) "
+            "VALUES ($1, 1, $2, $3, 100, 80)",
+            TEST_SEASON, team_a, team_b,
+        )
+        # A playoff game the same week number in a later "week" slot:
+        # A loses to C, is_playoff=TRUE — must not change A's regular-
+        # season win_pct (still 1-0) or count as an opponent for SOS.
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 2, $2, $3, 60, 90, TRUE)",
+            TEST_SEASON, team_a, team_c,
+        )
+
+        count = await compute_sos_for_week(conn, TEST_SEASON, 2)
+        sos_by_team = {
+            r["team_id"]: r["sos"]
+            for r in await conn.fetch(
+                "SELECT team_id, sos FROM weekly_team_stats WHERE season = $1 AND week = 2", TEST_SEASON
+            )
+        }
+
+    # C never appears (its only game was a playoff game, so it has zero
+    # regular-season games through week 2) -> not counted at all.
+    assert team_c not in sos_by_team
+    # A's regular-season record is still just 1-0 vs B -> A's own SOS
+    # (an average of ITS opponents, i.e. just B, who is 0-1) is 0.0,
+    # unaffected by the playoff loss to C.
+    assert float(sos_by_team[team_a]) == 0.0
+    # B's only (regular-season) opponent is A, who is 1-0 -> B's SOS is 1.0.
+    assert float(sos_by_team[team_b]) == 1.0
+    assert count == 2  # A and B get real sos values; C is skipped entirely
 
 
 async def test_compute_weekly_team_stats_for_season_covers_all_weeks(pool):

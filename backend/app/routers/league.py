@@ -9,6 +9,7 @@ from app.db import get_pool
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_week_matchup_context
 from app.domain.records import get_record_book
+from app.domain import power_rankings
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -73,6 +74,39 @@ async def record_book(pool=Depends(get_pool)):
     season-scoped — spans the league's whole history."""
     async with pool.acquire() as conn:
         return await get_record_book(conn)
+
+
+@router.get("/seasons/{season}/weeks/{week}/power-rankings")
+async def week_power_rankings(season: int, week: int, pool=Depends(get_pool)):
+    """This week's power rankings (with luck/SOS alongside, and
+    movement vs. last week) — see app/domain/power_rankings.py."""
+    async with pool.acquire() as conn:
+        return {"rankings": await power_rankings.get_week_power_rankings(conn, season, week)}
+
+
+@router.get("/seasons/{season}/power-rankings/latest-week")
+async def latest_power_rankings_week(season: int, pool=Depends(get_pool)):
+    """The most recent week this season that actually has power rankings
+    computed — lets the frontend default the "This Week" view to real
+    data instead of guessing a week number that might not be synced yet."""
+    async with pool.acquire() as conn:
+        week = await power_rankings.get_latest_ranked_week(conn, season)
+    return {"week": week}
+
+
+@router.get("/seasons/{season}/power-rankings/trend")
+async def season_power_rankings_trend(season: int, pool=Depends(get_pool)):
+    async with pool.acquire() as conn:
+        return {"teams": await power_rankings.get_season_trend(conn, season)}
+
+
+@router.get("/power-rankings/all-time")
+async def all_time_power_rankings(pool=Depends(get_pool)):
+    """All-time Power Rankings / Luck Index / Strength of Schedule
+    leaderboards — same "computed live, not stored" convention as
+    /records."""
+    async with pool.acquire() as conn:
+        return await power_rankings.get_all_time_indices(conn)
 
 
 @router.get("/matchups/{matchup_id}")

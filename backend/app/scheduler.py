@@ -106,16 +106,23 @@ def start_scheduler():
         started_any = True
 
     if os.getenv("ENABLE_LIVE_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
-        interval_minutes = int(os.getenv("LIVE_SYNC_INTERVAL_MINUTES", "5"))
-        _scheduler.add_job(_run_live_sync_job, "interval", minutes=interval_minutes, id="espn_live_sync")
+        # Seconds, not minutes — was LIVE_SYNC_INTERVAL_MINUTES (default
+        # 5 min) until the project owner asked for fantasy points to
+        # track a live touchdown much closer to real time. 60s is a
+        # meaningfully faster cadence against ESPN's undocumented
+        # private fantasy API while still being a safe rate for a
+        # single small league (not polled at all outside a live game
+        # window either way — see is_nfl_game_live above).
+        interval_seconds = int(os.getenv("LIVE_SYNC_INTERVAL_SECONDS", "60"))
+        _scheduler.add_job(_run_live_sync_job, "interval", seconds=interval_seconds, id="espn_live_sync")
         logger.info(
-            "Live ESPN sync scheduler started (every %d minutes, only during NFL game windows)",
-            interval_minutes,
+            "Live ESPN sync scheduler started (every %d seconds, only during NFL game windows)",
+            interval_seconds,
         )
         started_any = True
 
     if os.getenv("ENABLE_GAMECAST_SCHEDULER", "").lower() in ("1", "true", "yes"):
-        interval_seconds = int(os.getenv("GAMECAST_POLL_INTERVAL_SECONDS", "15"))
+        interval_seconds = int(os.getenv("GAMECAST_POLL_INTERVAL_SECONDS", "4"))
         _scheduler.add_job(_run_gamecast_poll_job, "interval", seconds=interval_seconds, id="gamecast_poll")
         logger.info(
             "Gamecast poll scheduler started (every %d seconds, only during NFL game windows with active viewers)",

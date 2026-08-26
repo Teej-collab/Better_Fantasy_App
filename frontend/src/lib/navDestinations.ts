@@ -30,7 +30,8 @@ export type DestinationKey =
   | "rivalries"
   | "rules"
   | "chug"
-  | "keepers";
+  | "keepers"
+  | "powerRankings";
 
 export type Destination = {
   key: DestinationKey;
@@ -79,6 +80,9 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // A fresh hue — doesn't render alongside any other destination in a
   // context where a collision would matter (own sub-nav tab only).
   keepers: { key: "keepers", label: "Keepers", color: "#10b981" },
+  // Also fresh — sits in the same sub-nav row as Keepers above but a
+  // clearly distinct blue, not close to indigo (League)/sky (Standings).
+  powerRankings: { key: "powerRankings", label: "Power Rankings", color: "#3b82f6" },
 };
 
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat", "freeAgents"];
@@ -106,6 +110,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "rules",
   "chug",
   "keepers",
+  "powerRankings",
 ];
 
 // /gamecast/[gameId] is deliberately absent from this config — it's
