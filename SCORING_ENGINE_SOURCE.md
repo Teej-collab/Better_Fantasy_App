@@ -84,3 +84,40 @@ derivable from `drives`/play-by-play descriptions (ESPN's play text
 typically reads like `"J. Smith 42 Yd Field Goal"`) rather than a
 clean structured field — worth checking during the historical-
 validation pass above before assuming a parsing project is needed.
+
+## Team D/ST — verified and built (2026-08-26)
+
+Also verified, same real-event capture:
+
+- `header.competitions[0].competitors[]` — each has `team.abbreviation`
+  and `score` (string) — this is where a team's final score actually
+  lives (not in `boxscore.teams[]`, which has no score field at all).
+- `boxscore.teams[].statistics[]` entries have `displayValue` (a string,
+  e.g. `"400"`) for the actual number — `value` was seen as `"-"` in
+  the real capture for `totalYards`, so `displayValue` is the field to
+  parse, not `value`.
+
+`app/providers/nfl_stats/espn_public.py`'s `parse_team_dst_stats`
+builds one stat line per team (keyed by ESPN's team abbreviation,
+matching Sleeper's own DEF `sleeper_player_id` convention): points/
+yards allowed are tiered from the **opponent's** score/`totalYards`,
+and sacks/INTs/fumble recoveries/return-TDs are summed from that
+team's own players across the `defensive`/`interceptions`/`fumbles`/
+`kickReturns`/`puntReturns` categories already documented above.
+
+Two known simplifications, documented in code rather than guessed
+around:
+- `fumblesRecovered` doesn't distinguish recovering the opponent's
+  fumble (a real defensive play) from recovering your own team's
+  fumble (e.g. a QB falling on his own bad snap) — summed as-is, a
+  small possible overcount.
+- A kick/punt return TD is credited to **both** the individual returner
+  and the team D/ST — confirmed intentional, not a bug: this league's
+  own scoring screenshots list it under both the Team Defense/Special
+  Teams and Miscellaneous sections at the same point value.
+
+Still not built: the rare-event gaps above (2pt conversions, blocked
+kicks/blocks, safeties) apply to team D/ST scoring too (blocks and
+safeties are specifically D/ST categories in this league's rules) —
+same "ship v1 without them, validate the real gap size against
+historical data" decision.
