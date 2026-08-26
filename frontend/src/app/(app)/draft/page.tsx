@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { DraftRoom } from "@/components/draft/DraftRoom";
+import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 
 export default async function DraftPage() {
   const cookieStore = await cookies();
@@ -10,6 +11,7 @@ export default async function DraftPage() {
   if (!me) {
     return (
       <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="draft" />
         <h1 className="text-2xl font-semibold">Draft</h1>
         <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
           <p className="text-sm text-black/60 dark:text-white/60">Sign in to join the draft.</p>
@@ -26,6 +28,7 @@ export default async function DraftPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <MyTeamSubNav active="draft" />
       <h1 className="text-2xl font-semibold">Draft</h1>
       <DraftRoom myOwnerId={me.owner_id} isCommissioner={me.is_commissioner} />
     </div>

@@ -31,7 +31,8 @@ export type DestinationKey =
   | "rules"
   | "chug"
   | "keepers"
-  | "powerRankings";
+  | "powerRankings"
+  | "draft";
 
 export type Destination = {
   key: DestinationKey;
@@ -83,6 +84,10 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // Also fresh — sits in the same sub-nav row as Keepers above but a
   // clearly distinct blue, not close to indigo (League)/sky (Standings).
   powerRankings: { key: "powerRankings", label: "Power Rankings", color: "#3b82f6" },
+  // Fresh hue — sits in the same My Team sub-nav row as Keepers/Free
+  // Agents but distinct from both (emerald/teal), and from Rules'
+  // lime.
+  draft: { key: "draft", label: "Draft", color: "#eab308" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -108,6 +113,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   chug: "/chug",
   keepers: "/keepers",
   powerRankings: "/power-rankings",
+  draft: "/draft",
 };
 
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
@@ -139,7 +145,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 // league" ones. `team` itself (labeled "Roster" there) is first but
 // isn't repeated here since it's the page these tabs sit on top of,
 // not a link to itself.
-export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["keepers", "freeAgents"];
+export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["draft", "keepers", "freeAgents"];
 
 // /gamecast/[gameId] is deliberately absent from this config — it's
 // reachable only via the live ticker's dynamic linking (see

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DESTINATIONS, DESTINATION_HREF, MY_TEAM_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
 
-export type MyTeamTab = "team" | "keepers" | "freeAgents";
+export type MyTeamTab = "team" | "draft" | "keepers" | "freeAgents";
 
 // "Roster" reads better than the shared "My Team" label once it's a
 // tab sitting on top of the My Team page itself, not a link to
