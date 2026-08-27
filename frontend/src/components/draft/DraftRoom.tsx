@@ -217,6 +217,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search players…"
+                aria-label="Search players"
                 className="min-w-40 flex-1 rounded-full border border-black/10 bg-transparent px-3 py-1 text-sm dark:border-white/10"
               />
               {POSITIONS.map((pos) => (

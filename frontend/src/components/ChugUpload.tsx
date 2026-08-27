@@ -81,6 +81,7 @@ export function ChugUpload() {
         ref={inputRef}
         type="file"
         accept=".mp4,.mov,.m4v,video/mp4,video/quicktime"
+        aria-label="Upload a chug video"
         disabled={status === "uploading"}
         onChange={(e) => {
           const file = e.target.files?.[0];

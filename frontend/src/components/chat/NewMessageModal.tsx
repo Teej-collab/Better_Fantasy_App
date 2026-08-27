@@ -37,6 +37,7 @@ export function NewMessageModal({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search league members..."
+          aria-label="Search league members"
           className="rounded-full border border-black/10 bg-transparent px-4 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] dark:border-white/10"
         />
 
