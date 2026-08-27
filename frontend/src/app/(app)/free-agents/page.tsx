@@ -37,7 +37,10 @@ export default async function FreeAgentsPage({
     );
   }
 
-  const [players, waiverSettings] = await Promise.all([getMyFreeAgents(position), getWaiverSettings()]);
+  const [players, waiverSettings] = await Promise.all([
+    getMyFreeAgents(sessionCookie, position),
+    getWaiverSettings(),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">

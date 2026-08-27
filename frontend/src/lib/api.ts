@@ -1003,12 +1003,28 @@ export type MyFreeAgent = {
   injury_status: string | null;
 };
 
-export async function getMyFreeAgents(position?: string, search?: string): Promise<MyFreeAgent[]> {
+// Called server-side (free-agents/page.tsx) with the session cookie
+// forwarded explicitly, same pattern as getMe/getMyWeek/getMySettings —
+// a server component has no ambient browser cookie jar for a bare
+// fetch() to the backend's separate origin to ride along on.
+export async function getMyFreeAgents(
+  sessionCookie: string | undefined,
+  position?: string,
+  search?: string
+): Promise<MyFreeAgent[]> {
+  if (!sessionCookie) return [];
   const params = new URLSearchParams();
   if (position) params.set("position", position);
   if (search) params.set("search", search);
   const qs = params.toString() ? `?${params}` : "";
-  const { players } = await get<{ players: MyFreeAgent[] }>(`/me/team/free-agents${qs}`);
+  const res = await fetch(`${API_BASE_URL}/me/team/free-agents${qs}`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) {
+    throw new Error(`GET /me/team/free-agents failed: ${res.status}`);
+  }
+  const { players } = (await res.json()) as { players: MyFreeAgent[] };
   return players;
 }
 
