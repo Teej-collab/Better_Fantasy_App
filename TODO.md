@@ -1414,6 +1414,41 @@ suddenly urgent.
       but no ESPN projection/bye week until Sleeper's own crosswalk
       catches up or this app builds its own name-based fallback match.
 
+## Neon Intensity fix + rotating glow border + Neon Red (Aug 26, 2026)
+- [x] **Found and fixed a real bug**: Settings > Appearance > Neon
+      Intensity (Subtle/Standard/High) only ever multiplied the
+      homepage's ambient background wash (`--wl-glow-scale` on
+      `.home-ambient`) — every `.neon-panel`'s actual border/glow (the
+      app's dominant visual element, used at 68 call sites) completely
+      ignored the setting, so changing it visibly did nothing anywhere
+      that mattered. Now `.neon-panel`'s border and box-shadow glow
+      both scale with `--wl-glow-scale` via `calc()` inside
+      `color-mix()`'s percentage argument; also widened the scale
+      values themselves (0.3 / 1 / 2.2, was 0.5 / 1 / 1.6) for a more
+      definite subtle-vs-high difference, per the project owner's ask.
+- [x] Rotating glow border on every `.neon-panel`: a soft
+      conic-gradient light chasing around each panel's existing border
+      (`@property --neon-rotate` registered as a real `<angle>` +
+      blurred `::before` ring), the pure-CSS technique from the
+      reference clip the project owner shared. No markup changes
+      needed at any of the 68 call sites — a `::before` ring outside
+      each panel's own edge, not a background/padding trick. Respects
+      both Settings > Appearance > Animations = Reduced and the
+      OS-level `prefers-reduced-motion` query (freezes the rotation,
+      keeps the glow itself visible — same pattern every other
+      animation in `globals.css` already follows).
+- [x] Added Neon Red (`#ff1744`) to the Accent Color picker
+      (`lib/neonPalette.ts`) — deliberately not `--wl-live`'s red
+      (`#ef4444`, the LIVE-game indicator color) so picking it as an
+      accent never reads as "something is live" by coincidence.
+- Not verified in a live browser this session (no backend reachable
+  from this sandbox to render authenticated pages, and no browser tool
+  connected) — `tsc`/`eslint`/`next build` all pass and the CSS was
+  reasoned through carefully (stacking-context/`position: relative`
+  safety checked against every real `.neon-panel` + `absolute` co-
+  occurrence in the codebase), but the project owner should give it a
+  look in the real app before considering this fully verified.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)
