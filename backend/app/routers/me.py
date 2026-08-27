@@ -220,6 +220,27 @@ async def submit_lineup_swap(body: LineupSwapRequest, request: Request):
     return {"roster": [_roster_entry_dict(e) for e in roster]}
 
 
+class DropPlayerRequest(BaseModel):
+    sleeper_player_id: str
+
+
+@router.post("/team/lineup/drop")
+async def drop_player(body: DropPlayerRequest, request: Request):
+    """Real write — sends a player back to free agency, no drop target
+    (that's add_free_agent's job when the roster's already full)."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            roster = await lineup_engine.drop_player(conn, active_season, team_id, body.sleeper_player_id)
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+    return {"roster": [_roster_entry_dict(e) for e in roster]}
+
+
 class FreeAgentAddRequest(BaseModel):
     sleeper_player_id: str
     # Only required once a first attempt comes back roster_full — the

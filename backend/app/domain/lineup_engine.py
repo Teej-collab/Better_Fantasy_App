@@ -121,6 +121,21 @@ async def swap_players(conn, season: int, team_id: int, sleeper_player_id_a: str
         return await get_roster(conn, season, team_id)
 
 
+async def drop_player(conn, season: int, team_id: int, sleeper_player_id: str) -> list[dict]:
+    """Sends a player back to free agency — no drop target, unlike the
+    drop-to-make-room path inside add_free_agent. Not gated behind a
+    roster-capacity check the way an add is: a team can always have
+    fewer players than its roster shape allows, it just can't have
+    more."""
+    async with conn.transaction():
+        await _get_roster_entry(conn, season, team_id, sleeper_player_id)  # raises PlayerNotOnRosterError if not
+        await conn.execute(
+            "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
+            season, team_id, sleeper_player_id,
+        )
+        return await get_roster(conn, season, team_id)
+
+
 async def add_free_agent(
     conn, season: int, team_id: int, sleeper_player_id: str, drop_sleeper_player_id: str | None = None
 ) -> dict:

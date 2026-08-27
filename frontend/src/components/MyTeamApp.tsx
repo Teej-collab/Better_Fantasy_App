@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  dropPlayer,
   getMyTeam,
   previewLineupSwap,
   submitLineupSwap,
@@ -23,12 +24,14 @@ function RosterRow({
   swapDisabled,
   onToggleSwapSelect,
   onViewPlayer,
+  onDrop,
 }: {
   entry: RosterEntry;
   selectedForSwap: boolean;
   swapDisabled: boolean;
   onToggleSwapSelect: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
+  onDrop: (entry: RosterEntry) => void;
 }) {
   return (
     <li className="flex items-center justify-between gap-3 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
@@ -64,6 +67,12 @@ function RosterRow({
         >
           {selectedForSwap ? "Selected" : "Swap"}
         </button>
+        <button
+          onClick={() => onDrop(entry)}
+          className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
+        >
+          Drop
+        </button>
       </div>
     </li>
   );
@@ -81,6 +90,8 @@ export function MyTeamApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<RosterEntry | null>(null);
+  const [dropping, setDropping] = useState(false);
   const { openPlayerCard } = usePlayerCard();
 
   useEffect(() => {
@@ -133,6 +144,28 @@ export function MyTeamApp() {
         setSelected(null);
       })
       .finally(() => setPreviewing(false));
+  }
+
+  function startDrop(entry: RosterEntry) {
+    setSwapPreview(null);
+    setSelected(null);
+    setSubmitError(null);
+    setSubmitted(null);
+    setDropTarget(entry);
+  }
+
+  function confirmDrop() {
+    if (!dropTarget) return;
+    setDropping(true);
+    setSubmitError(null);
+    dropPlayer(dropTarget.player_id)
+      .then((result) => {
+        setSubmitted(`Dropped ${dropTarget.player_name} — back to free agency.`);
+        setDropTarget(null);
+        setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
+      })
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "Drop failed"))
+      .finally(() => setDropping(false));
   }
 
   if (error) {
@@ -213,6 +246,30 @@ export function MyTeamApp() {
         </p>
       )}
 
+      {dropTarget && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-3 text-sm">
+          <p>
+            Drop <strong>{dropTarget.player_name}</strong> back to free agency? Anyone else can pick them up.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={confirmDrop}
+              disabled={dropping}
+              className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {dropping ? "Dropping…" : "Confirm drop"}
+            </button>
+            <button
+              onClick={() => setDropTarget(null)}
+              disabled={dropping}
+              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 disabled:opacity-50 dark:border-white/10 dark:text-white/60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
         <ul className="neon-panel rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]">
@@ -228,6 +285,7 @@ export function MyTeamApp() {
               }
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
+              onDrop={startDrop}
             />
           ))}
         </ul>
@@ -248,6 +306,7 @@ export function MyTeamApp() {
               }
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
+              onDrop={startDrop}
             />
           ))}
         </ul>

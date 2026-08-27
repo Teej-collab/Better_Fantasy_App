@@ -982,6 +982,21 @@ export async function submitLineupSwap(playerAId: string, playerBId: string): Pr
   return res.json();
 }
 
+// Real write — sends a player back to free agency, no drop target
+// (unlike addFreeAgent's roster-full case, this never needs one).
+export async function dropPlayer(sleeperPlayerId: string): Promise<LineupMutationResult> {
+  const res = await fetch(`/api/backend/me/team/lineup/drop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sleeper_player_id: sleeperPlayerId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Drop failed (${res.status})`);
+  }
+  return res.json();
+}
+
 // ---- Free Agents (session-aware, backed by current_rosters and the
 // Sleeper-sourced `players` pool — GET/POST /me/team/free-agents*. This
 // used to be a two-track situation with a separate, ESPN-sourced,

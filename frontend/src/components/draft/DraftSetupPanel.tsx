@@ -21,7 +21,7 @@ import type { Team } from "@/lib/api";
 // RB, 2 WR, 1 TE, 1 FLEX, 1 D/ST, 1 K, 7 bench. IR isn't included —
 // this league's IR spot is never filled by the initial draft, only
 // later via waivers.
-const DEFAULT_ROSTER_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, "RB/WR/TE": 1, "D/ST": 1, K: 1, BE: 7 };
+const DEFAULT_ROSTER_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, "RB/WR/TE": 1, "D/ST": 1, K: 1, BE: 7, IR: 1 };
 const DEFAULT_PICK_SECONDS = 90; // matches this league's real ESPN draft setting
 
 export function DraftSetupPanel({

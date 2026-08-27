@@ -286,6 +286,56 @@ async def test_submit_swap_requires_session(pool):
     assert resp.status_code == 401
 
 
+async def test_drop_player_removes_them_from_the_roster(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "drop1", espn_team_id=111)
+    player = await _seed_player(pool, "drop1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": player})
+
+    assert resp.status_code == 200
+    ids = {r["player_id"] for r in resp.json()["roster"]}
+    assert player not in ids
+
+
+async def test_drop_player_rejects_a_player_not_on_the_roster(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, _ = await _seed_owner_with_team(pool, "drop2", espn_team_id=112)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": "not-rostered"})
+
+    assert resp.status_code == 404
+
+
+async def test_drop_player_requires_session(pool):
+    async with _client() as client:
+        resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": "x"})
+    assert resp.status_code == 401
+
+
+async def test_drop_player_only_ever_targets_the_callers_own_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_a, team_a = await _seed_owner_with_team(pool, "dropcross_a", espn_team_id=113)
+    owner_b, _ = await _seed_owner_with_team(pool, "dropcross_b", espn_team_id=114)
+    player_a = await _seed_player(pool, "dropcross_a", position="RB")
+    await _seed_roster_entry(pool, team_a, player_a, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_b))
+        resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": player_a})
+
+    # owner_b doesn't have player_a on their roster at all.
+    assert resp.status_code == 404
+
+
 async def test_lineup_moves_only_ever_target_the_callers_own_team(pool, monkeypatch):
     """team_id is resolved server-side from the session's owner_id,
     never accepted from the request body — confirmed by seeding two
