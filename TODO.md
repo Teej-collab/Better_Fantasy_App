@@ -1350,13 +1350,69 @@ suddenly urgent.
       legacy `rosters` table (3 tests), new `test_matchup_scoring.py`
       (4 tests), plus 4 new tests locking in the WSH normalization —
       15 passing across all three files.
-      **Not yet wired to anything real**: nothing currently calls
-      `compute_week_stats`/`compute_matchup_scores_for_week` for an
-      actual week — that needs the "which ESPN event ids belong to
-      fantasy week N" mapping (still open, see Phase D) and a real
-      orchestration entrypoint (a scheduled job or admin trigger,
-      mirroring `app/scheduler.py`'s existing sync jobs) once there's
-      real game data worth computing against.
+      **Wired up Aug 26, 2026** — see below.
+
+## Automatic weekly computation (Aug 26, 2026)
+- [x] `app/providers/nfl_scoreboard.py::get_week_scoreboard(week, year,
+      season_type)` — the "which ESPN event ids belong to fantasy week
+      N" mapping Phase F was waiting on. Verified live against real
+      2026 preseason data (a temporary debug route, removed once
+      confirmed) that ESPN's public scoreboard takes
+      `week`/`seasontype`/`dates` query params and returns exactly that
+      week's real slate.
+- [x] `app/domain/weekly_stats.py::compute_and_store_week(pool, season,
+      week)` — the real entry point: sources this week's event ids from
+      the above, runs `compute_week_stats` (Phase D), then
+      `compute_matchup_scores_for_week` (Phase F), all in one call.
+- [x] New `ENABLE_WEEKLY_COMPUTE_SCHEDULER` job in `app/scheduler.py`
+      (default 120s interval), gated by `is_nfl_game_live` the same way
+      as live sync — off by default like every other scheduler flag
+      here. **Must be turned on in Railway before Week 1 games start.**
+      Also a manual `POST /admin/weekly-compute` trigger (commissioner
+      session, optional `?week=`) for testing without a live game.
+- [x] 16 new/updated tests across `test_nfl_scoreboard.py`,
+      `test_weekly_stats.py`, `test_admin.py` — all passing.
+
+## Player card: Sleeper bio + real ESPN projections (Aug 26, 2026)
+- [x] Click a player's name (draft pool/picks, My Team roster) to open
+      a card: Sleeper headshot (free CDN, keyed by `sleeper_player_id`)
+      + bio (age/height/weight/jersey/years exp — newly persisted from
+      Sleeper's raw payload via migration `b4f1a9c8e6d2`), plus real
+      ESPN season/weekly point projections, ownership %, and bye
+      week/next opponent (`app/providers/espn/player_info.py`, reading
+      via the same already-configured ESPN credentials the sync
+      pipeline uses — a read, no new auth, no write risk).
+      **Found and fixed a real bug during live verification**: ESPN's
+      `Player.schedule` dict is keyed by week number as a STRING, not
+      an int — the first version silently derived every bye week as
+      "week 1" for every player until this was caught against real
+      data and fixed.
+- [x] `app/domain/player_card.py` + `GET /players/{sleeper_player_id}/
+      card` — composes both halves; ESPN's half degrades to `null` on
+      any failure (bad crosswalk id, timeout, ESPN down) rather than
+      breaking the card, since it's enrichment on a real DB record, not
+      the record itself.
+- [x] `frontend/src/components/players/PlayerCardModal.tsx`.
+- [x] 20 new/updated backend tests (`test_espn_player_info.py`,
+      `test_player_card.py`, `test_players_router.py`,
+      `test_sleeper_ingest.py`), `tsc`/`eslint`/`next build` all clean.
+      Real Sleeper sync re-run against production to backfill the new
+      bio columns (confirmed against a real player: Jahmyr Gibbs — age
+      24, height 69in, weight 202lbs, exp 3 — matches ESPN's own player
+      page).
+- [ ] **Not done** (flagged, not attempted): real ADP and the
+      RotoBaller/FantasyPros-style news/season-outlook feed shown on
+      Sleeper's own player cards aren't exposed by either Sleeper's
+      free keyless player API or the ESPN endpoints already wired up
+      here — would need a paid provider (FantasyPros, SportsDataIO,
+      etc.) or, for ADP specifically, parsing ESPN's raw
+      `draftRanksByRankType` field directly (the `espn_api` library
+      this app uses doesn't parse it out). Not blocking the Sept 5
+      draft; revisit only if wanted later.
+- [ ] Not every player's `espn_player_id` crosswalk is populated (see
+      Phase A's canary log) — those players' cards show real bio data
+      but no ESPN projection/bye week until Sleeper's own crosswalk
+      catches up or this app builds its own name-based fallback match.
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
