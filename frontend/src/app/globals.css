@@ -134,14 +134,6 @@ body::before {
    transparency did. */
 .neon-panel {
   --panel-glow: var(--user-accent, var(--wl-accent));
-  position: relative;
-  /* Contains .neon-panel::before's negative z-index (the rotating glow
-     ring below) to this panel's own stacking context — without this, a
-     negative z-index child can render behind an unrelated sibling
-     panel elsewhere in the layout instead of just behind its own
-     parent, a well-known CSS footgun given how widely .neon-panel is
-     reused (68 call sites across the app). */
-  isolation: isolate;
   background-color: color-mix(
     in srgb,
     color-mix(in srgb, var(--panel-glow) 10%, var(--wl-bg) 90%) 94%,
@@ -154,65 +146,12 @@ body::before {
      touched the homepage's ambient wash, so "Subtle"/"High" visibly did
      nothing to these boxes, the app's dominant visual element. calc()
      inside color-mix()'s percentage argument is standard CSS Color 5,
-     supported in every browser this app already requires for the
-     conic-gradient/@property rotating border just below. */
+     supported in every browser this app already requires. */
   border: 1px solid color-mix(in srgb, var(--panel-glow) calc(35% * var(--wl-glow-scale)), transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--panel-glow) calc(8% * var(--wl-glow-scale)), transparent),
     0 0 calc(14px * var(--wl-glow-scale)) color-mix(in srgb, var(--panel-glow) calc(14% * var(--wl-glow-scale)), transparent),
     0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-/* Registering --neon-rotate as a real <angle> (not just a string) is
-   what makes it interpolate smoothly frame-to-frame instead of jumping
-   discretely — the same @property technique referenced from the
-   project owner's own reference clip on this rotating-border pattern. */
-@property --neon-rotate {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-/* The rotating glow itself — a soft conic-gradient light chasing
-   around each panel's existing border, not a replacement for it. A
-   blurred ::before ring sitting just outside the panel's own edge
-   (inset: -3px), not a background-image trick, so it works on every
-   .neon-panel call site as-is with no markup changes (no separate
-   wrapper/inner-panel split like .cosmic-frame/.cosmic-bg needed). */
-.neon-panel::before {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  z-index: -1;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--neon-rotate),
-    transparent 0deg,
-    color-mix(in srgb, var(--panel-glow) 90%, transparent) 20deg,
-    transparent 80deg
-  );
-  filter: blur(6px);
-  opacity: calc(0.55 * var(--wl-glow-scale));
-  animation: neon-rotate-glow 6s linear infinite;
-  pointer-events: none;
-}
-@keyframes neon-rotate-glow {
-  to {
-    --neon-rotate: 360deg;
-  }
-}
-/* Settings > Appearance > Animations = Reduced, and the OS-level
-   prefers-reduced-motion query below — freezes the rotation but keeps
-   the glow itself visible (a static angled highlight), matching every
-   other .motion-reduced rule in this file: turn off the motion, not
-   the decoration. */
-.motion-reduced .neon-panel::before {
-  animation: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .neon-panel::before {
-    animation: none;
-  }
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
