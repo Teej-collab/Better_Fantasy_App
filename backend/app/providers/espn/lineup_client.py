@@ -60,14 +60,12 @@ from app.providers.espn.lineup_exceptions import (
     InvalidSlotError,
     LineupLockedError,
     MutationVerificationFailedError,
-    PlayerAlreadyRosteredError,
     PlayerNotFoundError,
-    RosterFullError,
     SlotIneligibleError,
     TeamNotFoundError,
     WriteNotVerifiedError,
 )
-from app.providers.espn.lineup_models import AddPlayerPlan, LineupChangePlan, MutationResult, RosterEntry, SwapPlan
+from app.providers.espn.lineup_models import LineupChangePlan, MutationResult, RosterEntry, SwapPlan
 from app.providers.espn.slots import LineupSlot, slot_id_from_label, slot_label
 
 logger = logging.getLogger(__name__)
@@ -236,65 +234,6 @@ class ESPNLineupClient:
         self._check_not_locked(player_b)
 
         return SwapPlan(team_id=team_id, player_a=player_a, player_b=player_b)
-
-    def plan_add_player(
-        self,
-        team_id: int,
-        added_player_id: int,
-        added_player_name: str,
-        added_position: str,
-        added_pro_team: str,
-        drop_player_name: str | None = None,
-        season: int | None = None,
-    ) -> AddPlayerPlan:
-        """PREVIEW ONLY — there is no add_player()/submit side to this,
-        unlike set_lineup()/swap_players(). Actually submitting a free-
-        agent add or waiver claim to ESPN is a different, unverified
-        write endpoint (see app/providers/espn/free_agents.py's module
-        note and ESPN_LINEUP_WRITE.md) — this only validates against
-        the live roster and reports exactly what adding this player
-        would do.
-
-        added_player_id/name/position/pro_team come from the caller
-        (the free-agent listing the frontend already has, from
-        League.free_agents() via app/providers/espn/free_agents.py) —
-        this client doesn't re-fetch free-agent data itself, since
-        get_roster()/get_team() only ever look at ROSTERED players."""
-        roster = self.get_roster(team_id, season)
-        if any(e.player_id == added_player_id for e in roster):
-            raise PlayerAlreadyRosteredError(
-                f"{added_player_name} is already on this roster"
-            )
-
-        capacity = self._roster_capacity(season)
-        dropped_player = None
-        if len(roster) >= capacity:
-            if not drop_player_name:
-                raise RosterFullError(
-                    f"Roster is full ({len(roster)}/{capacity}) — choose a player to drop "
-                    f"to add {added_player_name}"
-                )
-            dropped_player = self._find(roster, drop_player_name)
-
-        return AddPlayerPlan(
-            team_id=team_id,
-            added_player_id=added_player_id,
-            added_player_name=added_player_name,
-            added_position=added_position,
-            added_pro_team=added_pro_team,
-            roster_size_before=len(roster),
-            roster_capacity=capacity,
-            dropped_player=dropped_player,
-        )
-
-    def _roster_capacity(self, season: int | None) -> int:
-        """Every real configured slot, starting and bench alike — sum of
-        league.settings.position_slot_counts (the same source
-        _slot_capacity already reads per-slot from) rather than a
-        hardcoded roster size, so this stays correct if the league's
-        roster construction ever changes."""
-        league = self.get_league(season)
-        return sum(league.settings.position_slot_counts.values())
 
     @staticmethod
     def _find(roster: list[RosterEntry], player_name: str) -> RosterEntry:

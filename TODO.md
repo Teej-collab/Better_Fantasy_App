@@ -1279,16 +1279,42 @@ suddenly urgent.
       now, no external write, no shared-credential problem, no dry-run
       flag. This is what actually fixes the bug that started this pivot.
       `/team/free-agents/add` is a new real write against the same
-      table. **Deliberately NOT done**: the public `/free-agents` browse
-      page and `FreeAgentsList.tsx` still use ESPN's free-agent listing
-      (kept as-is, still preview-only, not a regression) — its ESPN
-      numeric player_id doesn't reliably cross-reference to a
-      `sleeper_player_id` yet (the crosswalk is only partially
-      populated), so reconciling the browse list onto the Sleeper-
-      sourced pool is real follow-up work, not rushed here.
-      `admin_lineup.py`'s commissioner override tool also still targets
+      table.
+      `admin_lineup.py`'s commissioner override tool still targets
       ESPN — flagged as a slim, lower-priority thing to repoint later,
       not deleted.
+
+## Free Agents: real add flow, retired the ESPN preview path (Aug 27, 2026)
+- [x] The public `/free-agents` browse page's Add button had been
+      preview-only since it was built — the frontend never called the
+      real `/team/free-agents/add` write from the ESPN-independence
+      pivot above, so owners had no actual way to add a free agent
+      through the app at all (the old panel's own copy told them to
+      "make the real move in the ESPN app"). Found while starting the
+      season-ready punch list (Track A) and confirmed via the routers'
+      own module docstrings, which had already flagged this exact
+      reconciliation as the known next step.
+      Fixed by rebuilding the page on the session-aware, Sleeper-sourced
+      pool instead of ESPN's: `FreeAgentsList.tsx` now calls
+      `GET/POST /me/team/free-agents*` (a real `current_rosters` write,
+      with the same roster-full → pick-a-drop flow the old preview UI
+      had), and the page requires sign-in (matching Team/Keepers/Draft/
+      Chat/Settings' existing signed-out-state convention) since
+      "add to my team" is inherently a personal action. No more
+      ownership%/projected-points columns — the Sleeper-sourced pool
+      doesn't carry those; sorted by `search_rank` instead, same as the
+      draft pool already is.
+      Retired the old ESPN preview path entirely rather than leaving it
+      unused: `preview_add_free_agent` (`app/routers/me.py`),
+      `ESPNLineupClient.plan_add_player`/`_roster_capacity`
+      (`lineup_client.py`), `AddPlayerPlan` (`lineup_models.py`), the
+      public `GET /free-agents` player-list endpoint and
+      `get_free_agents` (`free_agents.py` router + ESPN provider) — kept
+      `GET /free-agents/waiver-settings`, which was never player-specific
+      and has no crosswalk problem. 5 old tests removed, all still-live
+      tests passing (433 backend tests green outside a pre-existing,
+      unrelated local-Postgres connection-limit flake in
+      `test_chat.py`'s websocket tests).
 - [x] **Phase D — Scoring engine (individual players + team D/ST)**:
       verification spike confirmed ESPN's public boxscore exposes full
       per-player stat lines, team offensive totals, and final scores

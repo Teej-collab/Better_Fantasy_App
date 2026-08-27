@@ -55,21 +55,6 @@ def make_fake_player(name, position, slot, points, projected, player_id=1, pro_t
     )
 
 
-def make_fake_free_agent(
-    player_id, name, position, pro_team="KC", injury_status="ACTIVE",
-    percent_owned=0.0, percent_started=0.0, points=0.0, projected_points=0.0,
-):
-    """Stands in for the BoxPlayer objects League.free_agents() returns
-    (app/providers/espn/free_agents.py) — flat points/projected_points
-    attributes, unlike plain Player (see make_fake_lineup_player's note
-    on why roster players carry a nested .stats dict instead)."""
-    return SimpleNamespace(
-        playerId=player_id, name=name, position=position, proTeam=pro_team,
-        injuryStatus=injury_status, percent_owned=percent_owned, percent_started=percent_started,
-        points=points, projected_points=projected_points,
-    )
-
-
 def make_fake_player_card_player(
     espn_player_id, projected_total_points=0.0, projected_avg_points=0.0,
     percent_owned=0.0, percent_started=0.0, schedule=None,

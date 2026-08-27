@@ -58,29 +58,6 @@ class SwapPlan:
 
 
 @dataclass(frozen=True)
-class AddPlayerPlan:
-    """A free-agent add PREVIEW — never sent to ESPN (see
-    app/providers/espn/free_agents.py's module note: actually
-    submitting an add/waiver claim has never been investigated, unlike
-    lineup moves). Added straight to the bench, same as a real ESPN add
-    always does — this never tries to place the new player into a
-    starting slot."""
-
-    team_id: int
-    added_player_id: int
-    added_player_name: str
-    added_position: str
-    added_pro_team: str
-    roster_size_before: int
-    roster_capacity: int
-    # The one player who'd need to be dropped to make room — None means
-    # the roster already had an open spot. Always None when
-    # roster_size_before < roster_capacity; always set (by construction
-    # — plan_add_player raises RosterFullError otherwise) when it's not.
-    dropped_player: RosterEntry | None
-
-
-@dataclass(frozen=True)
 class MutationResult:
     attempted: bool
     dry_run: bool

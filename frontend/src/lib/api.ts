@@ -982,84 +982,52 @@ export async function submitLineupSwap(playerAId: string, playerBId: string): Pr
   return res.json();
 }
 
-// ---- Free Agents (this team's own add flow — /me/team/free-agents* —
-// is now a real write against current_rosters, backed by the Sleeper-
-// sourced `players` pool, not ESPN. The league-wide /free-agents browse
-// endpoints below are unchanged/still ESPN-sourced for now.) ----------
+// ---- Free Agents (session-aware, backed by current_rosters and the
+// Sleeper-sourced `players` pool — GET/POST /me/team/free-agents*. This
+// used to be a two-track situation with a separate, ESPN-sourced,
+// preview-only path feeding the public browse page — retired, since
+// its ESPN player_id never reliably cross-referenced to a
+// sleeper_player_id, so it could never actually complete a real add.
+// See backend/app/routers/me.py's module docstring.) ------------------
 
-export type FreeAgent = {
-  player_id: number;
-  name: string;
+export type MyFreeAgent = {
+  sleeper_player_id: string;
+  full_name: string;
   position: string;
-  pro_team: string;
+  pro_team: string | null;
+  // Sleeper's own global fantasy-relevance ranking (lower = more
+  // relevant) — the sort key the backend already orders this list by.
+  // No live ownership%/projected-points here (unlike the retired ESPN
+  // path): the Sleeper-sourced `players` pool doesn't carry those.
+  search_rank: number | null;
   injury_status: string | null;
-  percent_owned: number;
-  percent_started: number;
-  projected_points: number | null;
-  points: number | null;
-  // Crosswalked server-side (backend/app/routers/free_agents.py) via
-  // players.espn_player_id — null when this free agent hasn't been
-  // matched to a Sleeper-sourced player row yet, in which case their
-  // name isn't clickable into the player card (see FreeAgentsList.tsx).
-  sleeper_player_id: string | null;
 };
 
-export async function getFreeAgents(position?: string, size = 50): Promise<{ season: number; players: FreeAgent[] }> {
-  const params = new URLSearchParams({ size: String(size) });
+export async function getMyFreeAgents(position?: string, search?: string): Promise<MyFreeAgent[]> {
+  const params = new URLSearchParams();
   if (position) params.set("position", position);
-  const { season, players } = await get<{ season: number; players: FreeAgent[] }>(`/free-agents?${params}`);
-  return { season, players };
+  if (search) params.set("search", search);
+  const qs = params.toString() ? `?${params}` : "";
+  const { players } = await get<{ players: MyFreeAgent[] }>(`/me/team/free-agents${qs}`);
+  return players;
 }
 
-// Shape of a roster entry as returned by the OLD, still-ESPN-sourced
-// /team/free-agents/preview-add endpoint specifically (see api.ts's
-// module note above RosterEntry) — distinct from RosterEntry (which is
-// now current_rosters-shaped) because this one comes straight from
-// ESPN's live roster read and carries ESPN's own fields
-// (lineup_slot_label, eligible_slots, live points) that current_rosters
-// doesn't have yet.
-export type EspnRosterEntry = {
-  player_id: number;
-  player_name: string;
-  lineup_slot_id: number;
-  lineup_slot_label: string;
-  eligible_slots: { id: number; label: string }[];
-  pro_team: string;
-  injury_status: string | null;
-  game_start: string | null;
-  is_locked: boolean;
-  points_scored: number | null;
-  points_projected: number | null;
-};
-
-export type AddFreeAgentPreview = {
-  added_player: { player_id: number; player_name: string; position: string; pro_team: string };
-  roster_size_before: number;
-  roster_capacity: number;
-  // The one player who'd need to be dropped to make room — null means
-  // your roster already had an open spot.
-  dropped_player: EspnRosterEntry | null;
-};
-
 export type AddFreeAgentResult =
-  | { status: "ok"; preview: AddFreeAgentPreview }
-  // Your roster is already full — call previewAddFreeAgent again with
-  // dropPlayerName set once the visitor picks who to drop.
+  | { status: "ok"; roster: RosterEntry[]; dropped_player: RosterEntry | null }
+  // Your roster is already full — call addFreeAgent again with
+  // dropSleeperPlayerId set once the visitor picks who to drop.
   | { status: "roster_full"; detail: string };
 
-export async function previewAddFreeAgent(
-  player: Pick<FreeAgent, "player_id" | "name" | "position" | "pro_team">,
-  dropPlayerName?: string
-): Promise<AddFreeAgentResult> {
-  const res = await fetch(`/api/backend/me/team/free-agents/preview-add`, {
+// Real write — a plain current_rosters INSERT (plus a DELETE if
+// dropping), no external call. Always the caller's own team, resolved
+// server-side from the session.
+export async function addFreeAgent(sleeperPlayerId: string, dropSleeperPlayerId?: string): Promise<AddFreeAgentResult> {
+  const res = await fetch(`/api/backend/me/team/free-agents/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      player_id: player.player_id,
-      player_name: player.name,
-      position: player.position,
-      pro_team: player.pro_team,
-      drop_player_name: dropPlayerName ?? null,
+      sleeper_player_id: sleeperPlayerId,
+      drop_sleeper_player_id: dropSleeperPlayerId ?? null,
     }),
   });
 
@@ -1071,10 +1039,10 @@ export async function previewAddFreeAgent(
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+    throw new Error(data?.detail ?? `Add failed (${res.status})`);
   }
-  const preview = (await res.json()) as AddFreeAgentPreview;
-  return { status: "ok", preview };
+  const data = (await res.json()) as { roster: RosterEntry[]; dropped_player: RosterEntry | null };
+  return { status: "ok", ...data };
 }
 
 export type WaiverSettings = { uses_faab: boolean; acquisition_budget: number };

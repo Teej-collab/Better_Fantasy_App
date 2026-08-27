@@ -1,71 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import {
-  getMyTeam,
-  previewAddFreeAgent,
-  type AddFreeAgentPreview,
-  type FreeAgent,
-  type RosterEntry,
-} from "@/lib/api";
+import { addFreeAgent, getMyTeam, type MyFreeAgent, type RosterEntry } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 
 type PanelState =
-  | { status: "loading" }
-  | { status: "preview"; preview: AddFreeAgentPreview }
-  | { status: "needs-drop"; roster: RosterEntry[]; selected: string | null; submitting: boolean }
+  | { status: "confirm" }
+  | { status: "submitting" }
+  | { status: "needs-drop"; roster: RosterEntry[] }
+  | { status: "success"; message: string }
   | { status: "error"; message: string };
 
 /**
- * Client component so "Add" can preview against your real live
- * roster (My Team's own lineup-move/swap previews use the identical
- * pattern) — page.tsx stays server-rendered for the actual player
- * data and position-filter links, this just owns the interactive
- * add/preview/drop-picker state layered on top of the same list.
+ * Client component so "Add" can act against your real live roster —
+ * My Team's own lineup-move/swap flow uses the identical
+ * preview-then-confirm shape (see MyTeamApp.tsx) — page.tsx stays
+ * server-rendered for the actual player data and position-filter
+ * links, this just owns the interactive add/drop-picker state layered
+ * on top of the same list.
+ *
+ * Real write, not a preview: backend/app/routers/me.py's
+ * /team/free-agents/add commits directly to current_rosters. There's
+ * no separate preview endpoint to round-trip against first (unlike
+ * lineup swaps), so the "confirm" step here is client-only — a plain
+ * are-you-sure before the one real network call, so a stray click on
+ * Add can't silently commit a roster move.
  */
-export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
-  const [activeId, setActiveId] = useState<number | null>(null);
+export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAgent[] }) {
+  const [players, setPlayers] = useState(initialPlayers);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
-  const [cachedRoster, setCachedRoster] = useState<RosterEntry[] | null>(null);
   const { openPlayerCard } = usePlayerCard();
 
-  async function startAdd(player: FreeAgent) {
-    setActiveId(player.player_id);
-    setPanel({ status: "loading" });
-    try {
-      const result = await previewAddFreeAgent(player);
-      if (result.status === "ok") {
-        setPanel({ status: "preview", preview: result.preview });
-        return;
-      }
-      // roster_full — need a drop pick. Reuse the roster fetched for a
-      // previous roster-full case in this same visit instead of
-      // re-fetching every time.
-      let roster = cachedRoster;
-      if (!roster) {
-        const team = await getMyTeam();
-        roster = team.roster;
-        setCachedRoster(roster);
-      }
-      setPanel({ status: "needs-drop", roster, selected: null, submitting: false });
-    } catch (e) {
-      setPanel({ status: "error", message: e instanceof Error ? e.message : "Preview failed" });
-    }
+  function startAdd(player: MyFreeAgent) {
+    setActiveId(player.sleeper_player_id);
+    setPanel({ status: "confirm" });
   }
 
-  async function confirmDrop(player: FreeAgent, dropName: string) {
-    setPanel((prev) => (prev && prev.status === "needs-drop" ? { ...prev, submitting: true } : prev));
+  async function submitAdd(player: MyFreeAgent, dropSleeperPlayerId?: string) {
+    setPanel({ status: "submitting" });
     try {
-      const result = await previewAddFreeAgent(player, dropName);
+      const result = await addFreeAgent(player.sleeper_player_id, dropSleeperPlayerId);
       if (result.status === "ok") {
-        setPanel({ status: "preview", preview: result.preview });
-      } else {
-        setPanel({ status: "error", message: result.detail });
+        setPlayers((prev) => prev.filter((p) => p.sleeper_player_id !== player.sleeper_player_id));
+        setPanel({
+          status: "success",
+          message: result.dropped_player
+            ? `Added ${player.full_name}, dropped ${result.dropped_player.player_name}.`
+            : `Added ${player.full_name} to your bench.`,
+        });
+        return;
       }
+      // roster_full — need a drop pick.
+      const team = await getMyTeam();
+      setPanel({ status: "needs-drop", roster: team.roster });
     } catch (e) {
-      setPanel({ status: "error", message: e instanceof Error ? e.message : "Preview failed" });
+      setPanel({ status: "error", message: e instanceof Error ? e.message : "Add failed" });
     }
   }
 
@@ -81,21 +73,24 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
   return (
     <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
       {players.map((p, i) => (
-        <li key={p.player_id}>
+        <li key={p.sleeper_player_id}>
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <span className="flex min-w-0 items-center gap-3">
               <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
-              <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.name} size={36} />
+              {/* This list is Sleeper-sourced (no ESPN numeric id), same as
+                  MyTeamApp.tsx's roster rows — playerId={null} falls back to
+                  initials rather than mis-typing a Sleeper id into the
+                  ESPN-headshot-keyed prop. */}
+              <PlayerHeadshot playerId={null} proTeam={p.pro_team} name={p.full_name} size={36} />
               <span className="flex min-w-0 flex-col">
-                {p.sleeper_player_id ? (
-                  <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="truncate text-left font-medium hover:underline">
-                    {p.name}
-                  </button>
-                ) : (
-                  <span className="truncate font-medium">{p.name}</span>
-                )}
+                <button
+                  onClick={() => openPlayerCard(p.sleeper_player_id)}
+                  className="truncate text-left font-medium hover:underline"
+                >
+                  {p.full_name}
+                </button>
                 <span className="text-xs text-black/50 dark:text-white/50">
-                  {p.position} · {nflTeamName(p.pro_team) ?? p.pro_team}
+                  {p.position} · {nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}
                 </span>
                 {p.injury_status && p.injury_status !== "ACTIVE" && (
                   <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
@@ -105,15 +100,7 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
-              <span className="flex flex-col items-end">
-                <span className="font-semibold">{p.projected_points ?? "—"}</span>
-                <span className="text-black/40 dark:text-white/40">projected</span>
-              </span>
-              <span className="hidden flex-col items-end sm:flex">
-                <span className="font-semibold">{p.percent_owned}%</span>
-                <span className="text-black/40 dark:text-white/40">owned</span>
-              </span>
-              {activeId === p.player_id ? (
+              {activeId === p.sleeper_player_id ? (
                 <button
                   onClick={close}
                   className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
@@ -131,50 +118,47 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
             </span>
           </div>
 
-          {activeId === p.player_id && panel && (
+          {activeId === p.sleeper_player_id && panel && (
             <div className="border-t border-black/5 bg-black/[0.02] px-4 py-3 text-sm dark:border-white/5 dark:bg-white/[0.02]">
-              {panel.status === "loading" && <p className="text-black/50 dark:text-white/50">Checking your roster…</p>}
+              {panel.status === "confirm" && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-black/70 dark:text-white/70">
+                    Add <strong>{p.full_name}</strong> to your bench? This is a real roster move.
+                  </p>
+                  <button
+                    onClick={() => submitAdd(p)}
+                    className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                  >
+                    Confirm add
+                  </button>
+                </div>
+              )}
+
+              {panel.status === "submitting" && <p className="text-black/50 dark:text-white/50">Adding…</p>}
+
+              {panel.status === "success" && (
+                <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
+              )}
 
               {panel.status === "error" && <p className="text-red-500">{panel.message}</p>}
 
               {panel.status === "needs-drop" && (
                 <div className="flex flex-col gap-2">
                   <p className="text-black/70 dark:text-white/70">
-                    Your roster is full — pick a player to drop to add <strong>{p.name}</strong>.
+                    Your roster is full — pick a player to drop to add <strong>{p.full_name}</strong>.
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {panel.roster.map((entry) => (
                       <button
                         key={entry.player_id}
-                        disabled={panel.submitting}
-                        onClick={() => confirmDrop(p, entry.player_name)}
-                        className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/10"
+                        onClick={() => submitAdd(p, entry.player_id)}
+                        className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                       >
                         {entry.player_name}
                         <span className="ml-1 text-black/40 dark:text-white/40">({entry.lineup_slot})</span>
                       </button>
                     ))}
                   </div>
-                  {panel.submitting && <p className="text-xs text-black/50 dark:text-white/50">Checking…</p>}
-                </div>
-              )}
-
-              {panel.status === "preview" && (
-                <div className="flex flex-col gap-1">
-                  <p className="text-black/70 dark:text-white/70">
-                    Would add <strong>{panel.preview.added_player.player_name}</strong> to your bench
-                    {panel.preview.dropped_player && (
-                      <>
-                        {" "}
-                        and drop <strong>{panel.preview.dropped_player.player_name}</strong>
-                      </>
-                    )}
-                    .
-                  </p>
-                  <p className="text-xs text-black/50 dark:text-white/50">
-                    Roster {panel.preview.dropped_player ? panel.preview.roster_size_before : panel.preview.roster_size_before + 1}
-                    /{panel.preview.roster_capacity} after this move.
-                  </p>
                 </div>
               )}
             </div>

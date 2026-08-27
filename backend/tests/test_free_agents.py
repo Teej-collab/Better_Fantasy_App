@@ -2,7 +2,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from tests.conftest import TEST_SEASON
-from tests.fakes_espn import FakeLeague, make_fake_free_agent
+from tests.fakes_espn import FakeLeague
 
 
 def _client():
@@ -18,85 +18,6 @@ def _set_espn_env(monkeypatch):
 
 def _patch_league(monkeypatch, league):
     monkeypatch.setattr("app.providers.espn.free_agents.League", lambda **kwargs: league)
-
-
-async def test_free_agents_returns_real_shaped_players(monkeypatch):
-    _set_espn_env(monkeypatch)
-    players = [
-        make_fake_free_agent(1, "Hot Rookie", "RB", pro_team="ARI", percent_owned=99.1, projected_points=18.2),
-        make_fake_free_agent(2, "Deep Sleeper", "WR", pro_team="TEN", percent_owned=2.5, projected_points=4.1),
-    ]
-    _patch_league(monkeypatch, FakeLeague(free_agent_players=players))
-
-    async with _client() as client:
-        resp = await client.get("/free-agents")
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["season"] == TEST_SEASON
-    names = [p["name"] for p in body["players"]]
-    assert names == ["Hot Rookie", "Deep Sleeper"]
-    assert body["players"][0]["projected_points"] == 18.2
-    assert body["players"][0]["percent_owned"] == 99.1
-
-
-async def test_free_agents_attaches_sleeper_player_id_when_crosswalk_exists(pool, monkeypatch):
-    _set_espn_env(monkeypatch)
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
-            VALUES ('test-freeagents-crosswalked', 918273, 'Crosswalked Guy', 'WR', ARRAY['WR'], 'ARI', 'Active', TRUE)
-            """
-        )
-    players = [
-        make_fake_free_agent(918273, "Crosswalked Guy", "WR", pro_team="ARI"),
-        make_fake_free_agent(918274, "No Crosswalk Guy", "WR", pro_team="ARI"),
-    ]
-    _patch_league(monkeypatch, FakeLeague(free_agent_players=players))
-
-    async with _client() as client:
-        resp = await client.get("/free-agents")
-
-    body = {p["name"]: p["sleeper_player_id"] for p in resp.json()["players"]}
-    assert body["Crosswalked Guy"] == "test-freeagents-crosswalked"
-    assert body["No Crosswalk Guy"] is None
-
-
-async def test_free_agents_filters_by_position(monkeypatch):
-    _set_espn_env(monkeypatch)
-    players = [
-        make_fake_free_agent(1, "A QB", "QB"),
-        make_fake_free_agent(2, "A RB", "RB"),
-    ]
-    _patch_league(monkeypatch, FakeLeague(free_agent_players=players))
-
-    async with _client() as client:
-        resp = await client.get("/free-agents", params={"position": "rb"})  # lowercase, should still work
-
-    assert resp.status_code == 200
-    names = [p["name"] for p in resp.json()["players"]]
-    assert names == ["A RB"]
-
-
-async def test_free_agents_rejects_invalid_position(monkeypatch):
-    _set_espn_env(monkeypatch)
-    _patch_league(monkeypatch, FakeLeague())
-
-    async with _client() as client:
-        resp = await client.get("/free-agents", params={"position": "not-a-position"})
-
-    assert resp.status_code == 400
-
-
-async def test_free_agents_rejects_out_of_range_size(monkeypatch):
-    _set_espn_env(monkeypatch)
-    _patch_league(monkeypatch, FakeLeague())
-
-    async with _client() as client:
-        resp = await client.get("/free-agents", params={"size": 500})
-
-    assert resp.status_code == 400
 
 
 async def test_waiver_settings_reflects_real_league_config(monkeypatch):

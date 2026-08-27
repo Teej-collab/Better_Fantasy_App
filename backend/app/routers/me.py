@@ -13,23 +13,16 @@ There is no external write anymore for lineup moves, so there's no
 credential problem, no dry-run flag, and no cross-owner fallback
 message to worry about — a lineup move is just a plain DB UPDATE.
 
-/team/free-agents/* is a genuine two-track situation right now, not an
-oversight:
-  - /team/free-agents/preview-add is the OLD path — still ESPN-sourced
-    (the public free-agent browse list at /free-agents, and
-    FreeAgentsList.tsx's Add button, both use ESPN's numeric player_id).
-    It was always preview-only (nothing has ever really submitted an
-    ESPN free-agent claim), so leaving it as-is is not a regression.
-  - /team/free-agents (GET) and /team/free-agents/add (POST) are the
-    NEW path — Sleeper-sourced (sleeper_player_id), backed by
-    current_rosters, and /add is a REAL write. Nothing in the frontend
-    calls these yet: the public free-agent browse list's ESPN player_id
-    doesn't reliably cross-reference to a sleeper_player_id (the
-    players.espn_player_id crosswalk is only partially populated — see
-    app/providers/sleeper/ingest.py's canary log). Reconciling the two
-    (most likely: rebuilding the free-agent browse list itself on the
-    Sleeper-sourced `players` pool) is real follow-up work, not done
-    here — flagged in TODO.md rather than rushed.
+/team/free-agents (GET) and /team/free-agents/add (POST) are
+Sleeper-sourced (sleeper_player_id), backed by current_rosters, and
+/add is a REAL write — no more preview-only. This used to be a
+two-track situation (an OLD, ESPN-sourced, preview-only
+/team/free-agents/preview-add fed the public /free-agents browse page,
+since the ESPN player_id it used didn't reliably cross-reference to a
+sleeper_player_id) — resolved by rebuilding the free-agent browse page
+itself on this Sleeper-sourced pool instead (FreeAgentsList.tsx),
+retiring the old ESPN-preview path entirely rather than leaving it
+around unused.
 
 Every endpoint resolves owner_id (and from it, team_id) from the
 session — never trusts a client-supplied team/owner id, same discipline
@@ -55,10 +48,7 @@ from app.domain.lineup_exceptions import (
     SlotIneligibleError,
 )
 from app.domain.your_week import build_your_week
-from app.providers.espn.lineup_client import ESPNLineupClient
-from app.providers.espn.lineup_exceptions import RosterFullError as ESPNRosterFullError
-from app.queries import league as league_queries
-from app.routers.lineup_shared import map_lineup_error, roster_entry_dict
+from app.routers.lineup_shared import map_lineup_error
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -292,62 +282,3 @@ async def list_free_agents(request: Request, position: str | None = None, search
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *params)
     return {"players": [dict(r) for r in rows]}
-
-
-async def _require_my_espn_team_id(owner_id: int, active_season: int) -> int:
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        team = await league_queries.get_team_for_owner(conn, active_season, owner_id)
-    if team is None:
-        raise HTTPException(status_code=404, detail="No team found for this owner")
-    return team["espn_team_id"]
-
-
-class AddFreeAgentPreviewRequest(BaseModel):
-    player_id: int
-    player_name: str
-    position: str
-    pro_team: str
-    drop_player_name: str | None = None
-
-
-@router.post("/team/free-agents/preview-add")
-async def preview_add_free_agent(body: AddFreeAgentPreviewRequest, request: Request):
-    """OLD, ESPN-sourced path — PREVIEW ONLY, see module docstring's
-    two-track explanation. Feeds FreeAgentsList.tsx (the public
-    /free-agents browse page), which still lists ESPN's free-agent pool
-    (with real ownership%/projections ESPN computes) — nothing here has
-    ever submitted a real claim to ESPN, so this being preview-only is
-    unchanged behavior, not a regression from the ESPN-independence
-    pivot."""
-    payload = _require_session(request)
-    active_season = int(_require("ACTIVE_SEASON"))
-    espn_team_id = await _require_my_espn_team_id(payload["owner_id"], active_season)
-
-    client = ESPNLineupClient()
-    try:
-        plan = client.plan_add_player(
-            espn_team_id,
-            body.player_id,
-            body.player_name,
-            body.position,
-            body.pro_team,
-            body.drop_player_name,
-            active_season,
-        )
-    except ESPNRosterFullError as e:
-        return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
-    except Exception as e:
-        raise map_lineup_error(e) from e
-
-    return {
-        "added_player": {
-            "player_id": plan.added_player_id,
-            "player_name": plan.added_player_name,
-            "position": plan.added_position,
-            "pro_team": plan.added_pro_team,
-        },
-        "roster_size_before": plan.roster_size_before,
-        "roster_capacity": plan.roster_capacity,
-        "dropped_player": roster_entry_dict(plan.dropped_player) if plan.dropped_player else None,
-    }
