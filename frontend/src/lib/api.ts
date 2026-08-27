@@ -1047,14 +1047,16 @@ export async function addFreeAgent(sleeperPlayerId: string, dropSleeperPlayerId?
     }),
   });
 
-  if (res.status === 409) {
+  if (!res.ok) {
+    // Read the body once — a Response's stream can only be consumed
+    // once, so branching on res.json() twice (409-roster-full, then
+    // generic-error) silently swallowed the real detail message on
+    // any other 409 (e.g. no draft_config for the season yet), always
+    // falling back to a bare "Add failed (409)".
     const data = await res.json().catch(() => null);
-    if (data?.error === "roster_full") {
+    if (res.status === 409 && data?.error === "roster_full") {
       return { status: "roster_full", detail: data.detail as string };
     }
-  }
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Add failed (${res.status})`);
   }
   const data = (await res.json()) as { roster: RosterEntry[]; dropped_player: RosterEntry | null };

@@ -1315,6 +1315,45 @@ suddenly urgent.
       tests passing (433 backend tests green outside a pre-existing,
       unrelated local-Postgres connection-limit flake in
       `test_chat.py`'s websocket tests).
+- [x] **Follow-up, same day** — real user testing surfaced two more bugs
+      in this same flow:
+      1. `getMyFreeAgents` used the plain `get()` helper, which doesn't
+         forward the session cookie — a server component has no ambient
+         browser cookie jar for a bare `fetch()` to the backend's
+         separate origin to ride along on (every other server-side
+         authenticated call in this app — `getMe`/`getMyWeek`/
+         `getMySettings` — already does this correctly by taking an
+         explicit `sessionCookie` param). Every signed-in visit hit a
+         401, thrown as an `Error`, crashing the page into the root
+         `error.tsx` boundary — which is genuinely correctly wired
+         (`retry()`/`Go home` both work), it just kept retrying into the
+         same crash.
+      2. Trying to add a real free agent returned a bare "Add failed
+         (409)" — traced to production: `draft_config` has zero rows for
+         season 2026 (confirmed via a direct read-only query), so
+         `add_free_agent`'s roster-capacity check correctly can't
+         determine the roster shape yet and raises
+         `RosterConfigNotFoundError` → 409. This is real, correct
+         behavior — the real fix is the commissioner running draft setup
+         (creates `draft_config`/`roster_slots`) before free-agent adds
+         (or any current_rosters op) can work, not a code change. But a
+         real bug did make it more confusing than it should've been:
+         `addFreeAgent` (`api.ts`) called `res.json()` twice on the same
+         Response for a non-roster-full 409 — a Response body can only
+         be read once, so the second read silently failed and the real
+         `detail` message never reached the user. Fixed to read the body
+         once.
+      3. Player photos were missing from the Free Agents list — it
+         passed `playerId={null}` to `PlayerHeadshot` (ESPN-keyed,
+         pointless for a Sleeper-sourced list with no ESPN id at all).
+         Added a `sleeperPlayerId` prop to `PlayerHeadshot.tsx` (a new
+         `sleeperHeadshotUrl()` in `nfl-teams.ts`, same free/keyless CDN
+         the player-card feature already uses, same
+         onError-falls-back-to-initials handling) and wired it in.
+         `MyTeamApp.tsx`'s roster rows have the identical gap — not
+         changed here since the real roster is empty pre-draft and
+         wasn't what was reported, but it's the same one-line fix
+         whenever that's wanted.
 - [x] **Phase D — Scoring engine (individual players + team D/ST)**:
       verification spike confirmed ESPN's public boxscore exposes full
       per-player stat lines, team offensive totals, and final scores

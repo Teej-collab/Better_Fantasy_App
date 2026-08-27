@@ -77,11 +77,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <span className="flex min-w-0 items-center gap-3">
               <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
-              {/* This list is Sleeper-sourced (no ESPN numeric id), same as
-                  MyTeamApp.tsx's roster rows — playerId={null} falls back to
-                  initials rather than mis-typing a Sleeper id into the
-                  ESPN-headshot-keyed prop. */}
-              <PlayerHeadshot playerId={null} proTeam={p.pro_team} name={p.full_name} size={36} />
+              <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={36} />
               <span className="flex min-w-0 flex-col">
                 <button
                   onClick={() => openPlayerCard(p.sleeper_player_id)}

@@ -2,27 +2,34 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { playerHeadshotUrl, teamLogoUrl } from "@/lib/nfl-teams";
+import { playerHeadshotUrl, sleeperHeadshotUrl, teamLogoUrl } from "@/lib/nfl-teams";
 
-// ESPN's headshot CDN is undocumented — a URL scheme change on their
-// end would 404, not error, so a plain <img> would show the browser's
-// broken-image icon league-wide with no warning. onError swaps to an
-// initials-in-a-circle placeholder instead, same as the app already
-// does implicitly for owners without an avatar. Client component only
-// because of that state; every call site above it stays server-rendered.
+// ESPN's and Sleeper's headshot CDNs are both undocumented — a URL
+// scheme change on either end would 404, not error, so a plain <img>
+// would show the browser's broken-image icon league-wide with no
+// warning. onError swaps to an initials-in-a-circle placeholder
+// instead, same as the app already does implicitly for owners without
+// an avatar. Client component only because of that state; every call
+// site above it stays server-rendered.
 export function PlayerHeadshot({
   playerId,
+  sleeperPlayerId,
   proTeam,
   name,
   size = 36,
 }: {
-  playerId: number | null | undefined;
+  // ESPN's numeric id — legacy call sites (real ESPN box-score data).
+  playerId?: number | null;
+  // Sleeper's own string id — current_rosters/free-agents call sites,
+  // which never have an ESPN id at all. Takes priority over playerId
+  // when both happen to be passed.
+  sleeperPlayerId?: string | null;
   proTeam: string | null | undefined;
   name: string;
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const src = playerHeadshotUrl(playerId);
+  const src = sleeperPlayerId ? sleeperHeadshotUrl(sleeperPlayerId) : playerHeadshotUrl(playerId);
   const logo = teamLogoUrl(proTeam);
 
   const initials = name

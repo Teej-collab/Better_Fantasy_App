@@ -99,6 +99,20 @@ export function playerHeadshotUrl(playerId: number | null | undefined): string |
   return `https://a.espncdn.com/i/headshots/nfl/players/full/${playerId}.png`;
 }
 
+// Sleeper's own free, keyless headshot CDN — same URL pattern the
+// backend's player-card feature already builds
+// (backend/app/domain/player_card.py's SLEEPER_HEADSHOT_URL), keyed by
+// sleeper_player_id rather than ESPN's numeric id. For contexts (Free
+// Agents, current_rosters-backed pages) that only ever have a Sleeper
+// id, never an ESPN one. DEF entries have no real photo on Sleeper's
+// CDN — left to PlayerHeadshot's existing onError fallback to catch,
+// same as any other broken headshot URL, rather than special-cased
+// here.
+export function sleeperHeadshotUrl(sleeperPlayerId: string | null | undefined): string | null {
+  if (!sleeperPlayerId) return null;
+  return `https://sleepercdn.com/content/nfl/players/${sleeperPlayerId}.jpg`;
+}
+
 export function teamLogoUrl(proTeam: string | null | undefined): string | null {
   if (!proTeam || !(proTeam in NFL_TEAM_NAMES)) return null;
   return `https://a.espncdn.com/i/teamlogos/nfl/500/${proTeam.toLowerCase()}.png`;
