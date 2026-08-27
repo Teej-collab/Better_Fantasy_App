@@ -24,7 +24,7 @@ manual /admin/weekly-compute trigger both call.
 import json
 
 from app.domain.matchup_scoring import compute_matchup_scores_for_week
-from app.domain.scoring_engine import DST_BASELINE_POINTS, compute_player_points, rules_dict_from_rows
+from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.providers.nfl_stats.espn_public import get_game_stats
 
@@ -91,11 +91,13 @@ async def compute_week_stats(conn, season: int, week: int, event_ids: list[str])
             for team_abbr, stat_line in game["team_dst"].items():
                 if team_abbr not in known_dst_ids:
                     continue
-                # This league's real D/ST scoring starts every team at
-                # 10 points before its own events are added/subtracted
-                # (confirmed by the project owner, Aug 26 2026) —
-                # individual players get no such baseline.
-                points = compute_player_points(stat_line, rules, baseline=DST_BASELINE_POINTS)
+                # Same formula as any individual player — no special
+                # baseline. D/ST "starts at 10" is already a natural
+                # consequence of pts_allow_0 (5) + yds_allow_lt100 (5),
+                # this league's own real values for "opponent has
+                # scored/gained nothing yet" — see scoring_engine.py's
+                # module docstring.
+                points = compute_player_points(stat_line, rules)
                 await _upsert_player_week_stat(conn, season, week, team_abbr, stat_line, points)
                 counts["team_dst"] += 1
 

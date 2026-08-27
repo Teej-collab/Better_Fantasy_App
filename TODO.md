@@ -1634,6 +1634,41 @@ suddenly urgent.
 - [x] Live cadence question — confirmed by the owner: 120 seconds is
       fine, no need for true per-play scoring.
 
+## D/ST scoring correction — the flat +10 baseline double-counted (Aug 27, 2026)
+- [x] The owner sent the promised fuller write-up on D/ST scoring's
+      correct mental model: the "starts at 10" behavior isn't a flat
+      bonus at all — it's the natural result of the opponent starting
+      at 0 points/0 yards allowed, which (per this league's own real,
+      captured `league_scoring_rules`) lands in the `pts_allow_0` (5)
+      and `yds_allow_lt100` (5) tiers — 5 + 5 = 10 on their own.
+      Checked directly against production: these two values are real,
+      captured from the owner's ESPN screenshots, not among the 4
+      values flagged `ASSUMED`/interpolated in the seeding migration —
+      not a coincidence.
+      This means the `DST_BASELINE_POINTS = 10.0` flat add-on shipped
+      three days ago (previous section) was double-counting: the real
+      formula was computing `10 (baseline) + 5 (pts_allow_0) + 5
+      (yds_allow_lt100) = 20` at kickoff, not 10 — confirmed directly
+      against the existing test suite, which had explicitly asserted
+      `10 + 5 + 2 = 17` and `10 + 3 + 0 = 13` as "correct." Checked
+      production `player_week_stats` before fixing: 0 rows total, so
+      no bad data to backfill — the scheduler (turned on earlier this
+      session) hadn't yet computed anything for real.
+      Fixed by removing the baseline mechanism entirely rather than
+      patching it: `compute_player_points()` drops the `baseline`
+      parameter altogether, and D/ST now uses the exact same call as
+      any individual player — the tier categories already encode the
+      correct starting state, live-recomputed from the current box
+      score every poll (unchanged from before), so nothing else needed
+      to change to get the "dynamic, recalculated from current stats"
+      behavior the write-up asked for. 8 scoring_engine.py tests
+      rewritten around the real tier values (kickoff, tier changes in
+      both directions, each positive event type, multiple simultaneous
+      events, a genuinely bad game going negative); one new
+      weekly_stats.py integration test proves a corrected/updated stat
+      line fully overwrites the stored score rather than accumulating
+      on top of the old one. 443 backend tests passing.
+
 ## Mobile + App Store release audit (Aug 27, 2026)
 Full-scope audit requested (25 phases: architecture, responsive CSS,
 accessibility, security, performance, App Store/Play Store readiness,

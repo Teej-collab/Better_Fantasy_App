@@ -95,8 +95,9 @@ async def test_compute_week_stats_writes_matched_players_and_dst_only(pool, monk
     assert float(qb_row["fantasy_points"]) == 16.0
     assert json.loads(qb_row["raw_stats"]) == {"pass_yd": 250, "pass_td": 2, "pass_int": 1}
 
-    # 10 (baseline) + 3*1=3 + 1*0=0 -> 13
-    assert float(dst_row["fantasy_points"]) == 13.0
+    # 3*1=3, 1*0=0 -> 3 — no separate baseline; D/ST uses the exact same
+    # formula as any individual player (see scoring_engine.py).
+    assert float(dst_row["fantasy_points"]) == 3.0
     assert json.loads(dst_row["raw_stats"]) == {"def_sack": 3, "pts_allow_18_27": 1}
 
     assert unseeded_row is None  # no `players` DEF row for this abbreviation — skipped
@@ -121,6 +122,57 @@ async def test_compute_week_stats_is_idempotent_on_rerun(pool, monkeypatch):
         )
     assert player_count == 1
     assert dst_count == 1
+
+
+async def test_compute_week_stats_recomputes_from_scratch_on_a_stat_correction(pool, monkeypatch):
+    """A later poll reporting a corrected/updated box score (a real
+    scenario: reconnects, provider corrections, a play reversal) must
+    fully overwrite the stored fantasy_points, not accumulate on top of
+    the earlier value — proves the ON CONFLICT DO UPDATE path replaces
+    raw_stats/fantasy_points wholesale rather than adding to them."""
+    await _seed_rules(pool)  # def_sack already seeded here
+    await _seed_dst(pool, _TEST_DST)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit) VALUES "
+            "($1, 'pts_allow_0', 5), ($1, 'yds_allow_lt100', 5), ($1, 'yds_allow_100_199', 3)",
+            TEST_SEASON,
+        )
+
+    # First poll: opponent has 0 points, 0 yards (kickoff state).
+    game_v1 = {"players": [], "team_dst": {_TEST_DST: {"pts_allow_0": 1, "yds_allow_lt100": 1}}}
+
+    async def fake_get_game_stats_v1(event_id):
+        return game_v1
+
+    monkeypatch.setattr(weekly_stats, "get_game_stats", fake_get_game_stats_v1)
+    async with pool.acquire() as conn:
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        first = await conn.fetchrow(
+            "SELECT fantasy_points FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+            TEST_SEASON, _TEST_DST,
+        )
+    assert float(first["fantasy_points"]) == 10.0  # 5 + 5, kickoff state
+
+    # Second poll (same fantasy week's provider report, corrected): the
+    # opponent has now driven for real yardage — a materially different
+    # stat line for the exact same (season, week, team) row.
+    game_v2 = {"players": [], "team_dst": {_TEST_DST: {"pts_allow_0": 1, "yds_allow_100_199": 1, "def_sack": 1}}}
+
+    async def fake_get_game_stats_v2(event_id):
+        return game_v2
+
+    monkeypatch.setattr(weekly_stats, "get_game_stats", fake_get_game_stats_v2)
+    async with pool.acquire() as conn:
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        second = await conn.fetchrow(
+            "SELECT fantasy_points, raw_stats FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+            TEST_SEASON, _TEST_DST,
+        )
+    # 5 (pts_allow_0) + 3 (yds_allow_100_199) + 1 (def_sack) = 9 — a
+    # fresh recompute, not 10 (the old value) plus/minus an increment.
+    assert float(second["fantasy_points"]) == 9.0
+    assert json.loads(second["raw_stats"]) == {"pts_allow_0": 1, "yds_allow_100_199": 1, "def_sack": 1}
 
 
 async def test_compute_week_stats_raises_without_scoring_rules(pool, monkeypatch):

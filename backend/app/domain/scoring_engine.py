@@ -5,30 +5,34 @@ network — takes a raw stat line and this league's real scoring rules
 and returns a point total. Everything about *where* the raw stats or
 rules come from lives elsewhere (app/providers/nfl_stats/,
 app/queries/scoring.py) so this stays trivially testable.
+
+D/ST's "starts at 10" behavior (this league's real rule) is NOT a
+separate flat bonus applied here — it's a natural consequence of this
+league's real league_scoring_rules values: pts_allow_0 = 5 and
+yds_allow_lt100 = 5 (the "opponent has scored/gained nothing yet"
+tiers), which already sum to 10 on their own. A team D/ST's stat_line
+(app/providers/nfl_stats/espn_public.py's parse_team_dst_stats) always
+carries exactly one points-allowed tier and one yards-allowed tier —
+whichever match the opponent's CURRENT cumulative score/yards, live-
+recomputed every poll — so compute_player_points needs no D/ST-specific
+baseline parameter at all: a team D/ST is scored with the exact same
+formula as any individual player. An earlier version of this function
+added a separate flat +10 on top of these same tiers, which double-
+counted the starting state (10 + 5 + 5 = 20 at kickoff) — caught and
+removed once the real tier values were checked against the real
+scoring config directly.
 """
 
 
-# This league's real D/ST scoring baseline, confirmed directly by the
-# project owner (Aug 26, 2026) — every team D/ST unit starts a game
-# already carrying 10 fantasy points, not 0, before any of its own
-# events (sacks, INTs, points/yards-allowed tiers, etc.) are added or
-# subtracted. Deliberately NOT applied to individual players — only
-# passed in by weekly_stats.py's team-D/ST branch.
-DST_BASELINE_POINTS = 10.0
-
-
-def compute_player_points(stat_line: dict[str, float], rules: dict[str, float], baseline: float = 0.0) -> float:
+def compute_player_points(stat_line: dict[str, float], rules: dict[str, float]) -> float:
     """stat_line: {stat_category: raw_count}, e.g. {"pass_yd": 250,
     "pass_td": 2, "pass_int": 1}. rules: {stat_category:
     points_per_unit}, e.g. from league_scoring_rules. A stat_category
     present in stat_line but missing from rules contributes nothing
     (not an error — rules can legitimately not cover every category a
-    raw feed happens to report). baseline is a flat starting value
-    added before any stat_line categories are applied — 0 for every
-    individual player, DST_BASELINE_POINTS for a team D/ST unit (see
-    that constant's docstring). Rounded to 2 decimal places, matching
+    raw feed happens to report). Rounded to 2 decimal places, matching
     how fantasy scores are conventionally displayed."""
-    total = baseline + sum(count * rules.get(category, 0) for category, count in stat_line.items())
+    total = sum(count * rules.get(category, 0) for category, count in stat_line.items())
     return round(total, 2)
 
 
