@@ -87,16 +87,16 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
               <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
               <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.name} size={36} />
               <span className="flex min-w-0 flex-col">
-                <span className="flex items-center gap-1.5 truncate font-medium">
+                <span className="flex min-w-0 items-center gap-1.5 font-medium">
                   {p.sleeper_player_id ? (
-                    <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="truncate hover:underline">
+                    <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="min-w-0 truncate hover:underline">
                       {p.name}
                     </button>
                   ) : (
-                    p.name
+                    <span className="min-w-0 truncate">{p.name}</span>
                   )}
                   {p.injury_status && p.injury_status !== "ACTIVE" && (
-                    <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+                    <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
                       {p.injury_status}
                     </span>
                   )}

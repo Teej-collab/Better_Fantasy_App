@@ -35,12 +35,12 @@ function RosterRow({
       <div className="flex min-w-0 items-center gap-2.5">
         <PlayerHeadshot playerId={null} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         <div className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-2 truncate text-sm font-medium">
-            <button onClick={() => onViewPlayer(entry.player_id)} className="truncate hover:underline">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            <button onClick={() => onViewPlayer(entry.player_id)} className="min-w-0 truncate hover:underline">
               {entry.player_name}
             </button>
             {entry.injury_status && entry.injury_status !== "ACTIVE" && (
-              <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+              <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
                 {entry.injury_status}
               </span>
             )}
