@@ -14,9 +14,20 @@ import {
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
-import { BENCH_SLOT_LABEL, canSwapSlots, starterSortIndex } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, canSwapSlots, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
 
 const BENCH_SLOTS = new Set([BENCH_SLOT_LABEL, "IR"]);
+
+// "2026-09-21T20:00Z" -> "Sun 3:00 PM" — real ISO8601 from the backend
+// (app/providers/nfl_scoreboard.py), formatted client-side so it
+// renders in the visitor's own local time zone.
+function formatGameTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const weekday = date.toLocaleDateString(undefined, { weekday: "short" });
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${weekday} ${time}`;
+}
 
 function RosterRow({
   entry,
@@ -34,45 +45,57 @@ function RosterRow({
   onDrop: (entry: RosterEntry) => void;
 }) {
   return (
-    <li className="flex items-center justify-between gap-3 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
-        <div className="flex min-w-0 flex-col">
-          <button
-            onClick={() => onViewPlayer(entry.player_id)}
-            className="truncate text-left text-sm font-medium hover:underline"
-          >
-            {entry.player_name}
-          </button>
-          <span className="text-xs text-black/50 dark:text-white/50">
-            {entry.lineup_slot} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
+    <li className="flex items-center gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
+      <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 dark:border-white/10 dark:text-white/60">
+        {slotDisplayLabel(entry.lineup_slot)}
+      </span>
+      <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <button
+          onClick={() => onViewPlayer(entry.player_id)}
+          className="truncate text-left text-sm font-medium hover:underline"
+        >
+          {entry.player_name}
+        </button>
+        <span className="text-xs text-black/50 dark:text-white/50">
+          {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
+        </span>
+        {entry.next_opponent && (
+          <span className="text-xs text-black/40 dark:text-white/40">
+            {entry.next_opponent}
+            {entry.game_time && ` · ${formatGameTime(entry.game_time)}`}
           </span>
-          {entry.injury_status && entry.injury_status !== "ACTIVE" && (
-            <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-              {entry.injury_status}
-            </span>
-          )}
-        </div>
+        )}
+        {entry.injury_status && entry.injury_status !== "ACTIVE" && (
+          <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+            {entry.injury_status}
+          </span>
+        )}
       </div>
-      <div className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
-        <button
-          onClick={() => onToggleSwapSelect(entry)}
-          disabled={swapDisabled}
-          title={swapDisabled ? "Doesn't qualify for a swap with the selected player" : undefined}
-          className={`rounded-full border px-2 py-1 text-[11px] font-medium disabled:opacity-30 ${
-            selectedForSwap
-              ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
-              : "border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
-          }`}
-        >
-          {selectedForSwap ? "Selected" : "Swap"}
-        </button>
-        <button
-          onClick={() => onDrop(entry)}
-          className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
-        >
-          Drop
-        </button>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
+          {entry.points !== null ? entry.points.toFixed(1) : "—"}
+        </span>
+        <div className="flex items-center gap-1.5 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
+          <button
+            onClick={() => onToggleSwapSelect(entry)}
+            disabled={swapDisabled}
+            title={swapDisabled ? "Doesn't qualify for a swap with the selected player" : undefined}
+            className={`rounded-full border px-2 py-1 text-[11px] font-medium disabled:opacity-30 ${
+              selectedForSwap
+                ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                : "border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
+            }`}
+          >
+            {selectedForSwap ? "Selected" : "Swap"}
+          </button>
+          <button
+            onClick={() => onDrop(entry)}
+            className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
+          >
+            Drop
+          </button>
+        </div>
       </div>
     </li>
   );

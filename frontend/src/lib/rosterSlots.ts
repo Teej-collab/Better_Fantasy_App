@@ -27,3 +27,11 @@ export function starterSortIndex(slotLabel: string): number {
   const i = STARTER_SLOT_ORDER.indexOf(slotLabel);
   return i === -1 ? STARTER_SLOT_ORDER.length : i;
 }
+
+// Display-only shorthand for the roster row pill — never changes the
+// underlying slot value used for eligibility/swap logic above, just
+// how it reads (matches the short "FLEX" label the Sleeper app itself
+// uses instead of the internal "RB/WR/TE" value).
+export function slotDisplayLabel(slotLabel: string): string {
+  return slotLabel === FLEX_SLOT_LABEL ? "FLEX" : slotLabel;
+}

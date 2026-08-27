@@ -34,8 +34,37 @@ _ROSTER_ENTRY_SQL = """
 """
 
 
-async def get_roster(conn, season: int, team_id: int) -> list[dict]:
-    rows = await conn.fetch(_ROSTER_ENTRY_SQL + " ORDER BY p.position, p.full_name", season, team_id)
+# Separate from _ROSTER_ENTRY_SQL (not a concatenation of it) since that
+# constant's WHERE clause is already baked in before where a JOIN would
+# need to go, and every other caller (_get_roster_entry,
+# _find_displacement) appends its own WHERE condition onto it — adding
+# a week-scoped JOIN there would force an unwanted $3 week param onto
+# both of them. LEFT JOIN, not INNER: a player with no computed score
+# yet this week (bye, not yet played, scoring not run) should still
+# appear on the roster with points=NULL, not be silently dropped —
+# same reasoning as app/queries/league.py's get_current_rostered_
+# players_by_pro_team.
+_ROSTER_ENTRY_WITH_SCORE_SQL = """
+    SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
+           p.full_name AS player_name, p.position, p.pro_team, p.injury_status,
+           pws.fantasy_points AS points
+    FROM current_rosters cr
+    JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+    LEFT JOIN player_week_stats pws
+        ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+    WHERE cr.season = $1 AND cr.team_id = $2
+    ORDER BY p.position, p.full_name
+"""
+
+
+async def get_roster(conn, season: int, team_id: int, week: int | None = None) -> list[dict]:
+    """week is optional and only changes the SELECT shape (adds a
+    `points` key) — every caller besides the plain GET /me/team read
+    path omits it and gets the exact same rows as before."""
+    if week is None:
+        rows = await conn.fetch(_ROSTER_ENTRY_SQL + " ORDER BY p.position, p.full_name", season, team_id)
+        return [dict(r) for r in rows]
+    rows = await conn.fetch(_ROSTER_ENTRY_WITH_SCORE_SQL, season, team_id, week)
     return [dict(r) for r in rows]
 
 

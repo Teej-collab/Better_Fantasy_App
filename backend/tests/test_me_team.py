@@ -116,6 +116,72 @@ async def test_my_team_returns_roster_from_current_rosters(pool, monkeypatch):
     assert body["team_name"] == "My Team roster1"
     assert body["roster"][0]["player_id"] == player
     assert body["roster"][0]["lineup_slot"] == "RB"
+    # No league_state row seeded for this season — current week isn't
+    # resolvable, so the score/schedule fields degrade to null rather
+    # than erroring.
+    assert body["roster"][0]["points"] is None
+    assert body["roster"][0]["next_opponent"] is None
+    assert body["roster"][0]["game_time"] is None
+
+
+async def test_my_team_includes_this_weeks_score_when_computed(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "score1", espn_team_id=115)
+    player = await _seed_player(pool, "score1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 3, $2, '{}', 14.5)",
+            TEST_SEASON, player,
+        )
+
+    async def _empty_scoreboard(week, year, season_type=None):
+        return []
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team")
+
+    assert resp.status_code == 200
+    entry = resp.json()["roster"][0]
+    assert entry["points"] == 14.5
+    # No scoreboard game matched this player's pro_team (empty fake
+    # scoreboard) — schedule fields still degrade gracefully.
+    assert entry["next_opponent"] is None
+
+
+async def test_my_team_includes_next_opponent_and_game_time_from_scoreboard(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "sched1", espn_team_id=116)
+    player = await _seed_player(pool, "sched1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON
+        )
+
+    async def _fake_scoreboard(week, year, season_type=None):
+        return [{"home_team": "KC", "away_team": "SF", "date": "2026-09-21T20:00Z", "state": "pre"}]
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _fake_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team")
+
+    assert resp.status_code == 200
+    entry = resp.json()["roster"][0]
+    # _seed_player always sets pro_team='KC' — the home team in the fake game.
+    assert entry["next_opponent"] == "vs SF"
+    assert entry["game_time"] == "2026-09-21T20:00Z"
 
 
 async def test_preview_move_reports_no_displacement_to_open_slot(pool, monkeypatch):

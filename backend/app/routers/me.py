@@ -48,6 +48,8 @@ from app.domain.lineup_exceptions import (
     SlotIneligibleError,
 )
 from app.domain.your_week import build_your_week
+from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.queries import league as league_queries
 from app.routers.lineup_shared import map_lineup_error
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -102,6 +104,16 @@ def _roster_entry_dict(entry: dict) -> dict:
         "pro_team": entry["pro_team"],
         "injury_status": entry["injury_status"],
         "acquired_via": entry["acquired_via"],
+        # Only present when the caller resolved a current week and
+        # attached these (see my_team below) — every other lineup/free-
+        # agent endpoint's entries won't have these keys at all, so
+        # .get() rather than [] keeps this one shared dict-builder
+        # working for both cases. points comes back as a Postgres
+        # NUMERIC (Decimal) or None from the LEFT JOIN — cast to float
+        # so it's never a mix of the two across rows.
+        "points": float(entry["points"]) if entry.get("points") is not None else None,
+        "next_opponent": entry.get("next_opponent"),
+        "game_time": entry.get("game_time"),
     }
 
 
@@ -119,6 +131,24 @@ async def week(request: Request):
     return result
 
 
+def _schedule_lookup(games: list[dict]) -> dict[str, dict]:
+    """pro_team abbreviation -> {next_opponent, game_time} for every
+    team playing in a given week's real NFL scoreboard — same public,
+    keyless endpoint the homepage ticker/game-day detection already
+    use (app/providers/nfl_scoreboard.py), just cross-referenced by
+    team abbreviation instead of read wholesale. Works identically for
+    a D/ST roster entry as for an individual player — a D/ST's own
+    pro_team already equals its team abbreviation."""
+    lookup: dict[str, dict] = {}
+    for game in games:
+        home, away = game.get("home_team"), game.get("away_team")
+        if not home or not away:
+            continue
+        lookup[home] = {"next_opponent": f"vs {away}", "game_time": game.get("date")}
+        lookup[away] = {"next_opponent": f"@ {home}", "game_time": game.get("date")}
+    return lookup
+
+
 @router.get("/team")
 async def my_team(request: Request):
     payload = _require_session(request)
@@ -127,7 +157,25 @@ async def my_team(request: Request):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        roster = await lineup_engine.get_roster(conn, active_season, team_id)
+        # None pre-draft/pre-season (nothing synced yet) — get_roster
+        # falls back to its no-score shape in that case, same as before
+        # this endpoint knew about weeks at all.
+        current_week = await league_queries.get_cached_current_week(conn, active_season)
+        roster = await lineup_engine.get_roster(conn, active_season, team_id, current_week)
+
+    if current_week is not None:
+        try:
+            games = await get_week_scoreboard(current_week, active_season)
+        except Exception:
+            # A real scoreboard fetch failure shouldn't break loading
+            # your own roster — next_opponent/game_time just stay
+            # absent, same as the pre-draft case.
+            games = []
+        schedule = _schedule_lookup(games)
+        for entry in roster:
+            info = schedule.get(entry["pro_team"])
+            if info:
+                entry.update(info)
 
     return {
         "team_name": team_name,

@@ -919,9 +919,7 @@ export function updateHomeDesktopLayout(layout: HomeGridLayoutItem[]): Promise<O
 
 // ---- My Team (backed by our own current_rosters table now, not a live
 // ESPN read — see backend/app/domain/lineup_engine.py. player_id is a
-// Sleeper player id (string) rather than ESPN's numeric one. No
-// points_scored/points_projected fields yet — this app has no scoring
-// engine of its own until Phase D of the project plan lands. Swaps are
+// Sleeper player id (string) rather than ESPN's numeric one. Swaps are
 // still a preview-then-confirm two-step, but the "confirm" step is now
 // a plain DB write, not an ESPN submission.) --------------------------
 
@@ -933,6 +931,18 @@ export type RosterEntry = {
   pro_team: string | null;
   injury_status: string | null;
   acquired_via: string;
+  // Only GET /me/team populates these (see api.ts's getMyTeam) — every
+  // lineup-move/swap/free-agent response's roster entries leave them
+  // null. points is this app's own stored, computed-after-the-fact
+  // weekly score (null until the scoring engine has run for the
+  // current week, not a live in-game number or a pre-game projection —
+  // see backend/app/domain/weekly_stats.py). next_opponent/game_time
+  // come from the real NFL scoreboard, cross-referenced by pro_team —
+  // both null when the current fantasy week isn't resolvable yet
+  // (pre-draft/pre-season) or a scoreboard fetch fails.
+  points: number | null;
+  next_opponent: string | null;
+  game_time: string | null;
 };
 
 export type MyTeam = {
