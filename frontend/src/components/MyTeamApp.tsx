@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   getMyTeam,
   previewLineupSwap,
@@ -144,6 +145,30 @@ export function MyTeamApp() {
     .filter((e) => !BENCH_SLOTS.has(e.lineup_slot))
     .sort((a, b) => starterSortIndex(a.lineup_slot) - starterSortIndex(b.lineup_slot));
   const bench = team.roster.filter((e) => BENCH_SLOTS.has(e.lineup_slot));
+
+  // Real state right now, not a hypothetical edge case: the actual
+  // draft hasn't happened yet, so current_rosters is genuinely empty
+  // for every owner — without this, the page below just renders two
+  // empty boxes with no explanation (mobile audit finding, Aug 2026).
+  if (team.roster.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-semibold">{team.team_name}</h1>
+        <section className="neon-panel flex flex-col items-center gap-2 rounded-xl p-6 text-center">
+          <p className="text-sm font-medium">Your roster is empty — the draft hasn&apos;t happened yet.</p>
+          <p className="max-w-sm text-xs text-black/50 dark:text-white/50">
+            Once the commissioner starts the real draft, players you pick will show up here.
+          </p>
+          <Link
+            href="/draft"
+            className="mt-1 rounded-full bg-[var(--wl-accent-dim)] px-4 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+          >
+            Go to Draft
+          </Link>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
