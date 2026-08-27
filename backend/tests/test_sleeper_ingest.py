@@ -130,6 +130,34 @@ async def test_sync_players_updates_changed_fields_on_rerun(pool, monkeypatch):
     assert row["is_draftable"] is False
 
 
+async def test_sync_players_preserves_a_backfilled_espn_id_sleeper_doesnt_have(pool, monkeypatch):
+    """The player-card feature (app/domain/player_card.py) resolves and
+    persists an espn_player_id via a name-based ESPN lookup when
+    Sleeper's own crosswalk is null — a real, later sync run for the
+    same player (still null on Sleeper's side) must not wipe that back
+    out. Regression test for a real bug: the upsert used to write
+    EXCLUDED.espn_player_id unconditionally."""
+    _patch_fetch(monkeypatch)
+    await ingest.sync_players(pool)  # test-1 has espn_id=555001 from the fixture
+
+    async with pool.acquire() as conn:
+        # Simulate the player-card backfill resolving a DIFFERENT/better
+        # id than Sleeper's own fixture value, the way a real name-based
+        # ESPN lookup result gets persisted.
+        await conn.execute("UPDATE players SET espn_player_id = 999999 WHERE sleeper_player_id = 'test-1'")
+
+    # Re-sync with Sleeper's own value now null for this player (a real,
+    # common case — Sleeper's crosswalk is sparse) — must not clobber it.
+    updated = dict(_FAKE_PLAYERS)
+    updated["test-1"] = {**_FAKE_PLAYERS["test-1"], "espn_id": None}
+    _patch_fetch(monkeypatch, updated)
+    await ingest.sync_players(pool)
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT espn_player_id FROM players WHERE sleeper_player_id = 'test-1'")
+    assert row["espn_player_id"] == 999999
+
+
 # ---- team-abbreviation normalization (pure, no DB — see ingest.py's
 # _TEAM_ABBR_NORMALIZE docstring: a real ingestion run confirmed
 # Sleeper's raw data disagrees with ESPN's convention for Washington

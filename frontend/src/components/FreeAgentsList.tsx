@@ -9,6 +9,7 @@ import {
   type RosterEntry,
 } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 
 type PanelState =
@@ -28,6 +29,7 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const [cachedRoster, setCachedRoster] = useState<RosterEntry[] | null>(null);
+  const { openPlayerCard } = usePlayerCard();
 
   async function startAdd(player: FreeAgent) {
     setActiveId(player.player_id);
@@ -86,7 +88,13 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
               <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.name} size={36} />
               <span className="flex min-w-0 flex-col">
                 <span className="flex items-center gap-1.5 truncate font-medium">
-                  {p.name}
+                  {p.sleeper_player_id ? (
+                    <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="truncate hover:underline">
+                      {p.name}
+                    </button>
+                  ) : (
+                    p.name
+                  )}
                   {p.injury_status && p.injury_status !== "ACTIVE" && (
                     <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
                       {p.injury_status}

@@ -45,7 +45,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="neon-panel flex w-full max-w-sm flex-col gap-4 rounded-2xl p-5"
+        className="neon-panel flex max-h-[85vh] w-full max-w-sm flex-col gap-4 overflow-y-auto rounded-2xl p-5"
         style={accent ? ({ "--user-accent": accent } as React.CSSProperties) : undefined}
       >
         <button
@@ -126,11 +126,75 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                 label="Rostered %"
                 value={card.projection ? `${card.projection.percent_owned.toFixed(1)}%` : "—"}
               />
+              {card.overview?.draft_rank != null && (
+                <Row
+                  label="Draft rank"
+                  value={
+                    card.overview.position_rank != null
+                      ? `#${card.overview.draft_rank} overall (#${card.overview.position_rank} ${card.position})`
+                      : `#${card.overview.draft_rank} overall`
+                  }
+                />
+              )}
             </div>
             {!card.projection && (
               <p className="text-center text-[0.7rem] text-black/40 dark:text-white/40">
                 Live ESPN projections aren&apos;t available for this player right now.
               </p>
+            )}
+
+            {card.latest_week && (
+              <div className="flex items-center justify-between rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
+                <span className="text-black/50 dark:text-white/50">Week {card.latest_week.week} score</span>
+                <span className="text-base font-semibold">{card.latest_week.fantasy_points.toFixed(1)} pts</span>
+              </div>
+            )}
+
+            {card.overview?.season_outlook && (
+              <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                  Season Outlook
+                </h3>
+                <p className="text-black/80 dark:text-white/80">{card.overview.season_outlook}</p>
+              </div>
+            )}
+
+            {card.overview?.latest_note && (
+              <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                  Latest Note
+                </h3>
+                <p className="font-medium">{card.overview.latest_note.headline}</p>
+                {card.overview.latest_note.story && (
+                  <p className="text-xs text-black/60 dark:text-white/60">{card.overview.latest_note.story}</p>
+                )}
+              </div>
+            )}
+
+            {card.overview && card.overview.news.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                  Recent News
+                </h3>
+                <ul className="flex flex-col gap-2">
+                  {card.overview.news.map((item, i) => (
+                    <li key={i}>
+                      {item.link ? (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium hover:underline"
+                        >
+                          {item.headline}
+                        </a>
+                      ) : (
+                        <span className="font-medium">{item.headline}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         )}

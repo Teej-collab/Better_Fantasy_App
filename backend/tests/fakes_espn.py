@@ -107,7 +107,7 @@ class FakeLeague:
     def __init__(self, teams=None, reg_season_count=13,
                  scoreboard_by_week=None, box_scores_by_week=None, current_week=1,
                  position_slot_counts=None, free_agent_players=None, faab=False, acquisition_budget=100,
-                 player_info_by_id=None):
+                 player_info_by_id=None, player_map=None):
         self.teams = teams or []
         self.settings = SimpleNamespace(
             reg_season_count=reg_season_count,
@@ -120,6 +120,11 @@ class FakeLeague:
         self.current_week = current_week
         self._free_agent_players = free_agent_players or []
         self._player_info_by_id = player_info_by_id or {}
+        # Real espn_api.League builds this as a two-way name<->id map of
+        # ESPN's ENTIRE NFL player universe on every fetch (see
+        # player_info.py's docstring) — tests pass just the name->id
+        # direction this app actually reads.
+        self.player_map = player_map or {}
 
     def free_agents(self, week=None, size=50, position=None, position_id=None):
         players = self._free_agent_players

@@ -997,6 +997,11 @@ export type FreeAgent = {
   percent_started: number;
   projected_points: number | null;
   points: number | null;
+  // Crosswalked server-side (backend/app/routers/free_agents.py) via
+  // players.espn_player_id — null when this free agent hasn't been
+  // matched to a Sleeper-sourced player row yet, in which case their
+  // name isn't clickable into the player card (see FreeAgentsList.tsx).
+  sleeper_player_id: string | null;
 };
 
 export async function getFreeAgents(position?: string, size = 50): Promise<{ season: number; players: FreeAgent[] }> {

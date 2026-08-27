@@ -1400,19 +1400,70 @@ suddenly urgent.
       bio columns (confirmed against a real player: Jahmyr Gibbs — age
       24, height 69in, weight 202lbs, exp 3 — matches ESPN's own player
       page).
-- [ ] **Not done** (flagged, not attempted): real ADP and the
-      RotoBaller/FantasyPros-style news/season-outlook feed shown on
-      Sleeper's own player cards aren't exposed by either Sleeper's
-      free keyless player API or the ESPN endpoints already wired up
-      here — would need a paid provider (FantasyPros, SportsDataIO,
-      etc.) or, for ADP specifically, parsing ESPN's raw
-      `draftRanksByRankType` field directly (the `espn_api` library
-      this app uses doesn't parse it out). Not blocking the Sept 5
-      draft; revisit only if wanted later.
-- [ ] Not every player's `espn_player_id` crosswalk is populated (see
-      Phase A's canary log) — those players' cards show real bio data
-      but no ESPN projection/bye week until Sleeper's own crosswalk
-      catches up or this app builds its own name-based fallback match.
+- [x] **Update (Aug 26, 2026, later same day)**: ADP and news turned
+      out to be available after all — see the "Player card: crosswalk
+      fix + news/ADP + everywhere-clickable" entry below. The paid-
+      provider path was never needed.
+
+## Player card: crosswalk fix + news/ADP + everywhere-clickable (Aug 26, 2026)
+- [x] **Found and fixed the real reason most cards showed no ESPN
+      data**: Sleeper's own `espn_id` crosswalk field is only populated
+      for ~22% of this league's draftable players (224/1010, confirmed
+      against real production data) — Josh Allen worked by chance,
+      almost everyone else didn't. Fixed via a name-based fallback:
+      `espn_api`'s `League` already builds a full NFL name->id map
+      (`player_map`) on every fetch, for free, as a side effect of
+      building the League object this feature needs anyway — used as a
+      fallback when our stored `espn_player_id` is null, and the
+      resolved id gets persisted back onto `players.espn_player_id` so
+      future lookups (and Phase D's weekly-stats crosswalk) skip
+      name-matching entirely. A one-time bulk backfill run against
+      production immediately took real-data coverage from 239/978 to
+      729/978 draftable non-DEF players (~75%, up from ~24%) — the
+      remainder are real name-format mismatches (suffixes, etc.), an
+      accepted small-percentage gap, not a bug.
+      **Found and fixed a second, related real bug in the same pass**:
+      the Sleeper player sync's upsert wrote `espn_player_id =
+      EXCLUDED.espn_player_id` unconditionally — since Sleeper's own
+      field is null for most players, the *next scheduled sync* would
+      have silently wiped out every one of these resolved crosswalk
+      values. Fixed to `COALESCE(EXCLUDED.espn_player_id,
+      players.espn_player_id)` — Sleeper's sync can only ever add a
+      crosswalk value now, never clear one this app already resolved.
+- [x] **Real ADP and news, after all**: turns out ESPN's public
+      athlete-overview endpoint (`site.web.api.espn.com/apis/common/
+      v3/sports/football/nfl/athletes/{id}/overview` — a *different*
+      subdomain than the scoreboard host blocked in this sandbox
+      earlier this session, reachable directly, no workaround needed)
+      exposes real recent news, a RotoWire beat-writer note (the exact
+      same content Sleeper's own cards show), a real draft-rank/
+      position-rank pair (the ADP-equivalent number earlier flagged as
+      unavailable), and a prose season outlook — all unauthenticated,
+      no new credentials. New `app/providers/espn/player_overview.py`;
+      wired into the card as a third independently-degrading piece
+      (`card.overview`).
+- [x] Player cards now clickable everywhere the app shows a player
+      name, not just the draft room: new `PlayerCardProvider`/
+      `usePlayerCard()` React context, mounted once at the app root
+      (`app/layout.tsx`) so the same modal follows a player regardless
+      of which page opened it, replacing three separate per-page local-
+      state implementations (DraftRoom.tsx, MyTeamApp.tsx). Free Agents
+      wired in too — that list is still ESPN-numeric-id-sourced (see
+      the ESPN-independence pivot's own scoping notes), so
+      `GET /free-agents` now attaches a `sleeper_player_id` per entry
+      (matched via the same `players.espn_player_id` crosswalk this
+      whole fix improved), nullable when no match exists yet.
+- [x] This week's real computed score (`player_week_stats.
+      fantasy_points`, most recent week) now shows on the card too —
+      plumbing only; nothing to display until real games happen
+      post-draft.
+- [x] Removed the rotating glow border added earlier the same day
+      (project owner reported it wasn't working) — kept the Neon
+      Intensity fix and Neon Red, see that section above.
+- [x] 25 new/updated backend tests across `test_espn_player_info.py`,
+      `test_espn_player_overview.py` (new), `test_player_card.py`,
+      `test_free_agents.py`, `test_sleeper_ingest.py`;
+      `tsc`/`eslint`/`next build` all clean.
 
 ## Neon Intensity fix + rotating glow border + Neon Red (Aug 26, 2026)
 - [x] **Found and fixed a real bug**: Settings > Appearance > Neon
@@ -1426,17 +1477,11 @@ suddenly urgent.
       `color-mix()`'s percentage argument; also widened the scale
       values themselves (0.3 / 1 / 2.2, was 0.5 / 1 / 1.6) for a more
       definite subtle-vs-high difference, per the project owner's ask.
-- [x] Rotating glow border on every `.neon-panel`: a soft
-      conic-gradient light chasing around each panel's existing border
-      (`@property --neon-rotate` registered as a real `<angle>` +
-      blurred `::before` ring), the pure-CSS technique from the
-      reference clip the project owner shared. No markup changes
-      needed at any of the 68 call sites — a `::before` ring outside
-      each panel's own edge, not a background/padding trick. Respects
-      both Settings > Appearance > Animations = Reduced and the
-      OS-level `prefers-reduced-motion` query (freezes the rotation,
-      keeps the glow itself visible — same pattern every other
-      animation in `globals.css` already follows).
+- [x] ~~Rotating glow border on every `.neon-panel`~~ — shipped (a soft
+      conic-gradient light chasing each panel's border via `@property
+      --neon-rotate` + a blurred `::before` ring), then **removed the
+      same day**: the project owner reported it wasn't working. The
+      Neon Intensity fix and Neon Red above stayed.
 - [x] Added Neon Red (`#ff1744`) to the Accent Color picker
       (`lib/neonPalette.ts`) — deliberately not `--wl-live`'s red
       (`#ef4444`, the LIVE-game indicator color) so picking it as an

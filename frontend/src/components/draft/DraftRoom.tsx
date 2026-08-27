@@ -12,7 +12,7 @@ import {
 } from "@/lib/draftApi";
 import { listSeasons, listTeams, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
-import { PlayerCardModal } from "@/components/players/PlayerCardModal";
+import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
@@ -42,7 +42,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
+  const { openPlayerCard } = usePlayerCard();
   const socketRef = useRef<WebSocket | null>(null);
 
   const refreshState = async () => {
@@ -241,7 +241,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
                 >
                   <div className="flex min-w-0 flex-col">
                     <button
-                      onClick={() => setViewingPlayerId(p.sleeper_player_id)}
+                      onClick={() => openPlayerCard(p.sleeper_player_id)}
                       className={`truncate text-left text-sm font-medium hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
                     >
                       {p.full_name}
@@ -270,7 +270,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
               {myPicks.map((p) => (
                 <p key={p.pick_number} className="text-sm">
                   {p.player_position} ·{" "}
-                  <button onClick={() => setViewingPlayerId(p.sleeper_player_id)} className="hover:underline">
+                  <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="hover:underline">
                     {p.player_name}
                   </button>
                 </p>
@@ -286,7 +286,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
                   <span className="text-black/40 dark:text-white/40">#{p.pick_number}</span>{" "}
                   {teamNameByOwner.get(p.owner_id) ?? p.owner_name}:{" "}
                   {p.sleeper_player_id ? (
-                    <button onClick={() => setViewingPlayerId(p.sleeper_player_id)} className="hover:underline">
+                    <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="hover:underline">
                       {p.player_name}
                     </button>
                   ) : (
@@ -301,9 +301,6 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
         </div>
       )}
 
-      {viewingPlayerId && (
-        <PlayerCardModal sleeperPlayerId={viewingPlayerId} onClose={() => setViewingPlayerId(null)} />
-      )}
     </div>
   );
 }

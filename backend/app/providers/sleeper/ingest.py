@@ -143,7 +143,16 @@ async def sync_players(pool) -> int:
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
                 ON CONFLICT (sleeper_player_id) DO UPDATE SET
-                    espn_player_id = EXCLUDED.espn_player_id,
+                    -- COALESCE, not a straight overwrite: Sleeper's own
+                    -- espn_id field is null for most players (confirmed
+                    -- against real production data — the player-card
+                    -- feature's app/providers/espn/player_info.py fills
+                    -- the gap via a name-based ESPN lookup and persists
+                    -- the result onto this same column). A plain
+                    -- EXCLUDED.espn_player_id here would silently wipe
+                    -- out every one of those resolved crosswalk values
+                    -- on this sync's next scheduled run.
+                    espn_player_id = COALESCE(EXCLUDED.espn_player_id, players.espn_player_id),
                     full_name = EXCLUDED.full_name,
                     first_name = EXCLUDED.first_name,
                     last_name = EXCLUDED.last_name,

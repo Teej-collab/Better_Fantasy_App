@@ -40,6 +40,29 @@ async def test_free_agents_returns_real_shaped_players(monkeypatch):
     assert body["players"][0]["percent_owned"] == 99.1
 
 
+async def test_free_agents_attaches_sleeper_player_id_when_crosswalk_exists(pool, monkeypatch):
+    _set_espn_env(monkeypatch)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
+            VALUES ('test-freeagents-crosswalked', 918273, 'Crosswalked Guy', 'WR', ARRAY['WR'], 'ARI', 'Active', TRUE)
+            """
+        )
+    players = [
+        make_fake_free_agent(918273, "Crosswalked Guy", "WR", pro_team="ARI"),
+        make_fake_free_agent(918274, "No Crosswalk Guy", "WR", pro_team="ARI"),
+    ]
+    _patch_league(monkeypatch, FakeLeague(free_agent_players=players))
+
+    async with _client() as client:
+        resp = await client.get("/free-agents")
+
+    body = {p["name"]: p["sleeper_player_id"] for p in resp.json()["players"]}
+    assert body["Crosswalked Guy"] == "test-freeagents-crosswalked"
+    assert body["No Crosswalk Guy"] is None
+
+
 async def test_free_agents_filters_by_position(monkeypatch):
     _set_espn_env(monkeypatch)
     players = [

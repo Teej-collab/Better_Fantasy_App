@@ -10,7 +10,7 @@ import {
   type RosterEntry,
 } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
-import { PlayerCardModal } from "@/components/players/PlayerCardModal";
+import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, canSwapSlots, starterSortIndex } from "@/lib/rosterSlots";
 
@@ -79,7 +79,7 @@ export function MyTeamApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
+  const { openPlayerCard } = usePlayerCard();
 
   useEffect(() => {
     getMyTeam()
@@ -201,7 +201,7 @@ export function MyTeamApp() {
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
               onToggleSwapSelect={toggleSwapSelect}
-              onViewPlayer={setViewingPlayerId}
+              onViewPlayer={openPlayerCard}
             />
           ))}
         </ul>
@@ -221,15 +221,12 @@ export function MyTeamApp() {
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
               onToggleSwapSelect={toggleSwapSelect}
-              onViewPlayer={setViewingPlayerId}
+              onViewPlayer={openPlayerCard}
             />
           ))}
         </ul>
       </section>
 
-      {viewingPlayerId && (
-        <PlayerCardModal sleeperPlayerId={viewingPlayerId} onClose={() => setViewingPlayerId(null)} />
-      )}
     </div>
   );
 }

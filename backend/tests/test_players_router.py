@@ -1,6 +1,7 @@
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
+from app.domain import player_card
 from app.main import app
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -46,6 +47,10 @@ async def test_player_card_404s_for_unknown_player(monkeypatch):
 
 async def test_player_card_returns_real_shaped_data(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    # Never hits real ESPN — same principle as every other test file
+    # here; without this, the router's new name-based ESPN fallback
+    # (see player_info.py) would fire a real network call every run.
+    monkeypatch.setattr(player_card, "get_player_info", lambda espn_player_id, full_name=None: None)
     await _seed_player(pool, "test-playersrouter-1")
 
     response = await _get("/players/test-playersrouter-1/card", cookies=_session_cookie(1))

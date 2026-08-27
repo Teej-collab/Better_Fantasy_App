@@ -21,6 +21,11 @@ def _set_espn_env(monkeypatch):
 
 def _patch_league(monkeypatch, league):
     monkeypatch.setattr(player_info, "League", lambda **kwargs: league)
+    # _get_league caches by (league_id, year) across calls (see its own
+    # docstring) — every test here reuses the same fake league_id/season,
+    # so the module-level cache must be cleared per test or a later test
+    # would silently get an earlier test's fake League back.
+    monkeypatch.setattr(player_info, "_league_cache", {})
 
 
 async def test_get_player_info_derives_bye_week_from_missing_string_key(monkeypatch):
@@ -36,6 +41,7 @@ async def test_get_player_info_derives_bye_week_from_missing_string_key(monkeypa
     assert result["bye_week"] == 13
     assert result["season_projected_points"] == 316.51
     assert result["percent_owned"] == 99.84
+    assert result["espn_player_id"] == 4242335
 
 
 async def test_get_player_info_next_opponent_from_current_week(monkeypatch):
@@ -68,3 +74,43 @@ async def test_get_player_info_returns_none_for_unmapped_id(monkeypatch):
     _patch_league(monkeypatch, FakeLeague(current_week=1, player_info_by_id={}))
 
     assert player_info.get_player_info(999999) is None
+
+
+async def test_get_player_info_falls_back_to_name_lookup_when_id_missing(monkeypatch):
+    _set_espn_env(monkeypatch)
+    player = make_fake_player_card_player(4242335, schedule=_FULL_SEASON_SCHEDULE_MINUS_WEEK_13)
+    _patch_league(monkeypatch, FakeLeague(
+        current_week=1,
+        player_info_by_id={4242335: player},
+        player_map={"Jonathan Taylor": 4242335},
+    ))
+
+    result = player_info.get_player_info(None, full_name="Jonathan Taylor")
+
+    assert result["espn_player_id"] == 4242335
+    assert result["bye_week"] == 13
+
+
+async def test_get_player_info_returns_none_when_name_has_no_match(monkeypatch):
+    _set_espn_env(monkeypatch)
+    _patch_league(monkeypatch, FakeLeague(current_week=1, player_map={}))
+
+    assert player_info.get_player_info(None, full_name="Totally Unknown Guy") is None
+
+
+async def test_get_league_reuses_cached_league_within_ttl(monkeypatch):
+    _set_espn_env(monkeypatch)
+    build_calls = []
+
+    def _fake_league_ctor(**kwargs):
+        build_calls.append(kwargs)
+        return FakeLeague(current_week=1)
+
+    monkeypatch.setattr(player_info, "League", _fake_league_ctor)
+    monkeypatch.setattr(player_info, "_league_cache", {})
+
+    config = ESPNConfig()
+    player_info._get_league(config, None)
+    player_info._get_league(config, None)
+
+    assert len(build_calls) == 1  # second call served from cache, no second real fetch
