@@ -95,8 +95,8 @@ async def test_compute_week_stats_writes_matched_players_and_dst_only(pool, monk
     assert float(qb_row["fantasy_points"]) == 16.0
     assert json.loads(qb_row["raw_stats"]) == {"pass_yd": 250, "pass_td": 2, "pass_int": 1}
 
-    # 3*1=3, 1*0=0 -> 3
-    assert float(dst_row["fantasy_points"]) == 3.0
+    # 10 (baseline) + 3*1=3 + 1*0=0 -> 13
+    assert float(dst_row["fantasy_points"]) == 13.0
     assert json.loads(dst_row["raw_stats"]) == {"def_sack": 3, "pts_allow_18_27": 1}
 
     assert unseeded_row is None  # no `players` DEF row for this abbreviation — skipped

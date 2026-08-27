@@ -1529,14 +1529,23 @@ suddenly urgent.
 ## Scoring engine review (Aug 26, 2026, later)
 - [x] The project owner asked to verify the scoring engine against a
       detailed spec describing D/ST as "starting at 10 points and
-      moving up/down" — checked against the real `league_scoring_rules`
-      (built directly from the owner's own ESPN scoring screenshots
-      earlier this session) and found **no such baseline exists in this
-      league's real config** — it's a flat additive/tiered model (each
-      category, e.g. a sack or a points-allowed tier, is just its own
-      point value, summed). Flagged the discrepancy back to the owner
-      rather than implementing an unverified mechanic; awaiting their
-      confirmation before changing anything structural.
+      moving up/down" — this wasn't in any of the real `league_scoring_
+      rules` captured from the owner's own ESPN screenshots earlier
+      this session (a flat additive/tiered model, no baseline), so it
+      was flagged back rather than implemented on a description alone.
+      The owner's first reply then said there was no such rule; their
+      very next message reversed that and insisted it's real. Given the
+      direct contradiction, asked once more for confirmation (not a
+      screenshot, since the owner said to stop pushing) — confirmed a
+      third time, unambiguously. Implemented as asked: `app/domain/
+      scoring_engine.py`'s `compute_player_points()` gained a `baseline`
+      parameter (default 0.0, so every individual player is
+      unaffected); `DST_BASELINE_POINTS = 10.0` is passed only from
+      `weekly_stats.py`'s team-D/ST branch. No existing
+      `player_week_stats` rows existed yet to retroactively fix (season
+      hasn't started — confirmed via a live query, count 0). 4 new
+      tests (`test_scoring_engine.py`, `test_weekly_stats.py`); full
+      suite (470 tests) passing.
 - [x] Confirmed (already true, not a new build) that most of the
       spec's real asks are already how this engine works: every live
       poll (every 120s during a game, `ENABLE_WEEKLY_COMPUTE_SCHEDULER`)

@@ -1,4 +1,4 @@
-from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
+from app.domain.scoring_engine import DST_BASELINE_POINTS, compute_player_points, rules_dict_from_rows
 
 # Matches this league's real seeded rules (migration fcd0e76ead34) for
 # the categories exercised here.
@@ -41,6 +41,29 @@ def test_empty_stat_line_scores_zero():
 def test_rounds_to_two_decimal_places():
     stat_line = {"rec_yd": 33}  # 33 * 0.1 = 3.3000000000000003 in raw float math
     assert compute_player_points(stat_line, {"rec_yd": 0.1}) == 3.3
+
+
+def test_baseline_defaults_to_zero_for_individual_players():
+    stat_line = {"rec": 7, "rec_yd": 85, "rec_td": 1}
+    assert compute_player_points(stat_line, _RULES) == compute_player_points(stat_line, _RULES, baseline=0.0)
+
+
+def test_dst_baseline_adds_ten_before_events_are_applied():
+    """This league's real rule (confirmed by the project owner, Aug 26
+    2026): a team D/ST unit starts every game at 10 fantasy points, not
+    0, before its own sacks/turnovers/points-allowed tier/etc. are
+    applied — see weekly_stats.py's team-D/ST branch, the only caller
+    that passes this baseline."""
+    stat_line = {"def_sack": 2, "pts_allow_0": 1}  # 2*1=2, 1*5=5 -> 7 + baseline
+    rules = {"def_sack": 1, "pts_allow_0": 5}
+    assert compute_player_points(stat_line, rules, baseline=DST_BASELINE_POINTS) == 17.0
+
+
+def test_dst_baseline_survives_a_net_negative_game():
+    stat_line = {"pts_allow_46_plus": 1, "yds_allow_550_plus": 1}
+    rules = {"pts_allow_46_plus": -5, "yds_allow_550_plus": -7}
+    # 10 + -5 + -7 = -2 — a real bad-enough defensive game goes negative.
+    assert compute_player_points(stat_line, rules, baseline=DST_BASELINE_POINTS) == -2.0
 
 
 class _FakeRow(dict):
