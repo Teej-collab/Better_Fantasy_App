@@ -33,7 +33,7 @@ function RosterRow({
   return (
     <li className="flex items-center justify-between gap-3 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
       <div className="flex min-w-0 items-center gap-2.5">
-        <PlayerHeadshot playerId={null} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+        <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         <div className="flex min-w-0 flex-col">
           <button
             onClick={() => onViewPlayer(entry.player_id)}
