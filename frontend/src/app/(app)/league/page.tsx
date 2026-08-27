@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { awardsHrefFor, listSeasons, listTeams, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+export const metadata: Metadata = { title: "League — Weekend League" };
 
 export default async function LeaguePage({
   searchParams,

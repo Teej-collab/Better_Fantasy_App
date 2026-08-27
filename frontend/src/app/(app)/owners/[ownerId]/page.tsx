@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   getCareerProfile,
   getOwnerBadges,
@@ -8,6 +9,19 @@ import {
 } from "@/lib/api";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+// Real per-page title (mobile audit finding — every page fell back to
+// the generic root "Weekend League" title). getCareerProfile() is
+// deduped against the identical call in the page component below.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ ownerId: string }>;
+}): Promise<Metadata> {
+  const { ownerId } = await params;
+  const career = await getCareerProfile(Number(ownerId));
+  return { title: career ? `${career.team_name} — Weekend League` : "Owner not found — Weekend League" };
+}
 
 export default async function OwnerProfilePage({
   params,

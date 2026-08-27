@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { awardsHrefFor, getCurrentWeek, listSeasons, matchupsHrefFor, resolveWeek, safeLatestSeason } from "@/lib/api";
 import { WeekendLanding } from "@/components/WeekendLanding";
+
+export const metadata: Metadata = { title: "The Weekend" };
 
 export default async function WeekendPage() {
   const { seasons } = await listSeasons();

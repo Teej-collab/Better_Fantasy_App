@@ -1,8 +1,25 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentWeek, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
+
+// Real per-page title (was falling back to the root layout's generic
+// "Weekend League" for every page in the app — mobile audit finding)
+// — matters most here since team pages are the kind of link an owner
+// actually shares with the league. getTeam() is automatically deduped
+// against the identical call in the page component below (Next's
+// fetch request memoization), so this doesn't cost a second request.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ teamId: string }>;
+}): Promise<Metadata> {
+  const { teamId } = await params;
+  const team = await getTeam(Number(teamId));
+  return { title: `${team.team_name} — Weekend League` };
+}
 
 export default async function TeamPage({
   params,

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { getAwardLeaderboards, getRecordBook, listSeasons } from "@/lib/api";
 import { AwardLeaderboards } from "@/components/AwardLeaderboards";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { RecordBook } from "@/components/RecordBook";
+
+export const metadata: Metadata = { title: "All-Time Records — Weekend League" };
 
 /**
  * The All-Time Records tab of Awards — a pinned tab in SeasonTabs

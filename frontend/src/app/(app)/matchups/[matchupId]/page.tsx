@@ -1,7 +1,23 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getMatchup } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
+
+// Real per-page title (mobile audit finding) — matters most here since
+// matchup pages are exactly the kind of link owners share with each
+// other. getMatchup() is deduped against the identical call below.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ matchupId: string }>;
+}): Promise<Metadata> {
+  const { matchupId } = await params;
+  const matchup = await getMatchup(Number(matchupId));
+  return {
+    title: `${matchup.home_team_name} vs ${matchup.away_team_name} — Wk ${matchup.week} — Weekend League`,
+  };
+}
 
 export default async function MatchupPage({
   params,

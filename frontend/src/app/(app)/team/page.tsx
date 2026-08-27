@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+
+export const metadata: Metadata = { title: "My Team — Weekend League" };
 
 export default async function MyTeamPage() {
   const cookieStore = await cookies();

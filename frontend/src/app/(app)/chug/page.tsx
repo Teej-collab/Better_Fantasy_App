@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { awardsHrefFor, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
+
+export const metadata: Metadata = { title: "Chug — Weekend League" };
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";

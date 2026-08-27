@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { awardsHrefFor, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+export const metadata: Metadata = { title: "Rivalries — Weekend League" };
 
 export default async function RivalriesPage() {
   const [{ rivalries }, { seasons }] = await Promise.all([listRivalries(), listSeasons()]);

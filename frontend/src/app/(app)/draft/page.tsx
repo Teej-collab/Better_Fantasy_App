@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { DraftRoom } from "@/components/draft/DraftRoom";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+
+export const metadata: Metadata = { title: "Draft — Weekend League" };
 
 export default async function DraftPage() {
   const cookieStore = await cookies();

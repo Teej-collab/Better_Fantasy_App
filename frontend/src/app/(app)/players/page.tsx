@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { awardsHrefFor, getCareerProfile, getOwnerBadges, listOwners, listSeasons, safeLatestSeason } from "@/lib/api";
 import { CardDeck } from "@/components/CardDeck";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+
+export const metadata: Metadata = { title: "Player Cards — Weekend League" };
 
 export default async function PlayersPage() {
   const [{ owners }, { seasons }] = await Promise.all([listOwners(), listSeasons()]);

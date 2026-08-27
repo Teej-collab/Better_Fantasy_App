@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { awardsHrefFor, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { DESTINATIONS } from "@/lib/navDestinations";
+
+export const metadata: Metadata = { title: "Rules — Weekend League" };
 
 // Matches the "rules" entry in lib/navDestinations.ts (the shared color
 // source every nav surface and content panel now reads from) — every

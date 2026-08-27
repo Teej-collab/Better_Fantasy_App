@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMySettings } from "@/lib/api";
 import { SettingsShell } from "@/components/settings/SettingsShell";
+
+export const metadata: Metadata = { title: "Settings — Weekend League" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ section?: string }> }) {
   const { section } = await searchParams;

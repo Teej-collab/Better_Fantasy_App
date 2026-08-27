@@ -1,8 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ season: string }>;
+}): Promise<Metadata> {
+  const { season } = await params;
+  return { title: `${season} Awards — Weekend League` };
+}
 
 export default async function SeasonAwardsPage({
   params,

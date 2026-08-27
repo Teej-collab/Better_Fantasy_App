@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getFreeAgents, getWaiverSettings } from "@/lib/api";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+
+export const metadata: Metadata = { title: "Free Agents — Weekend League" };
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 

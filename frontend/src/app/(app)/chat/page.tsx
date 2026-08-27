@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { getChatConversations, getMe, API_BASE_URL } from "@/lib/api";
 import { ChatApp } from "@/components/chat/ChatApp";
+
+export const metadata: Metadata = { title: "Chat — Weekend League" };
 
 export default async function ChatPage() {
   const cookieStore = await cookies();

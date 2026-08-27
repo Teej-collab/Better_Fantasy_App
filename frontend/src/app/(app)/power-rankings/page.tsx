@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   awardsHrefFor,
@@ -14,6 +15,8 @@ import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { PowerRankingsAllTime } from "@/components/PowerRankingsAllTime";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+export const metadata: Metadata = { title: "Power Rankings — Weekend League" };
 
 type View = "week" | "trend" | "all-time";
 

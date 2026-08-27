@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { KeepersPanel } from "@/components/KeepersPanel";
+
+export const metadata: Metadata = { title: "Keepers — Weekend League" };
 
 export default async function KeepersPage() {
   const cookieStore = await cookies();

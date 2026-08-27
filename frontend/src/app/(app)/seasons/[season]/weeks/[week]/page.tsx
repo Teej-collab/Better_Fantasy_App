@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
@@ -5,6 +6,15 @@ import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { MatchupCard } from "@/components/MatchupCard";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ season: string; week: string }>;
+}): Promise<Metadata> {
+  const { season, week } = await params;
+  return { title: `${season} Week ${week} — Weekend League` };
+}
 
 export default async function WeekMatchupsPage({
   params,

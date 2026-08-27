@@ -1,7 +1,21 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { getMe } from "@/lib/api";
 import { getGameState } from "@/lib/gamecastApi";
 import { GamecastShell } from "@/components/gamecast/GamecastShell";
+
+// Real per-page title (mobile audit finding). getGameState() is
+// deduped against the identical call in the page component below.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ gameId: string }>;
+}): Promise<Metadata> {
+  const { gameId } = await params;
+  const game = await getGameState(gameId);
+  if (!game) return { title: "Game not found — Weekend League" };
+  return { title: `${game.away_team.abbr} @ ${game.home_team.abbr} — Gamecast — Weekend League` };
+}
 
 export default async function GamecastPage({ params }: { params: Promise<{ gameId: string }> }) {
   const { gameId } = await params;

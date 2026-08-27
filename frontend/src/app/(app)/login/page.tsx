@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { API_BASE_URL } from "@/lib/api";
+
+export const metadata: Metadata = { title: "Sign In — Weekend League" };
 
 export default async function LoginPage({
   searchParams,
