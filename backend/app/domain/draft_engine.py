@@ -23,12 +23,15 @@ from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
     DraftNotFoundError,
     DraftNotInProgressError,
+    KeeperResolutionError,
+    KeeperSelectionsNotLockedError,
     NothingToUndoError,
     NotYourTurnError,
     PlayerAlreadyDraftedError,
     PlayerNotDraftableError,
 )
 from app.domain.roster_slots import total_draftable_slots
+from app.queries import keepers as keeper_queries
 
 
 def _config_dict(row) -> dict:
@@ -121,6 +124,81 @@ async def seed_keeper_pick(conn, season: int, owner_id: int, round_num: int, sle
             """,
             season, team_id, sleeper_player_id,
         )
+
+
+async def seed_keepers_from_locked_selections(conn, season: int) -> list[dict]:
+    """The batch counterpart to seed_keeper_pick above: reads every
+    LOCKED keeper_selections row for the season and pre-fills each
+    owner's LAST round (this league's first year in the app — no prior
+    in-app draft cost to base anything else on, per the project owner)
+    with their keeper, all in one atomic operation.
+
+    Requires the season's league_keeper_rules to be locked
+    (KeeperSelectionsNotLockedError otherwise) and a draft_config to
+    already exist and not have started yet (DraftNotFoundError /
+    DraftNotInProgressError) — same "after create_draft, before
+    start_draft" ordering seed_keeper_pick itself requires.
+
+    Idempotent: an owner who already has an is_keeper=TRUE pick this
+    season is skipped, so this is safe to re-run (e.g. a straggler
+    owner's selection gets locked later).
+
+    All-or-nothing on the crosswalk: if ANY remaining selection can't
+    be resolved to a real players.sleeper_player_id (the espn_player_id
+    crosswalk isn't 100% — see app/providers/sleeper/ingest.py), this
+    raises KeeperResolutionError with the FULL list of failures (not
+    just the first) and seeds nothing — a real draft is the wrong place
+    to discover a partial, silently-incomplete keeper board."""
+    rules = await keeper_queries.get_rules(conn, season)
+    if rules is None or rules["locked_at"] is None:
+        raise KeeperSelectionsNotLockedError(f"Keepers for season {season} aren't locked yet")
+
+    config_row = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1", season)
+    if config_row is None:
+        raise DraftNotFoundError(f"No draft configured for season {season}")
+    config = _config_dict(config_row)
+    if config["status"] != "not_started":
+        raise DraftNotInProgressError(
+            f"Draft for season {season} has already started — keepers must be seeded before start_draft"
+        )
+
+    selections = await keeper_queries.get_all_selections(conn, season)
+    already_seeded_owner_ids = {
+        row["owner_id"]
+        for row in await conn.fetch(
+            "SELECT owner_id FROM draft_picks WHERE season = $1 AND is_keeper = TRUE", season
+        )
+    }
+    pending = [s for s in selections if s["owner_id"] not in already_seeded_owner_ids]
+
+    resolved: list[dict] = []
+    unresolved: list[dict] = []
+    for selection in pending:
+        sleeper_player_id = await conn.fetchval(
+            "SELECT sleeper_player_id FROM players WHERE espn_player_id = $1", selection["espn_player_id"]
+        )
+        if sleeper_player_id is None:
+            unresolved.append(
+                {
+                    "owner_id": selection["owner_id"],
+                    "player_name": selection["player_name"],
+                    "espn_player_id": selection["espn_player_id"],
+                }
+            )
+        else:
+            resolved.append({"owner_id": selection["owner_id"], "player_name": selection["player_name"],
+                              "sleeper_player_id": sleeper_player_id})
+
+    if unresolved:
+        raise KeeperResolutionError(unresolved)
+
+    last_round = total_draftable_slots(config["roster_slots"])
+    seeded = []
+    async with conn.transaction():
+        for r in resolved:
+            await seed_keeper_pick(conn, season, r["owner_id"], last_round, r["sleeper_player_id"])
+            seeded.append({**r, "round": last_round})
+    return seeded
 
 
 async def _advance_to_next_open_pick(conn, season: int, from_pick_number: int, pick_time_limit_seconds: int) -> dict:

@@ -85,6 +85,21 @@ async def test_replace_selections_is_a_full_replace(pool):
         assert [r["espn_player_id"] for r in second] == [2002]
 
 
+async def test_get_all_selections_returns_every_owners_picks(pool):
+    owner_a = await _seed_owner_with_team(pool, 11, 511)
+    owner_b = await _seed_owner_with_team(pool, 12, 512)
+    async with pool.acquire() as conn:
+        await keeper_queries.replace_selections(
+            conn, TEST_SEASON, owner_a, [{"espn_player_id": 3001, "player_name": "Player A"}]
+        )
+        await keeper_queries.replace_selections(
+            conn, TEST_SEASON, owner_b, [{"espn_player_id": 3002, "player_name": "Player B"}]
+        )
+        rows = await keeper_queries.get_all_selections(conn, TEST_SEASON)
+    assert {r["owner_id"] for r in rows} == {owner_a, owner_b}
+    assert {r["espn_player_id"] for r in rows} == {3001, 3002}
+
+
 # ---- router tests -----------------------------------------------------------
 
 

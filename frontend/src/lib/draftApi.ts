@@ -140,6 +140,38 @@ export async function resetDraft(): Promise<{ ok: true }> {
   return post("/draft/reset");
 }
 
+export type SeededKeeper = { owner_id: number; player_name: string; sleeper_player_id: string; round: number };
+export type UnresolvedKeeper = { owner_id: number; player_name: string; espn_player_id: number };
+
+// Thrown by seedKeepersIntoDraft when POST /draft/seed-keepers 400s with
+// a structured unresolved list (see app/routers/draft.py) — a plain
+// Error would lose that list, and the commissioner needs to see exactly
+// which owner/player couldn't be matched, not just "seeding failed".
+export class SeedKeepersError extends Error {
+  unresolved: UnresolvedKeeper[];
+  constructor(message: string, unresolved: UnresolvedKeeper[]) {
+    super(message);
+    this.unresolved = unresolved;
+  }
+}
+
+// Batch-resolves every LOCKED keeper selection into a real draft pick
+// (the last round) — see app/domain/draft_engine.py's
+// seed_keepers_from_locked_selections for the full ordering/atomicity
+// rules. Call after /draft/setup, before /draft/start.
+export async function seedKeepersIntoDraft(): Promise<SeededKeeper[]> {
+  const res = await fetch("/api/backend/draft/seed-keepers", { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    if (data?.detail && typeof data.detail === "object" && Array.isArray(data.detail.unresolved)) {
+      throw new SeedKeepersError(data.detail.message ?? "Some keepers couldn't be matched", data.detail.unresolved);
+    }
+    throw new Error(typeof data?.detail === "string" ? data.detail : `Seeding keepers failed (${res.status})`);
+  }
+  const { seeded } = await res.json();
+  return seeded;
+}
+
 // Same same-origin ticket-mint pattern as getGamecastWsTicket
 // (gamecastApi.ts) — purpose must be exactly "ws".
 export async function getDraftWsTicket(): Promise<string | null> {

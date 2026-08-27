@@ -1,7 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { pauseDraft, resetDraft, resumeDraft, setupDraft, startDraft, undoLastPick, type DraftConfig } from "@/lib/draftApi";
+import {
+  pauseDraft,
+  resetDraft,
+  resumeDraft,
+  seedKeepersIntoDraft,
+  SeedKeepersError,
+  setupDraft,
+  startDraft,
+  undoLastPick,
+  type DraftConfig,
+  type SeededKeeper,
+  type UnresolvedKeeper,
+} from "@/lib/draftApi";
 import type { Team } from "@/lib/api";
 
 // This league's real ESPN roster shape (confirmed from the
@@ -24,6 +36,8 @@ export function DraftSetupPanel({
   const [order, setOrder] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seeded, setSeeded] = useState<SeededKeeper[] | null>(null);
+  const [unresolved, setUnresolved] = useState<UnresolvedKeeper[] | null>(null);
 
   function toggleOwner(ownerId: number) {
     setOrder((prev) => (prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId]));
@@ -37,6 +51,27 @@ export function DraftSetupPanel({
       onDraftCreated();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function seedKeepers() {
+    setBusy(true);
+    setError(null);
+    setSeeded(null);
+    setUnresolved(null);
+    try {
+      const result = await seedKeepersIntoDraft();
+      setSeeded(result);
+      onDraftCreated();
+    } catch (e) {
+      if (e instanceof SeedKeepersError) {
+        setUnresolved(e.unresolved);
+        setError(e.message);
+      } else {
+        setError(e instanceof Error ? e.message : "Seeding keepers failed");
+      }
     } finally {
       setBusy(false);
     }
@@ -98,14 +133,46 @@ export function DraftSetupPanel({
       <p className="w-full text-xs text-black/50 dark:text-white/50">
         Draft order: {config.draft_order.map((id, i) => `${i + 1}. ${teamNameByOwner.get(id) ?? id}`).join(" · ")}
       </p>
+      {seeded && seeded.length > 0 && (
+        <p className="w-full text-xs text-emerald-600 dark:text-emerald-400">
+          Seeded {seeded.length} keeper{seeded.length === 1 ? "" : "s"} into round {seeded[0].round}:{" "}
+          {seeded.map((s) => `${teamNameByOwner.get(s.owner_id) ?? s.owner_id} (${s.player_name})`).join(", ")}
+        </p>
+      )}
+      {seeded && seeded.length === 0 && !unresolved && (
+        <p className="w-full text-xs text-black/50 dark:text-white/50">
+          Nothing to seed — no locked keeper selections found, or every owner was already seeded.
+        </p>
+      )}
+      {unresolved && unresolved.length > 0 && (
+        <div className="w-full rounded-lg border border-red-500/30 bg-red-500/[0.06] p-2 text-xs text-red-500">
+          <p className="font-medium">Couldn&apos;t match these keepers to a player in our database — nothing was seeded:</p>
+          <ul className="mt-1 list-disc pl-4">
+            {unresolved.map((u) => (
+              <li key={`${u.owner_id}-${u.espn_player_id}`}>
+                {teamNameByOwner.get(u.owner_id) ?? u.owner_id}: {u.player_name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {config.status === "not_started" && (
-        <button
-          onClick={() => run(startDraft)}
-          disabled={busy}
-          className="rounded-full bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-        >
-          Start draft
-        </button>
+        <>
+          <button
+            onClick={seedKeepers}
+            disabled={busy}
+            className="rounded-full border border-emerald-500/40 px-3 py-1 text-xs font-medium text-emerald-600 disabled:opacity-40 dark:text-emerald-400"
+          >
+            Seed keepers
+          </button>
+          <button
+            onClick={() => run(startDraft)}
+            disabled={busy}
+            className="rounded-full bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            Start draft
+          </button>
+        </>
       )}
       {config.status === "in_progress" && (
         <>

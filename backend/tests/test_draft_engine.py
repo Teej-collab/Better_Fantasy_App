@@ -10,6 +10,9 @@ from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
     DraftNotFoundError,
+    DraftNotInProgressError,
+    KeeperResolutionError,
+    KeeperSelectionsNotLockedError,
     NothingToUndoError,
     NotYourTurnError,
     PlayerAlreadyDraftedError,
@@ -53,15 +56,15 @@ async def _seed_owner_and_team(pool, suffix):
     return owner_id, team_id
 
 
-async def _seed_player(pool, suffix, position="RB", search_rank=100, draftable=True):
+async def _seed_player(pool, suffix, position="RB", search_rank=100, draftable=True, espn_player_id=None):
     sleeper_id = f"test-draft-player-{suffix}"
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, search_rank, is_draftable)
-            VALUES ($1, $2, $3, $4, 'KC', 'Active', $5, $6)
+            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, search_rank, is_draftable)
+            VALUES ($1, $2, $3, $4, $5, 'KC', 'Active', $6, $7)
             """,
-            sleeper_id, f"Test Player {suffix}", position, [position], search_rank, draftable,
+            sleeper_id, espn_player_id, f"Test Player {suffix}", position, [position], search_rank, draftable,
         )
     return sleeper_id
 
@@ -306,3 +309,141 @@ async def test_reset_then_create_draft_with_a_new_order_succeeds(pool):
 async def test_reset_draft_is_a_noop_when_nothing_exists(pool):
     async with pool.acquire() as conn:
         await draft_engine.reset_draft(conn, TEST_SEASON)  # must not raise
+
+
+# ---- seed_keepers_from_locked_selections -------------------------------
+
+async def _seed_keeper_rules(pool, locked=True, max_keepers=1):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO league_keeper_rules (season, max_keepers, locked_at)
+            VALUES ($1, $2, NULL)
+            ON CONFLICT (season) DO UPDATE SET max_keepers = EXCLUDED.max_keepers, locked_at = NULL
+            """,
+            TEST_SEASON, max_keepers,
+        )
+        if locked:
+            await conn.execute(
+                "UPDATE league_keeper_rules SET locked_at = now() WHERE season = $1", TEST_SEASON
+            )
+
+
+async def _seed_keeper_selection(pool, owner_id, espn_player_id, player_name):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name)
+            VALUES ($1, $2, $3, $4)
+            """,
+            TEST_SEASON, owner_id, espn_player_id, player_name,
+        )
+
+
+async def test_seed_keepers_seeds_last_round_for_every_locked_selection(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "ska")
+    owner_b, _ = await _seed_owner_and_team(pool, "skb")
+    sleeper_a = await _seed_player(pool, "ska-keeper", espn_player_id=910001)
+    sleeper_b = await _seed_player(pool, "skb-keeper", espn_player_id=910002)
+    await _seed_keeper_rules(pool, locked=True)
+    await _seed_keeper_selection(pool, owner_a, 910001, "Keeper A")
+    await _seed_keeper_selection(pool, owner_b, 910002, "Keeper B")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        seeded = await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+
+    last_round = draft_engine.total_draftable_slots(_ROSTER_SLOTS)
+    assert {s["owner_id"] for s in seeded} == {owner_a, owner_b}
+    assert all(s["round"] == last_round for s in seeded)
+
+    async with pool.acquire() as conn:
+        picks = await conn.fetch(
+            "SELECT owner_id, sleeper_player_id, is_keeper FROM draft_picks "
+            "WHERE season = $1 AND round = $2 ORDER BY owner_id",
+            TEST_SEASON, last_round,
+        )
+    picks_by_owner = {p["owner_id"]: p for p in picks}
+    assert picks_by_owner[owner_a]["sleeper_player_id"] == sleeper_a
+    assert picks_by_owner[owner_a]["is_keeper"] is True
+    assert picks_by_owner[owner_b]["sleeper_player_id"] == sleeper_b
+
+
+async def test_seed_keepers_is_idempotent_and_only_seeds_new_owners(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "ika")
+    owner_b, _ = await _seed_owner_and_team(pool, "ikb")
+    await _seed_player(pool, "ika-keeper", espn_player_id=910011)
+    await _seed_player(pool, "ikb-keeper", espn_player_id=910012)
+    await _seed_keeper_rules(pool, locked=True)
+    await _seed_keeper_selection(pool, owner_a, 910011, "Keeper A")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        first_pass = await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+    assert len(first_pass) == 1
+
+    # A straggler owner's selection gets locked in later — re-running
+    # must not error (no duplicate current_rosters insert for owner_a).
+    await _seed_keeper_selection(pool, owner_b, 910012, "Keeper B")
+    async with pool.acquire() as conn:
+        second_pass = await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+
+    assert len(second_pass) == 1
+    assert second_pass[0]["owner_id"] == owner_b
+
+
+async def test_seed_keepers_raises_when_rules_not_locked(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "nla")
+    await _seed_keeper_rules(pool, locked=False)
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS)
+        try:
+            await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+            assert False, "expected KeeperSelectionsNotLockedError"
+        except KeeperSelectionsNotLockedError:
+            pass
+
+
+async def test_seed_keepers_raises_and_reports_every_unresolved_selection(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "ura")
+    owner_b, _ = await _seed_owner_and_team(pool, "urb")
+    await _seed_keeper_rules(pool, locked=True)
+    # Neither espn_player_id has a matching players row.
+    await _seed_keeper_selection(pool, owner_a, 920001, "Unresolved A")
+    await _seed_keeper_selection(pool, owner_b, 920002, "Unresolved B")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        try:
+            await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+            assert False, "expected KeeperResolutionError"
+        except KeeperResolutionError as e:
+            assert {u["espn_player_id"] for u in e.unresolved} == {920001, 920002}
+
+    # Nothing was seeded — all-or-nothing.
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT count(*) FROM draft_picks WHERE season = $1 AND is_keeper = TRUE", TEST_SEASON
+        )
+    assert count == 0
+
+
+async def test_seed_keepers_raises_once_draft_has_started(pool):
+    owner_a, owner_b = await _setup_two_team_draft(pool)  # already started
+    await _seed_keeper_rules(pool, locked=True)
+    async with pool.acquire() as conn:
+        try:
+            await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+            assert False, "expected DraftNotInProgressError"
+        except DraftNotInProgressError:
+            pass
+
+
+async def test_seed_keepers_raises_when_no_draft_configured(pool):
+    await _seed_keeper_rules(pool, locked=True)
+    async with pool.acquire() as conn:
+        try:
+            await draft_engine.seed_keepers_from_locked_selections(conn, TEST_SEASON)
+            assert False, "expected DraftNotFoundError"
+        except DraftNotFoundError:
+            pass

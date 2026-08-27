@@ -1494,6 +1494,74 @@ suddenly urgent.
   occurrence in the codebase), but the project owner should give it a
   look in the real app before considering this fully verified.
 
+## Keepers wired into the real draft (Aug 26, 2026)
+- [x] The keepers feature (owner-facing picker sourced from each
+      owner's live ESPN roster, commissioner rules/lock UI,
+      `league_keeper_rules`/`keeper_selections` schema) was already
+      fully built earlier this session — this closes the last gap:
+      turning a *locked* keeper selection into a real pre-filled slot
+      in the draft. New `app/domain/draft_engine.py::
+      seed_keepers_from_locked_selections(conn, season)`: requires
+      keepers locked first, resolves every selection's
+      `espn_player_id → sleeper_player_id` via the `players` crosswalk,
+      seeds each into the **last round** of the draft (first year in
+      the app — no prior in-app draft cost to base a real formula on,
+      per the project owner), atomically (all-or-nothing — if ANY
+      selection can't be resolved, nothing is seeded, and the full list
+      of failures is reported, not just the first), and idempotently
+      (already-seeded owners are skipped, safe to re-run for
+      stragglers). New `POST /draft/seed-keepers` (commissioner-only),
+      new **Seed keepers** button in `DraftSetupPanel.tsx` shown once a
+      draft exists but hasn't started — shows exactly who got seeded,
+      or exactly which owner/player couldn't be matched so it can be
+      fixed and retried before the real draft.
+- [x] 12 new backend tests (`test_draft_engine.py`,
+      `test_draft_router.py`, `test_keepers.py`) covering the happy
+      path, idempotent re-run, unlocked-rules block, all-or-nothing
+      unresolved reporting, already-started block, and no-draft block.
+      Full suite (469 tests) passing; `tsc`/`eslint`/`next build` clean.
+- **Operational, not code** (for the commissioner, on the already-built
+  `/keepers` page): set 2026 rules (`max_keepers`, deadline), have each
+  owner pick their keeper, lock once everyone's in. On draft day: set
+  the draft order → click **Seed keepers** → fix/retry if anything's
+  unresolved → **Start draft**.
+
+## Scoring engine review (Aug 26, 2026, later)
+- [x] The project owner asked to verify the scoring engine against a
+      detailed spec describing D/ST as "starting at 10 points and
+      moving up/down" — checked against the real `league_scoring_rules`
+      (built directly from the owner's own ESPN scoring screenshots
+      earlier this session) and found **no such baseline exists in this
+      league's real config** — it's a flat additive/tiered model (each
+      category, e.g. a sack or a points-allowed tier, is just its own
+      point value, summed). Flagged the discrepancy back to the owner
+      rather than implementing an unverified mechanic; awaiting their
+      confirmation before changing anything structural.
+- [x] Confirmed (already true, not a new build) that most of the
+      spec's real asks are already how this engine works: every live
+      poll (every 120s during a game, `ENABLE_WEEKLY_COMPUTE_SCHEDULER`)
+      does a **full recompute from ESPN's current box score**, not
+      incremental `+=` — handling stat corrections/duplicate
+      events/reconnects for free; points/yards-allowed are already tier
+      lookups, not cumulative; D/ST is already the exact same fantasy
+      entity type as any player, flowing through the same
+      `current_rosters`/`player_week_stats`/Gamecast fantasy-impact
+      pipeline (`app/gamecast/service.py::_diff_fantasy_impact`) with
+      no separate D/ST-only pathway.
+- [x] Fixed one real, confirmed value: `yds_allow_300_349` was `1` in
+      production, corrected to `0` per the owner's direct confirmation.
+- [ ] FG miss stacking ("distance-specific only, don't stack" —
+      confirmed by the owner) noted but currently has zero effect:
+      field-goal makes/misses by distance aren't wired into scoring at
+      all yet (`app/providers/nfl_stats/espn_public.py`'s own docstring
+      — ESPN's box-score endpoint doesn't expose FG-by-distance data,
+      only play-by-play does, which isn't parsed). Revisit if/when that
+      gap gets built.
+- [ ] Live cadence question raised, not yet answered: current polling
+      is every 120 seconds during a live game, not per-play — true
+      per-play would need parsing ESPN's play-by-play feed instead of
+      the box-score summary, real additional scope.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)

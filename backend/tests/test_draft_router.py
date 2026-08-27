@@ -225,3 +225,68 @@ async def test_reset_then_setup_with_new_order_succeeds(pool, monkeypatch):
         redo_resp = await client.post("/draft/setup", json={"draft_order": [owner_b, owner_a], "roster_slots": _ROSTER_SLOTS})
         assert redo_resp.status_code == 200
         assert redo_resp.json()["config"]["draft_order"] == [owner_b, owner_a]
+
+
+async def test_seed_keepers_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_id = await _seed_owner_and_team(pool, "sk_noncomm")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        resp = await client.post("/draft/seed-keepers")
+    assert resp.status_code == 403
+
+
+async def test_seed_keepers_happy_path(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_a = await _seed_owner_and_team(pool, "sk_a")
+    owner_b = await _seed_owner_and_team(pool, "sk_b")
+    sleeper_player = await _seed_player(pool, "sk_keeper")
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE players SET espn_player_id = 930001 WHERE sleeper_player_id = $1", sleeper_player
+        )
+        await conn.execute(
+            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at) VALUES ($1, 1, now())",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, owner_a, 930001, "Test Keeper",
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+        resp = await client.post("/draft/seed-keepers")
+
+    assert resp.status_code == 200
+    seeded = resp.json()["seeded"]
+    assert len(seeded) == 1
+    assert seeded[0]["owner_id"] == owner_a
+    assert seeded[0]["sleeper_player_id"] == sleeper_player
+
+
+async def test_seed_keepers_reports_unresolved_players(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_a = await _seed_owner_and_team(pool, "sk_unres")
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at) VALUES ($1, 1, now())",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, owner_a, 930099, "No Match Guy",
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        await client.post("/draft/setup", json={"draft_order": [owner_a], "roster_slots": _ROSTER_SLOTS})
+        resp = await client.post("/draft/seed-keepers")
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail["unresolved"][0]["espn_player_id"] == 930099

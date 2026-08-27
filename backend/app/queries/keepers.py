@@ -94,6 +94,17 @@ async def replace_selections(conn, season: int, owner_id: int, players: list[dic
     return await get_selections(conn, season, owner_id)
 
 
+async def get_all_selections(conn, season: int):
+    """Every owner's locked-or-not keeper picks for a season — used by
+    app/domain/draft_engine.py's seed_keepers_from_locked_selections to
+    process every owner's keeper into the real draft in one batch,
+    unlike get_selections above (single-owner, for the picker UI)."""
+    return await conn.fetch(
+        "SELECT * FROM keeper_selections WHERE season = $1 ORDER BY owner_id, player_name",
+        season,
+    )
+
+
 async def get_prior_season_selections(conn, owner_id: int, prior_season: int):
     """What this owner kept last season — the carryover candidates for
     this season's picker (Part E), each checked by the router against

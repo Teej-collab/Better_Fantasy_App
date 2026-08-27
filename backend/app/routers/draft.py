@@ -27,6 +27,7 @@ from app.domain.draft_exceptions import (
     DraftError,
     DraftNotFoundError,
     DraftNotInProgressError,
+    KeeperResolutionError,
     NothingToUndoError,
     NotYourTurnError,
     PlayerAlreadyDraftedError,
@@ -163,6 +164,30 @@ async def seed_keeper(body: KeeperSeedRequest, request: Request):
     except DraftError as e:
         raise _map_draft_error(e) from e
     return {"ok": True}
+
+
+@router.post("/seed-keepers")
+async def seed_keepers(request: Request):
+    """Batch version of POST /draft/keeper — resolves every LOCKED
+    keeper_selections row for the active season into a real draft pick
+    (the last round, this league's first year in the app) in one call,
+    instead of a commissioner manually resolving and POSTing one owner
+    at a time. See draft_engine.seed_keepers_from_locked_selections for
+    the full ordering/idempotency/all-or-nothing rules."""
+    _require_commissioner(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            seeded = await draft_engine.seed_keepers_from_locked_selections(conn, season)
+    except KeeperResolutionError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "unresolved": e.unresolved},
+        ) from e
+    except DraftError as e:
+        raise _map_draft_error(e) from e
+    return {"seeded": seeded}
 
 
 @router.post("/start")
