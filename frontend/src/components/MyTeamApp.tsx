@@ -35,19 +35,20 @@ function RosterRow({
       <div className="flex min-w-0 items-center gap-2.5">
         <PlayerHeadshot playerId={null} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         <div className="flex min-w-0 flex-col">
-          <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
-            <button onClick={() => onViewPlayer(entry.player_id)} className="min-w-0 truncate hover:underline">
-              {entry.player_name}
-            </button>
-            {entry.injury_status && entry.injury_status !== "ACTIVE" && (
-              <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                {entry.injury_status}
-              </span>
-            )}
-          </span>
+          <button
+            onClick={() => onViewPlayer(entry.player_id)}
+            className="truncate text-left text-sm font-medium hover:underline"
+          >
+            {entry.player_name}
+          </button>
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.lineup_slot} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
           </span>
+          {entry.injury_status && entry.injury_status !== "ACTIVE" && (
+            <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+              {entry.injury_status}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">

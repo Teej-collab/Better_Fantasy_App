@@ -87,23 +87,21 @@ export function FreeAgentsList({ players }: { players: FreeAgent[] }) {
               <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
               <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.name} size={36} />
               <span className="flex min-w-0 flex-col">
-                <span className="flex min-w-0 items-center gap-1.5 font-medium">
-                  {p.sleeper_player_id ? (
-                    <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="min-w-0 truncate hover:underline">
-                      {p.name}
-                    </button>
-                  ) : (
-                    <span className="min-w-0 truncate">{p.name}</span>
-                  )}
-                  {p.injury_status && p.injury_status !== "ACTIVE" && (
-                    <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                      {p.injury_status}
-                    </span>
-                  )}
-                </span>
+                {p.sleeper_player_id ? (
+                  <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="truncate text-left font-medium hover:underline">
+                    {p.name}
+                  </button>
+                ) : (
+                  <span className="truncate font-medium">{p.name}</span>
+                )}
                 <span className="text-xs text-black/50 dark:text-white/50">
                   {p.position} · {nflTeamName(p.pro_team) ?? p.pro_team}
                 </span>
+                {p.injury_status && p.injury_status !== "ACTIVE" && (
+                  <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+                    {p.injury_status}
+                  </span>
+                )}
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
