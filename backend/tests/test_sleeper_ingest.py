@@ -20,6 +20,11 @@ _FAKE_PLAYERS = {
         "status": "Active",
         "injury_status": None,
         "search_rank": 12,
+        "age": 24,
+        "height": "73",
+        "weight": 202,  # Sleeper's raw payload isn't consistent about str vs number here
+        "number": 4,
+        "years_exp": 3,
     },
     "test-2": {
         "player_id": "test-2",
@@ -82,6 +87,11 @@ async def test_sync_players_filters_and_upserts(pool, monkeypatch):
     assert rows["test-1"]["is_draftable"] is True
     assert rows["test-1"]["espn_player_id"] == 555001
     assert rows["test-1"]["full_name"] == "Test Star Rb"
+    assert rows["test-1"]["age"] == 24
+    assert rows["test-1"]["height"] == "73"
+    assert rows["test-1"]["weight"] == "202"  # cast to TEXT regardless of raw type
+    assert rows["test-1"]["jersey_number"] == "4"
+    assert rows["test-1"]["years_exp"] == 3
 
     assert rows["test-2"]["is_draftable"] is True
     assert rows["test-2"]["position"] == "DEF"

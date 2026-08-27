@@ -12,6 +12,7 @@ import {
 } from "@/lib/draftApi";
 import { listSeasons, listTeams, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
+import { PlayerCardModal } from "@/components/players/PlayerCardModal";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
@@ -41,6 +42,7 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
   const refreshState = async () => {
@@ -238,9 +240,12 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
                   className="flex items-center justify-between gap-2 border-b border-black/5 py-2 last:border-0 dark:border-white/5"
                 >
                   <div className="flex min-w-0 flex-col">
-                    <span className={`truncate text-sm font-medium ${p.drafted ? "line-through opacity-40" : ""}`}>
+                    <button
+                      onClick={() => setViewingPlayerId(p.sleeper_player_id)}
+                      className={`truncate text-left text-sm font-medium hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
+                    >
                       {p.full_name}
-                    </span>
+                    </button>
                     <span className="text-xs text-black/40 dark:text-white/40">
                       {p.position} · {p.pro_team ?? "—"}
                     </span>
@@ -264,7 +269,10 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
               </h2>
               {myPicks.map((p) => (
                 <p key={p.pick_number} className="text-sm">
-                  {p.player_position} · {p.player_name}
+                  {p.player_position} ·{" "}
+                  <button onClick={() => setViewingPlayerId(p.sleeper_player_id)} className="hover:underline">
+                    {p.player_name}
+                  </button>
                 </p>
               ))}
             </section>
@@ -276,7 +284,14 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
               {recentPicks.map((p) => (
                 <p key={p.pick_number} className="text-sm">
                   <span className="text-black/40 dark:text-white/40">#{p.pick_number}</span>{" "}
-                  {teamNameByOwner.get(p.owner_id) ?? p.owner_name}: {p.player_name}
+                  {teamNameByOwner.get(p.owner_id) ?? p.owner_name}:{" "}
+                  {p.sleeper_player_id ? (
+                    <button onClick={() => setViewingPlayerId(p.sleeper_player_id)} className="hover:underline">
+                      {p.player_name}
+                    </button>
+                  ) : (
+                    p.player_name
+                  )}
                   {p.is_autopick && <span className="ml-1 text-[10px] text-amber-500">AUTO</span>}
                   {p.is_keeper && <span className="ml-1 text-[10px] text-emerald-500">KEEPER</span>}
                 </p>
@@ -284,6 +299,10 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
             </section>
           </div>
         </div>
+      )}
+
+      {viewingPlayerId && (
+        <PlayerCardModal sleeperPlayerId={viewingPlayerId} onClose={() => setViewingPlayerId(null)} />
       )}
     </div>
   );

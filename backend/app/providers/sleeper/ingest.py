@@ -95,7 +95,19 @@ def _normalize(sleeper_id: str, raw: dict) -> dict:
         "injury_status": raw.get("injury_status"),
         "search_rank": raw.get("search_rank"),
         "is_draftable": _is_draftable(position, fantasy_positions, status, pro_team),
+        "age": raw.get("age"),
+        "height": _stringify(raw.get("height")),
+        "weight": _stringify(raw.get("weight")),
+        "jersey_number": _stringify(raw.get("number")),
+        "years_exp": raw.get("years_exp"),
     }
+
+
+def _stringify(value) -> str | None:
+    """Sleeper's raw payload isn't consistent about whether height/weight/
+    jersey number come back as a string or a number — cast to str for the
+    TEXT columns so asyncpg's strict typing doesn't reject an int/float."""
+    return None if value is None else str(value)
 
 
 async def sync_players(pool) -> int:
@@ -110,7 +122,8 @@ async def sync_players(pool) -> int:
             row["sleeper_player_id"], row["espn_player_id"], row["full_name"],
             row["first_name"], row["last_name"], row["position"], row["fantasy_positions"],
             row["pro_team"], row["status"], row["injury_status"], row["search_rank"],
-            row["is_draftable"],
+            row["is_draftable"], row["age"], row["height"], row["weight"],
+            row["jersey_number"], row["years_exp"],
         )
         for row in rows
     ]
@@ -125,9 +138,10 @@ async def sync_players(pool) -> int:
                 INSERT INTO players (
                     sleeper_player_id, espn_player_id, full_name, first_name, last_name,
                     position, fantasy_positions, pro_team, status, injury_status,
-                    search_rank, is_draftable, updated_at
+                    search_rank, is_draftable, age, height, weight, jersey_number, years_exp,
+                    updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
                 ON CONFLICT (sleeper_player_id) DO UPDATE SET
                     espn_player_id = EXCLUDED.espn_player_id,
                     full_name = EXCLUDED.full_name,
@@ -140,6 +154,11 @@ async def sync_players(pool) -> int:
                     injury_status = EXCLUDED.injury_status,
                     search_rank = EXCLUDED.search_rank,
                     is_draftable = EXCLUDED.is_draftable,
+                    age = EXCLUDED.age,
+                    height = EXCLUDED.height,
+                    weight = EXCLUDED.weight,
+                    jersey_number = EXCLUDED.jersey_number,
+                    years_exp = EXCLUDED.years_exp,
                     updated_at = now()
                 """,
                 values,

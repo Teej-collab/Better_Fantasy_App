@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
       // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's
       // own public CDN, no API key involved.
       { protocol: "https", hostname: "a.espncdn.com" },
+      // Player card headshots (PlayerCardModal.tsx) — Sleeper's own
+      // free, keyless headshot CDN, keyed by sleeper_player_id (see
+      // backend/app/domain/player_card.py's SLEEPER_HEADSHOT_URL).
+      { protocol: "https", hostname: "sleepercdn.com" },
       // Chat image attachments (MessageComposer.tsx / MessageBubble.tsx) —
       // the Vercel Blob store provisioned for this app; see app/config.py's
       // CHAT_IMAGE_HOST for the backend-side counterpart of this allowlist.

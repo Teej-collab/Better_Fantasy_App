@@ -70,6 +70,25 @@ def make_fake_free_agent(
     )
 
 
+def make_fake_player_card_player(
+    espn_player_id, projected_total_points=0.0, projected_avg_points=0.0,
+    percent_owned=0.0, percent_started=0.0, schedule=None,
+):
+    """Stands in for the Player object League.player_info() returns
+    (app/providers/espn/player_info.py). `schedule` mirrors a real live
+    call's actual shape: STRING week keys ("1", "2", ...), a missing key
+    for the bye week — see that module's docstring for why the string
+    typing matters."""
+    return SimpleNamespace(
+        playerId=espn_player_id,
+        projected_total_points=projected_total_points,
+        projected_avg_points=projected_avg_points,
+        percent_owned=percent_owned,
+        percent_started=percent_started,
+        schedule=schedule or {},
+    )
+
+
 def make_fake_box_score(home_team_id, away_team_id, home_lineup, away_lineup):
     return SimpleNamespace(
         home_team=SimpleNamespace(team_id=home_team_id),
@@ -87,7 +106,8 @@ class FakeLeague:
 
     def __init__(self, teams=None, reg_season_count=13,
                  scoreboard_by_week=None, box_scores_by_week=None, current_week=1,
-                 position_slot_counts=None, free_agent_players=None, faab=False, acquisition_budget=100):
+                 position_slot_counts=None, free_agent_players=None, faab=False, acquisition_budget=100,
+                 player_info_by_id=None):
         self.teams = teams or []
         self.settings = SimpleNamespace(
             reg_season_count=reg_season_count,
@@ -99,12 +119,16 @@ class FakeLeague:
         self._box_scores_by_week = box_scores_by_week or {}
         self.current_week = current_week
         self._free_agent_players = free_agent_players or []
+        self._player_info_by_id = player_info_by_id or {}
 
     def free_agents(self, week=None, size=50, position=None, position_id=None):
         players = self._free_agent_players
         if position:
             players = [p for p in players if p.position == position]
         return players[:size]
+
+    def player_info(self, name=None, playerId=None):
+        return self._player_info_by_id.get(playerId)
 
     def scoreboard(self, week):
         if week not in self._scoreboard_by_week:

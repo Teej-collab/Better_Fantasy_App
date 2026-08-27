@@ -10,6 +10,7 @@ import {
   type RosterEntry,
 } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { PlayerCardModal } from "@/components/players/PlayerCardModal";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, canSwapSlots, starterSortIndex } from "@/lib/rosterSlots";
 
@@ -20,11 +21,13 @@ function RosterRow({
   selectedForSwap,
   swapDisabled,
   onToggleSwapSelect,
+  onViewPlayer,
 }: {
   entry: RosterEntry;
   selectedForSwap: boolean;
   swapDisabled: boolean;
   onToggleSwapSelect: (entry: RosterEntry) => void;
+  onViewPlayer: (sleeperPlayerId: string) => void;
 }) {
   return (
     <li className="flex items-center justify-between gap-3 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
@@ -32,7 +35,9 @@ function RosterRow({
         <PlayerHeadshot playerId={null} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         <div className="flex min-w-0 flex-col">
           <span className="flex items-center gap-2 truncate text-sm font-medium">
-            {entry.player_name}
+            <button onClick={() => onViewPlayer(entry.player_id)} className="truncate hover:underline">
+              {entry.player_name}
+            </button>
             {entry.injury_status && entry.injury_status !== "ACTIVE" && (
               <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
                 {entry.injury_status}
@@ -74,6 +79,7 @@ export function MyTeamApp() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
+  const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     getMyTeam()
@@ -195,6 +201,7 @@ export function MyTeamApp() {
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
               onToggleSwapSelect={toggleSwapSelect}
+              onViewPlayer={setViewingPlayerId}
             />
           ))}
         </ul>
@@ -214,10 +221,15 @@ export function MyTeamApp() {
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
               onToggleSwapSelect={toggleSwapSelect}
+              onViewPlayer={setViewingPlayerId}
             />
           ))}
         </ul>
       </section>
+
+      {viewingPlayerId && (
+        <PlayerCardModal sleeperPlayerId={viewingPlayerId} onClose={() => setViewingPlayerId(null)} />
+      )}
     </div>
   );
 }
