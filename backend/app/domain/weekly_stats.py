@@ -13,15 +13,19 @@ separate "is this a team or a person" schema split to carry through
 the rest of the app (current_rosters, lineup slots, etc. already treat
 a DEF row as just another player).
 
-Callers supply the event_ids for the week being computed (there's no
-"which ESPN events belong to fantasy week N" mapping built yet —
-that's real follow-up work, likely sourced from app/providers/
-nfl_scoreboard.py's own event list filtered by date range once real
-weeks are being computed for real).
+compute_week_stats() takes explicit event_ids so it stays independently
+testable; compute_and_store_week() (bottom of this file) is the real
+entry point — it sources those event_ids itself from
+app/providers/nfl_scoreboard.py's get_week_scoreboard(), then also
+recomputes matchup scores (Phase F) from the result. That's the single
+function app/scheduler.py's weekly-compute job and the commissioner's
+manual /admin/weekly-compute trigger both call.
 """
 import json
 
+from app.domain.matchup_scoring import compute_matchup_scores_for_week
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
+from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.providers.nfl_stats.espn_public import get_game_stats
 
 
@@ -92,3 +96,23 @@ async def compute_week_stats(conn, season: int, week: int, event_ids: list[str])
                 counts["team_dst"] += 1
 
     return counts
+
+
+async def compute_and_store_week(pool, season: int, week: int) -> dict:
+    """The real weekly-compute entry point: pulls this fantasy week's
+    real NFL event ids from ESPN's public scoreboard, stores every
+    player/team-D-ST's fantasy points for the week (compute_week_stats
+    above), then recomputes matchups.home_score/away_score from that
+    result (app/domain/matchup_scoring.py, Phase F). This league's
+    fantasy weeks are always real NFL regular-season weeks (see
+    nfl_scoreboard.py's SEASON_TYPE_REGULAR docstring), and the `year`
+    ESPN's scoreboard wants for a regular-season week is just the
+    season itself."""
+    games = await get_week_scoreboard(week=week, year=season)
+    event_ids = [g["id"] for g in games if g["id"]]
+
+    async with pool.acquire() as conn:
+        stat_counts = await compute_week_stats(conn, season, week, event_ids)
+        matchups_updated = await compute_matchup_scores_for_week(conn, season, week)
+
+    return {"event_count": len(event_ids), **stat_counts, "matchups_updated": matchups_updated}

@@ -43,3 +43,15 @@ async def test_live_sync_rejects_non_commissioner(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/sync/live")
     assert response.status_code == 403
+
+
+async def test_weekly_compute_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(path="/admin/weekly-compute")
+    assert response.status_code == 401
+
+
+async def test_weekly_compute_rejects_non_commissioner(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/weekly-compute")
+    assert response.status_code == 403

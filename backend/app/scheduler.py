@@ -44,6 +44,20 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   countdown clock hitting zero needs to feel immediate during a live
   draft. This must be turned on in production well before the real
   draft date; it defaults off like everything else here.
+- Weekly compute (ENABLE_WEEKLY_COMPUTE_SCHEDULER): this app's own
+  Phase D/F scoring — app/domain/weekly_stats.py's
+  compute_and_store_week() — recomputing every rostered player's real
+  fantasy points and every matchup's score for the active week. Same
+  is_nfl_game_live gate as live sync (no point recomputing points
+  between games), same reasoning for why: cheap enough to poll
+  during live games but real work, not run around the clock for no
+  reason. Independent of ENABLE_LIVE_SYNC_SCHEDULER — that job still
+  refreshes ESPN's own schedule/pairing data (matchups.sync_matchups,
+  rosters snapshot); this one is what actually turns raw NFL stats
+  into this league's fantasy points now that scoring is computed
+  in-app instead of copied from ESPN. There's also a manual
+  POST /admin/weekly-compute trigger, matching /admin/sync/live's
+  pattern, for testing without waiting on a live game.
 """
 import logging
 import os
@@ -53,7 +67,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import _require
 from app.db import get_pool
-from app.domain import draft_engine
+from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
@@ -137,6 +151,19 @@ async def _run_draft_clock_job():
     logger.info("Draft autopick: season=%s pick=%s", season, result["pick"]["pick_number"])
 
 
+async def _run_weekly_compute_job():
+    games = await get_nfl_scoreboard()
+    if not is_nfl_game_live(games):
+        return
+
+    espn_config = ESPNConfig()
+    provider = ESPNProvider(espn_config)
+    season = espn_config.active_season
+    week = await provider.get_current_week(season)
+    results = await weekly_stats.compute_and_store_week(await get_pool(), season, week)
+    logger.info("Weekly compute finished (season=%s week=%s): %s", season, week, results)
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -181,6 +208,15 @@ def start_scheduler():
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
         _scheduler.add_job(_run_draft_clock_job, "interval", seconds=2, id="draft_clock")
         logger.info("Draft clock scheduler started (every 2 seconds)")
+        started_any = True
+
+    if os.getenv("ENABLE_WEEKLY_COMPUTE_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_seconds = int(os.getenv("WEEKLY_COMPUTE_INTERVAL_SECONDS", "120"))
+        _scheduler.add_job(_run_weekly_compute_job, "interval", seconds=interval_seconds, id="weekly_compute")
+        logger.info(
+            "Weekly compute scheduler started (every %d seconds, only during NFL game windows)",
+            interval_seconds,
+        )
         started_any = True
 
     if started_any:

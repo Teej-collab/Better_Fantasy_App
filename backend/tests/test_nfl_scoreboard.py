@@ -1,7 +1,7 @@
 """Never hits the real ESPN scoreboard endpoint in tests — httpx.AsyncClient
 is replaced with a fake that returns a canned response, same principle
 as the ESPN lineup-write tests never sending a real request."""
-from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard, is_nfl_game_live
 
 
 def test_is_nfl_game_live_true_when_any_game_in_progress():
@@ -64,7 +64,8 @@ class _FakeAsyncClient:
     async def __aexit__(self, *args):
         return False
 
-    async def get(self, url):
+    async def get(self, url, params=None):
+        self.last_params = params
         return _FakeResponse(_FAKE_RESPONSE)
 
 
@@ -82,3 +83,36 @@ async def test_parses_real_shaped_scoreboard_response(monkeypatch):
     assert game["state"] == "post"
     assert game["completed"] is True
     assert game["status_detail"] == "Final"
+
+
+async def test_get_week_scoreboard_passes_week_params_and_parses_same_shape(monkeypatch):
+    captured = {}
+
+    class _CapturingClient(_FakeAsyncClient):
+        async def get(self, url, params=None):
+            captured["url"] = url
+            captured["params"] = params
+            return _FakeResponse(_FAKE_RESPONSE)
+
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _CapturingClient)
+
+    games = await get_week_scoreboard(week=3, year=2026, season_type=1)
+
+    assert captured["params"] == {"week": 3, "seasontype": 1, "dates": 2026}
+    assert len(games) == 1
+    assert games[0]["home_team"] == "CIN"
+
+
+async def test_get_week_scoreboard_defaults_to_regular_season(monkeypatch):
+    captured = {}
+
+    class _CapturingClient(_FakeAsyncClient):
+        async def get(self, url, params=None):
+            captured["params"] = params
+            return _FakeResponse(_FAKE_RESPONSE)
+
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _CapturingClient)
+
+    await get_week_scoreboard(week=5, year=2026)
+
+    assert captured["params"]["seasontype"] == 2

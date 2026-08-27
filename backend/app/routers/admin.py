@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
+from app.domain.weekly_stats import compute_and_store_week
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
@@ -61,6 +62,26 @@ async def trigger_live_sync(request: Request):
     season = espn_config.active_season
     week = await provider.get_current_week(season)
     results = await run_live_sync(provider, season, week)
+    return {"season": season, "week": week, "results": results}
+
+
+@router.post("/weekly-compute")
+async def trigger_weekly_compute(request: Request, week: int | None = None):
+    """Manual trigger for this app's own Phase D/F scoring compute
+    (app/domain/weekly_stats.py's compute_and_store_week) — same thing
+    the scheduled weekly-compute job does during a live game window,
+    on demand and ignoring that gate, for testing without waiting on a
+    real game. Defaults to the active season's current week (same
+    source as /admin/sync/live); pass ?week=N to recompute a specific
+    week instead."""
+    _require_commissioner(request)
+
+    espn_config = ESPNConfig()
+    provider = ESPNProvider(espn_config)
+    season = espn_config.active_season
+    if week is None:
+        week = await provider.get_current_week(season)
+    results = await compute_and_store_week(await get_pool(), season, week)
     return {"season": season, "week": week, "results": results}
 
 

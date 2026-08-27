@@ -132,3 +132,50 @@ async def test_compute_week_stats_raises_without_scoring_rules(pool, monkeypatch
             assert False, "expected ValueError"
         except ValueError:
             pass
+
+
+async def _fake_get_week_scoreboard(week, year, season_type=2):
+    return [{"id": "event-1"}, {"id": None}]  # a malformed/no-id event should be filtered out
+
+
+async def _seed_team_for_matchup(pool, suffix, espn_team_id):
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-weeklystats-owner-{suffix}", f"Owner {suffix}",
+        )
+        return await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+        )
+
+
+async def test_compute_and_store_week_sources_events_and_updates_matchups(pool, monkeypatch):
+    monkeypatch.setattr(weekly_stats, "get_week_scoreboard", _fake_get_week_scoreboard)
+    monkeypatch.setattr(weekly_stats, "get_game_stats", _fake_get_game_stats)
+    await _seed_rules(pool)
+    await _seed_player(pool, "test-weeklystats-qb3", espn_player_id=111, position="QB")
+    await _seed_dst(pool, _TEST_DST)
+
+    home_id = await _seed_team_for_matchup(pool, "home", 701)
+    away_id = await _seed_team_for_matchup(pool, "away", 702)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, 'QB', 'draft')",
+            TEST_SEASON, home_id, "test-weeklystats-qb3",
+        )
+        matchup_id = await conn.fetchval(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 1, home_id, away_id,
+        )
+
+    results = await weekly_stats.compute_and_store_week(pool, TEST_SEASON, 1)
+
+    assert results == {"event_count": 1, "players": 1, "team_dst": 1, "matchups_updated": 1}
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT home_score, away_score FROM matchups WHERE id = $1", matchup_id)
+    # 250*0.04=10, 2*4=8, 1*-2=-2 -> 16, matching the QB's stat line above.
+    assert float(row["home_score"]) == 16.0
+    assert float(row["away_score"]) == 0.0
