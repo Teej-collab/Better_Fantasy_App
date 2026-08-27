@@ -1566,10 +1566,74 @@ suddenly urgent.
       — ESPN's box-score endpoint doesn't expose FG-by-distance data,
       only play-by-play does, which isn't parsed). Revisit if/when that
       gap gets built.
-- [ ] Live cadence question raised, not yet answered: current polling
-      is every 120 seconds during a live game, not per-play — true
-      per-play would need parsing ESPN's play-by-play feed instead of
-      the box-score summary, real additional scope.
+- [x] Live cadence question — confirmed by the owner: 120 seconds is
+      fine, no need for true per-play scoring.
+
+## Mobile + App Store release audit (Aug 27, 2026)
+Full-scope audit requested (25 phases: architecture, responsive CSS,
+accessibility, security, performance, App Store/Play Store readiness,
+try-to-break-it QA). Real limitation hit early: this session runs as a
+background job, and the Claude in Chrome extension's service worker
+doesn't register with background-job sessions (confirmed via research,
+not guessed) — visual/viewport screenshots, live navigation click-
+through, and keyboard-overlap testing were never possible this
+session. Everything below is a genuine code-level audit + real
+build/lint/test/curl verification, not visual inspection.
+- [x] **Fixed, deployed, verified live** (6 commits):
+  1. Touch-target sizing on 4 icon-only close/remove buttons (were bare
+     glyphs with zero explicit hit area).
+  2. Missing `aria-label`s on 3 form inputs relying on placeholder text
+     alone (not reliably announced by screen readers).
+  3. **Zero `error.tsx`/`not-found.tsx`/`global-error.tsx` anywhere** —
+     any real bug or bad URL fell through to Next's bare unbranded
+     default screens. Built on-brand versions; `retry` (not `reset`)
+     confirmed as the correct Next.js 16.3 prop against this repo's own
+     vendored docs, not assumed from training data.
+  4. **Every one of the app's 24 pages showed the same generic
+     "Weekend League" browser-tab title** — added real per-page titles,
+     including `generateMetadata()` on the shareable dynamic pages
+     (team/owner/matchup/gamecast/season/week), confirmed deduped
+     against the page's own identical fetch (no extra request).
+  5. **Empty-roster state on My Team** — a real, currently-live bug:
+     since the actual draft hasn't happened yet, `current_rosters` is
+     genuinely empty for every owner right now, and the page silently
+     rendered two empty boxes. Added a real explanation + link to Draft.
+- [x] Verified clean (no changes needed): secrets/debug-route scan,
+      `.env*` gitignore coverage, session cookie `Secure`/`SameSite`
+      config in production, CORS scoped correctly, safe-area/notch
+      handling, bottom-nav content clearance, external link
+      `rel="noopener noreferrer"` coverage, mobile keyboard types on
+      numeric/date inputs, zoom not disabled (a real a11y requirement
+      many apps get wrong), image `alt` text, WebSocket reconnection
+      logic across draft/gamecast/chat (with correct auth-failure
+      handling), PWA manifest + service worker (verified actually
+      serving correctly in production, not just present in code), no
+      runaway client-side polling, every mutating backend endpoint (37
+      routes) requires real authentication, frontend/backend input
+      validation parity (display name / team name: exactly 40 chars
+      both sides, backend also defends against control characters).
+- [ ] **Flagged, not fixed — a real design-system decision, not a bug**:
+      the app-wide `text-black/40 dark:text-white/40` "muted text"
+      convention computes to 3.72:1 contrast against the Cosmic
+      background (WCAG AA requires 4.5:1 for normal text) — 100
+      occurrences across 28 files. A passing alternative (`/50`, 5.02:1)
+      already exists and is used inconsistently for the same semantic
+      role. Not changed unilaterally since it's a real visual-identity
+      tradeoff across the whole app, not an isolated fix.
+- [ ] **Confirmed blockers for real App Store / Google Play submission**
+      (unchanged from the owner's own product/legal decisions, not
+      something to build unilaterally): no in-app account deletion (already
+      disabled/"Soon" in the UI, both stores require it for apps with
+      account creation), no Privacy Policy anywhere in the app or repo
+      (hard requirement for both stores' submission forms), and no
+      native wrapper exists yet at all (Capacitor/Expo/React Native —
+      this is a Next.js PWA today).
+- [ ] Visual/interactive phases (real viewport screenshots, live
+      navigation click-through, keyboard-overlap testing, actual
+      color-contrast measurement beyond the one convention checked
+      above) still genuinely unverified — needs either a normal
+      interactive Claude Code session with Chrome connected, or the
+      owner's own eyes on the rendered app.
 
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
