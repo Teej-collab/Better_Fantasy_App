@@ -23,7 +23,11 @@ export function NewMessageModal({
       >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">New Message</h2>
-          <button onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+          >
             ✕
           </button>
         </div>

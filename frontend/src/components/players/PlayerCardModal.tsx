@@ -51,7 +51,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
         <button
           onClick={onClose}
           aria-label="Close"
-          className="ml-auto text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
         >
           ✕
         </button>

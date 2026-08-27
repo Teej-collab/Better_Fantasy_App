@@ -118,7 +118,7 @@ export function MessageComposer({
           <button
             onClick={onCancelReply}
             aria-label="Cancel reply"
-            className="shrink-0 text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
           >
             ✕
           </button>
@@ -143,7 +143,7 @@ export function MessageComposer({
             type="button"
             onClick={removeImage}
             aria-label="Remove image"
-            className="ml-auto mr-1 shrink-0 text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
           >
             ✕
           </button>
