@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
+from app.domain.bye_weeks import sync_bye_weeks
 from app.domain.weekly_stats import compute_and_store_week
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
@@ -83,6 +84,24 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
         week = await provider.get_current_week(season)
     results = await compute_and_store_week(await get_pool(), season, week)
     return {"season": season, "week": week, "results": results}
+
+
+@router.post("/sync/bye-weeks")
+async def trigger_bye_week_sync(request: Request):
+    """Manual trigger for app/domain/bye_weeks.py's sync_bye_weeks —
+    18 real scoreboard fetches (one per regular-season week) to derive
+    every team's one bye week, cached in team_bye_weeks. Real NFL bye
+    weeks are set once at schedule release and don't change mid-season,
+    so this is commissioner-triggered (run once after the schedule is
+    out, or if it's ever missed), not a continuous scheduler like the
+    other sync jobs above."""
+    _require_commissioner(request)
+
+    season = ESPNConfig().active_season
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await sync_bye_weeks(conn, season)
+    return {"season": season, "teams_synced": count}
 
 
 @router.post("/players/sync")

@@ -943,6 +943,14 @@ export type RosterEntry = {
   points: number | null;
   next_opponent: string | null;
   game_time: string | null;
+  // bye_week: this player's real NFL team's bye week this season, from
+  // the cached team_bye_weeks table — null until a commissioner runs
+  // the bye-week sync. on_offense/is_redzone: only ever true during an
+  // actual in-progress game (app/gamecast's already-live game-state
+  // cache, joined by pro_team) — never implied otherwise.
+  bye_week: number | null;
+  on_offense: boolean;
+  is_redzone: boolean;
 };
 
 export type MyTeam = {
@@ -958,6 +966,24 @@ export async function getMyTeam(): Promise<MyTeam> {
     throw new Error(data?.detail ?? `Failed to load team (${res.status})`);
   }
   return res.json();
+}
+
+export type OwnershipInfo = { percent_owned: number | null; percent_started: number | null };
+
+// A real, multi-second live ESPN call server-side — deliberately a
+// separate fetch from getMyTeam() so the roster itself never waits on
+// it (see backend/app/routers/me.py's my_team_ownership). Only covers
+// players ESPN could actually resolve — Sleeper's own crosswalk covers
+// roughly 22% of the draftable pool, so most players are simply absent
+// from the returned map, not wrong.
+export async function getMyTeamOwnership(): Promise<Record<string, OwnershipInfo>> {
+  const res = await fetch(`/api/backend/me/team/ownership`, { cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to load ownership (${res.status})`);
+  }
+  const { ownership } = (await res.json()) as { ownership: Record<string, OwnershipInfo> };
+  return ownership;
 }
 
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };

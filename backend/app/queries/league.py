@@ -23,6 +23,16 @@ async def get_cached_current_week(conn, season: int):
     )
 
 
+async def get_bye_weeks(conn, season: int) -> dict[str, int]:
+    """{pro_team_abbr: bye_week} — cached by app/domain/bye_weeks.py's
+    sync_bye_weeks(), triggered via POST /admin/sync/bye-weeks. Empty
+    dict (not an error) if that sync hasn't run yet for this season."""
+    rows = await conn.fetch(
+        "SELECT pro_team, bye_week FROM team_bye_weeks WHERE season = $1", season
+    )
+    return {row["pro_team"]: row["bye_week"] for row in rows}
+
+
 async def get_team_for_owner(conn, season: int, owner_id: int):
     """espn_team_id, not our internal serial team_id — that's the ID
     ESPNLineupClient's live reads/plans key off of (see app/routers/me.py's

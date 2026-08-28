@@ -57,15 +57,15 @@ async def _ensure_roster_config(pool):
             )
 
 
-async def _seed_player(pool, suffix, position="RB", draftable=True):
+async def _seed_player(pool, suffix, position="RB", draftable=True, espn_player_id=None):
     sleeper_id = f"test-meteam-player-{suffix}"
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
-            VALUES ($1, $2, $3, $4, 'KC', 'Active', $5)
+            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
+            VALUES ($1, $2, $3, $4, $5, 'KC', 'Active', $6)
             """,
-            sleeper_id, f"Test Player {suffix}", position, [position], draftable,
+            sleeper_id, espn_player_id, f"Test Player {suffix}", position, [position], draftable,
         )
     return sleeper_id
 
@@ -122,6 +122,119 @@ async def test_my_team_returns_roster_from_current_rosters(pool, monkeypatch):
     assert body["roster"][0]["points"] is None
     assert body["roster"][0]["next_opponent"] is None
     assert body["roster"][0]["game_time"] is None
+    assert body["roster"][0]["bye_week"] is None
+    assert body["roster"][0]["on_offense"] is False
+    assert body["roster"][0]["is_redzone"] is False
+
+
+async def test_my_team_includes_bye_week_when_synced(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "bye1", espn_team_id=117)
+    player = await _seed_player(pool, "bye1", position="RB")  # pro_team always 'KC'
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO team_bye_weeks (season, pro_team, bye_week) VALUES ($1, 'KC', 9)", TEST_SEASON
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team")
+
+    assert resp.status_code == 200
+    assert resp.json()["roster"][0]["bye_week"] == 9
+
+
+async def test_my_team_includes_live_offense_and_redzone_status(pool, monkeypatch):
+    from app.gamecast import service as gamecast_service
+    from app.gamecast.models import GameStatus, LiveGame, TeamRef
+    from datetime import datetime, timezone
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "live1", espn_team_id=118)
+    player = await _seed_player(pool, "live1", position="RB")  # pro_team always 'KC'
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+
+    fake_game = LiveGame(
+        game_id="test-live-1",
+        provider="test",
+        status=GameStatus.IN_PROGRESS,
+        season=TEST_SEASON,
+        week=1,
+        scheduled_start=datetime.now(timezone.utc),
+        home_team=TeamRef(abbr="KC", name="Kansas City Chiefs"),
+        away_team=TeamRef(abbr="LV", name="Las Vegas Raiders"),
+        possession_team_abbr="KC",
+        is_redzone=True,
+        last_updated=datetime.now(timezone.utc),
+    )
+
+    def fake_all_cached_states():
+        return [fake_game]
+
+    monkeypatch.setattr(gamecast_service, "all_cached_states", fake_all_cached_states)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team")
+
+    assert resp.status_code == 200
+    entry = resp.json()["roster"][0]
+    assert entry["on_offense"] is True
+    assert entry["is_redzone"] is True
+
+
+async def test_my_team_ownership_requires_session(pool):
+    async with _client() as client:
+        resp = await client.get("/me/team/ownership")
+    assert resp.status_code == 401
+
+
+async def test_my_team_ownership_only_covers_players_with_a_resolved_espn_id(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "own1", espn_team_id=119)
+    resolved = await _seed_player(pool, "own1_resolved", position="RB", espn_player_id=555)
+    unresolved = await _seed_player(pool, "own1_unresolved", position="WR")  # no espn_player_id
+    await _seed_roster_entry(pool, team_id, resolved, lineup_slot="RB")
+    await _seed_roster_entry(pool, team_id, unresolved, lineup_slot="BE")
+
+    def fake_get_bulk_ownership(espn_player_ids, season=None):
+        assert espn_player_ids == [555]  # only the resolved id was ever asked for
+        return {555: {"percent_owned": 87.3, "percent_started": 61.0}}
+
+    monkeypatch.setattr("app.routers.me.get_bulk_ownership", fake_get_bulk_ownership)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team/ownership")
+
+    assert resp.status_code == 200
+    body = resp.json()["ownership"]
+    assert body[resolved]["percent_owned"] == 87.3
+    assert unresolved not in body
+
+
+async def test_my_team_ownership_empty_with_no_crosswalk_at_all(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "own2", espn_team_id=120)
+    player = await _seed_player(pool, "own2", position="RB")  # no espn_player_id
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("get_bulk_ownership should never be called with zero resolved ids")
+
+    monkeypatch.setattr("app.routers.me.get_bulk_ownership", fail_if_called)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.get("/me/team/ownership")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ownership": {}}
 
 
 async def test_my_team_includes_this_weeks_score_when_computed(pool, monkeypatch):

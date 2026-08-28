@@ -5,10 +5,12 @@ import Link from "next/link";
 import {
   dropPlayer,
   getMyTeam,
+  getMyTeamOwnership,
   previewLineupSwap,
   submitLineupSwap,
   type LineupSwapPreview,
   type MyTeam,
+  type OwnershipInfo,
   type RosterEntry,
 } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
@@ -31,6 +33,7 @@ function formatGameTime(iso: string): string {
 
 function RosterRow({
   entry,
+  ownership,
   selectedForSwap,
   swapDisabled,
   onToggleSwapSelect,
@@ -38,6 +41,7 @@ function RosterRow({
   onDrop,
 }: {
   entry: RosterEntry;
+  ownership: OwnershipInfo | undefined;
   selectedForSwap: boolean;
   swapDisabled: boolean;
   onToggleSwapSelect: (entry: RosterEntry) => void;
@@ -49,7 +53,25 @@ function RosterRow({
       <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 dark:border-white/10 dark:text-white/60">
         {slotDisplayLabel(entry.lineup_slot)}
       </span>
-      <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+      <span className="relative inline-flex shrink-0">
+        <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+        {/* Only ever shown during an actual in-progress game (see
+            RosterEntry's own comment in api.ts) — red for red zone,
+            amber for on offense elsewhere on the field, matching the
+            Sleeper reference's own color legend. Never implies live
+            status any other time. */}
+        {entry.is_redzone ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-[var(--background)]"
+            title="In the red zone"
+          />
+        ) : entry.on_offense ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-[var(--background)]"
+            title="On offense"
+          />
+        ) : null}
+      </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <button
           onClick={() => onViewPlayer(entry.player_id)}
@@ -65,6 +87,12 @@ function RosterRow({
             {entry.next_opponent}
             {entry.game_time && ` · ${formatGameTime(entry.game_time)}`}
           </span>
+        )}
+        {entry.bye_week !== null && (
+          <span className="text-xs text-black/40 dark:text-white/40">Bye: Week {entry.bye_week}</span>
+        )}
+        {ownership?.percent_owned !== null && ownership?.percent_owned !== undefined && (
+          <span className="text-xs text-black/40 dark:text-white/40">{ownership.percent_owned.toFixed(0)}% owned</span>
         )}
         {entry.injury_status && entry.injury_status !== "ACTIVE" && (
           <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
@@ -101,8 +129,19 @@ function RosterRow({
   );
 }
 
-export function MyTeamApp() {
+// Live offense/red-zone status only ever matters during an actual
+// live window — polling any other time would just be background
+// requests for data that can't change (same "only during a live
+// window, nothing otherwise" discipline GameDayRefresher.tsx already
+// established for the homepage/ticker). This component owns its own
+// client-side fetch already (unlike a server component), so a
+// conditional interval here does the same job router.refresh() does
+// there.
+const LIVE_POLL_INTERVAL_MS = 15 * 1000;
+
+export function MyTeamApp({ isGameDay }: { isGameDay: boolean }) {
   const [team, setTeam] = useState<MyTeam | null>(null);
+  const [ownership, setOwnership] = useState<Record<string, OwnershipInfo>>({});
   const [error, setError] = useState<string | null>(null);
   const [swapPreview, setSwapPreview] = useState<LineupSwapPreview | null>(null);
   // At most one selected at a time — swap is strictly pick-a-player,
@@ -122,6 +161,30 @@ export function MyTeamApp() {
       .then(setTeam)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load your team"));
   }, []);
+
+  // A real, multi-second live ESPN call server-side — fetched
+  // separately so the roster itself never waits on it. Only covers
+  // the ~22% of players Sleeper's crosswalk can resolve to an ESPN id
+  // (see api.ts's getMyTeamOwnership); silently absent for the rest
+  // rather than erroring the whole page over a partial-coverage feature.
+  useEffect(() => {
+    getMyTeamOwnership()
+      .then(setOwnership)
+      .catch(() => {});
+  }, []);
+
+  // Re-fetches the roster (which carries on_offense/is_redzone) on an
+  // interval, but only while a real NFL game is live — see
+  // LIVE_POLL_INTERVAL_MS's own comment.
+  useEffect(() => {
+    if (!isGameDay) return;
+    const id = setInterval(() => {
+      getMyTeam()
+        .then(setTeam)
+        .catch(() => {});
+    }, LIVE_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [isGameDay]);
 
   function confirmSwap() {
     if (!swapPreview) return;
@@ -300,6 +363,7 @@ export function MyTeamApp() {
             <RosterRow
               key={e.player_id}
               entry={e}
+              ownership={ownership[e.player_id]}
               selectedForSwap={selected?.player_id === e.player_id}
               swapDisabled={
                 selected !== null &&
@@ -321,6 +385,7 @@ export function MyTeamApp() {
             <RosterRow
               key={e.player_id}
               entry={e}
+              ownership={ownership[e.player_id]}
               selectedForSwap={selected?.player_id === e.player_id}
               swapDisabled={
                 selected !== null &&

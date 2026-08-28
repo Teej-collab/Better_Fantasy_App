@@ -48,6 +48,9 @@ from app.domain.lineup_exceptions import (
     SlotIneligibleError,
 )
 from app.domain.your_week import build_your_week
+from app.gamecast import service as gamecast_service
+from app.gamecast.models import GameStatus
+from app.providers.espn.player_info import get_bulk_ownership
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as league_queries
 from app.routers.lineup_shared import map_lineup_error
@@ -114,6 +117,9 @@ def _roster_entry_dict(entry: dict) -> dict:
         "points": float(entry["points"]) if entry.get("points") is not None else None,
         "next_opponent": entry.get("next_opponent"),
         "game_time": entry.get("game_time"),
+        "bye_week": entry.get("bye_week"),
+        "on_offense": entry.get("on_offense", False),
+        "is_redzone": entry.get("is_redzone", False),
     }
 
 
@@ -149,6 +155,28 @@ def _schedule_lookup(games: list[dict]) -> dict[str, dict]:
     return lookup
 
 
+def _live_status_lookup(games: list) -> dict[str, dict]:
+    """pro_team abbreviation -> {on_offense, is_redzone} for every team
+    currently playing a real, in-progress NFL game. Not a new data
+    source — app.gamecast.service already keeps a free, continuously-
+    refreshed in-memory cache of live game state
+    (all_cached_states()/LiveGame) for the Gamecast feature; this just
+    reads it and cross-references by team abbreviation, the same join
+    shape _schedule_lookup already uses. Deliberately excludes
+    halftime/scheduled/final — no one is "on offense" when play isn't
+    live."""
+    lookup: dict[str, dict] = {}
+    for game in games:
+        if game.status != GameStatus.IN_PROGRESS:
+            continue
+        for team in (game.home_team, game.away_team):
+            lookup[team.abbr] = {
+                "on_offense": game.possession_team_abbr == team.abbr,
+                "is_redzone": bool(game.is_redzone and game.possession_team_abbr == team.abbr),
+            }
+    return lookup
+
+
 @router.get("/team")
 async def my_team(request: Request):
     payload = _require_session(request)
@@ -162,6 +190,12 @@ async def my_team(request: Request):
         # this endpoint knew about weeks at all.
         current_week = await league_queries.get_cached_current_week(conn, active_season)
         roster = await lineup_engine.get_roster(conn, active_season, team_id, current_week)
+        bye_weeks = await league_queries.get_bye_weeks(conn, active_season)
+
+    for entry in roster:
+        bye_week = bye_weeks.get(entry["pro_team"])
+        if bye_week is not None:
+            entry["bye_week"] = bye_week
 
     if current_week is not None:
         try:
@@ -177,10 +211,60 @@ async def my_team(request: Request):
             if info:
                 entry.update(info)
 
+    live_status = _live_status_lookup(gamecast_service.all_cached_states())
+    for entry in roster:
+        info = live_status.get(entry["pro_team"])
+        if info:
+            entry.update(info)
+
     return {
         "team_name": team_name,
         "season": active_season,
         "roster": [_roster_entry_dict(e) for e in roster],
+    }
+
+
+@router.get("/team/ownership")
+async def my_team_ownership(request: Request):
+    """Real ESPN ownership%/start% for the caller's own roster —
+    deliberately a separate endpoint from GET /team, not folded into
+    it: this is a real, multi-second live ESPN call (get_bulk_ownership
+    is synchronous — same accepted blocking-call pattern get_player_info
+    already uses for the player-card feature, see player_info.py), and
+    the roster itself should never wait on it. The frontend fetches
+    this after the roster already renders.
+
+    Only covers players with a resolved espn_player_id — Sleeper's own
+    crosswalk covers roughly 22% of the draftable pool (see
+    app/providers/sleeper/ingest.py's canary log), so most entries in
+    the response are simply absent, not wrong."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT cr.sleeper_player_id, p.espn_player_id
+            FROM current_rosters cr
+            JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+            WHERE cr.season = $1 AND cr.team_id = $2 AND p.espn_player_id IS NOT NULL
+            """,
+            active_season, team_id,
+        )
+
+    espn_id_to_sleeper_id = {row["espn_player_id"]: row["sleeper_player_id"] for row in rows}
+    if not espn_id_to_sleeper_id:
+        return {"ownership": {}}
+
+    ownership_by_espn_id = get_bulk_ownership(list(espn_id_to_sleeper_id.keys()), season=active_season)
+    return {
+        "ownership": {
+            espn_id_to_sleeper_id[espn_id]: data
+            for espn_id, data in ownership_by_espn_id.items()
+            if espn_id in espn_id_to_sleeper_id
+        }
     }
 
 

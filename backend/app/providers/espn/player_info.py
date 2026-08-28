@@ -121,3 +121,40 @@ def get_player_info(
         "next_opponent": next_game["team"] if next_game else None,
         "current_week": current_week,
     }
+
+
+def get_bulk_ownership(
+    espn_player_ids: list[int], config: ESPNConfig | None = None, season: int | None = None
+) -> dict[int, dict]:
+    """Real ownership%/start% for a whole roster in ONE HTTP call —
+    espn_api's League.player_info() already accepts a list of ids (see
+    espn_api/football/league.py's player_info, which wraps a single id
+    into a list internally anyway), it's just never been called that
+    way in this codebase before (get_player_info above only ever passes
+    one). Returns {espn_player_id: {percent_owned, percent_started}} —
+    only for ids ESPN actually has a record of; a caller-side crosswalk
+    gap (no espn_player_id at all) is filtered out before this is ever
+    called, not handled here.
+
+    percent_owned/percent_started come back as -1 (espn_api's own
+    default) rather than None when ESPN has no ownership data for a
+    given id — normalized to None here so "no data" reads the same way
+    it does everywhere else in this app."""
+    if not espn_player_ids:
+        return {}
+    config = config or ESPNConfig()
+    league = _get_league(config, season)
+
+    players = league.player_info(playerId=espn_player_ids)
+    if players is None:
+        return {}
+    if not isinstance(players, list):
+        players = [players]
+
+    result = {}
+    for player in players:
+        result[player.playerId] = {
+            "percent_owned": player.percent_owned if player.percent_owned != -1 else None,
+            "percent_started": player.percent_started if player.percent_started != -1 else None,
+        }
+    return result

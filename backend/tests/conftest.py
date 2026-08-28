@@ -68,6 +68,7 @@ async def cleanup_test_season(pool):
     yield
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM team_bye_weeks WHERE season = $1", TEST_SEASON)
         # TEST_SEASON - 1 too, not just TEST_SEASON: keeper tests
         # (test_keepers.py) seed a "prior season" roster to pick keepers
         # from, the first tests in this suite to need that concept.

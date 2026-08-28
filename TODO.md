@@ -1735,6 +1735,58 @@ build/lint/test/curl verification, not visual inspection.
       interactive Claude Code session with Chrome connected, or the
       owner's own eyes on the rendered app.
 
+## My Team roster redesign + bye week/ownership%/live indicators (Aug 27, 2026)
+- [x] Redesigned My Team's roster rows against two Sleeper app
+      screenshots the owner shared as a reference: a slot-label pill,
+      headshot/name/team/injury (already real, just needed the pill
+      layout), this week's real stored score
+      (`player_week_stats.fantasy_points`, newly LEFT JOINed into
+      `lineup_engine.get_roster()` via an optional `week` param — every
+      other caller unaffected), and next opponent + game time (derived
+      from the real NFL scoreboard, cross-referenced by `pro_team`, no
+      new external dependency). Explicitly not built: season
+      projections/bye week the same way (too slow, per-player, ESPN-
+      crosswalk-limited — see below for how bye week actually got
+      solved instead) and ownership%/weather/live indicators, until
+      asked for directly.
+- [x] **Follow-up, same day** — the owner then asked for exactly those
+      three deferred things. Investigated each properly before
+      building:
+      - **Bye week**: real, but per-player was the wrong approach —
+        it's actually a TEAM-level fact (every player on a team shares
+        one bye), derivable from 18 real scoreboard fetches (one per
+        regular-season week, `app/providers/nfl_scoreboard.py`) finding
+        each team's one missing week. New `team_bye_weeks` table +
+        `app/domain/bye_weeks.py::compute_bye_weeks`/`sync_bye_weeks` +
+        commissioner-triggered `POST /admin/sync/bye-weeks` (not a
+        continuous scheduler — real NFL byes are set once at schedule
+        release and don't change mid-season).
+      - **Ownership %**: real via `espn_api`'s `League.player_info()`,
+        which already supports batching a whole list of ESPN ids into
+        ONE call (`app/providers/espn/player_info.py`'s
+        `get_player_info` only ever passed a single id before — new
+        `get_bulk_ownership` uses the list form). Same ~22%-of-players
+        `espn_player_id` crosswalk gap as everything else this session
+        limits coverage, not the API — shipped anyway with partial
+        coverage per the owner's own call. Kept as a separate
+        `GET /me/team/ownership` endpoint, fetched by the frontend
+        after the roster already renders, since it's a real multi-
+        second live ESPN call that should never block the main page.
+      - **Live offense/red-zone**: turned out to be almost entirely
+        already built — Gamecast's live-game poller
+        (`app/gamecast/service.py`) already derives
+        `possession_team_abbr`/`is_redzone` per live game and keeps it
+        in a free, already-fresh in-memory cache
+        (`all_cached_states()`). `GET /me/team` now just joins a
+        roster entry's `pro_team` against any cached in-progress game.
+        My Team also gained live polling (~15s, only while a real NFL
+        game is live — same "only during a live window" discipline
+        `GameDayRefresher.tsx` already established for the homepage)
+        so the indicator actually updates without a manual reload.
+      - 13 new backend tests across bye-week computation, the admin
+        sync endpoint, ownership partial-coverage, and the live-status
+        join. 458 backend tests passing; tsc/eslint/next build clean.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)

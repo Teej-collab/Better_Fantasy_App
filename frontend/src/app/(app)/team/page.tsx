@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { API_BASE_URL, getMe } from "@/lib/api";
+import { API_BASE_URL, getMe, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 
@@ -29,10 +29,17 @@ export default async function MyTeamPage() {
     );
   }
 
+  // Only fetched once actually signed in — the signed-out prompt above
+  // has no use for it, and Next's per-request fetch memoization means
+  // this doesn't cost a second round trip anywhere else this same
+  // request already calls getNflScoreboard() (it doesn't, today).
+  const nflGames = await getNflScoreboard();
+  const isGameDay = isNflGameLive(nflGames);
+
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="team" />
-      <MyTeamApp />
+      <MyTeamApp isGameDay={isGameDay} />
     </div>
   );
 }
