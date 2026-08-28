@@ -885,6 +885,17 @@ body::before {
 .live-ticker-track:hover {
   animation-play-state: paused;
 }
+/* JS-driven pause (LiveTicker.tsx) for real interaction — touch drag/
+   pointer down/manual scroll, none of which fire :hover above (that's
+   desktop-mouse-only). A separate class rather than an inline style so
+   it can't out-specificity :hover and fight it — both independently
+   resolve to the same paused state, never opposing ones, so there's
+   nothing to actually conflict. Resuming (removing this class) picks
+   the animation's timeline back up from wherever it was, same speed,
+   no jump — that's just how animation-play-state works natively. */
+.live-ticker-track--paused {
+  animation-play-state: paused;
+}
 
 /* Team-name segments in the ticker (LiveTicker.tsx) — the team's real
    color is the fill (set inline per segment), this just outlines it in
