@@ -8,19 +8,31 @@ import type { NextConfig } from "next";
 // from NEXT_PUBLIC_API_BASE_URL (already the LAN IP once set up per
 // DEVELOPMENT.md's "Testing on your phone") rather than hardcoding an
 // IP here, so nothing network-specific lives in committed source.
-function lanDevOrigin(): string[] {
+function devOrigins(): string[] {
+  const origins: string[] = [];
+
+  // Base44 preview — the dev server is served through a proxy hostname
+  // that changes whenever the environment is recreated, so allow the
+  // derived origin explicitly (a bare '*' does not match in Next 16).
+  const suffix = process.env.BASE44_PUBLIC_HOST_SUFFIX;
+  if (suffix) origins.push(`3000-${suffix}`);
+
+  // LAN testing — same derivation as before, from the API base URL.
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!apiBase) return [];
-  try {
-    const host = new URL(apiBase).hostname;
-    return host === "localhost" || host === "127.0.0.1" ? [] : [host];
-  } catch {
-    return [];
+  if (apiBase) {
+    try {
+      const host = new URL(apiBase).hostname;
+      if (host !== "localhost" && host !== "127.0.0.1") origins.push(host);
+    } catch {
+      // ignore
+    }
   }
+
+  return origins;
 }
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: lanDevOrigin(),
+  allowedDevOrigins: devOrigins(),
   images: {
     remotePatterns: [
       // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's
