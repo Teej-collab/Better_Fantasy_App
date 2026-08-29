@@ -23,6 +23,8 @@ export default async function LoginPage({
 
       <a
         href={`${API_BASE_URL}/auth/discord/login`}
+        target="_blank"
+        rel="noopener"
         className="rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
       >
         Sign in with Discord
