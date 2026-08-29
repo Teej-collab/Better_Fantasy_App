@@ -49,10 +49,10 @@ services:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     environment:
-      # Server-side fetches (SSR + /api/backend proxy) reach the backend
-      # container via docker DNS. Client-side authed calls go through the
-      # same-origin /api/backend proxy, so only port 3000 needs to be public.
-      NEXT_PUBLIC_API_BASE_URL: http://backend:8000
+      # Public backend URL — the OAuth login link navigates the browser
+      # here directly, and SSR/route-handler calls reach it through the
+      # preview proxy.
+      NEXT_PUBLIC_API_BASE_URL: https://8000-${BASE44_PUBLIC_HOST_SUFFIX}
       # Lets next.config.ts allow the preview's external dev origin.
       BASE44_PUBLIC_HOST_SUFFIX: ${BASE44_PUBLIC_HOST_SUFFIX}
       # Bind-mount friendly file watching.
