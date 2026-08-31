@@ -32,6 +32,8 @@ export function AuthScreen({ onBack }: { onBack: () => void }) {
 
         <a
           href={`${API_BASE_URL}/auth/discord/login`}
+          target="_blank"
+          rel="noopener"
           className="flex items-center justify-center gap-2 rounded-full bg-[#5865F2] px-6 py-3 text-sm font-semibold text-white transition-transform hover:brightness-110 active:scale-95"
         >
           Enter the League →

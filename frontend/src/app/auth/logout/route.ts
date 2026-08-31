@@ -11,7 +11,11 @@ import { NextResponse } from "next/server";
  * page load until it expired on its own.
  */
 export async function POST() {
+  // Must match the attributes the cookie was set with — a SameSite=None;
+  // Secure cookie won't be cleared by a bare delete call.
+  const sameSite = (process.env.COOKIE_SAMESITE ?? "lax") as "lax" | "none" | "strict";
+  const secure = sameSite === "none";
   const response = NextResponse.json({ ok: true });
-  response.cookies.delete("session");
+  response.cookies.set("session", "", { sameSite, secure, maxAge: 0, path: "/" });
   return response;
 }
