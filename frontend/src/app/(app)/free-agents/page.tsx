@@ -28,6 +28,8 @@ export default async function FreeAgentsPage({
           <p className="text-sm text-black/60 dark:text-white/60">Sign in to browse and add free agents.</p>
           <a
             href={`${API_BASE_URL}/auth/discord/login`}
+            target="_blank"
+            rel="noopener"
             className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
           >
             Sign in with Discord

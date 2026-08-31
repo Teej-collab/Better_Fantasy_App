@@ -1,0 +1,37 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "DATABASE_URL",
+      "description": "PostgreSQL connection string for the app database. In dev a local Postgres compose service provides a default; for a published app point this at your own Postgres/Supabase instance.",
+      "requiredAtBoot": true
+    },
+    {
+      "name": "DISCORD_CLIENT_ID",
+      "description": "Discord OAuth2 client ID (from the Discord Developer Portal → your application → OAuth2). Required for Discord login.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "DISCORD_CLIENT_SECRET",
+      "description": "Discord OAuth2 client secret (from the Discord Developer Portal → your application → OAuth2). Required for Discord login.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "ESPN_LEAGUE_ID",
+      "description": "ESPN Fantasy league ID. Only needed for /admin/sync and the ESPN sync schedulers; the rest of the app runs without it.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "ESPN_S2",
+      "description": "ESPN private league auth cookie value (S2). Only needed for ESPN sync; the rest of the app runs without it.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "ESPN_SWID",
+      "description": "ESPN private league auth cookie value (SWID). Only needed for ESPN sync; the rest of the app runs without it.",
+      "requiredAtBoot": false
+    }
+  ]
+}
