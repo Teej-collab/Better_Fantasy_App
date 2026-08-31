@@ -227,6 +227,43 @@ async def test_reset_then_setup_with_new_order_succeeds(pool, monkeypatch):
         assert redo_resp.json()["config"]["draft_order"] == [owner_b, owner_a]
 
 
+async def test_schedule_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_id = await _seed_owner_and_team(pool, "sched_noncomm")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
+    assert resp.status_code == 403
+
+
+async def test_schedule_404s_without_an_existing_draft(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_id = await _seed_owner_and_team(pool, "sched_nodraft")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id, is_commissioner=True))
+        resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
+    assert resp.status_code == 404
+
+
+async def test_schedule_sets_and_returns_scheduled_start(pool, monkeypatch):
+    _set_env(monkeypatch)
+    owner_a = await _seed_owner_and_team(pool, "sched_a")
+    owner_b = await _seed_owner_and_team(pool, "sched_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
+        assert resp.status_code == 200
+        assert resp.json()["config"]["scheduled_start"].startswith("2026-09-05T20:00:00")
+
+        state_resp = await client.get("/draft/state")
+        assert state_resp.json()["config"]["scheduled_start"].startswith("2026-09-05T20:00:00")
+
+
 async def test_seed_keepers_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
     owner_id = await _seed_owner_and_team(pool, "sk_noncomm")

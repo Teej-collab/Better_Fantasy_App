@@ -26,6 +26,7 @@ import {
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
+import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
@@ -181,6 +182,13 @@ export default async function HomePage() {
   if (!hiddenCards.has("yourWeek")) {
     cards.yourWeek = myWeek?.matchup ? (
       <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
+    ) : myWeek?.draft?.scheduled_start && myWeek.draft.status === "not_started" ? (
+      // Real, current state right now: pre-draft, pre-season — a much
+      // more useful thing to show here than a bland "nothing yet"
+      // message once the commissioner has set a real date (see
+      // DraftCountdownCard.tsx). Falls through to the plain message
+      // below once the draft starts/completes, or if no date is set.
+      <DraftCountdownCard teamName={myWeek.team_name} scheduledStart={myWeek.draft.scheduled_start} />
     ) : myWeek ? (
       <EmptyHero
         title={myWeek.team_name}

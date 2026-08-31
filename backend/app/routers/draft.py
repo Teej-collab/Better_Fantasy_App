@@ -13,6 +13,8 @@ Every mutating endpoint resolves owner_id from the session — the same
 app/routers/me.py and keepers.py. Commissioner-only setup/control
 endpoints reuse _require_commissioner from admin.py.
 """
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -126,6 +128,39 @@ async def setup_draft(body: SetupRequest, request: Request):
             await draft_engine.create_draft(
                 conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds
             )
+            state = await draft_queries.get_draft_state(conn, season)
+    except DraftError as e:
+        raise _map_draft_error(e) from e
+    return state
+
+
+class ScheduleRequest(BaseModel):
+    # The frontend converts its <input type="datetime-local"> value
+    # (naive, in the commissioner's own browser-local time) to a real
+    # UTC-aware ISO string (`new Date(...).toISOString()`) before
+    # sending it — a naive string here would be genuinely ambiguous
+    # (whose timezone?), and storing a naive value as TIMESTAMPTZ would
+    # silently assume the DB session's own timezone, not the
+    # commissioner's, which could be hours off. Pydantic parses the
+    # real offset into a timezone-aware datetime; asyncpg stores the
+    # actual UTC instant, and every viewer gets it back re-rendered in
+    # their own local time client-side, same convention already used
+    # for game times elsewhere.
+    scheduled_start: datetime
+
+
+@router.put("/schedule")
+async def set_draft_schedule(body: ScheduleRequest, request: Request):
+    """Separate from /draft/setup on purpose — the commissioner should
+    be able to nail down or adjust the real date/time without resetting
+    draft_order/roster_slots. Requires setup to have already happened
+    (404 otherwise, via DraftNotFoundError)."""
+    _require_commissioner(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await draft_engine.set_scheduled_start(conn, season, body.scheduled_start)
             state = await draft_queries.get_draft_state(conn, season)
     except DraftError as e:
         raise _map_draft_error(e) from e

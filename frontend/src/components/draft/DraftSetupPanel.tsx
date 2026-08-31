@@ -7,6 +7,7 @@ import {
   resumeDraft,
   seedKeepersIntoDraft,
   SeedKeepersError,
+  setDraftSchedule,
   setupDraft,
   startDraft,
   undoLastPick,
@@ -24,6 +25,18 @@ import type { Team } from "@/lib/api";
 const DEFAULT_ROSTER_SLOTS = { QB: 1, RB: 2, WR: 2, TE: 1, "RB/WR/TE": 1, "D/ST": 1, K: 1, BE: 7, IR: 1 };
 const DEFAULT_PICK_SECONDS = 90; // matches this league's real ESPN draft setting
 
+// Real ISO 8601 with offset -> the "YYYY-MM-DDTHH:mm" shape
+// <input type="datetime-local"> needs, in the browser's own local time
+// (not UTC — toISOString() would be wrong here, it's always UTC).
+// Built by hand from the Date object's own local getters rather than
+// any locale-formatting API, since this needs to round-trip exactly
+// back into the same input, not be human-readable.
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function DraftSetupPanel({
   teams,
   config,
@@ -38,6 +51,10 @@ export function DraftSetupPanel({
   const [error, setError] = useState<string | null>(null);
   const [seeded, setSeeded] = useState<SeededKeeper[] | null>(null);
   const [unresolved, setUnresolved] = useState<UnresolvedKeeper[] | null>(null);
+  const [scheduleInput, setScheduleInput] = useState(() =>
+    config?.scheduled_start ? toDatetimeLocalValue(config.scheduled_start) : ""
+  );
+  const [scheduleSaved, setScheduleSaved] = useState(false);
 
   function toggleOwner(ownerId: number) {
     setOrder((prev) => (prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId]));
@@ -72,6 +89,22 @@ export function DraftSetupPanel({
       } else {
         setError(e instanceof Error ? e.message : "Seeding keepers failed");
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveSchedule() {
+    if (!scheduleInput) return;
+    setBusy(true);
+    setError(null);
+    setScheduleSaved(false);
+    try {
+      await setDraftSchedule(scheduleInput);
+      setScheduleSaved(true);
+      onDraftCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the draft date");
     } finally {
       setBusy(false);
     }
@@ -133,6 +166,32 @@ export function DraftSetupPanel({
       <p className="w-full text-xs text-black/50 dark:text-white/50">
         Draft order: {config.draft_order.map((id, i) => `${i + 1}. ${teamNameByOwner.get(id) ?? id}`).join(" · ")}
       </p>
+      {/* Separate from Setup/Reset above on purpose — the real date can
+          be nailed down or adjusted independently, without touching
+          the order/roster shape. Drives the homepage's countdown card
+          (DraftCountdownCard.tsx) once set. */}
+      <div className="flex w-full flex-wrap items-center gap-2 border-t border-black/5 pt-2 dark:border-white/5">
+        <label className="text-xs text-black/50 dark:text-white/50">
+          Draft date/time
+          <input
+            type="datetime-local"
+            value={scheduleInput}
+            onChange={(e) => {
+              setScheduleInput(e.target.value);
+              setScheduleSaved(false);
+            }}
+            className="ml-2 rounded-md border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/10"
+          />
+        </label>
+        <button
+          onClick={saveSchedule}
+          disabled={busy || !scheduleInput}
+          className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium disabled:opacity-40 dark:border-white/10"
+        >
+          Save date
+        </button>
+        {scheduleSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
+      </div>
       {seeded && seeded.length > 0 && (
         <p className="w-full text-xs text-emerald-600 dark:text-emerald-400">
           Seeded {seeded.length} keeper{seeded.length === 1 ? "" : "s"} into round {seeded[0].round}:{" "}

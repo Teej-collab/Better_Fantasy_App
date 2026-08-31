@@ -95,6 +95,19 @@ async def create_draft(
         )
 
 
+async def set_scheduled_start(conn, season: int, scheduled_start) -> None:
+    """When the real draft is planned for — independent of draft_order/
+    roster_slots setup above, and settable/changeable on its own
+    (POST /draft/schedule) without touching either. Requires
+    draft_config to already exist (via create_draft) — this is
+    metadata on top of a real draft, not a way to create one."""
+    result = await conn.execute(
+        "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2", scheduled_start, season
+    )
+    if result == "UPDATE 0":
+        raise DraftNotFoundError(f"No draft configured for season {season}")
+
+
 async def seed_keeper_pick(conn, season: int, owner_id: int, round_num: int, sleeper_player_id: str) -> None:
     """Pre-fills this owner's pick in `round_num` with their keeper —
     must run after create_draft (the pick rows must already exist) and

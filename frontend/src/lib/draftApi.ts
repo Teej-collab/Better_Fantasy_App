@@ -32,6 +32,10 @@ export type DraftConfig = {
   paused_remaining_seconds: number | null;
   started_at: string | null;
   completed_at: string | null;
+  // When the real draft is planned for — separate from started_at
+  // (only set once it actually begins). Null until the commissioner
+  // sets it via setDraftSchedule below.
+  scheduled_start: string | null;
 };
 
 export type DraftPick = {
@@ -101,6 +105,19 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `PUT ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 // Commissioner-only setup/control — see app/routers/draft.py's
 // _require_commissioner-gated endpoints. The frontend doesn't hide
 // these from a non-commissioner (the page-level isCommissioner check
@@ -115,6 +132,18 @@ export async function setupDraft(
     roster_slots: rosterSlots,
     pick_time_limit_seconds: pickTimeLimitSeconds,
   });
+}
+
+// localDateTime: a raw <input type="datetime-local"> value ("2026-09-
+// 05T15:00"), naive and implicitly in the commissioner's own browser
+// timezone. new Date(...) parses that using the browser's own local
+// timezone (the same one the input itself used), and toISOString()
+// converts it to a real, unambiguous UTC instant — the backend needs
+// a real offset, not a naive string (see app/routers/draft.py's
+// ScheduleRequest docstring for why a naive value would be genuinely
+// ambiguous server-side).
+export async function setDraftSchedule(localDateTime: string): Promise<DraftState> {
+  return put<DraftState>("/draft/schedule", { scheduled_start: new Date(localDateTime).toISOString() });
 }
 
 export async function startDraft(): Promise<{ config: DraftConfig }> {

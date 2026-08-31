@@ -36,8 +36,24 @@ async def build_your_week(conn, owner_id: int, season: int):
     if team is None:
         return None  # this owner has no team in the latest season (e.g. left the league)
 
+    # Real, current state right now (preseason, pre-draft): draft is
+    # cheap (one row, may not exist yet) and always attached regardless
+    # of week, not just in the no-matchup branch below, so the response
+    # shape stays consistent whether or not a matchup exists.
+    draft_row = await conn.fetchrow(
+        "SELECT scheduled_start, status FROM draft_config WHERE season = $1", season
+    )
+    draft = (
+        {"scheduled_start": draft_row["scheduled_start"], "status": draft_row["status"]}
+        if draft_row is not None
+        else None
+    )
+
     week = await queries.get_cached_current_week(conn, season)
-    base = {"season": season, "week": week, "team_id": team["team_id"], "team_name": team["team_name"], "matchup": None}
+    base = {
+        "season": season, "week": week, "team_id": team["team_id"], "team_name": team["team_name"],
+        "matchup": None, "draft": draft,
+    }
     if not week or week < 1:
         return base  # preseason — no real current week yet
 

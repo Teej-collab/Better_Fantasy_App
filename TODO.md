@@ -1787,6 +1787,47 @@ build/lint/test/curl verification, not visual inspection.
         sync endpoint, ownership partial-coverage, and the live-status
         join. 458 backend tests passing; tsc/eslint/next build clean.
 
+## Gamecast cadence + scrollable ticker (Aug 27, 2026)
+- [x] Owner asked how often Gamecast updates, and whether the ticker
+      could stay auto-scrolling but also be manually scrollable to find
+      a specific game. Answered the first directly: Gamecast's live
+      poller (`app/scheduler.py`, `GAMECAST_POLL_INTERVAL_SECONDS`,
+      default 4s) was **never actually turned on in production** —
+      confirmed via `railway variables`. Without it, Gamecast still
+      worked per page load (on-demand cache-miss fetch), just never
+      pushed live updates to an already-open WebSocket. Owner said
+      "Yes turn it on" — set `ENABLE_GAMECAST_SCHEDULER=true` on
+      Railway, verified a healthy redeploy.
+- [x] `LiveTicker.tsx` became a client component: pointerdown/
+      touchstart/scroll pauses the CSS auto-scroll animation via
+      `animation-play-state` (native browser behavior preserves
+      position/speed across pause/resume, no manual tracking needed),
+      `.ticker-shell` switched from `overflow-hidden` to
+      `overflow-x-auto` with a hidden-scrollbar utility (same pattern
+      `MyTeamSubNav.tsx` already used). Deployed and verified.
+
+## Draft countdown card on the homepage (Aug 28, 2026)
+- [x] Owner shared a Sleeper app screenshot (team name, "Snake Draft |
+      Sat, Sep 5, 3:00 PM", ticking Days/Hours/Minutes/Seconds boxes)
+      and asked for the same on the logged-in homepage. `draft_config`
+      had no scheduled-start concept at all — only `started_at` (set
+      once the draft actually begins). Confirmed with the owner: the
+      real date is Sat Sept 5, 3:00 PM, and setting/editing it should
+      be a **separate, lighter control**, not folded into the existing
+      Setup/Reset flow — deliberately did not hardcode the 3pm value
+      myself (real risk of guessing the wrong timezone), instead built
+      the control so the commissioner sets the real value themselves.
+      Built: new nullable `draft_config.scheduled_start TIMESTAMPTZ`
+      column, new commissioner-only `PUT /draft/schedule`,
+      `build_your_week()` gained a `draft` field, new
+      `DraftCountdownCard.tsx` (client component, all clock/timezone-
+      dependent state deferred to a client-only effect to avoid an SSR
+      hydration mismatch) replacing the homepage's "No matchup yet"
+      empty state once a date is set and the draft hasn't started, and
+      a small "Draft date/time" input + Save button on
+      `DraftSetupPanel.tsx`. 5 new backend tests; tsc/eslint/next build
+      clean.
+
 ## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
 - [ ] `leagues` table, league-scoped everything
 - [ ] Configurable scoring/roster/award rules (flexible league engine)

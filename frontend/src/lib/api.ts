@@ -495,12 +495,24 @@ export type YourWeekMatchup = {
   win_probability: number | null;
 };
 
+export type YourWeekDraft = {
+  // Real ISO 8601 with offset, or null until the commissioner sets it
+  // (PUT /draft/schedule — DraftSetupPanel.tsx) — format client-side
+  // in the visitor's own local time, same convention as game times.
+  scheduled_start: string | null;
+  status: "not_started" | "in_progress" | "paused" | "complete";
+};
+
 export type YourWeek = {
   season: number;
   week: number | null;
   team_id: number;
   team_name: string;
   matchup: YourWeekMatchup | null;
+  // Null only when no draft_config exists yet at all for the season
+  // (setup hasn't happened) — once it does, draft is always present,
+  // scheduled_start may still be null within it.
+  draft: YourWeekDraft | null;
 };
 
 // Session-aware — only meaningful server-side, where the incoming

@@ -47,6 +47,29 @@ async def test_no_current_week_cached_returns_matchup_null(pool):
     assert result["matchup"] is None
 
 
+async def test_draft_is_none_when_no_draft_config_exists(pool):
+    owner_id, _ = await _seed_owner_and_team(pool)
+    async with pool.acquire() as conn:
+        result = await build_your_week(conn, owner_id, season=TEST_SEASON)
+    assert result["draft"] is None
+
+
+async def test_draft_reflects_scheduled_start_and_status(pool):
+    from datetime import datetime, timezone
+
+    owner_id, _ = await _seed_owner_and_team(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO draft_config (season, draft_order, roster_slots, scheduled_start) "
+            "VALUES ($1, '{}', '{}', $2)",
+            TEST_SEASON, datetime(2026, 9, 5, 20, 0, tzinfo=timezone.utc),
+        )
+        result = await build_your_week(conn, owner_id, season=TEST_SEASON)
+        await conn.execute("DELETE FROM draft_config WHERE season = $1", TEST_SEASON)
+    assert result["draft"]["status"] == "not_started"
+    assert result["draft"]["scheduled_start"] is not None
+
+
 async def test_bye_week_returns_matchup_null(pool):
     owner_id, team_id = await _seed_owner_and_team(pool)
     async with pool.acquire() as conn:
