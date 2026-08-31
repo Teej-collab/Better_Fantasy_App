@@ -34,6 +34,8 @@ export function AuthStatus() {
     return (
       <a
         href={`${API_BASE_URL}/auth/discord/login`}
+        target="_blank"
+        rel="noopener"
         className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
       >
         Sign in with Discord

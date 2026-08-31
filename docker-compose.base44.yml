@@ -67,6 +67,10 @@ services:
       BASE44_PUBLIC_HOST_SUFFIX: ${BASE44_PUBLIC_HOST_SUFFIX}
       # Bind-mount friendly file watching.
       WATCHPACK_POLLING: "true"
+      # The preview runs in a cross-site iframe (app.base44.com →
+      # 3000-…base44-preview.app); SameSite=Lax cookies aren't sent
+      # cross-site, so session cookies must be SameSite=None; Secure.
+      COOKIE_SAMESITE: "none"
     ports:
       - "3000:3000"
     depends_on:

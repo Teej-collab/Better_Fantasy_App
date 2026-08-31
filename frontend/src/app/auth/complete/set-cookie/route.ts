@@ -29,18 +29,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "missing token" }, { status: 400 });
   }
 
-  // Local dev serves the frontend over plain http — a Secure cookie
-  // can't be set at all there (the browser silently drops it), same
-  // reasoning as the backend's own SESSION_COOKIE_SECURE flag. Derived
-  // from the actual request instead of an env var since this route has
-  // no equivalent flag of its own.
-  const secure = request.nextUrl.protocol === "https:";
+  // SameSite: "lax" by default (production, first-party). In the Base44
+  // preview the frontend runs in a cross-site iframe (app.base44.com →
+  // 3000-…base44-preview.app), where SameSite=Lax cookies are NOT sent
+  // with the iframe's requests — so COOKIE_SAMESITE=none switches to
+  // SameSite=None, which requires Secure (the preview is HTTPS, so the
+  // browser accepts it even though the proxy forwards HTTP internally).
+  const sameSite = (process.env.COOKIE_SAMESITE ?? "lax") as "lax" | "none" | "strict";
+  const secure = sameSite === "none" || request.nextUrl.protocol === "https:";
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set("session", token, {
     httpOnly: true,
     secure,
-    sameSite: "lax",
+    sameSite,
     maxAge: SESSION_MAX_AGE_SECONDS,
     path: "/",
   });
