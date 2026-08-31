@@ -1828,8 +1828,39 @@ build/lint/test/curl verification, not visual inspection.
       `DraftSetupPanel.tsx`. 5 new backend tests; tsc/eslint/next build
       clean.
 
-## PHASE 9 — MULTI-LEAGUE ARCHITECTURE
-- [ ] `leagues` table, league-scoped everything
+## PHASE 9 — MULTI-LEAGUE ARCHITECTURE (kicked off Aug 31, 2026)
+- [x] **Audit + migration plan, Aug 31 2026.** Owner sent a large "migrate
+      off ESPN auth to first-party accounts" prompt. Read the real
+      auth code first rather than assuming the premise — found the app
+      was never ESPN-authenticated: login has always been Discord
+      OAuth2 with its own `users`/session/JWT model, and ESPN has only
+      ever been a data source (crosswalk, ownership%, historical
+      stats). What's actually missing, confirmed with the owner: the
+      account model is closed to one hand-registered 12-person league,
+      with zero `league_id` concept anywhere in application data (37
+      tables, all implicitly single-league via a bare `season` column
+      and `ACTIVE_SEASON`/`ESPN_LEAGUE_ID` env vars). Wrote up the real
+      audit + a phased, additive migration plan (new tables first,
+      backfill League #1, thread `league_id` through the domain layer,
+      only then open signup) — published as an artifact ("Open
+      Roster") rather than rewriting anything blind.
+- [x] **Phase 1 — schema, Aug 31 2026.** New `leagues` (id, name,
+      created_by_user_id, invite_code, created_at) and `league_members`
+      (league_id, user_id, role: commissioner/member, unique per
+      league+user) tables — migration `d7deccb620bb`. Deliberately
+      schema-only: no existing table changed, nothing reads or writes
+      these tables yet, League #1 isn't backfilled yet either. Fully
+      additive and reversible.
+- [ ] Phase 2 — backfill League #1, link existing owners as members
+- [ ] Phase 3 — add `league_id` to every season-scoped table
+      (`teams_by_season`, `draft_config`, `matchups`,
+      `league_scoring_rules`, ...), backfilled to League #1
+- [ ] Phase 4 — thread `league_id` through the ~30 domain modules /
+      ~19 routers that currently assume one global league
+- [ ] Phase 5 — self-serve signup (email+password alongside Discord) +
+      create/join-league flow
+- [ ] Phase 6 — per-league ESPN connection (Settings → Connected
+      Accounts), replacing the global `ESPN_LEAGUE_ID` env var
 - [ ] Configurable scoring/roster/award rules (flexible league engine)
 
 ## PHASE 10 — ADDITIONAL PROVIDERS
