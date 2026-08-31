@@ -192,6 +192,19 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        # users.active_league_id -> leagues.id (migration 119d4af5c920) —
+        # a user who joined a test league via POST /leagues/{id}/select
+        # (or was auto-activated into one, see app/queries/leagues.py's
+        # add_member) still points at it here even after the owner/user
+        # cleanup above, since that only ever deletes 'test-%'-pattern
+        # rows, not every user who happened to select a test league.
+        # Must be cleared before the leagues DELETE below or it
+        # FK-violates — same shape of bug this file already guards
+        # against for league_members/league_scoring_rules just above.
+        await conn.execute(
+            "UPDATE users SET active_league_id = NULL WHERE active_league_id IN "
+            "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # Phase 5 password-signup test users have no owners row at all
         # (see app/queries/auth.py's create_user_with_password) — not
