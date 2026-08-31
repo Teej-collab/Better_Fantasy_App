@@ -27,9 +27,9 @@ function isValidMobileOrder(order: string[]): order is DestinationKey[] {
  * page), per the owner's own call on removing More for good rather
  * than keeping it as a selectable slot.
  *
- * The bar itself carries a neon glow along its top edge (the same
- * default accent every .neon-panel falls back to — see globals.css's
- * --user-accent/--wl-accent chain) instead of a plain hairline border.
+ * Used to carry a neon glow along its top edge — flattened to a plain
+ * hairline border 2026-08-31 to match the approved mock exactly (its
+ * phone-frame bottom bar has no glow at all, just var(--wl-border)).
  */
 export function BottomNav({
   signedIn,
@@ -46,11 +46,7 @@ export function BottomNav({
     <nav
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
-      style={{
-        borderTop: "1px solid color-mix(in srgb, var(--user-accent, var(--wl-accent)) 55%, transparent)",
-        boxShadow:
-          "0 0 10px color-mix(in srgb, var(--user-accent, var(--wl-accent)) 40%, transparent), 0 0 1px color-mix(in srgb, var(--user-accent, var(--wl-accent)) 70%, transparent)",
-      }}
+      style={{ borderTop: "1px solid var(--wl-border)" }}
     >
       {tabOrder.map((key) => {
         switch (key) {

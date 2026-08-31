@@ -441,7 +441,7 @@ function buildTickerItems(
   }
 
   if (items.length === 0) {
-    text("empty", "🏈 The Weekend — check back once games kick off");
+    text("empty", "The Weekend — check back once games kick off");
   }
 
   return items;
@@ -459,7 +459,10 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-white/50 uppercase">
+        <span
+          className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase"
+          style={{ color: isLive ? "rgba(255,255,255,0.5)" : "var(--user-accent, var(--wl-accent))" }}
+        >
           Your Week{m.is_playoff ? " — Playoffs" : ""}
           {isLive && (
             <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-1.5 py-0.5 text-red-400">
@@ -530,11 +533,20 @@ function TeamScoreBlock({
 
 function EmptyHero({ title, message }: { title: string; message: string }) {
   return (
-    <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
-      <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+    <section
+      className="neon-panel flex flex-col gap-1.5 rounded-xl p-4"
+      style={{
+        background: `linear-gradient(160deg, color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent), color-mix(in srgb, var(--user-accent, var(--wl-accent)) 2%, transparent))`,
+        borderColor: `color-mix(in srgb, var(--user-accent, var(--wl-accent)) 40%, transparent)`,
+      }}
+    >
+      <span
+        className="text-xs font-bold tracking-wide uppercase"
+        style={{ color: "var(--user-accent, var(--wl-accent))" }}
+      >
         Your Week
       </span>
-      <span className="font-medium">{title}</span>
+      <span className="font-display text-lg font-semibold tracking-wide uppercase">{title}</span>
       <p className="text-sm text-black/50 dark:text-white/50">{message}</p>
     </section>
   );
@@ -652,14 +664,13 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   );
 }
 
+// Used to lead with a colored dot (a holdover from when every section
+// had its own hardcoded hue) — dropped 2026-08-31 to match the
+// approved mock's plain section labels exactly, now that there's
+// nothing left for a per-section dot to distinguish.
 function SectionHeader({ title, href }: { title: string; href: string }) {
   return (
     <Link href={href} className="flex items-center gap-2 hover:underline">
-      <span
-        className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: NAV_ACCENT, boxShadow: `0 0 6px ${NAV_ACCENT}` }}
-        aria-hidden
-      />
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
     </Link>
   );

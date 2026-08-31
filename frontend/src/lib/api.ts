@@ -605,7 +605,6 @@ export function buildNflTickerItems(nflGames: NflGame[]): TickerItem[] {
       items.push({
         key: g.id,
         segments: [
-          { text: "🏈 " },
           teamSegment(g.away_team),
           { text: ` ${g.away_score} — ` },
           teamSegment(g.home_team),
@@ -616,7 +615,6 @@ export function buildNflTickerItems(nflGames: NflGame[]): TickerItem[] {
       items.push({
         key: g.id,
         segments: [
-          { text: "🏁 " },
           teamSegment(g.away_team),
           { text: ` ${g.away_score} — ` },
           teamSegment(g.home_team),
@@ -627,7 +625,6 @@ export function buildNflTickerItems(nflGames: NflGame[]): TickerItem[] {
       items.push({
         key: g.id,
         segments: [
-          { text: "🏈 " },
           teamSegment(g.away_team),
           { text: " @ " },
           teamSegment(g.home_team),
@@ -680,7 +677,7 @@ export function buildLeagueTickerItems(data: { items: LeagueTickerItem[] }): Tic
     key: `league-${m.matchup_id}`,
     segments: [
       {
-        text: `🏆 ${leagueTickerSideText(m.home_team_name, m.home_score, m.home_top_scorer)} vs ${leagueTickerSideText(m.away_team_name, m.away_score, m.away_top_scorer)}`,
+        text: `${leagueTickerSideText(m.home_team_name, m.home_score, m.home_top_scorer)} vs ${leagueTickerSideText(m.away_team_name, m.away_score, m.away_top_scorer)}`,
       },
     ],
   }));

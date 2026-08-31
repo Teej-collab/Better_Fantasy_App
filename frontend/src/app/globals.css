@@ -160,26 +160,21 @@ body {
   color: var(--wl-text-secondary);
   transition:
     color 0.2s ease,
-    background-color 0.2s ease,
-    box-shadow 0.2s ease,
-    text-shadow 0.2s ease;
+    background-color 0.2s ease;
 }
 .neon-navlink:hover {
   color: var(--nav-color);
-  text-shadow:
-    0 0 3px color-mix(in srgb, var(--nav-color) 90%, transparent),
-    0 0 10px color-mix(in srgb, var(--nav-color) 70%, transparent);
   background-color: color-mix(in srgb, var(--nav-color) 8%, transparent);
 }
+/* Flat background tint only — no text-shadow, no box-shadow ring. Had
+   both up through 2026-08-31; matched exactly against the approved
+   mock (a plain rgba background behind plain colored text, nothing
+   else) once it became clear the leftover glow ring was still the
+   single most visible thing separating the real nav from the mock. */
 .neon-navlink[aria-current="page"] {
   color: var(--nav-color);
   background-color: color-mix(in srgb, var(--nav-color) 16%, transparent);
-  text-shadow:
-    0 0 4px color-mix(in srgb, var(--nav-color) 95%, transparent),
-    0 0 14px color-mix(in srgb, var(--nav-color) 75%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--nav-color) 55%, transparent),
-    0 0 12px color-mix(in srgb, var(--nav-color) 45%, transparent);
+  font-weight: 600;
 }
 
 /* Team profile card "trading card" look — TeamProfileCard.tsx. Two
