@@ -1870,9 +1870,28 @@ build/lint/test/curl verification, not visual inspection.
       (`test_login_auto_enrolls_into_the_default_league_if_one_exists`);
       `cleanup_test_season` in `conftest.py` updated to clean up test
       `league_members` rows too.
-- [ ] Phase 3 — add `league_id` to every season-scoped table
-      (`teams_by_season`, `draft_config`, `matchups`,
-      `league_scoring_rules`, ...), backfilled to League #1
+- [x] **Phase 3 — league_id columns, Aug 31 2026.** Added `league_id`
+      (NOT NULL, `DEFAULT 1`, `REFERENCES leagues(id)`) to the 22
+      tables that are real fantasy-league concepts — teams, drafts,
+      rosters, matchups, scoring/keeper rules, standings/awards, and
+      the chug side-game — all backfilled to League #1 in the same
+      migration (`454d8edda612`). Deliberately excluded two
+      season-scoped tables that turned out to be global, not
+      league-specific, on inspection: `team_bye_weeks` (a real NFL
+      schedule fact, same for every league) and `league_state` (caches
+      the real NFL calendar's current week, not anything per-league
+      despite the name). Also deliberately did NOT touch `owners`
+      (becomes a per-league record eventually, but that's a shape
+      change, not an added column — later phase) or any existing
+      UNIQUE constraint that assumes one league (e.g.
+      `teams_by_season`'s `(season, espn_team_id)`) — widening those is
+      a correctness change that belongs to Phase 4, not this
+      column-only one. `DEFAULT 1` is a deliberate, temporary bridge:
+      today's domain code has no idea `league_id` exists yet, so it
+      keeps every new row landing on League #1 automatically until
+      Phase 4 threads it through for real and that default comes out.
+      Column-only, non-breaking — no application code changed in this
+      phase.
 - [ ] Phase 4 — thread `league_id` through the ~30 domain modules /
       ~19 routers that currently assume one global league
 - [ ] Phase 5 — self-serve signup (email+password alongside Discord) +
