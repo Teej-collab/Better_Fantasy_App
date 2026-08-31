@@ -67,34 +67,22 @@ body {
   position: relative;
 }
 
-/* Site-wide starfield backdrop — public/images/cosmic-bg.webp, behind
-   every page. A real fixed-position layer (inset: 0), not the CSS
-   background-attachment: fixed property — that property has a long
-   history of being unreliable on mobile Safari (it was unsupported
-   entirely before iOS 13 and still repaints/jumps on some versions
-   during scroll); a plain position: fixed element doesn't have that
-   problem and is what .home-ambient below already uses successfully
-   app-wide today. inset: 0 (not a percentage/vh height) so this always
-   matches the current viewport exactly, regardless of how tall a given
-   page's actual content is — background-size: cover on body itself
-   would instead scale against body's full scrollable height, which
-   varies page to page and would size the image inconsistently.
-   z-index sits below .home-ambient's own -10 so the homepage's colored
-   glows layer on top of this, not the reverse. Solid var(--background)
-   underneath still shows through the moment before the image decodes
-   (or if it fails to load at all), so there's no flash of the wrong
-   color either way. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -20;
-  background-image: url("/images/cosmic-bg.webp");
-  background-size: cover;
-  background-position: top center;
-  background-repeat: no-repeat;
-  pointer-events: none;
-}
+/* Removed 2026-08-31, per the owner's own request to calm the in-app
+   UI down: a site-wide fixed starfield layer (public/images/
+   cosmic-bg.webp) used to sit behind every page here. It never
+   actually showed on the signed-out login/opening experience (.wl-gate
+   below is a fully opaque fixed overlay at z-index 50 — the highest
+   z-index of anything on the page — so it always fully covers this
+   regardless), only on the authenticated in-app pages, which is
+   backwards from "keep the neon intro, calm down the app" — so rather
+   than doing the harder job of splitting it into a per-route
+   conditional, the honest fix was to delete it outright. body's own
+   flat `background: var(--background)` above is what every in-app page
+   now sits on. .home-ambient further down (the homepage's three soft
+   colored glows) and .cosmic-bg (TeamProfileCard's own decorative
+   trading-card background, unrelated to this) are untouched — both
+   were already the restrained, deliberate-accent kind of decoration
+   this redesign keeps, not the busy kind it removes. */
 
 /* Shared glowing-border treatment for the app's content panels —
    leaderboards, rosters, matchup cards, rivalry cards, profile/
@@ -122,16 +110,26 @@ body::before {
    Background is Cosmic (--wl-bg) with a slight tint of --panel-glow
    mixed in — a "neon glass" wash, not a flat color and not the
    near-transparent black/[0.015] dark:white/[0.03] tint these panels
-   used before the starfield background (body::before) existed. That
-   near-transparent version let the busy starfield show straight
-   through every panel, which is exactly what made text and content
-   hard to read against it; this replaces it with a background solid
-   enough to guarantee legibility, wins over any bg-black/dark:bg-white
-   utility a caller still has via the same unlayered-beats-layered
-   mechanism .neon-panel's border/box-shadow already relies on. A touch
-   of transparency + backdrop-filter keeps it reading as glass instead
-   of a flat card, without threatening readability the way full
-   transparency did. */
+   used before the (now-removed, see body's comment above) starfield
+   background existed. That near-transparent version let the starfield
+   show straight through every panel, which made text and content hard
+   to read against it; this replaces it with a background solid enough
+   to guarantee legibility, wins over any bg-black/dark:bg-white utility
+   a caller still has via the same unlayered-beats-layered mechanism
+   .neon-panel's border/box-shadow already relies on. A touch of
+   transparency + backdrop-filter keeps it reading as glass instead of a
+   flat card, without threatening readability the way full transparency
+   did. Kept even after the starfield's removal — it still reads as a
+   deliberate "glass panel" material against the flat surface, not a
+   plain bordered box.
+
+   Border/box-shadow percentages were roughly halved on 2026-08-31, per
+   the owner's own request to calm the app down — every panel used to
+   glow at near-full strength all the time, which read as "everything
+   is exciting" (i.e. nothing is). --wl-glow-scale (Settings >
+   Appearance > Neon Intensity) still multiplies on top of this quieter
+   baseline exactly as before, so "High" can still bring real glow back
+   for an owner who wants it; only the default at "Standard" changed. */
 .neon-panel {
   --panel-glow: var(--user-accent, var(--wl-accent));
   background-color: color-mix(
@@ -147,10 +145,10 @@ body::before {
      nothing to these boxes, the app's dominant visual element. calc()
      inside color-mix()'s percentage argument is standard CSS Color 5,
      supported in every browser this app already requires. */
-  border: 1px solid color-mix(in srgb, var(--panel-glow) calc(35% * var(--wl-glow-scale)), transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-glow) calc(18% * var(--wl-glow-scale)), transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--panel-glow) calc(8% * var(--wl-glow-scale)), transparent),
-    0 0 calc(14px * var(--wl-glow-scale)) color-mix(in srgb, var(--panel-glow) calc(14% * var(--wl-glow-scale)), transparent),
+    0 0 0 1px color-mix(in srgb, var(--panel-glow) calc(4% * var(--wl-glow-scale)), transparent),
+    0 0 calc(8px * var(--wl-glow-scale)) color-mix(in srgb, var(--panel-glow) calc(7% * var(--wl-glow-scale)), transparent),
     0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
@@ -176,19 +174,23 @@ body::before {
 }
 
 /* Shared nav-tab treatment — PrimaryNav, BottomNav, ChatNavLink,
-   LeagueSubNav. Each tab sets its own --nav-color (see lib/
-   neonPalette.ts for the shared 7-color list). Every tab is always lit
-   in its own color — a real neon bar sign always glows, not just when
-   you're standing under it — with the current page reading as a
-   brighter, boxed-in sign (tinted background + ring + stronger glow)
-   rather than the only one lit. Structural classes (padding, rounding,
-   flex layout) stay on each caller's own className; this is color
-   only, and wins over any leftover text-black/60-style utility a
+   LeagueSubNav, MyTeamSubNav. Every tab reads --nav-color, which every
+   caller now sets to the same value (lib/navDestinations.ts's
+   NAV_ACCENT — the owner's own chosen accent color, Settings >
+   Appearance > Accent Color) instead of a different hex per
+   destination — reversed 2026-08-31 per the owner's own request to
+   calm the app down from "every tab always lit in its own color" to a
+   single consistent accent. A tab is now plain neutral text at rest —
+   no color, no glow — and only turns on (tinted background + text glow
+   + ring) on hover or once it's the current page, so the nav reads as
+   one calm bar with a single clear "you are here" rather than a
+   permanently-lit rainbow strip. Structural classes (padding,
+   rounding, flex layout) stay on each caller's own className; this is
+   color only, and wins over any leftover text-black/60-style utility a
    caller still has (unlayered custom CSS beats Tailwind's layered
    utilities regardless of source order, so no need to strip those). */
 .neon-navlink {
-  color: var(--nav-color);
-  text-shadow: 0 0 6px color-mix(in srgb, var(--nav-color) 55%, transparent);
+  color: var(--wl-text-secondary);
   transition:
     color 0.2s ease,
     background-color 0.2s ease,
@@ -196,12 +198,14 @@ body::before {
     text-shadow 0.2s ease;
 }
 .neon-navlink:hover {
+  color: var(--nav-color);
   text-shadow:
     0 0 3px color-mix(in srgb, var(--nav-color) 90%, transparent),
     0 0 10px color-mix(in srgb, var(--nav-color) 70%, transparent);
   background-color: color-mix(in srgb, var(--nav-color) 8%, transparent);
 }
 .neon-navlink[aria-current="page"] {
+  color: var(--nav-color);
   background-color: color-mix(in srgb, var(--nav-color) 16%, transparent);
   text-shadow:
     0 0 4px color-mix(in srgb, var(--nav-color) 95%, transparent),

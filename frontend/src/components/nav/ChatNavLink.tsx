@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUnreadChatCount } from "@/lib/useUnreadChatCount";
 import { isSectionActive } from "@/components/nav/NavLink";
 import { ChatIcon } from "@/components/nav/icons";
-import { DESTINATIONS } from "@/lib/navDestinations";
+import { NAV_ACCENT } from "@/lib/navDestinations";
 
 // Chat needs its own real unread count (client-fetched — see
 // useUnreadChatCount's own comment on why), so unlike every other
@@ -13,7 +13,7 @@ import { DESTINATIONS } from "@/lib/navDestinations";
 // component covers both the desktop text-link style and the mobile
 // icon+label+badge stack rather than duplicating the fetch/active-
 // state logic across two near-identical files.
-const CHAT_COLOR = DESTINATIONS.chat.color;
+const CHAT_COLOR = NAV_ACCENT;
 
 export function ChatNavLink({ variant }: { variant: "primary" | "bottom" }) {
   const pathname = usePathname();

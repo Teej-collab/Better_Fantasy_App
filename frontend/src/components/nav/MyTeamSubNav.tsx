@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { DESTINATIONS, DESTINATION_HREF, MY_TEAM_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
+import {
+  DESTINATIONS,
+  DESTINATION_HREF,
+  MY_TEAM_SUBNAV_ORDER,
+  NAV_ACCENT,
+  type DestinationKey,
+} from "@/lib/navDestinations";
 
 export type MyTeamTab = "team" | "draft" | "keepers" | "freeAgents";
 
@@ -39,7 +45,7 @@ export function MyTeamSubNav({ active }: { active: MyTeamTab }) {
           href={tab.href}
           aria-current={tab.key === active ? "page" : undefined}
           className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-          style={{ ["--nav-color" as string]: DESTINATIONS[tab.key].color }}
+          style={{ ["--nav-color" as string]: NAV_ACCENT }}
         >
           {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
         </Link>

@@ -116,6 +116,25 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   draft: "/draft",
 };
 
+// The app's one accent color, everywhere something used to instead pick
+// a different hardcoded hex per destination/section. Nav chrome
+// (PrimaryNav, BottomNav, LeagueSubNav, MyTeamSubNav, ChatNavLink)
+// resolves --nav-color to this — the active/hovered tab reads in the
+// owner's own chosen accent (Settings > Appearance > Accent Color),
+// with every other tab neutral at rest (see .neon-navlink in
+// globals.css) — and lib/sectionColors.ts's SECTION_COLORS resolves
+// every section's --panel-glow to this same value, so a page's panels
+// and the homepage's section-dot markers agree with the nav bar rather
+// than each carrying its own persistent color. Reversal of this file's
+// original "every destination always lit in its own color" design, per
+// the owner's 2026-08-31 request to calm the app down to one consistent
+// accent instead of a rainbow. DESTINATIONS[key].color itself is left
+// untouched (still used by components/settings/NavigationSection.tsx's
+// bottom-nav reorder list, where telling items apart while dragging is
+// genuinely useful) — only the app's live chrome/panels stopped reading
+// it.
+export const NAV_ACCENT = "var(--user-accent, var(--wl-accent))";
+
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
 
 // The mobile bottom bar's 5 fixed slots (BottomNav.tsx) — this is the

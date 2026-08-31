@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { DESTINATIONS, DESTINATION_HREF, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
+import {
+  DESTINATIONS,
+  DESTINATION_HREF,
+  LEAGUE_SUBNAV_ORDER,
+  NAV_ACCENT,
+  type DestinationKey,
+} from "@/lib/navDestinations";
 
 export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers" | "freeAgents">;
 
@@ -47,7 +53,7 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
             href={tab.href}
             aria-current={tab.key === active ? "page" : undefined}
             className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-            style={{ ["--nav-color" as string]: DESTINATIONS[tab.key].color }}
+            style={{ ["--nav-color" as string]: NAV_ACCENT }}
           >
             {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
           </Link>

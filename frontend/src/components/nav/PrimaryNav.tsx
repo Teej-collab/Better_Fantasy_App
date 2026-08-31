@@ -1,19 +1,6 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
-import { DESTINATIONS } from "@/lib/navDestinations";
-
-// .neon-navlink (globals.css) always renders each tab in its own color,
-// like a lit neon sign, with the active tab reading as the brighter/
-// boxed one. Colors come from lib/navDestinations.ts — the one shared
-// source every nav surface reads from, so a destination can't render a
-// different color here than it does in BottomNav/LeagueSubNav/its own
-// page panel.
-const TAB_COLOR = {
-  team: DESTINATIONS.team.color,
-  league: DESTINATIONS.league.color,
-  home: DESTINATIONS.home.color,
-  matchups: DESTINATIONS.matchups.color,
-};
+import { NAV_ACCENT } from "@/lib/navDestinations";
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
 const INACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
@@ -55,17 +42,17 @@ export function PrimaryNav({
   return (
     <div className="hidden items-center gap-1 sm:flex">
       {signedIn && (
-        <NavLink href="/team" section="team" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.team}>
+        <NavLink href="/team" section="team" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
           <span className="flex flex-col items-start leading-none">
             My Team
             {myMatchupLive && <LiveMark />}
           </span>
         </NavLink>
       )}
-      <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.league}>
+      <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
         League
       </NavLink>
-      <NavLink href="/" section="home" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={TAB_COLOR.home}>
+      <NavLink href="/" section="home" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
         Home
       </NavLink>
       <NavLink
@@ -73,7 +60,7 @@ export function PrimaryNav({
         section="matchups"
         activeClassName={ACTIVE}
         inactiveClassName={INACTIVE}
-        color={TAB_COLOR.matchups}
+        color={NAV_ACCENT}
       >
         <span className="flex flex-col items-start leading-none">
           Matchups

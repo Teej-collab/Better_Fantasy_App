@@ -3,16 +3,17 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { awardsHrefFor, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
-import { DESTINATIONS } from "@/lib/navDestinations";
+import { NAV_ACCENT } from "@/lib/navDestinations";
 
 export const metadata: Metadata = { title: "Rules — Weekend League" };
 
-// Matches the "rules" entry in lib/navDestinations.ts (the shared color
-// source every nav surface and content panel now reads from) — every
-// rule card below reuses that same accent so this page reads as part
-// of the same design system, not a one-off.
-const ACCENT_DOT = "bg-lime-500";
-const ACCENT_GLOW = DESTINATIONS.rules.color;
+// The app's single accent (lib/navDestinations.ts's NAV_ACCENT — same
+// value the nav bar and every other content panel now read) — every
+// rule card below reuses this so this page reads as part of the same
+// design system, not a one-off. Used to be a page-specific hardcoded
+// lime; collapsed onto the shared accent 2026-08-31 along with the
+// nav/panel redesign.
+const ACCENT_GLOW = NAV_ACCENT;
 
 type RuleLink = { id: string; emoji: string; title: string };
 
@@ -210,7 +211,8 @@ export default async function RulesPage() {
         </Callout>
         <Link
           href="/chug"
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-lime-600 hover:underline dark:text-lime-400"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium hover:underline"
+          style={{ color: ACCENT_GLOW }}
         >
           → View the live Chug Leaderboard
         </Link>
@@ -243,7 +245,8 @@ export default async function RulesPage() {
         <p>The league thrives on storytelling and participation.</p>
         <Link
           href="/chat"
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-lime-600 hover:underline dark:text-lime-400"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium hover:underline"
+          style={{ color: ACCENT_GLOW }}
         >
           → Post it in League Chat
         </Link>
@@ -386,7 +389,11 @@ function RuleSection({
       style={{ ["--panel-glow" as string]: ACCENT_GLOW }}
     >
       <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${ACCENT_DOT}`} style={{ boxShadow: `0 0 6px ${ACCENT_GLOW}` }} aria-hidden />
+        <span
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: ACCENT_GLOW, boxShadow: `0 0 6px ${ACCENT_GLOW}` }}
+          aria-hidden
+        />
         <span aria-hidden>{emoji}</span>
         {title}
       </h2>
@@ -429,12 +436,12 @@ function PayoutTile({ emoji, label, value }: { emoji: string; label: string; val
 
 // A callout for the "this has teeth" lines — deadline consequences,
 // commissioner-discretion warnings — set apart from ordinary body text
-// with the same lime accent as everything else on this page.
+// with the same accent as everything else on this page.
 function Callout({ children }: { children: ReactNode }) {
   return (
     <div
-      className="rounded-lg border-l-2 bg-lime-500/5 px-3 py-2 text-sm text-black/70 dark:text-white/70"
-      style={{ borderColor: ACCENT_GLOW }}
+      className="rounded-lg border-l-2 px-3 py-2 text-sm text-black/70 dark:text-white/70"
+      style={{ borderColor: ACCENT_GLOW, backgroundColor: `color-mix(in srgb, ${ACCENT_GLOW} 5%, transparent)` }}
     >
       {children}
     </div>
@@ -448,8 +455,12 @@ function Callout({ children }: { children: ReactNode }) {
 function Manifesto({ children }: { children: ReactNode }) {
   return (
     <blockquote
-      className="rounded-xl border border-lime-500/20 bg-lime-500/[0.04] p-5 text-center text-sm text-balance text-black/70 italic dark:text-white/80"
-      style={{ textShadow: `0 0 18px color-mix(in srgb, ${ACCENT_GLOW} 25%, transparent)` }}
+      className="rounded-xl border p-5 text-center text-sm text-balance text-black/70 italic dark:text-white/80"
+      style={{
+        borderColor: `color-mix(in srgb, ${ACCENT_GLOW} 20%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${ACCENT_GLOW} 4%, transparent)`,
+        textShadow: `0 0 18px color-mix(in srgb, ${ACCENT_GLOW} 25%, transparent)`,
+      }}
     >
       {children}
     </blockquote>

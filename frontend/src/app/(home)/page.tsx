@@ -34,7 +34,13 @@ import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
-import { DESTINATION_HREF, DESTINATIONS, LEAGUE_SUBNAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
+import {
+  DESTINATION_HREF,
+  DESTINATIONS,
+  LEAGUE_SUBNAV_ORDER,
+  NAV_ACCENT,
+  type DestinationKey,
+} from "@/lib/navDestinations";
 
 // The homepage's six reorderable dashboard cards, in the app's own
 // default order — same set backend/app/routers/settings.py validates
@@ -213,7 +219,7 @@ export default async function HomePage() {
   if (standings.length > 0 && !hiddenCards.has("standings")) {
     cards.standings = (
       <section className="flex flex-col gap-2">
-        <SectionHeader color="standings" title="League Standings" href="/standings" />
+        <SectionHeader title="League Standings" href="/standings" />
         <ol
           className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
           style={panelGlowStyle(SECTION_COLORS.standings)}
@@ -239,7 +245,6 @@ export default async function HomePage() {
     cards.matchups = (
       <section className="flex flex-col gap-2">
         <SectionHeader
-          color="matchups"
           title="Other Matchups"
           href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
         />
@@ -281,7 +286,7 @@ export default async function HomePage() {
   if ((rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && !hiddenCards.has("rivalries")) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
-        <SectionHeader color="rivalries" title="Rivalries" href="/rivalries" />
+        <SectionHeader title="Rivalries" href="/rivalries" />
         {rivalryGamesThisWeek.length > 0 ? (
           <ul
             className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
@@ -329,7 +334,7 @@ export default async function HomePage() {
   if (weekPlayed && weeklyAwards && season !== null && week !== null && !hiddenCards.has("awards")) {
     cards.awards = (
       <section className="flex flex-col gap-2">
-        <SectionHeader color="awards" title="This Week's Awards" href={`/seasons/${season}/awards`} />
+        <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
         <AwardsPreview awards={weeklyAwards} />
       </section>
     );
@@ -647,17 +652,20 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   );
 }
 
-function SectionHeader({ color, title, href }: { color: DestinationKey; title: string; href: string }) {
-  const hex = DESTINATIONS[color].color;
+function SectionHeader({ title, href }: { title: string; href: string }) {
   return (
     <Link href={href} className="flex items-center gap-2 hover:underline">
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 6px ${hex}` }} aria-hidden />
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: NAV_ACCENT, boxShadow: `0 0 6px ${NAV_ACCENT}` }}
+        aria-hidden
+      />
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</h2>
     </Link>
   );
 }
 
-type DiscoveryTile = { color: DestinationKey; href: string; label: string; description: string };
+type DiscoveryTile = { href: string; label: string; description: string };
 
 // One line of custom copy per tile — the one thing LEAGUE_SUBNAV_ORDER
 // itself doesn't carry (a pill label is enough context in a nav row;
@@ -691,7 +699,6 @@ const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards"]);
 
 function DiscoveryGrid() {
   const tiles: DiscoveryTile[] = LEAGUE_SUBNAV_ORDER.filter((key) => !DISCOVER_EXCLUDED.has(key)).map((key) => ({
-    color: key,
     href: DESTINATION_HREF[key]!,
     label: DESTINATIONS[key].label,
     description: DISCOVER_DESCRIPTIONS[key] ?? DESTINATIONS[key].label,
@@ -727,16 +734,19 @@ function DiscoveryGrid() {
   );
 }
 
-function DiscoveryTileCard({ color, href, label, description }: DiscoveryTile) {
-  const hex = DESTINATIONS[color].color;
+function DiscoveryTileCard({ href, label, description }: DiscoveryTile) {
   return (
     <Link
       href={href}
       className="neon-panel flex flex-col gap-0.5 rounded-lg bg-black/[0.015] p-3 transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:bg-white/[0.03] dark:hover:bg-white/5 dark:active:bg-white/10"
-      style={panelGlowStyle(SECTION_COLORS[color])}
+      style={panelGlowStyle(NAV_ACCENT)}
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: hex, boxShadow: `0 0 5px ${hex}` }} aria-hidden />
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: NAV_ACCENT, boxShadow: `0 0 5px ${NAV_ACCENT}` }}
+          aria-hidden
+        />
         {label}
       </span>
       <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>

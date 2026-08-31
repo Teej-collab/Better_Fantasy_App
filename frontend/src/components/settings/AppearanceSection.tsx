@@ -188,8 +188,9 @@ export function AppearanceSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Accent Color</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            The glow color for boxes that aren&apos;t already tied to a league section (Standings, Rivalries, and
-            so on keep their own color regardless of this choice).
+            Colors the nav bar&apos;s current tab everywhere in the app, plus the glow on boxes that aren&apos;t
+            already tied to a league section (Standings, Rivalries, and so on keep their own color regardless of
+            this choice).
           </p>
         </div>
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Accent Color">

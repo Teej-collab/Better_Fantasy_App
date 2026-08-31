@@ -1,7 +1,7 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
-import { DESTINATIONS, MOBILE_NAV_ORDER, type DestinationKey } from "@/lib/navDestinations";
+import { MOBILE_NAV_ORDER, NAV_ACCENT, type DestinationKey } from "@/lib/navDestinations";
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
@@ -63,7 +63,7 @@ export function BottomNav({
                   section="team"
                   activeClassName={ACTIVE_ITEM}
                   inactiveClassName={INACTIVE_ITEM}
-                  color={DESTINATIONS.team.color}
+                  color={NAV_ACCENT}
                 >
                   <TeamIcon className="h-6 w-6" />
                   My Team
@@ -78,7 +78,7 @@ export function BottomNav({
                 section="league"
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
-                color={DESTINATIONS.league.color}
+                color={NAV_ACCENT}
               >
                 <LeagueIcon className="h-6 w-6" />
                 League
@@ -92,7 +92,7 @@ export function BottomNav({
                 section="home"
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
-                color={DESTINATIONS.home.color}
+                color={NAV_ACCENT}
               >
                 <HomeIcon className="h-6 w-6" />
                 Home
@@ -106,7 +106,7 @@ export function BottomNav({
                 section="matchups"
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
-                color={DESTINATIONS.matchups.color}
+                color={NAV_ACCENT}
               >
                 <MatchupsIcon className="h-6 w-6" />
                 Matchups
