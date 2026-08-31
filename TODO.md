@@ -1891,7 +1891,9 @@ build/lint/test/curl verification, not visual inspection.
       keeps every new row landing on League #1 automatically until
       Phase 4 threads it through for real and that default comes out.
       Column-only, non-breaking — no application code changed in this
-      phase.
+      phase. Applied to production; every non-empty table backfilled
+      to exactly one distinct `league_id` (verified by direct
+      introspection), full 464-test backend suite green afterward.
 - [ ] Phase 4 — thread `league_id` through the ~30 domain modules /
       ~19 routers that currently assume one global league
 - [ ] Phase 5 — self-serve signup (email+password alongside Discord) +
