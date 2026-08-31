@@ -1919,64 +1919,146 @@ build/lint/test/curl verification, not visual inspection.
       noted in `queries/league.py`'s module docstring as a known
       follow-up rather than faked. Every edited file compiled clean;
       full 464-test backend suite green with zero regressions.
-- [ ] Phase 5 — self-serve signup (email+password alongside Discord) +
-      create/join-league flow
+- [x] **Phase 5 — self-serve signup + create/join-league + create-a-
+      team, Aug 31 2026.** Owner asked to push through the remaining
+      phases autonomously while stepping away. Scoped down first (see
+      the owner's own call, same day): email/password signup only,
+      deferring "create a functional league" until it was clear what
+      that actually required.
+      - **Email/password accounts** — a second, independent way to get
+        a real Weekend account alongside Discord, not a replacement.
+        New `users.password_hash`/`users.display_name` columns
+        (migration `1149bed021a5` — nullable, Discord-only accounts
+        untouched). `POST /auth/signup`/`POST /auth/login`
+        (bcrypt-hashed, generic "invalid email or password" on every
+        failure mode so a login attempt never reveals whether an
+        account exists or just has no password set). `create_session_
+        token`'s owner_id/discord_user_id/is_commissioner all became
+        optional — a self-serve account has no League #1 link at all
+        until it creates or joins one. `GET /auth/me` falls back to
+        `users.display_name` when there's no linked owner. Known,
+        accepted limitation: no account linking/merging yet — an
+        existing Discord user who signs up again with their real email
+        gets a genuinely separate account. AuthScreen.tsx gained an
+        email/password form (Sign in/Create account toggle) alongside
+        the existing Discord button, reusing the same `/auth/complete/
+        set-cookie` route the Discord flow already used to finish
+        signing in.
+      - **Create/join a league** — `POST /leagues` (creator becomes
+        commissioner, gets a real invite code), `POST /leagues/join`
+        (via invite code), `GET /leagues/mine`. Built on the
+        `create_league`/`add_member` query functions Phase 2 already
+        wrote for the League #1 backfill.
+      - **Create a team, the piece that actually unlocks a new
+        league** — `POST /leagues/{id}/teams`. Real finding along the
+        way: `owners` never needed a shape change after all (the
+        "later phase" flagged in Phase 3/4's own comments) — it's
+        already just a global real-person registry
+        (display_name/user_id/discord_user_id), and `teams_by_season.
+        owner_id` referencing it works fine for a person who has teams
+        in more than one league, same owner_id, different league_id.
+        The real gap was narrower: there was no way to create a
+        `teams_by_season` row *without* an ESPN sync. New
+        `get_or_create_owner_for_user` (an owner row for a self-serve
+        user who's never had one) + `create_team`, which needs a
+        placeholder `espn_team_id` (that column is `NOT NULL`,
+        ESPN-shaped) — solved with a new Postgres sequence
+        (`synthetic_espn_team_id_seq`, migration `1595f790df89`,
+        starting at 1,000,000, far above any real ESPN id) rather than
+        touching that column's meaning.
+      - New `/leagues` page (list your leagues + invite codes, create/
+        join forms, create-your-team). Deliberately NOT wired into the
+        rest of the app yet — standings/matchups/draft/etc. still all
+        implicitly show League #1; making every page league-aware is
+        its own, much larger frontend project, tracked below rather
+        than rushed.
+      - 6 new signup/login tests, 6 new league/team tests. Full backend
+        suite green.
+- [x] **Critical follow-on, same day — widened ~11 UNIQUE/PRIMARY KEY
+      constraints that were still season-only.** Discovered while
+      wiring up default scoring-rules seeding for a new league:
+      `league_scoring_rules` is `UNIQUE (season, stat_category)` — no
+      `league_id` — so a second league's own rule for `pass_td` in
+      2026 collided outright with League #1's. Checked every Phase 3
+      table for the same gap and found it was much bigger than that
+      one case: `draft_config`'s PRIMARY KEY was `(season)` **alone**
+      — literally only one draft could ever exist per season, across
+      every league, full stop. Same shape of bug on
+      `league_keeper_rules` (PK), `season_champions` (PK),
+      `draft_picks`, `season_awards`, `keeper_selections`,
+      `current_rosters` (two separate constraints), `player_week_
+      stats`, and four `chug_*` tables — all still keyed by columns
+      that are either just `season`, or a value like `owner_id`/
+      `sleeper_player_id`/`stat_category` that's shared across leagues
+      by nature (a real person, a real NFL player, a fixed vocabulary
+      word), not scoped by league at all.
+
+      This is what migration `454d8edda612`'s own docstring had
+      already flagged and deliberately deferred ("a correctness change
+      belonging to Phase 4, not this column-only one") — Phase 4
+      threaded `league_id` through every query but never came back to
+      actually widen the constraints underneath them. Fixed in
+      migration `130f4acc3a50`: each constraint dropped and re-added
+      with `league_id` included (safe and non-breaking — every
+      existing row is already `league_id = 1`, so widening only
+      permits combinations that couldn't exist before). Every
+      `ON CONFLICT` clause targeting one of these tables updated to
+      match its widened constraint (`app/providers/espn/adapter.py`,
+      `app/queries/keepers.py`, `app/domain/season_awards.py` ×2,
+      `app/domain/weekly_stats.py`, `app/domain/chug_debt.py`,
+      `app/domain/chug_standing.py` ×2) — an unmatched `ON CONFLICT`
+      column list throws immediately at runtime, so this had to be
+      exhaustive, not partial.
+
+      Deliberately did NOT widen `matchups`, `weekly_team_stats`, or
+      `final_standings` — those are already unique on `home_team_id`/
+      `away_team_id`/`team_id`, which are `teams_by_season.id` values,
+      already implicitly one-league-only (a team can only ever belong
+      to one league) — no real collision risk, widening them would
+      just be unnecessary migration surface.
+
+      **This supersedes the earlier "split player_week_stats into two
+      tables" Phase 7 plan below** — widening its constraint to
+      include `league_id` gets the identical correctness outcome (two
+      leagues, two independent `fantasy_points` rows for the same
+      real player/week) without a new table, a dual-write period, or
+      migrating three reader call sites. The accepted trade-off, not
+      solved: a league's weekly compute still does its own real ESPN/
+      NFL network fetch even if another league already fetched the
+      same games this week — a real but small inefficiency at this
+      app's actual scale, not a correctness problem.
+
+      New `tests/test_multi_league_isolation.py` — proves the exact
+      collision scenarios directly: two leagues each rostering the
+      same real player, each with a `pick_number = 1`, each with their
+      own `pass_td` value for the same season. Full backend suite
+      green.
 - [ ] Phase 6 — per-league ESPN connection (Settings → Connected
-      Accounts), replacing the global `ESPN_LEAGUE_ID` env var
-- [ ] **Phase 7 — split `player_week_stats` into global raw stats +
-      per-league computed scores.** Scoped Aug 31 2026, in response to
-      the owner asking how commissioners will eventually get their own
-      scoring rules. Turns out most of that is already structurally
-      real: `league_scoring_rules` (season, stat_category,
-      points_per_unit) already carries `league_id` as of Phase 3, and
-      `scoring_engine.py::compute_player_points` already takes a
-      `rules` dict as a pure input with no hardcoded league assumption
-      — two leagues genuinely can already run different scoring
-      formulas. The one real blocker, flagged in both the Phase 3 and
-      Phase 4 migration comments rather than solved there: `player_week_
-      stats` stores the real NFL box score (`raw_stats`) AND the
-      computed result (`fantasy_points`) in the SAME row, unique only
-      on `(season, week, sleeper_player_id)` — no `league_id`. Two
-      leagues with different rules can't each get their own
-      `fantasy_points` for the same player/week under that shape; the
-      second league's weekly compute would silently overwrite the
-      first's.
-
-      The fix is a split, not a widened constraint — `raw_stats` is a
-      real, league-agnostic fact (a player's actual box score doesn't
-      change depending who's asking), so it stays global; only the
-      computed side needs to become per-league:
-      - New table `league_player_week_scores` (league_id, season,
-        week, sleeper_player_id, fantasy_points, computed_at), unique
-        on (league_id, season, week, sleeper_player_id). Backfilling it
-        for League #1 is a trivial copy — every existing
-        `player_week_stats.fantasy_points` row already IS League #1's
-        answer.
-      - `app/domain/weekly_stats.py`'s `_upsert_player_week_stat` writes
-        to both the new table (real) and the legacy
-        `player_week_stats.fantasy_points` column (kept, unchanged) for
-        one transition period — a dual-write, not a hard cutover.
-      - Every reader of `player_week_stats.fantasy_points` moves to the
-        new table one at a time, verified individually:
-        `app/domain/matchup_scoring.py`'s `compute_team_score`,
-        `app/domain/player_card.py`'s `latest_week`, and
-        `app/domain/lineup_engine.py`'s `_ROSTER_ENTRY_WITH_SCORE_SQL`
-        join are the three real call sites today.
-      - Only once every reader is confirmed migrated: drop the
-        dual-write and drop the `fantasy_points` column from
-        `player_week_stats` itself, which becomes purely a raw-stats
-        table at that point — not before, so nothing reads a stale or
-        missing value mid-migration.
-
-      Not started — this is a scope writeup, not a migration yet.
-- [ ] **Commissioner scoring-rules UI**, once Phase 7 lands — a
-      `PUT /league/scoring-rules` endpoint (commissioner-only, same
-      shape as the existing `/keepers/rules` pattern) to edit
-      `points_per_unit` per stat category, plus default rules seeded
-      automatically whenever Phase 5's "create a league" flow creates a
-      new one. Roster shape needs no new work here — `draft_config.
-      roster_slots` is already commissioner-set per league today via
-      the existing `DraftSetupPanel.tsx` / `POST /draft/setup`.
+      Accounts), replacing the global `ESPN_LEAGUE_ID` env var — lower
+      priority than it looked: a brand-new self-serve league no longer
+      needs ESPN at all (Phase 5's create-a-team flow above), so this
+      only matters for someone wanting to import a *different* real
+      ESPN league specifically.
+- [ ] **Commissioner scoring-rules UI** — a `PUT /league/scoring-rules`
+      endpoint (commissioner-only, same shape as the existing
+      `/keepers/rules` pattern) to edit `points_per_unit` per stat
+      category. Default rules are already seeded automatically at
+      league-creation time (`seed_default_scoring_rules`, copied from
+      League #1's real values) — this is just the editing surface on
+      top. Roster shape needs no new work — `draft_config.roster_slots`
+      is already commissioner-set per league via the existing
+      `DraftSetupPanel.tsx` / `POST /draft/setup`.
+- [ ] **Make the rest of the frontend league-aware.** Everything
+      outside the new `/leagues` page (standings, matchups, draft, My
+      Team, chat, chug, awards, power rankings — effectively the whole
+      app) still implicitly shows League #1 only; every API call
+      defaults `league_id` server-side rather than the frontend ever
+      choosing one. A real second league needs a selected-league
+      concept threaded through the frontend (a switcher, most likely
+      persisted per-visitor) and every existing page/API call updated
+      to pass it — a genuinely large, separate frontend initiative,
+      deliberately not attempted in the same pass as the backend work
+      above.
 
 ## PHASE 10 — ADDITIONAL PROVIDERS
 - [ ] Yahoo / Sleeper adapters, only after ESPN adapter is stable

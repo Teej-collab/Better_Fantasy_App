@@ -34,17 +34,19 @@ async def _upsert_player_week_stat(
     conn, season: int, week: int, sleeper_player_id: str, stat_line: dict, points: float,
     league_id: int = DEFAULT_LEAGUE_ID,
 ) -> None:
-    # ON CONFLICT is still keyed by (season, week, sleeper_player_id)
-    # only, not league_id (see migration 454d8edda612's docstring) — a
-    # second league with different league_scoring_rules would silently
-    # overwrite this row's fantasy_points rather than getting its own.
-    # Not a bug introduced here; a pre-existing gap this phase only
-    # threads league_id far enough to document, not to close.
+    # ON CONFLICT is keyed by (season, week, sleeper_player_id,
+    # league_id) — widened in migration 130f4acc3a50, which closed the
+    # gap flagged when league_id was first threaded through here
+    # (454d8edda612's docstring): two leagues with different
+    # league_scoring_rules now each get their own fantasy_points row
+    # for the same real player/week, computed under their own rules,
+    # instead of the second league's compute silently overwriting the
+    # first's.
     await conn.execute(
         """
         INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, computed_at, league_id)
         VALUES ($1, $2, $3, $4, $5, now(), $6)
-        ON CONFLICT (season, week, sleeper_player_id) DO UPDATE SET
+        ON CONFLICT (season, week, sleeper_player_id, league_id) DO UPDATE SET
             raw_stats = EXCLUDED.raw_stats,
             fantasy_points = EXCLUDED.fantasy_points,
             computed_at = now()

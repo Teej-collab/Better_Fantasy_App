@@ -24,8 +24,15 @@ TICKET_MAX_AGE_SECONDS = 60
 
 
 def create_session_token(
-    secret: str, *, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool
+    secret: str, *, user_id: int, owner_id: int | None = None, discord_user_id: int | None = None,
+    is_commissioner: bool = False,
 ) -> str:
+    """owner_id/discord_user_id/is_commissioner are all optional now
+    (Phase 5 of the multi-league migration — see TODO.md's PHASE 9
+    entry): they describe this account's link to League #1 specifically
+    (owners.discord_user_id, the commissioner flag), which a self-serve
+    email/password signup has none of yet — user_id is the only thing
+    every real Weekend account actually has."""
     payload = {
         "user_id": user_id,
         "owner_id": owner_id,

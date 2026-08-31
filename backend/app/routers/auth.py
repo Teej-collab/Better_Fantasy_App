@@ -9,9 +9,11 @@ import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from app.auth import discord_oauth
 from app.auth.config import DiscordAuthConfig, SessionConfig
+from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.session import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
@@ -118,15 +120,111 @@ async def me(request: Request):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        owner = await conn.fetchrow(
-            "SELECT display_name FROM owners WHERE owner_id = $1", payload["owner_id"]
-        )
+        display_name = None
+        if payload.get("owner_id") is not None:
+            owner = await conn.fetchrow(
+                "SELECT display_name FROM owners WHERE owner_id = $1", payload["owner_id"]
+            )
+            display_name = owner["display_name"] if owner else None
+        if display_name is None:
+            # Either a password account (no owner link at all yet), or
+            # a Discord account whose owner row somehow has no name —
+            # users.display_name is the account's own name, independent
+            # of any league membership (see migration 1149bed021a5).
+            user = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
+            display_name = user["display_name"] if user else None
 
     return {
         "owner_id": payload["owner_id"],
-        "display_name": owner["display_name"] if owner else None,
+        "display_name": display_name,
         "is_commissioner": payload["is_commissioner"],
     }
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/signup")
+async def signup(body: SignupRequest, response: Response):
+    """A second, independent way to get a real Weekend account,
+    alongside Discord — not a replacement for it (Phase 5 of the
+    multi-league migration, see TODO.md's PHASE 9 entry). Deliberately
+    does not create or link an owners row: this account has no league
+    yet, the same way a brand-new Discord-linked owner did before their
+    first login — that only happens once they create or join a league
+    (a later phase). Known limitation, not solved here: an existing
+    Discord user who signs up again with their real-life email gets a
+    genuinely separate account (no automatic linking/merging yet)."""
+    email = _normalize_email(body.email)
+    if "@" not in email or len(email) < 5:
+        raise HTTPException(status_code=400, detail="Enter a valid email address")
+    if len(body.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    display_name = body.display_name.strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="Enter a display name")
+
+    config = SessionConfig()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await auth_queries.get_user_by_email(conn, email)
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="An account with that email already exists")
+        user_id = await auth_queries.create_user_with_password(conn, email, hash_password(body.password), display_name)
+
+    # No owner_id/discord_user_id/is_commissioner — this account has no
+    # League #1 link at all (see docstring above).
+    token = create_session_token(config.session_secret, user_id=user_id)
+    # Same-domain cookie for direct browser->backend calls (chat WS,
+    # chug upload) — the frontend still needs its own first-party copy,
+    # handed the returned token the same way the Discord flow's
+    # /auth/complete page does (see that page's own docstring).
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token,
+        httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
+        samesite=config.cookie_samesite, secure=config.cookie_secure,
+    )
+    return {"token": token}
+
+
+@router.post("/login")
+async def login(body: LoginRequest, response: Response):
+    email = _normalize_email(body.email)
+    config = SessionConfig()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user = await auth_queries.get_user_by_email(conn, email)
+
+    # One generic error for "no such account," "this account has no
+    # password set (Discord-only)," and "wrong password" — never lets a
+    # login attempt reveal which of those it was, matching this app's
+    # existing account-enumeration posture on the Discord side (a
+    # non-member gets the same denial regardless of why).
+    invalid = HTTPException(status_code=401, detail="Invalid email or password")
+    if user is None or user["password_hash"] is None:
+        raise invalid
+    if not verify_password(body.password, user["password_hash"]):
+        raise invalid
+
+    token = create_session_token(config.session_secret, user_id=user["id"])
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token,
+        httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
+        samesite=config.cookie_samesite, secure=config.cookie_secure,
+    )
+    return {"token": token}
 
 
 TICKET_PURPOSES = {"ws", "chug_upload"}

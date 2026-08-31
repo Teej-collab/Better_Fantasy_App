@@ -46,7 +46,7 @@ async def upsert_rules(
         """
         INSERT INTO league_keeper_rules (season, max_keepers, max_consecutive_years, keeper_deadline, league_id)
         VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (season) DO UPDATE SET
+        ON CONFLICT (season, league_id) DO UPDATE SET
             max_keepers = EXCLUDED.max_keepers,
             max_consecutive_years = EXCLUDED.max_consecutive_years,
             keeper_deadline = EXCLUDED.keeper_deadline

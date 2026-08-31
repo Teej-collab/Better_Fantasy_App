@@ -18,6 +18,7 @@ from app.routers import (
     gamecast,
     keepers,
     league,
+    leagues,
     me,
     nfl,
     players,
@@ -61,6 +62,7 @@ app.include_router(game_day.router)
 app.include_router(gamecast.router)
 app.include_router(keepers.router)
 app.include_router(league.router)
+app.include_router(leagues.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(players.router)

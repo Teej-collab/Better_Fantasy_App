@@ -47,7 +47,7 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
             """
             INSERT INTO chug_debts (season, week, owner_id, chugs_owed, league_id)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (season, week, owner_id) DO UPDATE SET chugs_owed = EXCLUDED.chugs_owed
+            ON CONFLICT (season, week, owner_id, league_id) DO UPDATE SET chugs_owed = EXCLUDED.chugs_owed
             """,
             season, week, t["owner_id"], chugs_owed, league_id,
         )

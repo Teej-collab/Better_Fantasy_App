@@ -63,7 +63,7 @@ async def accrue_weekly_debt(conn, season: int, week: int, league_id: int = DEFA
             """
             INSERT INTO chug_standing (season, owner_id, outstanding_owed, league_id)
             VALUES ($1, $2, GREATEST($3, 0), $4)
-            ON CONFLICT (season, owner_id) DO UPDATE SET
+            ON CONFLICT (season, owner_id, league_id) DO UPDATE SET
                 outstanding_owed = GREATEST(chug_standing.outstanding_owed + $3, 0),
                 updated_at = now()
             """,
@@ -73,7 +73,7 @@ async def accrue_weekly_debt(conn, season: int, week: int, league_id: int = DEFA
             """
             INSERT INTO chug_debt_accruals (season, week, owner_id, applied_amount, league_id)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (season, week, owner_id) DO UPDATE SET applied_amount = EXCLUDED.applied_amount
+            ON CONFLICT (season, week, owner_id, league_id) DO UPDATE SET applied_amount = EXCLUDED.applied_amount
             """,
             season, week, owner_id, chugs_owed, league_id,
         )

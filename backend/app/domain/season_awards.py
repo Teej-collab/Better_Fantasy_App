@@ -293,7 +293,7 @@ async def determine_and_save_season_awards(conn, season: int, league_id: int = D
             """
             INSERT INTO season_awards (season, owner_id, award_type, detail, league_id)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (season, award_type) DO UPDATE SET owner_id = EXCLUDED.owner_id, detail = EXCLUDED.detail
+            ON CONFLICT (season, award_type, league_id) DO UPDATE SET owner_id = EXCLUDED.owner_id, detail = EXCLUDED.detail
             """,
             season, owner_id, award_type, detail, league_id,
         )
@@ -320,7 +320,7 @@ async def compute_season_champion(conn, season: int, league_id: int = DEFAULT_LE
         """
         INSERT INTO season_champions (season, owner_id, team_name, league_id)
         VALUES ($1, $2, $3, $4)
-        ON CONFLICT (season) DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = EXCLUDED.team_name
+        ON CONFLICT (season, league_id) DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = EXCLUDED.team_name
         """,
         season, row["owner_id"], row["team_name"], league_id,
     )

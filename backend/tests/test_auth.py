@@ -241,6 +241,128 @@ async def test_ticket_mints_a_purpose_scoped_short_lived_token(pool, monkeypatch
     assert decode_ticket_token(secret, ticket, expected_purpose="chug_upload") is None
 
 
+async def test_signup_creates_account_and_session(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        resp = await client.post(
+            "/auth/signup",
+            json={"email": "test-signup-1@example.com", "password": "correct-horse", "display_name": "New Person"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "token" in body
+        assert "session" in resp.cookies
+
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 200
+        me_body = me_resp.json()
+        assert me_body["display_name"] == "New Person"
+        assert me_body["owner_id"] is None
+        assert me_body["is_commissioner"] is False
+
+
+async def test_signup_rejects_duplicate_email(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        first = await client.post(
+            "/auth/signup",
+            json={"email": "test-signup-dup@example.com", "password": "correct-horse", "display_name": "First"},
+        )
+        assert first.status_code == 200
+        second = await client.post(
+            "/auth/signup",
+            json={"email": "test-signup-dup@example.com", "password": "another-password", "display_name": "Second"},
+        )
+        assert second.status_code == 409
+
+
+async def test_signup_rejects_short_password(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        resp = await client.post(
+            "/auth/signup",
+            json={"email": "test-signup-short@example.com", "password": "short", "display_name": "Someone"},
+        )
+    assert resp.status_code == 400
+
+
+async def test_login_succeeds_with_correct_password(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-login-ok@example.com", "password": "correct-horse", "display_name": "Login Test"},
+        )
+        # Fresh client, no cookie carried over — a real second visit.
+        async with _client() as fresh_client:
+            resp = await fresh_client.post(
+                "/auth/login", json={"email": "test-login-ok@example.com", "password": "correct-horse"}
+            )
+            assert resp.status_code == 200
+            assert "token" in resp.json()
+
+            me_resp = await fresh_client.get("/auth/me")
+            assert me_resp.status_code == 200
+            assert me_resp.json()["display_name"] == "Login Test"
+
+
+async def test_login_rejects_wrong_password(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-login-wrong@example.com", "password": "correct-horse", "display_name": "Someone"},
+        )
+        resp = await client.post("/auth/login", json={"email": "test-login-wrong@example.com", "password": "nope"})
+    assert resp.status_code == 401
+
+
+async def test_login_rejects_unknown_email(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        resp = await client.post(
+            "/auth/login", json={"email": "test-login-nobody@example.com", "password": "whatever1"}
+        )
+    assert resp.status_code == 401
+
+
+async def test_login_rejects_discord_only_account_with_no_password(pool, monkeypatch):
+    """A Discord-linked user has no password_hash at all — a login
+    attempt with their (nonexistent) email/password should read as the
+    same generic denial as any other wrong credential, not a crash or a
+    different error that would reveal the account exists but has no
+    password."""
+    _set_discord_env(monkeypatch)
+    discord_id = 900000007
+    await _seed_owner_with_discord_id(pool, discord_id, "Discord Only User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "discordonly"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval("SELECT user_id FROM owners WHERE discord_user_id = $1", discord_id)
+        await conn.execute("UPDATE users SET email = $1 WHERE id = $2", "test-discord-only@example.com", user_id)
+
+    async with _client() as fresh_client:
+        resp = await fresh_client.post(
+            "/auth/login", json={"email": "test-discord-only@example.com", "password": "whatever1"}
+        )
+    assert resp.status_code == 401
+
+
 def _set_cookie_header(resp, cookie_name: str) -> str:
     for raw in resp.headers.get_list("set-cookie"):
         if raw.startswith(f"{cookie_name}="):

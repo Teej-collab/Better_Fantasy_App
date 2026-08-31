@@ -42,3 +42,24 @@ async def get_or_create_user_for_owner(
     if league_id is not None:
         await leagues_queries.add_member(conn, league_id, user_id, "member")
     return user_id
+
+
+async def get_user_by_email(conn, email: str):
+    return await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
+
+
+async def create_user_with_password(conn, email: str, password_hash: str, display_name: str) -> int:
+    """Phase 5 of the multi-league migration (see TODO.md's PHASE 9
+    entry) — a self-serve account with no owners row at all: nothing
+    to link yet, since this user hasn't created or joined a league.
+    Unlike get_or_create_user_for_owner, this never touches
+    league_members — that only happens once the account actually
+    creates or joins one (a later phase)."""
+    return await conn.fetchval(
+        """
+        INSERT INTO users (email, password_hash, display_name)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        email, password_hash, display_name,
+    )

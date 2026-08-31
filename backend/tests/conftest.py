@@ -161,6 +161,35 @@ async def cleanup_test_season(pool):
             # users DELETE below or it FK-violates.
             await conn.execute("DELETE FROM league_members WHERE user_id = ANY($1::int[])", linked_user_ids)
             await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", linked_user_ids)
+        # Leagues/teams a test created directly via POST /leagues or
+        # POST /leagues/{id}/teams (not the auto-enroll-into-League-#1
+        # path above). An owner created for a password-signup test user
+        # via get_or_create_owner_for_user has no espn_member_id at all
+        # (unlike a Discord test owner), so it's invisible to the
+        # 'test-%' pattern above — found instead via its linked test
+        # user's email. Must run after the teams_by_season cleanup
+        # above (which already removed any TEST_SEASON team, so nothing
+        # still references these owners) and before the users DELETE
+        # below (owners.user_id -> users.id). Tests are expected to
+        # name any league they create "Test League ..." for this to
+        # find it.
+        test_signup_owner_ids = [
+            r["owner_id"]
+            for r in await conn.fetch(
+                "SELECT o.owner_id FROM owners o JOIN users u ON u.id = o.user_id WHERE u.email LIKE 'test-%'"
+            )
+        ]
+        if test_signup_owner_ids:
+            await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
+        await conn.execute(
+            "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
+        # Phase 5 password-signup test users have no owners row at all
+        # (see app/queries/auth.py's create_user_with_password) — not
+        # covered by the owner-linked cleanup above, so cleaned up
+        # separately by email convention.
+        await conn.execute("DELETE FROM users WHERE email LIKE 'test-%'")
         # players has no season/owner column (it's a global Sleeper-sourced
         # reference table, not per-season) — test rows use a 'test-%'
         # sleeper_player_id prefix, same convention as owners.espn_member_id.

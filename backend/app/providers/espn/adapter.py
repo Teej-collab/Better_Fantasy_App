@@ -84,7 +84,7 @@ class ESPNProvider(FantasyProvider):
                     """
                     INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id)
                     VALUES ($1, $2, $3, $4, $5)
-                    ON CONFLICT (season, espn_team_id)
+                    ON CONFLICT (season, espn_team_id, league_id)
                     DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = CASE
                         WHEN teams_by_season.team_name_is_custom THEN teams_by_season.team_name
                         ELSE EXCLUDED.team_name

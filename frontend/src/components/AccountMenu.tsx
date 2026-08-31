@@ -78,6 +78,7 @@ export function AccountMenu({ me }: { me: Me }) {
 
   const items: { key: string; label: string; href?: string; onClick?: () => void; danger?: boolean }[] = [
     { key: "profile", label: "Profile", href: "/settings?section=profile" },
+    { key: "leagues", label: "Leagues", href: "/leagues" },
     { key: "settings", label: "Settings", href: "/settings" },
     { key: "notifications", label: "Notifications", href: "/settings?section=notifications" },
     { key: "logout", label: "Log Out", onClick: handleLogout, danger: true },
