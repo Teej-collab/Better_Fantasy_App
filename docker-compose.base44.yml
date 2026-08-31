@@ -25,8 +25,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Local infra credential — generated here, not a user secret.
-      DATABASE_URL: postgresql://bfa:bfa@db:5432/bfa
       # Derived from the preview hostname — NOT user secrets. The OAuth
       # callback must be publicly reachable (Discord redirects here),
       # and the backend redirects back to the frontend's public URL
