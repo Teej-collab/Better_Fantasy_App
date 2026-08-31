@@ -29,6 +29,9 @@ async def test_two_leagues_can_each_roster_the_same_real_player(pool):
             "test-iso-owner", "Iso Owner",
         )
         owner_id = await conn.fetchval("SELECT owner_id FROM owners WHERE espn_member_id = 'test-iso-owner'")
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position) VALUES ('test-iso-player', 'Iso Player', 'RB')"
+        )
         team_a = await conn.fetchval(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
             "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Team A', $3) RETURNING id",

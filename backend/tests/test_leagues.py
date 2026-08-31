@@ -9,13 +9,11 @@ def _client(base_url="http://test"):
     return AsyncClient(transport=ASGITransport(app=app), base_url=base_url)
 
 
-async def _signed_up_client(email: str, display_name: str = "Test Person"):
-    client = _client()
+async def _sign_up(client: AsyncClient, email: str, display_name: str = "Test Person"):
     resp = await client.post(
         "/auth/signup", json={"email": email, "password": "correct-horse", "display_name": display_name}
     )
     assert resp.status_code == 200
-    return client
 
 
 async def test_create_league_requires_session():
@@ -25,8 +23,9 @@ async def test_create_league_requires_session():
 
 
 async def test_create_league_makes_creator_commissioner(pool):
-    client = await _signed_up_client("test-leagues-create@example.com")
-    async with client:
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-create@example.com")
+
         resp = await client.post("/leagues", json={"name": "Test League Alpha"})
         assert resp.status_code == 200
         body = resp.json()
@@ -41,13 +40,13 @@ async def test_create_league_makes_creator_commissioner(pool):
 
 
 async def test_join_league_with_valid_invite_code(pool):
-    creator = await _signed_up_client("test-leagues-join-creator@example.com")
-    async with creator:
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-join-creator@example.com")
         created = await creator.post("/leagues", json={"name": "Test League Join Target"})
         invite_code = created.json()["invite_code"]
 
-    joiner = await _signed_up_client("test-leagues-join-joiner@example.com")
-    async with joiner:
+    async with _client() as joiner:
+        await _sign_up(joiner, "test-leagues-join-joiner@example.com")
         resp = await joiner.post("/leagues/join", json={"invite_code": invite_code})
         assert resp.status_code == 200
         body = resp.json()
@@ -56,28 +55,28 @@ async def test_join_league_with_valid_invite_code(pool):
 
 
 async def test_join_league_rejects_invalid_invite_code(pool):
-    client = await _signed_up_client("test-leagues-bad-code@example.com")
-    async with client:
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-bad-code@example.com")
         resp = await client.post("/leagues/join", json={"invite_code": "not-a-real-code"})
     assert resp.status_code == 404
 
 
 async def test_create_team_requires_membership(pool):
-    creator = await _signed_up_client("test-leagues-team-creator@example.com")
-    async with creator:
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-team-creator@example.com")
         created = await creator.post("/leagues", json={"name": "Test League Team Membership"})
         league_id = created.json()["id"]
 
-    outsider = await _signed_up_client("test-leagues-team-outsider@example.com")
-    async with outsider:
+    async with _client() as outsider:
+        await _sign_up(outsider, "test-leagues-team-outsider@example.com")
         resp = await outsider.post(f"/leagues/{league_id}/teams", json={"team_name": "Outsider FC"})
     assert resp.status_code == 403
 
 
 async def test_create_team_succeeds_for_member_and_appears_in_list(pool, monkeypatch):
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    client = await _signed_up_client("test-leagues-team-member@example.com", display_name="Team Owner")
-    async with client:
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-team-member@example.com", display_name="Team Owner")
         created = await client.post("/leagues", json={"name": "Test League Team Success"})
         league_id = created.json()["id"]
 
@@ -96,8 +95,8 @@ async def test_create_team_succeeds_for_member_and_appears_in_list(pool, monkeyp
 
 async def test_create_team_rejects_a_second_team_for_the_same_owner(pool, monkeypatch):
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    client = await _signed_up_client("test-leagues-team-dup@example.com")
-    async with client:
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-team-dup@example.com")
         created = await client.post("/leagues", json={"name": "Test League Team Dup"})
         league_id = created.json()["id"]
 

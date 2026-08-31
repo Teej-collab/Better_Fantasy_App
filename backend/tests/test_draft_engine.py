@@ -319,7 +319,7 @@ async def _seed_keeper_rules(pool, locked=True, max_keepers=1):
             """
             INSERT INTO league_keeper_rules (season, max_keepers, locked_at)
             VALUES ($1, $2, NULL)
-            ON CONFLICT (season) DO UPDATE SET max_keepers = EXCLUDED.max_keepers, locked_at = NULL
+            ON CONFLICT (season, league_id) DO UPDATE SET max_keepers = EXCLUDED.max_keepers, locked_at = NULL
             """,
             TEST_SEASON, max_keepers,
         )

@@ -181,6 +181,14 @@ async def cleanup_test_season(pool):
         ]
         if test_signup_owner_ids:
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
+        # league_scoring_rules.league_id -> leagues.id, so it has to go
+        # before the leagues DELETE below too — POST /leagues (see
+        # app/routers/leagues.py) seeds default scoring rules for the
+        # real ACTIVE_SEASON (2026), not TEST_SEASON, so the season-
+        # scoped league_scoring_rules cleanup above never catches these.
+        await conn.execute(
+            "DELETE FROM league_scoring_rules WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute(
             "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
