@@ -21,22 +21,24 @@ three-week playoff run's score sit next to a fourteen-week regular
 season's as if they were the same kind of record.
 """
 
+from app.config import DEFAULT_LEAGUE_ID
+
 _UNPLAYED = "NOT (m.home_score = 0 AND m.away_score = 0)"
 _REGULAR_SEASON = "m.is_playoff = FALSE"
 
 
-async def top_single_week_scores(conn, limit: int, *, descending: bool):
+async def top_single_week_scores(conn, limit: int, *, descending: bool, league_id: int = DEFAULT_LEAGUE_ID):
     order = "DESC" if descending else "ASC"
     return await conn.fetch(
         f"""
         WITH sides AS (
             SELECT m.season, m.week, m.home_team_id AS team_id, m.home_score AS score
             FROM matchups m
-            WHERE m.home_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
+            WHERE m.home_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON} AND m.league_id = $2
             UNION ALL
             SELECT m.season, m.week, m.away_team_id AS team_id, m.away_score AS score
             FROM matchups m
-            WHERE m.away_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
+            WHERE m.away_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON} AND m.league_id = $2
         )
         SELECT s.season, s.week, s.score, t.team_name, o.owner_id, o.display_name AS owner_name
         FROM sides s
@@ -45,11 +47,11 @@ async def top_single_week_scores(conn, limit: int, *, descending: bool):
         ORDER BY s.score {order}
         LIMIT $1
         """,
-        limit,
+        limit, league_id,
     )
 
 
-async def top_blowouts(conn, limit: int):
+async def top_blowouts(conn, limit: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         f"""
         SELECT
@@ -67,22 +69,23 @@ async def top_blowouts(conn, limit: int):
         JOIN owners oh ON oh.owner_id = th.owner_id
         JOIN owners oa ON oa.owner_id = ta.owner_id
         WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL AND {_UNPLAYED} AND {_REGULAR_SEASON}
+          AND m.league_id = $2
         ORDER BY margin DESC
         LIMIT $1
         """,
-        limit,
+        limit, league_id,
     )
 
 
-async def top_season_point_totals(conn, limit: int):
+async def top_season_point_totals(conn, limit: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         f"""
         WITH sides AS (
             SELECT m.season, m.home_team_id AS team_id, m.home_score AS score
-            FROM matchups m WHERE m.home_score IS NOT NULL AND {_REGULAR_SEASON}
+            FROM matchups m WHERE m.home_score IS NOT NULL AND {_REGULAR_SEASON} AND m.league_id = $2
             UNION ALL
             SELECT m.season, m.away_team_id AS team_id, m.away_score AS score
-            FROM matchups m WHERE m.away_score IS NOT NULL AND {_REGULAR_SEASON}
+            FROM matchups m WHERE m.away_score IS NOT NULL AND {_REGULAR_SEASON} AND m.league_id = $2
         ),
         season_totals AS (
             SELECT season, team_id, SUM(score) AS total_points
@@ -96,5 +99,5 @@ async def top_season_point_totals(conn, limit: int):
         ORDER BY st.total_points DESC
         LIMIT $1
         """,
-        limit,
+        limit, league_id,
     )

@@ -10,6 +10,7 @@ already polls the NFL ticker with during a live window (see
 GameDayRefresher.tsx) — that's the "live during the live week" part,
 there's no separate push/websocket path for this.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.queries import league as queries
 
 _STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
@@ -26,8 +27,8 @@ def _top_scorer(roster_rows):
     return {"player_name": best["player_name"], "points_scored": float(best["points_scored"])}
 
 
-async def get_week_ticker_data(conn, season: int, week: int):
-    matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week)]
+async def get_week_ticker_data(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week, league_id)]
     items = []
     for m in matchups:
         home_team = await queries.get_team(conn, m["home_team_id"])

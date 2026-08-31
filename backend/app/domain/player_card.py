@@ -24,6 +24,7 @@ D/ST units, so there's no id to resolve either lookup with anyway.
 """
 import logging
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.providers.espn.player_info import get_player_info
 from app.providers.espn.player_overview import get_player_overview
 
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 SLEEPER_HEADSHOT_URL = "https://sleepercdn.com/content/nfl/players/{player_id}.jpg"
 
 
-async def get_player_card(conn, sleeper_player_id: str) -> dict | None:
+async def get_player_card(conn, sleeper_player_id: str, league_id: int = DEFAULT_LEAGUE_ID) -> dict | None:
     row = await conn.fetchrow(
         """
         SELECT sleeper_player_id, espn_player_id, full_name, position, pro_team,
@@ -91,8 +92,8 @@ async def get_player_card(conn, sleeper_player_id: str) -> dict | None:
 
     latest_week = await conn.fetchrow(
         "SELECT week, fantasy_points FROM player_week_stats "
-        "WHERE sleeper_player_id = $1 ORDER BY week DESC LIMIT 1",
-        sleeper_player_id,
+        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week DESC LIMIT 1",
+        sleeper_player_id, league_id,
     )
     card["latest_week"] = dict(latest_week) if latest_week else None
 

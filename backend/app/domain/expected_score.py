@@ -9,8 +9,10 @@ seasons), falling back to the league-wide average score that week for
 historical seasons where ESPN doesn't retain projections.
 """
 
+from app.config import DEFAULT_LEAGUE_ID
 
-async def get_expected_score(conn, season: int, week: int, team_id: int) -> float:
+
+async def get_expected_score(conn, season: int, week: int, team_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> float:
     projected = await conn.fetchval(
         "SELECT team_points_projected FROM weekly_team_stats WHERE season = $1 AND week = $2 AND team_id = $3",
         season, week, team_id,
@@ -20,11 +22,11 @@ async def get_expected_score(conn, season: int, week: int, team_id: int) -> floa
 
     all_scores = await conn.fetch(
         """
-        SELECT home_score AS s FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0
+        SELECT home_score AS s FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0
         UNION ALL
-        SELECT away_score AS s FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0
+        SELECT away_score AS s FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0
         """,
-        season, week,
+        season, week, league_id,
     )
     if not all_scores:
         return 0.0

@@ -3,16 +3,21 @@ app/queries/keepers.py's split (plain reads live here, the actual
 pick/turn mutations live in app/domain/draft_engine.py)."""
 import json
 
+from app.config import DEFAULT_LEAGUE_ID
 
-async def get_draft_pool(conn, season: int, position: str | None = None, search: str | None = None):
+
+async def get_draft_pool(
+    conn, season: int, position: str | None = None, search: str | None = None, league_id: int = DEFAULT_LEAGUE_ID
+):
     query = """
         SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
                dp.pick_number IS NOT NULL AS drafted
         FROM players p
-        LEFT JOIN draft_picks dp ON dp.sleeper_player_id = p.sleeper_player_id AND dp.season = $1
+        LEFT JOIN draft_picks dp ON dp.sleeper_player_id = p.sleeper_player_id
+            AND dp.season = $1 AND dp.league_id = $2
         WHERE p.is_draftable
     """
-    params = [season]
+    params = [season, league_id]
     if position:
         query += f" AND p.position = ${len(params) + 1}"
         params.append(position)
@@ -23,8 +28,10 @@ async def get_draft_pool(conn, season: int, position: str | None = None, search:
     return await conn.fetch(query, *params)
 
 
-async def get_draft_state(conn, season: int):
-    config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1", season)
+async def get_draft_state(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    config = await conn.fetchrow(
+        "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
     if config is None:
         return None
     config_dict = dict(config)
@@ -39,10 +46,10 @@ async def get_draft_state(conn, season: int):
         FROM draft_picks dp
         JOIN owners o ON o.owner_id = dp.owner_id
         LEFT JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id
-        WHERE dp.season = $1
+        WHERE dp.season = $1 AND dp.league_id = $2
         ORDER BY dp.pick_number
         """,
-        season,
+        season, league_id,
     )
     return {"config": config_dict, "picks": [dict(p) for p in picks]}
 

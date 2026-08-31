@@ -14,6 +14,9 @@ upserting, same as the original script.
 """
 
 
+from app.config import DEFAULT_LEAGUE_ID
+
+
 def classify_severity(points_diff: float) -> str:
     if points_diff >= 30:
         return "Felony Bench Crime"
@@ -51,9 +54,10 @@ def detect_bench_crimes(roster_rows: list[dict]) -> list[dict]:
     return crimes
 
 
-async def compute_bench_crimes_for_week(conn, season: int, week: int) -> int:
+async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2", season, week
+        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
     )
 
     total_crimes = 0
@@ -61,43 +65,45 @@ async def compute_bench_crimes_for_week(conn, season: int, week: int) -> int:
         team_id = t["team_id"]
         rows = await conn.fetch(
             "SELECT player_name, position, lineup_slot, points_scored FROM rosters "
-            "WHERE season = $1 AND week = $2 AND team_id = $3",
-            season, week, team_id,
+            "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+            season, week, team_id, league_id,
         )
         crimes = detect_bench_crimes([dict(r) for r in rows])
 
         await conn.execute(
-            "DELETE FROM bench_crimes WHERE season = $1 AND week = $2 AND team_id = $3", season, week, team_id
+            "DELETE FROM bench_crimes WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+            season, week, team_id, league_id,
         )
         for crime in crimes:
             await conn.execute(
                 """
                 INSERT INTO bench_crimes
-                    (season, week, team_id, bench_player, started_player, position, points_diff, severity)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    (season, week, team_id, bench_player, started_player, position, points_diff, severity, league_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 season, week, team_id,
                 crime["bench_player"], crime["started_player"], crime["position"],
-                crime["points_diff"], crime["severity"],
+                crime["points_diff"], crime["severity"], league_id,
             )
         total_crimes += len(crimes)
 
     return total_crimes
 
 
-async def compute_bench_crimes_for_season(pool, season: int) -> int:
+async def compute_bench_crimes_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
         weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 ORDER BY week", season
+            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+            season, league_id,
         )
         total = 0
         for w in weeks:
-            total += await compute_bench_crimes_for_week(conn, season, w["week"])
+            total += await compute_bench_crimes_for_week(conn, season, w["week"], league_id)
     return total
 
 
-async def compute_bench_crimes_for_single_week(pool, season: int, week: int) -> int:
+async def compute_bench_crimes_for_single_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Pool-based single-week entry point for live sync (see
     app/providers/sync.py's run_live_sync)."""
     async with pool.acquire() as conn:
-        return await compute_bench_crimes_for_week(conn, season, week)
+        return await compute_bench_crimes_for_week(conn, season, week, league_id)

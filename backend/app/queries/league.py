@@ -4,12 +4,21 @@ Standings is a plain win/loss/points aggregation over `matchups` (with
 final_rank layered in when available — see get_standings). The
 stats_engine-derived views (team profile, awards) live in
 app/domain/ + app/queries/awards.py instead — see MIGRATION_MAP.md.
+
+Note: `rivalries` has no league_id yet (it isn't season-scoped, so it
+was missed by the Phase 3 migration's season-scoped-table sweep — see
+TODO.md's PHASE 9 entry). get_rivalry_for_owners/list_rivalries below
+are left unfiltered for now rather than faking a column that doesn't
+exist; a real fix needs its own small migration, flagged as a
+follow-up rather than solved here.
 """
 
+from app.config import DEFAULT_LEAGUE_ID
 
-async def list_seasons(conn):
+
+async def list_seasons(conn, league_id: int = DEFAULT_LEAGUE_ID):
     rows = await conn.fetch(
-        "SELECT DISTINCT season FROM teams_by_season ORDER BY season"
+        "SELECT DISTINCT season FROM teams_by_season WHERE league_id = $1 ORDER BY season", league_id
     )
     return [r["season"] for r in rows]
 
@@ -33,31 +42,31 @@ async def get_bye_weeks(conn, season: int) -> dict[str, int]:
     return {row["pro_team"]: row["bye_week"] for row in rows}
 
 
-async def get_team_for_owner(conn, season: int, owner_id: int):
+async def get_team_for_owner(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     """espn_team_id, not our internal serial team_id — that's the ID
     ESPNLineupClient's live reads/plans key off of (see app/routers/me.py's
     /me/team routes)."""
     return await conn.fetchrow(
-        "SELECT espn_team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
-        season, owner_id,
+        "SELECT espn_team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
     )
 
 
-async def list_teams(conn, season: int):
+async def list_teams(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """
         SELECT t.id AS team_id, t.espn_team_id, t.team_name,
                o.owner_id, o.display_name AS owner_name
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id
-        WHERE t.season = $1
+        WHERE t.season = $1 AND t.league_id = $2
         ORDER BY t.team_name
         """,
-        season,
+        season, league_id,
     )
 
 
-async def list_all_owners(conn):
+async def list_all_owners(conn, league_id: int = DEFAULT_LEAGUE_ID):
     """Every owner who has ever been in the league — not scoped to any
     one season, unlike list_teams. Used for the home page's owner-card
     grid, which per explicit ask includes everyone with league history,
@@ -68,17 +77,18 @@ async def list_all_owners(conn):
         SELECT o.owner_id, o.display_name,
                (
                    SELECT t.team_name FROM teams_by_season t
-                   WHERE t.owner_id = o.owner_id
+                   WHERE t.owner_id = o.owner_id AND t.league_id = $1
                    ORDER BY t.season DESC LIMIT 1
                ) AS latest_team_name,
                (
                    SELECT array_agg(t.season ORDER BY t.season) FROM teams_by_season t
-                   WHERE t.owner_id = o.owner_id
+                   WHERE t.owner_id = o.owner_id AND t.league_id = $1
                ) AS seasons
         FROM owners o
-        WHERE EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = o.owner_id)
+        WHERE EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = o.owner_id AND t.league_id = $1)
         ORDER BY o.display_name
-        """
+        """,
+        league_id,
     )
 
 
@@ -95,7 +105,7 @@ async def get_team(conn, team_id: int):
     )
 
 
-async def get_standings(conn, season: int):
+async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     # ESPN returns 0/0 (not NULL) for matchups that haven't been played
     # yet, so IS NOT NULL alone doesn't exclude them — a 0-0 game would
     # otherwise count as a tie. A genuine 0-0 tie is not realistic in
@@ -115,7 +125,7 @@ async def get_standings(conn, season: int):
                    (home_score < away_score)::int AS loss,
                    (home_score = away_score)::int AS tie
             FROM matchups
-            WHERE season = $1 AND is_playoff = FALSE
+            WHERE season = $1 AND league_id = $2 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
             UNION ALL
@@ -124,7 +134,7 @@ async def get_standings(conn, season: int):
                    (away_score < home_score)::int,
                    (away_score = home_score)::int
             FROM matchups
-            WHERE season = $1 AND is_playoff = FALSE
+            WHERE season = $1 AND league_id = $2 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
         )
@@ -139,7 +149,7 @@ async def get_standings(conn, season: int):
         JOIN owners o ON t.owner_id = o.owner_id
         LEFT JOIN results r ON r.team_id = t.id
         LEFT JOIN final_standings fs ON fs.team_id = t.id AND fs.season = t.season
-        WHERE t.season = $1
+        WHERE t.season = $1 AND t.league_id = $2
         GROUP BY t.id, t.team_name, o.display_name, fs.final_rank
         ORDER BY
             CASE WHEN fs.final_rank IS NULL THEN 1 ELSE 0 END,
@@ -147,11 +157,11 @@ async def get_standings(conn, season: int):
             wins DESC,
             points_for DESC
         """,
-        season,
+        season, league_id,
     )
 
 
-async def list_week_matchups(conn, season: int, week: int):
+async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """
         SELECT m.id AS matchup_id, m.is_playoff,
@@ -160,11 +170,10 @@ async def list_week_matchups(conn, season: int, week: int):
         FROM matchups m
         JOIN teams_by_season ht ON m.home_team_id = ht.id
         JOIN teams_by_season at ON m.away_team_id = at.id
-        WHERE m.season = $1 AND m.week = $2
+        WHERE m.season = $1 AND m.week = $2 AND m.league_id = $3
         ORDER BY m.id
         """,
-        season,
-        week,
+        season, week, league_id,
     )
 
 
@@ -183,7 +192,7 @@ async def get_matchup(conn, matchup_id: int):
     )
 
 
-async def get_matchup_for_team(conn, team_id: int, season: int, week: int):
+async def get_matchup_for_team(conn, team_id: int, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     """The one matchup this team plays in a given week — used by the
     "Your Week" homepage hero, which needs a team's own game, not a
     matchup by its own ID."""
@@ -195,13 +204,13 @@ async def get_matchup_for_team(conn, team_id: int, season: int, week: int):
         FROM matchups m
         JOIN teams_by_season ht ON m.home_team_id = ht.id
         JOIN teams_by_season at ON m.away_team_id = at.id
-        WHERE m.season = $1 AND m.week = $2 AND (m.home_team_id = $3 OR m.away_team_id = $3)
+        WHERE m.season = $1 AND m.week = $2 AND (m.home_team_id = $3 OR m.away_team_id = $3) AND m.league_id = $4
         """,
-        season, week, team_id,
+        season, week, team_id, league_id,
     )
 
 
-async def get_team_score_stdev(conn, season: int) -> float | None:
+async def get_team_score_stdev(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> float | None:
     """Standard deviation of real weekly team scores this season, used
     by the win-probability estimate (app/domain/win_probability.py) as
     the league's actual scoring volatility rather than an arbitrary
@@ -211,15 +220,15 @@ async def get_team_score_stdev(conn, season: int) -> float | None:
         """
         SELECT stddev_pop(score) FROM (
             SELECT home_score AS score FROM matchups
-            WHERE season = $1 AND home_score IS NOT NULL AND away_score IS NOT NULL
+            WHERE season = $1 AND league_id = $2 AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
             UNION ALL
             SELECT away_score FROM matchups
-            WHERE season = $1 AND home_score IS NOT NULL AND away_score IS NOT NULL
+            WHERE season = $1 AND league_id = $2 AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
         ) scores
         """,
-        season,
+        season, league_id,
     )
 
 
@@ -250,7 +259,9 @@ async def get_roster(conn, team_id: int, week: int):
     )
 
 
-async def get_rostered_players_by_pro_team(conn, season: int, week: int, pro_teams: list[str]):
+async def get_rostered_players_by_pro_team(
+    conn, season: int, week: int, pro_teams: list[str], league_id: int = DEFAULT_LEAGUE_ID
+):
     """Every fantasy-rostered player (any owner's team, any lineup slot)
     whose real NFL team is in `pro_teams` — the cross-reference
     Gamecast's fantasy-impact panel needs (app/gamecast/service.py):
@@ -268,13 +279,15 @@ async def get_rostered_players_by_pro_team(conn, season: int, week: int, pro_tea
         FROM rosters r
         JOIN teams_by_season t ON t.id = r.team_id
         JOIN owners o ON o.owner_id = t.owner_id
-        WHERE t.season = $1 AND r.week = $2 AND r.pro_team = ANY($3::text[])
+        WHERE t.season = $1 AND r.week = $2 AND r.pro_team = ANY($3::text[]) AND t.league_id = $4
         """,
-        season, week, pro_teams,
+        season, week, pro_teams, league_id,
     )
 
 
-async def get_current_rostered_players_by_pro_team(conn, season: int, week: int, pro_teams: list[str]):
+async def get_current_rostered_players_by_pro_team(
+    conn, season: int, week: int, pro_teams: list[str], league_id: int = DEFAULT_LEAGUE_ID
+):
     """Same role as get_rostered_players_by_pro_team above (Gamecast's
     fantasy-impact panel: given a live game between two real NFL teams,
     which fantasy owners have skin in it) but sourced from the
@@ -304,9 +317,9 @@ async def get_current_rostered_players_by_pro_team(conn, season: int, week: int,
         JOIN owners o ON o.owner_id = t.owner_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
-        WHERE cr.season = $1 AND p.pro_team = ANY($3::text[])
+        WHERE cr.season = $1 AND p.pro_team = ANY($3::text[]) AND cr.league_id = $4
         """,
-        season, week, pro_teams,
+        season, week, pro_teams, league_id,
     )
 
 
@@ -328,7 +341,7 @@ async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
     )
 
 
-async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int):
+async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     """Ported from Fantasy_Helper's scripts/sync_rivalries.py
     compute_head_to_head, unchanged logic — but called live for ANY
     owner pair here, not just curated rivalries (that script only ever
@@ -345,9 +358,10 @@ async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int):
         WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
           AND NOT (m.home_score = 0 AND m.away_score = 0)
           AND ((th.owner_id = $1 AND ta.owner_id = $2) OR (th.owner_id = $2 AND ta.owner_id = $1))
+          AND m.league_id = $3
         ORDER BY m.season, m.week
         """,
-        owner_a_id, owner_b_id,
+        owner_a_id, owner_b_id, league_id,
     )
 
     wins_a = sum(1 for g in games if g["a_score"] > g["b_score"])

@@ -20,6 +20,20 @@ def _require(key: str) -> str:
 
 DATABASE_URL = _require("DATABASE_URL")
 
+# Phase 4 of the multi-league migration (see TODO.md's PHASE 9 entry).
+# Every fantasy-league query is being threaded to filter by league_id
+# explicitly, the same way ACTIVE_SEASON already threads through as
+# "the current season" — but there's no real multi-league selection
+# yet (no session concept of "which league," no UI to create/join a
+# second one), so there is exactly one meaningful value for it today:
+# League #1, the real league, backfilled in migration d7deccb620bb.
+# Not an env var like ACTIVE_SEASON (that changes every year; this
+# doesn't change until real league selection exists) — a plain
+# constant is honest about that. Phase 5/6 replaces every call site
+# that reads this with a real resolved value (the signed-in user's
+# actual league), at which point this constant goes away entirely.
+DEFAULT_LEAGUE_ID = 1
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # Hostname of the Vercel Blob store chat image uploads land in (see

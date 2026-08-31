@@ -1894,13 +1894,89 @@ build/lint/test/curl verification, not visual inspection.
       phase. Applied to production; every non-empty table backfilled
       to exactly one distinct `league_id` (verified by direct
       introspection), full 464-test backend suite green afterward.
-- [ ] Phase 4 — thread `league_id` through the ~30 domain modules /
-      ~19 routers that currently assume one global league
+- [x] **Phase 4 — thread league_id through the domain layer, Aug 31
+      2026.** The real long pole flagged in the audit — every query
+      that filtered by `season` alone now also filters by `league_id`
+      (via a new `DEFAULT_LEAGUE_ID = 1` constant in `app/config.py`,
+      threaded as a trailing default parameter through every touched
+      function — never a required argument, so no existing call site
+      needed to change, matching the plan's "no visible change until
+      step 6" design). Covered ~30 files by full app-wide sweep, not
+      just the original grep: every `app/domain/*.py` and
+      `app/queries/*.py` module touching a Phase-3 table, plus
+      `app/providers/espn/adapter.py` (writes teams/matchups/rosters/
+      final_standings), `app/routers/me.py` and `app/routers/chug.py`
+      (the only routers with their own inline SQL), and
+      `app/scheduler.py`'s draft-clock job — including
+      `draft_engine.py` and `lineup_engine.py` in full, deliberately
+      not deferred past the Sept 5 draft per the owner's explicit call.
+      `queries/chat.py` was deliberately left untouched — its tables
+      have no `league_id` column at all (never season-scoped, so Phase
+      3's sweep correctly skipped them; a chat-v2 migration comment
+      already flagged this gap before this session started) — adding
+      one needs its own migration, not a column-only follow-through.
+      `rivalries`/`list_rivalries` similarly has no `league_id` yet,
+      noted in `queries/league.py`'s module docstring as a known
+      follow-up rather than faked. Every edited file compiled clean;
+      full 464-test backend suite green with zero regressions.
 - [ ] Phase 5 — self-serve signup (email+password alongside Discord) +
       create/join-league flow
 - [ ] Phase 6 — per-league ESPN connection (Settings → Connected
       Accounts), replacing the global `ESPN_LEAGUE_ID` env var
-- [ ] Configurable scoring/roster/award rules (flexible league engine)
+- [ ] **Phase 7 — split `player_week_stats` into global raw stats +
+      per-league computed scores.** Scoped Aug 31 2026, in response to
+      the owner asking how commissioners will eventually get their own
+      scoring rules. Turns out most of that is already structurally
+      real: `league_scoring_rules` (season, stat_category,
+      points_per_unit) already carries `league_id` as of Phase 3, and
+      `scoring_engine.py::compute_player_points` already takes a
+      `rules` dict as a pure input with no hardcoded league assumption
+      — two leagues genuinely can already run different scoring
+      formulas. The one real blocker, flagged in both the Phase 3 and
+      Phase 4 migration comments rather than solved there: `player_week_
+      stats` stores the real NFL box score (`raw_stats`) AND the
+      computed result (`fantasy_points`) in the SAME row, unique only
+      on `(season, week, sleeper_player_id)` — no `league_id`. Two
+      leagues with different rules can't each get their own
+      `fantasy_points` for the same player/week under that shape; the
+      second league's weekly compute would silently overwrite the
+      first's.
+
+      The fix is a split, not a widened constraint — `raw_stats` is a
+      real, league-agnostic fact (a player's actual box score doesn't
+      change depending who's asking), so it stays global; only the
+      computed side needs to become per-league:
+      - New table `league_player_week_scores` (league_id, season,
+        week, sleeper_player_id, fantasy_points, computed_at), unique
+        on (league_id, season, week, sleeper_player_id). Backfilling it
+        for League #1 is a trivial copy — every existing
+        `player_week_stats.fantasy_points` row already IS League #1's
+        answer.
+      - `app/domain/weekly_stats.py`'s `_upsert_player_week_stat` writes
+        to both the new table (real) and the legacy
+        `player_week_stats.fantasy_points` column (kept, unchanged) for
+        one transition period — a dual-write, not a hard cutover.
+      - Every reader of `player_week_stats.fantasy_points` moves to the
+        new table one at a time, verified individually:
+        `app/domain/matchup_scoring.py`'s `compute_team_score`,
+        `app/domain/player_card.py`'s `latest_week`, and
+        `app/domain/lineup_engine.py`'s `_ROSTER_ENTRY_WITH_SCORE_SQL`
+        join are the three real call sites today.
+      - Only once every reader is confirmed migrated: drop the
+        dual-write and drop the `fantasy_points` column from
+        `player_week_stats` itself, which becomes purely a raw-stats
+        table at that point — not before, so nothing reads a stale or
+        missing value mid-migration.
+
+      Not started — this is a scope writeup, not a migration yet.
+- [ ] **Commissioner scoring-rules UI**, once Phase 7 lands — a
+      `PUT /league/scoring-rules` endpoint (commissioner-only, same
+      shape as the existing `/keepers/rules` pattern) to edit
+      `points_per_unit` per stat category, plus default rules seeded
+      automatically whenever Phase 5's "create a league" flow creates a
+      new one. Roster shape needs no new work here — `draft_config.
+      roster_slots` is already commissioner-set per league today via
+      the existing `DraftSetupPanel.tsx` / `POST /draft/setup`.
 
 ## PHASE 10 — ADDITIONAL PROVIDERS
 - [ ] Yahoo / Sleeper adapters, only after ESPN adapter is stable

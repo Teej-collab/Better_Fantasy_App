@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
-from app.config import _require
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain import lineup_engine
 from app.domain.lineup_exceptions import (
@@ -76,8 +76,8 @@ async def _require_my_team(owner_id: int, active_season: int) -> tuple[int, str]
     pool = await get_pool()
     async with pool.acquire() as conn:
         team = await conn.fetchrow(
-            "SELECT id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
-            active_season, owner_id,
+            "SELECT id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            active_season, owner_id, DEFAULT_LEAGUE_ID,
         )
     if team is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")
@@ -419,10 +419,10 @@ async def list_free_agents(request: Request, position: str | None = None, search
         SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status
         FROM players p
         WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
-            SELECT sleeper_player_id FROM current_rosters WHERE season = $1
+            SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
         )
     """
-    params: list = [active_season]
+    params: list = [active_season, DEFAULT_LEAGUE_ID]
     if position:
         query += f" AND p.position = ${len(params) + 1}"
         params.append(position)

@@ -33,23 +33,26 @@ record in chug_debts:
 """
 from datetime import datetime
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.chug_deadline import is_past_mnf_deadline
 
 MAX_CONSECUTIVE_DOUBLINGS = 3
 FINE_PER_CHUG = 10
 
 
-async def accrue_weekly_debt(conn, season: int, week: int) -> int:
+async def accrue_weekly_debt(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     rows = await conn.fetch(
-        "SELECT owner_id, chugs_owed FROM chug_debts WHERE season = $1 AND week = $2", season, week
+        "SELECT owner_id, chugs_owed FROM chug_debts WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
     )
 
     changed = 0
     for r in rows:
         owner_id, chugs_owed = r["owner_id"], r["chugs_owed"]
         applied = await conn.fetchval(
-            "SELECT applied_amount FROM chug_debt_accruals WHERE season = $1 AND week = $2 AND owner_id = $3",
-            season, week, owner_id,
+            "SELECT applied_amount FROM chug_debt_accruals "
+            "WHERE season = $1 AND week = $2 AND owner_id = $3 AND league_id = $4",
+            season, week, owner_id, league_id,
         )
         applied = applied or 0
         delta = chugs_owed - applied
@@ -58,56 +61,63 @@ async def accrue_weekly_debt(conn, season: int, week: int) -> int:
 
         await conn.execute(
             """
-            INSERT INTO chug_standing (season, owner_id, outstanding_owed)
-            VALUES ($1, $2, GREATEST($3, 0))
+            INSERT INTO chug_standing (season, owner_id, outstanding_owed, league_id)
+            VALUES ($1, $2, GREATEST($3, 0), $4)
             ON CONFLICT (season, owner_id) DO UPDATE SET
                 outstanding_owed = GREATEST(chug_standing.outstanding_owed + $3, 0),
                 updated_at = now()
             """,
-            season, owner_id, delta,
+            season, owner_id, delta, league_id,
         )
         await conn.execute(
             """
-            INSERT INTO chug_debt_accruals (season, week, owner_id, applied_amount)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO chug_debt_accruals (season, week, owner_id, applied_amount, league_id)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (season, week, owner_id) DO UPDATE SET applied_amount = EXCLUDED.applied_amount
             """,
-            season, week, owner_id, chugs_owed,
+            season, week, owner_id, chugs_owed, league_id,
         )
         changed += 1
     return changed
 
 
-async def accrue_weekly_debt_for_season(pool, season: int) -> int:
+async def accrue_weekly_debt_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        weeks = await conn.fetch("SELECT DISTINCT week FROM chug_debts WHERE season = $1 ORDER BY week", season)
+        weeks = await conn.fetch(
+            "SELECT DISTINCT week FROM chug_debts WHERE season = $1 AND league_id = $2 ORDER BY week",
+            season, league_id,
+        )
         total = 0
         for w in weeks:
-            total += await accrue_weekly_debt(conn, season, w["week"])
+            total += await accrue_weekly_debt(conn, season, w["week"], league_id)
     return total
 
 
-async def accrue_weekly_debt_for_single_week(pool, season: int, week: int) -> int:
+async def accrue_weekly_debt_for_single_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        return await accrue_weekly_debt(conn, season, week)
+        return await accrue_weekly_debt(conn, season, week, league_id)
 
 
-async def settle_deadline_for_week(conn, season: int, week: int) -> int:
-    owners = await conn.fetch("SELECT owner_id FROM chug_standing WHERE season = $1", season)
+async def settle_deadline_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    owners = await conn.fetch(
+        "SELECT owner_id FROM chug_standing WHERE season = $1 AND league_id = $2", season, league_id
+    )
 
     settled = 0
     for o in owners:
         owner_id = o["owner_id"]
         already = await conn.fetchval(
-            "SELECT 1 FROM chug_deadline_settlements WHERE season = $1 AND week = $2 AND owner_id = $3",
-            season, week, owner_id,
+            "SELECT 1 FROM chug_deadline_settlements "
+            "WHERE season = $1 AND week = $2 AND owner_id = $3 AND league_id = $4",
+            season, week, owner_id, league_id,
         )
         if already:
             continue
 
         standing = await conn.fetchrow(
-            "SELECT outstanding_owed, consecutive_missed_weeks FROM chug_standing WHERE season = $1 AND owner_id = $2",
-            season, owner_id,
+            "SELECT outstanding_owed, consecutive_missed_weeks FROM chug_standing "
+            "WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
         )
         owed_before = standing["outstanding_owed"]
 
@@ -116,8 +126,8 @@ async def settle_deadline_for_week(conn, season: int, week: int) -> int:
             owed_after = 0
             await conn.execute(
                 "UPDATE chug_standing SET consecutive_missed_weeks = 0, updated_at = now() "
-                "WHERE season = $1 AND owner_id = $2",
-                season, owner_id,
+                "WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+                season, owner_id, league_id,
             )
         else:
             missed = standing["consecutive_missed_weeks"] + 1
@@ -131,32 +141,32 @@ async def settle_deadline_for_week(conn, season: int, week: int) -> int:
                         fined_owed = fined_owed + $3,
                         consecutive_missed_weeks = 0,
                         updated_at = now()
-                    WHERE season = $1 AND owner_id = $2
+                    WHERE season = $1 AND owner_id = $2 AND league_id = $4
                     """,
-                    season, owner_id, owed_before,
+                    season, owner_id, owed_before, league_id,
                 )
             else:
                 action = "doubled"
                 owed_after = owed_before * 2
                 await conn.execute(
                     "UPDATE chug_standing SET outstanding_owed = $3, consecutive_missed_weeks = $4, updated_at = now() "
-                    "WHERE season = $1 AND owner_id = $2",
-                    season, owner_id, owed_after, missed,
+                    "WHERE season = $1 AND owner_id = $2 AND league_id = $5",
+                    season, owner_id, owed_after, missed, league_id,
                 )
 
         await conn.execute(
             """
-            INSERT INTO chug_deadline_settlements (season, week, owner_id, owed_before, action, owed_after)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO chug_deadline_settlements (season, week, owner_id, owed_before, action, owed_after, league_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
-            season, week, owner_id, owed_before, action, owed_after,
+            season, week, owner_id, owed_before, action, owed_after, league_id,
         )
         settled += 1
     return settled
 
 
 async def ensure_chug_deadline_settled(
-    pool, season: int, week: int, games: list[dict], now: datetime | None = None
+    pool, season: int, week: int, games: list[dict], now: datetime | None = None, league_id: int = DEFAULT_LEAGUE_ID
 ) -> int:
     """Best-effort, idempotent — safe to call every sync tick. No-ops
     until the real MNF deadline for the current week has actually
@@ -168,11 +178,11 @@ async def ensure_chug_deadline_settled(
     if not is_past_mnf_deadline(games, now):
         return 0
     async with pool.acquire() as conn:
-        await accrue_weekly_debt(conn, season, week)
-        return await settle_deadline_for_week(conn, season, week)
+        await accrue_weekly_debt(conn, season, week, league_id)
+        return await settle_deadline_for_week(conn, season, week, league_id)
 
 
-async def record_completed_chug(conn, season: int, owner_id: int) -> None:
+async def record_completed_chug(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> None:
     """A real, video-verified chug pays down outstanding_owed by one if
     any is owed; never touches fined_owed (only a commissioner clearing
     a paid fine does — see clear_fine); never goes below zero, and does
@@ -181,19 +191,20 @@ async def record_completed_chug(conn, season: int, owner_id: int) -> None:
     debt-side effect."""
     await conn.execute(
         "UPDATE chug_standing SET outstanding_owed = outstanding_owed - 1, updated_at = now() "
-        "WHERE season = $1 AND owner_id = $2 AND outstanding_owed > 0",
-        season, owner_id,
+        "WHERE season = $1 AND owner_id = $2 AND league_id = $3 AND outstanding_owed > 0",
+        season, owner_id, league_id,
     )
 
 
-async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None) -> int:
+async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Commissioner-only (enforced at the router level) — marks a real-
     life fine payment by reducing fined_owed. amount=None clears it
     entirely; otherwise clears exactly that many (clamped so it can
     never go negative or clear more than was actually owed). Returns
     the amount actually cleared."""
     row = await conn.fetchrow(
-        "SELECT fined_owed FROM chug_standing WHERE season = $1 AND owner_id = $2", season, owner_id
+        "SELECT fined_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
     )
     if not row or row["fined_owed"] == 0:
         return 0
@@ -204,7 +215,7 @@ async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None
 
     await conn.execute(
         "UPDATE chug_standing SET fined_owed = fined_owed - $3, updated_at = now() "
-        "WHERE season = $1 AND owner_id = $2",
-        season, owner_id, to_clear,
+        "WHERE season = $1 AND owner_id = $2 AND league_id = $4",
+        season, owner_id, to_clear, league_id,
     )
     return to_clear

@@ -20,6 +20,7 @@ separate, explicitly-not-yet-turned-on feature (real Anthropic API cost
 per generation, see TODO.md). This is a stub field for the frontend to
 render a placeholder against, not a promise it'll be null forever.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.queries import league as queries
@@ -81,13 +82,13 @@ def _rivalry_dict(rivalry_row, home_owner_id):
     }
 
 
-async def build_week_matchup_context(conn, season: int, week: int):
-    matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week)]
+async def build_week_matchup_context(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week, league_id)]
     if not matchups:
         return {"season": season, "week": week, "game_of_the_week_matchup_id": None, "matchups": []}
 
     team_ids = list({m["home_team_id"] for m in matchups} | {m["away_team_id"] for m in matchups})
-    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season)}
+    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
     streaks_by_team = await get_team_streaks(conn, season, team_ids)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
@@ -106,7 +107,7 @@ async def build_week_matchup_context(conn, season: int, week: int):
         away_roster = await queries.get_roster(conn, m["away_team_id"], week)
 
         rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"])
-        h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"])
+        h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
 
         results.append(
             {

@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.config import _require
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
@@ -137,7 +137,10 @@ async def _run_draft_clock_job():
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        config = await conn.fetchrow("SELECT status, current_pick_deadline FROM draft_config WHERE season = $1", season)
+        config = await conn.fetchrow(
+            "SELECT status, current_pick_deadline FROM draft_config WHERE season = $1 AND league_id = $2",
+            season, DEFAULT_LEAGUE_ID,
+        )
         if config is None or config["status"] != "in_progress" or config["current_pick_deadline"] is None:
             return
         if config["current_pick_deadline"] > datetime.now(timezone.utc):

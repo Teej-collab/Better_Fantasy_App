@@ -19,6 +19,8 @@ normal step in the sync pipeline without redoing untouched seasons.
 """
 from collections import defaultdict
 
+from app.config import DEFAULT_LEAGUE_ID
+
 BOOM_OFFSET = 20.0
 BUST_OFFSET = 10.0
 
@@ -42,14 +44,14 @@ def get_baseline(points_projected: float, position_scores: list[float]):
     return sum(position_scores) / len(position_scores)
 
 
-async def compute_boom_bust_for_week(conn, season: int, week: int) -> int:
+async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     rows = await conn.fetch(
         """
         SELECT id, position, points_scored, points_projected
         FROM rosters
-        WHERE season = $1 AND week = $2 AND lineup_slot NOT IN ('BE', 'IR')
+        WHERE season = $1 AND week = $2 AND league_id = $3 AND lineup_slot NOT IN ('BE', 'IR')
         """,
-        season, week,
+        season, week, league_id,
     )
 
     by_position = defaultdict(list)
@@ -67,20 +69,21 @@ async def compute_boom_bust_for_week(conn, season: int, week: int) -> int:
     return len(rows)
 
 
-async def compute_boom_bust_for_season(pool, season: int) -> int:
+async def compute_boom_bust_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
         weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 ORDER BY week", season
+            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+            season, league_id,
         )
         total = 0
         for w in weeks:
-            total += await compute_boom_bust_for_week(conn, season, w["week"])
+            total += await compute_boom_bust_for_week(conn, season, w["week"], league_id)
     return total
 
 
-async def compute_boom_bust_for_single_week(pool, season: int, week: int) -> int:
+async def compute_boom_bust_for_single_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Pool-based single-week entry point for live sync (see
     app/providers/sync.py's run_live_sync) — recomputes just the one
     week that was just re-synced, not the whole season."""
     async with pool.acquire() as conn:
-        return await compute_boom_bust_for_week(conn, season, week)
+        return await compute_boom_bust_for_week(conn, season, week, league_id)

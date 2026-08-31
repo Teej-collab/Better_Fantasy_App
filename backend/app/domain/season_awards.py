@@ -29,17 +29,19 @@ Only meaningful once a season's final_standings are populated (i.e.
 after that season's playoffs finish), so it's a no-op mid-season rather
 than an error.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.expected_score import get_expected_score
 
 
-async def _get_team_id(conn, season: int, owner_id: int):
+async def _get_team_id(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetchval(
-        "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", season, owner_id
+        "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
     )
 
 
-async def compute_clutch_choke_counts(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_clutch_choke_counts(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -58,7 +60,7 @@ async def compute_clutch_choke_counts(conn, season: int, owner_id: int):
     clutch_weeks = 0
     choke_weeks = 0
     for g in games:
-        expected = await get_expected_score(conn, season, g["week"], team_id)
+        expected = await get_expected_score(conn, season, g["week"], team_id, league_id)
         if expected <= 0:
             continue
         actual = float(g["actual"])
@@ -72,8 +74,8 @@ async def compute_clutch_choke_counts(conn, season: int, owner_id: int):
     return {"clutch_weeks": clutch_weeks, "choke_weeks": choke_weeks}
 
 
-async def compute_over_underachiever(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_over_underachiever(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -90,14 +92,14 @@ async def compute_over_underachiever(conn, season: int, owner_id: int):
 
     total_diff = 0.0
     for g in games:
-        expected = await get_expected_score(conn, season, g["week"], team_id)
+        expected = await get_expected_score(conn, season, g["week"], team_id, league_id)
         total_diff += float(g["actual"]) - expected
 
     return round(total_diff, 2)
 
 
-async def compute_boom_bust_weeks(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_boom_bust_weeks(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -117,8 +119,8 @@ async def compute_boom_bust_weeks(conn, season: int, owner_id: int):
     return {"best_week": float(row["best_week"]), "worst_week": float(row["worst_week"])}
 
 
-async def compute_snakebit_and_luck_extremes(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_snakebit_and_luck_extremes(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -145,8 +147,8 @@ async def compute_snakebit_and_luck_extremes(conn, season: int, owner_id: int):
     }
 
 
-async def compute_longest_streaks(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_longest_streaks(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -178,8 +180,8 @@ async def compute_longest_streaks(conn, season: int, owner_id: int):
     return {"longest_win_streak": longest_win_streak, "longest_loss_streak": longest_loss_streak}
 
 
-async def compute_bullseye(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_bullseye(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -196,7 +198,7 @@ async def compute_bullseye(conn, season: int, owner_id: int):
 
     count = 0
     for g in games:
-        expected = await get_expected_score(conn, season, g["week"], team_id)
+        expected = await get_expected_score(conn, season, g["week"], team_id, league_id)
         if expected <= 0:
             continue
         if abs(float(g["actual"]) - expected) <= 0.5:
@@ -205,8 +207,8 @@ async def compute_bullseye(conn, season: int, owner_id: int):
     return count
 
 
-async def compute_highway_robbery(conn, season: int, owner_id: int):
-    team_id = await _get_team_id(conn, season, owner_id)
+async def compute_highway_robbery(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
 
@@ -222,8 +224,8 @@ async def compute_highway_robbery(conn, season: int, owner_id: int):
     biggest_week, biggest_gap = None, None
     for g in wins:
         opp_id = g["away_team_id"] if g["home_team_id"] == team_id else g["home_team_id"]
-        my_expected = await get_expected_score(conn, season, g["week"], team_id)
-        opp_expected = await get_expected_score(conn, season, g["week"], opp_id)
+        my_expected = await get_expected_score(conn, season, g["week"], team_id, league_id)
+        opp_expected = await get_expected_score(conn, season, g["week"], opp_id, league_id)
 
         if my_expected < opp_expected:
             gap = opp_expected - my_expected
@@ -235,8 +237,10 @@ async def compute_highway_robbery(conn, season: int, owner_id: int):
     return {"week": biggest_week, "projection_gap": round(biggest_gap, 2)}
 
 
-async def determine_and_save_season_awards(conn, season: int) -> dict:
-    owner_rows = await conn.fetch("SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1", season)
+async def determine_and_save_season_awards(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+    owner_rows = await conn.fetch(
+        "SELECT DISTINCT owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
+    )
     owner_ids = [r["owner_id"] for r in owner_rows]
 
     winners: dict = {}  # award_type -> (owner_id, detail, value)
@@ -249,55 +253,55 @@ async def determine_and_save_season_awards(conn, season: int) -> dict:
             winners[award_type] = (owner_id, detail, value)
 
     for owner_id in owner_ids:
-        cc = await compute_clutch_choke_counts(conn, season, owner_id)
+        cc = await compute_clutch_choke_counts(conn, season, owner_id, league_id)
         if cc:
             consider("Clutch Performer", owner_id, cc["clutch_weeks"], f"{cc['clutch_weeks']} clutch weeks", lambda a, b: a > b)
             consider("Choke Artist", owner_id, cc["choke_weeks"], f"{cc['choke_weeks']} choke weeks", lambda a, b: a > b)
 
-        diff = await compute_over_underachiever(conn, season, owner_id)
+        diff = await compute_over_underachiever(conn, season, owner_id, league_id)
         if diff is not None:
             consider("Overachiever", owner_id, diff, f"+{diff} pts vs. expected", lambda a, b: a > b)
             consider("Underachiever", owner_id, diff, f"{diff} pts vs. expected", lambda a, b: a < b)
 
-        bb = await compute_boom_bust_weeks(conn, season, owner_id)
+        bb = await compute_boom_bust_weeks(conn, season, owner_id, league_id)
         if bb:
             consider("Boom Week", owner_id, bb["best_week"], f"{bb['best_week']} pts", lambda a, b: a > b)
             consider("Bust Week", owner_id, bb["worst_week"], f"{bb['worst_week']} pts", lambda a, b: a < b)
 
-        snake = await compute_snakebit_and_luck_extremes(conn, season, owner_id)
+        snake = await compute_snakebit_and_luck_extremes(conn, season, owner_id, league_id)
         if snake:
             if snake["snakebit_score"] is not None:
                 consider("Snakebit Award", owner_id, snake["snakebit_score"], f"{snake['snakebit_score']} pts in a loss", lambda a, b: a > b)
             if snake["luckiest_win_score"] is not None:
                 consider("Luckiest Win", owner_id, snake["luckiest_win_score"], f"won with only {snake['luckiest_win_score']} pts", lambda a, b: a < b)
 
-        streaks = await compute_longest_streaks(conn, season, owner_id)
+        streaks = await compute_longest_streaks(conn, season, owner_id, league_id)
         if streaks:
             consider("Heater", owner_id, streaks["longest_win_streak"], f"{streaks['longest_win_streak']}-game win streak", lambda a, b: a > b)
             consider("Cold Streak", owner_id, streaks["longest_loss_streak"], f"{streaks['longest_loss_streak']}-game losing streak", lambda a, b: a > b)
 
-        bullseye = await compute_bullseye(conn, season, owner_id)
+        bullseye = await compute_bullseye(conn, season, owner_id, league_id)
         if bullseye:
             consider("Bullseye Award", owner_id, bullseye, f"{bullseye} weeks within 0.5 pts", lambda a, b: a > b)
 
-        robbery = await compute_highway_robbery(conn, season, owner_id)
+        robbery = await compute_highway_robbery(conn, season, owner_id, league_id)
         if robbery:
             consider("Highway Robbery", owner_id, robbery["projection_gap"], f"upset by {robbery['projection_gap']} pts (week {robbery['week']})", lambda a, b: a > b)
 
     for award_type, (owner_id, detail, _value) in winners.items():
         await conn.execute(
             """
-            INSERT INTO season_awards (season, owner_id, award_type, detail)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO season_awards (season, owner_id, award_type, detail, league_id)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (season, award_type) DO UPDATE SET owner_id = EXCLUDED.owner_id, detail = EXCLUDED.detail
             """,
-            season, owner_id, award_type, detail,
+            season, owner_id, award_type, detail, league_id,
         )
 
     return winners
 
 
-async def compute_season_champion(conn, season: int) -> bool:
+async def compute_season_champion(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> bool:
     """No-op (returns False) until final_standings has a final_rank = 1
     row for this season — i.e. mid-season, before that season's
     playoffs have finished."""
@@ -305,31 +309,31 @@ async def compute_season_champion(conn, season: int) -> bool:
         """
         SELECT t.owner_id, t.team_name FROM final_standings fs
         JOIN teams_by_season t ON fs.team_id = t.id
-        WHERE fs.season = $1 AND fs.final_rank = 1
+        WHERE fs.season = $1 AND fs.final_rank = 1 AND fs.league_id = $2
         """,
-        season,
+        season, league_id,
     )
     if not row:
         return False
 
     await conn.execute(
         """
-        INSERT INTO season_champions (season, owner_id, team_name)
-        VALUES ($1, $2, $3)
+        INSERT INTO season_champions (season, owner_id, team_name, league_id)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (season) DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = EXCLUDED.team_name
         """,
-        season, row["owner_id"], row["team_name"],
+        season, row["owner_id"], row["team_name"], league_id,
     )
     return True
 
 
-async def compute_season_awards_for_season(pool, season: int) -> int:
+async def compute_season_awards_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Season-scoped sync-pipeline entry point (see
     app/providers/sync.py's run_full_sync) — not part of live sync,
     same as final_standings, since neither is meaningfully "per current
     week." Safe to run every full sync regardless of how much of the
     season has actually been played (see module docstring)."""
     async with pool.acquire() as conn:
-        winners = await determine_and_save_season_awards(conn, season)
-        await compute_season_champion(conn, season)
+        winners = await determine_and_save_season_awards(conn, season, league_id)
+        await compute_season_champion(conn, season, league_id)
     return len(winners)

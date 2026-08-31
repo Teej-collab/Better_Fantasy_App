@@ -11,10 +11,19 @@ cross-owner credential problem this whole pivot exists to fix — this
 module only overwrites the score fields once Phase D's scoring engine
 has computed the week's points, immediately after.
 """
+from app.config import DEFAULT_LEAGUE_ID
+
 _NON_STARTER_SLOTS = ("BE", "IR")
 
 
 async def compute_team_score(conn, season: int, week: int, team_id: int) -> float:
+    # player_week_stats isn't uniquely keyed per league yet (see
+    # migration 454d8edda612's docstring) — this join picks up
+    # whichever single fantasy_points row exists for a player/week,
+    # not "this league's" value specifically. Not new here; a
+    # pre-existing gap only closed once that table is split or
+    # widened in a later phase. current_rosters IS filtered by
+    # team_id, which is already a specific, league-scoped row.
     rows = await conn.fetch(
         """
         SELECT pws.fantasy_points
@@ -28,14 +37,15 @@ async def compute_team_score(conn, season: int, week: int, team_id: int) -> floa
     return round(sum(float(r["fantasy_points"]) for r in rows), 2)
 
 
-async def compute_matchup_scores_for_week(conn, season: int, week: int) -> int:
+async def compute_matchup_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Recomputes and stores home_score/away_score for every matchup
     already on the books for this season/week (from provider.
     sync_matchups' pairing read — see module docstring). Returns the
     number of matchups updated; 0 (not an error) if no matchups exist
     yet for this week."""
     matchup_rows = await conn.fetch(
-        "SELECT id, home_team_id, away_team_id FROM matchups WHERE season = $1 AND week = $2", season, week
+        "SELECT id, home_team_id, away_team_id FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
     )
     updated = 0
     async with conn.transaction():

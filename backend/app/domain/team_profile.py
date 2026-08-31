@@ -9,6 +9,9 @@ Best/worst week and best/worst season are regular-season only.
 """
 
 
+from app.config import DEFAULT_LEAGUE_ID
+
+
 def _summarize(games):
     if not games:
         return None
@@ -25,10 +28,10 @@ def _summarize(games):
     }
 
 
-async def build_team_profile(conn, season: int, owner_id: int):
+async def build_team_profile(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     team_row = await conn.fetchrow(
-        "SELECT id AS team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
-        season, owner_id,
+        "SELECT id AS team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
     )
     if not team_row:
         return None
@@ -80,10 +83,11 @@ async def build_team_profile(conn, season: int, owner_id: int):
     }
 
 
-async def build_career_profile(conn, owner_id: int):
+async def build_career_profile(conn, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     team_rows = await conn.fetch(
-        "SELECT id AS team_id, season, team_name FROM teams_by_season WHERE owner_id = $1 ORDER BY season",
-        owner_id,
+        "SELECT id AS team_id, season, team_name FROM teams_by_season WHERE owner_id = $1 AND league_id = $2 "
+        "ORDER BY season",
+        owner_id, league_id,
     )
     if not team_rows:
         return None
@@ -202,17 +206,19 @@ async def find_game_of_the_week(conn, season: int, week: int, matchups: list[dic
     return best_matchup
 
 
-async def get_owner_badges(conn, owner_id: int):
+async def get_owner_badges(conn, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     """
     Pulls every championship and seasonal award this owner has ever
     won, for display as profile badges. Grouped by award type so
     repeats show as "3x" instead of three separate lines.
     """
     championships = await conn.fetch(
-        "SELECT season FROM season_champions WHERE owner_id = $1 ORDER BY season", owner_id
+        "SELECT season FROM season_champions WHERE owner_id = $1 AND league_id = $2 ORDER BY season",
+        owner_id, league_id,
     )
     awards = await conn.fetch(
-        "SELECT season, award_type, detail FROM season_awards WHERE owner_id = $1 ORDER BY season", owner_id
+        "SELECT season, award_type, detail FROM season_awards WHERE owner_id = $1 AND league_id = $2 ORDER BY season",
+        owner_id, league_id,
     )
 
     award_groups = {}

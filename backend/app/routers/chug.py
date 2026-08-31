@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
-from app.config import _require
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug
@@ -105,13 +105,13 @@ async def upload_chug(
         )
 
         owed_before = await conn.fetchval(
-            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2",
-            active_season, payload["owner_id"],
+            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            active_season, payload["owner_id"], DEFAULT_LEAGUE_ID,
         ) or 0
         await record_completed_chug(conn, active_season, payload["owner_id"])
         owed_after = await conn.fetchval(
-            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2",
-            active_season, payload["owner_id"],
+            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            active_season, payload["owner_id"], DEFAULT_LEAGUE_ID,
         ) or 0
 
     return {

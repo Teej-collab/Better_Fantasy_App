@@ -18,6 +18,7 @@ pick-submission time.
 import json
 from datetime import datetime, timedelta, timezone
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.draft_autopick import choose_autopick
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
@@ -62,7 +63,8 @@ def plan_snake_order(draft_order: list[int], rounds: int) -> list[tuple[int, int
 
 
 async def create_draft(
-    conn, season: int, draft_order: list[int], roster_slots: dict, pick_time_limit_seconds: int = 90
+    conn, season: int, draft_order: list[int], roster_slots: dict, pick_time_limit_seconds: int = 90,
+    league_id: int = DEFAULT_LEAGUE_ID,
 ) -> None:
     """Refuses to overwrite an existing draft_config for this season —
     call reset_draft() first if you need to change the order or roster
@@ -72,7 +74,9 @@ async def create_draft(
     draft are exactly the kind of data a silent re-setup could quietly
     destroy."""
     async with conn.transaction():
-        exists = await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1", season)
+        exists = await conn.fetchval(
+            "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+        )
         if exists:
             raise DraftAlreadyExistsError(
                 f"A draft already exists for season {season} — reset it first if you want to change the order"
@@ -80,66 +84,74 @@ async def create_draft(
         rounds = total_draftable_slots(roster_slots)
         await conn.execute(
             """
-            INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots, league_id)
+            VALUES ($1, $2, $3, $4, $5)
             """,
-            season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots),
+            season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id,
         )
         rows = plan_snake_order(draft_order, rounds)
         await conn.executemany(
             """
-            INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id, league_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            [(season, pick_number, round_num, round_pick, owner_id) for pick_number, round_num, round_pick, owner_id in rows],
+            [
+                (season, pick_number, round_num, round_pick, owner_id, league_id)
+                for pick_number, round_num, round_pick, owner_id in rows
+            ],
         )
 
 
-async def set_scheduled_start(conn, season: int, scheduled_start) -> None:
+async def set_scheduled_start(conn, season: int, scheduled_start, league_id: int = DEFAULT_LEAGUE_ID) -> None:
     """When the real draft is planned for — independent of draft_order/
     roster_slots setup above, and settable/changeable on its own
     (POST /draft/schedule) without touching either. Requires
     draft_config to already exist (via create_draft) — this is
     metadata on top of a real draft, not a way to create one."""
     result = await conn.execute(
-        "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2", scheduled_start, season
+        "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2 AND league_id = $3",
+        scheduled_start, season, league_id,
     )
     if result == "UPDATE 0":
         raise DraftNotFoundError(f"No draft configured for season {season}")
 
 
-async def seed_keeper_pick(conn, season: int, owner_id: int, round_num: int, sleeper_player_id: str) -> None:
+async def seed_keeper_pick(
+    conn, season: int, owner_id: int, round_num: int, sleeper_player_id: str, league_id: int = DEFAULT_LEAGUE_ID
+) -> None:
     """Pre-fills this owner's pick in `round_num` with their keeper —
     must run after create_draft (the pick rows must already exist) and
     before start_draft. Also seeds current_rosters, same as a live pick
     does, so a keeper shows up on the team's roster immediately."""
     async with conn.transaction():
         pick = await conn.fetchrow(
-            "SELECT pick_number FROM draft_picks WHERE season = $1 AND round = $2 AND owner_id = $3",
-            season, round_num, owner_id,
+            "SELECT pick_number FROM draft_picks WHERE season = $1 AND round = $2 AND owner_id = $3 "
+            "AND league_id = $4",
+            season, round_num, owner_id, league_id,
         )
         if pick is None:
             raise DraftNotFoundError(f"No pick found for owner {owner_id} in round {round_num}")
         await conn.execute(
             """
             UPDATE draft_picks SET sleeper_player_id = $1, is_keeper = TRUE, made_at = now()
-            WHERE season = $2 AND pick_number = $3
+            WHERE season = $2 AND pick_number = $3 AND league_id = $4
             """,
-            sleeper_player_id, season, pick["pick_number"],
+            sleeper_player_id, season, pick["pick_number"], league_id,
         )
         team_id = await conn.fetchval(
-            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", season, owner_id
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
         )
         await conn.execute(
             """
-            INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via)
-            VALUES ($1, $2, $3, 'BE', 'keeper')
+            INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id)
+            VALUES ($1, $2, $3, 'BE', 'keeper', $4)
             """,
-            season, team_id, sleeper_player_id,
+            season, team_id, sleeper_player_id, league_id,
         )
 
 
-async def seed_keepers_from_locked_selections(conn, season: int) -> list[dict]:
+async def seed_keepers_from_locked_selections(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
     """The batch counterpart to seed_keeper_pick above: reads every
     LOCKED keeper_selections row for the season and pre-fills each
     owner's LAST round (this league's first year in the app — no prior
@@ -162,11 +174,13 @@ async def seed_keepers_from_locked_selections(conn, season: int) -> list[dict]:
     raises KeeperResolutionError with the FULL list of failures (not
     just the first) and seeds nothing — a real draft is the wrong place
     to discover a partial, silently-incomplete keeper board."""
-    rules = await keeper_queries.get_rules(conn, season)
+    rules = await keeper_queries.get_rules(conn, season, league_id)
     if rules is None or rules["locked_at"] is None:
         raise KeeperSelectionsNotLockedError(f"Keepers for season {season} aren't locked yet")
 
-    config_row = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1", season)
+    config_row = await conn.fetchrow(
+        "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
     if config_row is None:
         raise DraftNotFoundError(f"No draft configured for season {season}")
     config = _config_dict(config_row)
@@ -175,11 +189,12 @@ async def seed_keepers_from_locked_selections(conn, season: int) -> list[dict]:
             f"Draft for season {season} has already started — keepers must be seeded before start_draft"
         )
 
-    selections = await keeper_queries.get_all_selections(conn, season)
+    selections = await keeper_queries.get_all_selections(conn, season, league_id)
     already_seeded_owner_ids = {
         row["owner_id"]
         for row in await conn.fetch(
-            "SELECT owner_id FROM draft_picks WHERE season = $1 AND is_keeper = TRUE", season
+            "SELECT owner_id FROM draft_picks WHERE season = $1 AND is_keeper = TRUE AND league_id = $2",
+            season, league_id,
         )
     }
     pending = [s for s in selections if s["owner_id"] not in already_seeded_owner_ids]
@@ -209,12 +224,14 @@ async def seed_keepers_from_locked_selections(conn, season: int) -> list[dict]:
     seeded = []
     async with conn.transaction():
         for r in resolved:
-            await seed_keeper_pick(conn, season, r["owner_id"], last_round, r["sleeper_player_id"])
+            await seed_keeper_pick(conn, season, r["owner_id"], last_round, r["sleeper_player_id"], league_id)
             seeded.append({**r, "round": last_round})
     return seeded
 
 
-async def _advance_to_next_open_pick(conn, season: int, from_pick_number: int, pick_time_limit_seconds: int) -> dict:
+async def _advance_to_next_open_pick(
+    conn, season: int, from_pick_number: int, pick_time_limit_seconds: int, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
     """Walks forward from from_pick_number, skipping any pick that
     already has a player (a pre-filled keeper pick — see module
     docstring), and sets draft_config to either the next open pick
@@ -223,7 +240,8 @@ async def _advance_to_next_open_pick(conn, season: int, from_pick_number: int, p
     pick_number = from_pick_number
     while True:
         pick = await conn.fetchrow(
-            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2", season, pick_number
+            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+            season, pick_number, league_id,
         )
         if pick is None:
             return _config_dict(await conn.fetchrow(
@@ -231,36 +249,41 @@ async def _advance_to_next_open_pick(conn, season: int, from_pick_number: int, p
                 UPDATE draft_config
                 SET status = 'complete', completed_at = now(), current_pick_deadline = NULL,
                     current_pick_number = $1
-                WHERE season = $2 RETURNING *
+                WHERE season = $2 AND league_id = $3 RETURNING *
                 """,
-                pick_number, season,
+                pick_number, season, league_id,
             ))
         if pick["sleeper_player_id"] is None:
             deadline = datetime.now(timezone.utc) + timedelta(seconds=pick_time_limit_seconds)
             return _config_dict(await conn.fetchrow(
                 """
                 UPDATE draft_config SET current_pick_number = $1, current_pick_deadline = $2
-                WHERE season = $3 RETURNING *
+                WHERE season = $3 AND league_id = $4 RETURNING *
                 """,
-                pick_number, deadline, season,
+                pick_number, deadline, season, league_id,
             ))
         pick_number += 1
 
 
-async def start_draft(conn, season: int) -> dict:
+async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     async with conn.transaction():
-        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1 FOR UPDATE", season)
+        config = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
+        )
         if config is None:
             raise DraftNotFoundError(f"No draft configured for season {season}")
         await conn.execute(
-            "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1", season
+            "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1 AND league_id = $2",
+            season, league_id,
         )
-        return await _advance_to_next_open_pick(conn, season, 1, config["pick_time_limit_seconds"])
+        return await _advance_to_next_open_pick(conn, season, 1, config["pick_time_limit_seconds"], league_id)
 
 
-async def pause_draft(conn, season: int) -> dict:
+async def pause_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     async with conn.transaction():
-        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1 FOR UPDATE", season)
+        config = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
+        )
         if config is None or config["status"] != "in_progress":
             raise DraftNotInProgressError(f"Draft for season {season} isn't in progress")
         remaining = None
@@ -269,15 +292,17 @@ async def pause_draft(conn, season: int) -> dict:
         return _config_dict(await conn.fetchrow(
             """
             UPDATE draft_config SET status = 'paused', paused_remaining_seconds = $1, current_pick_deadline = NULL
-            WHERE season = $2 RETURNING *
+            WHERE season = $2 AND league_id = $3 RETURNING *
             """,
-            remaining, season,
+            remaining, season, league_id,
         ))
 
 
-async def resume_draft(conn, season: int) -> dict:
+async def resume_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     async with conn.transaction():
-        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1 FOR UPDATE", season)
+        config = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
+        )
         if config is None or config["status"] != "paused":
             raise DraftNotInProgressError(f"Draft for season {season} isn't paused")
         remaining = config["paused_remaining_seconds"] or config["pick_time_limit_seconds"]
@@ -285,23 +310,28 @@ async def resume_draft(conn, season: int) -> dict:
         return _config_dict(await conn.fetchrow(
             """
             UPDATE draft_config SET status = 'in_progress', current_pick_deadline = $1, paused_remaining_seconds = NULL
-            WHERE season = $2 RETURNING *
+            WHERE season = $2 AND league_id = $3 RETURNING *
             """,
-            deadline, season,
+            deadline, season, league_id,
         ))
 
 
-async def make_pick(conn, season: int, owner_id: int, sleeper_player_id: str, is_autopick: bool = False) -> dict:
+async def make_pick(
+    conn, season: int, owner_id: int, sleeper_player_id: str, is_autopick: bool = False,
+    league_id: int = DEFAULT_LEAGUE_ID,
+) -> dict:
     async with conn.transaction():
-        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1 FOR UPDATE", season)
+        config = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
+        )
         if config is None:
             raise DraftNotFoundError(f"No draft configured for season {season}")
         if config["status"] != "in_progress":
             raise DraftNotInProgressError(f"Draft for season {season} isn't in progress (status={config['status']})")
 
         pick = await conn.fetchrow(
-            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2",
-            season, config["current_pick_number"],
+            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+            season, config["current_pick_number"], league_id,
         )
         if pick is None or pick["owner_id"] != owner_id:
             raise NotYourTurnError("It isn't your turn to pick")
@@ -313,54 +343,61 @@ async def make_pick(conn, season: int, owner_id: int, sleeper_player_id: str, is
             raise PlayerNotDraftableError(f"{sleeper_player_id} isn't a draftable player")
 
         already_drafted = await conn.fetchval(
-            "SELECT 1 FROM draft_picks WHERE season = $1 AND sleeper_player_id = $2",
-            season, sleeper_player_id,
+            "SELECT 1 FROM draft_picks WHERE season = $1 AND sleeper_player_id = $2 AND league_id = $3",
+            season, sleeper_player_id, league_id,
         )
         if already_drafted:
             raise PlayerAlreadyDraftedError(f"{sleeper_player_id} has already been drafted this season")
 
         await conn.execute(
             "UPDATE draft_picks SET sleeper_player_id = $1, is_autopick = $2, made_at = now() "
-            "WHERE season = $3 AND pick_number = $4",
-            sleeper_player_id, is_autopick, season, pick["pick_number"],
+            "WHERE season = $3 AND pick_number = $4 AND league_id = $5",
+            sleeper_player_id, is_autopick, season, pick["pick_number"], league_id,
         )
         team_id = await conn.fetchval(
-            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", season, owner_id
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
         )
         await conn.execute(
-            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
-            "VALUES ($1, $2, $3, 'BE', 'draft')",
-            season, team_id, sleeper_player_id,
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id) "
+            "VALUES ($1, $2, $3, 'BE', 'draft', $4)",
+            season, team_id, sleeper_player_id, league_id,
         )
         new_config = await _advance_to_next_open_pick(
-            conn, season, pick["pick_number"] + 1, config["pick_time_limit_seconds"]
+            conn, season, pick["pick_number"] + 1, config["pick_time_limit_seconds"], league_id
         )
         made_pick = await conn.fetchrow(
-            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2", season, pick["pick_number"]
+            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+            season, pick["pick_number"], league_id,
         )
         return {"pick": dict(made_pick), "config": new_config}
 
 
-async def autopick(conn, season: int) -> dict:
+async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     """Called by the draft-clock scheduler job when a team's deadline
     passes with no pick made. Picks on that team's behalf using
     app/domain/draft_autopick.py's algorithm, then delegates to
     make_pick for the actual write (same validation, same
     turn-advancement)."""
     async with conn.transaction():
-        config = _config_dict(await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1", season) or {})
+        config = _config_dict(
+            await conn.fetchrow(
+                "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+            ) or {}
+        )
         if not config or config["status"] != "in_progress":
             raise DraftNotInProgressError(f"Draft for season {season} isn't in progress")
         pick = await conn.fetchrow(
-            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2",
-            season, config["current_pick_number"],
+            "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+            season, config["current_pick_number"], league_id,
         )
         if pick is None:
             raise DraftNotFoundError("No current pick to autopick for")
         owner_id = pick["owner_id"]
 
         team_id = await conn.fetchval(
-            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", season, owner_id
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
         )
         rostered = await conn.fetch(
             "SELECT p.position FROM current_rosters cr JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id "
@@ -373,11 +410,12 @@ async def autopick(conn, season: int) -> dict:
             """
             SELECT p.sleeper_player_id, p.position, p.search_rank FROM players p
             WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
-                SELECT sleeper_player_id FROM draft_picks WHERE season = $1 AND sleeper_player_id IS NOT NULL
+                SELECT sleeper_player_id FROM draft_picks
+                WHERE season = $1 AND league_id = $2 AND sleeper_player_id IS NOT NULL
             )
             ORDER BY p.search_rank ASC NULLS LAST
             """,
-            season,
+            season, league_id,
         )
         chosen = choose_autopick(rostered_positions, config["roster_slots"], [dict(r) for r in available])
         if chosen is None:
@@ -388,25 +426,28 @@ async def autopick(conn, season: int) -> dict:
     # no cross-transaction race window that matters here since the
     # scheduler job is the only caller and draft_config's FOR UPDATE in
     # make_pick still serializes against a concurrent manual pick.
-    return await make_pick(conn, season, owner_id, chosen["sleeper_player_id"], is_autopick=True)
+    return await make_pick(conn, season, owner_id, chosen["sleeper_player_id"], is_autopick=True, league_id=league_id)
 
 
-async def undo_last_pick(conn, season: int) -> dict:
+async def undo_last_pick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     async with conn.transaction():
-        config = await conn.fetchrow("SELECT * FROM draft_config WHERE season = $1 FOR UPDATE", season)
+        config = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
+        )
         if config is None:
             raise DraftNotFoundError(f"No draft configured for season {season}")
 
         last_pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND made_at IS NOT NULL AND is_keeper = FALSE "
-            "ORDER BY made_at DESC LIMIT 1",
-            season,
+            "AND league_id = $2 ORDER BY made_at DESC LIMIT 1",
+            season, league_id,
         )
         if last_pick is None:
             raise NothingToUndoError("No live pick to undo")
 
         team_id = await conn.fetchval(
-            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", season, last_pick["owner_id"]
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, last_pick["owner_id"], league_id,
         )
         await conn.execute(
             "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
@@ -414,22 +455,22 @@ async def undo_last_pick(conn, season: int) -> dict:
         )
         await conn.execute(
             "UPDATE draft_picks SET sleeper_player_id = NULL, is_autopick = FALSE, made_at = NULL "
-            "WHERE season = $1 AND pick_number = $2",
-            season, last_pick["pick_number"],
+            "WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+            season, last_pick["pick_number"], league_id,
         )
         deadline = datetime.now(timezone.utc) + timedelta(seconds=config["pick_time_limit_seconds"])
         new_config = await conn.fetchrow(
             """
             UPDATE draft_config SET status = 'in_progress', current_pick_number = $1, current_pick_deadline = $2,
                 completed_at = NULL
-            WHERE season = $3 RETURNING *
+            WHERE season = $3 AND league_id = $4 RETURNING *
             """,
-            last_pick["pick_number"], deadline, season,
+            last_pick["pick_number"], deadline, season, league_id,
         )
         return {"undone_pick": dict(last_pick), "config": _config_dict(new_config)}
 
 
-async def reset_draft(conn, season: int) -> None:
+async def reset_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> None:
     """Wipes this season's draft entirely — config, every pick
     (keeper-prefilled or live), and every current_rosters row that
     draft seeded — so the commissioner can run a real mock draft to
@@ -441,7 +482,8 @@ async def reset_draft(conn, season: int) -> None:
     error) if no draft exists yet for this season."""
     async with conn.transaction():
         await conn.execute(
-            "DELETE FROM current_rosters WHERE season = $1 AND acquired_via IN ('draft', 'keeper')", season
+            "DELETE FROM current_rosters WHERE season = $1 AND league_id = $2 AND acquired_via IN ('draft', 'keeper')",
+            season, league_id,
         )
-        await conn.execute("DELETE FROM draft_picks WHERE season = $1", season)
-        await conn.execute("DELETE FROM draft_config WHERE season = $1", season)
+        await conn.execute("DELETE FROM draft_picks WHERE season = $1 AND league_id = $2", season, league_id)
+        await conn.execute("DELETE FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id)

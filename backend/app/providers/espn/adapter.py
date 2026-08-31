@@ -17,16 +17,17 @@ from decimal import Decimal
 
 from espn_api.football import League
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
 from app.providers.espn.config import ESPNConfig
 
 MAX_WEEKS_TO_TRY = 17  # covers regular season + playoffs; we stop early if a week has no data
 
 
-async def _get_team_db_id(conn, season: int, espn_team_id: int):
+async def _get_team_db_id(conn, season: int, espn_team_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetchval(
-        "SELECT id FROM teams_by_season WHERE season = $1 AND espn_team_id = $2",
-        season, espn_team_id,
+        "SELECT id FROM teams_by_season WHERE season = $1 AND espn_team_id = $2 AND league_id = $3",
+        season, espn_team_id, league_id,
     )
 
 
@@ -46,7 +47,7 @@ class ESPNProvider(FantasyProvider):
         """Ported from Fantasy_Helper's bot/ingestion/espn_client.py, unchanged."""
         return self._league(season).current_week
 
-    async def sync_teams(self, pool, season: int) -> int:
+    async def sync_teams(self, pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
 
         async with pool.acquire() as conn:
@@ -81,20 +82,22 @@ class ESPNProvider(FantasyProvider):
                 # name on the next full/live sync.
                 await conn.execute(
                     """
-                    INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id)
+                    VALUES ($1, $2, $3, $4, $5)
                     ON CONFLICT (season, espn_team_id)
                     DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = CASE
                         WHEN teams_by_season.team_name_is_custom THEN teams_by_season.team_name
                         ELSE EXCLUDED.team_name
                     END
                     """,
-                    season, team.team_id, owner_id, team.team_name,
+                    season, team.team_id, owner_id, team.team_name, league_id,
                 )
 
         return len(league.teams)
 
-    async def _sync_matchup_week(self, conn, matchups, season: int, week: int, reg_season_weeks: int) -> int:
+    async def _sync_matchup_week(
+        self, conn, matchups, season: int, week: int, reg_season_weeks: int, league_id: int = DEFAULT_LEAGUE_ID
+    ) -> int:
         if not matchups:
             return 0
 
@@ -105,8 +108,8 @@ class ESPNProvider(FantasyProvider):
             if m.away_team == 0:  # bye week, no real opponent
                 continue
 
-            home_db_id = await _get_team_db_id(conn, season, m.home_team.team_id)
-            away_db_id = await _get_team_db_id(conn, season, m.away_team.team_id)
+            home_db_id = await _get_team_db_id(conn, season, m.home_team.team_id, league_id)
+            away_db_id = await _get_team_db_id(conn, season, m.away_team.team_id, league_id)
 
             if home_db_id is None or away_db_id is None:
                 continue  # team not found, skip rather than crash
@@ -114,21 +117,21 @@ class ESPNProvider(FantasyProvider):
             await conn.execute(
                 """
                 INSERT INTO matchups
-                    (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff, league_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (season, week, home_team_id, away_team_id)
                 DO UPDATE SET home_score = EXCLUDED.home_score,
                               away_score = EXCLUDED.away_score,
                               is_playoff = EXCLUDED.is_playoff
                 """,
                 season, week, home_db_id, away_db_id,
-                Decimal(str(round(m.home_score, 2))), Decimal(str(round(m.away_score, 2))), is_playoff,
+                Decimal(str(round(m.home_score, 2))), Decimal(str(round(m.away_score, 2))), is_playoff, league_id,
             )
             saved_count += 1
 
         return saved_count
 
-    async def sync_matchups(self, pool, season: int) -> int:
+    async def sync_matchups(self, pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
         reg_season_weeks = league.settings.reg_season_count
         saved_count = 0
@@ -143,18 +146,22 @@ class ESPNProvider(FantasyProvider):
                 if not week_matchups:
                     break
 
-                saved_count += await self._sync_matchup_week(conn, week_matchups, season, week, reg_season_weeks)
+                saved_count += await self._sync_matchup_week(
+                    conn, week_matchups, season, week, reg_season_weeks, league_id
+                )
 
         return saved_count
 
-    async def sync_matchups_for_week(self, pool, season: int, week: int) -> int:
+    async def sync_matchups_for_week(self, pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
         reg_season_weeks = league.settings.reg_season_count
         matchups = league.scoreboard(week)
         async with pool.acquire() as conn:
-            return await self._sync_matchup_week(conn, matchups, season, week, reg_season_weeks)
+            return await self._sync_matchup_week(conn, matchups, season, week, reg_season_weeks, league_id)
 
-    async def _save_roster_week(self, conn, box_scores, season: int, week: int) -> bool:
+    async def _save_roster_week(
+        self, conn, box_scores, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID
+    ) -> bool:
         """Just the write — no "has this week really started" judgment.
         That gate matters for the full historical scan (below), where it's
         the signal to stop looking at further weeks, but not for a live
@@ -168,17 +175,17 @@ class ESPNProvider(FantasyProvider):
             if bs.away_team == 0:
                 continue
 
-            home_db_id = await _get_team_db_id(conn, season, bs.home_team.team_id)
-            away_db_id = await _get_team_db_id(conn, season, bs.away_team.team_id)
+            home_db_id = await _get_team_db_id(conn, season, bs.home_team.team_id, league_id)
+            away_db_id = await _get_team_db_id(conn, season, bs.away_team.team_id, league_id)
 
             if home_db_id:
-                await self._save_lineup(conn, season, week, home_db_id, bs.home_lineup)
+                await self._save_lineup(conn, season, week, home_db_id, bs.home_lineup, league_id)
             if away_db_id:
-                await self._save_lineup(conn, season, week, away_db_id, bs.away_lineup)
+                await self._save_lineup(conn, season, week, away_db_id, bs.away_lineup, league_id)
 
         return True
 
-    async def sync_rosters(self, pool, season: int) -> int:
+    async def sync_rosters(self, pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
         saved_weeks = 0
 
@@ -200,19 +207,19 @@ class ESPNProvider(FantasyProvider):
                 if not any_real_points:
                     break
 
-                await self._save_roster_week(conn, box_scores, season, week)
+                await self._save_roster_week(conn, box_scores, season, week, league_id)
                 saved_weeks += 1
 
         return saved_weeks
 
-    async def sync_rosters_for_week(self, pool, season: int, week: int) -> int:
+    async def sync_rosters_for_week(self, pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
         box_scores = league.box_scores(week)
         async with pool.acquire() as conn:
-            saved = await self._save_roster_week(conn, box_scores, season, week)
+            saved = await self._save_roster_week(conn, box_scores, season, week, league_id)
         return 1 if saved else 0
 
-    async def sync_final_standings(self, pool, season: int) -> int:
+    async def sync_final_standings(self, pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
         saved = 0
 
@@ -221,25 +228,25 @@ class ESPNProvider(FantasyProvider):
                 if team.final_standing == 0:
                     continue  # season still in progress — no real final rank yet
 
-                team_db_id = await _get_team_db_id(conn, season, team.team_id)
+                team_db_id = await _get_team_db_id(conn, season, team.team_id, league_id)
                 if team_db_id is None:
                     continue
 
                 await conn.execute(
                     """
-                    INSERT INTO final_standings (season, team_id, final_rank)
-                    VALUES ($1, $2, $3)
+                    INSERT INTO final_standings (season, team_id, final_rank, league_id)
+                    VALUES ($1, $2, $3, $4)
                     ON CONFLICT (season, team_id)
                     DO UPDATE SET final_rank = EXCLUDED.final_rank
                     """,
-                    season, team_db_id, team.final_standing,
+                    season, team_db_id, team.final_standing, league_id,
                 )
                 saved += 1
 
         return saved
 
     @staticmethod
-    async def _save_lineup(conn, season, week, team_db_id, lineup):
+    async def _save_lineup(conn, season, week, team_db_id, lineup, league_id: int = DEFAULT_LEAGUE_ID):
         await conn.execute(
             "DELETE FROM rosters WHERE season = $1 AND week = $2 AND team_id = $3",
             season, week, team_db_id,
@@ -249,11 +256,11 @@ class ESPNProvider(FantasyProvider):
                 """
                 INSERT INTO rosters
                     (season, week, team_id, player_name, position, lineup_slot, points_scored,
-                     points_projected, espn_player_id, pro_team)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                     points_projected, espn_player_id, pro_team, league_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 """,
                 season, week, team_db_id, player.name, player.position,
                 player.slot_position,
                 Decimal(str(round(player.points, 2))), Decimal(str(round(player.projected_points, 2))),
-                player.playerId, player.proTeam,
+                player.playerId, player.proTeam, league_id,
             )

@@ -20,9 +20,13 @@ syncs by real NFL week, so it'd be many months stale by keeper-
 selection time — see that function's docstring for the full reasoning).
 """
 
+from app.config import DEFAULT_LEAGUE_ID
 
-async def get_rules(conn, season: int):
-    return await conn.fetchrow("SELECT * FROM league_keeper_rules WHERE season = $1", season)
+
+async def get_rules(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    return await conn.fetchrow(
+        "SELECT * FROM league_keeper_rules WHERE season = $1 AND league_id = $2", season, league_id
+    )
 
 
 async def upsert_rules(
@@ -31,6 +35,7 @@ async def upsert_rules(
     max_keepers: int,
     max_consecutive_years: int | None,
     keeper_deadline,
+    league_id: int = DEFAULT_LEAGUE_ID,
 ):
     """Commissioner-only (enforced in the router). Refuses to change
     anything once the season's window is locked — a commissioner who
@@ -39,8 +44,8 @@ async def upsert_rules(
     silently invalidates selections owners already made under it."""
     return await conn.fetchrow(
         """
-        INSERT INTO league_keeper_rules (season, max_keepers, max_consecutive_years, keeper_deadline)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO league_keeper_rules (season, max_keepers, max_consecutive_years, keeper_deadline, league_id)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (season) DO UPDATE SET
             max_keepers = EXCLUDED.max_keepers,
             max_consecutive_years = EXCLUDED.max_consecutive_years,
@@ -48,69 +53,77 @@ async def upsert_rules(
         WHERE league_keeper_rules.locked_at IS NULL
         RETURNING *
         """,
-        season, max_keepers, max_consecutive_years, keeper_deadline,
+        season, max_keepers, max_consecutive_years, keeper_deadline, league_id,
     )
 
 
-async def lock_rules(conn, season: int):
+async def lock_rules(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     """No-op (returns None) if there's no rules row yet for this season,
     or if it's already locked — the router treats both as "nothing to
     do" rather than an error, re-fetching the current row either way."""
     return await conn.fetchrow(
-        "UPDATE league_keeper_rules SET locked_at = now() WHERE season = $1 AND locked_at IS NULL RETURNING *",
-        season,
+        "UPDATE league_keeper_rules SET locked_at = now() "
+        "WHERE season = $1 AND league_id = $2 AND locked_at IS NULL RETURNING *",
+        season, league_id,
     )
 
 
-async def unlock_rules(conn, season: int):
+async def unlock_rules(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetchrow(
-        "UPDATE league_keeper_rules SET locked_at = NULL WHERE season = $1 RETURNING *", season
+        "UPDATE league_keeper_rules SET locked_at = NULL WHERE season = $1 AND league_id = $2 RETURNING *",
+        season, league_id,
     )
 
 
-async def get_selections(conn, season: int, owner_id: int):
+async def get_selections(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
-        "SELECT * FROM keeper_selections WHERE season = $1 AND owner_id = $2 ORDER BY player_name",
-        season, owner_id,
+        "SELECT * FROM keeper_selections WHERE season = $1 AND owner_id = $2 AND league_id = $3 "
+        "ORDER BY player_name",
+        season, owner_id, league_id,
     )
 
 
-async def replace_selections(conn, season: int, owner_id: int, players: list[dict]):
+async def replace_selections(conn, season: int, owner_id: int, players: list[dict], league_id: int = DEFAULT_LEAGUE_ID):
     """Full replace, not a diff/patch — a keeper picker always submits
     its whole intended list, same as how HomeCardDeck.tsx's card order
     is saved wholesale rather than as individual add/remove ops. Runs
     in a transaction so a mid-write failure can't leave an owner with
     a half-updated keeper list."""
     async with conn.transaction():
-        await conn.execute("DELETE FROM keeper_selections WHERE season = $1 AND owner_id = $2", season, owner_id)
+        await conn.execute(
+            "DELETE FROM keeper_selections WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
+        )
         for p in players:
             await conn.execute(
                 """
-                INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name, consecutive_years_kept)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO keeper_selections
+                    (season, owner_id, espn_player_id, player_name, consecutive_years_kept, league_id)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 season, owner_id, p["espn_player_id"], p["player_name"], p.get("consecutive_years_kept", 1),
+                league_id,
             )
-    return await get_selections(conn, season, owner_id)
+    return await get_selections(conn, season, owner_id, league_id)
 
 
-async def get_all_selections(conn, season: int):
+async def get_all_selections(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     """Every owner's locked-or-not keeper picks for a season — used by
     app/domain/draft_engine.py's seed_keepers_from_locked_selections to
     process every owner's keeper into the real draft in one batch,
     unlike get_selections above (single-owner, for the picker UI)."""
     return await conn.fetch(
-        "SELECT * FROM keeper_selections WHERE season = $1 ORDER BY owner_id, player_name",
-        season,
+        "SELECT * FROM keeper_selections WHERE season = $1 AND league_id = $2 ORDER BY owner_id, player_name",
+        season, league_id,
     )
 
 
-async def get_prior_season_selections(conn, owner_id: int, prior_season: int):
+async def get_prior_season_selections(conn, owner_id: int, prior_season: int, league_id: int = DEFAULT_LEAGUE_ID):
     """What this owner kept last season — the carryover candidates for
     this season's picker (Part E), each checked by the router against
     this season's roster pool (still on the team?) and
     max_consecutive_years (still eligible?) before being offered."""
     return await conn.fetch(
-        "SELECT * FROM keeper_selections WHERE season = $1 AND owner_id = $2",
-        prior_season, owner_id,
+        "SELECT * FROM keeper_selections WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        prior_season, owner_id, league_id,
     )

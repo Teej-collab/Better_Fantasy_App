@@ -14,6 +14,7 @@ drift from what they actually drafted against.
 """
 import json
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     PlayerAlreadyRosteredError,
@@ -68,8 +69,10 @@ async def get_roster(conn, season: int, team_id: int, week: int | None = None) -
     return [dict(r) for r in rows]
 
 
-async def _get_roster_slots(conn, season: int) -> dict[str, int]:
-    raw = await conn.fetchval("SELECT roster_slots FROM draft_config WHERE season = $1", season)
+async def _get_roster_slots(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict[str, int]:
+    raw = await conn.fetchval(
+        "SELECT roster_slots FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
     if raw is None:
         raise RosterConfigNotFoundError(
             f"No draft_config exists for season {season} — the roster shape isn't known yet"
@@ -100,13 +103,15 @@ async def _find_displacement(conn, season: int, team_id: int, to_slot: str, rost
     )
 
 
-async def plan_move(conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str) -> dict:
+async def plan_move(
+    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
     """Pure validation, no write — same PREVIEW-ONLY role
     ESPNLineupClient.plan_lineup_change used to play."""
     player = await _get_roster_entry(conn, season, team_id, sleeper_player_id)
     if not is_eligible_for_slot(player["position"], to_slot):
         raise SlotIneligibleError(f"{player['player_name']} ({player['position']}) isn't eligible for slot {to_slot}")
-    roster_slots = await _get_roster_slots(conn, season)
+    roster_slots = await _get_roster_slots(conn, season, league_id)
     displaced = await _find_displacement(conn, season, team_id, to_slot, roster_slots)
     return {"player": player, "from_slot": player["lineup_slot"], "to_slot": to_slot, "displaced_player": displaced}
 
@@ -121,9 +126,11 @@ async def plan_swap(conn, season: int, team_id: int, sleeper_player_id_a: str, s
     return {"player_a": player_a, "player_b": player_b}
 
 
-async def move_player(conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str) -> dict:
+async def move_player(
+    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
     async with conn.transaction():
-        plan = await plan_move(conn, season, team_id, sleeper_player_id, to_slot)
+        plan = await plan_move(conn, season, team_id, sleeper_player_id, to_slot, league_id)
         if plan["displaced_player"] is not None:
             await conn.execute(
                 "UPDATE current_rosters SET lineup_slot = $1 WHERE season = $2 AND team_id = $3 AND sleeper_player_id = $4",
@@ -166,7 +173,8 @@ async def drop_player(conn, season: int, team_id: int, sleeper_player_id: str) -
 
 
 async def add_free_agent(
-    conn, season: int, team_id: int, sleeper_player_id: str, drop_sleeper_player_id: str | None = None
+    conn, season: int, team_id: int, sleeper_player_id: str, drop_sleeper_player_id: str | None = None,
+    league_id: int = DEFAULT_LEAGUE_ID,
 ) -> dict:
     async with conn.transaction():
         player = await conn.fetchrow(
@@ -176,12 +184,13 @@ async def add_free_agent(
             raise PlayerNotDraftableError(f"{sleeper_player_id} isn't a rosterable player")
 
         already_rostered = await conn.fetchval(
-            "SELECT 1 FROM current_rosters WHERE season = $1 AND sleeper_player_id = $2", season, sleeper_player_id
+            "SELECT 1 FROM current_rosters WHERE season = $1 AND sleeper_player_id = $2 AND league_id = $3",
+            season, sleeper_player_id, league_id,
         )
         if already_rostered:
             raise PlayerAlreadyRosteredError(f"{sleeper_player_id} is already on a roster this season")
 
-        roster_slots = await _get_roster_slots(conn, season)
+        roster_slots = await _get_roster_slots(conn, season, league_id)
         capacity = total_draftable_slots(roster_slots)
         current_count = await conn.fetchval(
             "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2", season, team_id
@@ -199,8 +208,8 @@ async def add_free_agent(
             dropped = None
 
         await conn.execute(
-            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
-            "VALUES ($1, $2, $3, $4, 'free_agent')",
-            season, team_id, sleeper_player_id, BENCH_SLOT_LABEL,
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id) "
+            "VALUES ($1, $2, $3, $4, 'free_agent', $5)",
+            season, team_id, sleeper_player_id, BENCH_SLOT_LABEL, league_id,
         )
         return {"roster": await get_roster(conn, season, team_id), "dropped_player": dropped}

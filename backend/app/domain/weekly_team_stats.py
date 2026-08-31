@@ -26,6 +26,9 @@ from that week's own roster rows.
 """
 
 
+from app.config import DEFAULT_LEAGUE_ID
+
+
 def _normalize(values: list[float]) -> list[float]:
     """Scales a list of numbers to 0-1, so different metrics can be
     combined fairly even though they're on different scales."""
@@ -100,19 +103,23 @@ def compute_chaos_score(boom_count: int, bust_count: int, total_starters: int) -
     return round((swung_count / total_starters) * 100, 2)
 
 
-async def _upsert_stat(conn, season: int, week: int, team_id: int, column: str, value) -> None:
+async def _upsert_stat(
+    conn, season: int, week: int, team_id: int, column: str, value, league_id: int = DEFAULT_LEAGUE_ID
+) -> None:
     await conn.execute(
         f"""
-        INSERT INTO weekly_team_stats (season, week, team_id, {column})
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO weekly_team_stats (season, week, team_id, {column}, league_id)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (season, week, team_id) DO UPDATE SET {column} = EXCLUDED.{column}
         """,
-        season, week, team_id, value,
+        season, week, team_id, value, league_id,
     )
 
 
-async def compute_power_ranks_for_week(conn, season: int, week: int) -> int:
-    team_rows = await conn.fetch("SELECT id FROM teams_by_season WHERE season = $1", season)
+async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    team_rows = await conn.fetch(
+        "SELECT id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
+    )
 
     team_stats = []
     for t in team_rows:
@@ -147,13 +154,14 @@ async def compute_power_ranks_for_week(conn, season: int, week: int) -> int:
 
     ranks = compute_power_ranks(team_stats)
     for t in team_stats:
-        await _upsert_stat(conn, season, week, t["team_id"], "power_rank", ranks[t["team_id"]])
+        await _upsert_stat(conn, season, week, t["team_id"], "power_rank", ranks[t["team_id"]], league_id)
     return len(team_stats)
 
 
-async def compute_luck_scores_for_week(conn, season: int, week: int) -> int:
+async def compute_luck_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     matchups = await conn.fetch(
-        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0", season, week
+        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0",
+        season, week, league_id,
     )
     if not matchups:
         return 0
@@ -167,15 +175,16 @@ async def compute_luck_scores_for_week(conn, season: int, week: int) -> int:
         home_won = m["home_score"] > m["away_score"]
         home_luck = round(compute_luck_score(float(m["home_score"]), all_scores, home_won), 2)
         away_luck = round(compute_luck_score(float(m["away_score"]), all_scores, not home_won), 2)
-        await _upsert_stat(conn, season, week, m["home_team_id"], "luck_score", home_luck)
-        await _upsert_stat(conn, season, week, m["away_team_id"], "luck_score", away_luck)
+        await _upsert_stat(conn, season, week, m["home_team_id"], "luck_score", home_luck, league_id)
+        await _upsert_stat(conn, season, week, m["away_team_id"], "luck_score", away_luck, league_id)
 
     return len(matchups) * 2
 
 
-async def compute_chaos_scores_for_week(conn, season: int, week: int) -> int:
+async def compute_chaos_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2", season, week
+        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
     )
 
     for t in team_rows:
@@ -188,12 +197,12 @@ async def compute_chaos_scores_for_week(conn, season: int, week: int) -> int:
         boom_count = sum(1 for s in starters if s["is_boom"])
         bust_count = sum(1 for s in starters if s["is_bust"])
         chaos = compute_chaos_score(boom_count, bust_count, len(starters))
-        await _upsert_stat(conn, season, week, team_id, "chaos_score", chaos)
+        await _upsert_stat(conn, season, week, team_id, "chaos_score", chaos, league_id)
 
     return len(team_rows)
 
 
-async def compute_sos_for_week(conn, season: int, week: int) -> int:
+async def compute_sos_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Strength of schedule through this week, regular season only
     (same convention the record book/all-time pages use) — for each
     team, the average win percentage of every opponent it's actually
@@ -203,7 +212,9 @@ async def compute_sos_for_week(conn, season: int, week: int) -> int:
     else) is computed the same regular-season/played-games-only way
     compute_power_ranks_for_week computes it, just filtered to
     non-playoff games to match the record-book convention."""
-    team_rows = await conn.fetch("SELECT id FROM teams_by_season WHERE season = $1", season)
+    team_rows = await conn.fetch(
+        "SELECT id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
+    )
     team_ids = [t["id"] for t in team_rows]
 
     win_pct_by_team: dict[int, float] = {}
@@ -242,14 +253,15 @@ async def compute_sos_for_week(conn, season: int, week: int) -> int:
         if not opp_win_pcts:
             continue
         sos = round(sum(opp_win_pcts) / len(opp_win_pcts), 3)
-        await _upsert_stat(conn, season, week, team_id, "sos", sos)
+        await _upsert_stat(conn, season, week, team_id, "sos", sos, league_id)
         count += 1
     return count
 
 
-async def compute_team_projected_for_week(conn, season: int, week: int) -> int:
+async def compute_team_projected_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2", season, week
+        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
     )
 
     for t in team_rows:
@@ -260,37 +272,39 @@ async def compute_team_projected_for_week(conn, season: int, week: int) -> int:
             season, week, team_id,
         )
         projected = round(float(total), 2) if total else 0.0
-        await _upsert_stat(conn, season, week, team_id, "team_points_projected", projected)
+        await _upsert_stat(conn, season, week, team_id, "team_points_projected", projected, league_id)
 
     return len(team_rows)
 
 
-async def compute_weekly_team_stats_for_week(conn, season: int, week: int) -> int:
+async def compute_weekly_team_stats_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """All five columns for one week, in one call — the normal
     sync-pipeline entry point (see app/providers/sync.py)."""
     counts = [
-        await compute_power_ranks_for_week(conn, season, week),
-        await compute_luck_scores_for_week(conn, season, week),
-        await compute_chaos_scores_for_week(conn, season, week),
-        await compute_team_projected_for_week(conn, season, week),
-        await compute_sos_for_week(conn, season, week),
+        await compute_power_ranks_for_week(conn, season, week, league_id),
+        await compute_luck_scores_for_week(conn, season, week, league_id),
+        await compute_chaos_scores_for_week(conn, season, week, league_id),
+        await compute_team_projected_for_week(conn, season, week, league_id),
+        await compute_sos_for_week(conn, season, week, league_id),
     ]
     return max(counts)
 
 
-async def compute_weekly_team_stats_for_season(pool, season: int) -> int:
+async def compute_weekly_team_stats_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
         weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM matchups WHERE season = $1 AND home_score > 0 ORDER BY week", season
+            "SELECT DISTINCT week FROM matchups WHERE season = $1 AND league_id = $2 AND home_score > 0 "
+            "ORDER BY week",
+            season, league_id,
         )
         total = 0
         for w in weeks:
-            total += await compute_weekly_team_stats_for_week(conn, season, w["week"])
+            total += await compute_weekly_team_stats_for_week(conn, season, w["week"], league_id)
     return total
 
 
-async def compute_weekly_team_stats_for_single_week(pool, season: int, week: int) -> int:
+async def compute_weekly_team_stats_for_single_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Pool-based single-week entry point for live sync (see
     app/providers/sync.py's run_live_sync)."""
     async with pool.acquire() as conn:
-        return await compute_weekly_team_stats_for_week(conn, season, week)
+        return await compute_weekly_team_stats_for_week(conn, season, week, league_id)

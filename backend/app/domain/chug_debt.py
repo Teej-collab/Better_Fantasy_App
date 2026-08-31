@@ -15,6 +15,9 @@ top of logic that was never finished rather than the real, working rule.
 """
 
 
+from app.config import DEFAULT_LEAGUE_ID
+
+
 def compute_chugs_owed(roster_rows: list[dict]) -> int:
     return sum(
         1
@@ -24,47 +27,49 @@ def compute_chugs_owed(roster_rows: list[dict]) -> int:
     )
 
 
-async def compute_chug_debts_for_week(conn, season: int, week: int) -> int:
+async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     team_owners = await conn.fetch(
         "SELECT DISTINCT r.team_id, tbs.owner_id FROM rosters r "
         "JOIN teams_by_season tbs ON r.team_id = tbs.id "
-        "WHERE r.season = $1 AND r.week = $2",
-        season, week,
+        "WHERE r.season = $1 AND r.week = $2 AND r.league_id = $3",
+        season, week, league_id,
     )
 
     for t in team_owners:
         rows = await conn.fetch(
-            "SELECT lineup_slot, points_scored FROM rosters WHERE season = $1 AND week = $2 AND team_id = $3",
-            season, week, t["team_id"],
+            "SELECT lineup_slot, points_scored FROM rosters "
+            "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+            season, week, t["team_id"], league_id,
         )
         chugs_owed = compute_chugs_owed([dict(r) for r in rows])
 
         await conn.execute(
             """
-            INSERT INTO chug_debts (season, week, owner_id, chugs_owed)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO chug_debts (season, week, owner_id, chugs_owed, league_id)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (season, week, owner_id) DO UPDATE SET chugs_owed = EXCLUDED.chugs_owed
             """,
-            season, week, t["owner_id"], chugs_owed,
+            season, week, t["owner_id"], chugs_owed, league_id,
         )
 
     return len(team_owners)
 
 
-async def compute_chug_debts_for_season(pool, season: int) -> int:
+async def compute_chug_debts_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
         weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 ORDER BY week", season
+            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+            season, league_id,
         )
         total = 0
         for w in weeks:
-            total += await compute_chug_debts_for_week(conn, season, w["week"])
+            total += await compute_chug_debts_for_week(conn, season, w["week"], league_id)
     return total
 
 
-async def compute_chug_debts_for_single_week(pool, season: int, week: int) -> int:
+async def compute_chug_debts_for_single_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Pool-based single-week entry point for live sync (see
     app/providers/sync.py's run_live_sync) — recomputes just the one week
     that was just re-synced, not the whole season."""
     async with pool.acquire() as conn:
-        return await compute_chug_debts_for_week(conn, season, week)
+        return await compute_chug_debts_for_week(conn, season, week, league_id)

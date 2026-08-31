@@ -20,9 +20,13 @@ callers use both modules together, see app/routers/awards.py.
 """
 
 
-async def _load_week_context(conn, season: int, week: int):
+from app.config import DEFAULT_LEAGUE_ID
+
+
+async def _load_week_context(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     matchups = await conn.fetch(
-        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_score > 0", season, week
+        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0",
+        season, week, league_id,
     )
 
     team_score = {}
@@ -31,8 +35,9 @@ async def _load_week_context(conn, season: int, week: int):
         team_score[m["away_team_id"]] = float(m["away_score"])
 
     wts_rows = await conn.fetch(
-        "SELECT team_id, team_points_projected FROM weekly_team_stats WHERE season = $1 AND week = $2",
-        season, week,
+        "SELECT team_id, team_points_projected FROM weekly_team_stats WHERE season = $1 AND week = $2 "
+        "AND league_id = $3",
+        season, week, league_id,
     )
     projected = {
         r["team_id"]: float(r["team_points_projected"]) if r["team_points_projected"] else None
@@ -59,8 +64,8 @@ async def _load_week_context(conn, season: int, week: int):
     return matchups, team_score, wts_team_ids, expected_score, team_names
 
 
-async def get_overachiever_and_meltdown(conn, season: int, week: int):
-    _, team_score, wts_team_ids, expected_score, team_names = await _load_week_context(conn, season, week)
+async def get_overachiever_and_meltdown(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    _, team_score, wts_team_ids, expected_score, team_names = await _load_week_context(conn, season, week, league_id)
 
     results = []
     for team_id in wts_team_ids:
@@ -80,21 +85,21 @@ async def get_overachiever_and_meltdown(conn, season: int, week: int):
     return overachiever, meltdown
 
 
-async def get_biggest_bench_crime(conn, season: int, week: int):
+async def get_biggest_bench_crime(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     row = await conn.fetchrow(
         """
         SELECT bc.*, tbs.team_name FROM bench_crimes bc
         JOIN teams_by_season tbs ON bc.team_id = tbs.id
-        WHERE bc.season = $1 AND bc.week = $2
+        WHERE bc.season = $1 AND bc.week = $2 AND bc.league_id = $3
         ORDER BY bc.points_diff DESC LIMIT 1
         """,
-        season, week,
+        season, week, league_id,
     )
     return dict(row) if row else None
 
 
-async def get_clutch_choke_of_week(conn, season: int, week: int):
-    matchups, _, _, expected_score, team_names = await _load_week_context(conn, season, week)
+async def get_clutch_choke_of_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    matchups, _, _, expected_score, team_names = await _load_week_context(conn, season, week, league_id)
 
     clutch = None
     choke = None
@@ -130,34 +135,37 @@ async def get_clutch_choke_of_week(conn, season: int, week: int):
     return clutch, choke
 
 
-async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3):
+async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, league_id: int = DEFAULT_LEAGUE_ID):
     booms = await conn.fetch(
         """
         SELECT r.player_name, r.points_scored, tbs.team_name FROM rosters r
         JOIN teams_by_season tbs ON r.team_id = tbs.id
-        WHERE r.season = $1 AND r.week = $2 AND r.is_boom = TRUE
+        WHERE r.season = $1 AND r.week = $2 AND r.league_id = $4 AND r.is_boom = TRUE
         ORDER BY r.points_scored DESC LIMIT $3
         """,
-        season, week, limit,
+        season, week, limit, league_id,
     )
     busts = await conn.fetch(
         """
         SELECT r.player_name, r.points_scored, tbs.team_name FROM rosters r
         JOIN teams_by_season tbs ON r.team_id = tbs.id
-        WHERE r.season = $1 AND r.week = $2 AND r.is_bust = TRUE
+        WHERE r.season = $1 AND r.week = $2 AND r.league_id = $4 AND r.is_bust = TRUE
         ORDER BY r.points_scored ASC LIMIT $3
         """,
-        season, week, limit,
+        season, week, limit, league_id,
     )
     return [dict(b) for b in booms], [dict(b) for b in busts]
 
 
-async def get_game_of_week_result(conn, season: int, week: int, game_of_week_matchup: dict):
+async def get_game_of_week_result(
+    conn, season: int, week: int, game_of_week_matchup: dict, league_id: int = DEFAULT_LEAGUE_ID
+):
     if not game_of_week_matchup:
         return None
     m = await conn.fetchrow(
-        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_team_id = $3 AND away_team_id = $4",
-        season, week, game_of_week_matchup["home_team_id"], game_of_week_matchup["away_team_id"],
+        "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND home_team_id = $3 AND away_team_id = $4 "
+        "AND league_id = $5",
+        season, week, game_of_week_matchup["home_team_id"], game_of_week_matchup["away_team_id"], league_id,
     )
     if not m or m["home_score"] <= 0:
         return None

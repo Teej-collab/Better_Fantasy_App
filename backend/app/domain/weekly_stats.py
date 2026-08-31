@@ -23,27 +23,39 @@ manual /admin/weekly-compute trigger both call.
 """
 import json
 
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.matchup_scoring import compute_matchup_scores_for_week
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.providers.nfl_stats.espn_public import get_game_stats
 
 
-async def _upsert_player_week_stat(conn, season: int, week: int, sleeper_player_id: str, stat_line: dict, points: float) -> None:
+async def _upsert_player_week_stat(
+    conn, season: int, week: int, sleeper_player_id: str, stat_line: dict, points: float,
+    league_id: int = DEFAULT_LEAGUE_ID,
+) -> None:
+    # ON CONFLICT is still keyed by (season, week, sleeper_player_id)
+    # only, not league_id (see migration 454d8edda612's docstring) — a
+    # second league with different league_scoring_rules would silently
+    # overwrite this row's fantasy_points rather than getting its own.
+    # Not a bug introduced here; a pre-existing gap this phase only
+    # threads league_id far enough to document, not to close.
     await conn.execute(
         """
-        INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, computed_at)
-        VALUES ($1, $2, $3, $4, $5, now())
+        INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, computed_at, league_id)
+        VALUES ($1, $2, $3, $4, $5, now(), $6)
         ON CONFLICT (season, week, sleeper_player_id) DO UPDATE SET
             raw_stats = EXCLUDED.raw_stats,
             fantasy_points = EXCLUDED.fantasy_points,
             computed_at = now()
         """,
-        season, week, sleeper_player_id, json.dumps(stat_line), points,
+        season, week, sleeper_player_id, json.dumps(stat_line), points, league_id,
     )
 
 
-async def compute_week_stats(conn, season: int, week: int, event_ids: list[str]) -> dict[str, int]:
+async def compute_week_stats(
+    conn, season: int, week: int, event_ids: list[str], league_id: int = DEFAULT_LEAGUE_ID
+) -> dict[str, int]:
     """Fetches raw stats for every given event (one network round-trip
     per event, covering both individual players and team D/ST — see
     get_game_stats), computes points against this season's real
@@ -61,7 +73,8 @@ async def compute_week_stats(conn, season: int, week: int, event_ids: list[str])
     but a mid-season abbreviation mismatch shouldn't crash the whole
     week's compute either."""
     rule_rows = await conn.fetch(
-        "SELECT stat_category, points_per_unit FROM league_scoring_rules WHERE season = $1", season
+        "SELECT stat_category, points_per_unit FROM league_scoring_rules WHERE season = $1 AND league_id = $2",
+        season, league_id,
     )
     rules = rules_dict_from_rows(rule_rows)
     if not rules:
@@ -85,7 +98,7 @@ async def compute_week_stats(conn, season: int, week: int, event_ids: list[str])
                 if sleeper_id is None:
                     continue
                 points = compute_player_points(player["stat_line"], rules)
-                await _upsert_player_week_stat(conn, season, week, sleeper_id, player["stat_line"], points)
+                await _upsert_player_week_stat(conn, season, week, sleeper_id, player["stat_line"], points, league_id)
                 counts["players"] += 1
 
             for team_abbr, stat_line in game["team_dst"].items():
@@ -98,13 +111,13 @@ async def compute_week_stats(conn, season: int, week: int, event_ids: list[str])
                 # scored/gained nothing yet" — see scoring_engine.py's
                 # module docstring.
                 points = compute_player_points(stat_line, rules)
-                await _upsert_player_week_stat(conn, season, week, team_abbr, stat_line, points)
+                await _upsert_player_week_stat(conn, season, week, team_abbr, stat_line, points, league_id)
                 counts["team_dst"] += 1
 
     return counts
 
 
-async def compute_and_store_week(pool, season: int, week: int) -> dict:
+async def compute_and_store_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
     """The real weekly-compute entry point: pulls this fantasy week's
     real NFL event ids from ESPN's public scoreboard, stores every
     player/team-D-ST's fantasy points for the week (compute_week_stats
@@ -118,7 +131,7 @@ async def compute_and_store_week(pool, season: int, week: int) -> dict:
     event_ids = [g["id"] for g in games if g["id"]]
 
     async with pool.acquire() as conn:
-        stat_counts = await compute_week_stats(conn, season, week, event_ids)
-        matchups_updated = await compute_matchup_scores_for_week(conn, season, week)
+        stat_counts = await compute_week_stats(conn, season, week, event_ids, league_id)
+        matchups_updated = await compute_matchup_scores_for_week(conn, season, week, league_id)
 
     return {"event_count": len(event_ids), **stat_counts, "matchups_updated": matchups_updated}

@@ -17,6 +17,7 @@ never the real global max). ACTIVE_SEASON is already the one
 authoritative "what season is it right now" value the rest of the app
 uses (app/providers/espn/config.py).
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.win_probability import estimate_win_probability
 from app.queries import league as queries
 
@@ -28,10 +29,10 @@ def _projected_total(roster_rows) -> float:
     return round(sum(float(r["points_projected"] or 0) for r in starters), 2)
 
 
-async def build_your_week(conn, owner_id: int, season: int):
+async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     team = await conn.fetchrow(
-        "SELECT id AS team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2",
-        season, owner_id,
+        "SELECT id AS team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
     )
     if team is None:
         return None  # this owner has no team in the latest season (e.g. left the league)
@@ -41,7 +42,7 @@ async def build_your_week(conn, owner_id: int, season: int):
     # of week, not just in the no-matchup branch below, so the response
     # shape stays consistent whether or not a matchup exists.
     draft_row = await conn.fetchrow(
-        "SELECT scheduled_start, status FROM draft_config WHERE season = $1", season
+        "SELECT scheduled_start, status FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
     )
     draft = (
         {"scheduled_start": draft_row["scheduled_start"], "status": draft_row["status"]}
@@ -57,7 +58,7 @@ async def build_your_week(conn, owner_id: int, season: int):
     if not week or week < 1:
         return base  # preseason — no real current week yet
 
-    matchup = await queries.get_matchup_for_team(conn, team["team_id"], season, week)
+    matchup = await queries.get_matchup_for_team(conn, team["team_id"], season, week, league_id)
     if matchup is None:
         return base  # e.g. a bye week
 
@@ -74,7 +75,7 @@ async def build_your_week(conn, owner_id: int, season: int):
     my_projected = _projected_total(my_roster)
     opp_projected = _projected_total(opp_roster)
 
-    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season)}
+    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
     my_standing = standings_by_team.get(team["team_id"])
     record = None
     if my_standing:
@@ -84,7 +85,7 @@ async def build_your_week(conn, owner_id: int, season: int):
 
     win_probability = None
     if started:
-        stdev = await queries.get_team_score_stdev(conn, season)
+        stdev = await queries.get_team_score_stdev(conn, season, league_id)
         win_probability = estimate_win_probability(
             float(my_score), my_projected, float(opp_score), opp_projected, stdev
         )
