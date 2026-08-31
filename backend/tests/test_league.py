@@ -214,10 +214,10 @@ async def test_matchup_detail_includes_both_rosters(pool):
     resp = await _get(f"/matchups/{matchup_id}")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["home_team_name"] == "Team Alpha"
-    assert body["away_team_name"] == "Team Beta"
-    assert [p["player_name"] for p in body["home_roster"]] == ["Star Runner"]
-    assert [p["player_name"] for p in body["away_roster"]] == ["Backup Guy"]
+    assert body["home"]["team_name"] == "Team Alpha"
+    assert body["away"]["team_name"] == "Team Beta"
+    assert [p["player_name"] for p in body["home"]["roster"]] == ["Star Runner"]
+    assert [p["player_name"] for p in body["away"]["roster"]] == ["Backup Guy"]
 
 
 async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
@@ -253,10 +253,84 @@ async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
 
     resp = await _get(f"/matchups/{matchup_id}")
     body = resp.json()
-    assert body["home_roster"][0]["player_id"] == 4567
-    assert body["home_roster"][0]["pro_team"] == "KC"
-    assert body["away_roster"][0]["player_id"] is None
-    assert body["away_roster"][0]["pro_team"] is None
+    assert body["home"]["roster"][0]["player_id"] == 4567
+    assert body["home"]["roster"][0]["pro_team"] == "KC"
+    assert body["away"]["roster"][0]["player_id"] is None
+    assert body["away"]["roster"][0]["pro_team"] is None
+
+
+async def test_matchup_detail_includes_win_probability_boom_bust_and_scoped_bench_crime(pool):
+    team_a, team_b = await _seed_two_teams(pool)
+
+    async with pool.acquire() as conn:
+        # A third, unrelated team in the same week — its own bench
+        # crime must never leak into team_a/team_b's matchup detail,
+        # even though it's the same week and objectively "worse."
+        owner_c = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-league-owner-c", "Cara Lee",
+        )
+        team_c = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 103, owner_c, "Team Gamma",
+        )
+
+        matchup_id = await conn.fetchval(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, 9, $2, $3, 120.0, 100.0, FALSE)
+            RETURNING id
+            """,
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected, is_boom)
+            VALUES ($1, 9, $2, 'Boom Guy', 'RB', 'RB', 35.0, 15.0, TRUE)
+            """,
+            TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            """
+            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected, is_bust)
+            VALUES ($1, 9, $2, 'Bust Guy', 'WR', 'WR', 2.0, 15.0, TRUE)
+            """,
+            TEST_SEASON, team_b,
+        )
+        await conn.execute(
+            """
+            INSERT INTO bench_crimes (season, week, team_id, bench_player, started_player, position, points_diff, severity)
+            VALUES ($1, 9, $2, 'Bench Star', 'Starter Guy', 'WR', 12.0, 'Low Misdemeanor')
+            """,
+            TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            """
+            INSERT INTO bench_crimes (season, week, team_id, bench_player, started_player, position, points_diff, severity)
+            VALUES ($1, 9, $2, 'Other Bench Star', 'Other Starter', 'RB', 40.0, 'Felony Bench Crime')
+            """,
+            TEST_SEASON, team_c,
+        )
+
+    resp = await _get(f"/matchups/{matchup_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Win probability: real, non-zero scores → both sides get a value,
+    # complementary (sums to exactly 100), home (the higher scorer)
+    # favored.
+    assert body["home"]["win_probability"] is not None
+    assert body["away"]["win_probability"] is not None
+    assert round(body["home"]["win_probability"] + body["away"]["win_probability"], 1) == 100.0
+    assert body["home"]["win_probability"] > body["away"]["win_probability"]
+
+    # Boom/bust flags land on the right player.
+    assert body["home"]["roster"][0]["is_boom"] is True
+    assert body["away"]["roster"][0]["is_bust"] is True
+
+    # Bench crime scoped to just this matchup's two teams.
+    assert body["home"]["bench_crime"]["bench_player"] == "Bench Star"
+    assert body["away"]["bench_crime"] is None
 
 
 async def test_matchup_detail_404_for_unknown_id(pool):

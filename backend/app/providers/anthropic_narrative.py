@@ -1,0 +1,50 @@
+"""
+Thin wrapper around the Anthropic Messages API for weekly matchup
+write-ups — the only place in this app that calls an LLM. Adapted from
+Fantasy_Helper's bot/narrative_engine/llm_client.py (same shape: one
+system prompt + a facts string as the user message, low max_tokens),
+using the current Claude model rather than that repo's now-stale one.
+
+ANTHROPIC_API_KEY (app/config.py) is empty until the owner supplies a
+real one — generate_narrative fails loud with a clear message rather
+than a cryptic auth error if it's missing, since this is the one
+feature in the app that costs real money per call and shouldn't run
+silently misconfigured. app/domain/narrative_engine.py checks the key
+is present *before* ever calling this, so in practice this error only
+fires if that check is ever bypassed.
+"""
+from anthropic import Anthropic
+
+from app import config
+
+MODEL = "claude-sonnet-5"
+
+_client: Anthropic | None = None
+
+
+def _get_client() -> Anthropic:
+    global _client
+    if not config.ANTHROPIC_API_KEY:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is not set — the weekly write-up feature needs a real key "
+            "(backend/.env) before it can generate anything."
+        )
+    if _client is None:
+        _client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return _client
+
+
+def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 300) -> str:
+    """One matchup write-up (preview or recap — the caller picks the
+    system prompt for which). `facts` is the only real-world content in
+    the request — every number/name in it is already verified data
+    (see app/domain/narrative_engine.py's payload builder), so the
+    model is never asked to invent anything, only phrase what's true."""
+    client = _get_client()
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        system=system_prompt,
+        messages=[{"role": "user", "content": facts}],
+    )
+    return response.content[0].text.strip()

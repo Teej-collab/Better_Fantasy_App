@@ -87,13 +87,8 @@ export type RosterPlayer = {
   // backfills them. PlayerHeadshot.tsx falls back to initials when null.
   player_id: number | null;
   pro_team: string | null;
-};
-
-export type MatchupDetail = WeekMatchup & {
-  season: number;
-  week: number;
-  home_roster: RosterPlayer[];
-  away_roster: RosterPlayer[];
+  is_boom: boolean;
+  is_bust: boolean;
 };
 
 export type TeamDetail = {
@@ -169,6 +164,23 @@ export function listWeekMatchups(season: number, week: number) {
 
 export type Streak = "hot" | "cold" | "neutral";
 
+// A team's own headline bench crime for the week, if any (worst one —
+// bench_crimes rows come back ordered by points_diff DESC). Same shape
+// the bench_crimes table row has; only the fields the UI actually
+// reads are typed here.
+export type BenchCrime = {
+  bench_player: string;
+  started_player: string;
+  position: string;
+  points_diff: number;
+  severity: string;
+};
+
+export type ClutchChoke = {
+  label: "clutch" | "choke";
+  reason: string;
+};
+
 export type MatchupContextSide = {
   team_id: number;
   team_name: string;
@@ -179,6 +191,12 @@ export type MatchupContextSide = {
   streak: Streak;
   projected_total: number | null;
   roster: RosterPlayer[];
+  bench_crime: BenchCrime | null;
+  clutch_choke: ClutchChoke | null;
+  // Only set once the matchup has actually started (real, non-zero
+  // scores) — a meaningless 50/50 before kickoff isn't shown, same gate
+  // the homepage's "Your Week" hero already uses (win_probability.py).
+  win_probability: number | null;
 };
 
 export type MatchupRivalry = {
@@ -212,6 +230,8 @@ export type MatchupHeadToHead = {
 
 export type WeekMatchupContextItem = {
   matchup_id: number;
+  season: number;
+  week: number;
   is_playoff: boolean;
   is_game_of_the_week: boolean;
   is_rivalry: boolean;
@@ -235,8 +255,12 @@ export function getWeekMatchupContext(season: number, week: number) {
   return get<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`);
 }
 
+// Same shape as one WeekMatchupContextItem — GET /matchups/{id} and
+// /matchup-context's per-entry payload are built by the same backend
+// assembler (app/domain/matchup_context.py's _matchup_entry), just one
+// fetched directly by id instead of batched across a whole week.
 export function getMatchup(matchupId: number) {
-  return get<MatchupDetail>(`/matchups/${matchupId}`);
+  return get<WeekMatchupContextItem>(`/matchups/${matchupId}`);
 }
 
 export function getTeam(teamId: number) {

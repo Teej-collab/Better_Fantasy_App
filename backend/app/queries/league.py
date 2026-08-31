@@ -180,7 +180,7 @@ async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFA
 async def get_matchup(conn, matchup_id: int):
     return await conn.fetchrow(
         """
-        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff,
+        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff, m.league_id,
                ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
                at.id AS away_team_id, at.team_name AS away_team_name, m.away_score
         FROM matchups m
@@ -243,7 +243,7 @@ async def get_roster(conn, team_id: int, week: int):
     rows = await conn.fetch(
         """
         SELECT player_name, position, lineup_slot, points_scored, points_projected,
-               espn_player_id AS player_id, pro_team
+               espn_player_id AS player_id, pro_team, is_boom, is_bust
         FROM rosters
         WHERE team_id = $1 AND week = $2
         """,
@@ -321,6 +321,29 @@ async def get_current_rostered_players_by_pro_team(
         """,
         season, week, pro_teams, league_id,
     )
+
+
+async def get_bench_crimes_by_team(conn, season: int, week: int, team_ids: list[int], league_id: int = DEFAULT_LEAGUE_ID):
+    """Every bench_crimes row for a specific set of teams in a week —
+    scoped version of what weekly_awards.get_biggest_bench_crime
+    computes league-wide, for surfacing a matchup's own crime(s) on the
+    matchup detail page rather than only the week's single worst. Rows
+    come back ordered by points_diff DESC (worst first) within each
+    team, same ordering get_biggest_bench_crime already uses."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT * FROM bench_crimes
+        WHERE season = $1 AND week = $2 AND team_id = ANY($3::int[]) AND league_id = $4
+        ORDER BY points_diff DESC
+        """,
+        season, week, team_ids, league_id,
+    )
+    by_team: dict[int, list[dict]] = {}
+    for r in rows:
+        by_team.setdefault(r["team_id"], []).append(dict(r))
+    return by_team
 
 
 async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):

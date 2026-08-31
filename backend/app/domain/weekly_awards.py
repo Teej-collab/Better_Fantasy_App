@@ -98,6 +98,30 @@ async def get_biggest_bench_crime(conn, season: int, week: int, league_id: int =
     return dict(row) if row else None
 
 
+def _team_clutch_choke(score: float, won: bool, expected: float, opp_expected: float) -> dict | None:
+    """One team's clutch/choke qualification for a single game — pulled
+    out of get_clutch_choke_of_week so get_clutch_choke_status_by_team
+    (matchup_context.py's per-matchup badge) evaluates the exact same
+    rule instead of a second, driftable copy of it. Returns None if
+    this team doesn't qualify as either this week."""
+    if expected <= 0 or opp_expected <= 0:
+        return None
+
+    pct_diff = (score - expected) / expected
+    was_underdog = expected < (opp_expected - 10)
+    was_favored = expected > (opp_expected + 10)
+
+    if won and (pct_diff >= 0.15 or was_underdog):
+        margin = pct_diff if pct_diff >= 0.15 else (opp_expected - expected)
+        return {"label": "clutch", "margin": margin, "reason": "beat projection by 15%+" if pct_diff >= 0.15 else "won as underdog"}
+
+    if not won and (pct_diff <= -0.15 or was_favored):
+        margin = abs(pct_diff) if pct_diff <= -0.15 else (expected - opp_expected)
+        return {"label": "choke", "margin": margin, "reason": "missed projection by 15%+" if pct_diff <= -0.15 else "lost as the favorite"}
+
+    return None
+
+
 async def get_clutch_choke_of_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     matchups, _, _, expected_score, team_names = await _load_week_context(conn, season, week, league_id)
 
@@ -111,28 +135,40 @@ async def get_clutch_choke_of_week(conn, season: int, week: int, league_id: int 
             score = float(m["home_score"] if is_home else m["away_score"])
             won = (m["home_score"] > m["away_score"]) if is_home else (m["away_score"] > m["home_score"])
 
-            expected = expected_score(team_id)
-            opp_expected = expected_score(opp_id)
-            if expected <= 0 or opp_expected <= 0:
+            status = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id))
+            if status is None:
                 continue
-
-            pct_diff = (score - expected) / expected
-            was_underdog = expected < (opp_expected - 10)
-            was_favored = expected > (opp_expected + 10)
-
             team_name = team_names.get(team_id)
 
-            if won and (pct_diff >= 0.15 or was_underdog):
-                margin = pct_diff if pct_diff >= 0.15 else (opp_expected - expected)
-                if clutch is None or margin > clutch["margin"]:
-                    clutch = {"team_name": team_name, "margin": margin, "reason": "beat projection by 15%+" if pct_diff >= 0.15 else "won as underdog"}
-
-            if not won and (pct_diff <= -0.15 or was_favored):
-                margin = abs(pct_diff) if pct_diff <= -0.15 else (expected - opp_expected)
-                if choke is None or margin > choke["margin"]:
-                    choke = {"team_name": team_name, "margin": margin, "reason": "missed projection by 15%+" if pct_diff <= -0.15 else "lost as the favorite"}
+            if status["label"] == "clutch" and (clutch is None or status["margin"] > clutch["margin"]):
+                clutch = {"team_name": team_name, "margin": status["margin"], "reason": status["reason"]}
+            if status["label"] == "choke" and (choke is None or status["margin"] > choke["margin"]):
+                choke = {"team_name": team_name, "margin": status["margin"], "reason": status["reason"]}
 
     return clutch, choke
+
+
+async def get_clutch_choke_status_by_team(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+    """Per-team clutch/choke status for every team with a played matchup
+    this week — same qualification rule get_clutch_choke_of_week uses to
+    find the week's single best/worst, just returned for every team
+    instead of only the winner. Powers matchup_context.py's per-matchup
+    clutch/choke badge (a specific matchup's own two teams), not the
+    week's overall champion. Returns {team_id: {"label", "reason"} | None}."""
+    matchups, _, _, expected_score, _ = await _load_week_context(conn, season, week, league_id)
+
+    status: dict[int, dict | None] = {}
+    for m in matchups:
+        for is_home in (True, False):
+            team_id = m["home_team_id"] if is_home else m["away_team_id"]
+            opp_id = m["away_team_id"] if is_home else m["home_team_id"]
+            score = float(m["home_score"] if is_home else m["away_score"])
+            won = (m["home_score"] > m["away_score"]) if is_home else (m["away_score"] > m["home_score"])
+
+            result = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id))
+            status[team_id] = {"label": result["label"], "reason": result["reason"]} if result else None
+
+    return status
 
 
 async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, league_id: int = DEFAULT_LEAGUE_ID):

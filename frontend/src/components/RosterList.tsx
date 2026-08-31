@@ -34,6 +34,16 @@ export function RosterList({
               <span className="w-16 shrink-0 text-xs text-black/50 dark:text-white/50">{p.lineup_slot}</span>
               <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.player_name} size={28} />
               <span className="truncate">{p.player_name}</span>
+              {p.is_boom && (
+                <span title="Boom performance" aria-hidden>
+                  {"\u{1F525}"}
+                </span>
+              )}
+              {p.is_bust && (
+                <span title="Bust performance" aria-hidden>
+                  {"\u{1F976}"}
+                </span>
+              )}
             </div>
             <div className="flex shrink-0 gap-3 tabular-nums">
               {showProjected && (
