@@ -25,7 +25,9 @@ export function BrandMark({ href }: { href: string }) {
       {/* The emblem alone reads fine on its own at narrow widths — the
           full wordmark returns once there's room, same breakpoint the
           old bare-text brand mark used. */}
-      <span className="hidden text-base font-semibold tracking-tight sm:inline">Weekend League</span>
+      <span className="font-display hidden text-base font-semibold tracking-wide uppercase sm:inline">
+        Weekend League
+      </span>
     </Link>
   );
 }

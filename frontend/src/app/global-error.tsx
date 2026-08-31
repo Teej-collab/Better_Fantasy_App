@@ -28,8 +28,8 @@ export default function GlobalError({
           gap: "1rem",
           padding: "1rem",
           textAlign: "center",
-          background: "#23212c",
-          color: "#f5f4ec",
+          background: "#0d1016",
+          color: "#eceef1",
           fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
@@ -37,7 +37,7 @@ export default function GlobalError({
           Error
         </p>
         <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>Weekend League hit a snag</h1>
-        <p style={{ maxWidth: 384, fontSize: "0.875rem", color: "rgba(245,244,236,0.6)" }}>
+        <p style={{ maxWidth: 384, fontSize: "0.875rem", color: "rgba(236,238,241,0.6)" }}>
           Something went wrong loading the app. Try again in a moment.
         </p>
         <button

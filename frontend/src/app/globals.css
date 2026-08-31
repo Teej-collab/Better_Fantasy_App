@@ -13,27 +13,34 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #23212c;
-  --foreground: #f5f4ec;
+  --background: #0d1016;
+  --foreground: #eceef1;
 
   /* Weekend League design tokens (used across the whole app, not just
      the gated opening/auth experience anymore — see the theme note
-     above). "Cosmic" background, "Neon Green" accent. */
-  --wl-bg: #23212c;
-  --wl-surface: #2c2a37;
+     above). Recolored 2026-08-31 from a purple-tinted dark (#23212c)
+     to a near-black "broadcast graphics" palette, matching the
+     "Weekend League Walkthrough" mock the owner approved and asked to
+     be applied exactly — "Cosmic"/"Neon Green" as concepts are
+     unchanged (this is still the login screen's palette), just the
+     specific dark value underneath every in-app surface is darker and
+     cooler now. */
+  --wl-bg: #0d1016;
+  --wl-surface: #12161c;
+  --wl-border: #1c2027;
   --wl-accent: #39ff14;
   --wl-accent-dim: #1f890b;
-  --wl-text: #f5f4ec;
-  --wl-text-secondary: #93a396;
+  --wl-text: #eceef1;
+  --wl-text-secondary: #8790a0;
   --wl-live: #ef4444;
 
   /* Settings > Appearance > Neon Intensity — multiplies purely
-     decorative glow (.home-ambient's background wash, and every
-     .neon-panel's border/box-shadow glow below), not text/border
-     contrast or anything load-bearing for readability. Set via a
-     data-neon attribute on <html> (see layout.tsx), which RootLayout
-     reads from a small non-httpOnly cookie so it applies before first
-     paint instead of flashing standard-then-adjusting. */
+     decorative glow (.home-ambient's background wash — .neon-panel
+     below no longer has any glow of its own to scale, see its comment)
+     not text/border contrast or anything load-bearing for readability.
+     Set via a data-neon attribute on <html> (see layout.tsx), which
+     RootLayout reads from a small non-httpOnly cookie so it applies
+     before first paint instead of flashing standard-then-adjusting. */
   --wl-glow-scale: 1;
 }
 [data-neon="subtle"] {
@@ -46,14 +53,15 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), "IBM Plex Sans", Arial, Helvetica, sans-serif;
   /* Belt-and-suspenders: no element on the page should ever be able to
      make the whole document scroll sideways — the /players card deck
      (CardDeck.tsx) intentionally overflows horizontally, but only
@@ -84,72 +92,31 @@ body {
    were already the restrained, deliberate-accent kind of decoration
    this redesign keeps, not the busy kind it removes. */
 
-/* Shared glowing-border treatment for the app's content panels —
-   leaderboards, rosters, matchup cards, rivalry cards, profile/
-   settings sections. Replaces the plain border-black/10 dark:border-
-   white/10 pairing those containers used before with a colored accent
-   glow, so panels read as part of the neon-cosmic theme instead of a
-   bare box outline. Border + shadow only — every caller keeps its own
-   rounded-, bg-, and divide- utilities; deliberately NOT applied to
-   buttons, inputs, dropdowns, or small repeated grid tiles (award/
-   discovery tiles, payout tiles) — glowing every small element at once
-   reads as noise, not "alive."
-
-   Color is driven by --panel-glow, not hardcoded to --wl-accent: a
-   caller belonging to an established section (Standings, Rivalries,
-   etc.) sets --panel-glow inline to that section's own existing color
-   (the same hex home/page.tsx's SECTION_GLOW already uses for that
-   section's dot/tile glow), so the box and its section agree. A
-   caller with no section of its own (My Team, Settings, sign-in gate
-   cards) leaves --panel-glow unset and falls through to --user-accent
-   — the owner's own chosen accent color (Settings > Appearance),
-   which itself falls back to --wl-accent (Neon Green) when the owner
-   hasn't picked one. See layout.tsx's APPEARANCE_SCRIPT for how
-   --user-accent gets set before first paint.
-
-   Background is Cosmic (--wl-bg) with a slight tint of --panel-glow
-   mixed in — a "neon glass" wash, not a flat color and not the
-   near-transparent black/[0.015] dark:white/[0.03] tint these panels
-   used before the (now-removed, see body's comment above) starfield
-   background existed. That near-transparent version let the starfield
-   show straight through every panel, which made text and content hard
-   to read against it; this replaces it with a background solid enough
-   to guarantee legibility, wins over any bg-black/dark:bg-white utility
-   a caller still has via the same unlayered-beats-layered mechanism
-   .neon-panel's border/box-shadow already relies on. A touch of
-   transparency + backdrop-filter keeps it reading as glass instead of a
-   flat card, without threatening readability the way full transparency
-   did. Kept even after the starfield's removal — it still reads as a
-   deliberate "glass panel" material against the flat surface, not a
-   plain bordered box.
-
-   Border/box-shadow percentages were roughly halved on 2026-08-31, per
-   the owner's own request to calm the app down — every panel used to
-   glow at near-full strength all the time, which read as "everything
-   is exciting" (i.e. nothing is). --wl-glow-scale (Settings >
-   Appearance > Neon Intensity) still multiplies on top of this quieter
-   baseline exactly as before, so "High" can still bring real glow back
-   for an owner who wants it; only the default at "Standard" changed. */
+/* Shared flat-card treatment for the app's content panels — leaderboards,
+   rosters, matchup cards, rivalry cards, profile/settings sections.
+   Rebuilt 2026-08-31 to exactly match the "Weekend League Walkthrough"
+   mock the owner approved and asked to be applied as-is: a plain matte
+   card (--wl-surface fill, a single neutral --wl-border hairline), no
+   blur, no per-section or per-accent tint, no permanent glow. This
+   replaces two earlier, increasingly-elaborate versions in order —
+   first a colored "neon glass" wash keyed to --panel-glow (a
+   per-section hex, or the owner's --user-accent), then that same
+   treatment just turned down in intensity — both of which still put
+   *some* color/glow on every single panel by default, which is exactly
+   what the mock's flat black cards deliberately don't do. Every caller
+   still sets --panel-glow inline via lib/sectionColors.ts's
+   panelGlowStyle() from the earlier versions; that custom property is
+   simply unread by this rule now, left in place rather than ripped out
+   of ~18 call sites for a value with nowhere left to matter. Color and
+   glow aren't gone from the app — they're just spent deliberately now,
+   on the nav bar's current tab, the homepage's "Your Week" hero
+   (.hero-live-glow when a game's actually live), and live-state pills
+   — not on every static box a visitor scrolls past. --wl-glow-scale
+   (Settings > Appearance > Neon Intensity) no longer has a panel border
+   to scale; it still scales .home-ambient's wash further down. */
 .neon-panel {
-  --panel-glow: var(--user-accent, var(--wl-accent));
-  background-color: color-mix(
-    in srgb,
-    color-mix(in srgb, var(--panel-glow) 10%, var(--wl-bg) 90%) 94%,
-    transparent
-  );
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  /* Border and box-shadow glow both scale with --wl-glow-scale (Settings
-     > Appearance > Neon Intensity) — previously that setting only ever
-     touched the homepage's ambient wash, so "Subtle"/"High" visibly did
-     nothing to these boxes, the app's dominant visual element. calc()
-     inside color-mix()'s percentage argument is standard CSS Color 5,
-     supported in every browser this app already requires. */
-  border: 1px solid color-mix(in srgb, var(--panel-glow) calc(18% * var(--wl-glow-scale)), transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--panel-glow) calc(4% * var(--wl-glow-scale)), transparent),
-    0 0 calc(8px * var(--wl-glow-scale)) color-mix(in srgb, var(--panel-glow) calc(7% * var(--wl-glow-scale)), transparent),
-    0 1px 3px rgba(0, 0, 0, 0.4);
+  background-color: var(--wl-surface);
+  border: 1px solid var(--wl-border);
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
@@ -751,20 +718,16 @@ body {
   animation: score-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-/* Ambient glow around the ticker shell — brighter/red during Game Day
-   (LiveTicker's fast prop), so the ticker's "always alive" brand role
-   is visible even at a glance, not just when you're reading the
-   scrolling text itself. */
+/* The ticker shell is a plain flat bar now (border-black/10 dark:
+   border-white/10 from LiveTicker.tsx's own className carries its
+   border) — used to carry a permanent gold glow, brighter/red during
+   Game Day, removed 2026-08-31 to match the flat mock: "always alive"
+   is now carried by the live-dot pulse and faster scroll speed alone,
+   not a glow on the bar itself. Class kept (now a no-op) since
+   LiveTicker.tsx still applies it — harmless to leave wired for a
+   future live-state treatment if one's wanted here again. */
 .ticker-shell {
   transition: box-shadow 0.6s ease;
-  box-shadow:
-    0 0 0 1px rgba(250, 204, 21, 0.12),
-    0 0 24px rgba(250, 204, 21, 0.06);
-}
-.ticker-shell--live {
-  box-shadow:
-    0 0 0 1px rgba(239, 68, 68, 0.35),
-    0 0 28px rgba(239, 68, 68, 0.18);
 }
 
 /* Safe-area-aware horizontal padding — the header nav and main content

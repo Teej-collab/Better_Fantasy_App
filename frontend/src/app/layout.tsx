@@ -1,15 +1,36 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, IBM_Plex_Sans, Oswald } from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { PlayerCardProvider } from "@/components/players/PlayerCardProvider";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Body text — replaced Geist Sans 2026-08-31 as part of the redesign
+// into the calmer "Weekend League Walkthrough" mock the owner approved:
+// a real, deliberately-chosen typeface pairing instead of the generic
+// default. --font-body feeds globals.css's --font-sans theme token,
+// which is what body's own font-family rule actually reads.
+const ibmPlexSans = IBM_Plex_Sans({
+  variable: "--font-body",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
+// Display face — nav wordmark, page headings, big score/rank numerals.
+// A condensed, uppercase-leaning face on purpose: it's what gives the
+// calmer redesign's headings a "broadcast graphics" identity instead of
+// reading as the same body text just bolded. See globals.css's
+// --font-display theme token and the .font-display utility it
+// generates.
+const oswald = Oswald({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+});
+
+// Kept from before — still used for the handful of tabular-number
+// score displays that reach for `font-mono` (MatchupCard.tsx and
+// friends); unrelated to the body/display swap above.
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -50,7 +71,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#23212c",
+  themeColor: "#0d1016",
 };
 
 // Deliberately minimal — just the true document shell. The actual app
@@ -95,7 +116,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${ibmPlexSans.variable} ${oswald.variable} ${geistMono.variable} h-full antialiased dark`}
       // APPEARANCE_SCRIPT below sets data-neon and (sometimes)
       // motion-reduced/--user-accent on this element before React
       // hydrates, on purpose (that's what avoids a flash of the wrong
