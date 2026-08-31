@@ -5,7 +5,6 @@ import {
   buildNflTickerItems,
   getCurrentWeek,
   getMe,
-  getMyPreferences,
   getMyWeek,
   getNflScoreboard,
   getStandings,
@@ -18,7 +17,6 @@ import {
   listSeasons,
   resolveWeek,
   safeLatestSeason,
-  type HomeGridLayoutItem,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -28,7 +26,6 @@ import {
 } from "@/lib/api";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
-import { HomeDashboard } from "@/components/HomeDashboard";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
@@ -41,48 +38,6 @@ import {
   NAV_ACCENT,
   type DestinationKey,
 } from "@/lib/navDestinations";
-
-// The homepage's six reorderable dashboard cards, in the app's own
-// default order — same set backend/app/routers/settings.py validates
-// home_card_order against. A card only ever renders when its own data
-// condition is true (see how `cards` is built below); this array is
-// just the fallback order for whichever cards are actually present,
-// used both as the very first visit's order (before an owner has
-// dragged anything) and to fill in any card missing from an owner's
-// saved order (a stale save, or a new card type added after they set
-// theirs).
-const DEFAULT_CARD_ORDER = ["yourWeek", "standings", "matchups", "rivalries", "awards", "discover"];
-
-// Human-readable labels for HomeCardDeck's "+ Add Box" picker — the
-// picker needs to name a card even while it's hidden (and so has no
-// rendered content to read a title from).
-const CARD_LABELS: Record<string, string> = {
-  yourWeek: "Your Week",
-  standings: "League Standings",
-  matchups: "Other Matchups",
-  rivalries: "Rivalries",
-  awards: "This Week's Awards",
-  discover: "Discover",
-};
-
-function mergeCardOrder(saved: string | null | undefined, validKeys: string[]): string[] {
-  let order: string[] = [];
-  if (saved) {
-    try {
-      const parsed: unknown = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        order = parsed.filter((k): k is string => typeof k === "string" && validKeys.includes(k));
-      }
-    } catch {
-      // Malformed saved value — fall through to the default order below
-      // rather than breaking the whole homepage over one bad cookie/row.
-    }
-  }
-  for (const key of DEFAULT_CARD_ORDER) {
-    if (validKeys.includes(key) && !order.includes(key)) order.push(key);
-  }
-  return order;
-}
 
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
 // tier-colored badges (MatchupCard.tsx's TIER_BADGE_CLASS).
@@ -110,10 +65,9 @@ export default async function HomePage() {
   const { seasons } = await listSeasons();
   const season = safeLatestSeason(seasons);
 
-  const [myWeek, nflGames, myPreferences, gamecastGames] = await Promise.all([
+  const [myWeek, nflGames, gamecastGames] = await Promise.all([
     getMyWeek(sessionCookie),
     getNflScoreboard(),
-    getMyPreferences(sessionCookie),
     getLiveGames(),
   ]);
   const isGameDay = isNflGameLive(nflGames);
@@ -146,25 +100,6 @@ export default async function HomePage() {
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
   }
 
-  // Cards the owner has deliberately removed via "Edit Home" mode
-  // (HomeCardDeck.tsx) — checked below at each card's own assignment,
-  // not by skipping these fetches: standings/weeklyAwards/weekMatchups
-  // are also read by the always-visible ticker just above (see
-  // buildTickerItems and leagueTickerItems), so they can't be skipped
-  // just because their OWN card is hidden — only Your Week, Standings,
-  // Matchups, Rivalries, Awards, and Discover as literal dashboard
-  // cards are ever gated on this.
-  let hiddenCards: Set<string> = new Set();
-  if (myPreferences?.home_hidden_cards) {
-    try {
-      const parsed: unknown = JSON.parse(myPreferences.home_hidden_cards);
-      if (Array.isArray(parsed)) hiddenCards = new Set(parsed.filter((k): k is string => typeof k === "string"));
-    } catch {
-      // Malformed saved value — treat as "nothing hidden" rather than
-      // breaking the homepage over one bad row.
-    }
-  }
-
   // "Other" = every matchup except the logged-in owner's own (already
   // shown in the hero above). When logged out, myWeek is null and
   // nothing gets excluded — every matchup is "other".
@@ -177,16 +112,15 @@ export default async function HomePage() {
     gamecastGames
   );
 
-  // The six reorderable dashboard cards — only the ones with something
-  // real to show this week end up in this map at all (same conditions
-  // this page always used to gate each section with), so a stale or
-  // partial saved order can never conjure up a card whose data isn't
-  // there. See HomeCardDeck.tsx for how these actually get reordered
-  // and DEFAULT_CARD_ORDER above for the merge-with-saved-order logic.
+  // The homepage's six cards, in a fixed standard layout — every owner
+  // sees the same arrangement (no per-owner hide/reorder/resize; that
+  // used to be a whole "Edit Home" mode, removed 2026-08-31 per the
+  // owner's own call to keep the app to one standard look, matching
+  // the approved mock). A card only ever ends up in this map when it
+  // has something real to show this week.
   const cards: Record<string, ReactNode> = {};
 
-  if (!hiddenCards.has("yourWeek")) {
-    cards.yourWeek = myWeek?.matchup ? (
+  cards.yourWeek = myWeek?.matchup ? (
       <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
     ) : myWeek?.draft?.scheduled_start && myWeek.draft.status === "not_started" ? (
       // Real, current state right now: pre-draft, pre-season — a much
@@ -214,9 +148,8 @@ export default async function HomePage() {
       // else).
       <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
     );
-  }
 
-  if (standings.length > 0 && !hiddenCards.has("standings")) {
+  if (standings.length > 0) {
     cards.standings = (
       <section className="flex flex-col gap-2">
         <SectionHeader title="League Standings" href="/standings" />
@@ -241,7 +174,7 @@ export default async function HomePage() {
     );
   }
 
-  if (otherMatchups.length > 0 && !hiddenCards.has("matchups")) {
+  if (otherMatchups.length > 0) {
     cards.matchups = (
       <section className="flex flex-col gap-2">
         <SectionHeader
@@ -283,7 +216,7 @@ export default async function HomePage() {
     );
   }
 
-  if ((rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && !hiddenCards.has("rivalries")) {
+  if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
         <SectionHeader title="Rivalries" href="/rivalries" />
@@ -331,7 +264,7 @@ export default async function HomePage() {
     );
   }
 
-  if (weekPlayed && weeklyAwards && season !== null && week !== null && !hiddenCards.has("awards")) {
+  if (weekPlayed && weeklyAwards && season !== null && week !== null) {
     cards.awards = (
       <section className="flex flex-col gap-2">
         <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
@@ -340,21 +273,7 @@ export default async function HomePage() {
     );
   }
 
-  if (!hiddenCards.has("discover")) cards.discover = <DiscoveryGrid />;
-
-  const cardOrder = mergeCardOrder(myPreferences?.home_card_order, Object.keys(cards));
-
-  // Desktop-only grid position/size — a separate shape from
-  // home_card_order (mobile's ordered list), see HomeGridDesktop.tsx.
-  let desktopLayout: HomeGridLayoutItem[] | null = null;
-  if (myPreferences?.home_desktop_layout) {
-    try {
-      const parsed: unknown = JSON.parse(myPreferences.home_desktop_layout);
-      if (Array.isArray(parsed)) desktopLayout = parsed as HomeGridLayoutItem[];
-    } catch {
-      desktopLayout = null;
-    }
-  }
+  cards.discover = <DiscoveryGrid />;
 
   return (
     <HomeWelcomeBackEntry displayName={me.display_name}>
@@ -385,19 +304,30 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <HomeDashboard
-          // Forces a real remount (not just a prop update) whenever the
-          // set of currently-visible cards changes — specifically after
-          // "Add Box" triggers router.refresh(), so the mounted shell's
-          // useState initializers see the newly-un-hidden card's real
-          // content rather than reconciling against stale local state.
-          dashboardKey={Object.keys(cards).sort().join(",")}
-          initialOrder={cardOrder}
-          cards={cards}
-          hiddenCards={[...hiddenCards]}
-          cardLabels={CARD_LABELS}
-          savedDesktopLayout={desktopLayout}
-        />
+        {/* Fixed standard layout, same on every visit for every owner —
+            no per-owner hide/reorder/resize (that was "Edit Home" mode,
+            removed 2026-08-31). Desktop: Standings stacked over Your
+            Week hero in a left column, Other Matchups filling the full
+            height of a right column — a real 2-row/2-col CSS grid via
+            named areas (not two independent flex columns), so Matchups
+            naturally spans both rows regardless of how tall the left
+            column's two cards end up. Mobile: Your Week hero leads,
+            then Standings, then Matchups, single column — the same
+            three elements just reflow via the grid's mobile area map,
+            not a second copy of the JSX. Rivalries/Awards/Discover
+            (when present) always follow underneath, full width, fixed
+            order, on both breakpoints. */}
+        <div
+          className="grid grid-cols-1 gap-4 [grid-template-areas:'hero'_'standings'_'matchups'] sm:grid-cols-2 sm:gap-6 sm:[grid-template-areas:'standings_matchups'_'hero_matchups']"
+        >
+          {cards.yourWeek && <div style={{ gridArea: "hero" }}>{cards.yourWeek}</div>}
+          {cards.standings && <div style={{ gridArea: "standings" }}>{cards.standings}</div>}
+          {cards.matchups && <div style={{ gridArea: "matchups" }}>{cards.matchups}</div>}
+        </div>
+
+        {cards.rivalries}
+        {cards.awards}
+        {cards.discover}
       </div>
     </HomeWelcomeBackEntry>
   );

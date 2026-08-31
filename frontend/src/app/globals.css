@@ -1492,25 +1492,3 @@ body {
   animation: gamecast-play-enter 0.4s ease-out both;
 }
 
-/* react-grid-layout's own resize handle (HomeGridDesktop.tsx) ships
-   invisible-until-hover with a near-black chevron — unusable against
-   this app's always-dark theme, and easily beaten in hit-testing by
-   any card content that sets its own z-index in that same corner
-   (which is why only some cards could actually be resized). Only
-   exists in the DOM while a box is resizable (Edit Home mode), so this
-   can apply unconditionally rather than needing its own edit-mode
-   guard. */
-.home-grid-desktop .react-grid-item > .react-resizable-handle {
-  opacity: 1;
-  z-index: 25;
-  width: 26px;
-  height: 26px;
-}
-.home-grid-desktop .react-grid-item > .react-resizable-handle::after {
-  right: 4px;
-  bottom: 4px;
-  width: 9px;
-  height: 9px;
-  border-right-color: rgba(255, 255, 255, 0.6);
-  border-bottom-color: rgba(255, 255, 255, 0.6);
-}
