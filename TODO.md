@@ -1851,7 +1851,25 @@ build/lint/test/curl verification, not visual inspection.
       schema-only: no existing table changed, nothing reads or writes
       these tables yet, League #1 isn't backfilled yet either. Fully
       additive and reversible.
-- [ ] Phase 2 — backfill League #1, link existing owners as members
+- [x] **Phase 2 — backfill League #1, Aug 31 2026.** Checked the real
+      data first: of 16 historical `owners` rows, only 2 have ever
+      actually logged into the web app (`owners.user_id` set) — TJ
+      (the commissioner) and Niko. The other 14 have a pre-registered
+      Discord id but no `users` row yet, so they can't get a
+      `league_members` row until they actually sign in once — creating
+      one ahead of time would mean fabricating an account for someone
+      who's never authenticated. Backfilled what's real: a `leagues`
+      row ("Weekend League", created by TJ) and `league_members` rows
+      for TJ (commissioner) and Niko (member). For everyone else, added
+      a small hook to `get_or_create_user_for_owner`
+      (`app/queries/auth.py`) so a first-time login also enrolls them
+      as a `member` of the one real league automatically — no need to
+      re-run a script by hand as the other 14 log in over time. New
+      `app/queries/leagues.py` (`create_league`, `add_member`,
+      `get_default_league_id`); 1 new backend test
+      (`test_login_auto_enrolls_into_the_default_league_if_one_exists`);
+      `cleanup_test_season` in `conftest.py` updated to clean up test
+      `league_members` rows too.
 - [ ] Phase 3 — add `league_id` to every season-scoped table
       (`teams_by_season`, `draft_config`, `matchups`,
       `league_scoring_rules`, ...), backfilled to League #1

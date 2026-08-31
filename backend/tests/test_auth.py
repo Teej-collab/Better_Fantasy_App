@@ -1,3 +1,4 @@
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import decode_ticket_token
@@ -78,6 +79,45 @@ async def test_callback_creates_session_for_known_league_member(pool, monkeypatc
         body = me_resp.json()
         assert body["display_name"] == "Alice Smith"
         assert body["is_commissioner"] is False
+
+
+async def test_login_auto_enrolls_into_the_default_league_if_one_exists(pool, monkeypatch):
+    """Phase 2 of the multi-league migration (see TODO.md's PHASE 9
+    entry) — most existing league members have never actually logged
+    into the web app before, so a first-time login should also create
+    a league_members row for the one real league, rather than relying
+    on a one-off script to be re-run for each of them later."""
+    _set_discord_env(monkeypatch)
+    discord_id = 900000006
+    await _seed_owner_with_discord_id(pool, discord_id, "Auto Enroll User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "autoenroll"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with pool.acquire() as conn:
+        league_id = await conn.fetchval("SELECT id FROM leagues ORDER BY id LIMIT 1")
+    if league_id is None:
+        pytest.skip("no league backfilled yet in this environment")
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval("SELECT user_id FROM owners WHERE discord_user_id = $1", discord_id)
+        role = await conn.fetchval(
+            "SELECT role FROM league_members WHERE league_id = $1 AND user_id = $2", league_id, user_id
+        )
+    assert role == "member"
 
 
 async def test_callback_denies_discord_user_not_in_league(pool, monkeypatch):

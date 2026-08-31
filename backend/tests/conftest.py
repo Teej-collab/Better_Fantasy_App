@@ -155,6 +155,11 @@ async def cleanup_test_season(pool):
         ]
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
         if linked_user_ids:
+            # league_members.user_id -> users.id (Phase 2 of the multi-
+            # league migration auto-enrolls every login into the default
+            # league — see app/queries/auth.py) — must go before the
+            # users DELETE below or it FK-violates.
+            await conn.execute("DELETE FROM league_members WHERE user_id = ANY($1::int[])", linked_user_ids)
             await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", linked_user_ids)
         # players has no season/owner column (it's a global Sleeper-sourced
         # reference table, not per-season) — test rows use a 'test-%'
