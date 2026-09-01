@@ -83,8 +83,15 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
-        await conn.execute("DELETE FROM season_champions WHERE season = $1", TEST_SEASON)
-        await conn.execute("DELETE FROM season_awards WHERE season = $1", TEST_SEASON)
+        # Also TEST_SEASON - 1: narrative_engine's career-context test
+        # seeds a "last season" champion so it can assert real
+        # championship-history text distinct from the current season's
+        # own data — same TEST_SEASON - 1 pattern already established
+        # above for rosters/matchups, for the same reason (owners.
+        # owner_id is referenced by this row and must be free to delete
+        # below).
+        await conn.execute("DELETE FROM season_champions WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM season_awards WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM chug_debts WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM chug_scores WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM chug_deadline_settlements WHERE season = $1", TEST_SEASON)

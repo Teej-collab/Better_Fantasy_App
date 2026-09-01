@@ -1,3 +1,4 @@
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain import narrative_engine
 from app.domain.narrative_engine import _resolve_kind
 from tests.conftest import TEST_SEASON
@@ -55,10 +56,12 @@ async def test_get_or_generate_narrative_caches_after_first_generation(pool, mon
         "rivalry": None,
         "head_to_head": {"wins_home": 0, "wins_away": 0, "ties": 0, "last_season": None, "last_week": None},
         "home": {
+            "team_id": 999101, "owner_id": 999101,
             "team_name": "Team Alpha", "owner_name": "Alice", "record": "3-2", "streak": "neutral",
             "projected_total": 110.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
         "away": {
+            "team_id": 999102, "owner_id": 999102,
             "team_name": "Team Beta", "owner_name": "Bob", "record": "2-3", "streak": "hot",
             "projected_total": 105.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
@@ -107,3 +110,90 @@ async def test_get_or_generate_narrative_returns_none_without_a_real_api_key(poo
         result = await narrative_engine.get_or_generate_narrative(conn, matchup)
 
     assert result is None
+
+
+async def test_get_or_generate_narrative_includes_career_and_live_league_context(pool, monkeypatch):
+    # Tuned 2026-09-02 per the owner's own ask ("pull from all
+    # historical data, as well as what is live happening in the league
+    # now") — confirms the facts string handed to the model actually
+    # carries real career history (a past championship, or its real
+    # absence) and real live context (a current Jeffrey's Rule chug
+    # debt, a current league standings rank), not just this season's
+    # record for the two teams in this one matchup.
+    calls = []
+
+    def fake_generate_narrative(system_prompt, facts, max_tokens=300):
+        calls.append((system_prompt, facts))
+        return "Real trash talk here."
+
+    monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    async with pool.acquire() as conn:
+        owner_champ = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-narrative-champ", "Champ Owner",
+        )
+        owner_scrub = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-narrative-scrub", "Scrub Owner",
+        )
+        team_champ = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 501, owner_champ, "Champ Team",
+        )
+        team_scrub = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 502, owner_scrub, "Scrub Team",
+        )
+        # Real career history: a past championship for owner_champ, none for owner_scrub.
+        await conn.execute(
+            "INSERT INTO season_champions (season, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON - 1, owner_champ, "Champ Team", DEFAULT_LEAGUE_ID,
+        )
+        # Real, live chug debt for owner_scrub — and a real, explicit
+        # zero-owed row for owner_champ (not just an absent row: no
+        # chug_standing row at all means "we don't know," which is
+        # different from "we know they're clean," and _chug_fact only
+        # ever claims a clean record from a real zero-owed row).
+        await conn.execute(
+            "INSERT INTO chug_standing (season, owner_id, outstanding_owed, league_id) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, owner_scrub, 3, DEFAULT_LEAGUE_ID,
+        )
+        await conn.execute(
+            "INSERT INTO chug_standing (season, owner_id, outstanding_owed, league_id) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, owner_champ, 0, DEFAULT_LEAGUE_ID,
+        )
+
+        matchup = {
+            "matchup_id": 999003,
+            "season": TEST_SEASON,
+            "week": 5,
+            "league_id": DEFAULT_LEAGUE_ID,
+            "is_playoff": False,
+            "is_game_of_the_week": False,
+            "rivalry": None,
+            "head_to_head": {"wins_home": 0, "wins_away": 0, "ties": 0, "last_season": None, "last_week": None},
+            "home": {
+                "team_id": team_champ, "owner_id": owner_champ,
+                "team_name": "Champ Team", "owner_name": "Champ Owner", "record": "5-0", "streak": "hot",
+                "projected_total": 120.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            },
+            "away": {
+                "team_id": team_scrub, "owner_id": owner_scrub,
+                "team_name": "Scrub Team", "owner_name": "Scrub Owner", "record": "0-5", "streak": "cold",
+                "projected_total": 80.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            },
+        }
+
+        await conn.execute("DELETE FROM matchup_narratives WHERE matchup_id = $1", matchup["matchup_id"])
+        result = await narrative_engine.get_or_generate_narrative(conn, matchup)
+
+    assert result == "Real trash talk here."
+    assert len(calls) == 1
+    _, facts = calls[0]
+    assert "Champ Team's owner has won the league championship in: " in facts
+    assert "Scrub Team's owner has never won a league championship" in facts
+    assert "Scrub Team's owner currently owes 3 under Jeffrey's Rule" in facts
+    assert "Champ Team's owner has a clean Jeffrey's Rule chug record" in facts
+    assert "is currently ranked" in facts

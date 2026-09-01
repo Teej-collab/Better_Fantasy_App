@@ -34,7 +34,7 @@ def _get_client() -> Anthropic:
     return _client
 
 
-def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 300) -> str:
+def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) -> str:
     """One matchup write-up (preview or recap — the caller picks the
     system prompt for which). `facts` is the only real-world content in
     the request — every number/name in it is already verified data

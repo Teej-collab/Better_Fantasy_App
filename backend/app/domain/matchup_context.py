@@ -109,7 +109,7 @@ def _rivalry_dict(rivalry_row, home_owner_id):
 
 
 def _matchup_entry(
-    m, season, week, home_team, away_team, home_roster, away_roster,
+    m, season, week, league_id, home_team, away_team, home_roster, away_roster,
     home_standing, away_standing, home_streak, away_streak,
     rivalry, h2h, is_gow, score_stdev,
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
@@ -137,6 +137,11 @@ def _matchup_entry(
         "matchup_id": m["matchup_id"],
         "season": season,
         "week": week,
+        # Added for narrative_engine.py — career badges, chug standing,
+        # and league rank are all per-league lookups, and this dict is
+        # the only thing get_or_generate_narrative receives (no raw
+        # matchup row to re-derive it from).
+        "league_id": league_id,
         "is_playoff": m["is_playoff"],
         "is_game_of_the_week": is_gow,
         "is_rivalry": rivalry is not None,
@@ -229,7 +234,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             h2h = await queries.get_head_to_head(c, home_team["owner_id"], away_team["owner_id"], league_id)
 
         entry = _matchup_entry(
-            m, season, week, home_team, away_team, home_roster, away_roster,
+            m, season, week, league_id, home_team, away_team, home_roster, away_roster,
             standings_by_team.get(m["home_team_id"]), standings_by_team.get(m["away_team_id"]),
             streaks_by_team.get(m["home_team_id"], "neutral"), streaks_by_team.get(m["away_team_id"], "neutral"),
             rivalry, h2h, m["matchup_id"] == gow_id, score_stdev,
@@ -293,7 +298,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     is_gow = bool(gow and gow["home_team_id"] == m["home_team_id"] and gow["away_team_id"] == m["away_team_id"])
 
     entry = _matchup_entry(
-        m, season, week, home_team, away_team, home_roster, away_roster,
+        m, season, week, league_id, home_team, away_team, home_roster, away_roster,
         standings_by_team.get(m["home_team_id"]), standings_by_team.get(m["away_team_id"]),
         streaks_by_team.get(m["home_team_id"], "neutral"), streaks_by_team.get(m["away_team_id"], "neutral"),
         rivalry, h2h, is_gow, score_stdev,
