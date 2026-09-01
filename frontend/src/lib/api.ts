@@ -2,8 +2,29 @@ import { nflTeamColor } from "@/lib/nfl-teams";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
+// `revalidateSeconds` opts a specific call into Next's Data Cache
+// (`next: { revalidate }`) instead of the default `cache: "no-store"` —
+// deliberately per-call, not a global default, since most of this
+// app's data is genuinely live (scores, standings, chat) and must never
+// serve a stale cached response. Only pass this for data that's
+// already only as fresh as its own backend sync anyway (rivalries'
+// stored win totals, the record book, award leaderboards — see each
+// call site's own comment), where re-fetching fresh on every single
+// page view was pure unnecessary backend/DB load for a value that
+// couldn't have changed since the last request regardless (2026-09-02
+// audit's Phase 3 static-generation finding). Note this caches the
+// *data fetch*, not the page's rendered HTML — the routes themselves
+// still render dynamically (NavBar.tsx's cookies() call in the shared
+// layout forces that for the whole tree), so `export const revalidate`
+// on the page itself would have been a no-op; this is the layer that
+// actually avoids the redundant backend round-trip.
+async function get<T>(path: string, options?: { revalidateSeconds?: number }): Promise<T> {
+  const res = await fetch(
+    `${API_BASE_URL}${path}`,
+    options?.revalidateSeconds !== undefined
+      ? { next: { revalidate: options.revalidateSeconds } }
+      : { cache: "no-store" }
+  );
   if (!res.ok) {
     throw new Error(`GET ${path} failed: ${res.status}`);
   }
@@ -420,8 +441,11 @@ export type RecordCategory = {
 // season's Awards page you're looking at. Computed live on every
 // request (app/domain/records.py), not cached, so a newly-broken
 // record shows up here the moment it's synced.
+// Cached — the record book only moves when a real week's results sync
+// in, not on every page view. See get()'s own comment for why this is
+// a per-call opt-in, not a global default.
 export function getRecordBook() {
-  return get<{ categories: RecordCategory[] }>("/records");
+  return get<{ categories: RecordCategory[] }>("/records", { revalidateSeconds: 3600 });
 }
 
 export type AwardWinner = {
@@ -443,8 +467,9 @@ export type AwardLeaderboardCategory = {
 // (app/domain/awards_all_time.py). Always returns every award type the
 // league offers, even ones nobody's won yet (an empty `winners` list),
 // unlike the record book's categories which hide entirely when empty.
+// Cached — see getRecordBook()'s identical reasoning just above.
 export function getAwardLeaderboards() {
-  return get<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time");
+  return get<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time", { revalidateSeconds: 3600 });
 }
 
 // ---- Power Rankings / Luck Index / Strength of Schedule
@@ -501,8 +526,13 @@ export function getAllTimePowerRankings() {
   return get<{ categories: PowerRankingsAllTimeCategory[] }>("/power-rankings/all-time");
 }
 
+// Cached — rivalries.all_time_wins_a/b are stored, sync-updated
+// columns (app/queries/league.py::list_rivalries), never computed live
+// from matchups per-request, so this was already only ever as fresh as
+// the last sync regardless. See get()'s own comment for why this is a
+// per-call opt-in, not a global default.
 export function listRivalries() {
-  return get<{ rivalries: Rivalry[] }>("/rivalries");
+  return get<{ rivalries: Rivalry[] }>("/rivalries", { revalidateSeconds: 3600 });
 }
 
 export type YourWeekMatchup = {
