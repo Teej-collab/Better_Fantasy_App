@@ -653,8 +653,18 @@ body {
 /* Pull-to-refresh (PullToRefresh.tsx) — a collapsed-height strip above
    the page content that grows as the visitor pulls down, revealing an
    arrow/spinner + label. transition on height/opacity only (both cheap
-   for the browser to animate) so it stays smooth even mid-gesture. */
+   for the browser to animate) so it stays smooth even mid-gesture.
+   position: relative (not fixed — it stays in its normal-flow slot, same
+   height-driven reveal, same touch-gesture JS, nothing else changes)
+   plus a z-index establishes a real stacking context: without any
+   position at all, z-index has no effect, so this could end up painted
+   behind neighboring chrome instead of above it. z-45 clears every real
+   UI element (nav bar/account menu scrim z-40, bottom nav z-30, modals
+   z-40) while staying under .wl-gate's z-50 boot splash — the two are
+   never on screen at once (the pull gesture only fires post-boot). */
 .pull-to-refresh-indicator {
+  position: relative;
+  z-index: 45;
   display: flex;
   align-items: center;
   justify-content: center;
