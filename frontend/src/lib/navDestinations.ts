@@ -33,7 +33,8 @@ export type DestinationKey =
   | "keepers"
   | "powerRankings"
   | "draft"
-  | "gamecast";
+  | "gamecast"
+  | "playerResearch";
 
 export type Destination = {
   key: DestinationKey;
@@ -94,6 +95,11 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // signed-in visitor's own matchup, like My Team/Matchups' LiveMark
   // does), so it gets a hue nothing else in this map uses.
   gamecast: { key: "gamecast", label: "Gamecast", color: "#ef4444" },
+  // Not to be confused with "playerCards" (this league's own owners'
+  // trading cards, at /players) — this is real NFL player research.
+  // Violet since cyan (playerCards) and teal (freeAgents) are both
+  // already spoken for by adjacent destinations.
+  playerResearch: { key: "playerResearch", label: "Player Research", color: "#8b5cf6" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -121,6 +127,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   powerRankings: "/power-rankings",
   draft: "/draft",
   gamecast: "/gamecast",
+  playerResearch: "/player-research",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -159,6 +166,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
   "playerCards",
+  "playerResearch",
   "awards",
   "rivalries",
   "rules",

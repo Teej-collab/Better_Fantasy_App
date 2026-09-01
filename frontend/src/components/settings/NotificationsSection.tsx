@@ -34,12 +34,16 @@ const MESSAGE_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   { key: "notify_replies", label: "Replies to my messages", description: "Someone replies directly to something you sent." },
 ];
 
-const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
-  { key: "notify_game_alerts", label: "Game Alerts", description: "A game you're watching kicks off or wraps up." },
-  { key: "notify_my_players", label: "My Players", description: "One of your rostered players scores or has a notable play." },
-  { key: "notify_fantasy_team", label: "My Fantasy Team", description: "Your matchup lead changes, for better or worse." },
-  { key: "notify_league", label: "League", description: "Important league-wide announcements." },
-];
+// FANTASY_TOGGLES (Game Alerts / My Players / My Fantasy Team / League)
+// used to render here — removed 2026-09-01. They persisted to the
+// database and looked fully functional, but no backend code path ever
+// fired a push tagged with any of those categories: a user could
+// enable "My Players" expecting a push when their RB scores and never
+// receive one. A settings toggle that visibly claims a capability the
+// product doesn't have is worse than not offering it at all (a finding
+// from that day's competitive UX audit) — real event-driven triggers
+// for these (scoring plays, matchup swings) are a bigger backend
+// feature, tracked separately, not a quick settings-page fix.
 
 type PushUiState = {
   supported: boolean;
@@ -336,29 +340,16 @@ export function NotificationsSection() {
 
       <section className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <h2 className="text-sm font-semibold tracking-wide uppercase">Fantasy Activity</h2>
-        <p className="mb-2 text-xs text-black/50 dark:text-white/50">
-          {prefs.push_enabled
-            ? "What push notifications you get, by category."
-            : "Turn on push notifications above to receive these."}
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Alerts for your own players scoring, your matchup lead changing, and league-wide announcements —
+          coming soon. Message notifications above are live today.
         </p>
-        <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-          {FANTASY_TOGGLES.map((t) => (
-            <ToggleRow
-              key={t.key}
-              label={t.label}
-              description={t.description}
-              checked={Boolean(prefs[t.key])}
-              disabled={!prefs.push_enabled}
-              onChange={(checked) => patch({ [t.key]: checked })}
-            />
-          ))}
-        </div>
       </section>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow
           label="Quiet Hours"
-          description="Saved now so it's ready the moment push notifications ship — Weekend League doesn't send push notifications yet, so there's nothing to suppress today."
+          description="Saved now so it's ready the moment it's wired up — doesn't suppress today's message notifications yet."
           checked={prefs.quiet_hours_enabled}
           onChange={(checked) => patch({ quiet_hours_enabled: checked })}
         />

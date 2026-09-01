@@ -645,6 +645,7 @@ const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
   standings: "Full league standings and records",
   rivalries: "All-time rivalry history and grudges",
   playerCards: "Browse every team's trading card",
+  playerResearch: "Every real NFL player, sorted by fantasy relevance",
   rules: "Scoring, roster, and league settings",
   chug: "Who owes chugs, who's paid up",
   powerRankings: "Who's actually good this week, plus Luck and Strength of Schedule",
