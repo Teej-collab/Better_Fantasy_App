@@ -102,7 +102,7 @@ export default function LeaguesPage() {
   if (leagues === null) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold">Leagues</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">Leagues</h1>
         <p className="text-sm text-black/60 dark:text-white/60">Loading…</p>
       </div>
     );
@@ -110,7 +110,12 @@ export default function LeaguesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Leagues</h1>
+      <div className="flex flex-col gap-1">
+        <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">Leagues</h1>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Join an existing league with the invite code your commissioner shares, or start a new one of your own.
+        </p>
+      </div>
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl p-4">
@@ -154,7 +159,8 @@ export default function LeaguesPage() {
                     <button
                       onClick={() => handleCreateTeam(league.id)}
                       disabled={busy}
-                      className="rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                      className="rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40"
+                      style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}
                     >
                       Create my team
                     </button>
@@ -179,7 +185,8 @@ export default function LeaguesPage() {
           <button
             type="submit"
             disabled={busy}
-            className="rounded-full bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            className="rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-40"
+            style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}
           >
             Create
           </button>

@@ -32,7 +32,8 @@ export type DestinationKey =
   | "chug"
   | "keepers"
   | "powerRankings"
-  | "draft";
+  | "draft"
+  | "gamecast";
 
 export type Destination = {
   key: DestinationKey;
@@ -88,6 +89,11 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // Agents but distinct from both (emerald/teal), and from Rules'
   // lime.
   draft: { key: "draft", label: "Draft", color: "#eab308" },
+  // Distinct red — Gamecast is the one destination that ever carries a
+  // genuine "live" state of its own (as opposed to reflecting the
+  // signed-in visitor's own matchup, like My Team/Matchups' LiveMark
+  // does), so it gets a hue nothing else in this map uses.
+  gamecast: { key: "gamecast", label: "Gamecast", color: "#ef4444" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -114,6 +120,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   keepers: "/keepers",
   powerRankings: "/power-rankings",
   draft: "/draft",
+  gamecast: "/gamecast",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -135,7 +142,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
 // it.
 export const NAV_ACCENT = "var(--user-accent, var(--wl-accent))";
 
-export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
+export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
 
 // The mobile bottom bar's 5 fixed slots (BottomNav.tsx) — this is the
 // DEFAULT order only; an owner can reorder these 5 (never add/remove
@@ -166,9 +173,12 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 // not a link to itself.
 export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["draft", "keepers", "freeAgents"];
 
-// /gamecast/[gameId] is deliberately absent from this config — it's
-// reachable only via the live ticker's dynamic linking (see
-// lib/gamecastApi.ts's withGamecastLinks), never a static nav entry.
-// A game_id has no stable identity between weeks (it's whatever the
-// live provider issues that week), so a fixed nav link would 404
-// outside a live window rather than genuinely browse to something.
+// /gamecast/[gameId] (a single game) is still deliberately absent from
+// this config — a game_id has no stable identity between weeks, so a
+// fixed link to one specific game would 404 outside its own live
+// window. `gamecast` above points at the hub (app/(app)/gamecast/
+// page.tsx), a real static nav destination that lists this week's live/
+// upcoming/final games and links into whichever ones have a Gamecast —
+// added 2026-08-31 after the audit found the feature had no
+// discoverable entry point at all outside a live game's own ticker
+// window, six days out of seven.

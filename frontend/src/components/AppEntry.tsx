@@ -62,9 +62,23 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
  * reload/deep-link landing on any other signed-in page, which is every
  * route this component covers. Visuals are unaffected — same silent
  * buildup either way.
+ *
+ * Unlike OpeningExperience.tsx, this used to never call markSeen() —
+ * so a visitor who always signs in via the header's direct Discord
+ * link (AuthStatus.tsx), rather than clicking through the signed-out
+ * "Enter Here" screen, had `wl_intro_seen` permanently unset and
+ * replayed the full multi-second word-by-word buildup on *every*
+ * reload/deep-link, forever. Now calls markSeen() the first time this
+ * sequence completes, same as OpeningExperience does, so it only ever
+ * plays in full once per browser. Two more escape hatches on top of
+ * that: a visible "Skip intro" button (matching OpeningExperience's),
+ * and an automatic skip whenever the URL carries an `error` param —
+ * that's exactly the shape of Discord's own OAuth-failure redirect to
+ * /login, and someone who just failed to sign in shouldn't have to
+ * wait out an animation before they can even read why or retry.
  */
 export function AppEntry({ children }: { children: ReactNode }) {
-  const { stage, wordIndex } = useWeekendIntro({ sound: false });
+  const { stage, wordIndex, skip, markSeen } = useWeekendIntro({ sound: false });
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -75,6 +89,20 @@ export function AppEntry({ children }: { children: ReactNode }) {
   // useSyncExternalStore snapshot rather than a useLayoutEffect + setState.
   const alreadyBooted = useHasBootedSnapshot();
   const revealed = alreadyBooted || revealedAfterBoot;
+
+  // A failed-sign-in redirect (Discord's own ?error=not_a_league_member
+  // on /login, or any future error-carrying deep link) skips the
+  // animation outright — this is someone who needs to read what went
+  // wrong and retry, not watch an intro. Reading window.location.search
+  // directly (not useSearchParams()) deliberately avoids that hook's
+  // Suspense-boundary requirement — this is a one-time mount check, not
+  // something that needs to react to client-side URL changes.
+  useEffect(() => {
+    if (revealed || typeof window === "undefined") return;
+    if (!new URLSearchParams(window.location.search).has("error")) return;
+    skip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed]);
 
   useEffect(() => {
     if (revealed) return;
@@ -110,10 +138,12 @@ export function AppEntry({ children }: { children: ReactNode }) {
       const revealTimeout = setTimeout(() => {
         setRevealedAfterBoot(true);
         markBootedThisPageLoad();
+        markSeen();
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
     }, holdMs);
     return () => clearTimeout(holdTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, authState, revealed]);
 
   useEffect(() => {
@@ -128,8 +158,10 @@ export function AppEntry({ children }: { children: ReactNode }) {
     const failsafe = setTimeout(() => {
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
+      markSeen();
     }, MAX_BOOT_MS);
     return () => clearTimeout(failsafe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed]);
 
   if (revealed) return <>{children}</>;
@@ -147,9 +179,14 @@ export function AppEntry({ children }: { children: ReactNode }) {
         }`}
       >
         {stage === "word" && (
-          <h1 key={wordIndex} className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}>
-            {WORDS[wordIndex]}
-          </h1>
+          <>
+            <button onClick={skip} className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs">
+              Skip intro →
+            </button>
+            <h1 key={wordIndex} className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}>
+              {WORDS[wordIndex]}
+            </h1>
+          </>
         )}
 
         {showFinal && (

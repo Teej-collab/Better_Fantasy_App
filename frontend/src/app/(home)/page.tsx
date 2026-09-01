@@ -142,11 +142,21 @@ export default async function HomePage() {
       />
     ) : (
       // Reaching this branch means /me/week itself failed even though
-      // getMe (above) confirmed a valid session — a transient fetch
-      // error, not "not signed in" (that's already handled by the early
-      // OpeningExperience return before this component fetches anything
-      // else).
-      <EmptyHero title="Your Week" message="Couldn't load your matchup right now — try refreshing." />
+      // getMe (above) confirmed a valid session — in practice this is
+      // almost always a signed-up-but-league-less account (email/Google
+      // signup creates a bare user row with no owner_id until they join
+      // or create a league on /leagues; see backend/app/routers/me.py's
+      // 404 "No team found for this owner"), not a transient fetch
+      // error. This used to say "try refreshing," which can never
+      // resolve that case — a real dead end for exactly the audience
+      // self-serve signup exists to open the door to. Pointing at
+      // /leagues is right even in the rare genuine-transient-error case:
+      // still a real, working next step, not a worse one.
+      <EmptyHero
+        title="Your Week"
+        message="You're signed in, but not on a team yet."
+        cta={{ href: "/leagues", label: "Join or create a league →" }}
+      />
     );
 
   if (standings.length > 0) {
@@ -461,7 +471,15 @@ function TeamScoreBlock({
   );
 }
 
-function EmptyHero({ title, message }: { title: string; message: string }) {
+function EmptyHero({
+  title,
+  message,
+  cta,
+}: {
+  title: string;
+  message: string;
+  cta?: { href: string; label: string };
+}) {
   return (
     <section
       className="neon-panel flex flex-col gap-1.5 rounded-xl p-4"
@@ -478,6 +496,15 @@ function EmptyHero({ title, message }: { title: string; message: string }) {
       </span>
       <span className="font-display text-lg font-semibold tracking-wide uppercase">{title}</span>
       <p className="text-sm text-black/50 dark:text-white/50">{message}</p>
+      {cta && (
+        <Link
+          href={cta.href}
+          className="mt-1 text-sm font-semibold"
+          style={{ color: "var(--user-accent, var(--wl-accent))" }}
+        >
+          {cta.label}
+        </Link>
+      )}
     </section>
   );
 }
@@ -638,12 +665,27 @@ const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
 // "atmosphere" destination, not just another data page.
 const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards"]);
 
+// Gamecast is a primary-nav destination on desktop (PrimaryNav.tsx) but
+// isn't in the mobile bottom bar's fixed 5 slots (see
+// lib/navDestinations.ts) — this tile is how a mobile visitor reaches
+// it at all outside a live ticker link. Not derived from
+// LEAGUE_SUBNAV_ORDER like the tiles below since Gamecast isn't a
+// League-family destination.
+const GAMECAST_TILE: DiscoveryTile = {
+  href: "/gamecast",
+  label: "Gamecast",
+  description: "Live play-by-play for this week's real NFL games",
+};
+
 function DiscoveryGrid() {
-  const tiles: DiscoveryTile[] = LEAGUE_SUBNAV_ORDER.filter((key) => !DISCOVER_EXCLUDED.has(key)).map((key) => ({
-    href: DESTINATION_HREF[key]!,
-    label: DESTINATIONS[key].label,
-    description: DISCOVER_DESCRIPTIONS[key] ?? DESTINATIONS[key].label,
-  }));
+  const tiles: DiscoveryTile[] = [
+    GAMECAST_TILE,
+    ...LEAGUE_SUBNAV_ORDER.filter((key) => !DISCOVER_EXCLUDED.has(key)).map((key) => ({
+      href: DESTINATION_HREF[key]!,
+      label: DESTINATIONS[key].label,
+      description: DISCOVER_DESCRIPTIONS[key] ?? DESTINATIONS[key].label,
+    })),
+  ];
 
   return (
     <section className="flex flex-col gap-2">

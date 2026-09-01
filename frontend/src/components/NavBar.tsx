@@ -61,6 +61,7 @@ export async function NavBar() {
   const matchupsHref = matchupsHrefFor(latestSeason, week);
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
+  const isGameDay = isNflGameLive(nflGames);
 
   // bottom_nav_order is stored as a raw JSON-encoded string (same
   // convention as home_card_order) — parsed once here rather than in
@@ -91,7 +92,12 @@ export async function NavBar() {
           <div className="flex min-w-0 items-center gap-1">
             <BrandMark href="/" />
             <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
-            <PrimaryNav signedIn={signedIn} matchupsHref={matchupsHref} myMatchupLive={myMatchupLive} />
+            <PrimaryNav
+              signedIn={signedIn}
+              matchupsHref={matchupsHref}
+              myMatchupLive={myMatchupLive}
+              isGameDay={isGameDay}
+            />
           </div>
           <AuthStatus />
         </nav>

@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 // primary section). /seasons/{s}/awards (League) and
 // /seasons/{s}/weeks/{w} (Matchups) share a root segment, so this
 // needs real patterns, not a simple prefix string.
-export type NavSection = "team" | "league" | "home" | "matchups" | "chat";
+export type NavSection = "team" | "league" | "home" | "matchups" | "gamecast" | "chat";
 
 const SECTION_PATTERNS: Record<NavSection, RegExp[]> = {
   // Exact root only — a prefix match here would light up Home on every
@@ -32,6 +32,7 @@ const SECTION_PATTERNS: Record<NavSection, RegExp[]> = {
     /^\/chug(\/|$)/,
   ],
   matchups: [/^\/seasons\/[^/]+\/weeks\//, /^\/matchups\//],
+  gamecast: [/^\/gamecast(\/|$)/],
   chat: [/^\/chat(\/|$)/],
 };
 
