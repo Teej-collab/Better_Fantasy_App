@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Lobster, Satisfy } from "next/font/google";
 import Link from "next/link";
 import { DESTINATIONS, DESTINATION_HREF } from "@/lib/navDestinations";
@@ -27,13 +26,16 @@ type Sign = {
  * public/images/weekend-room.jpg (see globals.css's .weekend-room-bg
  * for the scrim overlay that keeps text legible over it).
  *
- * Audio: a pour sound (once) + ambient jazz (looping), neither of
- * which exist as files in this repo yet — see the <audio> elements'
- * comment below for exactly what to drop in and where. Browsers block
- * audio-with-sound autoplay until the user has interacted with the
- * page at all, so this tries immediately (works if the browser already
- * trusts this origin) and also arms a one-time fallback on the user's
- * first click/tap/keypress anywhere on the page.
+ * No audio here — this page used to reach for a pour sound + looping
+ * ambient jazz, but the two files it pointed at
+ * (public/audio/pour.mp3, public/audio/lofi-jazz.mp3) never actually
+ * existed, so every visit silently 404'd trying to load them (found in
+ * the 2026-09-02 re-audit). Removed outright rather than sourced,
+ * per the owner's own call: real audio in this app belongs only to
+ * the boot/logo splash (useIntroSound.ts's light-switch/can-opening/
+ * pour cues, played once per browser as OpeningExperience.tsx/
+ * HomeWelcomeBackEntry.tsx/AppEntry.tsx reveal the app) — nowhere else
+ * in the app should ever play sound on its own.
  */
 export function WeekendLanding({
   matchupsHref,
@@ -42,37 +44,6 @@ export function WeekendLanding({
   matchupsHref: string;
   awardsHref: string;
 }) {
-  const pourRef = useRef<HTMLAudioElement>(null);
-  const jazzRef = useRef<HTMLAudioElement>(null);
-  const startedRef = useRef(false);
-
-  useEffect(() => {
-    const startAudio = () => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      // Pour plays once, right as the tagline finishes fading in.
-      window.setTimeout(() => {
-        if (pourRef.current) {
-          pourRef.current.volume = 0.7;
-          pourRef.current.play().catch(() => {});
-        }
-      }, 500);
-      if (jazzRef.current) {
-        jazzRef.current.volume = 0.32;
-        jazzRef.current.play().catch(() => {});
-      }
-    };
-
-    startAudio(); // works if this origin already has autoplay trust
-    const onFirstInteraction = () => startAudio();
-    window.addEventListener("pointerdown", onFirstInteraction, { once: true });
-    window.addEventListener("keydown", onFirstInteraction, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", onFirstInteraction);
-      window.removeEventListener("keydown", onFirstInteraction);
-    };
-  }, []);
-
   // Six hand-picked destinations, one per idle animation this page
   // knows how to do — a curated highlight reel, not an attempt at
   // matching League's sub-nav 1:1 (that's what Discover on Home does).
@@ -91,9 +62,6 @@ export function WeekendLanding({
   return (
     <div className="relative min-h-screen overflow-hidden">
       <div className="weekend-room-bg" aria-hidden />
-
-      <audio ref={pourRef} src="/audio/pour.mp3" preload="auto" />
-      <audio ref={jazzRef} src="/audio/lofi-jazz.mp3" preload="auto" loop />
 
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-between gap-10 px-4 py-10 text-center sm:py-16">
         <div className="flex flex-col items-center gap-3">
