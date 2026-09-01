@@ -188,6 +188,25 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "powerRankings",
 ];
 
+// Primary/secondary split for LeagueSubNav.tsx's own two-tier layout —
+// grouping is specific to how that one component presents these tabs,
+// not a reordering of LEAGUE_SUBNAV_ORDER itself (Home's Discover grid
+// still reads that flat list directly and has no concept of "primary").
+// Added 2026-09-02: ten flat, equally-weighted tabs in one scrolling
+// row had no hierarchy at all — the 2026-09-02 re-audit's Critical
+// Issue #4, and notably, two of those ten (Player Research, All-Time)
+// only exist because the *previous* audit had to fix them being buried
+// two taps deep elsewhere — every new League-family feature had
+// nowhere else to go but this same row. Primary = "what's the current
+// state of my league" (checked often, no extra tap); everything else
+// collapses behind LeagueSubNav's own "More" toggle.
+export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
+  "league",
+  "standings",
+  "powerRankings",
+  "playerCards",
+]);
+
 // My Team's own sub-nav (MyTeamSubNav.tsx) — the "my own roster"
 // destinations, as opposed to LEAGUE_SUBNAV_ORDER's "browse the
 // league" ones. `team` itself (labeled "Roster" there) is first but

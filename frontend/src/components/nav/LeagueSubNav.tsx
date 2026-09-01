@@ -1,8 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
   DESTINATIONS,
   DESTINATION_HREF,
   LEAGUE_SUBNAV_ORDER,
+  LEAGUE_SUBNAV_PRIMARY,
   NAV_ACCENT,
   type DestinationKey,
 } from "@/lib/navDestinations";
@@ -23,11 +27,20 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * Rankings) rather than via a shared route-group layout — keeps this
  * additive (one line per page) instead of restructuring how those
  * routes are organized. No usePathname() needed: each page already
- * knows which tab it is, so `active` is just passed in directly — a
- * plain server component, no client JS for something this simple.
+ * knows which tab it is, so `active` is just passed in directly.
  * `‹ League` only shows on mobile (sm:hidden) — desktop already has
  * "League" one click away in the primary header, this is purely the
  * mobile "how do I get back" affordance from spec §23.
+ *
+ * Two-tier since 2026-09-02: LEAGUE_SUBNAV_PRIMARY (lib/
+ * navDestinations.ts) always shows; everything else collapses behind
+ * a "More" toggle. The flat 10-tab single row had no hierarchy at all
+ * (2026-09-02 re-audit's Critical Issue #4) — this is what makes the
+ * component a client component now (needs local open/closed state),
+ * it was a plain server component before. Auto-expanded whenever the
+ * current page's own active tab is one of the secondary ones, so a
+ * page you're already on is never hidden behind its own collapsed
+ * toggle.
  */
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
   // awardsAllTime's href is derived from awardsHref the same reason
@@ -40,6 +53,25 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
     key,
     href: key === "awards" ? awardsHref : key === "awardsAllTime" ? `${awardsHref}/all-time` : DESTINATION_HREF[key]!,
   }));
+  const primaryTabs = tabs.filter((tab) => LEAGUE_SUBNAV_PRIMARY.has(tab.key));
+  const secondaryTabs = tabs.filter((tab) => !LEAGUE_SUBNAV_PRIMARY.has(tab.key));
+  const activeIsSecondary = secondaryTabs.some((tab) => tab.key === active);
+
+  const [expanded, setExpanded] = useState(activeIsSecondary);
+
+  function tabLink(tab: { key: LeagueTab; href: string }) {
+    return (
+      <Link
+        key={tab.key}
+        href={tab.href}
+        aria-current={tab.key === active ? "page" : undefined}
+        className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
+        style={{ ["--nav-color" as string]: NAV_ACCENT }}
+      >
+        {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
+      </Link>
+    );
+  }
 
   return (
     <div className="mb-4 flex flex-col gap-2">
@@ -49,21 +81,23 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
       >
         ‹ League
       </Link>
-      <nav
-        aria-label="League sections"
-        className="flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {tabs.map((tab) => (
-          <Link
-            key={tab.key}
-            href={tab.href}
-            aria-current={tab.key === active ? "page" : undefined}
+      <nav aria-label="League sections" className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {primaryTabs.map(tabLink)}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Show fewer sections" : "Show more sections"}
             className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
             style={{ ["--nav-color" as string]: NAV_ACCENT }}
           >
-            {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
-          </Link>
-        ))}
+            More {expanded ? "▴" : "▾"}
+          </button>
+        </div>
+        {expanded && (
+          <div className="flex flex-wrap gap-1">{secondaryTabs.map(tabLink)}</div>
+        )}
       </nav>
     </div>
   );
