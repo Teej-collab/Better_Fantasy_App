@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getMatchup } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
@@ -19,6 +20,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { matchupId } = await params;
   const matchup = await getMatchup(Number(matchupId));
+  if (!matchup) return { title: "Matchup not found — Weekend League" };
   return {
     title: `${matchup.home.team_name} vs ${matchup.away.team_name} — Wk ${matchup.week} — Weekend League`,
   };
@@ -31,6 +33,7 @@ export default async function MatchupPage({
 }) {
   const { matchupId } = await params;
   const matchup = await getMatchup(Number(matchupId));
+  if (!matchup) notFound();
   const { home, away } = matchup;
 
   // Same "no meaningful 50/50 before kickoff" gate win_probability.py

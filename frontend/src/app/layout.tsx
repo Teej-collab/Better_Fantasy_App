@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono, IBM_Plex_Sans, Oswald } from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { PlayerCardProvider } from "@/components/players/PlayerCardProvider";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
@@ -132,6 +133,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
+        <OfflineBanner />
         <PlayerCardProvider>{children}</PlayerCardProvider>
         <ServiceWorkerRegistration />
         <AudioWarmup />

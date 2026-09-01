@@ -155,7 +155,7 @@ export function listTeams(season: number) {
 }
 
 export function getStandings(season: number) {
-  return get<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`);
+  return get<{ standings: StandingsRow[]; playoff_team_count: number | null }>(`/seasons/${season}/standings`);
 }
 
 export function listWeekMatchups(season: number, week: number) {
@@ -259,12 +259,16 @@ export function getWeekMatchupContext(season: number, week: number) {
 // /matchup-context's per-entry payload are built by the same backend
 // assembler (app/domain/matchup_context.py's _matchup_entry), just one
 // fetched directly by id instead of batched across a whole week.
+// getOrNull, not get — a bad/nonexistent matchup id is a real 404 the
+// page should render as one (via notFound()), not an uncaught throw
+// that falls into the generic error boundary (2026-08-31 audit).
 export function getMatchup(matchupId: number) {
-  return get<WeekMatchupContextItem>(`/matchups/${matchupId}`);
+  return getOrNull<WeekMatchupContextItem>(`/matchups/${matchupId}`);
 }
 
+// getOrNull, not get — same reasoning as getMatchup above.
 export function getTeam(teamId: number) {
-  return get<TeamDetail>(`/teams/${teamId}`);
+  return getOrNull<TeamDetail>(`/teams/${teamId}`);
 }
 
 export function getTeamRoster(teamId: number, week: number) {
@@ -777,6 +781,16 @@ export type MySettings = {
   display_name_is_custom: boolean;
   chat_color: string | null;
   discord_username: string | null;
+  // An account can have more than one of these truthy at once — Google
+  // sign-in links onto an existing email account by matching email
+  // (see get_or_create_user_for_google) — so AccountSection.tsx reports
+  // every real one, not a single assumed "how you sign in" method.
+  // has_discord can be true with discord_username still null — Discord
+  // OAuth doesn't reliably return a username scope.
+  email: string | null;
+  has_discord: boolean;
+  has_google: boolean;
+  has_password: boolean;
   // Both null when the signed-in owner has no team row for the active
   // season yet (e.g. before this season's ESPN sync has run).
   team_name: string | null;

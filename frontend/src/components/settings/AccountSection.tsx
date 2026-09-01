@@ -13,6 +13,15 @@ export function AccountSection({ initial }: { initial: MySettings }) {
     router.refresh();
   }
 
+  // Every real, currently-linked sign-in method — not a single assumed
+  // one. Used to unconditionally say "Signed in with Discord" no
+  // matter the account's actual auth method; false for anyone who
+  // signed up with email or Google (2026-08-31 audit).
+  const connections: string[] = [];
+  if (initial.has_discord) connections.push(initial.discord_username ? `Discord (@${initial.discord_username})` : "Discord");
+  if (initial.has_google) connections.push("Google");
+  if (initial.has_password) connections.push(initial.email ? `Email (${initial.email})` : "Email");
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -26,8 +35,10 @@ export function AccountSection({ initial }: { initial: MySettings }) {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Connected Accounts</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Signed in with Discord{initial.discord_username ? ` as @${initial.discord_username}` : ""}. Only you can
-            see or change these settings.
+            {connections.length > 0
+              ? `Signed in with ${connections.join(" and ")}.`
+              : "Signed in."}{" "}
+            Only you can see or change these settings.
           </p>
         </div>
         <button

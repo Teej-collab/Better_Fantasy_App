@@ -1,9 +1,21 @@
-// Weekend League's service worker — scope is deliberately narrow:
-// receive a push, show a notification, and route a tap to the right
-// page. No fetch interception, no offline cache, no app-runtime logic
-// here; those are separate concerns for later if they're ever needed,
-// not bundled into the same file by default. See docs on adding new
-// push notification types before extending this file.
+// Weekend League's service worker — push notifications, plus a
+// deliberately narrow runtime cache for one thing: GET requests
+// through the same-origin /api/backend/* proxy (see app/api/backend/
+// [...path]/route.ts) — every authenticated client-side data fetch
+// this app makes (draft pool/state, free agents, player cards, chat
+// conversations, notification prefs, ...) goes through that one path
+// prefix. Network-first, falling back to the last cached response on
+// failure — a spotty connection on game day (the exact scenario named
+// in the 2026-08-31 audit: "a user in a stadium or backyard with bad
+// signal") gets stale-but-present data instead of a hard failure.
+//
+// Deliberately NOT a general offline-app cache: server-rendered page
+// loads (the majority of this app's data, including every SSR fetch
+// on first paint) run on the server, never through this file at all —
+// no service worker in existence can make a from-scratch page load
+// work with zero network. This only helps the "already on the page,
+// one refetch fails" case, which is the one that actually matters for
+// intermittent signal rather than a truly offline device.
 //
 // skipWaiting()/clients.claim() below mean a newly deployed version of
 // this file takes over immediately (next load, no waiting for every
@@ -11,13 +23,49 @@
 // on a stale service worker indefinitely.
 
 const DEFAULT_ICON = "/images/icon-192.png";
+const API_CACHE = "wl-api-cache-v1";
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || !url.pathname.startsWith("/api/backend/")) return;
+
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        // Only cache a genuinely good response — never let a 401/404/5xx
+        // overwrite a real previously-cached success.
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(API_CACHE).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        // No cached fallback either — let the real network error
+        // surface to the page, same as if this handler didn't exist.
+        throw new Error("Network request failed and no cached response is available");
+      })
+  );
+});
 
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key !== API_CACHE && key.startsWith("wl-api-cache-")).map((key) => caches.delete(key)))
+      ),
+    ])
+  );
 });
 
 self.addEventListener("push", (event) => {

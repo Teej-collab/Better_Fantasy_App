@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getCurrentWeek, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 
@@ -18,6 +19,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { teamId } = await params;
   const team = await getTeam(Number(teamId));
+  if (!team) return { title: "Team not found — Weekend League" };
   return { title: `${team.team_name} — Weekend League` };
 }
 
@@ -32,6 +34,7 @@ export default async function TeamPage({
   const { week: weekParam } = await searchParams;
 
   const team = await getTeam(Number(teamId));
+  if (!team) notFound();
 
   // Defaults to the season's actual current week (cached from the last
   // sync — see league_state) rather than always week 1, so this reads

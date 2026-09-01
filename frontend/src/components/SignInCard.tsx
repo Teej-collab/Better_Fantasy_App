@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { completeSignIn, login, signup } from "@/lib/authApi";
 
+// Shared by every text field in the email/password form below. Used
+// to unconditionally strip the focus outline (focus:outline-none)
+// with nothing put back in its place — a real keyboard-accessibility
+// gap at the single most important funnel step in the app: getting
+// signed in at all (2026-08-31 audit). focus-visible (not focus) so a
+// mouse click still doesn't show a ring, only real keyboard focus.
+const FIELD_CLASS =
+  "rounded-lg px-3 py-2.5 text-sm text-[color:var(--wl-text)] placeholder:text-[color:var(--wl-text-secondary)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--user-accent,var(--wl-accent))]";
+const FIELD_STYLE = { background: "var(--wl-bg)", border: "1px solid var(--wl-border)" };
+
 /**
  * The actual sign-in surface — Discord (primary; verifies real league
  * membership for free via owners.discord_user_id) or email/password
@@ -130,45 +140,77 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
           </div>
 
           {mode === "signup" && (
-            <input
-              type="text"
-              required
-              placeholder="Display name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="rounded-lg px-3 py-2.5 text-sm text-[color:var(--wl-text)] placeholder:text-[color:var(--wl-text-secondary)] focus:outline-none"
-              style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
-            />
+            <div className="flex flex-col gap-1">
+              <label htmlFor="signin-display-name" className="sr-only">
+                Display name
+              </label>
+              <input
+                id="signin-display-name"
+                name="name"
+                type="text"
+                required
+                autoComplete="name"
+                placeholder="Display name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className={FIELD_CLASS}
+                style={FIELD_STYLE}
+              />
+            </div>
           )}
-          <input
-            type="email"
-            required
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg px-3 py-2.5 text-sm text-[color:var(--wl-text)] placeholder:text-[color:var(--wl-text-secondary)] focus:outline-none"
-            style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
-          />
-          <input
-            type="password"
-            required
-            minLength={mode === "signup" ? 8 : undefined}
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg px-3 py-2.5 text-sm text-[color:var(--wl-text)] placeholder:text-[color:var(--wl-text-secondary)] focus:outline-none"
-            style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
-          />
-          {mode === "signup" && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="signin-email" className="sr-only">
+              Email
+            </label>
             <input
+              id="signin-email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={FIELD_CLASS}
+              style={FIELD_STYLE}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="signin-password" className="sr-only">
+              Password
+            </label>
+            <input
+              id="signin-password"
+              name="password"
               type="password"
               required
-              placeholder="Confirm password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="rounded-lg px-3 py-2.5 text-sm text-[color:var(--wl-text)] placeholder:text-[color:var(--wl-text-secondary)] focus:outline-none"
-              style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
+              minLength={mode === "signup" ? 8 : undefined}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={FIELD_CLASS}
+              style={FIELD_STYLE}
             />
+          </div>
+          {mode === "signup" && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="signin-confirm-password" className="sr-only">
+                Confirm password
+              </label>
+              <input
+                id="signin-confirm-password"
+                name="confirm-password"
+                type="password"
+                required
+                autoComplete="new-password"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={FIELD_CLASS}
+                style={FIELD_STYLE}
+              />
+            </div>
           )}
 
           {error && <p className="text-center text-xs text-red-400">{error}</p>}

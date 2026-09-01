@@ -50,6 +50,27 @@
   --wl-glow-scale: 2.2;
 }
 
+/* App-wide keyboard-focus baseline — most interactive elements had no
+   visible focus indicator at all, relying on whatever the browser
+   default happened to be (thin coverage found across the app,
+   2026-08-31 audit: real, deliberate focus-visible styling existed in
+   only 8 of 105 component files). This is the fallback every
+   interactive element gets for free; a component with its own more
+   specific focus-visible styling (see SignInCard.tsx's FIELD_CLASS)
+   simply overrides it, same cascade as any other CSS rule. Only
+   :focus-visible (not :focus) — a mouse click never shows a ring,
+   only real keyboard/assistive-tech focus, matching modern browser
+   convention. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--user-accent, var(--wl-accent));
+  outline-offset: 2px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

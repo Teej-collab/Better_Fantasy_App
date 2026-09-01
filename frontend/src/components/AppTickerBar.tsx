@@ -56,7 +56,23 @@ export async function AppTickerBar() {
   }
 
   return (
-    <div className="safe-px mx-auto flex w-full max-w-4xl flex-col gap-2 pt-3">
+    <div className="safe-px mx-auto flex w-full max-w-4xl flex-col gap-1.5 pt-3">
+      {/* This ticker used to carry no label at all anywhere it's shown
+          (every (app) page except Home, which has its own richer,
+          labeled version) — confusing on its own, and a real, specific
+          problem on the matchup detail page: the league ticker's
+          current-week scores can share a team name with a *past* week's
+          matchup being viewed right below it, reading as "the score is
+          stuck at 0" rather than "this is an unrelated, current game"
+          (2026-08-31 audit). A small "This Week, Live" label makes the
+          ticker legible as its own thing on every page it appears on,
+          not just the one where the collision was actually noticed. */}
+      <div className="flex items-center gap-1.5">
+        <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
+        <span className="text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+          This Week, Live
+        </span>
+      </div>
       <LiveTicker items={nflTickerItems} fast={isGameDay} />
       {leagueTicker}
       {isGameDay && <GameDayRefresher />}
