@@ -661,9 +661,7 @@ const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
 // Awards already has its own dedicated homepage card just above this
 // one when there's a current season — everything else in that shared
 // list is a genuine shortcut that would otherwise require detouring
-// through League's own sub-nav first. The Weekend gets its own
-// flagship card above the grid since it's the site's one major
-// "atmosphere" destination, not just another data page.
+// through League's own sub-nav first.
 // awardsAllTime excluded for a different reason than league/awards
 // above: its href is dynamic (depends on the latest season, resolved
 // via awardsHref in LeagueSubNav — see that component) and this grid's
@@ -700,23 +698,6 @@ function DiscoveryGrid() {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Discover</h2>
-
-      <Link
-        href="/weekend"
-        className="discover-weekend-card flex items-center justify-between gap-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.03] p-4 transition-transform active:scale-[0.98]"
-      >
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs font-semibold tracking-wide text-fuchsia-500 uppercase dark:text-fuchsia-400">
-            The Weekend
-          </span>
-          <span className="truncate text-sm text-black/60 dark:text-white/60">
-            Step into the full live experience
-          </span>
-        </div>
-        <span className="shrink-0 text-fuchsia-500 dark:text-fuchsia-400" aria-hidden>
-          →
-        </span>
-      </Link>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {tiles.map((t) => (
