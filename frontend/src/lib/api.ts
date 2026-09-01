@@ -752,7 +752,12 @@ export async function clearChugFine(ownerId: number, amount?: number): Promise<{
   return res.json();
 }
 
-export type Me = { owner_id: number; display_name: string | null; is_commissioner: boolean };
+export type Me = {
+  owner_id: number;
+  display_name: string | null;
+  is_commissioner: boolean;
+  active_league_id: number | null;
+};
 
 // Server-side counterpart to AuthStatus's client-side /auth/me fetch —
 // used by pages that need to know who's signed in during SSR (e.g. to

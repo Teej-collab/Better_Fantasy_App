@@ -1,8 +1,10 @@
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
 from app.queries import keepers as keeper_queries
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
@@ -14,11 +16,37 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int, is_commissioner: bool = False):
+def _session_cookie(user_id: int, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=is_commissioner
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=100000 + owner_id,
+        is_commissioner=False,  # ignored by the router now — real per-league check instead
     )
     return {"session": token}
+
+
+async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
+    """Real user + owner + team + real DEFAULT_LEAGUE_ID membership —
+    keepers.py's commissioner routes now do a live per-league DB check
+    (app/auth/league_context.py, see TODO.md's PHASE 9 entry), not the
+    old JWT is_commissioner claim, so a fabricated claim with a
+    hardcoded user_id=1 (the real production commissioner's own id)
+    can no longer stand in for it. Returns (user_id, owner_id) — pass
+    both into _session_cookie."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-keepers-{suffix}@example.com", f"Test User {suffix}",
+        )
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            f"test-keepers-owner-{suffix}", f"Owner {suffix}", user_id,
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, role)
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+        )
+    return user_id, owner_id
 
 
 def _set_env(monkeypatch):
@@ -111,11 +139,11 @@ async def test_get_my_keepers_requires_session(pool):
 
 async def test_keepers_not_open_with_no_rules_configured(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 3, 503)
+    user_id, owner_id = await _seed_member_with_team(pool, 3, 503)
     _patch_league(monkeypatch, _fake_roster_league(503, [(3001, "Player C", "TE")]))
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.get("/keepers/me")
     assert resp.status_code == 200
     body = resp.json()
@@ -129,11 +157,11 @@ async def test_roster_pool_comes_from_the_live_espn_roster(pool, monkeypatch):
     never writing anything to the `rosters` table at all, only patching
     the live League the ESPN client reads through."""
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, "live1", 5031)
+    user_id, owner_id = await _seed_member_with_team(pool, "live1", 5031)
     _patch_league(monkeypatch, _fake_roster_league(5031, [(30011, "Live RB", "RB")]))
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.get("/keepers/me")
 
     assert resp.status_code == 200
@@ -143,29 +171,29 @@ async def test_roster_pool_comes_from_the_live_espn_roster(pool, monkeypatch):
 
 async def test_non_commissioner_cannot_set_rules(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_with_team(pool, 4, 504)
+    user_id, owner_id = await _seed_member_with_team(pool, 4, 504)
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 2})
     assert resp.status_code == 403
 
 
 async def test_owner_can_select_keepers_within_the_cap(pool, monkeypatch):
     _set_env(monkeypatch)
-    commissioner_id = await _seed_owner_with_team(pool, 5, 505)
-    owner_id = await _seed_owner_with_team(pool, 6, 506)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 5, 505, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 6, 506)
     _patch_league(
         monkeypatch,
         _fake_roster_league(506, [(6001, "Player D", "RB"), (6002, "Player E", "RB"), (6003, "Player F", "RB")]),
     )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(commissioner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
         rules_resp = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 2})
         assert rules_resp.status_code == 200
         assert rules_resp.json()["is_open"] is True
 
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         # Exceeds the cap.
         too_many = await client.put("/keepers/me", json={"espn_player_ids": [6001, 6002, 6003]})
         assert too_many.status_code == 400
@@ -181,37 +209,37 @@ async def test_owner_can_select_keepers_within_the_cap(pool, monkeypatch):
 
 async def test_locking_rules_blocks_further_selection_changes(pool, monkeypatch):
     _set_env(monkeypatch)
-    commissioner_id = await _seed_owner_with_team(pool, 7, 507)
-    owner_id = await _seed_owner_with_team(pool, 8, 508)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 7, 507, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 8, 508)
     _patch_league(monkeypatch, _fake_roster_league(508, [(8001, "Player G", "WR")]))
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(commissioner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
         await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 1})
 
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         first = await client.put("/keepers/me", json={"espn_player_ids": [8001]})
         assert first.status_code == 200
 
-        client.cookies.update(_session_cookie(commissioner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
         lock_resp = await client.post("/keepers/rules/lock", json={"season": TEST_SEASON})
         assert lock_resp.status_code == 200
         assert lock_resp.json()["locked_at"] is not None
 
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         after_lock = await client.put("/keepers/me", json={"espn_player_ids": []})
         assert after_lock.status_code == 409
 
         # Rules can't be changed while locked either.
-        client.cookies.update(_session_cookie(commissioner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
         change_attempt = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 5})
         assert change_attempt.status_code == 409
 
 
 async def test_consecutive_years_cap_makes_a_player_ineligible(pool, monkeypatch):
     _set_env(monkeypatch)
-    commissioner_id = await _seed_owner_with_team(pool, 9, 509)
-    owner_id = await _seed_owner_with_team(pool, 10, 510)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 9, 509, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 10, 510)
     _patch_league(monkeypatch, _fake_roster_league(510, [(10001, "Player H", "QB")]))
 
     async with pool.acquire() as conn:
@@ -221,14 +249,14 @@ async def test_consecutive_years_cap_makes_a_player_ineligible(pool, monkeypatch
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(commissioner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
         # Cap of 1 consecutive year — Player H was already kept once, so
         # keeping him again this season would be a 2nd consecutive year.
         await client.put(
             "/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 1, "max_consecutive_years": 1}
         )
 
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         get_resp = await client.get("/keepers/me")
         pool_entry = next(p for p in get_resp.json()["roster_pool"] if p["espn_player_id"] == 10001)
         assert pool_entry["eligible"] is False

@@ -144,6 +144,43 @@ async def cleanup_test_season(pool):
             "DELETE FROM keeper_selections WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM league_keeper_rules WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # Leagues a test created directly via POST /leagues, and
+        # everything that references leagues.id, cleaned up FIRST and
+        # entirely before any owners/users deletion below — a test
+        # league's own creator (leagues.created_by_user_id -> users.id)
+        # is very often also one of the owners.user_id-linked users
+        # cleaned up next, and deleting that user before its league is
+        # gone is a real FK violation, not a hypothetical one (caught
+        # directly: test_draft_router.py's commissioner-seeding helper
+        # creates exactly this shape — one user who both owns a team
+        # and created the league). Tests are expected to name any
+        # league they create "Test League ..." for this whole block to
+        # find it.
+        #
+        # league_scoring_rules.league_id -> leagues.id — POST /leagues
+        # (app/routers/leagues.py) seeds default scoring rules for the
+        # real ACTIVE_SEASON (2026), not TEST_SEASON, so the
+        # season-scoped league_scoring_rules cleanup above never
+        # catches these.
+        await conn.execute(
+            "DELETE FROM league_scoring_rules WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute(
+            "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        # users.active_league_id -> leagues.id (migration 119d4af5c920) —
+        # a user who joined a test league via POST /leagues/{id}/select
+        # (or was auto-activated into one, see app/queries/leagues.py's
+        # add_member) still points at it here regardless of whether
+        # they're one of the 'test-%'-pattern owners/users cleaned up
+        # below. Must be cleared before the leagues DELETE below or it
+        # FK-violates — same shape of bug this file already guards
+        # against for league_members/league_scoring_rules just above.
+        await conn.execute(
+            "UPDATE users SET active_league_id = NULL WHERE active_league_id IN "
+            "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owners.user_id -> users.id, so capture which users are linked to
         # test owners *before* deleting those owners, then delete the
         # users afterward — deleting users first would violate the FK.
@@ -158,21 +195,20 @@ async def cleanup_test_season(pool):
             # league_members.user_id -> users.id (Phase 2 of the multi-
             # league migration auto-enrolls every login into the default
             # league — see app/queries/auth.py) — must go before the
-            # users DELETE below or it FK-violates.
+            # users DELETE below or it FK-violates. The leagues cleanup
+            # above already removed any test-league membership; this
+            # catches auto-enrollment into the real default league.
             await conn.execute("DELETE FROM league_members WHERE user_id = ANY($1::int[])", linked_user_ids)
             await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", linked_user_ids)
-        # Leagues/teams a test created directly via POST /leagues or
-        # POST /leagues/{id}/teams (not the auto-enroll-into-League-#1
-        # path above). An owner created for a password-signup test user
-        # via get_or_create_owner_for_user has no espn_member_id at all
+        # Teams a test created directly via POST /leagues/{id}/teams. An
+        # owner created for a password-signup test user via
+        # get_or_create_owner_for_user has no espn_member_id at all
         # (unlike a Discord test owner), so it's invisible to the
         # 'test-%' pattern above — found instead via its linked test
         # user's email. Must run after the teams_by_season cleanup
         # above (which already removed any TEST_SEASON team, so nothing
         # still references these owners) and before the users DELETE
-        # below (owners.user_id -> users.id). Tests are expected to
-        # name any league they create "Test League ..." for this to
-        # find it.
+        # below (owners.user_id -> users.id).
         test_signup_owner_ids = [
             r["owner_id"]
             for r in await conn.fetch(
@@ -181,31 +217,16 @@ async def cleanup_test_season(pool):
         ]
         if test_signup_owner_ids:
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
-        # league_scoring_rules.league_id -> leagues.id, so it has to go
-        # before the leagues DELETE below too — POST /leagues (see
-        # app/routers/leagues.py) seeds default scoring rules for the
-        # real ACTIVE_SEASON (2026), not TEST_SEASON, so the season-
-        # scoped league_scoring_rules cleanup above never catches these.
+        # league_members.user_id -> users.id, no ON DELETE CASCADE
+        # (migration d7deccb620bb) — a test user can join real
+        # DEFAULT_LEAGUE_ID membership directly (bypassing owners
+        # entirely, e.g. to exercise a real per-league commissioner
+        # check) without ever getting an owners row, so this can't rely
+        # on the owners.user_id-derived linked_user_ids cleanup above.
+        # Must run before the users DELETE below or it FK-violates.
         await conn.execute(
-            "DELETE FROM league_scoring_rules WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+            "DELETE FROM league_members WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"
         )
-        await conn.execute(
-            "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
-        )
-        # users.active_league_id -> leagues.id (migration 119d4af5c920) —
-        # a user who joined a test league via POST /leagues/{id}/select
-        # (or was auto-activated into one, see app/queries/leagues.py's
-        # add_member) still points at it here even after the owner/user
-        # cleanup above, since that only ever deletes 'test-%'-pattern
-        # rows, not every user who happened to select a test league.
-        # Must be cleared before the leagues DELETE below or it
-        # FK-violates — same shape of bug this file already guards
-        # against for league_members/league_scoring_rules just above.
-        await conn.execute(
-            "UPDATE users SET active_league_id = NULL WHERE active_league_id IN "
-            "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
-        )
-        await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # Phase 5 password-signup test users have no owners row at all
         # (see app/queries/auth.py's create_user_with_password) — not
         # covered by the owner-linked cleanup above, so cleaned up

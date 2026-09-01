@@ -23,6 +23,7 @@ from app.auth.session import (
 )
 from app.db import get_pool
 from app.queries import auth as auth_queries
+from app.queries import leagues as league_queries
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -185,10 +186,35 @@ async def me(request: Request):
             user = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
             display_name = user["display_name"] if user else None
 
+        # A live per-active-league check, not the JWT's own
+        # is_commissioner claim — that claim is set once at login from
+        # the single global COMMISSIONER_DISCORD_ID env var, which
+        # predates per-league commissioners entirely (see TODO.md's
+        # PHASE 9 entry). Every commissioner-gated router already
+        # enforces this for real server-side (app/auth/
+        # league_context.py's require_commissioner_of) — this just
+        # makes what the frontend shows match what the backend actually
+        # allows, so a real second league's own commissioner (who never
+        # has the global env-var claim) still sees their own controls.
+        # The caller's REAL active_league_id (possibly null — a
+        # signed-in visitor who hasn't joined/created a league yet has
+        # no league to be commissioner of), not resolve_active_league_id's
+        # DEFAULT_LEAGUE_ID public-preview fallback — that fallback is
+        # for read-mostly browse routes (app/auth/league_context.py's
+        # own docstring), not for reporting the truth about this
+        # account back to the frontend, which needs to tell "genuinely
+        # no league yet" apart from "actively using League #1."
+        active_league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
+        is_commissioner = False
+        if active_league_id is not None:
+            membership = await league_queries.get_membership(conn, active_league_id, payload["user_id"])
+            is_commissioner = membership is not None and membership["role"] == "commissioner"
+
     return {
         "owner_id": payload["owner_id"],
         "display_name": display_name,
-        "is_commissioner": payload["is_commissioner"],
+        "is_commissioner": is_commissioner,
+        "active_league_id": active_league_id,
     }
 
 

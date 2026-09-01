@@ -17,7 +17,14 @@ async def create_league(conn, name: str, created_by_user_id: int, invite_code: s
 
 async def add_member(conn, league_id: int, user_id: int, role: str) -> None:
     """Idempotent — re-running the backfill, or a member logging in
-    again, never creates a duplicate row or a duplicate-key error."""
+    again, never creates a duplicate row or a duplicate-key error.
+
+    Also auto-activates this league for the user if they don't already
+    have an active one (see TODO.md's PHASE 9 entry, "session-resolved
+    active league") — the common case (join or create your one league)
+    needs zero extra clicks to start seeing its data. Never overwrites
+    an existing active_league_id — joining a second league doesn't
+    silently switch you away from the one you're already using."""
     await conn.execute(
         """
         INSERT INTO league_members (league_id, user_id, role)
@@ -26,6 +33,18 @@ async def add_member(conn, league_id: int, user_id: int, role: str) -> None:
         """,
         league_id, user_id, role,
     )
+    await conn.execute(
+        "UPDATE users SET active_league_id = $1 WHERE id = $2 AND active_league_id IS NULL",
+        league_id, user_id,
+    )
+
+
+async def get_active_league_id(conn, user_id: int) -> int | None:
+    return await conn.fetchval("SELECT active_league_id FROM users WHERE id = $1", user_id)
+
+
+async def set_active_league_id(conn, user_id: int, league_id: int) -> None:
+    await conn.execute("UPDATE users SET active_league_id = $1 WHERE id = $2", league_id, user_id)
 
 
 async def get_default_league_id(conn) -> int | None:
@@ -74,6 +93,47 @@ async def seed_default_scoring_rules(conn, league_id: int, season: int, source_l
         [(season, r["stat_category"], r["points_per_unit"], league_id) for r in rows],
     )
     return len(rows)
+
+
+async def list_unclaimed_owners(conn, league_id: int):
+    """Owners in this league nobody's account is linked to yet — see
+    TODO.md's PHASE 9 entry, "any League #1 owner can self-claim their
+    history." Scoped by league via teams_by_season (owners itself has
+    no league_id — it's a global real-person registry, see Phase 5) —
+    an owner only counts as belonging to this league if they actually
+    have a team in it."""
+    return await conn.fetch(
+        """
+        SELECT DISTINCT o.owner_id, o.display_name
+        FROM owners o
+        JOIN teams_by_season t ON t.owner_id = o.owner_id
+        WHERE t.league_id = $1 AND o.user_id IS NULL
+        ORDER BY o.display_name
+        """,
+        league_id,
+    )
+
+
+async def claim_owner(conn, league_id: int, owner_id: int, user_id: int) -> bool:
+    """Links a real historical owner to the caller's account — every
+    table already keyed by that owner_id (chug debts, keeper picks,
+    past seasons, matchups, awards) is immediately theirs, no data
+    migration needed. Scoped to owners who actually have a team in
+    this league, and only succeeds if nobody's claimed it already
+    (first-claim-wins, the same trust level Discord auto-linking
+    already has today — see app/queries/auth.py). Returns False
+    (never raises) if the owner doesn't belong to this league or is
+    already claimed, so the router can turn that into a clean 404/409
+    rather than a generic error."""
+    result = await conn.execute(
+        """
+        UPDATE owners SET user_id = $1
+        WHERE owner_id = $2 AND user_id IS NULL
+          AND EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = owners.owner_id AND t.league_id = $3)
+        """,
+        user_id, owner_id, league_id,
+    )
+    return result != "UPDATE 0"
 
 
 async def list_leagues_for_user(conn, user_id: int):

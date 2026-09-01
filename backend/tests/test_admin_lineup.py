@@ -1,17 +1,47 @@
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 
-def _commissioner_cookie():
+def _session_cookie(user_id: int, owner_id: int = 1):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=1, discord_user_id=900001, is_commissioner=True
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=900000 + user_id,
+        is_commissioner=False,  # ignored by the router now — real per-league check instead
     )
     return {"session": token}
+
+
+async def _commissioner_cookie(pool) -> dict:
+    """A real test user actually made DEFAULT_LEAGUE_ID's commissioner —
+    this router gates on require_commissioner_of(DEFAULT_LEAGUE_ID)
+    specifically, a live DB check (see TODO.md's PHASE 9 entry), not
+    the old JWT is_commissioner claim this file used to fake with a
+    hardcoded user_id=1 (the real production commissioner's own id —
+    fragile to depend on, and no longer even sufficient on its own)."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', 'Test Admin Lineup Commish') "
+            "RETURNING id",
+            "test-adminlineup-commish@example.com",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
+    return _session_cookie(user_id)
+
+
+async def _non_commissioner_cookie(pool, suffix: str) -> dict:
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', 'Test Admin Lineup Member') "
+            "RETURNING id",
+            f"test-adminlineup-{suffix}@example.com",
+        )
+    return _session_cookie(user_id)
 
 
 async def _request(method, path, cookies=None, json=None):
@@ -42,22 +72,21 @@ async def test_roster_endpoint_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_roster_endpoint_rejects_non_commissioner(monkeypatch):
+async def test_roster_endpoint_rejects_non_commissioner(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    non_commissioner = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=1, discord_user_id=900001, is_commissioner=False
+    response = await _request(
+        "GET", "/admin/lineup/teams/1/roster", cookies=await _non_commissioner_cookie(pool, "roster-reject")
     )
-    response = await _request("GET", "/admin/lineup/teams/1/roster", cookies={"session": non_commissioner})
     assert response.status_code == 403
 
 
-async def test_roster_endpoint_returns_live_roster_with_resolved_labels(monkeypatch):
+async def test_roster_endpoint_returns_live_roster_with_resolved_labels(pool, monkeypatch):
     _set_espn_env(monkeypatch)
     bench_player = make_fake_lineup_player(1, "Bench Guy", "BE", ["RB", "BE", "IR"])
     team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=[bench_player])
     _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
 
-    response = await _request("GET", "/admin/lineup/teams/4/roster", cookies=_commissioner_cookie())
+    response = await _request("GET", "/admin/lineup/teams/4/roster", cookies=await _commissioner_cookie(pool))
     assert response.status_code == 200
     roster = response.json()["roster"]
     assert roster[0]["player_name"] == "Bench Guy"
@@ -65,15 +94,15 @@ async def test_roster_endpoint_returns_live_roster_with_resolved_labels(monkeypa
     assert {"id": 2, "label": "RB"} in roster[0]["eligible_slots"]
 
 
-async def test_roster_endpoint_team_not_found_maps_to_404(monkeypatch):
+async def test_roster_endpoint_team_not_found_maps_to_404(pool, monkeypatch):
     _set_espn_env(monkeypatch)
     _patch_league(monkeypatch, FakeLeague(teams=[], current_week=5))
 
-    response = await _request("GET", "/admin/lineup/teams/999/roster", cookies=_commissioner_cookie())
+    response = await _request("GET", "/admin/lineup/teams/999/roster", cookies=await _commissioner_cookie(pool))
     assert response.status_code == 404
 
 
-async def test_set_lineup_dry_run_by_default(monkeypatch):
+async def test_set_lineup_dry_run_by_default(pool, monkeypatch):
     _set_espn_env(monkeypatch)  # ESPN_DRY_RUN unset -> defaults true
     roster = [make_fake_lineup_player(1, "Bench RB", "BE", ["RB", "BE"])]
     team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=roster)
@@ -82,7 +111,7 @@ async def test_set_lineup_dry_run_by_default(monkeypatch):
     response = await _request(
         "POST",
         "/admin/lineup/teams/4/set",
-        cookies=_commissioner_cookie(),
+        cookies=await _commissioner_cookie(pool),
         json={"player_name": "Bench RB", "to_slot": "RB"},
     )
     assert response.status_code == 200
@@ -91,7 +120,7 @@ async def test_set_lineup_dry_run_by_default(monkeypatch):
     assert body["attempted"] is False
 
 
-async def test_set_lineup_player_not_found_maps_to_404(monkeypatch):
+async def test_set_lineup_player_not_found_maps_to_404(pool, monkeypatch):
     _set_espn_env(monkeypatch)
     team = make_fake_team(4, "Test Team", "test-member-1", "Alice", "Smith", roster=[])
     _patch_league(monkeypatch, FakeLeague(teams=[team], current_week=5))
@@ -99,13 +128,13 @@ async def test_set_lineup_player_not_found_maps_to_404(monkeypatch):
     response = await _request(
         "POST",
         "/admin/lineup/teams/4/set",
-        cookies=_commissioner_cookie(),
+        cookies=await _commissioner_cookie(pool),
         json={"player_name": "Nobody", "to_slot": "RB"},
     )
     assert response.status_code == 404
 
 
-async def test_swap_dry_run_by_default(monkeypatch):
+async def test_swap_dry_run_by_default(pool, monkeypatch):
     _set_espn_env(monkeypatch)
     roster = [
         make_fake_lineup_player(1, "Starter", "RB", ["RB", "BE"]),
@@ -117,7 +146,7 @@ async def test_swap_dry_run_by_default(monkeypatch):
     response = await _request(
         "POST",
         "/admin/lineup/teams/4/swap",
-        cookies=_commissioner_cookie(),
+        cookies=await _commissioner_cookie(pool),
         json={"player_a": "Starter", "player_b": "Bencher"},
     )
     assert response.status_code == 200

@@ -18,6 +18,11 @@ export type Team = {
   owner_name: string;
 };
 
+export type UnclaimedOwner = {
+  owner_id: number;
+  display_name: string;
+};
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api/backend${path}`, { cache: "no-store" });
   if (!res.ok) {
@@ -40,9 +45,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-export async function getMyLeagues(): Promise<League[]> {
-  const { leagues } = await get<{ leagues: League[] }>("/leagues/mine");
-  return leagues;
+export async function getMyLeagues(): Promise<{ leagues: League[]; activeLeagueId: number | null }> {
+  const body = await get<{ leagues: League[]; active_league_id: number | null }>("/leagues/mine");
+  return { leagues: body.leagues, activeLeagueId: body.active_league_id };
 }
 
 export async function createLeague(name: string): Promise<League> {
@@ -60,4 +65,25 @@ export async function createTeam(leagueId: number, teamName: string): Promise<Te
 export async function getLeagueTeams(leagueId: number): Promise<Team[]> {
   const { teams } = await get<{ teams: Team[] }>(`/leagues/${leagueId}/teams`);
   return teams;
+}
+
+// The only way active_league_id changes (see backend/app/auth/
+// league_context.py's module docstring) — verifies real membership
+// server-side first, so this can never activate a league the caller
+// doesn't actually belong to.
+export async function selectLeague(leagueId: number): Promise<{ active_league_id: number }> {
+  return post<{ active_league_id: number }>(`/leagues/${leagueId}/select`, {});
+}
+
+export async function getUnclaimedOwners(leagueId: number): Promise<UnclaimedOwner[]> {
+  const { owners } = await get<{ owners: UnclaimedOwner[] }>(`/leagues/${leagueId}/unclaimed-owners`);
+  return owners;
+}
+
+// Self-service history claiming — links a real historical owner (their
+// past chug debts, keeper picks, seasons, matchups, awards) to the
+// caller's account. First-claim-wins; a 409 means someone already
+// claimed it.
+export async function claimOwner(leagueId: number, ownerId: number): Promise<void> {
+  await post(`/leagues/${leagueId}/claim-owner`, { owner_id: ownerId });
 }

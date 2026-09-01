@@ -367,6 +367,51 @@ async def test_signup_creates_account_and_session(pool, monkeypatch):
         assert me_body["display_name"] == "New Person"
         assert me_body["owner_id"] is None
         assert me_body["is_commissioner"] is False
+        assert me_body["active_league_id"] is None
+
+
+async def test_auth_me_reports_live_commissioner_status_for_active_league(pool, monkeypatch):
+    """is_commissioner is a live per-active-league DB check now, not the
+    JWT's own stale claim (set once at login from the global
+    COMMISSIONER_DISCORD_ID env var) — see TODO.md's PHASE 9 entry.
+    Creating a league makes you its commissioner and auto-activates it,
+    so /auth/me should reflect both immediately with no extra action."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-me-commish@example.com", "password": "correct-horse", "display_name": "Commish"},
+        )
+        created = await client.post("/leagues", json={"name": "Test League Me Commish"})
+        league_id = created.json()["id"]
+
+        me_resp = await client.get("/auth/me")
+        me_body = me_resp.json()
+        assert me_body["active_league_id"] == league_id
+        assert me_body["is_commissioner"] is True
+
+
+async def test_auth_me_reports_false_commissioner_for_a_regular_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as creator:
+        await creator.post(
+            "/auth/signup",
+            json={"email": "test-me-member-creator@example.com", "password": "correct-horse", "display_name": "Creator"},
+        )
+        created = await creator.post("/leagues", json={"name": "Test League Me Member"})
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await member.post(
+            "/auth/signup",
+            json={"email": "test-me-member@example.com", "password": "correct-horse", "display_name": "Member"},
+        )
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+
+        me_resp = await member.get("/auth/me")
+        me_body = me_resp.json()
+        assert me_body["active_league_id"] == created.json()["id"]
+        assert me_body["is_commissioner"] is False
 
 
 async def test_signup_rejects_duplicate_email(pool, monkeypatch):

@@ -7,8 +7,10 @@ it's final.
 
 Owner-facing routes resolve owner_id from the session only, same
 "no owner_id from the caller" discipline as app/routers/settings.py.
-Commissioner routes reuse the is_commissioner session flag the same
-way app/routers/chug.py's clear-fine endpoint does.
+Commissioner routes use a live per-league check (app/auth/
+league_context.py) instead of the old global is_commissioner session
+flag — see TODO.md's PHASE 9 entry. Every route also resolves
+league_id from the session, never a client-supplied value.
 
 ROSTER POOL SOURCE — deliberately a live ESPN read, not our own DB
 (see _get_live_roster_pool): this app's `rosters` table only ever
@@ -42,6 +44,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_active_league_id, require_league_commissioner
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
@@ -67,7 +70,7 @@ def _infer_position(eligible_slot_ids: tuple[int, ...]) -> str:
     return "—"
 
 
-async def _get_live_roster_pool(owner_id: int, active_season: int) -> list[dict]:
+async def _get_live_roster_pool(owner_id: int, active_season: int, league_id: int) -> list[dict]:
     """The players an owner can choose a keeper from — their real,
     live-right-now ESPN roster (see module docstring for why this is a
     live call, not a DB read). Empty list (not an error) if the owner
@@ -75,7 +78,7 @@ async def _get_live_roster_pool(owner_id: int, active_season: int) -> list[dict]
     "just an empty pool" behavior for that case."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        team = await league_queries.get_team_for_owner(conn, active_season, owner_id)
+        team = await league_queries.get_team_for_owner(conn, active_season, owner_id, league_id)
     if team is None:
         return []
 
@@ -103,13 +106,6 @@ def _require_session(request: Request) -> dict:
     payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
-    return payload
-
-
-def _require_commissioner(request: Request) -> dict:
-    payload = _require_session(request)
-    if not payload.get("is_commissioner"):
-        raise HTTPException(status_code=403, detail="Commissioner only")
     return payload
 
 
@@ -145,11 +141,14 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
     active_season = int(_require("ACTIVE_SEASON"))
     prior_season = active_season - 1
 
-    pool_rows = await _get_live_roster_pool(owner_id, active_season)
     async with pool.acquire() as conn:
-        rules_row = await keeper_queries.get_rules(conn, active_season)
-        current = await keeper_queries.get_selections(conn, active_season, owner_id)
-        prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season)
+        league_id = await require_active_league_id(conn, payload)
+
+    pool_rows = await _get_live_roster_pool(owner_id, active_season, league_id)
+    async with pool.acquire() as conn:
+        rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
+        current = await keeper_queries.get_selections(conn, active_season, owner_id, league_id)
+        prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
 
     rules = _rules_dict(rules_row, active_season)
     prior_by_player = {r["espn_player_id"]: r for r in prior}
@@ -197,17 +196,18 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
         raise HTTPException(status_code=400, detail="Duplicate players in selection")
 
     async with pool.acquire() as conn:
-        rules_row = await keeper_queries.get_rules(conn, active_season)
+        league_id = await require_active_league_id(conn, payload)
+        rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         rules = _rules_dict(rules_row, active_season)
         if not rules["is_open"]:
             raise HTTPException(status_code=409, detail="Keeper selection isn't open for this season")
         if len(ids) > rules["max_keepers"]:
             raise HTTPException(status_code=400, detail=f"You can keep at most {rules['max_keepers']} player(s)")
 
-    pool_rows = await _get_live_roster_pool(owner_id, active_season)
+    pool_rows = await _get_live_roster_pool(owner_id, active_season, league_id)
     async with pool.acquire() as conn:
         pool_by_id = {r["espn_player_id"]: r for r in pool_rows}
-        prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season)
+        prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
         prior_by_id = {r["espn_player_id"]: r for r in prior}
 
         players = []
@@ -228,7 +228,7 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
                 }
             )
 
-        updated = await keeper_queries.replace_selections(conn, active_season, owner_id, players)
+        updated = await keeper_queries.replace_selections(conn, active_season, owner_id, players, league_id)
 
     return {"selections": [dict(r) | {"created_at": r["created_at"].isoformat()} for r in updated]}
 
@@ -242,15 +242,16 @@ class KeeperRulesBody(BaseModel):
 
 @router.put("/rules")
 async def set_keeper_rules(body: KeeperRulesBody, request: Request, pool=Depends(get_pool)):
-    _require_commissioner(request)
+    payload = _require_session(request)
     if body.max_keepers < 0:
         raise HTTPException(status_code=400, detail="max_keepers can't be negative")
     if body.max_consecutive_years is not None and body.max_consecutive_years < 1:
         raise HTTPException(status_code=400, detail="max_consecutive_years must be at least 1")
 
     async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
         row = await keeper_queries.upsert_rules(
-            conn, body.season, body.max_keepers, body.max_consecutive_years, body.keeper_deadline
+            conn, body.season, body.max_keepers, body.max_consecutive_years, body.keeper_deadline, league_id
         )
     if row is None:
         raise HTTPException(status_code=409, detail="Rules are locked for this season — unlock first to change them")
@@ -263,19 +264,21 @@ class SeasonBody(BaseModel):
 
 @router.post("/rules/lock")
 async def lock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(get_pool)):
-    _require_commissioner(request)
+    payload = _require_session(request)
     async with pool.acquire() as conn:
-        row = await keeper_queries.lock_rules(conn, body.season)
+        league_id = await require_league_commissioner(conn, payload)
+        row = await keeper_queries.lock_rules(conn, body.season, league_id)
         if row is None:
-            row = await keeper_queries.get_rules(conn, body.season)
+            row = await keeper_queries.get_rules(conn, body.season, league_id)
     return _rules_dict(row, body.season)
 
 
 @router.post("/rules/unlock")
 async def unlock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(get_pool)):
-    _require_commissioner(request)
+    payload = _require_session(request)
     async with pool.acquire() as conn:
-        row = await keeper_queries.unlock_rules(conn, body.season)
+        league_id = await require_league_commissioner(conn, payload)
+        row = await keeper_queries.unlock_rules(conn, body.season, league_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"No keeper rules configured for {body.season}")
     return _rules_dict(row, body.season)

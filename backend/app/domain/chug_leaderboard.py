@@ -21,19 +21,20 @@ outstanding_owed/fined_owed/fine_amount only ever apply to the active
 season (chug_standing has no meaning for a season that's already over)
 — they're 0 on every row when a specific past season is selected.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.queries import chug as chug_queries
 
 
-async def build_chug_leaderboard(conn, active_season: int, season: int | None):
+async def build_chug_leaderboard(conn, active_season: int, season: int | None, league_id: int = DEFAULT_LEAGUE_ID):
     owner_names = {
         r["owner_id"]: r["display_name"] for r in await conn.fetch("SELECT owner_id, display_name FROM owners")
     }
-    completions = await chug_queries.get_chug_completions(conn)
+    completions = await chug_queries.get_chug_completions(conn, league_id)
     completions_by_key = {(r["owner_id"], r["season"]): r for r in completions}
-    owed_rows = await chug_queries.get_chug_owed_by_owner(conn, season)
-    lifetime_by_owner = await chug_queries.get_lifetime_completed_by_owner(conn)
+    owed_rows = await chug_queries.get_chug_owed_by_owner(conn, season, league_id)
+    lifetime_by_owner = await chug_queries.get_lifetime_completed_by_owner(conn, league_id)
     standing_by_owner = (
-        await chug_queries.get_chug_standing_by_owner(conn, active_season)
+        await chug_queries.get_chug_standing_by_owner(conn, active_season, league_id)
         if season is None or season == active_season
         else {}
     )

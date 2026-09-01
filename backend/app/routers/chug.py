@@ -13,8 +13,13 @@ import tempfile
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import (
+    require_active_league_id,
+    require_league_commissioner,
+    resolve_active_league_id,
+)
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
-from app.config import DEFAULT_LEAGUE_ID, _require
+from app.config import _require
 from app.db import get_pool
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug
@@ -44,10 +49,12 @@ async def chug_seasons(pool=Depends(get_pool)):
 
 
 @router.get("/leaderboard")
-async def chug_leaderboard(season: int | None = None, pool=Depends(get_pool)):
+async def chug_leaderboard(request: Request, season: int | None = None, pool=Depends(get_pool)):
     active_season = int(_require("ACTIVE_SEASON"))
+    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     async with pool.acquire() as conn:
-        leaderboard = await build_chug_leaderboard(conn, active_season, season)
+        league_id = await resolve_active_league_id(conn, payload)
+        leaderboard = await build_chug_leaderboard(conn, active_season, season, league_id)
     return {"season": season, "leaderboard": leaderboard}
 
 
@@ -98,20 +105,22 @@ async def upload_chug(
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
         week = await league_queries.get_cached_current_week(conn, active_season)
         row = await chug_queries.insert_chug_score(
             conn, payload["discord_user_id"], active_season, week,
             result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
+            league_id,
         )
 
         owed_before = await conn.fetchval(
             "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, payload["owner_id"], DEFAULT_LEAGUE_ID,
+            active_season, payload["owner_id"], league_id,
         ) or 0
-        await record_completed_chug(conn, active_season, payload["owner_id"])
+        await record_completed_chug(conn, active_season, payload["owner_id"], league_id)
         owed_after = await conn.fetchval(
             "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, payload["owner_id"], DEFAULT_LEAGUE_ID,
+            active_season, payload["owner_id"], league_id,
         ) or 0
 
     return {
@@ -140,11 +149,10 @@ async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = 
     payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
-    if not payload.get("is_commissioner"):
-        raise HTTPException(status_code=403, detail="Commissioner only")
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        cleared = await clear_fine(conn, active_season, owner_id, amount)
+        league_id = await require_league_commissioner(conn, payload)
+        cleared = await clear_fine(conn, active_season, owner_id, amount, league_id)
 
     return {"owner_id": owner_id, "cleared": cleared}

@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.config import DEFAULT_LEAGUE_ID, _require
+from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
@@ -134,24 +134,33 @@ async def _run_sleeper_player_sync_job():
 
 
 async def _run_draft_clock_job():
+    """Every league with its own in-progress, past-deadline draft gets
+    autopicked independently — not just League #1 (see TODO.md's PHASE
+    9 entry, "session-resolved active league"). draft.py's WebSocket
+    room key is (season, league_id), same reasoning as
+    app/draft/manager.py's own docstring: two leagues drafting the same
+    real season are two separate rooms, so a tick here can never
+    autopick or broadcast into the wrong one."""
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        config = await conn.fetchrow(
-            "SELECT status, current_pick_deadline FROM draft_config WHERE season = $1 AND league_id = $2",
-            season, DEFAULT_LEAGUE_ID,
+        due = await conn.fetch(
+            "SELECT league_id FROM draft_config "
+            "WHERE season = $1 AND status = 'in_progress' AND current_pick_deadline IS NOT NULL "
+            "AND current_pick_deadline <= $2",
+            season, datetime.now(timezone.utc),
         )
-        if config is None or config["status"] != "in_progress" or config["current_pick_deadline"] is None:
-            return
-        if config["current_pick_deadline"] > datetime.now(timezone.utc):
-            return
-        try:
-            result = await draft_engine.autopick(conn, season)
-        except DraftError:
-            logger.exception("Draft autopick failed for season=%s", season)
-            return
-    await draft_manager.broadcast_to_draft(season, {"type": "pick_made", **result})
-    logger.info("Draft autopick: season=%s pick=%s", season, result["pick"]["pick_number"])
+        for row in due:
+            league_id = row["league_id"]
+            try:
+                result = await draft_engine.autopick(conn, season, league_id=league_id)
+            except DraftError:
+                logger.exception("Draft autopick failed for season=%s league_id=%s", season, league_id)
+                continue
+            await draft_manager.broadcast_to_draft((season, league_id), {"type": "pick_made", **result})
+            logger.info(
+                "Draft autopick: season=%s league_id=%s pick=%s", season, league_id, result["pick"]["pick_number"]
+            )
 
 
 async def _run_weekly_compute_job():

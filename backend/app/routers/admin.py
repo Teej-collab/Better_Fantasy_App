@@ -1,16 +1,26 @@
 """
-Commissioner-only endpoints. Gated on the real is_commissioner session
-flag (same pattern chug.py's clear-fine endpoint and keepers.py's rules
-endpoints already use) — this used to run on a shared-secret
-X-Admin-Token header as a stopgap before Phase 5's real auth existed;
-Phase 5 landed and was confirmed working end-to-end back on Aug 19,
-2026, so this router migrated to match everything else rather than
-staying on the old stopgap indefinitely.
+Commissioner-only endpoints. Every one of these is inherently tied to
+League #1 specifically, not "whichever league the caller currently has
+active" — ESPN sync, weekly compute, bye-week sync, and player-database
+ingestion all only ever affect League #1's ESPN-synced data (the only
+ESPN-connected league that exists — see TODO.md's PHASE 9 entry, Phase
+6, "per-league ESPN connection," not built yet). A League #2
+commissioner has no reason to be able to trigger these, so the check is
+require_commissioner_of(DEFAULT_LEAGUE_ID) — deliberately not the
+"active league" resolver every other commissioner-gated router uses.
+
+This used to run on a shared-secret X-Admin-Token header as a stopgap
+before Phase 5's real auth existed; Phase 5 landed and was confirmed
+working end-to-end back on Aug 19, 2026, so this router migrated to
+match everything else rather than staying on the old stopgap
+indefinitely.
 """
 from fastapi import APIRouter, HTTPException, Request
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_commissioner_of
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
 from app.domain.weekly_stats import compute_and_store_week
@@ -29,18 +39,19 @@ def _decode_session(token: str | None) -> dict | None:
     return decode_session_token(config.session_secret, token)
 
 
-def _require_commissioner(request: Request) -> dict:
+def _require_session(request: Request) -> dict:
     payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
-    if not payload.get("is_commissioner"):
-        raise HTTPException(status_code=403, detail="Commissioner only")
     return payload
 
 
 @router.post("/sync")
 async def trigger_sync(request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
@@ -56,7 +67,10 @@ async def trigger_live_sync(request: Request):
     app/providers/sync.py's run_live_sync) — same thing the scheduled
     live-sync job does, on demand. Ignores the game-window gate: if
     you're explicitly asking for it, run it."""
-    _require_commissioner(request)
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
@@ -75,7 +89,10 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
     real game. Defaults to the active season's current week (same
     source as /admin/sync/live); pass ?week=N to recompute a specific
     week instead."""
-    _require_commissioner(request)
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
@@ -95,11 +112,12 @@ async def trigger_bye_week_sync(request: Request):
     so this is commissioner-triggered (run once after the schedule is
     out, or if it's ever missed), not a continuous scheduler like the
     other sync jobs above."""
-    _require_commissioner(request)
-
-    season = ESPNConfig().active_season
+    payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+
+        season = ESPNConfig().active_season
         count = await sync_bye_weeks(conn, season)
     return {"season": season, "teams_synced": count}
 
@@ -109,8 +127,14 @@ async def trigger_player_sync(request: Request):
     """Manual trigger for the Sleeper player-database ingestion (see
     app/providers/sleeper/ingest.py) — run this by hand right after it
     ships rather than waiting for the daily scheduled job's first tick,
-    since the draft player pool depends on this table being populated."""
-    _require_commissioner(request)
+    since the draft player pool depends on this table being populated.
+    Not really League #1-specific (the players table is global), but
+    still commissioner-gated the same way as everything else here
+    rather than being the one open endpoint in this router."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     count = await sync_players(await get_pool())
     return {"players_upserted": count}

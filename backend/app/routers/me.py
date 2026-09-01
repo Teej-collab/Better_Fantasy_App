@@ -33,8 +33,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_active_league_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
-from app.config import DEFAULT_LEAGUE_ID, _require
+from app.config import _require
 from app.db import get_pool
 from app.domain import lineup_engine
 from app.domain.lineup_exceptions import (
@@ -69,19 +70,23 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
-async def _require_my_team(owner_id: int, active_season: int) -> tuple[int, str]:
+async def _require_my_team(payload: dict, active_season: int) -> tuple[int, str, int]:
     """Internal team_id (teams_by_season.id — what current_rosters keys
     on), not espn_team_id. Every /me/team/* route needs this instead
-    now that nothing here calls ESPN."""
+    now that nothing here calls ESPN. Also resolves league_id from the
+    session (never a client-supplied value — see app/auth/
+    league_context.py) and returns it alongside, so callers that need
+    it (lineup moves, free-agent adds) don't have to look it up twice."""
     pool = await get_pool()
     async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
         team = await conn.fetchrow(
             "SELECT id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, owner_id, DEFAULT_LEAGUE_ID,
+            active_season, payload["owner_id"], league_id,
         )
     if team is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")
-    return team["id"], team["team_name"]
+    return team["id"], team["team_name"], league_id
 
 
 def _map_lineup_error(e: Exception) -> HTTPException:
@@ -130,7 +135,8 @@ async def week(request: Request):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        result = await build_your_week(conn, payload["owner_id"], active_season)
+        league_id = await require_active_league_id(conn, payload)
+        result = await build_your_week(conn, payload["owner_id"], active_season, league_id)
 
     if result is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")
@@ -181,7 +187,7 @@ def _live_status_lookup(games: list) -> dict[str, dict]:
 async def my_team(request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, team_name = await _require_my_team(payload["owner_id"], active_season)
+    team_id, team_name, _ = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -240,7 +246,7 @@ async def my_team_ownership(request: Request):
     the response are simply absent, not wrong."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, _ = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -282,12 +288,14 @@ class LineupSwapRequest(BaseModel):
 async def preview_lineup_move(body: LineupMoveRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            plan = await lineup_engine.plan_move(conn, active_season, team_id, body.sleeper_player_id, body.to_slot)
+            plan = await lineup_engine.plan_move(
+                conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id
+            )
     except LineupError as e:
         raise _map_lineup_error(e) from e
 
@@ -303,7 +311,7 @@ async def preview_lineup_move(body: LineupMoveRequest, request: Request):
 async def preview_lineup_swap(body: LineupSwapRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, _ = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
@@ -324,12 +332,14 @@ async def preview_lineup_swap(body: LineupSwapRequest, request: Request):
 async def submit_lineup_move(body: LineupMoveRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            roster = await lineup_engine.move_player(conn, active_season, team_id, body.sleeper_player_id, body.to_slot)
+            roster = await lineup_engine.move_player(
+                conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id
+            )
     except LineupError as e:
         raise _map_lineup_error(e) from e
     return {"roster": [_roster_entry_dict(e) for e in roster]}
@@ -339,7 +349,7 @@ async def submit_lineup_move(body: LineupMoveRequest, request: Request):
 async def submit_lineup_swap(body: LineupSwapRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, _ = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
@@ -362,7 +372,7 @@ async def drop_player(body: DropPlayerRequest, request: Request):
     (that's add_free_agent's job when the roster's already full)."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, _ = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
@@ -388,13 +398,14 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
     decision for the frontend to act on, not just an error to display."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _ = await _require_my_team(payload["owner_id"], active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
             result = await lineup_engine.add_free_agent(
-                conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id
+                conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
+                league_id=league_id,
             )
     except RosterFullError as e:
         return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
@@ -412,26 +423,28 @@ async def list_free_agents(request: Request, position: str | None = None, search
     """The undrafted (season-wide) pool, same shape as /draft/pool minus
     the drafted flag — everyone on this list is by definition
     available."""
-    _require_session(request)
+    payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-
-    query = """
-        SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status
-        FROM players p
-        WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
-            SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
-        )
-    """
-    params: list = [active_season, DEFAULT_LEAGUE_ID]
-    if position:
-        query += f" AND p.position = ${len(params) + 1}"
-        params.append(position)
-    if search:
-        query += f" AND p.full_name ILIKE ${len(params) + 1}"
-        params.append(f"%{search}%")
-    query += " ORDER BY p.search_rank ASC NULLS LAST, p.full_name ASC"
 
     pool = await get_pool()
     async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+
+        query = """
+            SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status
+            FROM players p
+            WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
+                SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
+            )
+        """
+        params: list = [active_season, league_id]
+        if position:
+            query += f" AND p.position = ${len(params) + 1}"
+            params.append(position)
+        if search:
+            query += f" AND p.full_name ILIKE ${len(params) + 1}"
+            params.append(f"%{search}%")
+        query += " ORDER BY p.search_rank ASC NULLS LAST, p.full_name ASC"
+
         rows = await conn.fetch(query, *params)
     return {"players": [dict(r) for r in rows]}

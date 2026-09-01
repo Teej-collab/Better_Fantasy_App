@@ -2,29 +2,42 @@
 
 import { useEffect, useState } from "react";
 import {
+  claimOwner,
   createLeague,
   createTeam,
   getLeagueTeams,
   getMyLeagues,
+  getUnclaimedOwners,
   joinLeague,
+  selectLeague,
   type League,
   type Team,
+  type UnclaimedOwner,
 } from "@/lib/leaguesApi";
 
 /**
- * Self-serve create/join-a-league + create-your-team flow (Phase 5
- * follow-on of the multi-league migration — see backend TODO.md's
- * PHASE 9 entry). Deliberately not woven into the rest of the app yet
- * (standings/matchups/draft/etc. all still implicitly show League #1)
- * — that's a much bigger "which league am I looking at" frontend
- * change of its own, out of scope here. This page proves the backend
- * flow end to end: create or join a league, then create a team in it.
+ * Self-serve create/join-a-league + create-your-team + switch-active-
+ * league + claim-your-history flow (see backend TODO.md's PHASE 9
+ * entry, "session-resolved active league"). Every personal/session-
+ * gated route (My Team, Draft, Keepers, Chug, Settings, Admin) now
+ * reads the caller's own active_league_id (set here, via POST
+ * /leagues/{id}/select) instead of always implicitly acting on League
+ * #1 — this page is the one place that active league actually gets
+ * chosen. The public, unauthenticated browse routes (Standings,
+ * Matchups, Records, Power Rankings — routers/league.py) are a
+ * deliberately separate, larger, not-yet-built piece of work: making
+ * those league-aware needs a real "which league am I browsing" URL/UI
+ * concept of their own, not just a session-resolved default.
  */
 export default function LeaguesPage() {
   const [leagues, setLeagues] = useState<League[] | null>(null);
+  const [activeLeagueId, setActiveLeagueId] = useState<number | null>(null);
   const [teamsByLeague, setTeamsByLeague] = useState<Record<number, Team[]>>({});
+  const [unclaimedByLeague, setUnclaimedByLeague] = useState<Record<number, UnclaimedOwner[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [switchingId, setSwitchingId] = useState<number | null>(null);
+  const [claimingOwnerId, setClaimingOwnerId] = useState<number | null>(null);
 
   const [newLeagueName, setNewLeagueName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -32,10 +45,15 @@ export default function LeaguesPage() {
 
   async function refresh() {
     try {
-      const mine = await getMyLeagues();
+      const { leagues: mine, activeLeagueId: active } = await getMyLeagues();
       setLeagues(mine);
-      const teamLists = await Promise.all(mine.map((l) => getLeagueTeams(l.id).catch(() => [] as Team[])));
+      setActiveLeagueId(active);
+      const [teamLists, unclaimedLists] = await Promise.all([
+        Promise.all(mine.map((l) => getLeagueTeams(l.id).catch(() => [] as Team[]))),
+        Promise.all(mine.map((l) => getUnclaimedOwners(l.id).catch(() => [] as UnclaimedOwner[]))),
+      ]);
       setTeamsByLeague(Object.fromEntries(mine.map((l, i) => [l.id, teamLists[i]])));
+      setUnclaimedByLeague(Object.fromEntries(mine.map((l, i) => [l.id, unclaimedLists[i]])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your leagues — try signing in again.");
       setLeagues([]);
@@ -99,6 +117,32 @@ export default function LeaguesPage() {
     }
   }
 
+  async function handleSwitchLeague(leagueId: number) {
+    setSwitchingId(leagueId);
+    setError(null);
+    try {
+      await selectLeague(leagueId);
+      setActiveLeagueId(leagueId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't switch leagues");
+    } finally {
+      setSwitchingId(null);
+    }
+  }
+
+  async function handleClaimOwner(leagueId: number, ownerId: number) {
+    setClaimingOwnerId(ownerId);
+    setError(null);
+    try {
+      await claimOwner(leagueId, ownerId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't claim that history — someone may have already claimed it.");
+    } finally {
+      setClaimingOwnerId(null);
+    }
+  }
+
   if (leagues === null) {
     return (
       <div className="flex flex-col gap-4">
@@ -128,13 +172,33 @@ export default function LeaguesPage() {
           <div className="flex flex-col gap-4">
             {leagues.map((league) => {
               const teams = teamsByLeague[league.id] ?? [];
+              const unclaimed = unclaimedByLeague[league.id] ?? [];
+              const isActive = league.id === activeLeagueId;
               return (
                 <div key={league.id} className="flex flex-col gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{league.name}</span>
-                    <span className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-black/60 dark:border-white/10 dark:text-white/60">
-                      {league.role}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">{league.name}</span>
+                      <span className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-black/60 dark:border-white/10 dark:text-white/60">
+                        {league.role}
+                      </span>
                     </span>
+                    {isActive ? (
+                      <span
+                        className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                        style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}
+                      >
+                        Active
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleSwitchLeague(league.id)}
+                        disabled={switchingId === league.id}
+                        className="rounded-full border border-black/10 px-2.5 py-1 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/[0.05]"
+                      >
+                        {switchingId === league.id ? "Switching…" : "Switch to this league"}
+                      </button>
+                    )}
                   </div>
                   <p className="text-xs text-black/50 dark:text-white/50">
                     Invite code: <code className="font-mono">{league.invite_code}</code>
@@ -165,6 +229,27 @@ export default function LeaguesPage() {
                       Create my team
                     </button>
                   </div>
+
+                  {unclaimed.length > 0 && (
+                    <div className="mt-1 flex flex-col gap-1.5 rounded-md bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
+                      <p className="text-xs text-black/60 dark:text-white/60">
+                        Already played in this league before? Claim your existing team&apos;s history — chug
+                        debts, keeper picks, past seasons, and awards all come with it.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {unclaimed.map((owner) => (
+                          <button
+                            key={owner.owner_id}
+                            onClick={() => handleClaimOwner(league.id, owner.owner_id)}
+                            disabled={claimingOwnerId === owner.owner_id}
+                            className="rounded-full border border-black/10 px-3 py-1 text-xs hover:bg-black/5 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/10"
+                          >
+                            {claimingOwnerId === owner.owner_id ? "Claiming…" : `This is me: ${owner.display_name}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

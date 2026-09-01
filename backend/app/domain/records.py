@@ -6,6 +6,7 @@ this size, three cheap aggregate queries cost nothing, and computing
 live is what makes the record book "auto-update the instant a record
 is broken" for free, with no recompute job to keep in sync.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.queries import records as queries
 
 _TOP_N = 3
@@ -23,11 +24,11 @@ def _entry(row, *, week: int | None = None, opponent_team_name: str | None = Non
     }
 
 
-async def get_record_book(conn):
-    highest = await queries.top_single_week_scores(conn, _TOP_N, descending=True)
-    lowest = await queries.top_single_week_scores(conn, _TOP_N, descending=False)
-    blowouts = await queries.top_blowouts(conn, _TOP_N)
-    season_totals = await queries.top_season_point_totals(conn, _TOP_N)
+async def get_record_book(conn, league_id: int = DEFAULT_LEAGUE_ID):
+    highest = await queries.top_single_week_scores(conn, _TOP_N, descending=True, league_id=league_id)
+    lowest = await queries.top_single_week_scores(conn, _TOP_N, descending=False, league_id=league_id)
+    blowouts = await queries.top_blowouts(conn, _TOP_N, league_id)
+    season_totals = await queries.top_season_point_totals(conn, _TOP_N, league_id)
 
     return {
         "categories": [

@@ -2,7 +2,15 @@
 _use_fresh_pool_for_websocket() pattern as test_gamecast_router.py for
 the WS tests (starlette's TestClient runs on its own event loop, so the
 asyncpg pool singleton has to be reset around any TestClient call that
-touches the DB)."""
+touches the DB).
+
+Auth setup uses real signed-up users + real league_members rows, not a
+fabricated is_commissioner JWT claim with a hardcoded user_id=1 — the
+router now does a live per-active-league commissioner check (app/auth/
+league_context.py, see TODO.md's PHASE 9 entry), which a fake claim
+can't satisfy, and a hardcoded user_id=1 would silently read/depend on
+the real production owner's own row rather than isolated test data.
+"""
 import itertools
 
 import pytest
@@ -14,6 +22,7 @@ from app import db as db_module
 from app.auth.session import create_session_token, create_ticket_token
 from app.domain import draft_engine
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -25,16 +34,17 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int, is_commissioner: bool = False):
+def _session_cookie(user_id: int, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=300000 + owner_id, is_commissioner=is_commissioner
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=300000 + owner_id,
+        is_commissioner=False,  # ignored by the router now — real per-league check instead
     )
     return {"session": token}
 
 
-def _ws_ticket(owner_id: int):
+def _ws_ticket(user_id: int, owner_id: int):
     return create_ticket_token(
-        _SESSION_SECRET, purpose="ws", user_id=1, owner_id=owner_id,
+        _SESSION_SECRET, purpose="ws", user_id=user_id, owner_id=owner_id,
         discord_user_id=300000 + owner_id, is_commissioner=False,
     )
 
@@ -52,18 +62,59 @@ async def _use_fresh_pool_for_websocket():
     db_module._pool = None
 
 
-async def _seed_owner_and_team(pool, suffix):
+async def _make_league(conn, suffix: str) -> tuple[int, int]:
+    """A real league with a real commissioner user — every other member
+    seeded via _seed_member below joins this same league."""
+    creator_user_id = await conn.fetchval(
+        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+        f"test-draftrouter-{suffix}-creator@example.com", f"Creator {suffix}",
+    )
+    league_id = await league_queries.create_league(
+        conn, f"Test League Draftrouter {suffix}", creator_user_id, f"draftrouter-{suffix}-code"
+    )
+    await league_queries.add_member(conn, league_id, creator_user_id, "commissioner")
+    return league_id, creator_user_id
+
+
+async def _seed_member(pool, league_id: int, suffix: str, role: str = "member") -> tuple[int, int]:
+    """Real user + owner + team, joined into league_id with the given
+    role. Returns (user_id, owner_id)."""
     espn_team_id = next(_espn_team_id_counter)
     async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-draftrouter-{suffix}@example.com", f"User {suffix}",
+        )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
-            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}",
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}", user_id,
+        )
+        await league_queries.add_member(conn, league_id, user_id, role)
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}", league_id,
+        )
+    return user_id, owner_id
+
+
+async def _seed_commissioner_and_team(pool, suffix: str) -> tuple[int, int, int]:
+    """A fresh league whose creator (real commissioner) also gets a
+    team — the common shape most of these tests need. Returns
+    (user_id, owner_id, league_id)."""
+    espn_team_id = next(_espn_team_id_counter)
+    async with pool.acquire() as conn:
+        league_id, user_id = await _make_league(conn, suffix)
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}", user_id,
         )
         await conn.execute(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
-            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}", league_id,
         )
-    return owner_id
+    return user_id, owner_id, league_id
 
 
 async def _seed_player(pool, suffix, position="RB", search_rank=100):
@@ -87,11 +138,11 @@ async def test_pool_requires_session(pool):
 
 async def test_pool_returns_draftable_players(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "pool1")
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "pool1")
     player = await _seed_player(pool, "p1")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.get("/draft/pool")
 
     assert resp.status_code == 200
@@ -101,10 +152,11 @@ async def test_pool_returns_draftable_players(pool, monkeypatch):
 
 async def test_setup_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "setup1")
+    _commish_user_id, _commish_owner_id, league_id = await _seed_commissioner_and_team(pool, "setup1")
+    user_id, owner_id = await _seed_member(pool, league_id, "setup1_member")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.post("/draft/setup", json={
             "draft_order": [owner_id], "roster_slots": _ROSTER_SLOTS,
         })
@@ -113,12 +165,12 @@ async def test_setup_requires_commissioner(pool, monkeypatch):
 
 async def test_setup_and_start_and_pick_flow(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "flow_a")
-    owner_b = await _seed_owner_and_team(pool, "flow_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "flow_a")
+    user_b, owner_b = await _seed_member(pool, league_id, "flow_b")
     player = await _seed_player(pool, "flow1")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         setup_resp = await client.post("/draft/setup", json={
             "draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS,
         })
@@ -129,18 +181,18 @@ async def test_setup_and_start_and_pick_flow(pool, monkeypatch):
         assert start_resp.json()["config"]["current_pick_number"] == 1
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_b))  # not on the clock
+        client.cookies.update(_session_cookie(user_b, owner_b))  # not on the clock
         resp = await client.post("/draft/pick", json={"sleeper_player_id": player})
         assert resp.status_code == 409
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         resp = await client.post("/draft/pick", json={"sleeper_player_id": player})
         assert resp.status_code == 200
         assert resp.json()["pick"]["sleeper_player_id"] == player
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         state_resp = await client.get("/draft/state")
         assert state_resp.status_code == 200
         assert state_resp.json()["config"]["current_pick_number"] == 2
@@ -148,16 +200,16 @@ async def test_setup_and_start_and_pick_flow(pool, monkeypatch):
 
 async def test_undo_last_pick_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "undo_a")
-    owner_b = await _seed_owner_and_team(pool, "undo_b")
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "undo_a")
+    user_a, owner_a = await _seed_member(pool, league_id, "undo_a_member")
+    _user_b, owner_b = await _seed_member(pool, league_id, "undo_b")
 
-    pool_conn_pool = pool
-    async with pool_conn_pool.acquire() as conn:
-        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
-        await draft_engine.start_draft(conn, TEST_SEASON)
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS, league_id=league_id)
+        await draft_engine.start_draft(conn, TEST_SEASON, league_id=league_id)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_a, owner_a))  # a member, not the commissioner
         resp = await client.post("/draft/undo-last-pick")
     assert resp.status_code == 403
 
@@ -174,14 +226,14 @@ async def test_websocket_requires_auth():
 
 async def test_websocket_sends_initial_state_via_ticket(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "ws_a")
-    owner_b = await _seed_owner_and_team(pool, "ws_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "ws_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "ws_b")
     async with pool.acquire() as conn:
-        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS, league_id=league_id)
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(owner_a)}") as ws:
+    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(user_a, owner_a)}") as ws:
         received = ws.receive_json()
     await _use_fresh_pool_for_websocket()
 
@@ -191,21 +243,22 @@ async def test_websocket_sends_initial_state_via_ticket(pool, monkeypatch):
 
 async def test_reset_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "resetperm")
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "resetperm")
+    user_id, owner_id = await _seed_member(pool, league_id, "resetperm_member")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.post("/draft/reset")
     assert resp.status_code == 403
 
 
 async def test_setup_conflicts_when_a_draft_already_exists(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "conflict_a")
-    owner_b = await _seed_owner_and_team(pool, "conflict_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "conflict_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "conflict_b")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         first = await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
         assert first.status_code == 200
         second = await client.post("/draft/setup", json={"draft_order": [owner_b, owner_a], "roster_slots": _ROSTER_SLOTS})
@@ -214,11 +267,11 @@ async def test_setup_conflicts_when_a_draft_already_exists(pool, monkeypatch):
 
 async def test_reset_then_setup_with_new_order_succeeds(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "redo_a")
-    owner_b = await _seed_owner_and_team(pool, "redo_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "redo_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "redo_b")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
         reset_resp = await client.post("/draft/reset")
         assert reset_resp.status_code == 200
@@ -229,31 +282,32 @@ async def test_reset_then_setup_with_new_order_succeeds(pool, monkeypatch):
 
 async def test_schedule_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "sched_noncomm")
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "sched_noncomm")
+    user_id, owner_id = await _seed_member(pool, league_id, "sched_noncomm_member")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
     assert resp.status_code == 403
 
 
 async def test_schedule_404s_without_an_existing_draft(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "sched_nodraft")
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "sched_nodraft")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
     assert resp.status_code == 404
 
 
 async def test_schedule_sets_and_returns_scheduled_start(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "sched_a")
-    owner_b = await _seed_owner_and_team(pool, "sched_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sched_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "sched_b")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
 
         resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
@@ -266,18 +320,19 @@ async def test_schedule_sets_and_returns_scheduled_start(pool, monkeypatch):
 
 async def test_seed_keepers_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_id = await _seed_owner_and_team(pool, "sk_noncomm")
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "sk_noncomm")
+    user_id, owner_id = await _seed_member(pool, league_id, "sk_noncomm_member")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id, is_commissioner=False))
+        client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.post("/draft/seed-keepers")
     assert resp.status_code == 403
 
 
 async def test_seed_keepers_happy_path(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "sk_a")
-    owner_b = await _seed_owner_and_team(pool, "sk_b")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sk_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "sk_b")
     sleeper_player = await _seed_player(pool, "sk_keeper")
 
     async with pool.acquire() as conn:
@@ -285,16 +340,17 @@ async def test_seed_keepers_happy_path(pool, monkeypatch):
             "UPDATE players SET espn_player_id = 930001 WHERE sleeper_player_id = $1", sleeper_player
         )
         await conn.execute(
-            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at) VALUES ($1, 1, now())",
-            TEST_SEASON,
+            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at, league_id) VALUES ($1, 1, now(), $2)",
+            TEST_SEASON, league_id,
         )
         await conn.execute(
-            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name) VALUES ($1, $2, $3, $4)",
-            TEST_SEASON, owner_a, 930001, "Test Keeper",
+            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name, league_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, owner_a, 930001, "Test Keeper", league_id,
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
         resp = await client.post("/draft/seed-keepers")
 
@@ -307,20 +363,21 @@ async def test_seed_keepers_happy_path(pool, monkeypatch):
 
 async def test_seed_keepers_reports_unresolved_players(pool, monkeypatch):
     _set_env(monkeypatch)
-    owner_a = await _seed_owner_and_team(pool, "sk_unres")
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sk_unres")
 
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at) VALUES ($1, 1, now())",
-            TEST_SEASON,
+            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at, league_id) VALUES ($1, 1, now(), $2)",
+            TEST_SEASON, league_id,
         )
         await conn.execute(
-            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name) VALUES ($1, $2, $3, $4)",
-            TEST_SEASON, owner_a, 930099, "No Match Guy",
+            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name, league_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, owner_a, 930099, "No Match Guy", league_id,
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a, is_commissioner=True))
+        client.cookies.update(_session_cookie(user_a, owner_a))
         await client.post("/draft/setup", json={"draft_order": [owner_a], "roster_slots": _ROSTER_SLOTS})
         resp = await client.post("/draft/seed-keepers")
 

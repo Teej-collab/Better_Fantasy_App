@@ -2,15 +2,51 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
 from app.main import app
+from app.queries import leagues as league_queries
+from app.config import DEFAULT_LEAGUE_ID
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 
-def _session_cookie(owner_id: int, is_commissioner: bool):
+def _session_cookie(user_id: int, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=900000 + owner_id, is_commissioner=is_commissioner
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=900000 + owner_id,
+        is_commissioner=False,  # ignored by the router now — real per-league check instead
     )
     return {"session": token}
+
+
+async def _make_user(conn, suffix: str) -> int:
+    return await conn.fetchval(
+        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+        f"test-admin-{suffix}@example.com", f"Test Admin {suffix}",
+    )
+
+
+async def _non_commissioner_cookies(pool, suffix: str) -> dict:
+    """A real, isolated test user who is not a League #1 commissioner —
+    admin.py's routes gate on require_commissioner_of(DEFAULT_LEAGUE_ID)
+    specifically, a live DB check (see TODO.md's PHASE 9 entry), not
+    the old JWT is_commissioner claim these tests used to fake. Using
+    a real but unaffiliated user (rather than the real production
+    commissioner's own user_id) keeps a "rejects" test from silently
+    succeeding — and, worse, actually firing a real unmocked ESPN
+    sync — just because it happened to reuse a real commissioner's id."""
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, suffix)
+    return _session_cookie(user_id, owner_id=1)
+
+
+async def _commissioner_of_league_one_cookies(pool, suffix: str) -> dict:
+    """A real test user actually made League #1's commissioner for the
+    duration of one test — the only way to legitimately exercise the
+    success path now that this is a live per-league DB check rather
+    than a JWT flag. Cleaned up by conftest's league_members-by-user
+    sweep (this user's email matches 'test-%')."""
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, suffix)
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
+    return _session_cookie(user_id, owner_id=1)
 
 
 async def _post_sync(cookies=None, path="/admin/sync"):
@@ -27,9 +63,9 @@ async def test_sync_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_sync_rejects_non_commissioner(monkeypatch):
+async def test_sync_rejects_non_commissioner(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False))
+    response = await _post_sync(cookies=await _non_commissioner_cookies(pool, "sync-reject"))
     assert response.status_code == 403
 
 
@@ -39,9 +75,11 @@ async def test_live_sync_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_live_sync_rejects_non_commissioner(monkeypatch):
+async def test_live_sync_rejects_non_commissioner(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/sync/live")
+    response = await _post_sync(
+        cookies=await _non_commissioner_cookies(pool, "live-sync-reject"), path="/admin/sync/live"
+    )
     assert response.status_code == 403
 
 
@@ -51,9 +89,11 @@ async def test_weekly_compute_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_weekly_compute_rejects_non_commissioner(monkeypatch):
+async def test_weekly_compute_rejects_non_commissioner(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/weekly-compute")
+    response = await _post_sync(
+        cookies=await _non_commissioner_cookies(pool, "weekly-compute-reject"), path="/admin/weekly-compute"
+    )
     assert response.status_code == 403
 
 
@@ -63,9 +103,11 @@ async def test_bye_week_sync_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_bye_week_sync_rejects_non_commissioner(monkeypatch):
+async def test_bye_week_sync_rejects_non_commissioner(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=False), path="/admin/sync/bye-weeks")
+    response = await _post_sync(
+        cookies=await _non_commissioner_cookies(pool, "bye-week-reject"), path="/admin/sync/bye-weeks"
+    )
     assert response.status_code == 403
 
 
@@ -85,7 +127,9 @@ async def test_bye_week_sync_writes_real_rows(pool, monkeypatch):
     monkeypatch.setattr(bye_weeks_module, "get_week_scoreboard", fake_scoreboard)
     monkeypatch.setattr(bye_weeks_module, "REGULAR_SEASON_WEEKS", 2)
 
-    response = await _post_sync(cookies=_session_cookie(1, is_commissioner=True), path="/admin/sync/bye-weeks")
+    response = await _post_sync(
+        cookies=await _commissioner_of_league_one_cookies(pool, "bye-week-writer"), path="/admin/sync/bye-weeks"
+    )
 
     assert response.status_code == 200
     body = response.json()

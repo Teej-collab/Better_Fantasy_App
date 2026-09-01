@@ -19,18 +19,45 @@ DB in the first place. Same is_commissioner session gate as admin.py —
 this used to run on the old X-Admin-Token stopgap before Phase 5's real
 auth existed; migrated once Phase 5 was confirmed working (Aug 19, 2026).
 
+Gated on League #1's commissioner specifically, not "whichever league
+the caller currently has active" — this whole router only ever talks to
+the one real ESPN-connected league (same reasoning as app/routers/
+admin.py — see TODO.md's PHASE 9 entry, Phase 6, not built yet).
+
 Safe by default: ESPN_DRY_RUN defaults to true, so hitting the mutation
 endpoints here just logs and returns what WOULD be sent until that's
 explicitly turned off in .env.
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app.auth.config import SessionConfig
+from app.auth.league_context import require_commissioner_of
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.config import DEFAULT_LEAGUE_ID
+from app.db import get_pool
 from app.providers.espn.lineup_client import ESPNLineupClient
-from app.routers.admin import _require_commissioner
 from app.routers.lineup_shared import map_lineup_error, roster_entry_dict
 
 router = APIRouter(prefix="/admin/lineup", tags=["admin"])
+
+
+def _require_session(request: Request) -> dict:
+    config = SessionConfig()
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    return payload
+
+
+async def _require_commissioner(request: Request) -> None:
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
 
 class SetLineupRequest(BaseModel):
@@ -50,7 +77,7 @@ class SwapRequest(BaseModel):
 @router.get("/teams/{team_id}/roster")
 async def live_roster(team_id: int, request: Request, season: int | None = None):
     """LIVE from ESPN, not our DB — see module docstring for why."""
-    _require_commissioner(request)
+    await _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         roster = client.get_roster(team_id, season)
@@ -61,7 +88,7 @@ async def live_roster(team_id: int, request: Request, season: int | None = None)
 
 @router.post("/teams/{team_id}/set")
 async def set_lineup(team_id: int, body: SetLineupRequest, request: Request):
-    _require_commissioner(request)
+    await _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         result = client.set_lineup(
@@ -79,7 +106,7 @@ async def set_lineup(team_id: int, body: SetLineupRequest, request: Request):
 
 @router.post("/teams/{team_id}/swap")
 async def swap_players(team_id: int, body: SwapRequest, request: Request):
-    _require_commissioner(request)
+    await _require_commissioner(request)
     client = ESPNLineupClient()
     try:
         result = client.swap_players(

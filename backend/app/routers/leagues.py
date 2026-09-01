@@ -49,7 +49,24 @@ async def my_leagues(request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await league_queries.list_leagues_for_user(conn, payload["user_id"])
-    return {"leagues": [_league_dict(r, r["role"]) for r in rows]}
+        active_league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
+    return {"leagues": [_league_dict(r, r["role"]) for r in rows], "active_league_id": active_league_id}
+
+
+@router.post("/{league_id}/select")
+async def select_league(league_id: int, request: Request):
+    """The ONLY way active_league_id changes (see app/auth/
+    league_context.py's module docstring) — verifies real membership
+    first, so this can never be used to activate a league the caller
+    doesn't actually belong to."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
+        if membership is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        await league_queries.set_active_league_id(conn, payload["user_id"], league_id)
+    return {"active_league_id": league_id}
 
 
 class CreateLeagueRequest(BaseModel):
@@ -135,3 +152,42 @@ async def list_teams(league_id: int, request: Request):
             raise HTTPException(status_code=403, detail="You're not a member of this league")
         rows = await team_queries.list_teams_for_league(conn, league_id, season)
     return {"teams": [dict(r) for r in rows]}
+
+
+@router.get("/{league_id}/unclaimed-owners")
+async def unclaimed_owners(league_id: int, request: Request):
+    """Powers the "is one of these you?" picker (see TODO.md's PHASE 9
+    entry) — any member of the league can see who's still unclaimed,
+    not just the commissioner, since claiming is self-service."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
+        if membership is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        rows = await league_queries.list_unclaimed_owners(conn, league_id)
+    return {"owners": [dict(r) for r in rows]}
+
+
+class ClaimOwnerRequest(BaseModel):
+    owner_id: int
+
+
+@router.post("/{league_id}/claim-owner")
+async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request):
+    """Self-service history claiming — any League #1 owner can sign up
+    by email and claim their own existing chug debts/keeper picks/past
+    seasons themselves (see TODO.md's PHASE 9 entry). First-claim-wins:
+    once linked, an owner can never be claimed again."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
+        if membership is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        claimed = await league_queries.claim_owner(conn, league_id, body.owner_id, payload["user_id"])
+        if not claimed:
+            raise HTTPException(
+                status_code=409, detail="That owner is already claimed, or isn't in this league"
+            )
+    return {"owner_id": body.owner_id, "claimed": True}

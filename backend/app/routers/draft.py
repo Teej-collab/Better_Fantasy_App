@@ -10,8 +10,11 @@ has never had an in-app alternative to before).
 
 Every mutating endpoint resolves owner_id from the session — the same
 "never trust a client-supplied team/owner id" discipline as
-app/routers/me.py and keepers.py. Commissioner-only setup/control
-endpoints reuse _require_commissioner from admin.py.
+app/routers/me.py and keepers.py. Every endpoint also resolves
+league_id from the session (app/auth/league_context.py) — never a
+client-supplied value — so a signed-in visitor can only ever act on
+their own active league's draft, never one they merely guess the
+season of (see TODO.md's PHASE 9 entry).
 """
 from datetime import datetime
 
@@ -20,6 +23,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_active_league_id, require_league_commissioner
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
@@ -37,7 +41,6 @@ from app.domain.draft_exceptions import (
 )
 from app.draft.manager import manager
 from app.queries import draft as draft_queries
-from app.routers.admin import _require_commissioner
 
 router = APIRouter(prefix="/draft", tags=["draft"])
 
@@ -69,21 +72,23 @@ def _map_draft_error(e: Exception) -> HTTPException:
 
 @router.get("/pool")
 async def draft_pool(request: Request, position: str | None = None, search: str | None = None):
-    _require_session(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await draft_queries.get_draft_pool(conn, season, position, search)
+        league_id = await require_active_league_id(conn, payload)
+        rows = await draft_queries.get_draft_pool(conn, season, position, search, league_id)
     return {"players": [dict(r) for r in rows]}
 
 
 @router.get("/state")
 async def draft_state(request: Request):
-    _require_session(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        state = await draft_queries.get_draft_state(conn, season)
+        league_id = await require_active_league_id(conn, payload)
+        state = await draft_queries.get_draft_state(conn, season, league_id)
     if state is None:
         raise HTTPException(status_code=404, detail="No draft configured for this season")
     return state
@@ -100,11 +105,14 @@ async def submit_pick(body: PickRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            result = await draft_engine.make_pick(conn, season, payload["owner_id"], body.sleeper_player_id)
+            league_id = await require_active_league_id(conn, payload)
+            result = await draft_engine.make_pick(
+                conn, season, payload["owner_id"], body.sleeper_player_id, league_id=league_id
+            )
     except DraftError as e:
         raise _map_draft_error(e) from e
 
-    await manager.broadcast_to_draft(season, {"type": "pick_made", **result})
+    await manager.broadcast_to_draft((season, league_id), {"type": "pick_made", **result})
     return result
 
 
@@ -120,15 +128,17 @@ async def setup_draft(body: SetupRequest, request: Request):
     docstring) — call POST /draft/reset first to change the order or
     roster shape, whether that's redoing a mock draft or genuinely
     reconfiguring before the real one."""
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            league_id = await require_league_commissioner(conn, payload)
             await draft_engine.create_draft(
-                conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds
+                conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds,
+                league_id=league_id,
             )
-            state = await draft_queries.get_draft_state(conn, season)
+            state = await draft_queries.get_draft_state(conn, season, league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
     return state
@@ -155,13 +165,14 @@ async def set_draft_schedule(body: ScheduleRequest, request: Request):
     be able to nail down or adjust the real date/time without resetting
     draft_order/roster_slots. Requires setup to have already happened
     (404 otherwise, via DraftNotFoundError)."""
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            await draft_engine.set_scheduled_start(conn, season, body.scheduled_start)
-            state = await draft_queries.get_draft_state(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            await draft_engine.set_scheduled_start(conn, season, body.scheduled_start, league_id=league_id)
+            state = await draft_queries.get_draft_state(conn, season, league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
     return state
@@ -173,12 +184,13 @@ async def reset_draft(request: Request):
     every current_rosters row it seeded) regardless of status — see
     draft_engine.reset_draft's docstring. Use this to redo a mock draft
     or change the order/roster shape before the real one."""
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await draft_engine.reset_draft(conn, season)
-    await manager.broadcast_to_draft(season, {"type": "draft_reset"})
+        league_id = await require_league_commissioner(conn, payload)
+        await draft_engine.reset_draft(conn, season, league_id=league_id)
+    await manager.broadcast_to_draft((season, league_id), {"type": "draft_reset"})
     return {"ok": True}
 
 
@@ -190,12 +202,15 @@ class KeeperSeedRequest(BaseModel):
 
 @router.post("/keeper")
 async def seed_keeper(body: KeeperSeedRequest, request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            await draft_engine.seed_keeper_pick(conn, season, body.owner_id, body.round, body.sleeper_player_id)
+            league_id = await require_league_commissioner(conn, payload)
+            await draft_engine.seed_keeper_pick(
+                conn, season, body.owner_id, body.round, body.sleeper_player_id, league_id=league_id
+            )
     except DraftError as e:
         raise _map_draft_error(e) from e
     return {"ok": True}
@@ -209,12 +224,13 @@ async def seed_keepers(request: Request):
     instead of a commissioner manually resolving and POSTing one owner
     at a time. See draft_engine.seed_keepers_from_locked_selections for
     the full ordering/idempotency/all-or-nothing rules."""
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            seeded = await draft_engine.seed_keepers_from_locked_selections(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            seeded = await draft_engine.seed_keepers_from_locked_selections(conn, season, league_id=league_id)
     except KeeperResolutionError as e:
         raise HTTPException(
             status_code=400,
@@ -227,60 +243,64 @@ async def seed_keepers(request: Request):
 
 @router.post("/start")
 async def start_draft(request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            config = await draft_engine.start_draft(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            config = await draft_engine.start_draft(conn, season, league_id=league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
-    await manager.broadcast_to_draft(season, result)
+    await manager.broadcast_to_draft((season, league_id), result)
     return result
 
 
 @router.post("/pause")
 async def pause_draft(request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            config = await draft_engine.pause_draft(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            config = await draft_engine.pause_draft(conn, season, league_id=league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
-    await manager.broadcast_to_draft(season, result)
+    await manager.broadcast_to_draft((season, league_id), result)
     return result
 
 
 @router.post("/resume")
 async def resume_draft(request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            config = await draft_engine.resume_draft(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            config = await draft_engine.resume_draft(conn, season, league_id=league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
-    await manager.broadcast_to_draft(season, result)
+    await manager.broadcast_to_draft((season, league_id), result)
     return result
 
 
 @router.post("/undo-last-pick")
 async def undo_last_pick(request: Request):
-    _require_commissioner(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            result = await draft_engine.undo_last_pick(conn, season)
+            league_id = await require_league_commissioner(conn, payload)
+            result = await draft_engine.undo_last_pick(conn, season, league_id=league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
-    await manager.broadcast_to_draft(season, {"type": "pick_undone", **result})
+    await manager.broadcast_to_draft((season, league_id), {"type": "pick_undone", **result})
     return result
 
 
@@ -301,11 +321,22 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
         await websocket.close(code=4401)
         return
 
-    await manager.connect(season, websocket)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        try:
+            league_id = await require_active_league_id(conn, payload)
+        except HTTPException:
+            # require_active_league_id raises for a normal HTTP request;
+            # a WebSocket has no HTTP response to send, so translate to
+            # a close code instead — same convention as the no-payload
+            # case above.
+            await websocket.close(code=4401)
+            return
+        state = await draft_queries.get_draft_state(conn, season, league_id)
+
+    room = (season, league_id)
+    await manager.connect(room, websocket)
     try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            state = await draft_queries.get_draft_state(conn, season)
         if state is None:
             await websocket.send_json({"type": "error", "detail": "No draft configured for this season"})
             await websocket.close(code=4404)
@@ -320,4 +351,4 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(season, websocket)
+        manager.disconnect(room, websocket)
