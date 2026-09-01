@@ -136,6 +136,39 @@ async def claim_owner(conn, league_id: int, owner_id: int, user_id: int) -> bool
     return result != "UPDATE 0"
 
 
+async def list_members(conn, league_id: int):
+    """Every real person in this league, commissioners first — powers a
+    commissioner's "who can I promote" view. Same owner-first-then-
+    users.display_name resolution already established by GET /auth/me
+    and POST /feedback (app/routers/auth.py, app/routers/feedback.py):
+    an owner's real historical display name if their account is linked
+    to one, falling back to the account's own chosen name otherwise."""
+    return await conn.fetch(
+        """
+        SELECT lm.user_id, lm.role, lm.joined_at,
+               COALESCE(o.display_name, u.display_name) AS display_name
+        FROM league_members lm
+        JOIN users u ON u.id = lm.user_id
+        LEFT JOIN owners o ON o.user_id = lm.user_id
+        WHERE lm.league_id = $1
+        ORDER BY (lm.role = 'commissioner') DESC, lm.joined_at ASC
+        """,
+        league_id,
+    )
+
+
+async def set_member_role(conn, league_id: int, user_id: int, role: str) -> bool:
+    """Promotes/demotes an EXISTING member — never creates a row (use
+    add_member for that), so this can't be used to add someone to a
+    league they never joined. Returns False (never raises) if there's
+    no such membership, letting the router turn that into a clean 404."""
+    result = await conn.execute(
+        "UPDATE league_members SET role = $3 WHERE league_id = $1 AND user_id = $2",
+        league_id, user_id, role,
+    )
+    return result != "UPDATE 0"
+
+
 async def list_leagues_for_user(conn, user_id: int):
     return await conn.fetch(
         """

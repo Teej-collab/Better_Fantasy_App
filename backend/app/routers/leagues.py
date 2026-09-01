@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_commissioner_of
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
@@ -191,3 +192,44 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
                 status_code=409, detail="That owner is already claimed, or isn't in this league"
             )
     return {"owner_id": body.owner_id, "claimed": True}
+
+
+@router.get("/{league_id}/members")
+async def list_members(league_id: int, request: Request):
+    """Who's actually in this league and what role they hold — any
+    member can see the roster (same self-service precedent as
+    /unclaimed-owners above), not just the commissioner."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
+        if membership is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        rows = await league_queries.list_members(conn, league_id)
+    return {"members": [dict(r) for r in rows]}
+
+
+class SetMemberRoleRequest(BaseModel):
+    role: str
+
+
+@router.patch("/{league_id}/members/{user_id}")
+async def set_member_role(league_id: int, user_id: int, body: SetMemberRoleRequest, request: Request):
+    """Promote/demote another member — commissioner-only (a member
+    could otherwise hand themselves commissioner). Deliberately can
+    never target the caller's own row: there's no path through this
+    endpoint, even a mistaken click, that removes a commissioner's own
+    access — the only way to lose it is another commissioner doing it
+    to you."""
+    if body.role not in ("commissioner", "member"):
+        raise HTTPException(status_code=400, detail="role must be 'commissioner' or 'member'")
+    payload = _require_session(request)
+    if user_id == payload["user_id"]:
+        raise HTTPException(status_code=400, detail="Use another commissioner's account to change your own role")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        changed = await league_queries.set_member_role(conn, league_id, user_id, body.role)
+        if not changed:
+            raise HTTPException(status_code=404, detail="That user isn't a member of this league")
+    return {"user_id": user_id, "role": body.role}

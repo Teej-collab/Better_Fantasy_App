@@ -211,6 +211,7 @@ async def me(request: Request):
             is_commissioner = membership is not None and membership["role"] == "commissioner"
 
     return {
+        "user_id": payload["user_id"],
         "owner_id": payload["owner_id"],
         "display_name": display_name,
         "is_commissioner": is_commissioner,
