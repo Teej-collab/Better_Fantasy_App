@@ -94,6 +94,16 @@ body {
      not load-bearing (fixed positions relative to the viewport
      regardless), just documents the relationship. */
   position: relative;
+  /* A page shorter than the viewport (e.g. /team pre-draft, with just
+     the empty-roster card and nothing else) is non-scrollable — iOS
+     Safari, including in an installed standalone PWA, is known to
+     handle env(safe-area-inset-*) inconsistently on a non-scrollable
+     page versus a tall one, which reads as the whole page/header
+     sitting at a slightly different vertical position depending on the
+     route (2026-09 mobile report). dvh (not vh) tracks the real visual
+     viewport, matching interactiveWidget: "resizes-content" in
+     layout.tsx's viewport config. */
+  min-height: 100dvh;
 }
 
 /* Removed 2026-08-31, per the owner's own request to calm the in-app
