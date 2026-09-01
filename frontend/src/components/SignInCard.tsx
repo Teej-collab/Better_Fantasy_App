@@ -78,24 +78,11 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
             Continue with Discord
           </a>
 
-          {/* Google's own dark-theme button guideline, adapted onto this
-              card's tokens (a plain white rectangle would read as a hole
-              punched in an otherwise all-dark card) — the "G" mark itself
-              stays full brand color, per Google's branding requirements;
-              only the button surface is themed. New Google sign-ins are
-              self-serve (join a league with its invite code afterward),
-              same as email — Discord is the only path with real
-              pre-existing membership data to verify against instantly. */}
-          <a
-            href={`${API_BASE_URL}/auth/google/login`}
-            target="_blank"
-            rel="noopener"
-            className="flex items-center justify-center gap-2.5 rounded-full px-6 py-3.5 text-sm font-semibold text-[color:var(--wl-text)] transition-colors hover:bg-white/5 active:scale-[0.98]"
-            style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
-          >
-            <GoogleGlyph className="h-4.5 w-4.5" />
-            Continue with Google
-          </a>
+          {/* Google Sign-In is fully built (backend routes, GoogleGlyph
+              below, get_or_create_user_for_google) but hidden here — no
+              real GOOGLE_CLIENT_ID/SECRET are configured yet, so a live
+              button would 500 for anyone who clicked it. Re-add this
+              block once real credentials are wired into .env/Railway. */}
 
           <div className="flex items-center gap-3" aria-hidden>
             <span className="h-px flex-1" style={{ background: "var(--wl-border)" }} />
