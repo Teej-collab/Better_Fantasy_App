@@ -116,7 +116,7 @@ export async function NavBar() {
           <AuthStatus />
         </nav>
       </header>
-      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} order={bottomNavOrder} />
+      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
     </>
   );
 }

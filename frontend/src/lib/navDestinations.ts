@@ -159,11 +159,16 @@ export const NAV_ACCENT = "var(--user-accent, var(--wl-accent))";
 
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
 
-// The mobile bottom bar's 5 fixed slots (BottomNav.tsx) — this is the
-// DEFAULT order only; an owner can reorder these 5 (never add/remove
+// The mobile bottom bar's fixed slots (BottomNav.tsx) — this is the
+// DEFAULT order only; an owner can reorder these (never add/remove
 // one) via Settings > Navigation, persisted as owner_preferences'
-// bottom_nav_order.
-export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "chat"];
+// bottom_nav_order. gamecast added 2026-09-02: it used to be reachable
+// on mobile only via the Home page's Discover grid, with zero presence
+// in the persistent nav at all — a real gap for a destination the
+// 2026-09-02 re-audit specifically called out as strategically
+// important (the app's one genuinely live, real-time feature). Same
+// position relative to matchups/chat as PRIMARY_NAV_ORDER above.
+export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
 
 // League-family destinations — everything that's "browse the league,"
 // as opposed to "manage my own roster" (My Team's own sub-nav:

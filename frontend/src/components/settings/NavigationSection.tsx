@@ -34,13 +34,13 @@ function parseOrder(raw: string | null | undefined): DestinationKey[] {
 }
 
 /**
- * Reorders the mobile bottom nav's 5 fixed tabs (BottomNav.tsx) —
- * same drag-and-drop pattern as HomeCardDeck.tsx (a shared drag handle,
+ * Reorders the mobile bottom nav's fixed tabs (BottomNav.tsx) — same
+ * drag-and-drop pattern as HomeCardDeck.tsx (a shared drag handle,
  * optimistic save with a swallowed-catch background PUT), but a fixed
- * set of 5 items with no add/remove: the mobile bar always shows
- * exactly these 5, only their order is an owner's own choice. Desktop's
- * PrimaryNav is a separate, fixed-order component — this only affects
- * the mobile bar.
+ * set with no add/remove: the mobile bar always shows exactly the
+ * destinations in MOBILE_NAV_ORDER, only their order is an owner's own
+ * choice. Desktop's PrimaryNav is a separate, fixed-order component —
+ * this only affects the mobile bar.
  */
 export function NavigationSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);

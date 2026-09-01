@@ -74,3 +74,19 @@ export function ChatIcon(props: IconProps) {
   );
 }
 
+// A broadcast-signal mark (source dot + radiating arcs) rather than a
+// literal TV/screen — reads as "live feed" specifically, distinct from
+// Matchups' vs-brackets, for the one destination in this set that's
+// actually about a real-time broadcast rather than fantasy data.
+export function GamecastIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none" />
+      <path d="M12 16.2v-1.7" />
+      <path d="M9 12.7a4.2 4.2 0 0 1 6 0" />
+      <path d="M6.5 10a7.8 7.8 0 0 1 11 0" />
+      <path d="M4 7.3a11.4 11.4 0 0 1 16 0" />
+    </svg>
+  );
+}
+
