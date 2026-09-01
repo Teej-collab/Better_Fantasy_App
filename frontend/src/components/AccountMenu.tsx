@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearSession } from "@/lib/logout";
 
-export type Me = { owner_id: number; display_name: string | null; is_commissioner: boolean };
+export type Me = { user_id: number; owner_id: number; display_name: string | null; is_commissioner: boolean };
 
 /**
  * Replaces the old plain "{name} / Sign out" pair in AuthStatus.tsx —

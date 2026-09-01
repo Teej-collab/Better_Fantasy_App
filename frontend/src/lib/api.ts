@@ -787,6 +787,7 @@ export async function clearChugFine(ownerId: number, amount?: number): Promise<{
 }
 
 export type Me = {
+  user_id: number;
   owner_id: number;
   display_name: string | null;
   is_commissioner: boolean;

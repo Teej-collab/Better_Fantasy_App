@@ -23,6 +23,13 @@ export type UnclaimedOwner = {
   display_name: string;
 };
 
+export type Member = {
+  user_id: number;
+  role: "commissioner" | "member";
+  joined_at: string;
+  display_name: string;
+};
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api/backend${path}`, { cache: "no-store" });
   if (!res.ok) {
@@ -41,6 +48,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `POST ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `PATCH ${path} failed: ${res.status}`);
   }
   return res.json();
 }
@@ -86,4 +106,20 @@ export async function getUnclaimedOwners(leagueId: number): Promise<UnclaimedOwn
 // claimed it.
 export async function claimOwner(leagueId: number, ownerId: number): Promise<void> {
   await post(`/leagues/${leagueId}/claim-owner`, { owner_id: ownerId });
+}
+
+export async function getLeagueMembers(leagueId: number): Promise<Member[]> {
+  const { members } = await get<{ members: Member[] }>(`/leagues/${leagueId}/members`);
+  return members;
+}
+
+// Commissioner-only — the backend enforces this (require_commissioner_of)
+// and also rejects targeting your own user_id, so a commissioner can
+// never accidentally remove their own access through this call.
+export async function setMemberRole(
+  leagueId: number,
+  userId: number,
+  role: "commissioner" | "member"
+): Promise<void> {
+  await patch(`/leagues/${leagueId}/members/${userId}`, { role });
 }

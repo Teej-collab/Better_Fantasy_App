@@ -5,12 +5,15 @@ import {
   claimOwner,
   createLeague,
   createTeam,
+  getLeagueMembers,
   getLeagueTeams,
   getMyLeagues,
   getUnclaimedOwners,
   joinLeague,
   selectLeague,
+  setMemberRole,
   type League,
+  type Member,
   type Team,
   type UnclaimedOwner,
 } from "@/lib/leaguesApi";
@@ -34,10 +37,13 @@ export default function LeaguesPage() {
   const [activeLeagueId, setActiveLeagueId] = useState<number | null>(null);
   const [teamsByLeague, setTeamsByLeague] = useState<Record<number, Team[]>>({});
   const [unclaimedByLeague, setUnclaimedByLeague] = useState<Record<number, UnclaimedOwner[]>>({});
+  const [membersByLeague, setMembersByLeague] = useState<Record<number, Member[]>>({});
+  const [myUserId, setMyUserId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<number | null>(null);
   const [claimingOwnerId, setClaimingOwnerId] = useState<number | null>(null);
+  const [changingRoleUserId, setChangingRoleUserId] = useState<number | null>(null);
 
   const [newLeagueName, setNewLeagueName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -48,12 +54,23 @@ export default function LeaguesPage() {
       const { leagues: mine, activeLeagueId: active } = await getMyLeagues();
       setLeagues(mine);
       setActiveLeagueId(active);
-      const [teamLists, unclaimedLists] = await Promise.all([
+      // /auth/me directly (not a leaguesApi helper — it's account-level,
+      // not league-scoped), same same-origin route AuthStatus.tsx uses,
+      // just for the caller's own user_id: needed to hide the promote/
+      // demote controls on your own member row below, matching the
+      // backend's own can't-change-your-own-role guard.
+      const me = await fetch("/auth/me")
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+      setMyUserId(me?.user_id ?? null);
+      const [teamLists, unclaimedLists, memberLists] = await Promise.all([
         Promise.all(mine.map((l) => getLeagueTeams(l.id).catch(() => [] as Team[]))),
         Promise.all(mine.map((l) => getUnclaimedOwners(l.id).catch(() => [] as UnclaimedOwner[]))),
+        Promise.all(mine.map((l) => getLeagueMembers(l.id).catch(() => [] as Member[]))),
       ]);
       setTeamsByLeague(Object.fromEntries(mine.map((l, i) => [l.id, teamLists[i]])));
       setUnclaimedByLeague(Object.fromEntries(mine.map((l, i) => [l.id, unclaimedLists[i]])));
+      setMembersByLeague(Object.fromEntries(mine.map((l, i) => [l.id, memberLists[i]])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your leagues — try signing in again.");
       setLeagues([]);
@@ -161,6 +178,19 @@ export default function LeaguesPage() {
     }
   }
 
+  async function handleSetMemberRole(leagueId: number, userId: number, role: "commissioner" | "member") {
+    setChangingRoleUserId(userId);
+    setError(null);
+    try {
+      await setMemberRole(leagueId, userId, role);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't change that member's role");
+    } finally {
+      setChangingRoleUserId(null);
+    }
+  }
+
   if (leagues === null) {
     return (
       <div className="flex flex-col gap-4">
@@ -191,6 +221,7 @@ export default function LeaguesPage() {
             {leagues.map((league) => {
               const teams = teamsByLeague[league.id] ?? [];
               const unclaimed = unclaimedByLeague[league.id] ?? [];
+              const members = membersByLeague[league.id] ?? [];
               const isActive = league.id === activeLeagueId;
               return (
                 <div key={league.id} className="flex flex-col gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
@@ -247,6 +278,43 @@ export default function LeaguesPage() {
                       Create my team
                     </button>
                   </div>
+
+                  {league.role === "commissioner" && members.length > 0 && (
+                    <div className="mt-1 flex flex-col gap-1.5 rounded-md bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
+                      <p className="text-xs text-black/60 dark:text-white/60">Members</p>
+                      <ul className="flex flex-col gap-1.5">
+                        {members.map((member) => (
+                          <li key={member.user_id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="flex items-center gap-1.5">
+                              <span>{member.display_name}</span>
+                              <span className="rounded-full border border-black/10 px-1.5 py-0.5 text-[10px] text-black/60 dark:border-white/10 dark:text-white/60">
+                                {member.role}
+                              </span>
+                            </span>
+                            {member.user_id !== myUserId && (
+                              <button
+                                onClick={() =>
+                                  handleSetMemberRole(
+                                    league.id,
+                                    member.user_id,
+                                    member.role === "commissioner" ? "member" : "commissioner"
+                                  )
+                                }
+                                disabled={changingRoleUserId === member.user_id}
+                                className="shrink-0 rounded-full border border-black/10 px-2.5 py-1 text-xs hover:bg-black/5 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/10"
+                              >
+                                {changingRoleUserId === member.user_id
+                                  ? "Saving…"
+                                  : member.role === "commissioner"
+                                    ? "Remove commissioner"
+                                    : "Make commissioner"}
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {unclaimed.length > 0 && (
                     <div className="mt-1 flex flex-col gap-1.5 rounded-md bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">

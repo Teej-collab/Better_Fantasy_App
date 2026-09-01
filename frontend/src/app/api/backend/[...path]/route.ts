@@ -64,6 +64,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   return proxy(request, (await params).path);
 }
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  return proxy(request, (await params).path);
+}
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   return proxy(request, (await params).path);
 }
