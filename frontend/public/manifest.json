@@ -4,8 +4,8 @@
   "description": "League standings, matchups, and rosters.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#23212c",
-  "theme_color": "#23212c",
+  "background_color": "#0d1016",
+  "theme_color": "#0d1016",
   "icons": [
     {
       "src": "/images/icon-192.png",
