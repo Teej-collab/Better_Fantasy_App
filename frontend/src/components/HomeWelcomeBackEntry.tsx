@@ -4,17 +4,30 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
-import { WORDS, prefersReducedMotion, useWeekendIntro } from "@/lib/useWeekendIntro";
+import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
-const WELCOME_HOLD_MS = 1100;
-// See AppEntry.tsx's identical constant for why — lets the can-opening-
-// then-pour sound (useIntroSound.ts) play out over the wordmark before
-// the reveal transition begins. Skipped for prefers-reduced-motion.
+// The ceremonial hold on "Welcome Back" before auto-continuing into the
+// dashboard — lets the can-opening-then-pour sound (useIntroSound.ts)
+// play out over the wordmark before the reveal transition begins. Only
+// ever applied on a slow (first-ever, full-buildup) entry now — see
+// FAST_HOLD_MS below and the 2026-09-01 audit note on why this used to
+// apply unconditionally.
 const EXTENDED_HOLD_MS = 3600;
+// Applied instead of EXTENDED_HOLD_MS whenever useWeekendIntro's `fast`
+// is true (reduced motion, a repeat visit, or an explicit skip click) —
+// there's no ceremony left to protect for a visitor whose screen never
+// even played the word-by-word buildup; holding them on a static logo
+// for another 1.1-3.6s on every single hard load was pure dead time,
+// the single largest finding in the 2026-09-01 re-audit (8.45s to real
+// content on Home, every visit, not just first-time onboarding). Not
+// zero — an instant cut still reads as a glitch — just short enough
+// that the REVEAL_TRANSITION_MS fade below is the only thing a
+// returning visitor actually waits through.
+const FAST_HOLD_MS = 150;
 const REVEAL_TRANSITION_MS = 900;
 // Absolute backstop — see AppEntry.tsx's identical constant/effect for
 // why: the real dashboard must never stay hidden behind the splash
@@ -48,6 +61,13 @@ const MAX_BOOT_MS = 12000;
  * case; the only way past this screen is the real Join/Create links
  * (a normal navigation, which unmounts this component) or its "Skip
  * for now" escape hatch (handleSkip below).
+ *
+ * A persistent "Skip" control (handleSkip, rendered unconditionally
+ * below — not just during needsLeague) is available the entire time
+ * this is on screen, word-buildup or hold alike — there used to be no
+ * way at all to get past this screen faster once past the initial
+ * ~300ms dark beat, the 2026-09-01 re-audit's other half of the same
+ * finding.
  */
 export function HomeWelcomeBackEntry({
   displayName,
@@ -58,7 +78,7 @@ export function HomeWelcomeBackEntry({
   needsLeague?: boolean;
   children: ReactNode;
 }) {
-  const { stage, wordIndex } = useWeekendIntro();
+  const { stage, wordIndex, fast, skip, markSeen } = useWeekendIntro();
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
 
@@ -72,17 +92,32 @@ export function HomeWelcomeBackEntry({
 
   useEffect(() => {
     if (revealed || stage !== "final" || needsLeague) return;
-    const holdMs = prefersReducedMotion() ? WELCOME_HOLD_MS : EXTENDED_HOLD_MS;
+    const holdMs = fast ? FAST_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
         setRevealedAfterBoot(true);
         markBootedThisPageLoad();
+        // This used to never run on the normal (non-skip) completion
+        // path — AppEntry.tsx's equivalent effect always has, but this
+        // one didn't, so wl_intro_seen never got persisted from an
+        // ordinary Home visit and every single hard reload replayed the
+        // full word-by-word buildup AND the full EXTENDED_HOLD_MS hold
+        // forever, not just on a visitor's first-ever visit. This is
+        // the real reason the 2026-09-01 re-audit measured 8.45s on
+        // Home on *every* load, not just first-time onboarding.
+        markSeen();
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
     }, holdMs);
     return () => clearTimeout(holdTimeout);
-  }, [stage, revealed, needsLeague]);
+    // markSeen isn't memoized (a fresh closure every render, same as
+    // useWeekendIntro's other returned functions) — including it here
+    // would restart this timeout on every unrelated re-render instead
+    // of ever letting it complete. Same omission AppEntry.tsx's
+    // identical effect already makes for the same reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, revealed, needsLeague, fast]);
 
   useEffect(() => {
     if (revealed) return;
@@ -96,14 +131,21 @@ export function HomeWelcomeBackEntry({
     const failsafe = setTimeout(() => {
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
+      markSeen();
     }, MAX_BOOT_MS);
     return () => clearTimeout(failsafe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, needsLeague]);
 
   // A plain event handler, not an effect — fine to setState directly.
-  // Passed to WelcomeBackStage only when needsLeague is true, as its
-  // "Skip for now" link.
+  // Used both by the persistent "Skip" corner link below (any time, any
+  // stage) and passed to WelcomeBackStage as its "Skip for now" link
+  // when needsLeague is true. Calls the hook's own skip() first — stops
+  // the word-by-word buildup immediately if it's still running, and
+  // marks this browser as having seen the intro (so even a hard reload
+  // right after gets the fast path, not just this one visit).
   function handleSkip() {
+    skip();
     setRevealing(true);
     setTimeout(() => {
       setRevealedAfterBoot(true);
@@ -126,6 +168,21 @@ export function HomeWelcomeBackEntry({
         // early one so more of the sequence has a chance to play with
         // it instead of none, on a page load with no other gesture.
         <p className="safe-pt safe-px absolute top-0 left-0 z-10 text-xs text-white/40">🔈 Tap for sound</p>
+      )}
+
+      {/* Available through the whole sequence, word-buildup or hold
+          alike — not just during "word" the way OpeningExperience's/
+          AppEntry.tsx's own skip link is. needsLeague has its own
+          equivalent inside WelcomeBackStage instead (a second one here
+          would be a redundant, confusing double control on that
+          screen). */}
+      {!needsLeague && !revealing && (
+        <button
+          onClick={handleSkip}
+          className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs"
+        >
+          Skip →
+        </button>
       )}
 
       <div

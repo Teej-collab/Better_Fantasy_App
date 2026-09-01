@@ -11,6 +11,14 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const WELCOME_HOLD_MS = 1100;
+// Applied instead of WELCOME_HOLD_MS whenever useWeekendIntro's `fast`
+// is true (reduced motion, a repeat visit, or an explicit skip click) —
+// see HomeWelcomeBackEntry.tsx's identical constant for the full
+// reasoning. This is the deep-link path (a push notification straight
+// into Gamecast, a bookmarked Standings page, any reload of any
+// signed-in route other than Home) — the 2026-09-01 re-audit measured
+// 4.97s to real content here, every time, not just on first visit.
+const FAST_HOLD_MS = 150;
 const REVEAL_TRANSITION_MS = 900;
 // Never let a slow/failed auth check hold the boot sequence hostage —
 // past this, proceed as if unauthenticated (the page underneath already
@@ -71,14 +79,16 @@ type AuthState = "checking" | "authenticated" | "unauthenticated";
  * reload/deep-link, forever. Now calls markSeen() the first time this
  * sequence completes, same as OpeningExperience does, so it only ever
  * plays in full once per browser. Two more escape hatches on top of
- * that: a visible "Skip intro" button (matching OpeningExperience's),
- * and an automatic skip whenever the URL carries an `error` param —
- * that's exactly the shape of Discord's own OAuth-failure redirect to
- * /login, and someone who just failed to sign in shouldn't have to
- * wait out an animation before they can even read why or retry.
+ * that: a visible "Skip" button, available through the whole sequence
+ * (not just the word-buildup — see handleSkip below, and the
+ * 2026-09-01 audit note on why that used to matter), and an automatic
+ * skip whenever the URL carries an `error` param — that's exactly the
+ * shape of Discord's own OAuth-failure redirect to /login, and someone
+ * who just failed to sign in shouldn't have to wait out an animation
+ * before they can even read why or retry.
  */
 export function AppEntry({ children }: { children: ReactNode }) {
-  const { stage, wordIndex, skip, markSeen } = useWeekendIntro({ sound: false });
+  const { stage, wordIndex, fast, skip, markSeen } = useWeekendIntro({ sound: false });
   const [authState, setAuthState] = useState<AuthState>("checking");
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -132,7 +142,7 @@ export function AppEntry({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (revealed || stage !== "final" || authState === "checking") return;
-    const holdMs = authState === "authenticated" ? WELCOME_HOLD_MS : 0;
+    const holdMs = authState !== "authenticated" ? 0 : fast ? FAST_HOLD_MS : WELCOME_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
@@ -144,7 +154,26 @@ export function AppEntry({ children }: { children: ReactNode }) {
     }, holdMs);
     return () => clearTimeout(holdTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, authState, revealed]);
+  }, [stage, authState, revealed, fast]);
+
+  // A plain event handler, not an effect — fine to setState directly.
+  // Used by the persistent "Skip" corner link below, available through
+  // the whole sequence (word-buildup or hold alike). Calling skip()
+  // first ends the word-buildup immediately if it's still running and
+  // marks this browser fast for next time; without also doing the
+  // reveal-now steps here, clicking it used to still leave the visitor
+  // waiting out the full WELCOME_HOLD_MS hold afterward — a "skip"
+  // control that didn't actually skip the thing that cost the most
+  // time (2026-09-01 audit).
+  function handleSkip() {
+    skip();
+    setRevealing(true);
+    setTimeout(() => {
+      setRevealedAfterBoot(true);
+      markBootedThisPageLoad();
+      markSeen();
+    }, REVEAL_TRANSITION_MS);
+  }
 
   useEffect(() => {
     if (revealed) return;
@@ -178,15 +207,20 @@ export function AppEntry({ children }: { children: ReactNode }) {
           revealing ? "wl-scene--entering" : ""
         }`}
       >
+        {/* Available through the whole sequence, word-buildup or hold
+            alike — not just while stage is still "word" the way this
+            used to only cover the buildup and leave the hold
+            afterward unskippable regardless (see handleSkip above). */}
+        {!revealing && (
+          <button onClick={handleSkip} className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs">
+            Skip →
+          </button>
+        )}
+
         {stage === "word" && (
-          <>
-            <button onClick={skip} className="wl-skip-intro safe-pt safe-px absolute top-0 right-0 z-10 text-xs">
-              Skip intro →
-            </button>
-            <h1 key={wordIndex} className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}>
-              {WORDS[wordIndex]}
-            </h1>
-          </>
+          <h1 key={wordIndex} className={`wl-word wl-word--${wordIndex} text-4xl sm:text-6xl ${anton.className}`}>
+            {WORDS[wordIndex]}
+          </h1>
         )}
 
         {showFinal && (

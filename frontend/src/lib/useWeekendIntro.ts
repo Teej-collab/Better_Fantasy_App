@@ -51,6 +51,16 @@ export function prefersReducedMotion(): boolean {
 export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
   const [stage, setStage] = useState<IntroStage>("dark");
   const [wordIndex, setWordIndex] = useState(0);
+  // True once there's no reason to make this visitor wait: reduced
+  // motion, a repeat visit (seenBefore), or an explicit skip click.
+  // Callers (HomeWelcomeBackEntry.tsx, AppEntry.tsx) read this to size
+  // their own post-buildup hold — the word-by-word buildup already
+  // skips itself in exactly these cases (below), but until this
+  // existed, the hold that follows it did not, so a returning,
+  // already-authenticated visitor still sat through the full multi-
+  // second hold on every single hard load forever. 2026-09-01 audit's
+  // #1 finding (8.45s to real content on Home, every visit).
+  const [fast, setFast] = useState(false);
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const { playLightSwitch, playCanThenPour } = useIntroSound(sound);
 
@@ -81,6 +91,7 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
         // so it skips the light-switch/can-opening/pour cues along
         // with the word-by-word buildup they're timed to, not just the
         // visuals.
+        setFast(true);
         setStage("final");
         return;
       }
@@ -125,6 +136,7 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
       // Same storage-restricted contexts as above — skipping the
       // animation this once still works, it just won't be remembered.
     }
+    setFast(true);
     setStage("final");
   }
 
@@ -136,5 +148,5 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
     }
   }
 
-  return { stage, wordIndex, skip, markSeen };
+  return { stage, wordIndex, fast, skip, markSeen };
 }
