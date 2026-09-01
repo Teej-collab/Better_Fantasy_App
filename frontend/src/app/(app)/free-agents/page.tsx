@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getMe, getMyFreeAgents, getWaiverSettings } from "@/lib/api";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { PlayerSearchInput } from "@/components/PlayerSearchInput";
 import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Free Agents — Weekend League" };
@@ -13,9 +14,9 @@ const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 export default async function FreeAgentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ position?: string }>;
+  searchParams: Promise<{ position?: string; search?: string }>;
 }) {
-  const { position } = await searchParams;
+  const { position, search } = await searchParams;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
   const me = await getMe(sessionCookie);
@@ -32,7 +33,7 @@ export default async function FreeAgentsPage({
   }
 
   const [players, waiverSettings] = await Promise.all([
-    getMyFreeAgents(sessionCookie, position),
+    getMyFreeAgents(sessionCookie, position, search),
     getWaiverSettings(),
   ]);
 
@@ -47,9 +48,13 @@ export default async function FreeAgentsPage({
         .
       </p>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <PlayerSearchInput />
+      </div>
+
       <div className="flex flex-wrap gap-x-3 text-sm">
         <Link
-          href="/free-agents"
+          href={{ pathname: "/free-agents", query: search ? { search } : undefined }}
           className={
             !position ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
           }
@@ -59,7 +64,7 @@ export default async function FreeAgentsPage({
         {POSITIONS.map((p) => (
           <Link
             key={p}
-            href={`/free-agents?position=${encodeURIComponent(p)}`}
+            href={{ pathname: "/free-agents", query: { position: p, ...(search ? { search } : {}) } }}
             className={
               position === p ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
             }

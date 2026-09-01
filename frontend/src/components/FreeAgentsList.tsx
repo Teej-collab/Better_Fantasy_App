@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { addFreeAgent, getMyTeam, type MyFreeAgent, type RosterEntry } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
@@ -33,6 +33,19 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const { openPlayerCard } = usePlayerCard();
+
+  // The position tabs and (new) search box both do a soft navigation —
+  // page.tsx re-fetches and passes a new `players` prop, but React
+  // keeps this same component instance mounted (no remount), so
+  // useState's initial value above is never re-read on its own. Local
+  // state still has to exist for the optimistic "remove from list
+  // after a real Add" flow below (submitAdd), it just also needs to
+  // track genuinely new server data instead of staying frozen at
+  // whatever the very first filter/search happened to return — the
+  // position tabs visibly doing nothing was exactly this (2026-09-02).
+  useEffect(() => {
+    setPlayers(initialPlayers);
+  }, [initialPlayers]);
 
   function startAdd(player: MyFreeAgent) {
     setActiveId(player.sleeper_player_id);

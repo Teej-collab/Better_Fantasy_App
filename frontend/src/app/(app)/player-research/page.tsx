@@ -5,6 +5,7 @@ import { API_BASE_URL, awardsHrefFor, getMe, listSeasons, safeLatestSeason } fro
 import { listPlayers } from "@/lib/playerCardApi";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { PlayerResearchList } from "@/components/PlayerResearchList";
+import { PlayerSearchInput } from "@/components/PlayerSearchInput";
 
 export const metadata: Metadata = { title: "Player Research — Weekend League" };
 
@@ -57,23 +58,9 @@ export default async function PlayerResearchPage({
         </section>
       ) : (
         <>
-          <form action="/player-research" method="GET" className="flex flex-wrap items-center gap-3">
-            {position && <input type="hidden" name="position" value={position} />}
-            <input
-              type="search"
-              name="search"
-              defaultValue={search ?? ""}
-              placeholder="Search players…"
-              className="min-w-0 flex-1 rounded-full border border-black/10 bg-transparent px-4 py-2 text-sm dark:border-white/10"
-            />
-            <button
-              type="submit"
-              className="rounded-full px-4 py-2 text-sm font-semibold"
-              style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}
-            >
-              Search
-            </button>
-          </form>
+          <div className="flex flex-wrap items-center gap-3">
+            <PlayerSearchInput />
+          </div>
 
           <div className="flex flex-wrap gap-x-3 text-sm">
             <Link
