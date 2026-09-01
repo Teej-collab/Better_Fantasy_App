@@ -240,6 +240,12 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM league_members WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"
         )
+        # feedback.user_id -> users.id, a real FK (not the "no cross-
+        # cluster FK" convention season-scoped sync tables use) — must
+        # also go before the users DELETE below or it FK-violates.
+        await conn.execute(
+            "DELETE FROM feedback WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"
+        )
         # Phase 5 password-signup test users have no owners row at all
         # (see app/queries/auth.py's create_user_with_password) — not
         # covered by the owner-linked cleanup above, so cleaned up

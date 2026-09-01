@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMySettings } from "@/lib/api";
+import { getMe, getMySettings } from "@/lib/api";
 import { SettingsShell } from "@/components/settings/SettingsShell";
 import { SignInCard } from "@/components/SignInCard";
 
@@ -10,7 +10,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { section } = await searchParams;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const settings = await getMySettings(sessionCookie);
+  const [settings, me] = await Promise.all([getMySettings(sessionCookie), getMe(sessionCookie)]);
 
   if (!settings) {
     return (
@@ -23,7 +23,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Settings</h1>
-      <SettingsShell initial={settings} section={section} />
+      <SettingsShell initial={settings} section={section} isCommissioner={me?.is_commissioner ?? false} />
     </div>
   );
 }

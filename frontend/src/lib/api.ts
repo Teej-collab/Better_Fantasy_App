@@ -1381,3 +1381,41 @@ export function unlockKeeperRules(season: number): Promise<KeeperRules> {
   return _keepersRequest("/rules/unlock", "POST", { season });
 }
 
+// ---- Feedback (Settings > Feedback) -------------------------------------
+
+export type FeedbackItem = {
+  id: number;
+  submitted_by: string;
+  message: string;
+  page_url: string | null;
+  created_at: string;
+};
+
+// Any signed-in account can submit — routed through /api/backend (not
+// straight to the backend) for the same reason every other authenticated
+// write in this file is: a direct browser->backend fetch depends on the
+// browser sending the backend's cross-site cookie, which Safari's ITP
+// blocks by default even with SameSite=None.
+export async function submitFeedback(message: string, pageUrl: string | null): Promise<void> {
+  const res = await fetch("/api/backend/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, page_url: pageUrl }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+}
+
+// Commissioner-only — the backend itself enforces this (a live per-league
+// check, see app/auth/league_context.py's require_league_commissioner), this
+// is just the fetch; FeedbackSection.tsx only calls it when isCommissioner.
+export async function getFeedback(): Promise<{ items: FeedbackItem[] }> {
+  const res = await fetch("/api/backend/feedback", { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`GET /feedback failed: ${res.status}`);
+  }
+  return res.json();
+}
+

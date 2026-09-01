@@ -6,6 +6,7 @@ import { ChatSection } from "@/components/settings/ChatSection";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 import { NavigationSection } from "@/components/settings/NavigationSection";
 import { AccountSection } from "@/components/settings/AccountSection";
+import { FeedbackSection } from "@/components/settings/FeedbackSection";
 
 const SECTIONS = [
   { key: "profile", label: "Profile" },
@@ -14,6 +15,7 @@ const SECTIONS = [
   { key: "appearance", label: "Appearance" },
   { key: "navigation", label: "Navigation" },
   { key: "account", label: "Account & Security" },
+  { key: "feedback", label: "Feedback" },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
@@ -32,7 +34,15 @@ function isSectionKey(value: string | undefined): value is SectionKey {
  * /settings?section=notifications) both just work without any client
  * state duplicating what the URL already says.
  */
-export function SettingsShell({ initial, section }: { initial: MySettings; section: string | undefined }) {
+export function SettingsShell({
+  initial,
+  section,
+  isCommissioner,
+}: {
+  initial: MySettings;
+  section: string | undefined;
+  isCommissioner: boolean;
+}) {
   const active: SectionKey = isSectionKey(section) ? section : "profile";
 
   return (
@@ -75,6 +85,7 @@ export function SettingsShell({ initial, section }: { initial: MySettings; secti
         {active === "appearance" && <AppearanceSection />}
         {active === "navigation" && <NavigationSection />}
         {active === "account" && <AccountSection initial={initial} />}
+        {active === "feedback" && <FeedbackSection isCommissioner={isCommissioner} />}
       </div>
     </div>
   );
