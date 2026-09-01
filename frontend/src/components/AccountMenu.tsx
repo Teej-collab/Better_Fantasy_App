@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearSession } from "@/lib/logout";
@@ -18,6 +19,14 @@ export type Me = { owner_id: number; display_name: string | null; is_commissione
  * absolutely-positioned anchored popover at `sm:` and up via Tailwind
  * responsive classes — CSS handles the positional switch, the open/
  * close/focus logic below doesn't need to know which one is showing.
+ *
+ * The scrim + panel render through a portal into document.body rather
+ * than as a normal child. NavBar's header has backdrop-blur-sm, and per
+ * the CSS spec any element with a non-none backdrop-filter establishes a
+ * new containing block for its position: fixed descendants — without the
+ * portal, this menu's `fixed inset-x-0 bottom-0` mobile sheet resolves
+ * against the header's own short box instead of the viewport, so it
+ * opens upward off the top of the screen instead of from the bottom.
  */
 export function AccountMenu({ me }: { me: Me }) {
   const router = useRouter();
@@ -108,62 +117,64 @@ export function AccountMenu({ me }: { me: Me }) {
         </span>
       </button>
 
-      {open && (
-        <>
-          {/* Scrim — mobile only; desktop close-on-outside-click is
-              handled by the document listener above without dimming
-              the page, matching a native app menu rather than a modal. */}
-          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => setOpen(false)} aria-hidden />
+      {open &&
+        createPortal(
+          <>
+            {/* Scrim — mobile only; desktop close-on-outside-click is
+                handled by the document listener above without dimming
+                the page, matching a native app menu rather than a modal. */}
+            <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => setOpen(false)} aria-hidden />
 
-          <div
-            ref={menuRef}
-            role="menu"
-            aria-label="Account menu"
-            className="fixed inset-x-0 bottom-0 z-50 flex flex-col gap-0.5 rounded-t-2xl border-t border-black/10 bg-[var(--background)] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-56 sm:rounded-xl sm:border sm:border-black/10 sm:pb-2 sm:shadow-lg dark:border-white/10"
-          >
-            <div className="flex flex-col gap-0.5 px-3 py-2 sm:px-2">
-              <span className="truncate text-sm font-semibold">{me.display_name}</span>
-              {me.is_commissioner && (
-                <span className="text-xs text-[var(--wl-accent)]">Commissioner</span>
-              )}
-            </div>
-            <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
-
-            {items.map((item, i) => (
-              <div key={item.key}>
-                {item.danger && i > 0 && !items[i - 1].danger && (
-                  <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
-                )}
-                {item.href ? (
-                  <Link
-                    ref={(el) => {
-                      itemRefs.current[i] = el;
-                    }}
-                    href={item.href}
-                    role="menuitem"
-                    onClick={() => setOpen(false)}
-                    className="block rounded-lg px-3 py-2.5 text-sm text-black/80 outline-none transition-colors hover:bg-black/5 focus-visible:bg-black/5 sm:py-2 dark:text-white/80 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
-                  >
-                    {item.label}
-                  </Link>
-                ) : (
-                  <button
-                    ref={(el) => {
-                      itemRefs.current[i] = el;
-                    }}
-                    type="button"
-                    role="menuitem"
-                    onClick={item.onClick}
-                    className="w-full rounded-lg px-3 py-2.5 text-left text-sm text-red-500 outline-none transition-colors hover:bg-red-500/10 focus-visible:bg-red-500/10 sm:py-2"
-                  >
-                    {item.label}
-                  </button>
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Account menu"
+              className="fixed inset-x-0 bottom-0 z-50 flex flex-col gap-0.5 rounded-t-2xl border-t border-black/10 bg-[var(--background)] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-56 sm:rounded-xl sm:border sm:border-black/10 sm:pb-2 sm:shadow-lg dark:border-white/10"
+            >
+              <div className="flex flex-col gap-0.5 px-3 py-2 sm:px-2">
+                <span className="truncate text-sm font-semibold">{me.display_name}</span>
+                {me.is_commissioner && (
+                  <span className="text-xs text-[var(--wl-accent)]">Commissioner</span>
                 )}
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
+
+              {items.map((item, i) => (
+                <div key={item.key}>
+                  {item.danger && i > 0 && !items[i - 1].danger && (
+                    <div className="my-1 h-px bg-black/10 dark:bg-white/10" />
+                  )}
+                  {item.href ? (
+                    <Link
+                      ref={(el) => {
+                        itemRefs.current[i] = el;
+                      }}
+                      href={item.href}
+                      role="menuitem"
+                      onClick={() => setOpen(false)}
+                      className="block rounded-lg px-3 py-2.5 text-sm text-black/80 outline-none transition-colors hover:bg-black/5 focus-visible:bg-black/5 sm:py-2 dark:text-white/80 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
+                    >
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <button
+                      ref={(el) => {
+                        itemRefs.current[i] = el;
+                      }}
+                      type="button"
+                      role="menuitem"
+                      onClick={item.onClick}
+                      className="w-full rounded-lg px-3 py-2.5 text-left text-sm text-red-500 outline-none transition-colors hover:bg-red-500/10 focus-visible:bg-red-500/10 sm:py-2"
+                    >
+                      {item.label}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
