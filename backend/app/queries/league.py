@@ -105,6 +105,30 @@ async def get_team(conn, team_id: int):
     )
 
 
+async def get_teams(conn, team_ids: list[int]) -> dict[int, object]:
+    """Batched get_team, keyed by team_id — one query for every team in
+    `team_ids` instead of one query per team. Exists specifically for
+    app/domain/matchup_context.py's build_week_matchup_context, whose
+    per-matchup loop used to call get_team (and get_roster, and more)
+    fresh for every matchup — a real, measured N+1 (2026-09-02
+    SSR-performance finding: this one endpoint took 3.36s for a
+    6-matchup week, almost entirely spent on ~40 small sequential
+    round-trips to the same handful of tables)."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT t.id AS team_id, t.season, t.espn_team_id, t.team_name,
+               o.owner_id, o.display_name AS owner_name
+        FROM teams_by_season t
+        JOIN owners o ON t.owner_id = o.owner_id
+        WHERE t.id = ANY($1::int[])
+        """,
+        team_ids,
+    )
+    return {r["team_id"]: r for r in rows}
+
+
 async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     # ESPN returns 0/0 (not NULL) for matchups that haven't been played
     # yet, so IS NOT NULL alone doesn't exclude them — a 0-0 game would
@@ -284,6 +308,38 @@ async def get_roster(conn, team_id: int, week: int):
             r["player_name"],
         ),
     )
+
+
+def _sort_roster_rows(rows):
+    return sorted(
+        rows,
+        key=lambda r: (
+            _SLOT_ORDER.index(r["lineup_slot"]) if r["lineup_slot"] in _SLOT_ORDER else len(_SLOT_ORDER),
+            r["player_name"],
+        ),
+    )
+
+
+async def get_rosters(conn, team_ids: list[int], week: int) -> dict[int, list]:
+    """Batched get_roster, keyed by team_id — see get_teams above for
+    why this exists. Same per-team sort get_roster already applies,
+    just grouped from one fetch instead of one fetch per team."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT team_id, player_name, position, lineup_slot, points_scored, points_projected,
+               espn_player_id AS player_id, pro_team, is_boom, is_bust
+        FROM rosters
+        WHERE team_id = ANY($1::int[]) AND week = $2
+        """,
+        team_ids,
+        week,
+    )
+    by_team: dict[int, list] = {tid: [] for tid in team_ids}
+    for r in rows:
+        by_team[r["team_id"]].append(r)
+    return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
 
 
 async def get_rostered_players_by_pro_team(

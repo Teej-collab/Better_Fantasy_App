@@ -32,7 +32,10 @@ live generation — see narrative_engine.get_cached_narrative's own
 docstring for why); build_matchup_detail is the one path allowed to
 actually generate.
 """
+import asyncio
+
 from app.config import DEFAULT_LEAGUE_ID
+from app.db import get_pool
 from app.domain import narrative_engine
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
@@ -190,33 +193,60 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
                 gow_id = m["matchup_id"]
                 break
 
-    results = []
-    for m in matchups:
-        home_team = await queries.get_team(conn, m["home_team_id"])
-        away_team = await queries.get_team(conn, m["away_team_id"])
-        home_roster = await queries.get_roster(conn, m["home_team_id"], week)
-        away_roster = await queries.get_roster(conn, m["away_team_id"], week)
+    # Batched instead of a get_team + get_roster call per matchup, and
+    # list_rivalries (already a single, unfiltered fetch — see this
+    # module's own get_rivalry_for_owners callers elsewhere) instead of
+    # a get_rivalry_for_owners call per matchup — the real fix for the
+    # 2026-09-02 SSR-performance finding: this endpoint alone measured
+    # 3.36s for a 6-matchup week, almost entirely spent on ~40 small
+    # sequential round-trips to the same handful of tables inside what
+    # used to be a plain `for m in matchups:` loop.
+    teams_by_id = await queries.get_teams(conn, team_ids)
+    rosters_by_id = await queries.get_rosters(conn, team_ids, week)
+    rivalry_by_pair = {
+        frozenset({r["owner_a_id"], r["owner_b_id"]}): r for r in await queries.list_rivalries(conn)
+    }
 
-        rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"])
-        h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
+    # head-to-head and the narrative cache read are the two remaining
+    # per-matchup DB calls — genuinely per-pair/per-matchup, not
+    # batchable into one query the same way teams/rosters/rivalries
+    # are above. Each matchup gets its own short-lived pooled
+    # connection and all matchups are assembled concurrently instead
+    # of queued one after another on the single connection this
+    # function was called with — a handful of brief extra connections
+    # (bounded by how many matchups are in a week, typically well under
+    # ten) rather than one held connection doing everything serially.
+    pool = await get_pool()
 
-        results.append(
-            _matchup_entry(
-                m, season, week, home_team, away_team, home_roster, away_roster,
-                standings_by_team.get(m["home_team_id"]), standings_by_team.get(m["away_team_id"]),
-                streaks_by_team.get(m["home_team_id"], "neutral"), streaks_by_team.get(m["away_team_id"], "neutral"),
-                rivalry, h2h, m["matchup_id"] == gow_id, score_stdev,
-                bench_crimes_by_team.get(m["home_team_id"], []), bench_crimes_by_team.get(m["away_team_id"], []),
-                clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
-                None,
-            )
+    async def process(m):
+        home_team = teams_by_id[m["home_team_id"]]
+        away_team = teams_by_id[m["away_team_id"]]
+        home_roster = rosters_by_id.get(m["home_team_id"], [])
+        away_roster = rosters_by_id.get(m["away_team_id"], [])
+        rivalry = rivalry_by_pair.get(frozenset({home_team["owner_id"], away_team["owner_id"]}))
+
+        async with pool.acquire() as c:
+            h2h = await queries.get_head_to_head(c, home_team["owner_id"], away_team["owner_id"], league_id)
+
+        entry = _matchup_entry(
+            m, season, week, home_team, away_team, home_roster, away_roster,
+            standings_by_team.get(m["home_team_id"]), standings_by_team.get(m["away_team_id"]),
+            streaks_by_team.get(m["home_team_id"], "neutral"), streaks_by_team.get(m["away_team_id"], "neutral"),
+            rivalry, h2h, m["matchup_id"] == gow_id, score_stdev,
+            bench_crimes_by_team.get(m["home_team_id"], []), bench_crimes_by_team.get(m["away_team_id"], []),
+            clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
+            None,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
         # (up to ~7 sequential Claude calls on one page load otherwise).
-        results[-1]["narrative"] = await narrative_engine.get_cached_narrative(conn, results[-1])
+        async with pool.acquire() as c:
+            entry["narrative"] = await narrative_engine.get_cached_narrative(c, entry)
+        return entry
 
-    return {"season": season, "week": week, "game_of_the_week_matchup_id": gow_id, "matchups": results}
+    results = await asyncio.gather(*(process(m) for m in matchups))
+
+    return {"season": season, "week": week, "game_of_the_week_matchup_id": gow_id, "matchups": list(results)}
 
 
 async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
