@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
-import { API_BASE_URL } from "@/lib/api";
+import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Sign In — Weekend League" };
 
+// Direct-linked entry point — Discord's own OAuth redirects here on
+// ?error=not_a_league_member (app/routers/auth.py) when someone
+// completes Discord's consent screen but isn't actually a recognized
+// league member. Renders the exact same SignInCard AuthScreen.tsx
+// uses (post-intro step of the normal signed-out front door) so
+// landing here directly doesn't feel like a bare fallback — the error
+// banner is the only thing this page adds on top.
 export default async function LoginPage({
   searchParams,
 }: {
@@ -11,24 +18,20 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex flex-col items-center gap-4 py-12 text-center">
-      <h1 className="text-2xl font-semibold">Sign in</h1>
-
-      {error === "not_a_league_member" && (
-        <p className="max-w-sm text-sm text-red-700 dark:text-red-400">
-          That Discord account isn&apos;t linked to a team in this league. If
-          you think that&apos;s wrong, check with your commissioner.
-        </p>
-      )}
-
-      <a
-        href={`${API_BASE_URL}/auth/discord/login`}
-        target="_blank"
-        rel="noopener"
-        className="rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
-      >
-        Sign in with Discord
-      </a>
+    <div className="wl-gate flex items-center justify-center px-6">
+      <div className="wl-ambient wl-ambient--lit" aria-hidden />
+      <div className="relative z-10 flex w-full max-w-sm flex-col gap-4">
+        {error === "not_a_league_member" && (
+          <div
+            className="rounded-xl px-4 py-3 text-center text-sm text-[color:var(--wl-text)]"
+            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)" }}
+          >
+            That Discord account isn&apos;t linked to a team in this league. If you think that&apos;s wrong,
+            check with your commissioner — or sign in with email instead below.
+          </div>
+        )}
+        <SignInCard />
+      </div>
     </div>
   );
 }
