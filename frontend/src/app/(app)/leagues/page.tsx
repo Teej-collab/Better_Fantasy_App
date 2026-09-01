@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   claimOwner,
   createLeague,
@@ -68,6 +68,24 @@ export default function LeaguesPage() {
     const id = setTimeout(refresh, 0);
     return () => clearTimeout(id);
   }, []);
+
+  // Deep links here (the welcome screen's Join/Create-a-League buttons,
+  // WelcomeBackStage.tsx) carry a #join-league / #create-league hash,
+  // but this page shows a bare "Loading…" state until refresh() above
+  // resolves — the target section doesn't exist in the DOM yet at
+  // navigation time, so the browser's own hash-scroll fires too early
+  // and silently does nothing. Scrolling manually once real content is
+  // up fixes that; scrolledToHash guards it to the first load only, so
+  // a later refresh() (after creating/joining/switching) never yanks
+  // the scroll position back to the hash target again.
+  const scrolledToHash = useRef(false);
+  useEffect(() => {
+    if (leagues === null || scrolledToHash.current) return;
+    scrolledToHash.current = true;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [leagues]);
 
   async function handleCreateLeague(e: React.FormEvent) {
     e.preventDefault();
@@ -257,7 +275,7 @@ export default function LeaguesPage() {
         )}
       </section>
 
-      <section className="neon-panel flex flex-col gap-3 rounded-xl p-4">
+      <section id="create-league" className="neon-panel flex scroll-mt-4 flex-col gap-3 rounded-xl p-4">
         <h2 className="text-sm font-semibold">Create a league</h2>
         <form onSubmit={handleCreateLeague} className="flex gap-2">
           <input
@@ -278,7 +296,7 @@ export default function LeaguesPage() {
         </form>
       </section>
 
-      <section className="neon-panel flex flex-col gap-3 rounded-xl p-4">
+      <section id="join-league" className="neon-panel flex scroll-mt-4 flex-col gap-3 rounded-xl p-4">
         <h2 className="text-sm font-semibold">Join a league</h2>
         <form onSubmit={handleJoinLeague} className="flex gap-2">
           <input

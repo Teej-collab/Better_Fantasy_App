@@ -286,7 +286,7 @@ export default async function HomePage() {
   cards.discover = <DiscoveryGrid />;
 
   return (
-    <HomeWelcomeBackEntry displayName={me.display_name}>
+    <HomeWelcomeBackEntry displayName={me.display_name} needsLeague={me.active_league_id === null}>
       <div className="flex flex-col gap-6">
         {/* Fixed behind everything, ignores PageShell's centered column so
             it washes the full viewport — three soft brand-colored glows,

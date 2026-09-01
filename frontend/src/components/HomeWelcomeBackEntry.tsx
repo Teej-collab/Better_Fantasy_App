@@ -39,8 +39,25 @@ const MAX_BOOT_MS = 12000;
  * load/reload/PWA-launch plays this. Pull-to-refresh (usePullToRefresh.ts)
  * deliberately does NOT replay this sequence — it just re-fetches data
  * in place, so refreshing never reads as the app restarting.
+ *
+ * `needsLeague` ((home)/page.tsx passes `me.active_league_id === null`)
+ * holds the sequence open on the final "Welcome Back" beat instead of
+ * auto-continuing into the dashboard — see WelcomeBackStage.tsx's own
+ * needsLeague branch for the actual Join/Create buttons. Both the
+ * auto-hold timer and the MAX_BOOT_MS failsafe are skipped in this
+ * case; the only way past this screen is the real Join/Create links
+ * (a normal navigation, which unmounts this component) or its "Skip
+ * for now" escape hatch (handleSkip below).
  */
-export function HomeWelcomeBackEntry({ displayName, children }: { displayName: string | null; children: ReactNode }) {
+export function HomeWelcomeBackEntry({
+  displayName,
+  needsLeague = false,
+  children,
+}: {
+  displayName: string | null;
+  needsLeague?: boolean;
+  children: ReactNode;
+}) {
   const { stage, wordIndex } = useWeekendIntro();
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
@@ -54,7 +71,7 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
   const revealed = alreadyBooted || revealedAfterBoot;
 
   useEffect(() => {
-    if (revealed || stage !== "final") return;
+    if (revealed || stage !== "final" || needsLeague) return;
     const holdMs = prefersReducedMotion() ? WELCOME_HOLD_MS : EXTENDED_HOLD_MS;
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
@@ -65,7 +82,7 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
       return () => clearTimeout(revealTimeout);
     }, holdMs);
     return () => clearTimeout(holdTimeout);
-  }, [stage, revealed]);
+  }, [stage, revealed, needsLeague]);
 
   useEffect(() => {
     if (revealed) return;
@@ -75,13 +92,24 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
   }, [revealed]);
 
   useEffect(() => {
-    if (revealed) return;
+    if (revealed || needsLeague) return;
     const failsafe = setTimeout(() => {
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
     }, MAX_BOOT_MS);
     return () => clearTimeout(failsafe);
-  }, [revealed]);
+  }, [revealed, needsLeague]);
+
+  // A plain event handler, not an effect — fine to setState directly.
+  // Passed to WelcomeBackStage only when needsLeague is true, as its
+  // "Skip for now" link.
+  function handleSkip() {
+    setRevealing(true);
+    setTimeout(() => {
+      setRevealedAfterBoot(true);
+      markBootedThisPageLoad();
+    }, REVEAL_TRANSITION_MS);
+  }
 
   if (revealed) return <>{children}</>;
 
@@ -117,7 +145,11 @@ export function HomeWelcomeBackEntry({ displayName, children }: { displayName: s
             <div className="wl-league-wrap -mt-1 sm:-mt-2">
               <LeagueWordmark className={satisfy.className} />
             </div>
-            <WelcomeBackStage displayName={displayName} />
+            <WelcomeBackStage
+              displayName={displayName}
+              needsLeague={needsLeague}
+              onSkip={needsLeague ? handleSkip : undefined}
+            />
           </>
         )}
       </div>
