@@ -82,7 +82,17 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
         ‹ League
       </Link>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* flex-wrap, not overflow-x-auto — on a narrow mobile viewport,
+            4 primary tabs plus the "More" toggle don't fit on one line
+            (a real, measured overflow: the toggle button landed at
+            x:436 on a 430px-wide iPhone 16 Pro Max), and a scrolling row
+            with no visible affordance meant "More" — the only way to
+            reach the other 6 League destinations — was effectively
+            undiscoverable. Wrapping keeps every tab, including the
+            toggle, always on screen with no hidden scroll; on desktop's
+            wider primary nav this still renders as one line, same as
+            before. */}
+        <div className="flex flex-wrap items-center gap-1">
           {primaryTabs.map(tabLink)}
           <button
             type="button"
