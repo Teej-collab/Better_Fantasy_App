@@ -215,20 +215,20 @@ function CardBack({
 // one at a time as owners send them in, keyed by owner_id. Everyone
 // else keeps the initials placeholder below.
 const OWNER_PHOTOS: Record<number, string> = {
-  5: "/images/owners/clay-felice.png", // Clay Felice
-  44: "/images/owners/brian-thomas.png", // Brian Thomas
-  12: "/images/owners/ian-parkinson.png", // Ian Parkinson
-  3: "/images/owners/bailey-hawn.png", // Bailey Hawn
-  11: "/images/owners/bowmen-solari.png", // Bowmen "Bo" Solari
-  10: "/images/owners/jeffrey-horak.png", // Jeffrey "Jeff" Horak
-  8: "/images/owners/aaron-wylie.png", // Aaron Wylie
-  15: "/images/owners/aaron-roberts.png", // Aaron Roberts
-  20: "/images/owners/tyler-dailey.png", // Tyler Dailey
-  9: "/images/owners/james-hogan.png", // James "Jimmy" Hogan
-  2: "/images/owners/lorenzo-cachia.png", // Lorenzo Cachia
-  1: "/images/owners/niko.png", // Niko
-  4: "/images/owners/tj.png", // TJ
-  7: "/images/owners/ryan-horak.png", // Ryan Horak
+  5: "/images/owners/clay-felice.jpg", // Clay Felice
+  44: "/images/owners/brian-thomas.jpg", // Brian Thomas
+  12: "/images/owners/ian-parkinson.jpg", // Ian Parkinson
+  3: "/images/owners/bailey-hawn.jpg", // Bailey Hawn
+  11: "/images/owners/bowmen-solari.jpg", // Bowmen "Bo" Solari
+  10: "/images/owners/jeffrey-horak.jpg", // Jeffrey "Jeff" Horak
+  8: "/images/owners/aaron-wylie.jpg", // Aaron Wylie
+  15: "/images/owners/aaron-roberts.jpg", // Aaron Roberts
+  20: "/images/owners/tyler-dailey.jpg", // Tyler Dailey
+  9: "/images/owners/james-hogan.jpg", // James "Jimmy" Hogan
+  2: "/images/owners/lorenzo-cachia.jpg", // Lorenzo Cachia
+  1: "/images/owners/niko.jpg", // Niko
+  4: "/images/owners/tj.jpg", // TJ
+  7: "/images/owners/ryan-horak.jpg", // Ryan Horak
 };
 
 function OwnerPhotoFill({
