@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
+import { getMe, getMyTeamOwnershipServer, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { SignInCard } from "@/components/SignInCard";
@@ -27,13 +27,21 @@ export default async function MyTeamPage() {
   // has no use for it, and Next's per-request fetch memoization means
   // this doesn't cost a second round trip anywhere else this same
   // request already calls getNflScoreboard() (it doesn't, today).
-  const [team, nflGames] = await Promise.all([getMyTeamServer(sessionCookie), getNflScoreboard()]);
+  // Ownership is server-fetched here too (not left to MyTeamApp's own
+  // mount effect) so the "% owned" line never appears after hydration —
+  // that was adding height to every roster row post-paint, the dominant
+  // cause of a reported layout shift on this page (2026-09 mobile audit).
+  const [team, ownership, nflGames] = await Promise.all([
+    getMyTeamServer(sessionCookie),
+    getMyTeamOwnershipServer(sessionCookie),
+    getNflScoreboard(),
+  ]);
   const isGameDay = isNflGameLive(nflGames);
 
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="team" />
-      <MyTeamApp isGameDay={isGameDay} initialTeam={team} />
+      <MyTeamApp isGameDay={isGameDay} initialTeam={team} initialOwnership={ownership} />
     </div>
   );
 }

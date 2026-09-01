@@ -36,6 +36,7 @@ function RosterRow({
   ownership,
   selectedForSwap,
   swapDisabled,
+  mounted,
   onToggleSwapSelect,
   onViewPlayer,
   onDrop,
@@ -44,6 +45,7 @@ function RosterRow({
   ownership: OwnershipInfo | undefined;
   selectedForSwap: boolean;
   swapDisabled: boolean;
+  mounted: boolean;
   onToggleSwapSelect: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
   onDrop: (entry: RosterEntry) => void;
@@ -85,7 +87,18 @@ function RosterRow({
         {entry.next_opponent && (
           <span className="text-xs text-black/40 dark:text-white/40">
             {entry.next_opponent}
-            {entry.game_time && ` · ${formatGameTime(entry.game_time)}`}
+            {/* Only rendered post-mount: toLocaleDateString/
+                toLocaleTimeString format using the runtime's local
+                timezone, which for the server process (Railway, UTC)
+                will commonly disagree with the visitor's real browser
+                timezone. Rendering this during SSR would produce text
+                that mismatches what the client renders on first paint,
+                forcing React to discard and rebuild this whole row
+                during hydration — a visible jump confined to this page
+                (2026-09 mobile audit finding). Server and the first
+                client paint both render nothing here instead, so
+                there's nothing to mismatch; it fills in right after. */}
+            {entry.game_time && mounted && ` · ${formatGameTime(entry.game_time)}`}
           </span>
         )}
         {entry.bye_week !== null && (
@@ -139,10 +152,30 @@ function RosterRow({
 // there.
 const LIVE_POLL_INTERVAL_MS = 15 * 1000;
 
-export function MyTeamApp({ isGameDay, initialTeam }: { isGameDay: boolean; initialTeam: MyTeam | null }) {
+export function MyTeamApp({
+  isGameDay,
+  initialTeam,
+  initialOwnership,
+}: {
+  isGameDay: boolean;
+  initialTeam: MyTeam | null;
+  initialOwnership: Record<string, OwnershipInfo> | null;
+}) {
   const [team, setTeam] = useState<MyTeam | null>(initialTeam);
-  const [ownership, setOwnership] = useState<Record<string, OwnershipInfo>>({});
+  const [ownership, setOwnership] = useState<Record<string, OwnershipInfo>>(initialOwnership ?? {});
   const [error, setError] = useState<string | null>(null);
+  // Gates client-locale-dependent formatting (see formatGameTime's call
+  // site in RosterRow) — false during SSR and the first client render
+  // (identical on both sides, no hydration mismatch), true immediately
+  // after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // setTimeout(0), not a direct setState call in the effect body —
+    // same lint-satisfying pattern used across this app's other mount
+    // effects (see settings/FeedbackSection.tsx's RecentFeedback).
+    const id = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(id);
+  }, []);
   const [swapPreview, setSwapPreview] = useState<LineupSwapPreview | null>(null);
   // At most one selected at a time — swap is strictly pick-a-player,
   // then pick a qualifying partner, not "select any two."
@@ -169,15 +202,23 @@ export function MyTeamApp({ isGameDay, initialTeam }: { isGameDay: boolean; init
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A real, multi-second live ESPN call server-side — fetched
-  // separately so the roster itself never waits on it. Only covers
-  // the ~22% of players Sleeper's crosswalk can resolve to an ESPN id
-  // (see api.ts's getMyTeamOwnership); silently absent for the rest
-  // rather than erroring the whole page over a partial-coverage feature.
+  // team/page.tsx server-fetches this alongside the roster and passes it
+  // as initialOwnership so the common case never needs this at all — a
+  // "% owned" line (see RosterRow) appearing on every covered row only
+  // after this resolved was the dominant cause of a reported layout
+  // shift on this page (2026-09 mobile audit). This is only a fallback
+  // for the rare case the server-side fetch itself came back empty (see
+  // getMyTeamOwnershipServer's own comment on the null-vs-{} distinction).
+  // A real, multi-second live ESPN call — only covers the ~22% of
+  // players Sleeper's crosswalk can resolve to an ESPN id (see api.ts's
+  // getMyTeamOwnership); silently absent for the rest rather than
+  // erroring the whole page over a partial-coverage feature.
   useEffect(() => {
+    if (initialOwnership !== null) return;
     getMyTeamOwnership()
       .then(setOwnership)
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Re-fetches the roster (which carries on_offense/is_redzone) on an
@@ -377,6 +418,7 @@ export function MyTeamApp({ isGameDay, initialTeam }: { isGameDay: boolean; init
                 selected.player_id !== e.player_id &&
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
+              mounted={mounted}
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
@@ -399,6 +441,7 @@ export function MyTeamApp({ isGameDay, initialTeam }: { isGameDay: boolean; init
                 selected.player_id !== e.player_id &&
                 !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
               }
+              mounted={mounted}
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}

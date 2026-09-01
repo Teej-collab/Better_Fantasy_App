@@ -1057,6 +1057,30 @@ export async function getMyTeamOwnership(): Promise<Record<string, OwnershipInfo
   return ownership;
 }
 
+// Server-side counterpart to getMyTeamOwnership() — team/page.tsx server-
+// fetches this alongside the roster (parallel via Promise.all) and passes
+// it as MyTeamApp's initial prop, so the "% owned" line never has to
+// appear after hydration (a real layout shift on every roster row it
+// covers — 2026-09 mobile audit finding). Same explicit-cookie pattern as
+// getMyTeamServer. Returns null (not {}) on no session or any fetch
+// failure — an empty object is also the real, legitimate result when none
+// of this roster's players resolve to an ESPN id (see getMyTeamOwnership's
+// own comment), so null has to stay a distinct sentinel for "the fetch
+// itself didn't happen," letting MyTeamApp tell the two apart and only
+// fall back to its own client-side fetch in the second case.
+export async function getMyTeamOwnershipServer(
+  sessionCookie: string | undefined
+): Promise<Record<string, OwnershipInfo> | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/me/team/ownership`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  const { ownership } = (await res.json()) as { ownership: Record<string, OwnershipInfo> };
+  return ownership;
+}
+
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
 
 export async function previewLineupSwap(playerAId: string, playerBId: string): Promise<LineupSwapPreview> {
