@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.auth import discord_oauth
-from app.auth.config import DiscordAuthConfig, SessionConfig
+from app.auth import discord_oauth, google_oauth
+from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.session import (
     SESSION_COOKIE_NAME,
@@ -97,6 +97,57 @@ async def discord_callback(request: Request, code: str | None = None, state: str
     # server, never appears in access logs or Referer headers, unlike a
     # query param) — see frontend/src/app/auth/complete/page.tsx, which
     # reads it and sets the actual first-party cookie itself.
+    response = RedirectResponse(f"{config.frontend_url}/auth/complete#token={token}")
+    response.delete_cookie(STATE_COOKIE_NAME)
+    response.set_cookie(
+        SESSION_COOKIE_NAME, token,
+        httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
+        samesite=config.cookie_samesite, secure=config.cookie_secure,
+    )
+    return response
+
+
+@router.get("/google/login")
+async def google_login():
+    config = GoogleAuthConfig()
+    state = secrets.token_urlsafe(24)
+    response = RedirectResponse(google_oauth.build_authorize_url(config, state))
+    response.set_cookie(
+        STATE_COOKIE_NAME, state,
+        httponly=True, max_age=STATE_COOKIE_MAX_AGE_SECONDS,
+        samesite="lax", secure=config.cookie_secure,
+    )
+    return response
+
+
+@router.get("/google/callback")
+async def google_callback(request: Request, code: str | None = None, state: str | None = None):
+    """Unlike Discord (verified against real league membership), Google
+    has no pre-existing membership data to check — this is a self-serve
+    account, same shape as /auth/signup: no owner_id/is_commissioner on
+    the session yet, joining or creating a league happens afterward
+    from /leagues."""
+    config = GoogleAuthConfig()
+
+    expected_state = request.cookies.get(STATE_COOKIE_NAME)
+    if not code or not state or not expected_state or state != expected_state:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    access_token = await google_oauth.exchange_code_for_token(config, code)
+    google_user = await google_oauth.fetch_google_user(access_token)
+    google_user_id = google_user["sub"]
+    email = google_user.get("email")
+    display_name = google_user.get("name") or (email.split("@")[0] if email else "Weekend League user")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user_id = await auth_queries.get_or_create_user_for_google(conn, google_user_id, email, display_name)
+
+    token = create_session_token(config.session_secret, user_id=user_id)
+
+    # Same cross-domain token handoff as the Discord callback above —
+    # see that handler's own comment for why this can't just be a
+    # same-domain cookie.
     response = RedirectResponse(f"{config.frontend_url}/auth/complete#token={token}")
     response.delete_cookie(STATE_COOKIE_NAME)
     response.set_cookie(

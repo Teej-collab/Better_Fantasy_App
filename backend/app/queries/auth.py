@@ -48,6 +48,47 @@ async def get_user_by_email(conn, email: str):
     return await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
 
 
+async def get_or_create_user_for_google(conn, google_user_id: str, email: str | None, display_name: str) -> int:
+    """Google sign-in — unlike get_or_create_user_for_owner (Discord),
+    there's no pre-existing owners.* membership data to verify against,
+    so this follows create_user_with_password's self-serve shape: no
+    owners row, no league_members enrollment here — that only happens
+    once the account actually joins or creates a league.
+
+    Three cases, in order:
+      1. google_user_id already links to a user (returning sign-in) —
+         return it directly.
+      2. No google_user_id match, but the email matches an existing
+         account (most likely a password signup using the same real
+         email) — link google_user_id onto that row rather than
+         creating a confusing second, empty account. This is a
+         deliberate difference from Discord's own no-linking
+         precedent: Discord's OAuth doesn't reliably return a verified
+         email at all, so linking-by-email was never possible there;
+         Google always does, so the same silent-duplicate problem
+         doesn't need to exist here.
+      3. Neither matches — a genuinely new account.
+    """
+    existing = await conn.fetchrow("SELECT id FROM users WHERE google_user_id = $1", google_user_id)
+    if existing is not None:
+        return existing["id"]
+
+    if email is not None:
+        by_email = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email)
+        if by_email is not None:
+            await conn.execute("UPDATE users SET google_user_id = $1 WHERE id = $2", google_user_id, by_email["id"])
+            return by_email["id"]
+
+    return await conn.fetchval(
+        """
+        INSERT INTO users (google_user_id, email, display_name)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        google_user_id, email, display_name,
+    )
+
+
 async def create_user_with_password(conn, email: str, password_hash: str, display_name: str) -> int:
     """Phase 5 of the multi-league migration (see TODO.md's PHASE 9
     entry) — a self-serve account with no owners row at all: nothing

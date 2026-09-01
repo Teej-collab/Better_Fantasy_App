@@ -46,3 +46,12 @@ class DiscordAuthConfig(SessionConfig):
         # the role available on the session for when they do.
         self.commissioner_discord_id = os.getenv("COMMISSIONER_DISCORD_ID")
         self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
+class GoogleAuthConfig(SessionConfig):
+    def __init__(self):
+        super().__init__()
+        self.client_id = _require("GOOGLE_CLIENT_ID")
+        self.client_secret = _require("GOOGLE_CLIENT_SECRET")
+        self.redirect_uri = _require("GOOGLE_REDIRECT_URI")
+        self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")

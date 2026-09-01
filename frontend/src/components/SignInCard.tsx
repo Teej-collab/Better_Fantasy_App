@@ -78,6 +78,25 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
             Continue with Discord
           </a>
 
+          {/* Google's own dark-theme button guideline, adapted onto this
+              card's tokens (a plain white rectangle would read as a hole
+              punched in an otherwise all-dark card) — the "G" mark itself
+              stays full brand color, per Google's branding requirements;
+              only the button surface is themed. New Google sign-ins are
+              self-serve (join a league with its invite code afterward),
+              same as email — Discord is the only path with real
+              pre-existing membership data to verify against instantly. */}
+          <a
+            href={`${API_BASE_URL}/auth/google/login`}
+            target="_blank"
+            rel="noopener"
+            className="flex items-center justify-center gap-2.5 rounded-full px-6 py-3.5 text-sm font-semibold text-[color:var(--wl-text)] transition-colors hover:bg-white/5 active:scale-[0.98]"
+            style={{ background: "var(--wl-bg)", border: "1px solid var(--wl-border)" }}
+          >
+            <GoogleGlyph className="h-4.5 w-4.5" />
+            Continue with Google
+          </a>
+
           <div className="flex items-center gap-3" aria-hidden>
             <span className="h-px flex-1" style={{ background: "var(--wl-border)" }} />
             <span className="text-[10px] font-semibold tracking-widest text-[color:var(--wl-text-secondary)] uppercase">
@@ -202,6 +221,32 @@ function DiscordGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
       <path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.19.34-.412.8-.567 1.164a18.27 18.27 0 0 0-5.636 0A11.5 11.5 0 0 0 9.115 3a19.74 19.74 0 0 0-4.435 1.372C1.578 8.727.865 12.98 1.221 17.174a19.9 19.9 0 0 0 5.993 3.03c.483-.66.913-1.36 1.284-2.098a12.9 12.9 0 0 1-2.023-.973c.17-.124.336-.253.497-.386 3.898 1.793 8.126 1.793 11.977 0 .163.133.329.262.497.386-.645.386-1.322.71-2.026.974.371.737.8 1.437 1.284 2.097a19.86 19.86 0 0 0 6-3.03c.417-4.865-.708-9.079-2.987-12.805ZM8.68 14.611c-1.17 0-2.13-1.066-2.13-2.373 0-1.308.941-2.374 2.13-2.374 1.199 0 2.15 1.076 2.13 2.374 0 1.307-.94 2.373-2.13 2.373Zm6.64 0c-1.17 0-2.13-1.066-2.13-2.373 0-1.308.94-2.374 2.13-2.374 1.199 0 2.15 1.076 2.13 2.374 0 1.307-.93 2.373-2.13 2.373Z" />
+    </svg>
+  );
+}
+
+// Google's standard multi-color "G" mark — kept full brand color per
+// Google's own Sign in with Google branding guidelines (only the
+// button surface around it is themed to match this card).
+function GoogleGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden>
+      <path
+        fill="#FFC107"
+        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+      />
+      <path
+        fill="#FF3D00"
+        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C39.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+      />
     </svg>
   );
 }

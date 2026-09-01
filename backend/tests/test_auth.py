@@ -160,6 +160,114 @@ async def test_callback_rejects_state_mismatch(monkeypatch):
     assert resp.status_code == 400
 
 
+def _set_google_env(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "fake-google-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "fake-google-client-secret")
+    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3000")
+
+
+async def test_google_login_redirects_to_google_and_sets_state_cookie(monkeypatch):
+    _set_google_env(monkeypatch)
+    async with _client() as client:
+        resp = await client.get("/auth/google/login", follow_redirects=False)
+    assert resp.status_code in (302, 307)
+    assert "accounts.google.com/o/oauth2/v2/auth" in resp.headers["location"]
+    assert "fake-google-client-id" in resp.headers["location"]
+    assert "oauth_state" in resp.cookies
+
+
+async def test_google_callback_creates_a_new_self_serve_account(pool, monkeypatch):
+    """Unlike Discord, Google has no pre-existing membership to verify
+    against — a first-time Google sign-in should succeed and create a
+    real account with no owner/league yet, same shape as /auth/signup."""
+    _set_google_env(monkeypatch)
+
+    async def fake_exchange(config, code):
+        assert code == "fake-code"
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        assert access_token == "fake-access-token"
+        return {"sub": "goog-900000002", "email": "test-google-new@example.com", "name": "Gina Google"}
+
+    monkeypatch.setattr("app.routers.auth.google_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.google_oauth.fetch_google_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/google/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+
+        callback_resp = await client.get(
+            "/auth/google/callback",
+            params={"code": "fake-code", "state": state},
+            follow_redirects=False,
+        )
+        assert callback_resp.status_code in (302, 307)
+        location = callback_resp.headers["location"]
+        assert location.startswith("http://localhost:3000/auth/complete#token=")
+        assert "session" in callback_resp.cookies
+
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 200
+        body = me_resp.json()
+        assert body["display_name"] == "Gina Google"
+        # No owner yet — this is a fresh self-serve account, not a
+        # verified league member the way Discord sign-in already is.
+        assert body["owner_id"] is None
+        assert body["is_commissioner"] is False
+
+
+async def test_google_callback_links_to_an_existing_account_with_the_same_email(pool, monkeypatch):
+    """A real, deliberate difference from Discord's no-linking
+    precedent (see get_or_create_user_for_google's own docstring):
+    Google always returns a verified email, so signing in with Google
+    using the same email as an existing password account links onto
+    that account instead of silently creating a confusing duplicate."""
+    _set_google_env(monkeypatch)
+    email = "test-google-linked@example.com"
+
+    async with pool.acquire() as conn:
+        existing_user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'irrelevant-hash', 'Original Name') "
+            "RETURNING id",
+            email,
+        )
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"sub": "goog-900000003", "email": email, "name": "Google Display Name"}
+
+    monkeypatch.setattr("app.routers.auth.google_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.google_oauth.fetch_google_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/google/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/google/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id, google_user_id FROM users WHERE email = $1", email)
+    assert row["id"] == existing_user_id  # same account, not a new one
+    assert row["google_user_id"] == "goog-900000003"
+
+
+async def test_google_callback_rejects_state_mismatch(monkeypatch):
+    _set_google_env(monkeypatch)
+    async with _client() as client:
+        await client.get("/auth/google/login", follow_redirects=False)
+        resp = await client.get(
+            "/auth/google/callback",
+            params={"code": "fake-code", "state": "wrong-state"},
+        )
+    assert resp.status_code == 400
+
+
 async def test_me_requires_session():
     async with _client() as client:
         resp = await client.get("/auth/me")
