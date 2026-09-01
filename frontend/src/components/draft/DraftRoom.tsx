@@ -12,7 +12,9 @@ import {
 } from "@/lib/draftApi";
 import { listSeasons, listTeams, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
+import { DraftBoard } from "@/components/draft/DraftBoard";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
+import { useDraftQueue } from "@/lib/useDraftQueue";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
@@ -44,6 +46,34 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
   const [loadError, setLoadError] = useState<string | null>(null);
   const { openPlayerCard } = usePlayerCard();
   const socketRef = useRef<WebSocket | null>(null);
+  const queue = useDraftQueue(draftState?.config.season);
+  // Accumulates every player seen across pool fetches, keyed by id — a
+  // queued player's name/position/team must stay resolvable even after
+  // switching the position filter or search away from whatever pool
+  // view they were queued from (the current `pool` array only ever
+  // holds the *currently filtered* set). Real state, not a ref — the
+  // "My Queue" panel's render needs to read this, and a ref can't be
+  // read during render.
+  const [knownPlayers, setKnownPlayers] = useState<Map<string, DraftPoolPlayer>>(new Map());
+  useEffect(() => {
+    // setTimeout(0), not a direct setState call in the effect body —
+    // same lint-satisfying pattern as useDraftQueue.ts's own load
+    // effect (see its comment).
+    const id = setTimeout(() => {
+      setKnownPlayers((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+        for (const p of pool) {
+          if (next.get(p.sleeper_player_id) !== p) {
+            next.set(p.sleeper_player_id, p);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [pool]);
 
   const refreshState = async () => {
     try {
@@ -91,6 +121,24 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
   useEffect(() => {
     getDraftPool(positionFilter ?? undefined, search || undefined).then(setPool).catch(() => {});
   }, [positionFilter, search]);
+
+  // A queued player who gets drafted (by anyone — including an
+  // autopick, which no client-side action of ours triggers) needs to
+  // fall out of the queue on its own. Sourced from draftState.picks
+  // (every pick made this draft) rather than `pool`, which only ever
+  // holds the currently filtered view — a queued player who's since
+  // been drafted must be detected even while a different position/
+  // search filter is active.
+  useEffect(() => {
+    if (!draftState) return;
+    const draftedIds = new Set(
+      draftState.picks.filter((p) => p.sleeper_player_id).map((p) => p.sleeper_player_id!)
+    );
+    for (const id of queue.queue) {
+      if (draftedIds.has(id)) queue.remove(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftState]);
 
   const season = draftState?.config.season;
 
@@ -152,6 +200,26 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
     [draftState]
   );
 
+  // Queued-and-still-available players float to the top of whatever
+  // the current position/search filter already narrowed `pool` down
+  // to — queueing doesn't override a filter, it just re-priorities
+  // within it, same as Sleeper's own queue behaves.
+  const sortedPool = useMemo(
+    () =>
+      [...pool].sort((a, b) => {
+        const aQ = queue.isQueued(a.sleeper_player_id);
+        const bQ = queue.isQueued(b.sleeper_player_id);
+        if (aQ !== bQ) return aQ ? -1 : 1;
+        return 0; // stable sort — pool already arrives sorted by search_rank
+      }),
+    [pool, queue]
+  );
+
+  const queuedPlayers = useMemo(
+    () => queue.queue.map((id) => knownPlayers.get(id)).filter((p): p is DraftPoolPlayer => Boolean(p)),
+    [queue.queue, knownPlayers]
+  );
+
   async function pick(sleeperPlayerId: string) {
     setSubmitting(true);
     setError(null);
@@ -210,6 +278,15 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {config!.status !== "not_started" && (
+        <DraftBoard
+          config={config!}
+          picks={draftState.picks}
+          teamNameByOwner={teamNameByOwner}
+          currentPickNumber={config!.current_pick_number}
+        />
+      )}
+
+      {config!.status !== "not_started" && (
         <div className="flex flex-col gap-4 sm:grid sm:grid-cols-3">
           <section className="neon-panel flex flex-col gap-2 rounded-xl p-4 sm:col-span-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -235,35 +312,106 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
               ))}
             </div>
             <ul className="max-h-[28rem] overflow-y-auto">
-              {pool.map((p) => (
-                <li
-                  key={p.sleeper_player_id}
-                  className="flex items-center justify-between gap-2 border-b border-black/5 py-2 last:border-0 dark:border-white/5"
-                >
-                  <div className="flex min-w-0 flex-col">
-                    <button
-                      onClick={() => openPlayerCard(p.sleeper_player_id)}
-                      className={`truncate text-left text-sm font-medium hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
-                    >
-                      {p.full_name}
-                    </button>
-                    <span className="text-xs text-black/40 dark:text-white/40">
-                      {p.position} · {p.pro_team ?? "—"}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => pick(p.sleeper_player_id)}
-                    disabled={p.drafted || !isMyTurn || submitting}
-                    className="shrink-0 rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-30"
+              {sortedPool.map((p) => {
+                const queued = queue.isQueued(p.sleeper_player_id);
+                return (
+                  <li
+                    key={p.sleeper_player_id}
+                    className={`flex items-center justify-between gap-2 border-b border-black/5 py-2 last:border-0 dark:border-white/5 ${
+                      queued ? "bg-[color-mix(in_srgb,var(--wl-accent)_6%,transparent)]" : ""
+                    }`}
                   >
-                    Draft
-                  </button>
-                </li>
-              ))}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <button
+                        onClick={() => queue.toggle(p.sleeper_player_id)}
+                        disabled={p.drafted}
+                        aria-label={queued ? "Remove from queue" : "Add to queue"}
+                        className="shrink-0 text-base text-black/25 hover:text-amber-400 disabled:opacity-30 dark:text-white/25"
+                      >
+                        {queued ? "★" : "☆"}
+                      </button>
+                      <span className="w-7 shrink-0 text-right text-[10px] text-black/30 tabular-nums dark:text-white/30">
+                        {p.search_rank ?? "—"}
+                      </span>
+                      <div className="flex min-w-0 flex-col">
+                        <button
+                          onClick={() => openPlayerCard(p.sleeper_player_id)}
+                          className={`truncate text-left text-sm font-medium hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
+                        >
+                          {p.full_name}
+                        </button>
+                        <span className="text-xs text-black/40 dark:text-white/40">
+                          {p.position} · {p.pro_team ?? "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => pick(p.sleeper_player_id)}
+                      disabled={p.drafted || !isMyTurn || submitting}
+                      className="shrink-0 rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-30"
+                    >
+                      Draft
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
 
           <div className="flex flex-col gap-4">
+            {queuedPlayers.length > 0 && (
+              <section className="neon-panel flex flex-col gap-1 rounded-xl p-4">
+                <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                  My Queue ({queuedPlayers.length})
+                </h2>
+                {queuedPlayers.map((p, i) => (
+                  <div key={p.sleeper_player_id} className="flex items-center justify-between gap-1 py-0.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="w-4 shrink-0 text-black/30 tabular-nums dark:text-white/30">{i + 1}</span>
+                      <button onClick={() => openPlayerCard(p.sleeper_player_id)} className="truncate hover:underline">
+                        {p.full_name}
+                      </button>
+                      <span className="shrink-0 text-xs text-black/40 dark:text-white/40">{p.position}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-0.5">
+                      {isMyTurn && (
+                        <button
+                          onClick={() => pick(p.sleeper_player_id)}
+                          disabled={submitting}
+                          className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-30"
+                        >
+                          Draft
+                        </button>
+                      )}
+                      <button
+                        onClick={() => queue.move(p.sleeper_player_id, -1)}
+                        disabled={i === 0}
+                        aria-label="Move up"
+                        className="px-1 text-black/40 disabled:opacity-20 dark:text-white/40"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => queue.move(p.sleeper_player_id, 1)}
+                        disabled={i === queuedPlayers.length - 1}
+                        aria-label="Move down"
+                        className="px-1 text-black/40 disabled:opacity-20 dark:text-white/40"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => queue.remove(p.sleeper_player_id)}
+                        aria-label="Remove from queue"
+                        className="px-1 text-black/40 dark:text-white/40"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </section>
+            )}
+
             <section className="neon-panel flex flex-col gap-1 rounded-xl p-4">
               <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                 My team ({myPicks.length})
