@@ -78,7 +78,21 @@ export async function NavBar() {
 
   return (
     <>
-      <header id="site-nav" className="border-b border-black/10 dark:border-white/10">
+      {/* sticky, not the pre-2026-08-31 static-in-flow header — a header
+          that scrolls away on every page (confirmed: any page long
+          enough to actually scroll, like the new /gamecast hub, made
+          this obvious) means losing the sign-in/account menu and every
+          primary destination the instant you read past the fold. The
+          persistent bottom bar (BottomNav.tsx) was already fixed; this
+          brings the top header to the same standard instead of leaving
+          it the odd one out. The ticker (AppTickerBar, rendered as its
+          own sibling below this) deliberately stays non-sticky — transient
+          live-score content, not primary navigation, doesn't need to
+          permanently eat mobile vertical space. */}
+      <header
+        id="site-nav"
+        className="sticky top-0 z-40 border-b border-black/10 bg-[var(--background)]/95 backdrop-blur-sm dark:border-white/10"
+      >
         {/* pt- accounts for the notch/Dynamic Island/status bar — this
             app runs with viewport-fit=cover and a translucent iOS status
             bar (layout.tsx), so nothing reserves that space by default;
