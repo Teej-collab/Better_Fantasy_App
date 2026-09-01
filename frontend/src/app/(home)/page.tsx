@@ -664,7 +664,16 @@ const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
 // through League's own sub-nav first. The Weekend gets its own
 // flagship card above the grid since it's the site's one major
 // "atmosphere" destination, not just another data page.
-const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards"]);
+// awardsAllTime excluded for a different reason than league/awards
+// above: its href is dynamic (depends on the latest season, resolved
+// via awardsHref in LeagueSubNav — see that component) and this grid's
+// tiles are only ever built from DESTINATION_HREF's static map, so
+// including it here would need its own special case rather than
+// silently resolving to an "undefined" href. The 2026-08-31 audit's
+// actual "two taps deep" complaint is already fully fixed by adding it
+// to LeagueSubNav (LEAGUE_SUBNAV_ORDER) — a Discover tile too would be
+// a nice-to-have, not a fix for anything broken.
+const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards", "awardsAllTime"]);
 
 // Gamecast is a primary-nav destination on desktop (PrimaryNav.tsx) but
 // isn't in the mobile bottom bar's fixed 5 slots (see

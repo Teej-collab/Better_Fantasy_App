@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getChatConversations, getMe, API_BASE_URL } from "@/lib/api";
+import { getChatConversations, getMe } from "@/lib/api";
 import { ChatApp } from "@/components/chat/ChatApp";
+import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Chat — Weekend League" };
 
@@ -13,19 +14,8 @@ export default async function ChatPage() {
 
   if (!me || conversations === null) {
     return (
-      <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold">Weekend League Chat</h1>
-        <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
-          <p className="text-sm text-black/60 dark:text-white/60">Sign in to join the league chat.</p>
-          <a
-            href={`${API_BASE_URL}/auth/discord/login`}
-            target="_blank"
-            rel="noopener"
-            className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
-          >
-            Sign in with Discord
-          </a>
-        </section>
+      <div className="flex justify-center py-6">
+        <SignInCard />
       </div>
     );
   }

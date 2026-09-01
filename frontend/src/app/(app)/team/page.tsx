@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { API_BASE_URL, getMe, getNflScoreboard, isNflGameLive } from "@/lib/api";
+import { getMe, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "My Team — Weekend League" };
 
@@ -15,18 +16,9 @@ export default async function MyTeamPage() {
     return (
       <div className="flex flex-col gap-4">
         <MyTeamSubNav active="team" />
-        <h1 className="text-2xl font-semibold">My Team</h1>
-        <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
-          <p className="text-sm text-black/60 dark:text-white/60">Sign in to see your team.</p>
-          <a
-            href={`${API_BASE_URL}/auth/discord/login`}
-            target="_blank"
-            rel="noopener"
-            className="w-fit rounded-full bg-[#5865F2] px-4 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
-          >
-            Sign in with Discord
-          </a>
-        </section>
+        <div className="flex justify-center py-6">
+          <SignInCard />
+        </div>
       </div>
     );
   }

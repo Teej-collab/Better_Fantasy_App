@@ -69,6 +69,52 @@ async def test_standings_computed_from_matchups(pool):
     assert float(standings[team_b]["points_for"]) == 100.0
 
 
+async def test_standings_playoff_team_count_is_none_with_no_prior_playoff_data(pool):
+    await _seed_two_teams(pool)
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    assert resp.status_code == 200
+    assert resp.json()["playoff_team_count"] is None
+
+
+async def test_standings_playoff_team_count_from_most_recent_prior_season(pool):
+    """A brand-new season's standings page has no playoff bracket of
+    its own yet — the "playoff line" it shows has to come from the
+    real, most recently completed prior season's own bracket
+    (matchups.is_playoff), not a guess."""
+    prior_season = TEST_SEASON - 1
+    async with pool.acquire() as conn:
+        owners = []
+        teams = []
+        for i in range(4):
+            owner_id = await conn.fetchval(
+                "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+                f"test-league-playoff-owner-{i}", f"Playoff Owner {i}",
+            )
+            team_id = await conn.fetchval(
+                "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+                prior_season, 200 + i, owner_id, f"Playoff Team {i}",
+            )
+            owners.append(owner_id)
+            teams.append(team_id)
+
+        # 2 playoff matchups among the 4 teams — a real 4-team bracket.
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 15, $2, $3, 100.0, 90.0, TRUE)",
+            prior_season, teams[0], teams[1],
+        )
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 15, $2, $3, 80.0, 70.0, TRUE)",
+            prior_season, teams[2], teams[3],
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    assert resp.status_code == 200
+    assert resp.json()["playoff_team_count"] == 4
+
+
 async def test_standings_ordered_by_final_rank_when_present(pool):
     # Real-world case this guards against: 2024's actual champion was
     # seeded 4th by regular-season record. final_standings (ESPN's own

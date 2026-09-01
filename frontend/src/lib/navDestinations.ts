@@ -34,7 +34,8 @@ export type DestinationKey =
   | "powerRankings"
   | "draft"
   | "gamecast"
-  | "playerResearch";
+  | "playerResearch"
+  | "awardsAllTime";
 
 export type Destination = {
   key: DestinationKey;
@@ -100,6 +101,13 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // Violet since cyan (playerCards) and teal (freeAgents) are both
   // already spoken for by adjacent destinations.
   playerResearch: { key: "playerResearch", label: "Player Research", color: "#8b5cf6" },
+  // Used to be reachable only two taps deep (League -> Awards -> the
+  // All-Time Records tab inside SeasonTabs) instead of the one tap
+  // every other League-family destination gets from this row —
+  // 2026-08-31 audit. A muted gold, distinct from Awards' own bright
+  // yellow but clearly in the same family (both real award/record
+  // destinations sitting right next to each other in this row).
+  awardsAllTime: { key: "awardsAllTime", label: "All-Time", color: "#ca8a04" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -168,6 +176,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "playerCards",
   "playerResearch",
   "awards",
+  "awardsAllTime",
   "rivalries",
   "rules",
   "chug",

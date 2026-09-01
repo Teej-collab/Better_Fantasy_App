@@ -73,7 +73,13 @@ async def cleanup_test_season(pool):
         # (test_keepers.py) seed a "prior season" roster to pick keepers
         # from, the first tests in this suite to need that concept.
         await conn.execute("DELETE FROM rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
-        await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
+        # Also TEST_SEASON - 1: get_playoff_team_count (queries/league.py)
+        # looks at the most recent PRIOR season's real is_playoff
+        # matchups, so its own test seeds one — must go before the
+        # teams_by_season DELETE below (matchups.home/away_team_id ->
+        # teams_by_season.id) or that FK-violates for TEST_SEASON - 1
+        # rows the same way this file already guards against elsewhere.
+        await conn.execute("DELETE FROM matchups WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)

@@ -29,7 +29,16 @@ export function PlayerHeadshot({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const src = sleeperPlayerId ? sleeperHeadshotUrl(sleeperPlayerId) : playerHeadshotUrl(playerId);
+  // D/ST rows use a negative synthetic ESPN player id (there's no real
+  // person to have a headshot) — playerHeadshotUrl's own !playerId
+  // check doesn't catch this (a negative number is truthy), so it used
+  // to build a real request to ESPN's CDN for e.g. player id -16014
+  // every single time, a guaranteed 404 on every matchup/roster page
+  // load (2026-08-31 audit). Treated the same as "no headshot exists"
+  // up front — skips the doomed request entirely and goes straight to
+  // the team-logo-as-primary path below instead of initials.
+  const isSyntheticId = typeof playerId === "number" && playerId < 0;
+  const src = isSyntheticId ? null : sleeperPlayerId ? sleeperHeadshotUrl(sleeperPlayerId) : playerHeadshotUrl(playerId);
   const logo = teamLogoUrl(proTeam);
 
   const initials = name
@@ -40,16 +49,30 @@ export function PlayerHeadshot({
     .join("")
     .toUpperCase();
 
+  const hasRealHeadshot = Boolean(src) && !failed;
+
   return (
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
-      {src && !failed ? (
+      {hasRealHeadshot ? (
         <Image
-          src={src}
+          src={src!}
           alt={name}
           width={size}
           height={size}
           onError={() => setFailed(true)}
           className="h-full w-full rounded-full bg-black/5 object-cover object-top dark:bg-white/10"
+        />
+      ) : logo ? (
+        // No real headshot to show (a D/ST "player" is a whole team,
+        // not a person) — the team logo as the primary image is a far
+        // more honest, recognizable fallback than generic initials
+        // when we already know exactly which team this is.
+        <Image
+          src={logo}
+          alt={name}
+          width={size}
+          height={size}
+          className="h-full w-full rounded-full border border-black/10 bg-white object-contain p-0.5 dark:border-white/10 dark:bg-neutral-900"
         />
       ) : (
         <span
@@ -60,7 +83,11 @@ export function PlayerHeadshot({
           {initials || "?"}
         </span>
       )}
-      {logo && (
+      {/* The small corner team-logo badge only adds information when
+          the primary image is a person's real headshot — once the
+          logo IS the primary image (the branch above), repeating it
+          as a corner badge on top of itself is redundant. */}
+      {logo && hasRealHeadshot && (
         <Image
           src={logo}
           alt=""

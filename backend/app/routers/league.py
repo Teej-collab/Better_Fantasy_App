@@ -39,7 +39,8 @@ async def teams(season: int, pool=Depends(get_pool)):
 async def standings(season: int, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         rows = await queries.get_standings(conn, season)
-    return {"standings": [dict(r) for r in rows]}
+        playoff_team_count = await queries.get_playoff_team_count(conn, season)
+    return {"standings": [dict(r) for r in rows], "playoff_team_count": playoff_team_count}
 
 
 @router.get("/seasons/{season}/weeks/{week}/matchups")

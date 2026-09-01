@@ -29,7 +29,7 @@ export default async function AllTimeRecordsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="awards" awardsHref={`/seasons/${season}/awards`} />
+      <LeagueSubNav active="awardsAllTime" awardsHref={`/seasons/${season}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
         <SeasonTabs

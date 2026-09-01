@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL } from "@/lib/api";
+import Link from "next/link";
 import { AccountMenu, type Me } from "@/components/AccountMenu";
 
 /**
@@ -31,15 +31,15 @@ export function AuthStatus() {
   if (loading) return null;
 
   if (!me) {
+    // /login, not straight to Discord OAuth — this used to bypass the
+    // shared SignInCard entirely, the one inconsistent, more-limited
+    // sign-in entry point in the app (no email option, matching the
+    // other duplicated Discord-only CTAs fixed alongside this one —
+    // 2026-08-31 audit).
     return (
-      <a
-        href={`${API_BASE_URL}/auth/discord/login`}
-        target="_blank"
-        rel="noopener"
-        className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white"
-      >
-        Sign in with Discord
-      </a>
+      <Link href="/login" className="shrink-0 text-black/70 hover:text-black dark:text-white/70 dark:hover:text-white">
+        Sign in
+      </Link>
     );
   }
 

@@ -161,6 +161,33 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     )
 
 
+async def get_playoff_team_count(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int | None:
+    """How many teams made the playoffs, going by the most recently
+    COMPLETED prior season's own real bracket (matchups.is_playoff,
+    already synced from ESPN) — not a guess or a hardcoded number, this
+    app has no "how many teams make the playoffs" setting stored
+    anywhere. Powers the standings page's playoff-line divider
+    (2026-08-31 audit: "no visible playoff-picture indicator"). None
+    for a brand-new league with no prior season's playoff data yet —
+    the caller shows no line rather than a fabricated one."""
+    last_playoff_season = await conn.fetchval(
+        "SELECT MAX(season) FROM matchups WHERE league_id = $1 AND season < $2 AND is_playoff = TRUE",
+        league_id, season,
+    )
+    if last_playoff_season is None:
+        return None
+    return await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT team_id) FROM (
+            SELECT home_team_id AS team_id FROM matchups WHERE league_id = $1 AND season = $2 AND is_playoff = TRUE
+            UNION
+            SELECT away_team_id AS team_id FROM matchups WHERE league_id = $1 AND season = $2 AND is_playoff = TRUE
+        ) t
+        """,
+        league_id, last_playoff_season,
+    )
+
+
 async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """

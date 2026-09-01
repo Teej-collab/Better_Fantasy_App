@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { awardsHrefFor, getStandings, listSeasons, safeLatestSeason, type StandingsRow } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -17,11 +18,19 @@ export default async function StandingsPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { standings } = season !== null ? await getStandings(season) : { standings: [] };
+  const { standings, playoff_team_count: playoffTeamCount } =
+    season !== null ? await getStandings(season) : { standings: [], playoff_team_count: null };
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
   // regular-season record when it's not — see app/queries/league.py.
   const isFinal = standings.length > 0 && standings[0].final_rank !== null;
+  // Only meaningful for a season still in progress — a finished
+  // season's rows are already the real final playoff-accounted order,
+  // so a projected line on top of that would be redundant at best,
+  // wrong at worst (see app/queries/league.py's get_playoff_team_count
+  // — 2026-08-31 audit: "no visible playoff-picture indicator").
+  const showPlayoffLine =
+    !isFinal && playoffTeamCount !== null && playoffTeamCount > 0 && playoffTeamCount < standings.length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -33,6 +42,8 @@ export default async function StandingsPage({
 
       <p className="text-xs text-black/50 dark:text-white/50">
         {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
+        {showPlayoffLine &&
+          ` The line below the top ${playoffTeamCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
       </p>
 
       <div
@@ -50,11 +61,40 @@ export default async function StandingsPage({
 
         <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {standings.map((row, i) => (
-            <StandingsListRow key={row.team_id} row={row} rank={i + 1} />
+            <Fragment key={row.team_id}>
+              <StandingsListRow row={row} rank={i + 1} />
+              {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
+            </Fragment>
           ))}
         </ul>
       </div>
     </div>
+  );
+}
+
+// A projected playoff cutoff line, not a guaranteed clinch — this app
+// has no real tiebreaker-aware "magic number" clinch calculator (that
+// needs each team's remaining schedule and a real combinatorial
+// scenario check, a much bigger feature than a standings-page divider
+// — see get_playoff_team_count's own docstring for why this uses last
+// season's real bracket size instead). Still real, honest signal: "no
+// visible playoff-picture indicator at all" was the actual gap named
+// in the 2026-08-31 audit, and a line grounded in this league's own
+// real history beats either nothing or an invented number.
+function PlayoffLine({ count }: { count: number }) {
+  return (
+    <li aria-hidden className="relative py-0">
+      <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed" style={{ borderColor: "var(--user-accent, var(--wl-accent))" }} />
+      <span
+        className="relative mx-auto block w-fit -translate-y-1/2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase"
+        style={{
+          background: "var(--user-accent, var(--wl-accent))",
+          color: "#06110a",
+        }}
+      >
+        Playoff line — top {count}
+      </span>
+    </li>
   );
 }
 

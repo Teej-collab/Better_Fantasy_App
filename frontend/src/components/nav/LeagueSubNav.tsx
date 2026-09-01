@@ -30,9 +30,15 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * mobile "how do I get back" affordance from spec §23.
  */
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
+  // awardsAllTime's href is derived from awardsHref the same reason
+  // awards' own is passed in rather than living in DESTINATION_HREF —
+  // both depend on the latest season, which this component doesn't
+  // know on its own. Used to be reachable only two taps deep (League ->
+  // Awards -> the All-Time Records tab inside SeasonTabs) — 2026-08-31
+  // audit.
   const tabs = (LEAGUE_SUBNAV_ORDER as LeagueTab[]).map((key) => ({
     key,
-    href: key === "awards" ? awardsHref : DESTINATION_HREF[key]!,
+    href: key === "awards" ? awardsHref : key === "awardsAllTime" ? `${awardsHref}/all-time` : DESTINATION_HREF[key]!,
   }));
 
   return (
