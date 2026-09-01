@@ -34,10 +34,22 @@ function useCountdown(deadline: string | null): number {
   return seconds;
 }
 
-export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; isCommissioner: boolean }) {
-  const [draftState, setDraftState] = useState<DraftState | null>(null);
-  const [pool, setPool] = useState<DraftPoolPlayer[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
+export function DraftRoom({
+  myOwnerId,
+  isCommissioner,
+  initialDraftState,
+  initialPool,
+  initialTeams,
+}: {
+  myOwnerId: number;
+  isCommissioner: boolean;
+  initialDraftState: DraftState | null;
+  initialPool: DraftPoolPlayer[];
+  initialTeams: Team[];
+}) {
+  const [draftState, setDraftState] = useState<DraftState | null>(initialDraftState);
+  const [pool, setPool] = useState<DraftPoolPlayer[]>(initialPool);
+  const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [connected, setConnected] = useState(false);
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -99,26 +111,47 @@ export function DraftRoom({ myOwnerId, isCommissioner }: { myOwnerId: number; is
   };
 
   useEffect(() => {
-    // Inlined (not a bare call to the refreshState/refreshPool helpers
-    // above) so the initial fetch is a direct .then()/.catch() chain,
-    // same convention as MyTeamApp.tsx's mount-fetch — calling a
+    // draft/page.tsx server-fetches draftState/pool/teams and passes
+    // them as initial* props, so the common case never needs this at
+    // all — this is only a fallback for the rare case the server-side
+    // fetch itself came back empty (e.g. a session that expired between
+    // page render and this component mounting). Inlined (not a bare
+    // call to the refreshState/refreshPool helpers above) so this fetch
+    // is a direct .then()/.catch() chain, same convention as
+    // MyTeamApp.tsx's own fallback mount-fetch — calling a
     // component-scope async helper directly in an effect body trips
     // react-hooks/set-state-in-effect even though the actual setState
     // only ever happens after an await. refreshState/refreshPool stay
     // useful as-is for the non-effect call sites below (button
     // handlers, the WS onmessage callback).
-    getDraftState().then(setDraftState).catch((e) => setLoadError(e instanceof Error ? e.message : "Failed to load draft"));
-    // The active season for the draft picker isn't known until
-    // draftState loads (chicken-and-egg for the "no draft yet" setup
-    // case) — listSeasons() returns every season with a synced
-    // teams_by_season row, so the highest one is the current one.
-    listSeasons()
-      .then(({ seasons }) => listTeams(Math.max(...seasons)))
-      .then((r) => setTeams(r.teams))
-      .catch(() => {});
+    if (!initialDraftState) {
+      getDraftState().then(setDraftState).catch((e) => setLoadError(e instanceof Error ? e.message : "Failed to load draft"));
+    }
+    if (initialTeams.length === 0) {
+      // The active season for the draft picker isn't known until
+      // draftState loads (chicken-and-egg for the "no draft yet" setup
+      // case) — listSeasons() returns every season with a synced
+      // teams_by_season row, so the highest one is the current one.
+      listSeasons()
+        .then(({ seasons }) => listTeams(Math.max(...seasons)))
+        .then((r) => setTeams(r.teams))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The very first run of the effect below would otherwise immediately
+  // re-fetch the pool with positionFilter=null/search="" — the exact
+  // same request draft/page.tsx already made server-side for
+  // initialPool — clobbering the fast first paint with a redundant
+  // round trip. Same skip-the-mount-run guard as PlayerSearchInput.tsx.
+  const skipInitialPoolFetch = useRef(true);
+
   useEffect(() => {
+    if (skipInitialPoolFetch.current) {
+      skipInitialPoolFetch.current = false;
+      return;
+    }
     getDraftPool(positionFilter ?? undefined, search || undefined).then(setPool).catch(() => {});
   }, [positionFilter, search]);
 

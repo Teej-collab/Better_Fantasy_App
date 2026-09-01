@@ -1022,6 +1022,23 @@ export async function getMyTeam(): Promise<MyTeam> {
   return res.json();
 }
 
+// Server-side counterpart to getMyTeam() — team/page.tsx server-fetches the
+// roster (parallel with getMe/getNflScoreboard via Promise.all) and passes
+// it as MyTeamApp's initial prop, so the roster renders on first paint
+// instead of waiting on the client-only fetch's extra post-hydration round
+// trip. Same explicit-cookie pattern as getMe/getMyFreeAgents. Returns null
+// on no session or any fetch failure — MyTeamApp falls back to its own
+// client-side getMyTeam() fetch in that case, same as before this existed.
+export async function getMyTeamServer(sessionCookie: string | undefined): Promise<MyTeam | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/me/team`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export type OwnershipInfo = { percent_owned: number | null; percent_started: number | null };
 
 // A real, multi-second live ESPN call server-side — deliberately a

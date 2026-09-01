@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, getNflScoreboard, isNflGameLive } from "@/lib/api";
+import { getMe, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { SignInCard } from "@/components/SignInCard";
@@ -27,13 +27,13 @@ export default async function MyTeamPage() {
   // has no use for it, and Next's per-request fetch memoization means
   // this doesn't cost a second round trip anywhere else this same
   // request already calls getNflScoreboard() (it doesn't, today).
-  const nflGames = await getNflScoreboard();
+  const [team, nflGames] = await Promise.all([getMyTeamServer(sessionCookie), getNflScoreboard()]);
   const isGameDay = isNflGameLive(nflGames);
 
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="team" />
-      <MyTeamApp isGameDay={isGameDay} />
+      <MyTeamApp isGameDay={isGameDay} initialTeam={team} />
     </div>
   );
 }

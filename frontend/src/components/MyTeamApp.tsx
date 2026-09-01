@@ -139,8 +139,8 @@ function RosterRow({
 // there.
 const LIVE_POLL_INTERVAL_MS = 15 * 1000;
 
-export function MyTeamApp({ isGameDay }: { isGameDay: boolean }) {
-  const [team, setTeam] = useState<MyTeam | null>(null);
+export function MyTeamApp({ isGameDay, initialTeam }: { isGameDay: boolean; initialTeam: MyTeam | null }) {
+  const [team, setTeam] = useState<MyTeam | null>(initialTeam);
   const [ownership, setOwnership] = useState<Record<string, OwnershipInfo>>({});
   const [error, setError] = useState<string | null>(null);
   const [swapPreview, setSwapPreview] = useState<LineupSwapPreview | null>(null);
@@ -157,9 +157,16 @@ export function MyTeamApp({ isGameDay }: { isGameDay: boolean }) {
   const { openPlayerCard } = usePlayerCard();
 
   useEffect(() => {
+    // team/page.tsx server-fetches the roster and passes it as
+    // initialTeam so the common case never needs this at all — this is
+    // only a fallback for the rare case the server-side fetch itself
+    // came back empty (e.g. a session that expired between page render
+    // and this component mounting).
+    if (initialTeam) return;
     getMyTeam()
       .then(setTeam)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load your team"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A real, multi-second live ESPN call server-side — fetched

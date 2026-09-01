@@ -77,6 +77,45 @@ export async function getDraftPool(position?: string, search?: string): Promise<
   return players;
 }
 
+// Server-side counterparts to getDraftState/getDraftPool — draft/page.tsx
+// server-fetches the initial draft state and pool (parallel via
+// Promise.all with the team list) and passes them as DraftRoom's initial
+// props, so the room renders real content on first paint instead of
+// waiting on the client-only fetch's extra post-hydration round trip.
+// Same explicit session-cookie pattern as api.ts's getMe/getMyFreeAgents —
+// a server component has no ambient browser cookie jar for the same-origin
+// /api/backend proxy to ride along on. Return null/[] on no session or any
+// fetch failure (including a genuine "no draft set up yet" 404) — DraftRoom
+// falls back to its own client-side fetch in that case, same as before.
+export async function getDraftStateServer(sessionCookie: string | undefined): Promise<DraftState | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}/draft/state`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getDraftPoolServer(
+  sessionCookie: string | undefined,
+  position?: string,
+  search?: string
+): Promise<DraftPoolPlayer[]> {
+  if (!sessionCookie) return [];
+  const params = new URLSearchParams();
+  if (position) params.set("position", position);
+  if (search) params.set("search", search);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/draft/pool${qs ? `?${qs}` : ""}`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) return [];
+  const { players } = (await res.json()) as { players: DraftPoolPlayer[] };
+  return players;
+}
+
 export type DraftPickResult = { pick: DraftPick; config: DraftConfig };
 
 export async function submitDraftPick(sleeperPlayerId: string): Promise<DraftPickResult> {
