@@ -31,6 +31,22 @@ async def get_week_ticker_data(conn, season: int, week: int, league_id: int = DE
     matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week, league_id)]
     items = []
     for m in matchups:
+        # ESPN represents an unplayed matchup as a real 0/0, not NULL —
+        # same convention queries.get_standings/get_head_to_head already
+        # exclude on ("a genuine 0-0 tie is not realistic in fantasy
+        # football"). This endpoint never applied that rule, so an
+        # unplayed matchup's real 0.0/0.0 sailed through looking like
+        # live data, under a "Live" ticker label — 2026-09-02 audit.
+        # This is specifically "this week's live scores," so it should
+        # only ever return matchups with something live or final to
+        # show; both frontend callers already skip rendering the ticker
+        # strip entirely when items is empty, so an all-unplayed week
+        # just omits the strip with no further change needed.
+        home_score, away_score = m["home_score"], m["away_score"]
+        started = home_score is not None and away_score is not None and not (home_score == 0 and away_score == 0)
+        if not started:
+            continue
+
         home_team = await queries.get_team(conn, m["home_team_id"])
         away_team = await queries.get_team(conn, m["away_team_id"])
         home_roster = await queries.get_roster(conn, m["home_team_id"], week)
