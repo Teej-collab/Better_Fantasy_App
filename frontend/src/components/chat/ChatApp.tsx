@@ -54,15 +54,22 @@ export function ChatApp({
   // `100dvh` minus whatever chrome actually rendered above it (NavBar's
   // header, plus AppTickerBar's ticker strip(s) — one when there's no
   // current-week league data, two when there is) minus the fixed
-  // BottomNav below it. The ticker's height isn't a fixed constant we
-  // can bake into a Tailwind class the way the header's is, so instead
-  // of guessing it, this measures the panel's real distance from the
-  // top of the viewport after mount and lets that stand in for "all the
-  // chrome above me, however tall it turned out to be." Getting this
-  // wrong doesn't just look off — the leftover height renders the
-  // composer underneath the fixed BottomNav, which no amount of
-  // scrolling can ever reveal since a fixed element covers the same
-  // screen-space band regardless of scroll position. `null` here means
+  // BottomNav below it. Neither the ticker's nor BottomNav's height is a
+  // fixed constant we can bake into a Tailwind class the way the
+  // header's is — BottomNav in particular grows a third row on its
+  // Gamecast tab whenever a game is live (see BottomNav.tsx's LiveMark),
+  // so a hardcoded guess at its height goes stale the moment that row
+  // appears. Instead of guessing either side, this measures the panel's
+  // real distance from the top of the viewport AND BottomNav's real
+  // rendered height (id="app-bottom-nav", watched with a ResizeObserver
+  // so this stays correct even if that bar's height changes after mount,
+  // not just on a window resize) and lets both stand in for "however
+  // tall things actually turned out to be." Getting this wrong doesn't
+  // just look off — the leftover height renders the composer underneath
+  // the fixed BottomNav, which no amount of scrolling can ever reveal
+  // since a fixed element covers the same screen-space band regardless
+  // of scroll position (this happened for real once BottomNav grew its
+  // live-game row — see this component's git history). `null` here means
   // "not measured yet (or we're at sm: and up, where there's no fixed
   // BottomNav and the desktop `sm:h-[...]` class already handles it)" —
   // the JSX below falls back to the old fixed-header-only estimate for
@@ -71,6 +78,7 @@ export function ChatApp({
 
   useLayoutEffect(() => {
     const desktopQuery = window.matchMedia("(min-width: 640px)");
+    let bottomNavHeight = 72; // 4.5rem-equivalent fallback, in case the element isn't found yet
 
     function measure() {
       if (desktopQuery.matches || !panelRef.current) {
@@ -78,7 +86,21 @@ export function ChatApp({
         return;
       }
       const top = panelRef.current.getBoundingClientRect().top;
-      setMobileHeight(`calc(100dvh - ${top}px - 4.5rem - env(safe-area-inset-bottom))`);
+      setMobileHeight(`calc(100dvh - ${top}px - ${bottomNavHeight}px - env(safe-area-inset-bottom))`);
+    }
+
+    const bottomNavEl = document.getElementById("app-bottom-nav");
+    let resizeObserver: ResizeObserver | null = null;
+    if (bottomNavEl) {
+      bottomNavHeight = bottomNavEl.getBoundingClientRect().height || bottomNavHeight;
+      resizeObserver = new ResizeObserver((entries) => {
+        const height = entries[0]?.contentRect.height;
+        if (height) {
+          bottomNavHeight = height;
+          measure();
+        }
+      });
+      resizeObserver.observe(bottomNavEl);
     }
 
     measure();
@@ -87,6 +109,7 @@ export function ChatApp({
     return () => {
       window.removeEventListener("resize", measure);
       desktopQuery.removeEventListener("change", measure);
+      resizeObserver?.disconnect();
     };
   }, []);
 

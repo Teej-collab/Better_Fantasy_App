@@ -43,6 +43,12 @@ function LiveMark() {
  * Used to carry a neon glow along its top edge — flattened to a plain
  * hairline border 2026-08-31 to match the approved mock exactly (its
  * phone-frame bottom bar has no glow at all, just var(--wl-border)).
+ *
+ * The `id="app-bottom-nav"` is load-bearing: ChatApp.tsx measures this
+ * element's real rendered height (via ResizeObserver, not a hardcoded
+ * guess) to size the chat panel above it on mobile — this bar's height
+ * isn't constant (the Gamecast tab grows a third row on game day), so
+ * removing this id or renaming it silently breaks that measurement.
  */
 export function BottomNav({
   signedIn,
@@ -59,6 +65,7 @@ export function BottomNav({
 
   return (
     <nav
+      id="app-bottom-nav"
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
       style={{ borderTop: "1px solid var(--wl-border)" }}
