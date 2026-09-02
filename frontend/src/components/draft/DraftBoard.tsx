@@ -2,6 +2,7 @@
 
 import type { DraftConfig, DraftPick } from "@/lib/draftApi";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
+import { positionColor } from "@/lib/positionColors";
 
 /**
  * The real team x round grid — the single most-used artifact in every
@@ -64,6 +65,7 @@ export function DraftBoard({
                 const pick = byRoundAndOwner.get(`${round}:${ownerId}`);
                 const isCurrent = pick?.pick_number === currentPickNumber;
                 const filled = Boolean(pick?.sleeper_player_id);
+                const color = filled ? positionColor(pick?.player_position) : null;
                 return (
                   <td key={ownerId} className="align-top">
                     <button
@@ -73,14 +75,22 @@ export function DraftBoard({
                         isCurrent
                           ? "border border-[var(--wl-accent)] bg-[color-mix(in_srgb,var(--wl-accent)_14%,transparent)]"
                           : filled
-                            ? "bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+                            ? "hover:brightness-125"
                             : "bg-black/[0.02] dark:bg-white/[0.02]"
                       }`}
+                      style={
+                        filled && !isCurrent
+                          ? {
+                              borderLeft: `3px solid ${color}`,
+                              backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+                            }
+                          : undefined
+                      }
                     >
                       {pick?.sleeper_player_id ? (
                         <>
                           <span className="truncate font-medium">{pick.player_name}</span>
-                          <span className="flex items-center gap-1 text-[10px] text-black/40 dark:text-white/40">
+                          <span className="flex items-center gap-1 text-[10px]" style={{ color: color ?? undefined }}>
                             {pick.player_position}
                             {pick.is_autopick && <span className="text-amber-500">AUTO</span>}
                             {pick.is_keeper && <span className="text-emerald-500">KEEP</span>}

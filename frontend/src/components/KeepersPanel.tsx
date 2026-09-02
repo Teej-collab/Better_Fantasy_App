@@ -14,6 +14,55 @@ async function refreshKeepers(onChange: (data: MyKeepers) => void) {
   onChange(await getMyKeepers());
 }
 
+const AUTO_LOCK_WINDOW_MS = 60 * 60 * 1000;
+
+function pad(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+// Only ever renders once the real backend auto-lock scheduler job
+// (backend/app/scheduler.py's _run_keeper_lock_job) is about to fire —
+// null outside that 1-hour window, same threshold that job itself
+// checks against, so this never claims an auto-lock is imminent when
+// it isn't. Client-only (deferred to useEffect, not computed at render
+// time) for the same server/client clock-mismatch reason
+// DraftCountdownCard.tsx's own countdown is — see that component's
+// comment.
+function useAutoLockCountdown(scheduledStart: string | null, locked: boolean): string | null {
+  const [text, setText] = useState<string | null>(null);
+
+  useEffect(() => {
+    // The whole body runs inside setTimeout/setInterval callbacks, never
+    // synchronously in the effect body itself — including the "nothing
+    // to show" case — same lint-satisfying pattern DraftCountdownCard.tsx's
+    // own countdown effect uses (react-hooks/set-state-in-effect).
+    function tick() {
+      if (!scheduledStart || locked) {
+        setText(null);
+        return;
+      }
+      const diff = new Date(scheduledStart).getTime() - Date.now();
+      if (diff <= 0 || diff > AUTO_LOCK_WINDOW_MS) {
+        setText(null);
+        return;
+      }
+      const totalSeconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      setText(`${minutes}:${pad(seconds)}`);
+    }
+
+    const kickoff = setTimeout(tick, 0);
+    const id = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(kickoff);
+      clearInterval(id);
+    };
+  }, [scheduledStart, locked]);
+
+  return text;
+}
+
 /**
  * The owner-facing keeper picker (GET/PUT /keepers/me), plus — only
  * for the commissioner — an inline rules editor (PUT /keepers/rules,
@@ -32,6 +81,13 @@ export function KeepersPanel({ isCommissioner }: { isCommissioner: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
+  // Called unconditionally (before the loading/error early returns
+  // below) per the Rules of Hooks — data?.rules is undefined during
+  // those states, so this just returns null then, same as always.
+  const autoLockCountdown = useAutoLockCountdown(
+    data?.rules.draft_scheduled_start ?? null,
+    Boolean(data?.rules.locked_at)
+  );
 
   useEffect(() => {
     getMyKeepers()
@@ -105,6 +161,15 @@ export function KeepersPanel({ isCommissioner }: { isCommissioner: boolean }) {
                 {rules.locked_at
                   ? "Keepers are locked in for this season — selections are read-only."
                   : "The keeper deadline has passed — selections are read-only."}
+              </p>
+            )}
+
+            {rules.is_open && autoLockCountdown && (
+              <p
+                role="alert"
+                className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-2 text-xs font-medium text-red-600 tabular-nums dark:text-red-400"
+              >
+                Draft starts soon — keepers lock automatically in {autoLockCountdown}.
               </p>
             )}
 

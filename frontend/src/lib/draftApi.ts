@@ -59,8 +59,17 @@ export type DraftPoolPlayer = {
   full_name: string;
   position: string;
   pro_team: string | null;
+  // Sleeper's own overall-rank proxy — this app's real ADP-equivalent
+  // (see backend/app/domain/draft_autopick.py's own docstring); shown
+  // in the pool as "ADP" since that's the closest real signal there is.
   search_rank: number | null;
   injury_status: string | null;
+  // Both null until the bulk ESPN sync (player_projections.py) resolves
+  // this player's espn_player_id crosswalk — a real gap for some
+  // players, shown as "—" rather than blocking the row.
+  projected_points: number | null;
+  // From team_bye_weeks, not ESPN — see get_draft_pool's own comment.
+  bye_week: number | null;
   drafted: boolean;
 };
 

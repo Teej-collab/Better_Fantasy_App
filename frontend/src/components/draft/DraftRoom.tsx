@@ -13,8 +13,10 @@ import {
 import { listSeasons, listTeams, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
 import { DraftBoard } from "@/components/draft/DraftBoard";
+import { PositionBadge } from "@/components/draft/PositionBadge";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { useDraftQueue } from "@/lib/useDraftQueue";
+import { positionColor } from "@/lib/positionColors";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
@@ -330,19 +332,24 @@ export function DraftRoom({
                 aria-label="Search players"
                 className="min-w-40 flex-1 rounded-full border border-black/10 bg-transparent px-3 py-1 text-sm dark:border-white/10"
               />
-              {POSITIONS.map((pos) => (
-                <button
-                  key={pos}
-                  onClick={() => setPositionFilter(positionFilter === pos ? null : pos)}
-                  className={`rounded-full border px-2 py-1 text-xs font-medium ${
-                    positionFilter === pos
-                      ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                      : "border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
-                  }`}
-                >
-                  {pos}
-                </button>
-              ))}
+              {POSITIONS.map((pos) => {
+                const color = positionColor(pos);
+                const active = positionFilter === pos;
+                return (
+                  <button
+                    key={pos}
+                    onClick={() => setPositionFilter(active ? null : pos)}
+                    className="rounded-full border px-2 py-1 text-xs font-medium"
+                    style={
+                      active
+                        ? { borderColor: color, backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`, color }
+                        : { borderColor: "var(--wl-border)", color: "var(--wl-text-secondary)" }
+                    }
+                  >
+                    {pos}
+                  </button>
+                );
+              })}
             </div>
             <ul className="max-h-[28rem] overflow-y-auto">
               {sortedPool.map((p) => {
@@ -363,9 +370,13 @@ export function DraftRoom({
                       >
                         {queued ? "★" : "☆"}
                       </button>
-                      <span className="w-7 shrink-0 text-right text-[10px] text-black/30 tabular-nums dark:text-white/30">
+                      <span
+                        title="ADP (Sleeper overall rank)"
+                        className="w-7 shrink-0 text-right text-[10px] text-black/30 tabular-nums dark:text-white/30"
+                      >
                         {p.search_rank ?? "—"}
                       </span>
+                      <PositionBadge position={p.position} />
                       <div className="flex min-w-0 flex-col">
                         <button
                           onClick={() => openPlayerCard(p.sleeper_player_id)}
@@ -373,8 +384,9 @@ export function DraftRoom({
                         >
                           {p.full_name}
                         </button>
-                        <span className="text-xs text-black/40 dark:text-white/40">
-                          {p.position} · {p.pro_team ?? "—"}
+                        <span className="truncate text-xs text-black/40 dark:text-white/40">
+                          {p.pro_team ?? "—"} · Proj {p.projected_points !== null ? p.projected_points.toFixed(1) : "—"} · Bye{" "}
+                          {p.bye_week ?? "—"}
                         </span>
                       </div>
                     </div>
@@ -404,7 +416,7 @@ export function DraftRoom({
                       <button onClick={() => openPlayerCard(p.sleeper_player_id)} className="truncate hover:underline">
                         {p.full_name}
                       </button>
-                      <span className="shrink-0 text-xs text-black/40 dark:text-white/40">{p.position}</span>
+                      <PositionBadge position={p.position} />
                     </span>
                     <span className="flex shrink-0 items-center gap-0.5">
                       {isMyTurn && (
@@ -450,8 +462,8 @@ export function DraftRoom({
                 My team ({myPicks.length})
               </h2>
               {myPicks.map((p) => (
-                <p key={p.pick_number} className="text-sm">
-                  {p.player_position} ·{" "}
+                <p key={p.pick_number} className="flex items-center gap-1.5 text-sm">
+                  <PositionBadge position={p.player_position} />
                   <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="hover:underline">
                     {p.player_name}
                   </button>

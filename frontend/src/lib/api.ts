@@ -1451,6 +1451,12 @@ export type KeeperRules = {
   keeper_deadline: string | null;
   locked_at: string | null;
   is_open: boolean;
+  // The league's real draft time (draft_config.scheduled_start, same
+  // value DraftCountdownCard.tsx counts down to) — null if no draft has
+  // been scheduled yet. Drives KeepersPanel.tsx's "locks automatically
+  // in..." countdown once within an hour of it (see the keeper
+  // auto-lock scheduler job, backend/app/scheduler.py).
+  draft_scheduled_start: string | null;
 };
 
 export type KeeperPoolPlayer = {
