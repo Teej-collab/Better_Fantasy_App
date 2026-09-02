@@ -343,6 +343,15 @@ export default async function HomePage() {
           </div>
         </div>
 
+        {/* Leads the whole page, above even Your Week, whenever it's
+            showing — real, time-sensitive content (a real draft date is
+            set and hasn't happened yet) that's also temporary by
+            nature: it disappears for good the moment the draft starts,
+            unlike every other card here. Earning the top slot while
+            it's relevant beats sitting below the fold underneath cards
+            that are still there every single week. */}
+        {cards.draftCountdown}
+
         {/* Fixed standard layout, same on every visit for every owner —
             no per-owner hide/reorder/resize (that was "Edit Home" mode,
             removed 2026-08-31). Desktop: Standings stacked over Your
@@ -353,10 +362,9 @@ export default async function HomePage() {
             column's two cards end up. Mobile: Your Week hero leads,
             then Standings, then Matchups, single column — the same
             three elements just reflow via the grid's mobile area map,
-            not a second copy of the JSX. Draft Countdown/Live Now
-            (Gamecast)/Rivalries/Awards/Discover (each only when
-            present) always follow underneath, full width, fixed order,
-            on both breakpoints. */}
+            not a second copy of the JSX. Live Now (Gamecast)/Rivalries/
+            Awards/Discover (each only when present) always follow
+            underneath, full width, fixed order, on both breakpoints. */}
         <div
           className="grid grid-cols-1 gap-4 [grid-template-areas:'hero'_'standings'_'matchups'] sm:grid-cols-2 sm:gap-6 sm:[grid-template-areas:'standings_matchups'_'hero_matchups']"
         >
@@ -365,7 +373,6 @@ export default async function HomePage() {
           {cards.matchups && <div style={{ gridArea: "matchups" }}>{cards.matchups}</div>}
         </div>
 
-        {cards.draftCountdown}
         {cards.gamecast}
         {cards.rivalries}
         {cards.awards}
