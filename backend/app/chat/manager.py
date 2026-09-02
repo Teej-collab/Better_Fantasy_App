@@ -22,21 +22,38 @@ class ChatConnectionManager:
 
     async def connect(self, owner_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
+        was_offline = owner_id not in self._connections
         self._connections.setdefault(owner_id, set()).add(websocket)
+        # Only fires on the real 0->1 transition — an owner opening a
+        # second tab/device while already connected elsewhere doesn't
+        # re-announce "online" (they already are, per every other
+        # client's own state).
+        if was_offline:
+            await self.broadcast_to_all(
+                {"type": "presence", "owner_id": owner_id, "online": True}, exclude_owner_id=owner_id
+            )
 
-    def disconnect(self, owner_id: int, websocket: WebSocket) -> None:
+    async def disconnect(self, owner_id: int, websocket: WebSocket) -> None:
         conns = self._connections.get(owner_id)
         if not conns:
             return
         conns.discard(websocket)
         if not conns:
             del self._connections[owner_id]
+            # The real 1->0 transition — this owner's last open
+            # socket (across every tab/device) just closed.
+            await self.broadcast_to_all(
+                {"type": "presence", "owner_id": owner_id, "online": False}, exclude_owner_id=owner_id
+            )
 
     def is_connected(self, owner_id: int) -> bool:
         """True if this owner has at least one open chat WebSocket right
         now — used to skip push notifications for people already
         watching chat live (app/routers/chat.py's message handler),
-        rather than double-notifying someone with the app open."""
+        rather than double-notifying someone with the app open. Also
+        the source of truth GET /chat/members reads for each member's
+        initial `online` snapshot (app/routers/chat.py's list_members),
+        which live `presence` broadcasts then update in place."""
         return bool(self._connections.get(owner_id))
 
     async def send_to_owner(self, owner_id: int, message: dict) -> None:
@@ -47,10 +64,27 @@ class ChatConnectionManager:
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self.disconnect(owner_id, ws)
+            await self.disconnect(owner_id, ws)
 
     async def broadcast_to_owners(self, owner_ids, message: dict) -> None:
         for owner_id in owner_ids:
+            await self.send_to_owner(owner_id, message)
+
+    async def broadcast_to_all(self, message: dict, exclude_owner_id: int | None = None) -> None:
+        """Every currently-connected owner, not just one conversation's
+        participants — presence is the one real use for this (everyone
+        in the league should see everyone else's dot update live), as
+        opposed to every other broadcast in this class, which stays
+        scoped to a conversation on purpose. exclude_owner_id skips
+        telling someone about their own connection transition — they
+        already know they just connected/disconnected, and (real bug,
+        caught by the existing WebSocket test suite) a client's very
+        first frame after connecting would otherwise be its own
+        "you're online" event, jumping the queue ahead of whatever
+        that client was actually about to do next."""
+        for owner_id in list(self._connections.keys()):
+            if owner_id == exclude_owner_id:
+                continue
             await self.send_to_owner(owner_id, message)
 
 

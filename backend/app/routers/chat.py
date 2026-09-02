@@ -20,14 +20,13 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
-from urllib.parse import urlparse
-
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.chat.manager import manager
-from app.config import CHAT_IMAGE_HOST, _require
+from app.config import _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
+from app.image_url import validate_blob_image_url
 from app.notifications import dispatcher, formatter
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
@@ -38,17 +37,6 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_LENGTH = 2000
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_REACTIONS = {"😂", "🔥", "💀", "👍", "❤️", "😭"}
-
-
-def _validate_image_url(value) -> str | None:
-    """Only ever persist a link to our own Blob store, over HTTPS —
-    never trust an arbitrary URL a client sends over the socket."""
-    if not isinstance(value, str) or not value:
-        return None
-    parsed = urlparse(value)
-    if parsed.scheme != "https" or parsed.hostname != CHAT_IMAGE_HOST:
-        return None
-    return value
 
 
 def _decode_session(token: str | None) -> dict | None:
@@ -111,7 +99,11 @@ async def list_members(request: Request, pool=Depends(get_pool)):
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         rows = await chat_queries.list_eligible_members(conn, active_season, payload["owner_id"])
-    return {"members": [dict(r) for r in rows]}
+    # online is the initial snapshot only (manager.is_connected, in-
+    # process presence state, not a DB column) — the frontend's
+    # PresenceHeartbeat applies live `presence` WebSocket events on top
+    # of this the moment anything changes, same manager.py both read.
+    return {"members": [{**dict(r), "online": manager.is_connected(r["owner_id"])} for r in rows]}
 
 
 @router.post("/conversations/{conversation_id}/read")
@@ -285,7 +277,7 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
 
             if event_type == "message":
                 body = str(data.get("body", "")).strip()
-                image_url = _validate_image_url(data.get("image_url"))
+                image_url = validate_blob_image_url(data.get("image_url"))
                 if (not body and not image_url) or len(body) > MAX_MESSAGE_LENGTH:
                     continue
                 reply_to_id = data.get("reply_to_id")
@@ -333,4 +325,4 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(owner_id, websocket)
+        await manager.disconnect(owner_id, websocket)

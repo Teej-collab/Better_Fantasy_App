@@ -1354,7 +1354,10 @@ export type ChatConversation = {
   last_message: { id: number; owner_name: string; body: string; created_at: string } | null;
 };
 
-export type ChatMember = { owner_id: number; display_name: string; team_name: string };
+// online is a snapshot at fetch time (backend's manager.is_connected) —
+// PresenceContext (components/PresenceProvider.tsx) applies live
+// `presence` WebSocket events on top of it while the app stays open.
+export type ChatMember = { owner_id: number; display_name: string; team_name: string; online: boolean };
 
 // Session-aware, same forwarded-cookie pattern as getMyWeek — returns
 // null rather than throwing for "not signed in", which the chat page

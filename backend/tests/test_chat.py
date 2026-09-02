@@ -229,6 +229,34 @@ async def test_list_members_excludes_self(pool, monkeypatch):
     assert "Chatter 13" not in names
 
 
+async def test_list_members_reports_real_presence(pool, monkeypatch):
+    """The `online` field is the real presence snapshot (manager.
+    is_connected), not a static/always-false placeholder — simulated by
+    monkeypatching is_connected the same way test_websocket_message_
+    does_not_push_to_a_currently_connected_recipient above does, rather
+    than opening a real WebSocket."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    from app.routers import chat as chat_router
+
+    a = await _seed_owner(pool, 40)
+    b = await _seed_owner(pool, 41)
+    c = await _seed_owner(pool, 42)
+    await _seed_team(pool, a, 40)
+    await _seed_team(pool, b, 41)
+    await _seed_team(pool, c, 42)
+
+    monkeypatch.setattr(chat_router.manager, "is_connected", lambda owner_id: owner_id == b)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(a))
+        resp = await client.get("/chat/members")
+
+    by_id = {m["owner_id"]: m["online"] for m in resp.json()["members"]}
+    assert by_id[b] is True
+    assert by_id[c] is False
+
+
 # ---- REST: read state, reactions, delete -----------------------------------
 
 
@@ -723,11 +751,69 @@ async def test_connection_manager_broadcasts_only_to_specified_owners():
     await manager.connect(2, ws_b)
     await manager.connect(3, ws_c)
 
+    # Each connect() above already fired its own `presence` broadcast to
+    # everyone connected at that moment (see test_connect_and_disconnect_
+    # broadcast_presence_to_everyone_connected below, which is what
+    # actually covers that behavior) — cleared here so this test can
+    # assert cleanly on just the explicit broadcast_to_owners call below,
+    # which is what it's actually about.
+    ws_a.received.clear()
+    ws_b.received.clear()
+    ws_c.received.clear()
+
     await manager.broadcast_to_owners([1, 2], {"type": "typing", "owner_id": 1})
 
     assert ws_a.received == [{"type": "typing", "owner_id": 1}]
     assert ws_b.received == [{"type": "typing", "owner_id": 1}]
     assert ws_c.received == []
+
+
+async def test_connection_manager_broadcasts_presence_on_connect_and_disconnect():
+    """A `presence` event fires to every OTHER connected owner (never
+    the subject themself — they already know their own state, and a
+    self-received event would otherwise jump the queue ahead of
+    whatever that client does next, a real bug this test setup caught)
+    only on the real 0->1 (came online) and 1->0 (went offline)
+    transitions — a second tab/device for an owner who's already
+    connected elsewhere doesn't re-announce them as newly online."""
+    from app.chat.manager import ChatConnectionManager
+
+    class FakeSocket:
+        def __init__(self):
+            self.received = []
+
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            self.received.append(message)
+
+    manager = ChatConnectionManager()
+    ws_a = FakeSocket()
+    await manager.connect(1, ws_a)
+    assert ws_a.received == []  # no one else connected yet, and never told about itself
+
+    ws_b = FakeSocket()
+    await manager.connect(2, ws_b)
+    assert ws_a.received == [{"type": "presence", "owner_id": 2, "online": True}]
+    assert ws_b.received == []  # owner 2 is never told about its own connection
+
+    # A second socket for owner 1 (another tab) — no new "online"
+    # broadcast, they were already online.
+    ws_a2 = FakeSocket()
+    await manager.connect(1, ws_a2)
+    assert ws_a2.received == []
+    assert ws_a.received == [{"type": "presence", "owner_id": 2, "online": True}]  # unchanged
+
+    # Closing just one of owner 1's two sockets — still online via the
+    # other one, no "offline" broadcast yet.
+    await manager.disconnect(1, ws_a2)
+    assert ws_a.received == [{"type": "presence", "owner_id": 2, "online": True}]  # unchanged
+    assert ws_b.received == []  # unchanged
+
+    # Closing owner 1's LAST socket — now they're really offline.
+    await manager.disconnect(1, ws_a)
+    assert ws_b.received == [{"type": "presence", "owner_id": 1, "online": False}]
 
 
 async def test_connection_manager_drops_dead_connections():

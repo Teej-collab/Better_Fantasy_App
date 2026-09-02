@@ -5,6 +5,7 @@ import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
 import { isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
+import { usePresence } from "@/components/PresenceProvider";
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
 
@@ -93,8 +94,18 @@ export function MessageThread({
   }
 
   const title = conversation.type === "league" ? "Weekend League" : conversation.other_owner_name ?? "Direct Message";
+  // -1 never matches a real owner_id — a harmless always-false fallback
+  // for the league conversation, where there's no single "other" person
+  // to show presence for. Hooks always run either way (rules of hooks).
+  const otherOnline = usePresence(conversation.other_owner_id ?? -1, false);
   const subtitle =
-    conversation.type === "league" ? `${conversation.member_count} managers` : connected ? "Connected" : "Reconnecting…";
+    conversation.type === "league"
+      ? `${conversation.member_count} managers`
+      : otherOnline
+        ? "Online now"
+        : connected
+          ? "Connected"
+          : "Reconnecting…";
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -103,7 +114,17 @@ export function MessageThread({
           ‹
         </button>
         <div className="flex min-w-0 flex-col">
-          <span className="truncate font-semibold">{title}</span>
+          <span className="flex items-center gap-1.5 truncate font-semibold">
+            {title}
+            {conversation.type === "direct" && otherOnline && (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+                role="img"
+                aria-label="Online now"
+                title="Online now"
+              />
+            )}
+          </span>
           <span className="truncate text-xs text-black/50 dark:text-white/50">{subtitle}</span>
         </div>
       </div>

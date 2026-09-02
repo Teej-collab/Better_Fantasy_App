@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ChatMember } from "@/lib/api";
+import { usePresence } from "@/components/PresenceProvider";
 
 export function NewMessageModal({
   members,
@@ -43,24 +44,43 @@ export function NewMessageModal({
 
         <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
           {filtered.map((m) => (
-            <li key={m.owner_id}>
-              <button
-                onClick={() => onSelect(m.owner_id)}
-                className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-black/5 dark:hover:bg-white/10"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs font-semibold dark:bg-white/10">
-                  {m.display_name.slice(0, 2).toUpperCase()}
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm font-medium">{m.display_name}</span>
-                  <span className="truncate text-xs text-black/50 dark:text-white/50">{m.team_name}</span>
-                </span>
-              </button>
-            </li>
+            <MemberRow key={m.owner_id} member={m} onSelect={onSelect} />
           ))}
           {filtered.length === 0 && <p className="px-2 py-4 text-center text-sm text-black/40 dark:text-white/40">No members found.</p>}
         </ul>
       </div>
     </div>
+  );
+}
+
+// Its own component, not inlined in the .map() above, since usePresence
+// is a hook — each row needs its own call, one per member, not one
+// shared call for the whole list.
+function MemberRow({ member, onSelect }: { member: ChatMember; onSelect: (ownerId: number) => void }) {
+  const online = usePresence(member.owner_id, member.online);
+
+  return (
+    <li>
+      <button
+        onClick={() => onSelect(member.owner_id)}
+        className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-black/5 dark:hover:bg-white/10"
+      >
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs font-semibold dark:bg-white/10">
+          {member.display_name.slice(0, 2).toUpperCase()}
+          {online && (
+            <span
+              className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--background)]"
+              role="img"
+              aria-label="Online now"
+              title="Online now"
+            />
+          )}
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium">{member.display_name}</span>
+          <span className="truncate text-xs text-black/50 dark:text-white/50">{member.team_name}</span>
+        </span>
+      </button>
+    </li>
   );
 }
