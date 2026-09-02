@@ -100,7 +100,7 @@ export function DraftCountdownCard({ teamName, scheduledStart }: { teamName: str
               ["Seconds", remaining ? pad(remaining.seconds) : "--"],
             ] as const
           ).map(([label, value]) => (
-            <div key={label} className="flex flex-col items-center gap-0.5 rounded-lg bg-white/5 py-3">
+            <div key={label} className="countdown-tile flex flex-col items-center gap-0.5 rounded-lg bg-white/5 py-3">
               <span className="text-2xl font-bold tabular-nums">{value}</span>
               <span className="text-xs text-white/50">{label}</span>
             </div>

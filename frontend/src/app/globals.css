@@ -865,6 +865,79 @@ body {
   animation: hero-live-pulse 2.4s ease-in-out infinite;
 }
 
+/* Draft Countdown / Chug Countdown tiles (DraftCountdownCard.tsx,
+   ChugCountdownCard.tsx) — a crisp neon border that constantly travels
+   around each "Days"/"Hours"/etc. tile, in the owner's own chosen
+   accent color. A prior attempt at this idea (c30dcfe) applied it
+   site-wide to every .neon-panel via a blurred ::before ring sitting
+   OUTSIDE the panel's edge (inset: -3px, filter: blur(6px)) — that
+   combination of blur + being outside the edge is what made it read as
+   a diffuse "radar sweep" blob instead of a border, and it was
+   reverted (5cd215b). This version has no blur at all: the conic-
+   gradient is masked down to just the thin ring itself (the standard
+   @property + mask-composite: exclude technique — two identical mask
+   layers, one clipped to content-box, XORed against the full box,
+   leaving only the padding-width ring visible), so what moves is a
+   crisp highlight traveling along the edge, not a glow behind it.
+   Scoped narrowly to these two countdown cards' tiles, not reapplied
+   globally — these are exactly the kind of live/time-sensitive
+   elements .neon-panel's own comment above says glow is "spent
+   deliberately" on. */
+@property --countdown-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.countdown-tile {
+  position: relative;
+  isolation: isolate;
+  /* A constant (non-rotating) ambient glow, same accent color, layered
+     under the rotating ring below — reads as "neon" even at the moment
+     the traveling highlight is on the opposite edge, and scales with
+     Settings > Appearance > Neon Intensity like every other decorative
+     glow in the app. */
+  box-shadow: 0 0 calc(10px * var(--wl-glow-scale, 1))
+    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 30%, transparent);
+}
+.countdown-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--countdown-border-angle),
+    transparent 0deg,
+    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 95%, transparent) 90deg,
+    transparent 180deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: calc(0.85 * var(--wl-glow-scale, 1));
+  animation: countdown-border-rotate 3.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes countdown-border-rotate {
+  to {
+    --countdown-border-angle: 360deg;
+  }
+}
+.motion-reduced .countdown-tile::before {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .countdown-tile::before {
+    animation: none;
+  }
+}
+
 /* Score numbers settle into place on load instead of just appearing
    static — a small, one-shot "pop" rather than a continuous motion. */
 @keyframes score-pop {
