@@ -48,6 +48,17 @@ async def get_user_by_email(conn, email: str):
     return await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
 
 
+async def get_token_version(conn, user_id: int) -> int:
+    """The value every freshly-issued session token for this user must
+    carry (create_session_token's token_version param) so it validates
+    against users.token_version at request time (app/main.py's
+    session_revocation middleware). Always fetched fresh at token-issue
+    time, never assumed, since a user who logged out (bumping this) and
+    is now logging back in needs their new token to carry the NEW
+    value, not whatever it used to be."""
+    return await conn.fetchval("SELECT token_version FROM users WHERE id = $1", user_id)
+
+
 async def get_or_create_user_for_google(conn, google_user_id: str, email: str | None, display_name: str) -> int:
     """Google sign-in — unlike get_or_create_user_for_owner (Discord),
     there's no pre-existing owners.* membership data to verify against,

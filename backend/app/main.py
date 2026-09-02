@@ -3,7 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.auth.config import SessionConfig
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
 from app.routers import (
     admin,
@@ -50,6 +53,66 @@ app.add_middleware(
     # GET /auth/me and POST /auth/logout.
     allow_credentials=True,
 )
+
+@app.middleware("http")
+async def session_revocation(request, call_next):
+    """The one real check that makes logout (and account deletion)
+    actually invalidate a session server-side, instead of only ever
+    clearing the cookie client-side (2026-09 audit finding — a copied
+    token used to stay valid for its whole 30-day life no matter what).
+    A single middleware choke point rather than touching the ~19
+    individual places across the app that decode a session token for
+    their own payload (app/auth/session.py's own docstring) — those all
+    keep working exactly as before; this only adds a new, earlier
+    rejection path for the one new case ("valid signature, but this
+    user's tokens were revoked after this one was issued").
+
+    Deliberately does NOT reject an invalid/expired/missing token
+    itself — that's still each route's own job, unchanged, so existing
+    401 messaging never diverges. This only intervenes when the
+    signature verifies fine but users.token_version has since moved on,
+    or the user no longer exists at all (DELETE /auth/me). A token with
+    no token_version claim (issued by the pre-2026-09 code, before this
+    column/claim existed at all) is treated as version 1 — matching
+    the new column's own DEFAULT — so every session already sitting in
+    a visitor's browser at deploy time keeps working, not a forced
+    league-wide logout.
+    """
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token:
+        config = SessionConfig()
+        payload = decode_session_token(config.session_secret, token)
+        if payload is not None and "purpose" not in payload:  # real session, not a short-lived ticket
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                current_version = await conn.fetchval(
+                    "SELECT token_version FROM users WHERE id = $1", payload["user_id"]
+                )
+            if current_version is None or current_version != payload.get("token_version", 1):
+                return JSONResponse(status_code=401, content={"detail": "Session expired or invalid"})
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Baseline security headers (2026-09 audit finding: none were set
+    anywhere, frontend or backend). Deliberately NOT including a
+    Content-Security-Policy here — this app pulls from several real
+    external origins (ESPN/Sleeper image CDNs, Google Fonts, the
+    frontend's own WebSocket connection back to this API) and a wrong
+    CSP fails closed, silently breaking those rather than erroring
+    loudly; that needs its own careful pass enumerating every real
+    origin first; rushing it days before a live draft isn't worth the
+    risk of breaking something. These four are safe, narrow, and can't
+    break any existing functionality."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
 
 app.include_router(admin.router)
 app.include_router(admin_lineup.router)

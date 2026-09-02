@@ -1,7 +1,13 @@
 """
-Session as a signed JWT in an httpOnly cookie — no server-side session
-table. Reasonable for a ~12-person private league; revisit if real
-session revocation (e.g. "log out everywhere") is ever needed.
+Session as a signed JWT in an httpOnly cookie. Still no full server-
+side session table, but real revocation exists as of 2026-09 via a
+single `token_version` claim (see create_session_token) checked against
+users.token_version by app/main.py's session_revocation middleware —
+bumping that column invalidates every token issued before the bump at
+once. decode_session_token itself deliberately stays pure crypto (no
+DB): the middleware is the one place that adds the DB-backed check, so
+none of the ~19 call sites that decode a token for their own payload
+needed to change.
 """
 import time
 
@@ -25,19 +31,28 @@ TICKET_MAX_AGE_SECONDS = 60
 
 def create_session_token(
     secret: str, *, user_id: int, owner_id: int | None = None, discord_user_id: int | None = None,
-    is_commissioner: bool = False,
+    is_commissioner: bool = False, token_version: int = 1,
 ) -> str:
     """owner_id/discord_user_id/is_commissioner are all optional now
     (Phase 5 of the multi-league migration — see TODO.md's PHASE 9
     entry): they describe this account's link to League #1 specifically
     (owners.discord_user_id, the commissioner flag), which a self-serve
     email/password signup has none of yet — user_id is the only thing
-    every real Weekend account actually has."""
+    every real Weekend account actually has.
+
+    token_version defaults to 1 to match users.token_version's own
+    column default (migration c4613ad6cdee) — every real caller in this
+    app's login/signup/OAuth routes fetches the account's actual current
+    value and passes it explicitly; the default here only matters for
+    tests and any other caller that hasn't been taught about revocation
+    at all, which should still produce a token that validates against a
+    freshly-created account's default column value."""
     payload = {
         "user_id": user_id,
         "owner_id": owner_id,
         "discord_user_id": discord_user_id,
         "is_commissioner": is_commissioner,
+        "token_version": token_version,
         "exp": int(time.time()) + SESSION_MAX_AGE_SECONDS,
     }
     return jwt.encode(payload, secret, algorithm="HS256")

@@ -80,11 +80,17 @@ async def list_players(request: Request, position: str | None = None, search: st
 
 @router.get("/{sleeper_player_id}/card")
 async def player_card(sleeper_player_id: str, request: Request):
-    _require_session(request)
-
+    # league_id scoped to the caller's own real active league
+    # (require_active_league_id) — this used to silently fall back to
+    # DEFAULT_LEAGUE_ID, so any signed-in account (regardless of which
+    # league, or none) got League 1's own computed weekly fantasy score
+    # for this player (2026-09 audit; same bug class list_players above
+    # was already fixed for, just missed on this sibling route).
+    payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        card = await get_player_card(conn, sleeper_player_id)
+        league_id = await require_active_league_id(conn, payload)
+        card = await get_player_card(conn, sleeper_player_id, league_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Player not found")
     return card

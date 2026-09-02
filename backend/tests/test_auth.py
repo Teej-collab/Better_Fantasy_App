@@ -332,6 +332,88 @@ async def test_logout_clears_session_cookie(monkeypatch):
     assert resp.cookies.get("session") is None
 
 
+async def test_logout_revokes_the_session_token_immediately(pool, monkeypatch):
+    """Security regression test (2026-09 audit fix) — logout used to
+    only ever clear the cookie client-side; a copied/leaked token
+    stayed fully valid regardless of logout, for its whole 30-day life.
+    Now logout bumps users.token_version, so ANY copy of that same
+    token — not just the one cookie this response happens to clear —
+    is rejected by app/main.py's session_revocation middleware from
+    that moment on."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    email = "test-revoke-logout@example.com"
+
+    async with _client() as signup_client:
+        signup_resp = await signup_client.post(
+            "/auth/signup",
+            json={"email": email, "password": "correct-horse", "display_name": "Revoke Test"},
+        )
+        token = signup_resp.json()["token"]
+
+    # A second, independent client carrying a COPY of the same raw
+    # token — simulating it having leaked/been captured separately from
+    # whatever cookie the real account holder's own browser still has.
+    async with _client() as copy_client:
+        copy_client.cookies.update({"session": token})
+        me_resp = await copy_client.get("/auth/me")
+        assert me_resp.status_code == 200
+
+        async with _client() as real_client:
+            real_client.cookies.update({"session": token})
+            logout_resp = await real_client.post("/auth/logout")
+            assert logout_resp.status_code == 204
+
+        # The copy's own cookie never changed, but the token itself is
+        # now dead everywhere.
+        me_resp_after = await copy_client.get("/auth/me")
+        assert me_resp_after.status_code == 401
+
+
+async def test_a_fresh_login_after_logout_still_works(pool, monkeypatch):
+    """The other half of the same fix — logout bumping token_version
+    must not lock the real account holder out of their OWN next login;
+    a freshly-issued token has to carry the NEW token_version, not
+    whatever value create_session_token defaults to."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    email = "test-revoke-relogin@example.com"
+
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": email, "password": "correct-horse", "display_name": "Relogin Test"},
+        )
+        await client.post("/auth/logout")
+
+        login_resp = await client.post("/auth/login", json={"email": email, "password": "correct-horse"})
+        assert login_resp.status_code == 200
+
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 200
+
+
+async def test_deleted_account_token_is_rejected(pool, monkeypatch):
+    """DELETE /auth/me removes the users row entirely — the same
+    session_revocation middleware that enforces logout also has to
+    treat "no such user anymore" as revoked, not let a stale token for
+    a deleted account keep passing signature/expiry checks forever."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    email = "test-revoke-delete@example.com"
+
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": email, "password": "correct-horse", "display_name": "Delete Test"},
+        )
+        me_before = await client.get("/auth/me")
+        assert me_before.status_code == 200
+
+        delete_resp = await client.delete("/auth/me")
+        assert delete_resp.status_code == 204
+
+        me_after = await client.get("/auth/me")
+        assert me_after.status_code == 401
+
+
 async def test_ticket_requires_session(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
     async with _client() as client:
@@ -489,6 +571,27 @@ async def test_signup_rejects_short_password(monkeypatch):
     assert resp.status_code == 400
 
 
+async def test_signup_rate_limited_after_repeated_attempts(monkeypatch):
+    """Security regression test (2026-09 audit fix) — POST /auth/signup
+    had no rate limiting at all, letting an attacker spam signup
+    attempts for the same email with no limit. Now capped at 5 attempts
+    per 15-minute window per targeted email (app/auth/rate_limit.py);
+    the 6th attempt in that window gets a 429 regardless of what else
+    is wrong with the request."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    email = "test-ratelimit-signup@example.com"
+    async with _client() as client:
+        for _ in range(5):
+            resp = await client.post(
+                "/auth/signup", json={"email": email, "password": "short", "display_name": "X"}
+            )
+            assert resp.status_code == 400  # short password — still counts as a rate-limited attempt
+        resp = await client.post(
+            "/auth/signup", json={"email": email, "password": "short", "display_name": "X"}
+        )
+    assert resp.status_code == 429
+
+
 async def test_login_succeeds_with_correct_password(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
     async with _client() as client:
@@ -518,6 +621,23 @@ async def test_login_rejects_wrong_password(pool, monkeypatch):
         )
         resp = await client.post("/auth/login", json={"email": "test-login-wrong@example.com", "password": "nope"})
     assert resp.status_code == 401
+
+
+async def test_login_rate_limited_after_repeated_attempts(monkeypatch):
+    """Security regression test (2026-09 audit fix) — POST /auth/login
+    had no rate limiting at all, letting an attacker brute-force a
+    password with unlimited attempts. Now capped at 5 attempts per
+    15-minute window per targeted email; the 6th attempt in that window
+    gets a 429 regardless of whether any individual password was
+    right or wrong."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    email = "test-ratelimit-login@example.com"
+    async with _client() as client:
+        for _ in range(5):
+            resp = await client.post("/auth/login", json={"email": email, "password": "whatever-wrong"})
+            assert resp.status_code == 401
+        resp = await client.post("/auth/login", json={"email": email, "password": "whatever-wrong"})
+    assert resp.status_code == 429
 
 
 async def test_login_rejects_unknown_email(monkeypatch):

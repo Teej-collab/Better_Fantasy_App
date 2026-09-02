@@ -15,6 +15,7 @@ import pytest_asyncio
 os.environ.setdefault("GAMECAST_PROVIDER", "mock")
 
 from app import db as db_module
+from app.auth.rate_limit import reset_for_tests as _reset_rate_limits_for_tests
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
 
@@ -61,6 +62,19 @@ async def _close_pool_stashed_by_a_websocket_test():
 @pytest_asyncio.fixture
 async def pool(_close_pool_stashed_by_a_websocket_test):
     return await get_pool()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """httpx's ASGITransport (every test client in this suite) reports
+    the same fixed fake IP for every request, so without this, every
+    /auth/signup or /auth/login call across the WHOLE suite would share
+    one in-memory IP rate-limit bucket (app/auth/rate_limit.py) — a
+    real full-suite run does far more than that limit's threshold
+    across all test files combined, tripping 429s on later tests that
+    have nothing to do with rate limiting. See reset_for_tests()'s own
+    docstring."""
+    _reset_rate_limits_for_tests()
 
 
 @pytest_asyncio.fixture(autouse=True)

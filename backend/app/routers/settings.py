@@ -25,9 +25,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_active_league_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
+from app.image_url import validate_blob_image_url
 from app.queries import owner_preferences as preferences_queries
 from app.queries import settings as settings_queries
 
@@ -84,7 +86,16 @@ async def get_my_settings(request: Request, pool=Depends(get_pool)):
         if payload["owner_id"] is None:
             row = await settings_queries.get_account_settings(conn, payload["user_id"])
         else:
-            row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
+            # league_id scoped to the caller's own real active league
+            # (require_active_league_id) — this used to silently fall
+            # back to DEFAULT_LEAGUE_ID, so an owner who belongs to more
+            # than one league always saw/edited their League 1 team name
+            # here regardless of which league was actually active
+            # (2026-09 audit; not a cross-*user* leak — owner_id is
+            # always session-bound — but a real cross-*league*
+            # correctness bug for any owner in 2+ leagues).
+            league_id = await require_active_league_id(conn, payload)
+            row = await settings_queries.get_settings(conn, payload["owner_id"], active_season, league_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Owner not found")
     return dict(row)
@@ -163,7 +174,8 @@ async def update_team_name(body: TeamNameBody, request: Request, pool=Depends(ge
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        updated = await settings_queries.set_team_name(conn, payload["owner_id"], active_season, name)
+        league_id = await require_active_league_id(conn, payload)
+        updated = await settings_queries.set_team_name(conn, payload["owner_id"], active_season, name, league_id)
     if not updated:
         raise HTTPException(status_code=404, detail=f"No team found for the {active_season} season")
     return {"team_name": name}
@@ -174,8 +186,9 @@ async def reset_team_name(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        await settings_queries.reset_team_name(conn, payload["owner_id"], active_season)
-        team_name = await settings_queries.get_team_name(conn, payload["owner_id"], active_season)
+        league_id = await require_active_league_id(conn, payload)
+        await settings_queries.reset_team_name(conn, payload["owner_id"], active_season, league_id)
+        team_name = await settings_queries.get_team_name(conn, payload["owner_id"], active_season, league_id)
     return {"team_name": team_name}
 
 

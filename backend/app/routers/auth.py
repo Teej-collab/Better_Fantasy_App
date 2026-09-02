@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.auth import discord_oauth, google_oauth
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
+from app.auth.rate_limit import check_login_or_signup_rate_limit
 from app.auth.session import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
@@ -68,6 +69,7 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         user_id = await auth_queries.get_or_create_user_for_owner(
             conn, owner["owner_id"], discord_user_id, discord_username
         )
+        token_version = await auth_queries.get_token_version(conn, user_id)
 
     is_commissioner = (
         config.commissioner_discord_id is not None
@@ -79,6 +81,7 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         owner_id=owner["owner_id"],
         discord_user_id=discord_user_id,
         is_commissioner=is_commissioner,
+        token_version=token_version,
     )
 
     # The session cookie set below (on THIS domain, railway.app) is what
@@ -143,8 +146,9 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     pool = await get_pool()
     async with pool.acquire() as conn:
         user_id = await auth_queries.get_or_create_user_for_google(conn, google_user_id, email, display_name)
+        token_version = await auth_queries.get_token_version(conn, user_id)
 
-    token = create_session_token(config.session_secret, user_id=user_id)
+    token = create_session_token(config.session_secret, user_id=user_id, token_version=token_version)
 
     # Same cross-domain token handoff as the Discord callback above —
     # see that handler's own comment for why this can't just be a
@@ -235,7 +239,7 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/signup")
-async def signup(body: SignupRequest, response: Response):
+async def signup(body: SignupRequest, request: Request, response: Response):
     """A second, independent way to get a real Weekend account,
     alongside Discord — not a replacement for it (Phase 5 of the
     multi-league migration, see TODO.md's PHASE 9 entry). Deliberately
@@ -246,6 +250,7 @@ async def signup(body: SignupRequest, response: Response):
     Discord user who signs up again with their real-life email gets a
     genuinely separate account (no automatic linking/merging yet)."""
     email = _normalize_email(body.email)
+    check_login_or_signup_rate_limit("signup", email, request.client.host if request.client else None)
     if "@" not in email or len(email) < 5:
         raise HTTPException(status_code=400, detail="Enter a valid email address")
     if len(body.password) < MIN_PASSWORD_LENGTH:
@@ -263,7 +268,10 @@ async def signup(body: SignupRequest, response: Response):
         user_id = await auth_queries.create_user_with_password(conn, email, hash_password(body.password), display_name)
 
     # No owner_id/discord_user_id/is_commissioner — this account has no
-    # League #1 link at all (see docstring above).
+    # League #1 link at all (see docstring above). token_version isn't
+    # passed either — a brand-new row always starts at users.token_
+    # version's own column default (1), the exact same value
+    # create_session_token defaults to, so there's nothing to fetch.
     token = create_session_token(config.session_secret, user_id=user_id)
     # Same-domain cookie for direct browser->backend calls (chat WS,
     # chug upload) — the frontend still needs its own first-party copy,
@@ -278,8 +286,9 @@ async def signup(body: SignupRequest, response: Response):
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response):
+async def login(body: LoginRequest, request: Request, response: Response):
     email = _normalize_email(body.email)
+    check_login_or_signup_rate_limit("login", email, request.client.host if request.client else None)
     config = SessionConfig()
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -296,7 +305,7 @@ async def login(body: LoginRequest, response: Response):
     if not verify_password(body.password, user["password_hash"]):
         raise invalid
 
-    token = create_session_token(config.session_secret, user_id=user["id"])
+    token = create_session_token(config.session_secret, user_id=user["id"], token_version=user["token_version"])
     response.set_cookie(
         SESSION_COOKIE_NAME, token,
         httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
@@ -349,12 +358,31 @@ async def issue_ticket(request: Request, purpose: str):
 
 
 @router.post("/logout")
-async def logout():
+async def logout(request: Request):
     # Must match the attributes the cookie was actually set with — a
     # Secure/SameSite=None cookie won't reliably clear from a delete call
     # that doesn't also specify them (the browser won't let a "weaker"
     # Set-Cookie silently override a Secure one).
     config = SessionConfig()
+
+    # Bumps users.token_version so this — and every other — copy of this
+    # user's session token stops passing app/main.py's session_revocation
+    # middleware from this moment on, not just the one cookie this
+    # response happens to clear (2026-09 audit fix: logout used to only
+    # ever do the delete_cookie call below, so a captured/leaked token
+    # stayed fully valid regardless of logout). Silently a no-op if
+    # there's no valid session to log out of — logout should never fail
+    # just because the cookie was already gone or malformed.
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token:
+        payload = decode_session_token(config.session_secret, token)
+        if payload is not None:
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE users SET token_version = token_version + 1 WHERE id = $1", payload["user_id"]
+                )
+
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE_NAME, samesite=config.cookie_samesite, secure=config.cookie_secure)
     return response

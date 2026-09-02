@@ -31,8 +31,27 @@ function devOrigins(): string[] {
   return origins;
 }
 
+// Baseline security headers (2026-09 audit finding: none were set
+// anywhere, frontend or backend — see backend/app/main.py's own
+// security_headers middleware for the API-side counterpart). No
+// Content-Security-Policy here either, same reasoning as that
+// middleware's comment: this app pulls from several real external
+// origins (ESPN/Sleeper image CDNs, Google Fonts, a WebSocket back to
+// the Railway API) and a wrong CSP fails closed rather than erroring
+// loudly — needs its own careful pass, not rushed days before a live
+// draft. These are safe and can't break any existing functionality.
+const securityHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+];
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: devOrigins(),
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   images: {
     remotePatterns: [
       // Player headshots and NFL team logos (PlayerHeadshot.tsx) — ESPN's

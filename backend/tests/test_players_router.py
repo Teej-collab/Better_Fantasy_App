@@ -84,6 +84,27 @@ async def test_player_card_returns_real_shaped_data(pool, monkeypatch):
     assert body["headshot_url"] == "https://sleepercdn.com/content/nfl/players/test-playersrouter-1.jpg"
 
 
+async def test_player_card_rejects_signed_in_account_with_no_league(pool, monkeypatch):
+    """Security regression test (fixed 2026-09) — league_id used to be
+    hardcoded to DEFAULT_LEAGUE_ID regardless of the caller's own real
+    league membership, so any signed-in account (any league, or none)
+    could pull League 1's own computed weekly fantasy score for a
+    player via this route (same bug class as list_players' own
+    DEFAULT_LEAGUE_ID finding above, just missed on this sibling route).
+    Now scoped via require_active_league_id, a signed-in account with no
+    active league at all gets a clean 409, not League 1's data."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    await _seed_player(pool, "test-playersrouter-cardnoleague")
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-playersrouter-cardnonmember@example.com", "Test PlayersRouter Card NonMember",
+        )
+    token = create_session_token(_SESSION_SECRET, user_id=user_id)
+    response = await _get("/players/test-playersrouter-cardnoleague/card", cookies={"session": token})
+    assert response.status_code == 409
+
+
 async def test_list_players_requires_session():
     response = await _get("/players")
     assert response.status_code == 401
