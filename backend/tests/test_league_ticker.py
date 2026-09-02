@@ -1,12 +1,35 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _get(path):
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """/seasons/{s}/weeks/{w}/ticker now requires real active-league
+    membership (require_league_access, 2026-09 audit)."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-ticker-router-{suffix}@example.com", f"Test Ticker {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
+
+
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -31,8 +54,16 @@ async def _seed_two_teams(pool, season=TEST_SEASON):
     return team_a, team_b
 
 
-async def test_ticker_picks_highest_scoring_starter_and_excludes_bench(pool):
+async def test_ticker_endpoint_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/ticker")
+    assert resp.status_code == 401
+
+
+async def test_ticker_picks_highest_scoring_starter_and_excludes_bench(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "highest-scoring")
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -59,7 +90,7 @@ async def test_ticker_picks_highest_scoring_starter_and_excludes_bench(pool):
             TEST_SEASON, team_a,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/ticker")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/ticker", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["season"] == TEST_SEASON
@@ -75,20 +106,24 @@ async def test_ticker_picks_highest_scoring_starter_and_excludes_bench(pool):
     assert item["away_top_scorer"] is None  # no roster rows seeded for team_b
 
 
-async def test_ticker_empty_week_returns_empty_list(pool):
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/16/ticker")
+async def test_ticker_empty_week_returns_empty_list(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "empty-week")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/16/ticker", cookies)
     assert resp.status_code == 200
     assert resp.json()["items"] == []
 
 
-async def test_ticker_excludes_unplayed_matchup_with_zero_zero_score(pool):
+async def test_ticker_excludes_unplayed_matchup_with_zero_zero_score(pool, monkeypatch):
     # ESPN represents an unplayed matchup as a real 0/0, not NULL — same
     # "not actually played yet" convention get_standings/get_head_to_head
     # already exclude on. The ticker is specifically "this week's live
     # scores," so an unplayed matchup should never appear in it at all
     # (2026-09-02 audit: it used to, reading as fake "0.0 vs 0.0" under a
     # "Live" label).
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "excludes-unplayed")
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -98,16 +133,18 @@ async def test_ticker_excludes_unplayed_matchup_with_zero_zero_score(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/ticker")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/ticker", cookies)
     assert resp.status_code == 200
     assert resp.json()["items"] == []
 
 
-async def test_ticker_mixed_week_shows_only_started_matchups(pool):
+async def test_ticker_mixed_week_shows_only_started_matchups(pool, monkeypatch):
     # A real Sunday: some games have kicked off, some haven't yet. Only
     # the started matchup's own segment should appear — the unplayed one
     # is silently omitted rather than showing as 0.0-0.0.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "mixed-week")
     async with pool.acquire() as conn:
         owner_c = await conn.fetchval(
             "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
@@ -140,7 +177,7 @@ async def test_ticker_mixed_week_shows_only_started_matchups(pool):
             TEST_SEASON, team_c, team_d,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/7/ticker")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/7/ticker", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["items"]) == 1

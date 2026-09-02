@@ -15,6 +15,7 @@ state rather than silently disappearing, unlike records.py's categories
 (which do hide when empty) — the point here is showing the complete
 set of awards the league runs, not just the ones already won.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.queries import awards as queries
 
 _TOP_N = 3
@@ -44,13 +45,13 @@ def _winner(row):
     return {"owner_id": row["owner_id"], "owner_name": row["owner_name"], "wins": row["wins"]}
 
 
-async def get_award_leaderboards(conn):
-    win_rows = await queries.award_win_counts(conn)
+async def get_award_leaderboards(conn, league_id: int = DEFAULT_LEAGUE_ID):
+    win_rows = await queries.award_win_counts(conn, league_id)
     by_type: dict[str, list] = {}
     for r in win_rows:
         by_type.setdefault(r["award_type"], []).append(r)
 
-    champion_rows = await queries.championship_win_counts(conn)
+    champion_rows = await queries.championship_win_counts(conn, league_id)
 
     categories = [
         {

@@ -1,8 +1,29 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from app.queries import power_rankings as pr_queries
 from tests.conftest import TEST_SEASON
+
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
+
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """The power-rankings endpoints now require real active-league
+    membership (require_league_access, 2026-09 audit)."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-powerrank-router-{suffix}@example.com", f"Test PowerRank {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
 
 # The all-time leaderboards (get_all_time_indices) have no season
 # filter — same "computed live, races real history" situation
@@ -14,9 +35,11 @@ from tests.conftest import TEST_SEASON
 # computed value shows up correctly, never by asserting it's #1.
 
 
-async def _get(path):
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -47,11 +70,21 @@ async def _seed_stat(pool, season, week, team_id, *, power_rank=None, luck_score
         )
 
 
-async def test_week_power_rankings_orders_by_rank_and_computes_movement(pool):
+async def test_power_rankings_endpoints_require_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    assert (await _get(f"/seasons/{TEST_SEASON}/weeks/1/power-rankings")).status_code == 401
+    assert (await _get(f"/seasons/{TEST_SEASON}/power-rankings/latest-week")).status_code == 401
+    assert (await _get(f"/seasons/{TEST_SEASON}/power-rankings/trend")).status_code == 401
+    assert (await _get("/power-rankings/all-time")).status_code == 401
+
+
+async def test_week_power_rankings_orders_by_rank_and_computes_movement(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 1)
     owner_b = await _seed_owner(pool, 2)
     team_a = await _seed_team(pool, owner_a, 1)
     team_b = await _seed_team(pool, owner_b, 2)
+    cookies = await _member_cookies(pool, "orders-movement")
 
     await _seed_stat(pool, TEST_SEASON, 1, team_a, power_rank=2, luck_score=5.0, sos=0.4)
     await _seed_stat(pool, TEST_SEASON, 1, team_b, power_rank=1, luck_score=-5.0, sos=0.6)
@@ -59,7 +92,7 @@ async def test_week_power_rankings_orders_by_rank_and_computes_movement(pool):
     await _seed_stat(pool, TEST_SEASON, 2, team_a, power_rank=1, luck_score=10.0, sos=0.5)
     await _seed_stat(pool, TEST_SEASON, 2, team_b, power_rank=2, luck_score=-10.0, sos=0.5)
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/2/power-rankings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/2/power-rankings", cookies)
     assert resp.status_code == 200
     rankings = resp.json()["rankings"]
 
@@ -73,32 +106,38 @@ async def test_week_power_rankings_orders_by_rank_and_computes_movement(pool):
     assert first["sos"] == 0.5
 
 
-async def test_week_power_rankings_movement_null_with_no_prior_week(pool):
+async def test_week_power_rankings_movement_null_with_no_prior_week(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 3)
     team_a = await _seed_team(pool, owner_a, 3)
+    cookies = await _member_cookies(pool, "movement-null")
     await _seed_stat(pool, TEST_SEASON, 1, team_a, power_rank=1, luck_score=0.0, sos=0.5)
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/1/power-rankings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/1/power-rankings", cookies)
     assert resp.json()["rankings"][0]["movement"] is None
 
 
-async def test_latest_ranked_week_returns_max_week_with_data(pool):
+async def test_latest_ranked_week_returns_max_week_with_data(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 4)
     team_a = await _seed_team(pool, owner_a, 4)
+    cookies = await _member_cookies(pool, "latest-week")
     await _seed_stat(pool, TEST_SEASON, 1, team_a, power_rank=1)
     await _seed_stat(pool, TEST_SEASON, 3, team_a, power_rank=1)
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/power-rankings/latest-week")
+    resp = await _get(f"/seasons/{TEST_SEASON}/power-rankings/latest-week", cookies)
     assert resp.json()["week"] == 3
 
 
-async def test_season_trend_groups_weeks_by_team(pool):
+async def test_season_trend_groups_weeks_by_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 5)
     team_a = await _seed_team(pool, owner_a, 5)
+    cookies = await _member_cookies(pool, "trend-groups")
     await _seed_stat(pool, TEST_SEASON, 1, team_a, power_rank=3)
     await _seed_stat(pool, TEST_SEASON, 2, team_a, power_rank=1)
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/power-rankings/trend")
+    resp = await _get(f"/seasons/{TEST_SEASON}/power-rankings/trend", cookies)
     teams = {t["team_id"]: t for t in resp.json()["teams"]}
     assert teams[team_a]["weeks"] == [{"week": 1, "power_rank": 3}, {"week": 2, "power_rank": 1}]
 
@@ -139,8 +178,10 @@ async def test_most_weeks_at_number_one_counts_only_rank_one(pool):
     assert row["value"] == 3
 
 
-async def test_all_time_indices_endpoint_returns_all_six_categories(pool):
-    resp = await _get("/power-rankings/all-time")
+async def test_all_time_indices_endpoint_returns_all_six_categories(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "all-six-categories")
+    resp = await _get("/power-rankings/all-time", cookies)
     assert resp.status_code == 200
     keys = {c["key"] for c in resp.json()["categories"]}
     assert keys == {

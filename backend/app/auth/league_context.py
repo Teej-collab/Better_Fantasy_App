@@ -6,9 +6,12 @@ can never see another league's data by editing a request. The only
 way `users.active_league_id` changes is POST /leagues/{id}/select
 (app/routers/leagues.py), which verifies real membership first.
 """
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException, Request
 
+from app.auth.config import SessionConfig
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import DEFAULT_LEAGUE_ID
+from app.db import get_pool
 from app.queries import leagues as league_queries
 
 
@@ -58,3 +61,37 @@ async def require_league_commissioner(conn, payload: dict) -> int:
     league_id = await require_active_league_id(conn, payload)
     await require_commissioner_of(conn, payload, league_id)
     return league_id
+
+
+def _decode_session_or_401(request: Request) -> dict:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    return payload
+
+
+async def require_league_access(request: Request, pool=Depends(get_pool)) -> int:
+    """FastAPI dependency for genuinely league-private read data —
+    standings, matchups, rosters, rivalries, awards, records, power
+    rankings, owner profiles, chug leaderboard. Requires a real signed-
+    in session AND real active-league membership (via
+    require_active_league_id), returning the resolved league_id.
+
+    2026-09 finding: app/routers/league.py, profile.py, and awards.py
+    had NO auth at all — any signed-in account (including one that had
+    never joined any league) could read another league's full
+    standings/rosters/rivalries, because "single private league, no
+    self-serve signup" was true when those routers were written and
+    silently stopped being true once self-serve email/Discord/Google
+    signup and multi-league support shipped. Deny-by-default is the
+    correct default for this class of data now; use
+    resolve_active_league_id's signed-out-friendly fallback only for
+    data that's genuinely meant to be public regardless of membership
+    (there is currently no such data in this app)."""
+    payload = _decode_session_or_401(request)
+    async with pool.acquire() as conn:
+        return await require_active_league_id(conn, payload)

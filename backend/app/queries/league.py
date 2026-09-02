@@ -95,7 +95,7 @@ async def list_all_owners(conn, league_id: int = DEFAULT_LEAGUE_ID):
 async def get_team(conn, team_id: int):
     return await conn.fetchrow(
         """
-        SELECT t.id AS team_id, t.season, t.espn_team_id, t.team_name,
+        SELECT t.id AS team_id, t.season, t.espn_team_id, t.team_name, t.league_id,
                o.owner_id, o.display_name AS owner_name
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id

@@ -1,12 +1,45 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _get(path):
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """Every endpoint in profile.py now requires real active-league
+    membership (require_league_access, 2026-09 audit) — this used to
+    be fully public, no auth at all."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-profile-router-{suffix}@example.com", f"Test Profile {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
+
+
+async def _non_member_cookies(pool, suffix: str) -> dict:
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-profile-router-nonmember-{suffix}@example.com", f"Test Profile NonMember {suffix}",
+        )
+    return _session_cookie(user_id)
+
+
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -23,9 +56,28 @@ async def _seed_owner_and_team(pool, suffix, display_name, team_name, season=TES
     return owner_id, team_id
 
 
-async def test_season_profile_splits_regular_and_playoff(pool):
+async def test_profile_endpoints_require_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    assert (await _get("/owners")).status_code == 401
+    assert (await _get(f"/owners/1/profile?season={TEST_SEASON}")).status_code == 401
+    assert (await _get("/owners/1/career")).status_code == 401
+    assert (await _get("/owners/1/badges")).status_code == 401
+
+
+async def test_profile_endpoints_reject_non_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _non_member_cookies(pool, "reject")
+    assert (await _get("/owners", cookies)).status_code == 409
+    assert (await _get(f"/owners/1/profile?season={TEST_SEASON}", cookies)).status_code == 409
+    assert (await _get("/owners/1/career", cookies)).status_code == 409
+    assert (await _get("/owners/1/badges", cookies)).status_code == 409
+
+
+async def test_season_profile_splits_regular_and_playoff(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, team_a = await _seed_owner_and_team(pool, 1, "Alice", "Team Alpha")
     _, team_b = await _seed_owner_and_team(pool, 2, "Bob", "Team Beta")
+    cookies = await _member_cookies(pool, "regular-playoff")
 
     async with pool.acquire() as conn:
         # regular season: 1 win
@@ -47,7 +99,7 @@ async def test_season_profile_splits_regular_and_playoff(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/owners/{owner_a}/profile?season={TEST_SEASON}")
+    resp = await _get(f"/owners/{owner_a}/profile?season={TEST_SEASON}", cookies)
     assert resp.status_code == 200
     body = resp.json()
 
@@ -59,14 +111,18 @@ async def test_season_profile_splits_regular_and_playoff(pool):
     assert body["worst_week"] == {"week": 2, "score": 90.0}
 
 
-async def test_season_profile_404_for_owner_with_no_team(pool):
-    resp = await _get(f"/owners/999999999/profile?season={TEST_SEASON}")
+async def test_season_profile_404_for_owner_with_no_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "404-no-team")
+    resp = await _get(f"/owners/999999999/profile?season={TEST_SEASON}", cookies)
     assert resp.status_code == 404
 
 
-async def test_season_profile_includes_season_awards(pool):
+async def test_season_profile_includes_season_awards(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, team_a = await _seed_owner_and_team(pool, 6, "Faye", "Faye's Team")
     _, team_b = await _seed_owner_and_team(pool, 7, "Gus", "Gus's Team")
+    cookies = await _member_cookies(pool, "season-awards")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -87,7 +143,7 @@ async def test_season_profile_includes_season_awards(pool):
             owner_a,
         )
 
-    resp = await _get(f"/owners/{owner_a}/profile?season={TEST_SEASON}")
+    resp = await _get(f"/owners/{owner_a}/profile?season={TEST_SEASON}", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["season_awards"] == [{"award_type": "Boom Week", "detail": "120.0 pts"}]
@@ -96,7 +152,9 @@ async def test_season_profile_includes_season_awards(pool):
         await conn.execute("DELETE FROM season_awards WHERE season = 1899 AND owner_id = $1", owner_a)
 
 
-async def test_career_profile_aggregates_across_seasons(pool):
+async def test_career_profile_aggregates_across_seasons(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "career-aggregate")
     # Fake years (not TEST_SEASON) since this test needs two distinct
     # seasons — see conftest.py's TEST_SEASON comment for why these can
     # never be real-looking years like 2023/2024.
@@ -131,7 +189,7 @@ async def test_career_profile_aggregates_across_seasons(pool):
         )
         cleanup_ids = [team_a_1901, team_a_1902, opp_team_1901, opp_team_1902]
 
-    resp = await _get(f"/owners/{owner_a}/career")
+    resp = await _get(f"/owners/{owner_a}/career", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["seasons"] == [1901, 1902]
@@ -147,8 +205,10 @@ async def test_career_profile_aggregates_across_seasons(pool):
         await conn.execute("DELETE FROM owners WHERE espn_member_id = 'test-profile-owner-opp'")
 
 
-async def test_owner_badges_groups_awards_by_type(pool):
+async def test_owner_badges_groups_awards_by_type(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, _ = await _seed_owner_and_team(pool, 4, "Dana", "Dana's Team")
+    cookies = await _member_cookies(pool, "badges")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -160,14 +220,16 @@ async def test_owner_badges_groups_awards_by_type(pool):
             TEST_SEASON, owner_a,
         )
 
-    resp = await _get(f"/owners/{owner_a}/badges")
+    resp = await _get(f"/owners/{owner_a}/badges", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["championship_years"] == [TEST_SEASON]
     assert body["award_summary"] == {"Clutch Performer": [TEST_SEASON]}
 
 
-async def test_list_all_owners_not_scoped_to_one_season(pool):
+async def test_list_all_owners_not_scoped_to_one_season(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "list-all-owners")
     # Explicit requirement: the owner-card grid includes everyone who's
     # ever been in the league, not just current-season teams — so an
     # owner whose only team was in an old season must still show up.
@@ -179,7 +241,7 @@ async def test_list_all_owners_not_scoped_to_one_season(pool):
         )
         cleanup_ids = [team_1901, team_1902]
 
-    resp = await _get("/owners")
+    resp = await _get("/owners", cookies)
     assert resp.status_code == 200
     owners_by_id = {o["owner_id"]: o for o in resp.json()["owners"]}
 

@@ -1,12 +1,44 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _get(path):
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """awards.py now requires real active-league membership
+    (require_league_access, 2026-09 audit) — used to be fully public."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-awards-router-{suffix}@example.com", f"Test Awards {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
+
+
+async def _non_member_cookies(pool, suffix: str) -> dict:
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-awards-router-nonmember-{suffix}@example.com", f"Test Awards NonMember {suffix}",
+        )
+    return _session_cookie(user_id)
+
+
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -23,8 +55,27 @@ async def _seed_owner_and_team(pool, suffix, display_name, team_name):
     return owner_id, team_id
 
 
-async def test_season_awards_endpoint(pool):
+async def test_awards_endpoints_require_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    assert (await _get(f"/seasons/{TEST_SEASON}/awards")).status_code == 401
+    assert (await _get(f"/seasons/{TEST_SEASON}/weeks/1/awards")).status_code == 401
+    assert (await _get("/awards/all-time")).status_code == 401
+    assert (await _get("/rivalries")).status_code == 401
+
+
+async def test_awards_endpoints_reject_non_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _non_member_cookies(pool, "reject")
+    assert (await _get(f"/seasons/{TEST_SEASON}/awards", cookies)).status_code == 409
+    assert (await _get(f"/seasons/{TEST_SEASON}/weeks/1/awards", cookies)).status_code == 409
+    assert (await _get("/awards/all-time", cookies)).status_code == 409
+    assert (await _get("/rivalries", cookies)).status_code == 409
+
+
+async def test_season_awards_endpoint(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, _ = await _seed_owner_and_team(pool, 1, "Eve", "Eve's Team")
+    cookies = await _member_cookies(pool, "season-endpoint")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -36,7 +87,7 @@ async def test_season_awards_endpoint(pool):
             TEST_SEASON, owner_a,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/awards")
+    resp = await _get(f"/seasons/{TEST_SEASON}/awards", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["champion"]["owner_name"] == "Eve"
@@ -44,9 +95,11 @@ async def test_season_awards_endpoint(pool):
     assert body["awards"][0]["owner_name"] == "Eve"
 
 
-async def test_weekly_awards_endpoint(pool):
+async def test_weekly_awards_endpoint(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, team_a = await _seed_owner_and_team(pool, 2, "Frank", "Frank's Team")
     owner_b, team_b = await _seed_owner_and_team(pool, 3, "Grace", "Grace's Team")
+    cookies = await _member_cookies(pool, "weekly-endpoint")
     week = 1
 
     async with pool.acquire() as conn:
@@ -80,7 +133,7 @@ async def test_weekly_awards_endpoint(pool):
             TEST_SEASON, week, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/{week}/awards")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/{week}/awards", cookies)
     assert resp.status_code == 200
     body = resp.json()
 
@@ -95,9 +148,11 @@ async def test_weekly_awards_endpoint(pool):
     assert body["game_of_the_week"] is None
 
 
-async def test_rivalries_endpoint(pool):
+async def test_rivalries_endpoint(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, _ = await _seed_owner_and_team(pool, 4, "Hank", "Hank's Team")
     owner_b, _ = await _seed_owner_and_team(pool, 5, "Ivy", "Ivy's Team")
+    cookies = await _member_cookies(pool, "rivalries-endpoint")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -105,7 +160,7 @@ async def test_rivalries_endpoint(pool):
             owner_a, owner_b,
         )
 
-    resp = await _get("/rivalries")
+    resp = await _get("/rivalries", cookies)
     assert resp.status_code == 200
     names = [r["name"] for r in resp.json()["rivalries"]]
     assert "Test Rivalry" in names

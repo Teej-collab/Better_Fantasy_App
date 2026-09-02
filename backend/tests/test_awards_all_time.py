@@ -1,7 +1,28 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
+
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
+
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """/awards/all-time now requires real active-league membership
+    (require_league_access, 2026-09 audit) — used to be fully public."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-alltime-award-router-{suffix}@example.com", f"Test AllTime {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
 
 # Like test_records.py, GET /awards/all-time has no season filter at all —
 # it spans the league's whole real history, not just TEST_SEASON. Unlike
@@ -20,9 +41,11 @@ from tests.conftest import TEST_SEASON
 _EXTRA_SEASONS = range(1901, 1910)  # 9 more seasons, alongside TEST_SEASON (1900) = 10 total
 
 
-async def _get(path):
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -34,8 +57,16 @@ async def _seed_owner(pool, suffix):
         )
 
 
-async def test_all_time_awards_include_every_award_type_even_with_no_wins(pool):
+async def test_all_time_awards_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     resp = await _get("/awards/all-time")
+    assert resp.status_code == 401
+
+
+async def test_all_time_awards_include_every_award_type_even_with_no_wins(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "every-type")
+    resp = await _get("/awards/all-time", cookies)
     assert resp.status_code == 200
     categories = resp.json()["categories"]
     keys = {c["key"] for c in categories}
@@ -55,8 +86,10 @@ async def test_all_time_awards_include_every_award_type_even_with_no_wins(pool):
         assert isinstance(c["winners"], list)
 
 
-async def test_all_time_awards_ranks_the_owner_with_the_most_wins_first(pool):
+async def test_all_time_awards_ranks_the_owner_with_the_most_wins_first(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 1)
+    cookies = await _member_cookies(pool, "ranks-first")
     try:
         async with pool.acquire() as conn:
             for season in [TEST_SEASON, *_EXTRA_SEASONS]:
@@ -70,7 +103,7 @@ async def test_all_time_awards_ranks_the_owner_with_the_most_wins_first(pool):
                     season, owner_id, "Test Champs",
                 )
 
-        resp = await _get("/awards/all-time")
+        resp = await _get("/awards/all-time", cookies)
         categories = {c["key"]: c for c in resp.json()["categories"]}
 
         clutch_winners = categories["Clutch Performer"]["winners"]

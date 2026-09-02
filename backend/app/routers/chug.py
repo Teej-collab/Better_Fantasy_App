@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from app.auth.config import SessionConfig
 from app.auth.league_context import (
     require_active_league_id,
+    require_league_access,
     require_league_commissioner,
-    resolve_active_league_id,
 )
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.config import _require
@@ -49,11 +49,18 @@ async def chug_seasons(pool=Depends(get_pool)):
 
 
 @router.get("/leaderboard")
-async def chug_leaderboard(request: Request, season: int | None = None, pool=Depends(get_pool)):
+async def chug_leaderboard(
+    season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Who owes/has paid real chug fines — genuinely private, socially
+    and financially sensitive per-league data. Used to fall back to
+    League 1's real leaderboard for a signed-out visitor or any signed-
+    in-but-not-a-member account via resolve_active_league_id's public
+    fallback (2026-09 audit, same root cause as league.py's — see that
+    router's module docstring); now requires real membership like
+    everything else league-private."""
     active_season = int(_require("ACTIVE_SEASON"))
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     async with pool.acquire() as conn:
-        league_id = await resolve_active_league_id(conn, payload)
         leaderboard = await build_chug_leaderboard(conn, active_season, season, league_id)
     return {"season": season, "leaderboard": leaderboard}
 

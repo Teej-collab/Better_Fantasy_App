@@ -1,12 +1,52 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _get(path):
+
+def _session_cookie(user_id: int) -> dict:
+    token = create_session_token(_SESSION_SECRET, user_id=user_id)
+    return {"session": token}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """A real, isolated test user made a League #1 member — every
+    endpoint in league.py now requires real active-league membership
+    (require_league_access, 2026-09 audit), so exercising any success
+    path needs a real member, not an unauthenticated call the way these
+    tests used to work before that fix."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-league-router-{suffix}@example.com", f"Test League {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
+
+
+async def _non_member_cookies(pool, suffix: str) -> dict:
+    """A real, isolated test user who belongs to NO league at all —
+    the actual attacker scenario from the 2026-09 audit (a "Test"
+    account could see League #1's full standings/rosters without ever
+    joining)."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-league-router-nonmember-{suffix}@example.com", f"Test NonMember {suffix}",
+        )
+    return _session_cookie(user_id)
+
+
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -31,21 +71,77 @@ async def _seed_two_teams(pool):
     return team_a, team_b
 
 
-async def test_seasons_and_teams(pool):
+async def test_seasons_and_teams(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "seasons-teams")
 
     resp = await _get("/seasons")
     assert resp.status_code == 200
     assert TEST_SEASON in resp.json()["seasons"]
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/teams")
+    resp = await _get(f"/seasons/{TEST_SEASON}/teams", cookies)
     assert resp.status_code == 200
     names = {t["team_name"] for t in resp.json()["teams"]}
     assert names == {"Team Alpha", "Team Beta"}
 
 
-async def test_standings_computed_from_matchups(pool):
+async def test_league_endpoints_require_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    for path in (
+        f"/seasons/{TEST_SEASON}/teams",
+        f"/seasons/{TEST_SEASON}/standings",
+        f"/seasons/{TEST_SEASON}/weeks/1/matchups",
+        "/records",
+        "/rivalries",
+        "/teams/1",
+        "/teams/1/roster?week=1",
+        "/matchups/1",
+    ):
+        resp = await _get(path)
+        assert resp.status_code == 401, f"{path} should require a session"
+
+
+async def test_league_endpoints_reject_non_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _non_member_cookies(pool, "reject")
+    for path in (
+        f"/seasons/{TEST_SEASON}/teams",
+        f"/seasons/{TEST_SEASON}/standings",
+        f"/seasons/{TEST_SEASON}/weeks/1/matchups",
+        "/records",
+        "/rivalries",
+    ):
+        resp = await _get(path, cookies)
+        # require_active_league_id 409s a signed-in account with no
+        # active league at all — never 200, never real League 1 data.
+        assert resp.status_code == 409, f"{path} should reject a non-member"
+
+
+async def test_team_and_roster_404_for_non_member_even_with_valid_ids(pool, monkeypatch):
+    """The exact IDOR shape the audit asked for: a real team_id/matchup_id
+    that exists, requested by someone who isn't a League #1 member at
+    all (has no active league, so this can't even resolve to "a
+    different league" — the simplest, strictest denial)."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    team_a, _ = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        matchup_id = await conn.fetchval(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 1, $2, $2, 1.0, 1.0, FALSE) RETURNING id",
+            TEST_SEASON, team_a,
+        )
+    cookies = await _non_member_cookies(pool, "team-roster")
+
+    assert (await _get(f"/teams/{team_a}", cookies)).status_code == 409
+    assert (await _get(f"/teams/{team_a}/roster?week=1", cookies)).status_code == 409
+    assert (await _get(f"/matchups/{matchup_id}", cookies)).status_code == 409
+
+
+async def test_standings_computed_from_matchups(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "standings-computed")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -56,7 +152,7 @@ async def test_standings_computed_from_matchups(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     assert resp.status_code == 200
     standings = {row["team_id"]: row for row in resp.json()["standings"]}
 
@@ -69,19 +165,23 @@ async def test_standings_computed_from_matchups(pool):
     assert float(standings[team_b]["points_for"]) == 100.0
 
 
-async def test_standings_playoff_team_count_is_none_with_no_prior_playoff_data(pool):
+async def test_standings_playoff_team_count_is_none_with_no_prior_playoff_data(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "playoff-none")
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     assert resp.status_code == 200
     assert resp.json()["playoff_team_count"] is None
 
 
-async def test_standings_playoff_team_count_from_most_recent_prior_season(pool):
+async def test_standings_playoff_team_count_from_most_recent_prior_season(pool, monkeypatch):
     """A brand-new season's standings page has no playoff bracket of
     its own yet — the "playoff line" it shows has to come from the
     real, most recently completed prior season's own bracket
     (matchups.is_playoff), not a guess."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "playoff-prior")
     prior_season = TEST_SEASON - 1
     async with pool.acquire() as conn:
         owners = []
@@ -110,16 +210,18 @@ async def test_standings_playoff_team_count_from_most_recent_prior_season(pool):
             prior_season, teams[2], teams[3],
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     assert resp.status_code == 200
     assert resp.json()["playoff_team_count"] == 4
 
 
-async def test_standings_ordered_by_final_rank_when_present(pool):
+async def test_standings_ordered_by_final_rank_when_present(pool, monkeypatch):
     # Real-world case this guards against: 2024's actual champion was
     # seeded 4th by regular-season record. final_standings (ESPN's own
     # computed final rank) must win over win/loss ordering.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "final-rank")
 
     async with pool.acquire() as conn:
         # Team A has the worse record...
@@ -140,15 +242,17 @@ async def test_standings_ordered_by_final_rank_when_present(pool):
             TEST_SEASON, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     body = resp.json()["standings"]
     assert [row["team_id"] for row in body] == [team_a, team_b]
     assert body[0]["final_rank"] == 1
     assert body[0]["wins"] == 0  # confirms it's really final_rank driving order, not win/loss
 
 
-async def test_standings_falls_back_to_record_when_no_final_rank(pool):
+async def test_standings_falls_back_to_record_when_no_final_rank(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "fallback-record")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -159,16 +263,18 @@ async def test_standings_falls_back_to_record_when_no_final_rank(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     body = resp.json()["standings"]
     assert body[0]["team_id"] == team_a
     assert body[0]["final_rank"] is None
 
 
-async def test_standings_excludes_unplayed_zero_zero_games(pool):
+async def test_standings_excludes_unplayed_zero_zero_games(pool, monkeypatch):
     # ESPN returns 0/0 (not NULL) for matchups that haven't been played
     # yet — a 0-0 "tie" should not be counted.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "excludes-zero")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -186,7 +292,7 @@ async def test_standings_excludes_unplayed_zero_zero_games(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/standings")
+    resp = await _get(f"/seasons/{TEST_SEASON}/standings", cookies)
     standings = {row["team_id"]: row for row in resp.json()["standings"]}
 
     assert standings[team_a]["wins"] == 1
@@ -197,8 +303,10 @@ async def test_standings_excludes_unplayed_zero_zero_games(pool):
     assert standings[team_b]["ties"] == 0
 
 
-async def test_roster_ordered_like_espn_lineup(pool):
+async def test_roster_ordered_like_espn_lineup(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, _ = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "roster-order")
 
     async with pool.acquire() as conn:
         # Insert deliberately out of order to prove sorting, not insert order.
@@ -223,15 +331,17 @@ async def test_roster_ordered_like_espn_lineup(pool):
                 TEST_SEASON, team_a, name, slot,
             )
 
-    resp = await _get(f"/teams/{team_a}/roster?week=1")
+    resp = await _get(f"/teams/{team_a}/roster?week=1", cookies)
     slots_in_order = [p["lineup_slot"] for p in resp.json()["roster"]]
     assert slots_in_order == [
         "QB", "RB", "RB", "WR", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR",
     ]
 
 
-async def test_matchup_detail_includes_both_rosters(pool):
+async def test_matchup_detail_includes_both_rosters(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "matchup-rosters")
 
     async with pool.acquire() as conn:
         matchup_id = await conn.fetchval(
@@ -257,7 +367,7 @@ async def test_matchup_detail_includes_both_rosters(pool):
             TEST_SEASON, team_b,
         )
 
-    resp = await _get(f"/matchups/{matchup_id}")
+    resp = await _get(f"/matchups/{matchup_id}", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["home"]["team_name"] == "Team Alpha"
@@ -266,8 +376,10 @@ async def test_matchup_detail_includes_both_rosters(pool):
     assert [p["player_name"] for p in body["away"]["roster"]] == ["Backup Guy"]
 
 
-async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
+async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "matchup-espn-id")
 
     async with pool.acquire() as conn:
         matchup_id = await conn.fetchval(
@@ -297,7 +409,7 @@ async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
             TEST_SEASON, team_b,
         )
 
-    resp = await _get(f"/matchups/{matchup_id}")
+    resp = await _get(f"/matchups/{matchup_id}", cookies)
     body = resp.json()
     assert body["home"]["roster"][0]["player_id"] == 4567
     assert body["home"]["roster"][0]["pro_team"] == "KC"
@@ -305,8 +417,10 @@ async def test_matchup_detail_roster_includes_espn_player_id_and_pro_team(pool):
     assert body["away"]["roster"][0]["pro_team"] is None
 
 
-async def test_matchup_detail_includes_win_probability_boom_bust_and_scoped_bench_crime(pool):
+async def test_matchup_detail_includes_win_probability_boom_bust_and_scoped_bench_crime(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "matchup-winprob")
 
     async with pool.acquire() as conn:
         # A third, unrelated team in the same week — its own bench
@@ -358,7 +472,7 @@ async def test_matchup_detail_includes_win_probability_boom_bust_and_scoped_benc
             TEST_SEASON, team_c,
         )
 
-    resp = await _get(f"/matchups/{matchup_id}")
+    resp = await _get(f"/matchups/{matchup_id}", cookies)
     assert resp.status_code == 200
     body = resp.json()
 
@@ -379,13 +493,17 @@ async def test_matchup_detail_includes_win_probability_boom_bust_and_scoped_benc
     assert body["away"]["bench_crime"] is None
 
 
-async def test_matchup_detail_404_for_unknown_id(pool):
-    resp = await _get("/matchups/999999999")
+async def test_matchup_detail_404_for_unknown_id(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "matchup-404")
+    resp = await _get("/matchups/999999999", cookies)
     assert resp.status_code == 404
 
 
-async def test_team_roster_endpoint(pool):
+async def test_team_roster_endpoint(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     team_a, _ = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "team-roster-endpoint")
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -398,7 +516,7 @@ async def test_team_roster_endpoint(pool):
             TEST_SEASON, team_a,
         )
 
-    resp = await _get(f"/teams/{team_a}/roster?week=3")
+    resp = await _get(f"/teams/{team_a}/roster?week=3", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["team"]["team_name"] == "Team Alpha"
@@ -408,6 +526,8 @@ async def test_team_roster_endpoint(pool):
     assert body["roster"][0]["pro_team"] == "KC"
 
 
-async def test_team_detail_404_for_unknown_id(pool):
-    resp = await _get("/teams/999999999")
+async def test_team_detail_404_for_unknown_id(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "team-404")
+    resp = await _get("/teams/999999999", cookies)
     assert resp.status_code == 404

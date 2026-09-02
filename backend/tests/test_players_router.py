@@ -89,6 +89,23 @@ async def test_list_players_requires_session():
     assert response.status_code == 401
 
 
+async def test_list_players_rejects_signed_in_account_with_no_league(pool, monkeypatch):
+    """is_rostered used to be hardcoded to DEFAULT_LEAGUE_ID regardless
+    of the caller's own real league membership — a smaller-severity
+    sibling of league.py's finding (2026-09 audit). Now scoped via
+    require_active_league_id, a signed-in account with no active league
+    at all gets a clean 409, not League 1's rostered/available state."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-playersrouter-nonmember@example.com", "Test PlayersRouter NonMember",
+        )
+    token = create_session_token(_SESSION_SECRET, user_id=user_id)
+    response = await _get("/players", cookies={"session": token})
+    assert response.status_code == 409
+
+
 async def test_list_players_includes_rostered_players_unlike_free_agents(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))

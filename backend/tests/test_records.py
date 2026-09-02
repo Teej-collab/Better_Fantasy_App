@@ -1,7 +1,28 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
+
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
+
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """/records now requires real active-league membership
+    (require_league_access, 2026-09 audit) — used to be fully public."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-records-router-{suffix}@example.com", f"Test Records {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
 
 # Every test here deliberately stays on TEST_SEASON only — see
 # conftest.py's TEST_SEASON comment: cleanup only ever scopes by
@@ -21,9 +42,11 @@ from tests.conftest import TEST_SEASON
 # score reaching into the thousands isn't a real risk to plan around.
 
 
-async def _get(path):
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -54,17 +77,36 @@ async def _seed_matchup(pool, season, week, home_id, away_id, home_score, away_s
         )
 
 
-async def test_highest_and_lowest_week_exclude_unplayed_zero_zero(pool):
+async def test_records_endpoint_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    resp = await _get("/records")
+    assert resp.status_code == 401
+
+
+async def test_records_endpoint_rejects_non_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-records-router-nonmember@example.com", "Test Records NonMember",
+        )
+    resp = await _get("/records", _session_cookie(user_id))
+    assert resp.status_code == 409
+
+
+async def test_highest_and_lowest_week_exclude_unplayed_zero_zero(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 1)
     owner_b = await _seed_owner(pool, 2)
     team_a = await _seed_team(pool, owner_a, 1)
     team_b = await _seed_team(pool, owner_b, 2)
+    cookies = await _member_cookies(pool, "highest-lowest")
 
     await _seed_matchup(pool, TEST_SEASON, 1, team_a, team_b, 9500.4, 55.2)
     await _seed_matchup(pool, TEST_SEASON, 2, team_a, team_b, 12.1, 60.0)
     await _seed_matchup(pool, TEST_SEASON, 3, team_a, team_b, 0, 0)  # unplayed — must be excluded from both ends
 
-    resp = await _get("/records")
+    resp = await _get("/records", cookies)
     assert resp.status_code == 200
     categories = {c["key"]: c for c in resp.json()["categories"]}
 
@@ -80,15 +122,17 @@ async def test_highest_and_lowest_week_exclude_unplayed_zero_zero(pool):
     assert all(e["value"] != 0 for e in lowest)
 
 
-async def test_biggest_blowout_orients_to_winner_and_loser(pool):
+async def test_biggest_blowout_orients_to_winner_and_loser(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 3)
     owner_b = await _seed_owner(pool, 4)
     team_a = await _seed_team(pool, owner_a, 3)
     team_b = await _seed_team(pool, owner_b, 4)
+    cookies = await _member_cookies(pool, "biggest-blowout")
 
     await _seed_matchup(pool, TEST_SEASON, 5, team_a, team_b, 9150.0, 40.0)
 
-    resp = await _get("/records")
+    resp = await _get("/records", cookies)
     entry = resp.json()["categories"][2]["entries"][0]
     assert entry["team_name"] == "Team 3"
     assert entry["owner_name"] == "Owner 3"
@@ -98,11 +142,13 @@ async def test_biggest_blowout_orients_to_winner_and_loser(pool):
     assert entry["opponent_score"] == 40.0
 
 
-async def test_playoff_matchups_excluded_from_every_category(pool):
+async def test_playoff_matchups_excluded_from_every_category(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 7)
     owner_b = await _seed_owner(pool, 8)
     team_a = await _seed_team(pool, owner_a, 7)
     team_b = await _seed_team(pool, owner_b, 8)
+    cookies = await _member_cookies(pool, "playoff-excluded")
 
     # /records has no season filter at all — "all-time" spans the league's
     # real history too (see the module docstring above), so an assertion
@@ -117,7 +163,7 @@ async def test_playoff_matchups_excluded_from_every_category(pool):
     await _seed_matchup(pool, TEST_SEASON, 1, team_a, team_b, 9000.0, 10.0)
     await _seed_matchup(pool, TEST_SEASON, 16, team_a, team_b, 9999.0, 1.0, is_playoff=True)
 
-    resp = await _get("/records")
+    resp = await _get("/records", cookies)
     categories = {c["key"]: c for c in resp.json()["categories"]}
 
     highest = categories["highest_week"]["entries"]
@@ -133,17 +179,19 @@ async def test_playoff_matchups_excluded_from_every_category(pool):
     assert season_total["value"] == 9000.0  # not 18999.0 — the playoff week's score never counts
 
 
-async def test_season_total_sums_both_home_and_away_appearances(pool):
+async def test_season_total_sums_both_home_and_away_appearances(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a = await _seed_owner(pool, 5)
     owner_b = await _seed_owner(pool, 6)
     team_a = await _seed_team(pool, owner_a, 5)
     team_b = await _seed_team(pool, owner_b, 6)
+    cookies = await _member_cookies(pool, "season-total")
 
     # team_a is home in week 1, away in week 2 — both must count toward its season total.
     await _seed_matchup(pool, TEST_SEASON, 1, team_a, team_b, 9100.0, 90.0)
     await _seed_matchup(pool, TEST_SEASON, 2, team_b, team_a, 80.0, 120.0)
 
-    resp = await _get("/records")
+    resp = await _get("/records", cookies)
     season_total = resp.json()["categories"][3]["entries"][0]
     assert season_total["team_name"] == "Team 5"
     assert season_total["value"] == 9220.0  # 9100 + 120, home and away both counted

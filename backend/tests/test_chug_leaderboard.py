@@ -1,14 +1,36 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.main import app
+from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
 
 PAST_SEASON = TEST_SEASON - 1
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 
 def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """GET /chug/leaderboard now requires real active-league membership
+    (require_league_access, 2026-09 audit) — it used to fall back to
+    League 1's real leaderboard for a signed-out or non-member visitor
+    via resolve_active_league_id's public-preview fallback."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-chugboard-router-{suffix}@example.com", f"Test ChugBoard {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
 
 
 async def _seed_owner(pool, suffix, discord_user_id):
@@ -101,7 +123,9 @@ async def test_all_time_view_sums_across_seasons(pool):
 
 async def test_leaderboard_endpoint_returns_seasons_and_rows(pool, monkeypatch):
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 5, 555)
+    cookies = await _member_cookies(pool, "returns-seasons-rows")
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 4)",
@@ -110,6 +134,7 @@ async def test_leaderboard_endpoint_returns_seasons_and_rows(pool, monkeypatch):
 
     async with _client() as client:
         seasons_resp = await client.get("/chug/seasons")
+        client.cookies.update(cookies)
         board_resp = await client.get(f"/chug/leaderboard?season={TEST_SEASON}")
 
     async with pool.acquire() as conn:
@@ -122,3 +147,23 @@ async def test_leaderboard_endpoint_returns_seasons_and_rows(pool, monkeypatch):
     body = board_resp.json()
     assert body["season"] == TEST_SEASON
     assert any(row["owner_id"] == owner_id and row["owed"] == 4 for row in body["leaderboard"])
+
+
+async def test_leaderboard_endpoint_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with _client() as client:
+        resp = await client.get(f"/chug/leaderboard?season={TEST_SEASON}")
+    assert resp.status_code == 401
+
+
+async def test_leaderboard_endpoint_rejects_non_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-chugboard-router-nonmember@example.com", "Test ChugBoard NonMember",
+        )
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id))
+        resp = await client.get(f"/chug/leaderboard?season={TEST_SEASON}")
+    assert resp.status_code == 409

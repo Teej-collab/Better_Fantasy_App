@@ -1,14 +1,37 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.streaks import compute_streak, get_team_streaks
 from app.main import app
+from app.queries import leagues as league_queries
 from app.queries.league import get_head_to_head, get_rivalry_for_owners
 from tests.conftest import TEST_SEASON
 
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
-async def _get(path):
+
+def _session_cookie(user_id: int) -> dict:
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    """/seasons/{s}/weeks/{w}/matchup-context now requires real
+    active-league membership (require_league_access, 2026-09 audit)."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-mc-router-{suffix}@example.com", f"Test MatchupContext {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return _session_cookie(user_id)
+
+
+async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
         return await client.get(path)
 
 
@@ -136,8 +159,16 @@ async def test_get_rivalry_for_owners_none_when_not_curated(pool):
     assert found is None
 
 
-async def test_matchup_context_endpoint_shape_without_rivalry(pool):
+async def test_matchup_context_endpoint_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/matchup-context")
+    assert resp.status_code == 401
+
+
+async def test_matchup_context_endpoint_shape_without_rivalry(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "shape-no-rivalry")
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -163,7 +194,7 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool):
             TEST_SEASON, team_a,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/matchup-context")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/matchup-context", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["season"] == TEST_SEASON
@@ -186,8 +217,10 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool):
     assert m["home"]["roster"][1]["player_id"] is None  # not stored for this row — no error, just absent
 
 
-async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool):
+async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "flags-rivalry")
     async with pool.acquire() as conn:
         # owner_a is rivalry's "a" side with 5 wins; team_a (owner_a) is HOME here.
         await conn.execute(
@@ -205,7 +238,7 @@ async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/matchup-context")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/matchup-context", cookies)
     m = resp.json()["matchups"][0]
     assert m["is_rivalry"] is True
     assert m["rivalry"]["name"] == "The Rumble"
@@ -213,8 +246,10 @@ async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(
     assert m["rivalry"]["all_time_wins_away"] == 3
 
 
-async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool):
+async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)
+    cookies = await _member_cookies(pool, "recent-meetings")
     async with pool.acquire() as conn:
         # Week 1: team_a (home) wins.
         await conn.execute(
@@ -233,7 +268,7 @@ async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool):
             TEST_SEASON, team_a, team_b,
         )
 
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/7/matchup-context")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/7/matchup-context", cookies)
     m = resp.json()["matchups"][0]
     meetings = m["head_to_head"]["recent_meetings"]
     assert [g["week"] for g in meetings] == [1, 7]
@@ -244,7 +279,9 @@ async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool):
     assert meetings[1]["home_score"] == 80.0 and meetings[1]["away_score"] == 100.0
 
 
-async def test_matchup_context_empty_week_returns_empty_list(pool):
-    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/16/matchup-context")
+async def test_matchup_context_empty_week_returns_empty_list(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "empty-week")
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/16/matchup-context", cookies)
     assert resp.status_code == 200
     assert resp.json()["matchups"] == []
