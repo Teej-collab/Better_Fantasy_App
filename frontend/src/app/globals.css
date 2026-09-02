@@ -185,16 +185,75 @@ body {
    still sets --panel-glow inline via lib/sectionColors.ts's
    panelGlowStyle() from the earlier versions; that custom property is
    simply unread by this rule now, left in place rather than ripped out
-   of ~18 call sites for a value with nowhere left to matter. Color and
-   glow aren't gone from the app — they're just spent deliberately now,
-   on the nav bar's current tab, the homepage's "Your Week" hero
-   (.hero-live-glow when a game's actually live), and live-state pills
-   — not on every static box a visitor scrolls past. --wl-glow-scale
-   (Settings > Appearance > Neon Intensity) no longer has a panel border
-   to scale; it still scales .home-ambient's wash further down. */
+   of ~18 call sites for a value with nowhere left to matter.
+
+   2026-09 update: the flat card stays flat at rest, but now carries the
+   same moving neon border every countdown tile already has (see
+   .countdown-tile below) — a crisp masked conic-gradient ring, not the
+   blurred glow-outside-the-edge version that made an earlier attempt
+   at exactly this (c30dcfe) read as a diffuse "radar sweep" and get
+   reverted a day later (5cd215b). Explicitly requested by the owner
+   after seeing the countdown-tile version working. Uses the single
+   shared --user-accent (not per-section --panel-glow) to match the
+   2026-08-31 SECTION_COLORS collapse — this app already decided once
+   that many differently-colored panels read as "too much," so the
+   ring stays one color everywhere, just like every other panel already
+   does. position/isolation below exist only to anchor that ring's
+   ::before to this panel's own edge, same reasoning as
+   .countdown-tile's. --wl-glow-scale (Settings > Appearance > Neon
+   Intensity) scales the ring's opacity, same as every other decorative
+   glow in the app; it still scales .home-ambient's wash too. */
 .neon-panel {
+  position: relative;
+  isolation: isolate;
   background-color: var(--wl-surface);
   border: 1px solid var(--wl-border);
+}
+@property --panel-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.neon-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--panel-border-angle),
+    transparent 0deg,
+    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 95%, transparent) 90deg,
+    transparent 180deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: calc(0.85 * var(--wl-glow-scale, 1));
+  /* Deliberately slower than .countdown-tile's 3.5s — "a little slower"
+     per the owner, for every card except the countdown tiles
+     themselves. */
+  animation: panel-border-rotate 5s linear infinite;
+  pointer-events: none;
+}
+@keyframes panel-border-rotate {
+  to {
+    --panel-border-angle: 360deg;
+  }
+}
+.motion-reduced .neon-panel::before {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .neon-panel::before {
+    animation: none;
+  }
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
