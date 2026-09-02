@@ -19,6 +19,7 @@ uses (app/providers/espn/config.py).
 """
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.win_probability import estimate_win_probability
+from app.queries import draft as draft_queries
 from app.queries import league as queries
 
 _STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
@@ -44,11 +45,16 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     draft_row = await conn.fetchrow(
         "SELECT scheduled_start, status FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
     )
-    draft = (
-        {"scheduled_start": draft_row["scheduled_start"], "status": draft_row["status"]}
-        if draft_row is not None
-        else None
-    )
+    if draft_row is not None:
+        draft = {"scheduled_start": draft_row["scheduled_start"], "status": draft_row["status"]}
+    else:
+        # No real draft set up yet — a commissioner may still have set
+        # just the date ahead of deciding the order (PUT /draft/schedule,
+        # held in league_draft_schedule — see that table's own migration
+        # docstring). "not_started" is the only real status this can
+        # ever be without a draft_config row to say otherwise.
+        pre_set = await draft_queries.get_schedule_only(conn, season, league_id)
+        draft = {"scheduled_start": pre_set, "status": "not_started"} if pre_set is not None else None
 
     week = await queries.get_cached_current_week(conn, season)
     base = {

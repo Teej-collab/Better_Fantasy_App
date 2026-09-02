@@ -190,8 +190,17 @@ export async function setupDraft(
 // a real offset, not a naive string (see app/routers/draft.py's
 // ScheduleRequest docstring for why a naive value would be genuinely
 // ambiguous server-side).
-export async function setDraftSchedule(localDateTime: string): Promise<DraftState> {
-  return put<DraftState>("/draft/schedule", { scheduled_start: new Date(localDateTime).toISOString() });
+export async function setDraftSchedule(localDateTime: string): Promise<DraftState | null> {
+  return put<DraftState | null>("/draft/schedule", { scheduled_start: new Date(localDateTime).toISOString() });
+}
+
+// The real draft time even before a real draft exists to hold it —
+// lets DraftSetupPanel.tsx pre-fill a previously-set date (PUT
+// /draft/schedule can be called before /draft/setup at all; see
+// backend/app/routers/draft.py's own GET /draft/schedule docstring for
+// where that value lives until then).
+export async function getDraftSchedule(): Promise<{ scheduled_start: string | null }> {
+  return get<{ scheduled_start: string | null }>("/draft/schedule");
 }
 
 export async function startDraft(): Promise<{ config: DraftConfig }> {

@@ -50,6 +50,7 @@ from app.config import _require
 from app.db import get_pool
 from app.providers.espn.lineup_client import ESPNLineupClient
 from app.providers.espn.slots import slot_label
+from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
 
@@ -159,10 +160,13 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         current = await keeper_queries.get_selections(conn, active_season, owner_id, league_id)
         prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
-        draft_scheduled_start = await conn.fetchval(
-            "SELECT scheduled_start FROM draft_config WHERE season = $1 AND league_id = $2",
-            active_season, league_id,
-        )
+        # Whichever of draft_config/league_draft_schedule currently
+        # holds the real draft time — a commissioner may have set just
+        # the date before deciding the draft order (see that table's
+        # own migration docstring), and the keeper auto-lock countdown
+        # should still work in that case, same as the homepage's own
+        # Draft Countdown card (your_week.py).
+        draft_scheduled_start = await draft_queries.get_effective_scheduled_start(conn, active_season, league_id)
 
     rules = _rules_dict(rules_row, active_season, draft_scheduled_start)
     prior_by_player = {r["espn_player_id"]: r for r in prior}

@@ -316,14 +316,73 @@ async def test_schedule_requires_commissioner(pool, monkeypatch):
     assert resp.status_code == 403
 
 
-async def test_schedule_404s_without_an_existing_draft(pool, monkeypatch):
+async def test_schedule_succeeds_without_an_existing_draft(pool, monkeypatch):
+    """A commissioner can nail down the real draft time before deciding
+    the draft order at all — held in league_draft_schedule until a real
+    draft exists (see that table's migration docstring). Used to 404
+    here; this is the exact behavior that changed."""
     _set_env(monkeypatch)
     user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "sched_nodraft")
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json() is None  # no real draft_state to return yet
+
+
+async def test_get_schedule_returns_the_pre_set_time_before_any_draft_exists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "getsched_nodraft")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
+        resp = await client.get("/draft/schedule")
+
+    assert resp.status_code == 200
+    assert resp.json()["scheduled_start"].startswith("2026-09-05T20:00:00")
+
+
+async def test_get_schedule_is_null_when_nothing_is_set(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "getsched_none")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/schedule")
+
+    assert resp.status_code == 200
+    assert resp.json()["scheduled_start"] is None
+
+
+async def test_setup_carries_over_a_pre_set_schedule(pool, monkeypatch):
+    """A schedule set before /draft/setup should land straight in the
+    new draft_config row — the commissioner shouldn't have to re-enter
+    a date they already nailed down."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sched_carry")
+    _user_b, owner_b = await _seed_member(pool, league_id, "sched_carry_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.put("/draft/schedule", json={"scheduled_start": "2026-09-05T20:00:00Z"})
+
+        setup_resp = await client.post(
+            "/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS}
+        )
+        assert setup_resp.json()["config"]["scheduled_start"].startswith("2026-09-05T20:00:00")
+
+        # league_draft_schedule's own copy is cleared once a real draft
+        # exists — draft_config is the one source of truth from here on.
+        schedule_resp = await client.get("/draft/schedule")
+        assert schedule_resp.json()["scheduled_start"].startswith("2026-09-05T20:00:00")
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT 1 FROM league_draft_schedule WHERE season = $1 AND league_id = $2", TEST_SEASON, league_id
+        )
+    assert row is None
 
 
 async def test_schedule_sets_and_returns_scheduled_start(pool, monkeypatch):

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  getDraftSchedule,
   pauseDraft,
   resetDraft,
   resumeDraft,
@@ -37,6 +38,75 @@ function toDatetimeLocalValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// "Pacific Daylight Time (PDT)" — so the commissioner can see, right
+// next to the input, which zone "8:00 PM" is about to mean before they
+// save it. The value that actually gets sent (setDraftSchedule, above)
+// already correctly uses whatever zone the browser is in regardless of
+// this label; this is purely a confirmation, not something the save
+// logic depends on. Computed via Intl, not written anywhere — Node
+// (used for this component's initial server render, since it has no
+// "use client"-only APIs otherwise) resolves Intl against the SERVER's
+// own zone, not the visitor's, which would silently show the wrong
+// zone name to the visitor until hydration; deferred to a client-only
+// effect instead, same reasoning as DraftCountdownCard.tsx's own
+// countdown.
+function detectTimezoneLabel(): string {
+  try {
+    const now = new Date();
+    const long = new Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value;
+    const short = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value;
+    if (long && short && long !== short) return `${long} (${short})`;
+    return long ?? short ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "your device's local time zone";
+  }
+}
+
+function ScheduleEditor({
+  scheduleInput,
+  onScheduleInputChange,
+  onSave,
+  busy,
+  saved,
+  timezoneLabel,
+}: {
+  scheduleInput: string;
+  onScheduleInputChange: (value: string) => void;
+  onSave: () => void;
+  busy: boolean;
+  saved: boolean;
+  timezoneLabel: string | null;
+}) {
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 border-t border-black/5 pt-2 dark:border-white/5">
+      <label className="text-xs text-black/50 dark:text-white/50">
+        Draft date/time
+        <input
+          type="datetime-local"
+          value={scheduleInput}
+          onChange={(e) => onScheduleInputChange(e.target.value)}
+          className="ml-2 rounded-md border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/10"
+        />
+      </label>
+      <button
+        onClick={onSave}
+        disabled={busy || !scheduleInput}
+        className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium disabled:opacity-40 dark:border-white/10"
+      >
+        Save date
+      </button>
+      {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
+      {timezoneLabel && (
+        <span className="w-full text-[11px] text-black/40 dark:text-white/40">Setting in {timezoneLabel}.</span>
+      )}
+    </div>
+  );
+}
+
 export function DraftSetupPanel({
   teams,
   config,
@@ -55,6 +125,36 @@ export function DraftSetupPanel({
     config?.scheduled_start ? toDatetimeLocalValue(config.scheduled_start) : ""
   );
   const [scheduleSaved, setScheduleSaved] = useState(false);
+  const [timezoneLabel, setTimezoneLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    // setTimeout(0), not a direct setState call in the effect body —
+    // same lint-satisfying pattern DraftCountdownCard.tsx's own
+    // countdown effect uses (react-hooks/set-state-in-effect).
+    const id = setTimeout(() => setTimezoneLabel(detectTimezoneLabel()), 0);
+    return () => clearTimeout(id);
+  }, []);
+
+  // No real draft exists yet (config is undefined) — a previously-set
+  // date lives in league_draft_schedule, not on any config this
+  // component was handed, so it needs its own fetch to pre-fill the
+  // input (see backend/app/routers/draft.py's GET /draft/schedule).
+  // Skipped entirely once a real draft exists: config.scheduled_start
+  // (read by the useState initializer above) is already the single
+  // source of truth at that point.
+  useEffect(() => {
+    if (config) return;
+    let cancelled = false;
+    getDraftSchedule()
+      .then(({ scheduled_start }) => {
+        if (!cancelled && scheduled_start) setScheduleInput(toDatetimeLocalValue(scheduled_start));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleOwner(ownerId: number) {
     setOrder((prev) => (prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId]));
@@ -154,6 +254,23 @@ export function DraftSetupPanel({
             ? `Select all ${teams.length} teams (${order.length}/${teams.length})`
             : "Create draft"}
         </button>
+        {/* Settable independently of the order above — a commissioner
+            can nail down the real date first and decide the order
+            later; PUT /draft/schedule holds it until a real draft
+            exists (see backend/app/domain/draft_engine.py's
+            create_draft, which carries it over automatically once this
+            form's "Create draft" button is used). */}
+        <ScheduleEditor
+          scheduleInput={scheduleInput}
+          onScheduleInputChange={(value) => {
+            setScheduleInput(value);
+            setScheduleSaved(false);
+          }}
+          onSave={saveSchedule}
+          busy={busy}
+          saved={scheduleSaved}
+          timezoneLabel={timezoneLabel}
+        />
       </section>
     );
   }
@@ -170,28 +287,17 @@ export function DraftSetupPanel({
           be nailed down or adjusted independently, without touching
           the order/roster shape. Drives the homepage's countdown card
           (DraftCountdownCard.tsx) once set. */}
-      <div className="flex w-full flex-wrap items-center gap-2 border-t border-black/5 pt-2 dark:border-white/5">
-        <label className="text-xs text-black/50 dark:text-white/50">
-          Draft date/time
-          <input
-            type="datetime-local"
-            value={scheduleInput}
-            onChange={(e) => {
-              setScheduleInput(e.target.value);
-              setScheduleSaved(false);
-            }}
-            className="ml-2 rounded-md border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/10"
-          />
-        </label>
-        <button
-          onClick={saveSchedule}
-          disabled={busy || !scheduleInput}
-          className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium disabled:opacity-40 dark:border-white/10"
-        >
-          Save date
-        </button>
-        {scheduleSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
-      </div>
+      <ScheduleEditor
+        scheduleInput={scheduleInput}
+        onScheduleInputChange={(value) => {
+          setScheduleInput(value);
+          setScheduleSaved(false);
+        }}
+        onSave={saveSchedule}
+        busy={busy}
+        saved={scheduleSaved}
+        timezoneLabel={timezoneLabel}
+      />
       {seeded && seeded.length > 0 && (
         <p className="w-full text-xs text-emerald-600 dark:text-emerald-400">
           Seeded {seeded.length} keeper{seeded.length === 1 ? "" : "s"} into round {seeded[0].round}:{" "}

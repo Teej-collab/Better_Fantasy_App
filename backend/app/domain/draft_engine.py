@@ -81,13 +81,24 @@ async def create_draft(
             raise DraftAlreadyExistsError(
                 f"A draft already exists for season {season} — reset it first if you want to change the order"
             )
+        # A commissioner may have already set a real draft time before
+        # deciding the order/roster shape (PUT /draft/schedule, held in
+        # league_draft_schedule until a real draft exists — see that
+        # table's own migration docstring). Carry it straight into the
+        # new draft_config row rather than making them re-enter it, and
+        # clear the standalone copy — draft_config.scheduled_start is
+        # the single source of truth from here on.
+        pre_set_schedule = await conn.fetchval(
+            "DELETE FROM league_draft_schedule WHERE season = $1 AND league_id = $2 RETURNING scheduled_start",
+            season, league_id,
+        )
         rounds = total_draftable_slots(roster_slots)
         await conn.execute(
             """
-            INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots, league_id)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots, league_id, scheduled_start)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id,
+            season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id, pre_set_schedule,
         )
         rows = plan_snake_order(draft_order, rounds)
         await conn.executemany(
@@ -105,15 +116,24 @@ async def create_draft(
 async def set_scheduled_start(conn, season: int, scheduled_start, league_id: int = DEFAULT_LEAGUE_ID) -> None:
     """When the real draft is planned for — independent of draft_order/
     roster_slots setup above, and settable/changeable on its own
-    (POST /draft/schedule) without touching either. Requires
-    draft_config to already exist (via create_draft) — this is
-    metadata on top of a real draft, not a way to create one."""
+    (PUT /draft/schedule) without touching either. Updates draft_config
+    directly if a real draft already exists there; otherwise upserts
+    into league_draft_schedule instead, so a commissioner can nail down
+    the date before deciding the order (create_draft picks this up
+    automatically once a real draft is set up — see its own comment)."""
     result = await conn.execute(
         "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2 AND league_id = $3",
         scheduled_start, season, league_id,
     )
     if result == "UPDATE 0":
-        raise DraftNotFoundError(f"No draft configured for season {season}")
+        await conn.execute(
+            """
+            INSERT INTO league_draft_schedule (season, league_id, scheduled_start, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (season, league_id) DO UPDATE SET scheduled_start = EXCLUDED.scheduled_start, updated_at = now()
+            """,
+            season, league_id, scheduled_start,
+        )
 
 
 async def seed_keeper_pick(

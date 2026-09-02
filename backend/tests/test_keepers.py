@@ -209,6 +209,28 @@ async def test_get_my_keepers_draft_scheduled_start_null_with_no_draft_config(po
     assert resp.json()["rules"]["draft_scheduled_start"] is None
 
 
+async def test_get_my_keepers_draft_scheduled_start_falls_back_to_pre_set_schedule(pool, monkeypatch):
+    """Same fallback as the homepage's Draft Countdown card — a
+    commissioner may have set just the date (league_draft_schedule)
+    before deciding the draft order at all."""
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched3", 5043)
+    _patch_league(monkeypatch, _fake_roster_league(5043, [(30023, "Pre Set Schedule Player", "WR")]))
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_draft_schedule (season, league_id, scheduled_start) VALUES ($1, 1, $2)",
+            TEST_SEASON, datetime.datetime(2026, 9, 5, 18, 0, 0, tzinfo=datetime.timezone.utc),
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["rules"]["draft_scheduled_start"] == "2026-09-05T18:00:00+00:00"
+
+
 async def test_non_commissioner_cannot_set_rules(pool, monkeypatch):
     _set_env(monkeypatch)
     user_id, owner_id = await _seed_member_with_team(pool, 4, 504)

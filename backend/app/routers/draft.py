@@ -159,12 +159,33 @@ class ScheduleRequest(BaseModel):
     scheduled_start: datetime
 
 
+@router.get("/schedule")
+async def get_draft_schedule(request: Request):
+    """The real draft time, whichever of draft_config/league_draft_schedule
+    currently holds it (get_effective_scheduled_start) — lets
+    DraftSetupPanel.tsx show/pre-fill a previously-set date even before
+    a real draft exists yet (GET /draft/state 404s in that case, so it
+    can't come from there). Any signed-in league member can read this,
+    same as GET /draft/pool — not commissioner-only, only setting it is."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        scheduled_start = await draft_queries.get_effective_scheduled_start(conn, season, league_id)
+    return {"scheduled_start": scheduled_start}
+
+
 @router.put("/schedule")
 async def set_draft_schedule(body: ScheduleRequest, request: Request):
     """Separate from /draft/setup on purpose — the commissioner should
     be able to nail down or adjust the real date/time without resetting
-    draft_order/roster_slots. Requires setup to have already happened
-    (404 otherwise, via DraftNotFoundError)."""
+    draft_order/roster_slots, and without deciding the order/roster
+    shape first at all: set_scheduled_start holds the time in
+    league_draft_schedule until a real draft exists (see that table's
+    migration docstring), so this never 404s. Returns the real draft
+    state if one exists yet, else null — the caller (DraftSetupPanel.tsx)
+    doesn't read this response, just re-fetches state after saving."""
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()

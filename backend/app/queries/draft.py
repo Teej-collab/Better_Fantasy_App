@@ -71,3 +71,28 @@ async def get_team_roster_positions(conn, season: int, team_id: int) -> list[str
         season, team_id,
     )
     return [r["position"] for r in rows]
+
+
+async def get_schedule_only(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """A pre-set draft time that doesn't have a real draft_config row
+    to live on yet — see league_draft_schedule's own migration
+    docstring. None if nothing's been set this way (including once a
+    real draft exists and create_draft has already moved it over)."""
+    return await conn.fetchval(
+        "SELECT scheduled_start FROM league_draft_schedule WHERE season = $1 AND league_id = $2", season, league_id
+    )
+
+
+async def get_effective_scheduled_start(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """The real draft time, whichever of the two possible homes it's
+    currently in — draft_config.scheduled_start once a real draft
+    exists (the single source of truth every other reader already
+    uses), or league_draft_schedule when a commissioner has set a time
+    ahead of deciding the draft order. Returns None if neither has one
+    set."""
+    from_config = await conn.fetchval(
+        "SELECT scheduled_start FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    if from_config is not None:
+        return from_config
+    return await get_schedule_only(conn, season, league_id)

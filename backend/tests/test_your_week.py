@@ -54,6 +54,25 @@ async def test_draft_is_none_when_no_draft_config_exists(pool):
     assert result["draft"] is None
 
 
+async def test_draft_falls_back_to_a_pre_set_schedule_with_no_draft_config(pool):
+    """A commissioner can set just the draft date before deciding the
+    order (PUT /draft/schedule, held in league_draft_schedule until a
+    real draft exists) — the homepage's Draft Countdown card should
+    still work in that case, not just once draft_config exists."""
+    from datetime import datetime, timezone
+
+    owner_id, _ = await _seed_owner_and_team(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_draft_schedule (season, league_id, scheduled_start) VALUES ($1, 1, $2)",
+            TEST_SEASON, datetime(2026, 9, 5, 20, 0, tzinfo=timezone.utc),
+        )
+        result = await build_your_week(conn, owner_id, season=TEST_SEASON)
+        await conn.execute("DELETE FROM league_draft_schedule WHERE season = $1", TEST_SEASON)
+    assert result["draft"]["status"] == "not_started"
+    assert result["draft"]["scheduled_start"] is not None
+
+
 async def test_draft_reflects_scheduled_start_and_status(pool):
     from datetime import datetime, timezone
 
