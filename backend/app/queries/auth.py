@@ -59,25 +59,49 @@ async def get_or_create_user_for_google(conn, google_user_id: str, email: str | 
       1. google_user_id already links to a user (returning sign-in) —
          return it directly.
       2. No google_user_id match, but the email matches an existing
-         account (most likely a password signup using the same real
-         email) — link google_user_id onto that row rather than
-         creating a confusing second, empty account. This is a
-         deliberate difference from Discord's own no-linking
-         precedent: Discord's OAuth doesn't reliably return a verified
-         email at all, so linking-by-email was never possible there;
-         Google always does, so the same silent-duplicate problem
-         doesn't need to exist here.
-      3. Neither matches — a genuinely new account.
+         PASSWORDLESS account (most likely a stray row from an earlier
+         partial signup, or another OAuth path that happened to record
+         this email with no credential of its own) — link google_user_id
+         onto that row rather than creating a confusing second, empty
+         account. This is a deliberate difference from Discord's own
+         no-linking precedent: Discord's OAuth doesn't reliably return a
+         verified email at all, so linking-by-email was never possible
+         there; Google always does, so the same silent-duplicate problem
+         doesn't need to exist here — PROVIDED there's no password
+         already sitting on that row (see the security note below).
+      3. Neither matches, or the email matches an account that already
+         has a password — a genuinely new account.
+
+    Security note (fixed 2026-09): case 2 used to link onto ANY existing
+    row with a matching email, password or not. /auth/signup has no
+    email verification at all, so that was a real account-takeover
+    path — anyone could pre-register a victim's email with a password
+    of their own choosing, then silently inherit the victim's later
+    Google sign-in the moment the victim used it, with the attacker's
+    password continuing to grant access to that same account
+    afterward. Only linking onto passwordless rows closes this: a row
+    with a password could have been created by anyone, but a
+    passwordless row can only exist here as a genuine artifact of this
+    app's own OAuth flows, nothing an outside attacker could plant.
     """
     existing = await conn.fetchrow("SELECT id FROM users WHERE google_user_id = $1", google_user_id)
     if existing is not None:
         return existing["id"]
 
     if email is not None:
-        by_email = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email)
+        by_email = await conn.fetchrow("SELECT id, password_hash FROM users WHERE email = $1", email)
         if by_email is not None:
-            await conn.execute("UPDATE users SET google_user_id = $1 WHERE id = $2", google_user_id, by_email["id"])
-            return by_email["id"]
+            if by_email["password_hash"] is None:
+                await conn.execute(
+                    "UPDATE users SET google_user_id = $1 WHERE id = $2", google_user_id, by_email["id"]
+                )
+                return by_email["id"]
+            # A password is already set on this row — don't link (see
+            # the security note above). email is left unset on the new
+            # row below since it's already claimed, uniquely, by that
+            # existing account (users_email_key would otherwise reject
+            # this insert outright).
+            email = None
 
     return await conn.fetchval(
         """

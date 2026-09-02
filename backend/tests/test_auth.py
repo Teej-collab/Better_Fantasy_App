@@ -219,19 +219,18 @@ async def test_google_callback_creates_a_new_self_serve_account(pool, monkeypatc
         assert body["is_commissioner"] is False
 
 
-async def test_google_callback_links_to_an_existing_account_with_the_same_email(pool, monkeypatch):
+async def test_google_callback_links_to_an_existing_passwordless_account_with_the_same_email(pool, monkeypatch):
     """A real, deliberate difference from Discord's no-linking
     precedent (see get_or_create_user_for_google's own docstring):
     Google always returns a verified email, so signing in with Google
-    using the same email as an existing password account links onto
+    using the same email as an existing PASSWORDLESS account links onto
     that account instead of silently creating a confusing duplicate."""
     _set_google_env(monkeypatch)
     email = "test-google-linked@example.com"
 
     async with pool.acquire() as conn:
         existing_user_id = await conn.fetchval(
-            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'irrelevant-hash', 'Original Name') "
-            "RETURNING id",
+            "INSERT INTO users (email, display_name) VALUES ($1, 'Original Name') RETURNING id",
             email,
         )
 
@@ -255,6 +254,57 @@ async def test_google_callback_links_to_an_existing_account_with_the_same_email(
         row = await conn.fetchrow("SELECT id, google_user_id FROM users WHERE email = $1", email)
     assert row["id"] == existing_user_id  # same account, not a new one
     assert row["google_user_id"] == "goog-900000003"
+
+
+async def test_google_callback_does_not_hijack_an_existing_password_account_with_the_same_email(pool, monkeypatch):
+    """Security regression test (fixed 2026-09) — /auth/signup has no
+    email verification, so before this fix, anyone could pre-register a
+    victim's email with a password of their own choosing and silently
+    inherit the victim's account the moment the victim later signed in
+    with Google using that same email (see get_or_create_user_for_google's
+    own docstring for the full exploit chain). A Google callback must
+    NEVER link onto a row that already has a password — it should create
+    a genuinely separate account instead, leaving the original
+    password-protected account (and whoever's password is on it)
+    completely untouched."""
+    _set_google_env(monkeypatch)
+    email = "test-google-attacker-preregistered@example.com"
+
+    async with pool.acquire() as conn:
+        attacker_user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'attacker-set-hash', 'Attacker') "
+            "RETURNING id",
+            email,
+        )
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"sub": "goog-900000004", "email": email, "name": "Real Victim"}
+
+    monkeypatch.setattr("app.routers.auth.google_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.google_oauth.fetch_google_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/google/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/google/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+
+    async with pool.acquire() as conn:
+        attacker_row = await conn.fetchrow("SELECT google_user_id FROM users WHERE id = $1", attacker_user_id)
+        victim_row = await conn.fetchrow("SELECT id, email FROM users WHERE google_user_id = $1", "goog-900000004")
+
+    # The attacker's password-protected row was never touched.
+    assert attacker_row["google_user_id"] is None
+    # The Google sign-in got its own new account instead of the attacker's.
+    assert victim_row is not None
+    assert victim_row["id"] != attacker_user_id
+    # email is left unset on the new row — it's already (uniquely) claimed
+    # by the attacker's row, per users_email_key.
+    assert victim_row["email"] is None
 
 
 async def test_google_callback_rejects_state_mismatch(monkeypatch):
