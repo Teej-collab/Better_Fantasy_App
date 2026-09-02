@@ -44,11 +44,15 @@ _TEAM_NAME_MAX_LENGTH = 40
 # whoever's account it landed on.
 _VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "matchups", "rivalries", "awards", "discover"}
 
-# The mobile bottom nav's fixed 5 slots (lib/navDestinations.ts's
-# MOBILE_NAV_ORDER on the frontend) — bottom_nav_order only ever
-# reorders these 5, never adds/removes one, so validation requires an
-# exact permutation rather than home_card_order's subset check.
-_VALID_BOTTOM_NAV_KEYS = {"team", "league", "home", "matchups", "chat"}
+# The nav's fixed 6 slots (lib/navDestinations.ts's MOBILE_NAV_ORDER on
+# the frontend, now driving both the mobile bottom bar and the desktop
+# header) — bottom_nav_order only ever reorders these 6, never
+# adds/removes one, so validation requires an exact permutation rather
+# than home_card_order's subset check. ("gamecast" was missing here
+# from 2026-09-02, when it was added to MOBILE_NAV_ORDER on the
+# frontend, until 2026-09-02's nav-reorder fix — any saved order
+# containing it was silently rejected the whole time.)
+_VALID_BOTTOM_NAV_KEYS = {"team", "league", "home", "matchups", "gamecast", "chat"}
 
 # Sane upper bounds for a react-grid-layout position/size — not tied to
 # any particular column count, just guards against a garbage/hostile

@@ -164,16 +164,34 @@ export const NAV_ACCENT = "var(--user-accent, var(--wl-accent))";
 
 export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
 
-// The mobile bottom bar's fixed slots (BottomNav.tsx) — this is the
-// DEFAULT order only; an owner can reorder these (never add/remove
-// one) via Settings > Navigation, persisted as owner_preferences'
-// bottom_nav_order. gamecast added 2026-09-02: it used to be reachable
-// on mobile only via the Home page's Discover grid, with zero presence
-// in the persistent nav at all — a real gap for a destination the
-// 2026-09-02 re-audit specifically called out as strategically
-// important (the app's one genuinely live, real-time feature). Same
-// position relative to matchups/chat as PRIMARY_NAV_ORDER above.
+// The fixed slots both the mobile bottom bar (BottomNav.tsx) and the
+// desktop header (PrimaryNav.tsx) draw from — this is the DEFAULT order
+// only; an owner can reorder these (never add/remove one) via
+// Settings > Navigation, persisted as owner_preferences'
+// bottom_nav_order and applied to both surfaces alike (2026-09-02: used
+// to drive only the mobile bar, with desktop's order hardcoded and
+// fixed — extended to desktop once it was clear both bars show the
+// exact same six destinations, so one saved order should mean one nav
+// order everywhere, not two independent settings). gamecast added
+// 2026-09-02: it used to be reachable on mobile only via the Home
+// page's Discover grid, with zero presence in the persistent nav at
+// all — a real gap for a destination the 2026-09-02 re-audit
+// specifically called out as strategically important (the app's one
+// genuinely live, real-time feature). Same position relative to
+// matchups/chat as PRIMARY_NAV_ORDER above.
 export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
+
+// Shared by BottomNav.tsx and PrimaryNav.tsx — both render from an
+// owner's saved order (bottom_nav_order) but must fall back to the
+// default if it's missing, corrupted, or the wrong shape (e.g. saved
+// before a slot was added/removed).
+export function isValidNavOrder(order: string[]): order is DestinationKey[] {
+  return (
+    order.length === MOBILE_NAV_ORDER.length &&
+    new Set(order).size === MOBILE_NAV_ORDER.length &&
+    order.every((k) => (MOBILE_NAV_ORDER as string[]).includes(k))
+  );
+}
 
 // League-family destinations — everything that's "browse the league,"
 // as opposed to "manage my own roster" (My Team's own sub-nav:

@@ -1,7 +1,7 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
-import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, type DestinationKey } from "@/lib/navDestinations";
+import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
@@ -16,14 +16,6 @@ function LiveMark() {
       <span className="live-dot" aria-hidden />
       Live
     </span>
-  );
-}
-
-function isValidMobileOrder(order: string[]): order is DestinationKey[] {
-  return (
-    order.length === MOBILE_NAV_ORDER.length &&
-    new Set(order).size === MOBILE_NAV_ORDER.length &&
-    order.every((k) => (MOBILE_NAV_ORDER as string[]).includes(k))
   );
 }
 
@@ -63,7 +55,7 @@ export function BottomNav({
   isGameDay: boolean;
   order: string[] | null;
 }) {
-  const tabOrder = order && isValidMobileOrder(order) ? order : MOBILE_NAV_ORDER;
+  const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
 
   return (
     <nav

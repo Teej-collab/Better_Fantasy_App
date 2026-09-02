@@ -34,13 +34,14 @@ function parseOrder(raw: string | null | undefined): DestinationKey[] {
 }
 
 /**
- * Reorders the mobile bottom nav's fixed tabs (BottomNav.tsx) — same
- * drag-and-drop pattern as HomeCardDeck.tsx (a shared drag handle,
- * optimistic save with a swallowed-catch background PUT), but a fixed
- * set with no add/remove: the mobile bar always shows exactly the
- * destinations in MOBILE_NAV_ORDER, only their order is an owner's own
- * choice. Desktop's PrimaryNav is a separate, fixed-order component —
- * this only affects the mobile bar.
+ * Reorders the app's fixed nav tabs — drives both the mobile bottom
+ * bar (BottomNav.tsx) and the desktop header (PrimaryNav.tsx) from the
+ * one saved order, since both show the exact same six destinations.
+ * Same drag-and-drop pattern as HomeCardDeck.tsx (a shared drag
+ * handle, optimistic save with a swallowed-catch background PUT), but
+ * a fixed set with no add/remove: every surface always shows exactly
+ * the destinations in MOBILE_NAV_ORDER, only their order is an owner's
+ * own choice.
  */
 export function NavigationSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);
@@ -85,7 +86,7 @@ export function NavigationSection() {
       <div>
         <h1 className="text-xl font-semibold">Navigation</h1>
         <p className="text-sm text-black/50 dark:text-white/50">
-          Drag to reorder your mobile bottom nav. Desktop&apos;s top nav stays fixed.
+          Drag to reorder your nav — applies to both the mobile bottom bar and desktop&apos;s top nav.
         </p>
       </div>
 

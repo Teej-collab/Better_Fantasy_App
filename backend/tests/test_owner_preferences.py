@@ -237,7 +237,7 @@ async def test_put_preferences_sets_and_clears_bottom_nav_order(pool, monkeypatc
 
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
-        order = '["chat","team","home","league","matchups"]'
+        order = '["chat","team","home","league","matchups","gamecast"]'
         resp = await client.put("/settings/preferences", json={"bottom_nav_order": order})
         assert resp.status_code == 200
         assert resp.json()["bottom_nav_order"] == order
@@ -254,21 +254,22 @@ async def test_put_preferences_rejects_invalid_bottom_nav_order(pool, monkeypatc
     async with _client() as client:
         client.cookies.update(_session_cookie(owner_id))
 
-        # missing "home" — not a permutation of the fixed 5
+        # missing "home" — not a permutation of the fixed 6
         missing_one = await client.put(
-            "/settings/preferences", json={"bottom_nav_order": '["team","league","matchups","chat"]'}
+            "/settings/preferences", json={"bottom_nav_order": '["team","league","matchups","gamecast","chat"]'}
         )
         assert missing_one.status_code == 400
 
-        # a key that isn't one of the 5 bottom-nav destinations
+        # a key that isn't one of the 6 bottom-nav destinations
         unknown_key = await client.put(
             "/settings/preferences",
-            json={"bottom_nav_order": '["team","league","home","matchups","freeAgents"]'},
+            json={"bottom_nav_order": '["team","league","home","matchups","gamecast","freeAgents"]'},
         )
         assert unknown_key.status_code == 400
 
         duplicate = await client.put(
-            "/settings/preferences", json={"bottom_nav_order": '["team","team","home","matchups","chat"]'}
+            "/settings/preferences",
+            json={"bottom_nav_order": '["team","team","home","matchups","gamecast","chat"]'},
         )
         assert duplicate.status_code == 400
 

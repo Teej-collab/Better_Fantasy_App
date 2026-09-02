@@ -65,8 +65,9 @@ export async function NavBar() {
 
   // bottom_nav_order is stored as a raw JSON-encoded string (same
   // convention as home_card_order) — parsed once here rather than in
-  // BottomNav itself, since this is the one place already doing the
-  // session-aware server fetch.
+  // BottomNav/PrimaryNav themselves, since this is the one place
+  // already doing the session-aware server fetch. Both nav surfaces
+  // consume the same parsed order (see PrimaryNav.tsx's own comment).
   let bottomNavOrder: string[] | null = null;
   if (myPreferences?.bottom_nav_order) {
     try {
@@ -111,6 +112,7 @@ export async function NavBar() {
               matchupsHref={matchupsHref}
               myMatchupLive={myMatchupLive}
               isGameDay={isGameDay}
+              order={bottomNavOrder}
             />
           </div>
           <AuthStatus />
