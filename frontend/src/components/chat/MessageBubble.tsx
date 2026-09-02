@@ -11,6 +11,38 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Corner radii for one bubble in a same-sender run — full ("open") on
+// the edge shared with nobody, tightened on the edge shared with a
+// neighboring bubble from the same run, iMessage's own way of reading a
+// burst as one connected shape instead of just closely-spaced rectangles.
+// mine's outer edge is the right side (where a real tail would point);
+// other's outer edge is the left.
+const FULL_RADIUS = "1.15rem";
+const TIGHT_RADIUS = "0.28rem";
+function bubbleCorners(mine: boolean, firstInRun: boolean, lastInRun: boolean) {
+  const outerTop = firstInRun ? FULL_RADIUS : TIGHT_RADIUS;
+  const outerBottom = lastInRun ? FULL_RADIUS : TIGHT_RADIUS;
+  return mine
+    ? {
+        borderTopLeftRadius: FULL_RADIUS,
+        borderBottomLeftRadius: FULL_RADIUS,
+        borderTopRightRadius: outerTop,
+        borderBottomRightRadius: outerBottom,
+      }
+    : {
+        borderTopRightRadius: FULL_RADIUS,
+        borderBottomRightRadius: FULL_RADIUS,
+        borderTopLeftRadius: outerTop,
+        borderBottomLeftRadius: outerBottom,
+      };
+}
+
 // A custom bubble color is a per-sender identity choice (see
 // ChatSettings.tsx) — everyone sees it, not just the owner who picked
 // it, so unlike .chat-bubble--mine's fixed white text, the text color
@@ -49,6 +81,7 @@ export function MessageBubble({
   message,
   mine,
   grouped,
+  groupedWithNext,
   highlightMention,
   memberNames,
   onReply,
@@ -59,6 +92,11 @@ export function MessageBubble({
   message: ChatMessage;
   mine: boolean;
   grouped: boolean;
+  // Mirror of `grouped`, looking forward instead of back — is this
+  // bubble followed by another from the same sender within the group
+  // window? Together the two flags place a bubble as first/middle/last
+  // in its run, which drives corner shaping, the tail, and the avatar.
+  groupedWithNext: boolean;
   // True only when this message mentions the viewer AND they have
   // Mention Notifications on (Settings > Chat) — see MessageThread.tsx,
   // which computes both halves before passing this down.
@@ -72,15 +110,17 @@ export function MessageBubble({
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const mentionedNames = message.mentions.map((id) => memberNames[id]).filter(Boolean) as string[];
+  const lastInRun = !groupedWithNext;
+  const avatarColor = message.owner_chat_color ?? "#6b7280";
 
   return (
     <div
       id={`chat-message-${message.id}`}
-      className={`group flex flex-col ${mine ? "items-end" : "items-start"} ${grouped ? "mt-0.5" : "mt-3"}`}
+      className={`group flex flex-col ${mine ? "items-end" : "items-start"} ${grouped ? "mt-px" : "mt-3"}`}
       onClick={() => setShowActions((v) => !v)}
     >
       {!grouped && (
-        <span className="mb-0.5 px-1 text-xs text-black/40 dark:text-white/40">
+        <span className="mb-0.5 px-1 text-[11px] text-black/35 dark:text-white/35">
           {mine ? "You" : message.owner_name} · {formatMessageTimestamp(message.created_at)}
         </span>
       )}
@@ -97,6 +137,23 @@ export function MessageBubble({
             onDelete={() => onDelete(message.id)}
           />
         )}
+
+        {/* Avatar sits next to the last bubble of an incoming run only
+            (matching iMessage's own placement — not one per bubble); a
+            same-width invisible spacer keeps every other bubble in the
+            run left-aligned to the same edge instead of drifting. */}
+        {!mine &&
+          (lastInRun ? (
+            <span
+              className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+              style={{ backgroundColor: avatarColor, color: readableTextColor(avatarColor) }}
+              aria-hidden
+            >
+              {initialsFor(message.owner_name)}
+            </span>
+          ) : (
+            <span className="w-6 shrink-0" aria-hidden />
+          ))}
 
         <div className="flex flex-col gap-1">
           {message.reply_to && (
@@ -126,20 +183,33 @@ export function MessageBubble({
 
           {(message.deleted || message.body) && (
             <span
-              className={`chat-bubble rounded-2xl px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
+              className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
                 message.deleted
                   ? "italic text-black/40 dark:text-white/40"
-                  : mine
-                    ? "chat-bubble--mine"
-                    : "chat-bubble--other"
+                  : `${mine ? "chat-bubble--mine" : "chat-bubble--other"} ${
+                      lastInRun ? (mine ? "chat-bubble--tail-mine" : "chat-bubble--tail-other") : ""
+                    }`
               } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
-              style={
-                !message.deleted && message.owner_chat_color
+              style={{
+                ...bubbleCorners(mine, !grouped, lastInRun),
+                ...(!message.deleted && message.owner_chat_color
                   ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
-                  : undefined
-              }
+                  : undefined),
+              }}
             >
               {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
+            </span>
+          )}
+
+          {/* Tap-to-reveal timestamp for a grouped bubble — its own
+              header is suppressed (only the burst's first bubble shows
+              one), so this is the only way to see exactly when a later
+              bubble in the run was sent, matching iMessage's own
+              tap-for-time behavior. Reuses the same tap that already
+              reveals the reply/react/copy/delete row. */}
+          {grouped && showActions && !message.deleted && (
+            <span className={`px-1 text-[10px] text-black/35 dark:text-white/35 ${mine ? "text-right" : "text-left"}`}>
+              {formatMessageTimestamp(message.created_at)}
             </span>
           )}
 

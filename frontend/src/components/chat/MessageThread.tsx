@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
-import { isGroupedWithPrevious } from "@/lib/chatFormat";
+import { isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
 
@@ -129,6 +129,7 @@ export function MessageThread({
               message={m}
               mine={m.owner_id === myOwnerId}
               grouped={isGroupedWithPrevious(m, messages[i - 1])}
+              groupedWithNext={isGroupedWithNext(m, messages[i + 1])}
               highlightMention={mentionHighlightingEnabled && m.mentions.includes(myOwnerId)}
               memberNames={memberNames}
               onReply={setReplyTo}

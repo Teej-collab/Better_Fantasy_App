@@ -1547,6 +1547,9 @@ body {
    look belongs to the live ticker, not chat.
    ============================================================ */
 
+.chat-bubble {
+  position: relative;
+}
 .chat-bubble--mine {
   background: var(--wl-accent-dim);
   color: #ffffff;
@@ -1554,6 +1557,29 @@ body {
 .chat-bubble--other {
   background: rgba(255, 255, 255, 0.08);
   color: inherit;
+}
+
+/* The one signature iMessage detail a plain rounded rectangle can't
+   give you on its own — a small tail on the last bubble of a run only
+   (see MessageBubble.tsx's `lastInRun`), color-matched via
+   `background-color: inherit` so it works whether the bubble's color
+   came from --mine/--other or a sender's own custom owner_chat_color. */
+.chat-bubble--tail-mine::after,
+.chat-bubble--tail-other::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background-color: inherit;
+}
+.chat-bubble--tail-mine::after {
+  right: -5px;
+  border-bottom-left-radius: 10px 8px;
+}
+.chat-bubble--tail-other::after {
+  left: -5px;
+  border-bottom-right-radius: 10px 8px;
 }
 
 .chat-mention {

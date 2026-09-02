@@ -40,3 +40,19 @@ export function isGroupedWithPrevious(
   if (current.owner_id !== previous.owner_id) return false;
   return new Date(current.created_at).getTime() - new Date(previous.created_at).getTime() < GROUP_WINDOW_MS;
 }
+
+// The mirror of isGroupedWithPrevious, from the current message's own
+// point of view — used to decide whether THIS bubble is the last one in
+// its run (tightened top corner only, real tail, an avatar next to it)
+// or a middle one (tightened corners on both the top and bottom edge,
+// no tail, no avatar — its position is implied by the bubbles around
+// it). Same underlying rule, just evaluated looking forward instead of
+// back, so a run's shape only ever depends on adjacency, never a
+// separate "am I the last message" special case.
+export function isGroupedWithNext(
+  current: { owner_id: number; created_at: string },
+  next: { owner_id: number; created_at: string } | undefined
+): boolean {
+  if (!next) return false;
+  return isGroupedWithPrevious(next, current);
+}
