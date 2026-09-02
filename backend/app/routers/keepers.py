@@ -109,10 +109,18 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
-def _rules_dict(row, season: int) -> dict:
+def _rules_dict(row, season: int, draft_scheduled_start=None) -> dict:
     """A season with no configured rules yet reads as "keepers not open"
     rather than 404/error — the frontend can show a plain "not open yet"
-    state instead of needing to special-case a missing row."""
+    state instead of needing to special-case a missing row.
+
+    draft_scheduled_start (draft_config.scheduled_start — the same time
+    DraftCountdownCard.tsx counts down to) is only ever passed at the
+    GET /me call site, where the owner-facing panel needs it to show a
+    live "locks automatically in..." countdown once the keeper auto-lock
+    scheduler job (app/scheduler.py's _run_keeper_lock_job) is about to
+    fire — the PUT rules/lock/unlock call sites below don't pass it,
+    since those responses aren't what drives that countdown display."""
     if row is None:
         return {
             "season": season,
@@ -121,6 +129,7 @@ def _rules_dict(row, season: int) -> dict:
             "keeper_deadline": None,
             "locked_at": None,
             "is_open": False,
+            "draft_scheduled_start": draft_scheduled_start.isoformat() if draft_scheduled_start else None,
         }
     now = datetime.datetime.now(datetime.timezone.utc)
     is_open = row["locked_at"] is None and (row["keeper_deadline"] is None or now < row["keeper_deadline"])
@@ -131,6 +140,7 @@ def _rules_dict(row, season: int) -> dict:
         "keeper_deadline": row["keeper_deadline"].isoformat() if row["keeper_deadline"] else None,
         "locked_at": row["locked_at"].isoformat() if row["locked_at"] else None,
         "is_open": is_open,
+        "draft_scheduled_start": draft_scheduled_start.isoformat() if draft_scheduled_start else None,
     }
 
 
@@ -149,8 +159,12 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         current = await keeper_queries.get_selections(conn, active_season, owner_id, league_id)
         prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
+        draft_scheduled_start = await conn.fetchval(
+            "SELECT scheduled_start FROM draft_config WHERE season = $1 AND league_id = $2",
+            active_season, league_id,
+        )
 
-    rules = _rules_dict(rules_row, active_season)
+    rules = _rules_dict(rules_row, active_season, draft_scheduled_start)
     prior_by_player = {r["espn_player_id"]: r for r in prior}
 
     return {

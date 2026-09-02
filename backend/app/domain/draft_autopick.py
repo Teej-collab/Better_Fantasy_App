@@ -5,50 +5,44 @@ No DB access, no network — fully unit-testable against plain lists.
 
 This app has no player rankings of its own, so "best available" means
 Sleeper's own search_rank (a rough overall-rank proxy, lower is better —
-see app/providers/sleeper/). The algorithm is deliberately simple: fill
-the fixed starting-slot priority order for this league's real roster
-shape (1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX, 1 D/ST, 1 K, then bench), taking
-the best-ranked available player eligible for whichever slot is still
-open, falling back to best-overall once every starting slot is filled.
+see app/providers/sleeper/). The algorithm is true best-player-available,
+matching how ESPN's and Sleeper's own auto-draft actually behave: take
+the single best-ranked player on the board, full stop — real-world ADP
+already encodes positional scarcity (that's *why* QBs go in round 3+
+rather than round 1 despite every roster needing exactly one), so
+layering a fixed "fill starting slots in this order" rule on top of it
+double-counts that scarcity and produces exactly the wrong result. This
+replaces an earlier version that walked a fixed QB-then-RB-then-WR-then-
+TE priority order and always returned the first under-filled slot — since
+every empty roster starts at zero for all of them, that always picked a
+QB first regardless of rank, a real reported bug (2026-09 mock draft
+autodrafting QBs in round 1).
+
+The one guardrail: a position this roster has no plausible remaining room
+for (more players at that position than every starting slot, flex
+allowance, and the full bench combined could ever use) is skipped, so a
+fully-automated draft can't end up all one position — every other
+position stays eligible the entire draft, same as a human drafting
+straight off a big board.
 """
 from app.domain.roster_slots import FLEX_ELIGIBLE_POSITIONS, FLEX_SLOT_LABEL, POSITION_TO_SLOT_LABEL
 
 
-def _next_needed_slot(rostered_positions: list[str], roster_slots: dict[str, int]) -> str | None:
-    """rostered_positions is this team's players' real positions
-    (QB/RB/WR/TE/K/DEF), roster_slots is the starting-lineup shape
-    (e.g. {"QB":1,"RB":2,"WR":2,"TE":1,"RB/WR/TE":1,"D/ST":1,"K":1,"BE":7}).
-    Returns the slot label still needing a player, in fixed priority
-    order, or None if every slot (including bench) is full."""
-    counts = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "D/ST": 0, "K": 0}
-    for pos in rostered_positions:
-        label = POSITION_TO_SLOT_LABEL.get(pos)
-        if label in counts:
-            counts[label] += 1
-
-    for exact_slot in ("QB", "RB", "WR", "TE"):
-        required = roster_slots.get(exact_slot, 0)
-        if counts[exact_slot] < required:
-            return exact_slot
-
-    flex_required = roster_slots.get(FLEX_SLOT_LABEL, 0)
-    flex_used = max(0, counts["RB"] - roster_slots.get("RB", 0)) \
-        + max(0, counts["WR"] - roster_slots.get("WR", 0)) \
-        + max(0, counts["TE"] - roster_slots.get("TE", 0))
-    if flex_used < flex_required:
-        return FLEX_SLOT_LABEL
-
-    for exact_slot in ("D/ST", "K"):
-        required = roster_slots.get(exact_slot, 0)
-        if counts[exact_slot] < required:
-            return exact_slot
-
-    bench_required = roster_slots.get("BE", 0)
-    starters_required = sum(roster_slots.get(s, 0) for s in ("QB", "RB", "WR", "TE", FLEX_SLOT_LABEL, "D/ST", "K"))
-    if len(rostered_positions) < starters_required + bench_required:
-        return "BE"
-
-    return None
+def _position_capacity(position: str, roster_slots: dict[str, int]) -> int:
+    """The most players at `position` this roster could ever plausibly
+    use: its own starting slot, plus every flex slot (a deliberate
+    over-count — flex is shared across RB/WR/TE, but assuming this one
+    position alone could fill every flex spot means this guardrail only
+    ever fires in a genuinely degenerate case, never a normal one), plus
+    the entire bench (bench accepts any position). This is not a model
+    of good roster construction — it only exists to stop autopick from
+    drafting literally every remaining pick at one position."""
+    label = POSITION_TO_SLOT_LABEL.get(position)
+    capacity = roster_slots.get(label, 0) if label else 0
+    if position in FLEX_ELIGIBLE_POSITIONS:
+        capacity += roster_slots.get(FLEX_SLOT_LABEL, 0)
+    capacity += roster_slots.get("BE", 0)
+    return capacity
 
 
 def choose_autopick(
@@ -57,23 +51,22 @@ def choose_autopick(
     """available_players: list of {"sleeper_player_id", "position",
     "search_rank"}, already filtered to undrafted/draftable and sorted
     by search_rank ascending (None/unranked last — caller's
-    responsibility, see draft_engine.py's query). Returns the chosen
-    player dict, or None if nothing is available (shouldn't happen in
-    practice — the draft pool is far larger than any one draft)."""
+    responsibility, see draft_engine.py's query). Returns the single
+    best-available player overall — real best-player-available, not a
+    needs-first fill (see module docstring) — filtering out only
+    positions this roster has no plausible room left for. Returns None
+    if nothing is available (shouldn't happen in practice — the draft
+    pool is far larger than any one draft)."""
     if not available_players:
         return None
 
-    needed_slot = _next_needed_slot(rostered_positions, roster_slots)
+    counts: dict[str, int] = {}
+    for pos in rostered_positions:
+        counts[pos] = counts.get(pos, 0) + 1
 
-    if needed_slot is None or needed_slot == "BE":
-        return available_players[0]  # best overall
-
-    if needed_slot == FLEX_SLOT_LABEL:
-        eligible = [p for p in available_players if p["position"] in FLEX_ELIGIBLE_POSITIONS]
-    else:
-        wanted_position = next(
-            (pos for pos, label in POSITION_TO_SLOT_LABEL.items() if label == needed_slot), None
-        )
-        eligible = [p for p in available_players if p["position"] == wanted_position]
-
-    return eligible[0] if eligible else available_players[0]
+    eligible = [
+        p for p in available_players
+        if counts.get(p["position"], 0) < _position_capacity(p["position"], roster_slots)
+    ]
+    pool = eligible if eligible else available_players
+    return pool[0]

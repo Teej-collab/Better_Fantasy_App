@@ -1,3 +1,5 @@
+import datetime
+
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
@@ -167,6 +169,44 @@ async def test_roster_pool_comes_from_the_live_espn_roster(pool, monkeypatch):
     assert resp.status_code == 200
     pool_names = {p["player_name"] for p in resp.json()["roster_pool"]}
     assert pool_names == {"Live RB"}
+
+
+async def test_get_my_keepers_includes_draft_scheduled_start(pool, monkeypatch):
+    """The owner-facing countdown to auto-lock (KeepersPanel.tsx) needs
+    the same scheduled_start DraftCountdownCard.tsx already counts down
+    to — this is the one field GET /keepers/me adds on top of the real
+    league_keeper_rules row itself."""
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched1", 5041)
+    _patch_league(monkeypatch, _fake_roster_league(5041, [(30021, "Sched Player", "WR")]))
+
+    scheduled_start = datetime.datetime(2026, 9, 5, 18, 0, 0, tzinfo=datetime.timezone.utc)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO draft_config (season, draft_order, roster_slots, scheduled_start) "
+            "VALUES ($1, $2, $3, $4) ON CONFLICT (season, league_id) DO UPDATE SET scheduled_start = EXCLUDED.scheduled_start",
+            TEST_SEASON, [owner_id], "{}", scheduled_start,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["rules"]["draft_scheduled_start"] == "2026-09-05T18:00:00+00:00"
+
+
+async def test_get_my_keepers_draft_scheduled_start_null_with_no_draft_config(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched2", 5042)
+    _patch_league(monkeypatch, _fake_roster_league(5042, [(30022, "No Draft Yet Player", "WR")]))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["rules"]["draft_scheduled_start"] is None
 
 
 async def test_non_commissioner_cannot_set_rules(pool, monkeypatch):

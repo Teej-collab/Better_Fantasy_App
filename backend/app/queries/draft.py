@@ -9,12 +9,22 @@ from app.config import DEFAULT_LEAGUE_ID
 async def get_draft_pool(
     conn, season: int, position: str | None = None, search: str | None = None, league_id: int = DEFAULT_LEAGUE_ID
 ):
+    # projected_points: a bulk ESPN sync (app/domain/player_projections.py),
+    # best-effort — null where the crosswalk to ESPN's own id never
+    # resolved. bye_week: NOT sourced from ESPN at all — a per-team (not
+    # per-player) join against team_bye_weeks, the same real, already-
+    # populated source app/domain/bye_weeks.py maintains independently
+    # of any per-player ESPN lookup. search_rank doubles as this app's
+    # ADP-equivalent (see draft_autopick.py's own docstring) — no new
+    # column for that.
     query = """
         SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
+               p.projected_points, tbw.bye_week,
                dp.pick_number IS NOT NULL AS drafted
         FROM players p
         LEFT JOIN draft_picks dp ON dp.sleeper_player_id = p.sleeper_player_id
             AND dp.season = $1 AND dp.league_id = $2
+        LEFT JOIN team_bye_weeks tbw ON tbw.season = $1 AND tbw.pro_team = p.pro_team
         WHERE p.is_draftable
     """
     params = [season, league_id]

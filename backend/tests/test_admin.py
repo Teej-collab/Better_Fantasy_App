@@ -134,3 +134,51 @@ async def test_bye_week_sync_writes_real_rows(pool, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["teams_synced"] == 1  # only KC has exactly one missing week in this fixture
+
+
+async def test_projected_points_sync_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(path="/admin/players/sync-projections")
+    assert response.status_code == 401
+
+
+async def test_projected_points_sync_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(
+        cookies=await _non_commissioner_cookies(pool, "proj-sync-reject"), path="/admin/players/sync-projections"
+    )
+    assert response.status_code == 403
+
+
+async def test_projected_points_sync_writes_real_rows(pool, monkeypatch):
+    from app.domain import player_projections
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, is_draftable) "
+            "VALUES ('test-admin-proj-player', 777001, 'Test Admin Proj Player', 'RB', TRUE)"
+        )
+
+    monkeypatch.setattr(
+        player_projections,
+        "get_all_projected_points",
+        lambda config=None, season=None: [
+            {"espn_player_id": 777001, "name": "Test Admin Proj Player", "projected_points": 199.9}
+        ],
+    )
+
+    response = await _post_sync(
+        cookies=await _commissioner_of_league_one_cookies(pool, "proj-sync-writer"),
+        path="/admin/players/sync-projections",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matched_by_espn_id"] == 1
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT projected_points FROM players WHERE sleeper_player_id = 'test-admin-proj-player'"
+        )
+    assert float(row["projected_points"]) == 199.9

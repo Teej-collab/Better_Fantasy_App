@@ -5,7 +5,12 @@ provider and writing to whatever DATABASE_URL happens to be configured:
 
 - Full sync (ENABLE_ESPN_SYNC_SCHEDULER): the complete historical scan,
   replaces Fantasy_Helper's in-process discord.ext.tasks loop (see
-  ARCHITECTURE.md). Meant for a slow cadence (default: daily).
+  ARCHITECTURE.md). Meant for a slow cadence (default: daily). Also
+  starts a second job on the same flag/interval — the bulk ESPN
+  projected-points sync for the draft pool (app/domain/
+  player_projections.py) — since it's the same kind of slow-changing
+  seasonal ESPN data this flag already exists for, not a reason to
+  invent a second flag.
 - Live sync (ENABLE_LIVE_SYNC_SCHEDULER): re-syncs just the current
   week's matchups/rosters + boom/bust, fast enough to poll frequently
   during live games. Gated to whether a real NFL game is actually live
@@ -44,6 +49,12 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   countdown clock hitting zero needs to feel immediate during a live
   draft. This must be turned on in production well before the real
   draft date; it defaults off like everything else here.
+- Keeper auto-lock (ENABLE_KEEPER_LOCK_SCHEDULER): every 60 seconds,
+  locks any league's keeper selections (league_keeper_rules.locked_at,
+  same as a commissioner's manual "Lock keepers" click) once that
+  league's own real draft is within 1 hour of its scheduled_start —
+  previously manual-only. Same "must be turned on before the real
+  draft date" note as the draft clock above.
 - Weekly compute (ENABLE_WEEKLY_COMPUTE_SCHEDULER): this app's own
   Phase D/F scoring — app/domain/weekly_stats.py's
   compute_and_store_week() — recomputing every rostered player's real
@@ -69,6 +80,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
+from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
 from app.gamecast.manager import manager as gamecast_manager
@@ -77,6 +89,7 @@ from app.providers.espn.config import ESPNConfig
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
+from app.queries import keepers as keeper_queries
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +146,20 @@ async def _run_sleeper_player_sync_job():
     logger.info("Sleeper player sync finished: %d players upserted", count)
 
 
+async def _run_projected_points_sync_job():
+    """Bulk ESPN projected-points sync for the draft pool's inline
+    stats (app/domain/player_projections.py) — gated on the same
+    ENABLE_ESPN_SYNC_SCHEDULER flag as the full sync above rather than
+    its own flag, since this is the same kind of slow-changing seasonal
+    ESPN data that job already exists for, just a separate call (a
+    League.free_agents() bulk read, not part of run_full_sync's own
+    matchup/roster sync)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        results = await sync_projected_points(conn)
+    logger.info("Player projections sync finished: %s", results)
+
+
 async def _run_draft_clock_job():
     """Every league with its own in-progress, past-deadline draft gets
     autopicked independently — not just League #1 (see TODO.md's PHASE
@@ -163,6 +190,44 @@ async def _run_draft_clock_job():
             )
 
 
+async def _run_keeper_lock_job():
+    """Auto-locks any league's keeper window once its real draft is
+    within 1 hour of its own scheduled_start (draft_config.scheduled_start,
+    set via PUT /draft/schedule) — before this, locking was manual-only
+    (league_keeper_rules.locked_at, previously only ever set by a
+    commissioner's own "Lock keepers" click, see queries/keepers.py's
+    lock_rules). Every league with real keeper rules gets checked
+    independently, same "not just League #1" shape as
+    _run_draft_clock_job above. "Uses keepers" means max_keepers > 0 —
+    there's no separate per-league flag for this (see
+    league_keeper_rules' own schema); a league with no rules row, or
+    max_keepers = 0, is simply never selected by this query. lock_rules
+    is already idempotent (a no-op once locked_at is set), so a league
+    that crosses the threshold gets picked up and locked exactly once
+    even though this job re-checks on every tick."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        due = await conn.fetch(
+            """
+            SELECT lkr.league_id
+            FROM league_keeper_rules lkr
+            JOIN draft_config dc ON dc.season = lkr.season AND dc.league_id = lkr.league_id
+            WHERE lkr.season = $1
+              AND lkr.max_keepers > 0
+              AND lkr.locked_at IS NULL
+              AND dc.scheduled_start IS NOT NULL
+              AND dc.scheduled_start - interval '1 hour' <= $2
+            """,
+            season, datetime.now(timezone.utc),
+        )
+        for row in due:
+            league_id = row["league_id"]
+            locked = await keeper_queries.lock_rules(conn, season, league_id=league_id)
+            if locked is not None:
+                logger.info("Keeper auto-lock: season=%s league_id=%s", season, league_id)
+
+
 async def _run_weekly_compute_job():
     games = await get_nfl_scoreboard()
     if not is_nfl_game_live(games):
@@ -185,6 +250,10 @@ def start_scheduler():
         interval_hours = int(os.getenv("SYNC_INTERVAL_HOURS", "24"))
         _scheduler.add_job(_run_full_sync_job, "interval", hours=interval_hours, id="espn_full_sync")
         logger.info("Full ESPN sync scheduler started (every %d hours)", interval_hours)
+        _scheduler.add_job(
+            _run_projected_points_sync_job, "interval", hours=interval_hours, id="espn_projected_points_sync"
+        )
+        logger.info("ESPN projected-points sync scheduler started (every %d hours)", interval_hours)
         started_any = True
 
     if os.getenv("ENABLE_LIVE_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
@@ -220,6 +289,11 @@ def start_scheduler():
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
         _scheduler.add_job(_run_draft_clock_job, "interval", seconds=2, id="draft_clock")
         logger.info("Draft clock scheduler started (every 2 seconds)")
+        started_any = True
+
+    if os.getenv("ENABLE_KEEPER_LOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(_run_keeper_lock_job, "interval", seconds=60, id="keeper_lock")
+        logger.info("Keeper auto-lock scheduler started (every 60 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_WEEKLY_COMPUTE_SCHEDULER", "").lower() in ("1", "true", "yes"):

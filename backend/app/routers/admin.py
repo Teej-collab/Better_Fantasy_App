@@ -23,6 +23,7 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
+from app.domain.player_projections import sync_projected_points
 from app.domain.weekly_stats import compute_and_store_week
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
@@ -138,3 +139,19 @@ async def trigger_player_sync(request: Request):
 
     count = await sync_players(await get_pool())
     return {"players_upserted": count}
+
+
+@router.post("/players/sync-projections")
+async def trigger_projected_points_sync(request: Request):
+    """Manual trigger for the bulk ESPN projected-points sync (see
+    app/domain/player_projections.py) — run this by hand right after it
+    ships rather than waiting for the daily scheduled job's first tick,
+    same reasoning as /players/sync above. Not League #1-specific
+    either (players is a global table), commissioner-gated the same way
+    as everything else in this router."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        results = await sync_projected_points(conn)
+    return results

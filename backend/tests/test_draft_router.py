@@ -150,6 +150,31 @@ async def test_pool_returns_draftable_players(pool, monkeypatch):
     assert player in ids
 
 
+async def test_pool_includes_projected_points_and_bye_week(pool, monkeypatch):
+    """projected_points (players.projected_points, filled by the bulk
+    ESPN sync — app/domain/player_projections.py) and bye_week (a join
+    against team_bye_weeks, not sourced from ESPN at all) both surface
+    on the same /draft/pool row search_rank already did."""
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "pool2")
+    player = await _seed_player(pool, "p2")
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE players SET projected_points = 187.5 WHERE sleeper_player_id = $1", player)
+        await conn.execute(
+            "INSERT INTO team_bye_weeks (season, pro_team, bye_week) VALUES ($1, 'KC', 9) "
+            "ON CONFLICT (season, pro_team) DO UPDATE SET bye_week = EXCLUDED.bye_week",
+            TEST_SEASON,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/pool")
+
+    row = next(p for p in resp.json()["players"] if p["sleeper_player_id"] == player)
+    assert float(row["projected_points"]) == 187.5
+    assert row["bye_week"] == 9
+
+
 async def test_setup_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
     _commish_user_id, _commish_owner_id, league_id = await _seed_commissioner_and_team(pool, "setup1")
