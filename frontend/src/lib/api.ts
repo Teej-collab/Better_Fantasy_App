@@ -861,6 +861,19 @@ export function getChugLeaderboard(sessionCookie: string | undefined, season?: n
   );
 }
 
+export type ChugDeadline = {
+  deadline: string;
+  is_past: boolean;
+};
+
+// Jeffrey's Rule's real deadline — the current week's actual Monday
+// Night Football kickoff (backend/app/domain/chug_deadline.py), not a
+// guessed fixed time. Powers the homepage's Chug Countdown card, which
+// takes over the Draft Countdown's slot once the draft is done.
+export function getChugDeadline(sessionCookie: string | undefined) {
+  return getServer<ChugDeadline>("/chug/deadline", sessionCookie);
+}
+
 // Commissioner-only — marks a real-life chug fine as paid, clearing it
 // off the owed total. amount omitted clears the entire fine.
 export async function clearChugFine(ownerId: number, amount?: number): Promise<{ cleared: number }> {

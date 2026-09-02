@@ -21,9 +21,11 @@ from app.auth.league_context import (
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
+from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug
 from app.providers.chug_analyzer_bridge import run_chug_analysis
+from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
 
@@ -63,6 +65,18 @@ async def chug_leaderboard(
     async with pool.acquire() as conn:
         leaderboard = await build_chug_leaderboard(conn, active_season, season, league_id)
     return {"season": season, "leaderboard": leaderboard}
+
+
+@router.get("/deadline")
+async def chug_deadline(league_id: int = Depends(require_league_access)):
+    """When this week's chugs are due by (Jeffrey's Rule — see
+    app/domain/chug_deadline.py) — real ESPN Monday Night Football
+    kickoff, not a guessed fixed time. league_id is unused (the deadline
+    is the same NFL-wide fact for every league) but kept for the same
+    signed-in-with-real-membership gate every other /chug endpoint
+    already has, rather than exposing this to anyone unauthenticated."""
+    games = await get_nfl_scoreboard()
+    return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games)}
 
 
 @router.post("/upload")

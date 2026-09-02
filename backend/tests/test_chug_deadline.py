@@ -1,9 +1,16 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from httpx import ASGITransport, AsyncClient
+
+from app.auth.session import create_session_token
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
+from app.main import app
+from app.queries import leagues as league_queries
 
 ET = ZoneInfo("America/New_York")
+_SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 # A real Monday in the test data's timeframe — 2026-08-24 is a Monday.
 _MONDAY_GAME = {
@@ -48,3 +55,38 @@ def test_deadline_anchors_to_the_monday_of_the_current_week_regardless_of_weekda
     now = datetime(2026, 8, 22, 10, 0, tzinfo=ET)  # Saturday
     deadline = get_mnf_deadline([_MONDAY_GAME], now)
     assert deadline.date().isoformat() == "2026-08-24"
+
+
+async def _member_cookies(pool, suffix: str) -> dict:
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-chug-deadline-router-{suffix}@example.com", f"Test ChugDeadline {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+    return {"session": create_session_token(_SESSION_SECRET, user_id=user_id)}
+
+
+async def test_deadline_endpoint_returns_real_kickoff_for_a_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+
+    async def fake_scoreboard():
+        return [_MONDAY_GAME]
+
+    monkeypatch.setattr("app.routers.chug.get_nfl_scoreboard", fake_scoreboard)
+    cookies = await _member_cookies(pool, "returns-kickoff")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        client.cookies.update(cookies)
+        resp = await client.get("/chug/deadline")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deadline"]
+    assert isinstance(body["is_past"], bool)
+
+
+async def test_deadline_endpoint_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/chug/deadline")
+    assert resp.status_code == 401
