@@ -197,6 +197,62 @@ async def test_update_chat_color_null_resets_to_default(pool, monkeypatch):
     assert color is None
 
 
+async def test_update_logo_accepts_a_real_blob_url(pool, monkeypatch):
+    from app.config import CHAT_IMAGE_HOST
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 30)
+    url = f"https://{CHAT_IMAGE_HOST}/logos/some-logo.png"
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.put("/settings/logo", json={"logo_url": url})
+
+    async with pool.acquire() as conn:
+        stored = await conn.fetchval("SELECT logo_url FROM owners WHERE owner_id = $1", owner_id)
+
+    assert resp.status_code == 200
+    assert stored == url
+
+
+async def test_update_logo_rejects_a_url_not_on_our_blob_host(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 31)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        for bad in [
+            "https://evil.example.com/logo.png",
+            "http://ls7srleyqyy06rjq.public.blob.vercel-storage.com/logo.png",  # not https
+            "not-a-url",
+        ]:
+            resp = await client.put("/settings/logo", json={"logo_url": bad})
+            assert resp.status_code == 400, bad
+
+    async with pool.acquire() as conn:
+        stored = await conn.fetchval("SELECT logo_url FROM owners WHERE owner_id = $1", owner_id)
+    assert stored is None
+
+
+async def test_update_logo_null_removes_it(pool, monkeypatch):
+    from app.config import CHAT_IMAGE_HOST
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 32)
+    url = f"https://{CHAT_IMAGE_HOST}/logos/some-logo.png"
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        await client.put("/settings/logo", json={"logo_url": url})
+        resp = await client.put("/settings/logo", json={"logo_url": None})
+
+    async with pool.acquire() as conn:
+        stored = await conn.fetchval("SELECT logo_url FROM owners WHERE owner_id = $1", owner_id)
+
+    assert resp.status_code == 200
+    assert stored is None
+
+
 async def _seed_team(pool, owner_id, suffix, season):
     async with pool.acquire() as conn:
         return await conn.fetchval(

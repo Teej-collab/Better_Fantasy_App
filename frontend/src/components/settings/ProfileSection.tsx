@@ -7,10 +7,12 @@ import {
   resetTeamName,
   updateChatColor,
   updateDisplayName,
+  updateLogo,
   updateTeamName,
   type MySettings,
 } from "@/lib/api";
 import { readableTextColor } from "@/components/chat/MessageBubble";
+import { LogoUploadCropper } from "@/components/settings/LogoUploadCropper";
 
 // Named, curated palette — drawn from the design system itself
 // (Neon Green is literally --wl-accent, White/Neutral is --wl-text)
@@ -46,6 +48,20 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
 
   const [color, setColor] = useState(initial.chat_color);
   const [colorStatus, setColorStatus] = useState<"idle" | "saving" | "error">("idle");
+
+  const [logoUrl, setLogoUrl] = useState(initial.logo_url);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
+  async function saveLogo(url: string | null) {
+    setLogoError(null);
+    try {
+      await updateLogo(url);
+      setLogoUrl(url);
+      router.refresh();
+    } catch (e) {
+      setLogoError(e instanceof Error ? e.message : "Failed to save");
+    }
+  }
 
   async function saveName(e: React.FormEvent) {
     e.preventDefault();
@@ -171,6 +187,19 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
         {nameError && (
           <p role="alert" className="text-xs text-red-500">
             {nameError}
+          </p>
+        )}
+      </section>
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Team Logo</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">Shown next to your name in League Chat.</p>
+        </div>
+        <LogoUploadCropper currentLogoUrl={logoUrl} onSaved={saveLogo} />
+        {logoError && (
+          <p role="alert" className="text-xs text-red-500">
+            {logoError}
           </p>
         )}
       </section>

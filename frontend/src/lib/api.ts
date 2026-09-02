@@ -906,6 +906,7 @@ export type MySettings = {
   display_name: string;
   display_name_is_custom: boolean;
   chat_color: string | null;
+  logo_url: string | null;
   discord_username: string | null;
   // An account can have more than one of these truthy at once — Google
   // sign-in links onto an existing email account by matching email
@@ -970,6 +971,13 @@ export function resetDisplayName(): Promise<void> {
 
 export function updateChatColor(chatColor: string | null): Promise<void> {
   return _settingsRequest("/chat-color", "PUT", { chat_color: chatColor });
+}
+
+// logoUrl is a URL the caller already uploaded straight to Blob storage
+// (LogoUploadCropper.tsx) — this only ever persists that URL, same
+// division of labor as the chat image-attachment flow. null removes it.
+export function updateLogo(logoUrl: string | null): Promise<void> {
+  return _settingsRequest("/logo", "PUT", { logo_url: logoUrl });
 }
 
 // Renames the signed-in owner's team for the current season only —
@@ -1326,6 +1334,7 @@ export type ChatMessage = {
   owner_id: number;
   owner_name: string;
   owner_chat_color: string | null;
+  owner_logo_url: string | null;
   body: string;
   image_url: string | null;
   deleted: boolean;

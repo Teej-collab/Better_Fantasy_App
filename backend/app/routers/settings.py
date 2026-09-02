@@ -149,6 +149,32 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
     return {"chat_color": color}
 
 
+class LogoBody(BaseModel):
+    logo_url: str | None = None
+
+
+@router.put("/logo")
+async def update_logo(body: LogoBody, request: Request, pool=Depends(get_pool)):
+    """Persists a team logo URL the client already uploaded straight to
+    Blob storage (frontend's LogoUploadCropper.tsx, same direct-to-Blob
+    pattern chat images use) — this endpoint never receives file bytes,
+    only the resulting URL, which still gets validated against our own
+    Blob host before being trusted (validate_blob_image_url) exactly
+    like a chat image attachment does. logo_url=null removes the logo."""
+    payload = _require_session(request)
+
+    logo_url = body.logo_url
+    if logo_url is not None:
+        validated = validate_blob_image_url(logo_url)
+        if validated is None:
+            raise HTTPException(status_code=400, detail="logo_url must be a real uploaded image URL")
+        logo_url = validated
+
+    async with pool.acquire() as conn:
+        await settings_queries.set_logo_url(conn, payload["owner_id"], logo_url)
+    return {"logo_url": logo_url}
+
+
 class TeamNameBody(BaseModel):
     team_name: str
 

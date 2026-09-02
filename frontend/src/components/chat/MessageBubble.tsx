@@ -144,13 +144,23 @@ export function MessageBubble({
             run left-aligned to the same edge instead of drifting. */}
         {!mine &&
           (lastInRun ? (
-            <span
-              className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-              style={{ backgroundColor: avatarColor, color: readableTextColor(avatarColor) }}
-              aria-hidden
-            >
-              {initialsFor(message.owner_name)}
-            </span>
+            message.owner_logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
+              <img
+                src={message.owner_logo_url}
+                alt=""
+                aria-hidden
+                className="mb-0.5 h-6 w-6 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <span
+                className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                style={{ backgroundColor: avatarColor, color: readableTextColor(avatarColor) }}
+                aria-hidden
+              >
+                {initialsFor(message.owner_name)}
+              </span>
+            )
           ) : (
             <span className="w-6 shrink-0" aria-hidden />
           ))}

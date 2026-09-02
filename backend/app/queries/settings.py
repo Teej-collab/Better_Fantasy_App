@@ -19,7 +19,7 @@ async def get_settings(conn, owner_id: int, active_season: int, league_id: int =
     # method.
     return await conn.fetchrow(
         """
-        SELECT o.display_name, o.display_name_is_custom, o.chat_color, u.discord_username, u.email,
+        SELECT o.display_name, o.display_name_is_custom, o.chat_color, o.logo_url, u.discord_username, u.email,
             (u.discord_user_id IS NOT NULL) AS has_discord,
             (u.google_user_id IS NOT NULL) AS has_google,
             (u.password_hash IS NOT NULL) AS has_password,
@@ -47,7 +47,7 @@ async def get_account_settings(conn, user_id: int):
     claim can still reach Account & Security to delete itself)."""
     return await conn.fetchrow(
         """
-        SELECT display_name, FALSE AS display_name_is_custom, NULL::text AS chat_color,
+        SELECT display_name, FALSE AS display_name_is_custom, NULL::text AS chat_color, NULL::text AS logo_url,
             discord_username, email,
             (discord_user_id IS NOT NULL) AS has_discord,
             (google_user_id IS NOT NULL) AS has_google,
@@ -76,6 +76,11 @@ async def reset_display_name(conn, owner_id: int):
 async def set_chat_color(conn, owner_id: int, chat_color: str | None):
     """chat_color=None resets to the app's default bubble color."""
     await conn.execute("UPDATE owners SET chat_color = $2 WHERE owner_id = $1", owner_id, chat_color)
+
+
+async def set_logo_url(conn, owner_id: int, logo_url: str | None):
+    """logo_url=None removes the logo (back to the initials avatar)."""
+    await conn.execute("UPDATE owners SET logo_url = $2 WHERE owner_id = $1", owner_id, logo_url)
 
 
 async def get_team_name(conn, owner_id: int, season: int, league_id: int = DEFAULT_LEAGUE_ID):
