@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
+import { EntryChoiceStage, type EntryChoice } from "@/components/EntryChoiceStage";
 import { LiveTicker } from "@/components/LiveTicker";
 import { LeagueWordmark } from "@/components/LeagueWordmark";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
@@ -15,13 +16,15 @@ const satisfy = Satisfy({ weight: "400", subsets: ["latin"] });
 
 const ENTER_TRANSITION_MS = 900;
 
-type PostIntroStage = "entering" | "auth" | null;
+type PostIntroStage = "entering" | "choice" | "auth" | null;
 
 /**
  * The mandatory front door for a signed-out visitor (app/page.tsx
  * renders this instead of the dashboard when there's no session).
  * Darkness -> WELCOME / TO / THE, one at a time -> the WEEKEND / League
- * wordmark -> tagline -> Enter Here -> a transition into AuthScreen.
+ * wordmark -> tagline -> Enter Here -> a transition into
+ * EntryChoiceStage (Sign In / Join a League / Create a League) ->
+ * AuthScreen, pre-set to the chosen intent.
  *
  * Skips straight to the settled final state (no word-by-word build-up)
  * for prefers-reduced-motion and for anyone who's already seen the
@@ -40,6 +43,7 @@ type PostIntroStage = "entering" | "auth" | null;
 export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: TickerItem[]; isGameDay: boolean }) {
   const { stage, wordIndex, skip, markSeen } = useWeekendIntro();
   const [postStage, setPostStage] = useState<PostIntroStage>(null);
+  const [entryChoice, setEntryChoice] = useState<EntryChoice>("signin");
 
   useEffect(() => {
     // This front door is only ever shown at the start of a real page load
@@ -61,11 +65,26 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: Tic
   function enter() {
     markSeen();
     setPostStage("entering");
-    setTimeout(() => setPostStage("auth"), ENTER_TRANSITION_MS);
+    setTimeout(() => setPostStage("choice"), ENTER_TRANSITION_MS);
   }
 
   if (postStage === "auth") {
-    return <AuthScreen onBack={() => setPostStage(null)} />;
+    return <AuthScreen variant={entryChoice} onBack={() => setPostStage("choice")} />;
+  }
+
+  if (postStage === "choice") {
+    return (
+      <div className="wl-gate flex items-center justify-center px-6">
+        <div className="wl-ambient wl-ambient--lit" aria-hidden />
+        <EntryChoiceStage
+          onChoose={(choice) => {
+            setEntryChoice(choice);
+            setPostStage("auth");
+          }}
+          onBack={() => setPostStage(null)}
+        />
+      </div>
+    );
   }
 
   const showFinal = stage === "final" || postStage === "entering";

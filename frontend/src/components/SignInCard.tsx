@@ -28,11 +28,29 @@ const FIELD_STYLE = { background: "var(--wl-bg)", border: "1px solid var(--wl-bo
  * `onBack` is optional — AuthScreen passes it (there's a real "back"
  * step, the WEEKEND intro); login/page.tsx has nothing to go back to,
  * so it's simply omitted there rather than passing a no-op.
+ *
+ * `variant` — "signin" (default) is the full card above: Discord or
+ * email, either sign in or create an account, landing on the dashboard
+ * ("/") either way. "join"/"create" are for a visitor who already
+ * stated that intent on EntryChoiceStage.tsx: Discord is skipped
+ * entirely (it auto-links onto League #1's existing real-life members
+ * via owners.discord_user_id — meaningless for someone starting or
+ * joining a brand-new self-serve league) and the form goes straight to
+ * account creation, landing on /leagues with that action already
+ * expanded (leagues/page.tsx's #join-league / #create-league deep
+ * links, the same ones WelcomeBackStage's post-login buttons use).
  */
-export function SignInCard({ onBack }: { onBack?: () => void }) {
+export function SignInCard({
+  onBack,
+  variant = "signin",
+}: {
+  onBack?: () => void;
+  variant?: "signin" | "join" | "create";
+}) {
   const router = useRouter();
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const isIntentVariant = variant !== "signin";
+  const [showEmailForm, setShowEmailForm] = useState(isIntentVariant);
+  const [mode, setMode] = useState<"signin" | "signup">(isIntentVariant ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -53,7 +71,7 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
     try {
       const { token } = mode === "signup" ? await signup(email, password, displayName) : await login(email, password);
       await completeSignIn(token);
-      router.push("/");
+      router.push(variant === "join" ? "/leagues#join-league" : variant === "create" ? "/leagues#create-league" : "/");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -72,8 +90,15 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
           Weekend League
         </span>
         <h1 className="font-display text-2xl font-semibold tracking-wide text-[color:var(--wl-text)] uppercase">
-          Welcome back
+          {variant === "join" ? "Join a League" : variant === "create" ? "Create a League" : "Welcome back"}
         </h1>
+        {isIntentVariant && (
+          <p className="mt-1 max-w-[16rem] text-xs text-[color:var(--wl-text-secondary)]">
+            {variant === "join"
+              ? "Create your account, then join with the invite code your commissioner shares."
+              : "Create your account, then start your own league in a few taps."}
+          </p>
+        )}
       </div>
 
       {!showEmailForm ? (
@@ -112,32 +137,34 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
         </>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex justify-center gap-1 rounded-full p-1 text-xs" style={{ border: "1px solid var(--wl-border)" }}>
-            <button
-              type="button"
-              onClick={() => setMode("signin")}
-              className="flex-1 rounded-full py-1.5 font-medium transition-colors"
-              style={
-                mode === "signin"
-                  ? { background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }
-                  : { color: "var(--wl-text-secondary)" }
-              }
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("signup")}
-              className="flex-1 rounded-full py-1.5 font-medium transition-colors"
-              style={
-                mode === "signup"
-                  ? { background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }
-                  : { color: "var(--wl-text-secondary)" }
-              }
-            >
-              Create account
-            </button>
-          </div>
+          {!isIntentVariant && (
+            <div className="flex justify-center gap-1 rounded-full p-1 text-xs" style={{ border: "1px solid var(--wl-border)" }}>
+              <button
+                type="button"
+                onClick={() => setMode("signin")}
+                className="flex-1 rounded-full py-1.5 font-medium transition-colors"
+                style={
+                  mode === "signin"
+                    ? { background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }
+                    : { color: "var(--wl-text-secondary)" }
+                }
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("signup")}
+                className="flex-1 rounded-full py-1.5 font-medium transition-colors"
+                style={
+                  mode === "signup"
+                    ? { background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }
+                    : { color: "var(--wl-text-secondary)" }
+                }
+              >
+                Create account
+              </button>
+            </div>
+          )}
 
           {mode === "signup" && (
             <div className="flex flex-col gap-1">
@@ -224,17 +251,19 @@ export function SignInCard({ onBack }: { onBack?: () => void }) {
             {busy ? "…" : mode === "signup" ? "Create account" : "Sign in"}
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowEmailForm(false)}
-            className="text-center text-xs text-[color:var(--wl-text-secondary)] transition-colors hover:text-[color:var(--wl-text)]"
-          >
-            ← Use Discord instead
-          </button>
+          {!isIntentVariant && (
+            <button
+              type="button"
+              onClick={() => setShowEmailForm(false)}
+              className="text-center text-xs text-[color:var(--wl-text-secondary)] transition-colors hover:text-[color:var(--wl-text)]"
+            >
+              ← Use Discord instead
+            </button>
+          )}
         </form>
       )}
 
-      {!showEmailForm && onBack && (
+      {(!showEmailForm || isIntentVariant) && onBack && (
         <button
           onClick={onBack}
           className="text-center text-xs text-[color:var(--wl-text-secondary)] transition-colors hover:text-[color:var(--wl-text)]"

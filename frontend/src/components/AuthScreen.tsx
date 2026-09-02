@@ -10,11 +10,17 @@ import { SignInCard } from "@/components/SignInCard";
 // property email/password never gives); email/password is a second,
 // independent way to get a real Weekend account, for anyone opening a
 // league beyond Discord.
-export function AuthScreen({ onBack }: { onBack: () => void }) {
+export function AuthScreen({
+  onBack,
+  variant = "signin",
+}: {
+  onBack: () => void;
+  variant?: "signin" | "join" | "create";
+}) {
   return (
     <div className="wl-gate flex items-center justify-center px-6">
       <div className="wl-ambient wl-ambient--lit" aria-hidden />
-      <SignInCard onBack={onBack} />
+      <SignInCard onBack={onBack} variant={variant} />
     </div>
   );
 }
