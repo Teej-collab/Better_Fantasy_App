@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import {
   DESTINATIONS,
@@ -32,15 +29,12 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * "League" one click away in the primary header, this is purely the
  * mobile "how do I get back" affordance from spec §23.
  *
- * Two-tier since 2026-09-02: LEAGUE_SUBNAV_PRIMARY (lib/
- * navDestinations.ts) always shows; everything else collapses behind
- * a "More" toggle. The flat 10-tab single row had no hierarchy at all
- * (2026-09-02 re-audit's Critical Issue #4) — this is what makes the
- * component a client component now (needs local open/closed state),
- * it was a plain server component before. Auto-expanded whenever the
- * current page's own active tab is one of the secondary ones, so a
- * page you're already on is never hidden behind its own collapsed
- * toggle.
+ * Two fixed rows since 2026-09-02: LEAGUE_SUBNAV_PRIMARY (lib/
+ * navDestinations.ts) is row 1, everything else in LEAGUE_SUBNAV_ORDER
+ * is row 2 — both always visible, no collapse/toggle. (A "More" toggle
+ * briefly stood in for row 2 the same day; replaced with a second
+ * static row per the owner's own follow-up call — a fixed row you can
+ * always see beats a hidden one you have to tap open.)
  */
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
   // awardsAllTime's href is derived from awardsHref the same reason
@@ -55,9 +49,6 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
   }));
   const primaryTabs = tabs.filter((tab) => LEAGUE_SUBNAV_PRIMARY.has(tab.key));
   const secondaryTabs = tabs.filter((tab) => !LEAGUE_SUBNAV_PRIMARY.has(tab.key));
-  const activeIsSecondary = secondaryTabs.some((tab) => tab.key === active);
-
-  const [expanded, setExpanded] = useState(activeIsSecondary);
 
   function tabLink(tab: { key: LeagueTab; href: string }) {
     return (
@@ -85,32 +76,14 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
         ‹ League
       </Link>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
-        {/* flex-wrap, not overflow-x-auto — on a narrow mobile viewport,
-            4 primary tabs plus the "More" toggle don't fit on one line
-            (a real, measured overflow: the toggle button landed at
-            x:436 on a 430px-wide iPhone 16 Pro Max), and a scrolling row
-            with no visible affordance meant "More" — the only way to
-            reach the other 6 League destinations — was effectively
-            undiscoverable. Wrapping keeps every tab, including the
-            toggle, always on screen with no hidden scroll; on desktop's
-            wider primary nav this still renders as one line, same as
-            before. */}
-        <div className="flex flex-wrap items-center gap-1">
-          {primaryTabs.map(tabLink)}
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Show fewer sections" : "Show more sections"}
-            className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-            style={{ ["--nav-color" as string]: NAV_ACCENT }}
-          >
-            More {expanded ? "▴" : "▾"}
-          </button>
-        </div>
-        {expanded && (
-          <div className="flex flex-wrap gap-1">{secondaryTabs.map(tabLink)}</div>
-        )}
+        {/* flex-wrap, not overflow-x-auto — a narrow mobile viewport
+            can't fit every tab in a row on one line, and a scrolling row
+            with no visible affordance would leave the far end of a row
+            undiscoverable. Wrapping keeps every tab always on screen
+            with no hidden scroll; on desktop's wider primary nav each
+            row still renders as one line, same as before. */}
+        <div className="flex flex-wrap items-center gap-1">{primaryTabs.map(tabLink)}</div>
+        <div className="flex flex-wrap items-center gap-1">{secondaryTabs.map(tabLink)}</div>
       </nav>
     </div>
   );
