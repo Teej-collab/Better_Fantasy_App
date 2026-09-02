@@ -28,7 +28,7 @@ type UploadResult =
 // cookie — never touched by Safari's ITP) carried as a query param,
 // instead of relying on the backend's cookie reaching this
 // cross-site fetch at all.
-export function ChugUpload() {
+export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }) {
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +65,8 @@ export function ChugUpload() {
     }
   }
 
-  return (
-    <section
-      className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]"
-      style={panelGlowStyle(SECTION_COLORS.chug)}
-    >
+  const content = (
+    <>
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
         Submit a Chug
       </span>
@@ -116,6 +113,19 @@ export function ChugUpload() {
           </span>
         </div>
       )}
+    </>
+  );
+
+  if (variant === "bare") {
+    return <div className="flex flex-col gap-2">{content}</div>;
+  }
+
+  return (
+    <section
+      className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]"
+      style={panelGlowStyle(SECTION_COLORS.chug)}
+    >
+      {content}
     </section>
   );
 }

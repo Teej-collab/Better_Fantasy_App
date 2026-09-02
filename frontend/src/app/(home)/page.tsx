@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import {
   buildNflTickerItems,
+  getChugLeaderboard,
   getCurrentWeek,
   getMe,
   getMyWeek,
@@ -17,6 +18,7 @@ import {
   listSeasons,
   resolveWeek,
   safeLatestSeason,
+  type ChugLeaderboardRow,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -24,6 +26,7 @@ import {
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
+import { ChugDueCard } from "@/components/ChugDueCard";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
@@ -79,6 +82,7 @@ export default async function HomePage() {
   let weekMatchups: WeekMatchupContextItem[] = [];
   let topRivalries: Rivalry[] = [];
   let leagueTickerItems: TickerItem[] = [];
+  let myChug: ChugLeaderboardRow | null = null;
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -89,12 +93,13 @@ export default async function HomePage() {
   if (season !== null && me.active_league_id !== null) {
     const { current_week } = await getCurrentWeek(season);
     week = resolveWeek(current_week);
-    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker] = await Promise.all([
+    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker, chugRes] = await Promise.all([
       getStandings(season, sessionCookie),
       getWeeklyAwards(season, week, sessionCookie),
       getWeekMatchupContext(season, week, sessionCookie),
       listRivalries(sessionCookie),
       getWeekLeagueTicker(season, week, sessionCookie),
+      getChugLeaderboard(sessionCookie, season),
     ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
@@ -104,6 +109,7 @@ export default async function HomePage() {
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
       .slice(0, 3);
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
+    myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
   }
 
   // "Other" = every matchup except the logged-in owner's own (already
@@ -255,6 +261,10 @@ export default async function HomePage() {
     );
   }
 
+  if (myChug) {
+    cards.chug = <ChugDueCard summary={myChug} />;
+  }
+
   if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
@@ -374,6 +384,7 @@ export default async function HomePage() {
         </div>
 
         {cards.gamecast}
+        {cards.chug}
         {cards.rivalries}
         {cards.awards}
         {cards.discover}
