@@ -26,6 +26,7 @@ export const SECTION_COLORS: Record<string, string> = {
   chug: NAV_ACCENT,
   chat: NAV_ACCENT,
   powerRankings: NAV_ACCENT,
+  gamecast: NAV_ACCENT,
 };
 
 // CSS custom properties don't have a first-class React prop — every

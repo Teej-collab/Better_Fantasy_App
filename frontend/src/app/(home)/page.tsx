@@ -29,7 +29,7 @@ import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
-import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
+import { findGamecastId, getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import {
   DESTINATION_HREF,
@@ -128,13 +128,6 @@ export default async function HomePage() {
 
   cards.yourWeek = myWeek?.matchup ? (
       <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
-    ) : myWeek?.draft?.scheduled_start && myWeek.draft.status === "not_started" ? (
-      // Real, current state right now: pre-draft, pre-season — a much
-      // more useful thing to show here than a bland "nothing yet"
-      // message once the commissioner has set a real date (see
-      // DraftCountdownCard.tsx). Falls through to the plain message
-      // below once the draft starts/completes, or if no date is set.
-      <DraftCountdownCard teamName={myWeek.team_name} scheduledStart={myWeek.draft.scheduled_start} />
     ) : myWeek ? (
       <EmptyHero
         title={myWeek.team_name}
@@ -164,6 +157,19 @@ export default async function HomePage() {
         cta={{ href: "/leagues", label: "Join or create a league →" }}
       />
     );
+
+  // Its own standalone card now, not a substitute for the Your Week
+  // hero above (which used to show this in place of an EmptyHero when
+  // there was no live matchup) — real, current state right now
+  // (pre-draft, pre-season) deserves its own persistent spot on the
+  // homepage rather than only appearing when the hero happens to have
+  // nothing else to show. Same condition as before: a real draft date
+  // set, draft not yet started.
+  if (myWeek?.draft?.scheduled_start && myWeek.draft.status === "not_started") {
+    cards.draftCountdown = (
+      <DraftCountdownCard teamName={myWeek.team_name} scheduledStart={myWeek.draft.scheduled_start} />
+    );
+  }
 
   if (standings.length > 0) {
     cards.standings = (
@@ -228,6 +234,23 @@ export default async function HomePage() {
             );
           })}
         </ul>
+      </section>
+    );
+  }
+
+  // "Live Now" — every real NFL game currently in progress, linking
+  // into its own Gamecast when one exists (findGamecastId, same join
+  // the ticker above already uses — zero extra fetches, nflGames/
+  // gamecastGames are both already fetched for this request). Hidden
+  // entirely outside a live window (isGameDay), matching every other
+  // live-only element on this page (GameDayRefresher, the ticker's
+  // "Game Day" badge) — a quiet homepage on a non-game day stays quiet.
+  const liveNflGames = isGameDay ? nflGames.filter((g) => g.state === "in") : [];
+  if (liveNflGames.length > 0) {
+    cards.gamecast = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Live Now" href="/gamecast" />
+        <GamecastPreview games={liveNflGames} gamecastGames={gamecastGames} />
       </section>
     );
   }
@@ -330,9 +353,10 @@ export default async function HomePage() {
             column's two cards end up. Mobile: Your Week hero leads,
             then Standings, then Matchups, single column — the same
             three elements just reflow via the grid's mobile area map,
-            not a second copy of the JSX. Rivalries/Awards/Discover
-            (when present) always follow underneath, full width, fixed
-            order, on both breakpoints. */}
+            not a second copy of the JSX. Draft Countdown/Live Now
+            (Gamecast)/Rivalries/Awards/Discover (each only when
+            present) always follow underneath, full width, fixed order,
+            on both breakpoints. */}
         <div
           className="grid grid-cols-1 gap-4 [grid-template-areas:'hero'_'standings'_'matchups'] sm:grid-cols-2 sm:gap-6 sm:[grid-template-areas:'standings_matchups'_'hero_matchups']"
         >
@@ -341,6 +365,8 @@ export default async function HomePage() {
           {cards.matchups && <div style={{ gridArea: "matchups" }}>{cards.matchups}</div>}
         </div>
 
+        {cards.draftCountdown}
+        {cards.gamecast}
         {cards.rivalries}
         {cards.awards}
         {cards.discover}
@@ -624,6 +650,62 @@ function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// The homepage's "Live Now" card — every currently-live real NFL game,
+// as compact score chips, each linking into its own Gamecast when one
+// exists. Deliberately reuses nflGames/gamecastGames this page already
+// fetched for its own ticker (no new data source), and the same
+// findGamecastId join withGamecastLinks already relies on — this is
+// just that same join applied to a card instead of a ticker item.
+function GamecastPreview({
+  games,
+  gamecastGames,
+}: {
+  games: Awaited<ReturnType<typeof getNflScoreboard>>;
+  gamecastGames: Awaited<ReturnType<typeof getLiveGames>>;
+}) {
+  return (
+    <ul
+      className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+      style={panelGlowStyle(SECTION_COLORS.gamecast)}
+    >
+      {games.map((g) => {
+        const gamecastId = findGamecastId(g.home_team, g.away_team, gamecastGames);
+        const row = (
+          <>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="live-dot" aria-hidden />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-sm">
+                  {g.away_team ?? "—"} @ {g.home_team ?? "—"}
+                </span>
+                <span className="truncate text-xs text-black/50 dark:text-white/50">{g.status_detail}</span>
+              </span>
+            </span>
+            <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
+              <span className="block">{g.home_score ?? "—"}</span>
+              <span className="block">{g.away_score ?? "—"}</span>
+            </span>
+          </>
+        );
+        return (
+          <li key={g.id}>
+            {gamecastId ? (
+              <Link
+                href={`/gamecast/${gamecastId}`}
+                className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+              >
+                {row}
+              </Link>
+            ) : (
+              <span className="flex items-center justify-between gap-3 px-3 py-2 text-sm">{row}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
