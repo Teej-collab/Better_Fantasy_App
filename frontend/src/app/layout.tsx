@@ -83,10 +83,11 @@ export const viewport: Viewport = {
 // itself) is what actually guarantees /weekend never receives — or even
 // server-fetches the data behind — chrome it shouldn't have. See
 // app/(app)/layout.tsx's comment for the full reasoning.
-// Settings > Appearance (Neon Intensity, Animations, Accent Color) —
-// mirrored into small non-httpOnly cookies the moment any setting
-// changes (see AppearanceSection.tsx), applied here via a blocking
-// inline script instead of reading them server-side in this layout:
+// Settings > Appearance (Neon Intensity, Animations, Accent Color,
+// Look) — mirrored into small non-httpOnly cookies the moment any
+// setting changes (see AppearanceSection.tsx), applied here via a
+// blocking inline script instead of reading them server-side in this
+// layout:
 // RootLayout wraps every route, so calling cookies() here would force
 // the *entire* app into dynamic rendering — including pages with no
 // per-visitor data at all (e.g. /auth/complete) that are static today.
@@ -109,6 +110,8 @@ const APPEARANCE_SCRIPT = `
     if (a && /^#[0-9a-fA-F]{6}$/.test(a[1])) {
       document.documentElement.style.setProperty("--user-accent", a[1]);
     }
+    var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
+    document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");
   } catch (e) {}
 })();
 `;
@@ -118,10 +121,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${ibmPlexSans.variable} ${oswald.variable} ${geistMono.variable} h-full antialiased dark`}
-      // APPEARANCE_SCRIPT below sets data-neon and (sometimes)
-      // motion-reduced/--user-accent on this element before React
-      // hydrates, on purpose (that's what avoids a flash of the wrong
-      // intensity/motion/color) — React only knows about the
+      // APPEARANCE_SCRIPT below sets data-neon, data-wl-theme, and
+      // (sometimes) motion-reduced/--user-accent on this element before
+      // React hydrates, on purpose (that's what avoids a flash of the
+      // wrong intensity/motion/color/look) — React only knows about the
       // server-rendered version without those, and would otherwise log
       // a hydration mismatch for a difference this element is supposed
       // to have. Standard suppressHydrationWarning use case: it only
@@ -133,6 +136,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
+        {/* Site-wide, opacity-gated by [data-wl-theme="cosmic"]
+            (globals.css) — invisible (opacity 0) in the default "calm"
+            look, so this costs nothing for every visitor who hasn't
+            opted into Cosmic in Settings > Appearance. Fixed/negative
+            z-index/pointer-events:none, same restrained pattern as
+            .home-ambient (the homepage's own decorative wash) — never
+            affects layout, just what's painted behind it. */}
+        <div className="cosmic-ambient" aria-hidden />
         <OfflineBanner />
         <PlayerCardProvider>{children}</PlayerCardProvider>
         <ServiceWorkerRegistration />

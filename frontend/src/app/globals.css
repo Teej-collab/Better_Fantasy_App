@@ -50,6 +50,25 @@
   --wl-glow-scale: 2.2;
 }
 
+/* Settings > Appearance > Look — "Cosmic" is an opt-in per-owner
+   alternative to the default "Calm" palette above, not a light/dark
+   mode switch (the app stays dark either way). Set via a data-wl-theme
+   attribute on <html> (see layout.tsx), same before-first-paint cookie
+   mechanism as data-neon. Every rule elsewhere in this file that reads
+   --wl-bg/--wl-surface/--wl-border/--wl-accent/--wl-accent-dim
+   automatically repaints with these values — nothing about layout,
+   spacing, or which elements exist changes, only these five tokens.
+   Restores (as a choice, not a default) the starfield/nebula-and-
+   brighter-accent look this app shipped with before the 2026-08-31
+   "calm the UI down" pass (2cc036f) simplified it site-wide. */
+[data-wl-theme="cosmic"] {
+  --wl-bg: #0a0716;
+  --wl-surface: #171129;
+  --wl-border: #35285f;
+  --wl-accent: #39ffb0;
+  --wl-accent-dim: #1b8f6c;
+}
+
 /* App-wide keyboard-focus baseline — most interactive elements had no
    visible focus indicator at all, relying on whatever the browser
    default happened to be (thin coverage found across the app,
@@ -638,6 +657,56 @@ body {
     radial-gradient(600px circle at 15% -10%, rgba(56, 189, 248, 0.1), transparent 60%),
     radial-gradient(500px circle at 100% 10%, rgba(236, 72, 153, 0.08), transparent 60%),
     radial-gradient(700px circle at 50% 100%, rgba(250, 204, 21, 0.05), transparent 60%);
+}
+
+/* Settings > Appearance > Look ("Cosmic") — a site-wide counterpart to
+   .home-ambient above, mounted once in RootLayout (app/layout.tsx) so
+   every page gets it, not just Home. Invisible by default (opacity 0
+   in the "calm" look — no [data-wl-theme="cosmic"] rule below applies)
+   so this costs nothing for anyone who hasn't opted in. Two layers:
+   three soft nebula blobs (same restrained radial-gradient technique
+   as .home-ambient, just brighter/larger to read as "cosmic" behind a
+   dark surface) and a pure-CSS starfield (repeating tiny radial-
+   gradient dots at three scales so it doesn't read as an obviously
+   tiled pattern) — no canvas, no JS, no image asset, matching this
+   app's post-2026-08-31 preference for the simplest thing that reads
+   right over an animated/JS-driven effect (see 5cd215b's "rotating
+   glow border (not working)" removal). --wl-glow-scale (Neon
+   Intensity) scales this too, same as .home-ambient. */
+.cosmic-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background-image:
+    radial-gradient(46% 26% at 12% 6%, rgba(255, 54, 196, 0.24), transparent 70%),
+    radial-gradient(50% 30% at 92% 10%, rgba(45, 227, 255, 0.2), transparent 70%),
+    radial-gradient(60% 36% at 50% 105%, rgba(57, 255, 176, 0.16), transparent 70%),
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 70% 65%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 40% 80%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 85% 15%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 10% 90%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 55% 45%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 25% 60%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 92% 80%, rgba(255, 255, 255, 0.65), transparent);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    180px 180px,
+    220px 220px,
+    260px 260px,
+    150px 150px,
+    200px 200px,
+    240px 240px,
+    170px 170px,
+    210px 210px;
+}
+[data-wl-theme="cosmic"] .cosmic-ambient {
+  opacity: calc(0.7 * var(--wl-glow-scale, 1));
 }
 
 /* One-shot staggered entrance for the homepage's top-level sections

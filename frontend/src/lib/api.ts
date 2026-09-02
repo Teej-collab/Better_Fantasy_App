@@ -1011,6 +1011,11 @@ export type OwnerPreferences = {
   neon_intensity: "subtle" | "standard" | "high";
   reduced_motion: boolean;
   accent_color: string | null;
+  // Settings > Appearance > Look — "calm" (today's shipped near-black,
+  // flat-panel palette) or "cosmic" (starfield/nebula background,
+  // brighter mint-green default accent). Not a light/dark mode switch;
+  // the app stays dark either way.
+  theme: "calm" | "cosmic";
   // JSON-encoded array of the 5 mobile bottom-nav destination keys
   // (BottomNav.tsx), in the owner's chosen order — null means "use
   // MOBILE_NAV_ORDER" (lib/navDestinations.ts).

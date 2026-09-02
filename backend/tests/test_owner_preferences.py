@@ -130,6 +130,40 @@ async def test_put_preferences_rejects_invalid_neon_intensity(pool, monkeypatch)
     assert resp.status_code == 400
 
 
+async def test_get_preferences_defaults_to_calm_theme(pool):
+    owner_id = await _seed_owner(pool, 40)
+    async with pool.acquire() as conn:
+        prefs = await preferences_queries.get_preferences(conn, owner_id)
+    assert prefs["theme"] == "calm"
+
+
+async def test_put_preferences_sets_cosmic_theme(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 41)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.put("/settings/preferences", json={"theme": "cosmic"})
+
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == "cosmic"
+
+    async with pool.acquire() as conn:
+        reread = await preferences_queries.get_preferences(conn, owner_id)
+    assert reread["theme"] == "cosmic"
+
+
+async def test_put_preferences_rejects_invalid_theme(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 42)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(owner_id))
+        resp = await client.put("/settings/preferences", json={"theme": "purple-haze"})
+
+    assert resp.status_code == 400
+
+
 async def test_put_preferences_sets_and_clears_accent_color(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 11)

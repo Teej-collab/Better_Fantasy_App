@@ -49,6 +49,25 @@ export function AppearanceSection() {
       .catch(() => setError("Couldn't load your appearance settings."));
   }, []);
 
+  async function setTheme(theme: OwnerPreferences["theme"]) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, theme });
+    document.documentElement.setAttribute("data-wl-theme", theme);
+    setPreferenceCookie("wl_theme", theme);
+    try {
+      const updated = await updatePreferences({ theme });
+      setPrefs(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      document.documentElement.setAttribute("data-wl-theme", previous.theme);
+      setPreferenceCookie("wl_theme", previous.theme);
+      setError("Couldn't save that change — try again.");
+    }
+  }
+
   async function setNeonIntensity(level: OwnerPreferences["neon_intensity"]) {
     if (!prefs) return;
     const previous = prefs;
@@ -126,6 +145,44 @@ export function AppearanceSection() {
           {error}
         </p>
       )}
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Look</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            Calm is Weekend League&apos;s current look. Cosmic brings back the starfield background and a
+            brighter accent — everything else (layout, pages, features) stays exactly the same either way.
+          </p>
+        </div>
+        <div className="flex gap-2" role="radiogroup" aria-label="Look">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.theme === "calm"}
+            onClick={() => setTheme("calm")}
+            className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
+              prefs.theme === "calm"
+                ? "border-[var(--wl-accent)] text-black dark:text-white"
+                : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"
+            }`}
+          >
+            Calm
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.theme === "cosmic"}
+            onClick={() => setTheme("cosmic")}
+            className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
+              prefs.theme === "cosmic"
+                ? "border-[var(--wl-accent)] text-black dark:text-white"
+                : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"
+            }`}
+          >
+            Cosmic
+          </button>
+        </div>
+      </section>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>

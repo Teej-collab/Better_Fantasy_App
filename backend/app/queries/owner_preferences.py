@@ -28,6 +28,14 @@ _DEFAULT_PREFERENCES = {
     "neon_intensity": "standard",
     "reduced_motion": False,
     "accent_color": None,
+    # Settings > Appearance > Look. "calm" is today's shipped near-black,
+    # flat-panel palette; "cosmic" restores the earlier starfield/nebula
+    # background and a brighter mint-green accent as an opt-in choice —
+    # not a light/dark mode switch, the app stays dark either way (see
+    # globals.css's own "always dark by design" note). Drives
+    # data-wl-theme on <html> (app/layout.tsx), the same before-first-
+    # paint cookie mechanism neon_intensity already uses.
+    "theme": "calm",
     "home_card_order": None,
     # None on all three below means "use the app's hardcoded default" —
     # same convention as home_card_order. home_hidden_cards is
