@@ -47,6 +47,7 @@ export function NavLink({
   activeClassName,
   inactiveClassName,
   color,
+  cosmicColor,
 }: {
   href: string;
   section: NavSection;
@@ -57,6 +58,12 @@ export function NavLink({
   // neonPalette.ts) — drives .neon-navlink's hover/active glow
   // (globals.css) via the --nav-color custom property.
   color: string;
+  // This tab's real per-destination color (DESTINATIONS[key].color,
+  // lib/navDestinations.ts) — only takes effect under Settings >
+  // Appearance > Look = Cosmic (see globals.css's
+  // [data-wl-theme="cosmic"] .neon-navlink rule); Calm ignores this
+  // entirely and always renders `color` above.
+  cosmicColor?: string;
 }) {
   const pathname = usePathname();
   const active = isSectionActive(section, pathname);
@@ -65,7 +72,7 @@ export function NavLink({
       href={href}
       aria-current={active ? "page" : undefined}
       className={`neon-navlink ${active ? activeClassName : inactiveClassName}`}
-      style={{ ["--nav-color" as string]: color }}
+      style={{ ["--nav-color" as string]: color, ["--nav-color-cosmic" as string]: cosmicColor }}
     >
       {children}
     </Link>

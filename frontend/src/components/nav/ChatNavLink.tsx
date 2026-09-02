@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useUnreadChatCount } from "@/lib/useUnreadChatCount";
 import { isSectionActive } from "@/components/nav/NavLink";
 import { ChatIcon } from "@/components/nav/icons";
-import { NAV_ACCENT } from "@/lib/navDestinations";
+import { DESTINATIONS, NAV_ACCENT } from "@/lib/navDestinations";
 
 // Chat needs its own real unread count (client-fetched — see
 // useUnreadChatCount's own comment on why), so unlike every other
@@ -19,7 +19,10 @@ export function ChatNavLink({ variant }: { variant: "primary" | "bottom" }) {
   const pathname = usePathname();
   const active = isSectionActive("chat", pathname);
   const unread = useUnreadChatCount();
-  const navColorStyle = { ["--nav-color" as string]: CHAT_COLOR };
+  const navColorStyle = {
+    ["--nav-color" as string]: CHAT_COLOR,
+    ["--nav-color-cosmic" as string]: DESTINATIONS.chat.color,
+  };
 
   if (variant === "bottom") {
     return (

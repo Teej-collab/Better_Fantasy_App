@@ -66,7 +66,10 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
         href={tab.href}
         aria-current={tab.key === active ? "page" : undefined}
         className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
-        style={{ ["--nav-color" as string]: NAV_ACCENT }}
+        style={{
+          ["--nav-color" as string]: NAV_ACCENT,
+          ["--nav-color-cosmic" as string]: DESTINATIONS[tab.key].color,
+        }}
       >
         {LABEL_OVERRIDE[tab.key] ?? DESTINATIONS[tab.key].label}
       </Link>

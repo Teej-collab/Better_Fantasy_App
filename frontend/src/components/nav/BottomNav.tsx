@@ -1,7 +1,7 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
-import { MOBILE_NAV_ORDER, NAV_ACCENT, type DestinationKey } from "@/lib/navDestinations";
+import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, type DestinationKey } from "@/lib/navDestinations";
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
@@ -83,6 +83,7 @@ export function BottomNav({
                   activeClassName={ACTIVE_ITEM}
                   inactiveClassName={INACTIVE_ITEM}
                   color={NAV_ACCENT}
+                  cosmicColor={DESTINATIONS.team.color}
                 >
                   <TeamIcon className="h-6 w-6" />
                   My Team
@@ -98,6 +99,7 @@ export function BottomNav({
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
                 color={NAV_ACCENT}
+                cosmicColor={DESTINATIONS.league.color}
               >
                 <LeagueIcon className="h-6 w-6" />
                 League
@@ -112,6 +114,7 @@ export function BottomNav({
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
                 color={NAV_ACCENT}
+                cosmicColor={DESTINATIONS.home.color}
               >
                 <HomeIcon className="h-6 w-6" />
                 Home
@@ -126,6 +129,7 @@ export function BottomNav({
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
                 color={NAV_ACCENT}
+                cosmicColor={DESTINATIONS.matchups.color}
               >
                 <MatchupsIcon className="h-6 w-6" />
                 Matchups
@@ -140,6 +144,7 @@ export function BottomNav({
                 activeClassName={ACTIVE_ITEM}
                 inactiveClassName={INACTIVE_ITEM}
                 color={NAV_ACCENT}
+                cosmicColor={DESTINATIONS.gamecast.color}
               >
                 <GamecastIcon className="h-6 w-6" />
                 Gamecast

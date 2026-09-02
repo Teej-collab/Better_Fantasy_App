@@ -227,6 +227,36 @@ body {
   font-weight: 600;
 }
 
+/* Settings > Appearance > Look ("Cosmic") — restores each nav tab's own
+   distinct color (the pre-2026-08-31 "always-lit rainbow" look, commit
+   b0ec29e) as an opt-in for Cosmic only; Calm keeps today's single
+   NAV_ACCENT for every tab. Every nav caller (NavLink.tsx and the few
+   components that set --nav-color directly) also sets a
+   --nav-color-cosmic custom property to that tab's real
+   DESTINATIONS[key].color (lib/navDestinations.ts).
+
+   This can't be done by having a stylesheet rule reassign --nav-color
+   itself (an earlier version of this rule tried exactly that, via
+   [data-wl-theme="cosmic"] .neon-navlink { --nav-color: var(--nav-color-
+   cosmic, var(--nav-color)) }) — every caller already sets --nav-color
+   directly as an inline style, and an inline style ALWAYS wins over any
+   stylesheet rule for the same custom property on the same element,
+   regardless of selector specificity. That made the override silently
+   no-op: every tab kept reading the inline NAV_ACCENT value no matter
+   what this rule said (caught visually — every nav tab rendered the
+   same plain green in Cosmic instead of its own color). Overriding the
+   actual visual properties (color/background-color) here instead works,
+   since those are never set inline — a more specific selector for them
+   really does win. */
+[data-wl-theme="cosmic"] .neon-navlink:hover {
+  color: var(--nav-color-cosmic, var(--nav-color));
+  background-color: color-mix(in srgb, var(--nav-color-cosmic, var(--nav-color)) 8%, transparent);
+}
+[data-wl-theme="cosmic"] .neon-navlink[aria-current="page"] {
+  color: var(--nav-color-cosmic, var(--nav-color));
+  background-color: color-mix(in srgb, var(--nav-color-cosmic, var(--nav-color)) 16%, transparent);
+}
+
 /* Team profile card "trading card" look — TeamProfileCard.tsx. Two
    layers: .cosmic-frame is the glowing gradient border (a padding
    trick — the gradient shows only in the padding gap around the inner

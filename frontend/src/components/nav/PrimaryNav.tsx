@@ -1,6 +1,6 @@
 import { NavLink } from "@/components/nav/NavLink";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
-import { NAV_ACCENT } from "@/lib/navDestinations";
+import { DESTINATIONS, NAV_ACCENT } from "@/lib/navDestinations";
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
 const INACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
@@ -53,17 +53,38 @@ export function PrimaryNav({
   return (
     <div className="hidden items-center gap-1 sm:flex">
       {signedIn && (
-        <NavLink href="/team" section="team" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
+        <NavLink
+          href="/team"
+          section="team"
+          activeClassName={ACTIVE}
+          inactiveClassName={INACTIVE}
+          color={NAV_ACCENT}
+          cosmicColor={DESTINATIONS.team.color}
+        >
           <span className="flex flex-col items-start leading-none">
             My Team
             {myMatchupLive && <LiveMark />}
           </span>
         </NavLink>
       )}
-      <NavLink href="/league" section="league" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
+      <NavLink
+        href="/league"
+        section="league"
+        activeClassName={ACTIVE}
+        inactiveClassName={INACTIVE}
+        color={NAV_ACCENT}
+        cosmicColor={DESTINATIONS.league.color}
+      >
         League
       </NavLink>
-      <NavLink href="/" section="home" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
+      <NavLink
+        href="/"
+        section="home"
+        activeClassName={ACTIVE}
+        inactiveClassName={INACTIVE}
+        color={NAV_ACCENT}
+        cosmicColor={DESTINATIONS.home.color}
+      >
         Home
       </NavLink>
       <NavLink
@@ -72,13 +93,21 @@ export function PrimaryNav({
         activeClassName={ACTIVE}
         inactiveClassName={INACTIVE}
         color={NAV_ACCENT}
+        cosmicColor={DESTINATIONS.matchups.color}
       >
         <span className="flex flex-col items-start leading-none">
           Matchups
           {myMatchupLive && <LiveMark />}
         </span>
       </NavLink>
-      <NavLink href="/gamecast" section="gamecast" activeClassName={ACTIVE} inactiveClassName={INACTIVE} color={NAV_ACCENT}>
+      <NavLink
+        href="/gamecast"
+        section="gamecast"
+        activeClassName={ACTIVE}
+        inactiveClassName={INACTIVE}
+        color={NAV_ACCENT}
+        cosmicColor={DESTINATIONS.gamecast.color}
+      >
         <span className="flex flex-col items-start leading-none">
           Gamecast
           {isGameDay && <LiveMark />}
