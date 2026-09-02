@@ -10,6 +10,7 @@ import {
   getMyLeagues,
   getUnclaimedOwners,
   joinLeague,
+  renameLeague,
   selectLeague,
   setMemberRole,
   type League,
@@ -44,6 +45,9 @@ export default function LeaguesPage() {
   const [switchingId, setSwitchingId] = useState<number | null>(null);
   const [claimingOwnerId, setClaimingOwnerId] = useState<number | null>(null);
   const [changingRoleUserId, setChangingRoleUserId] = useState<number | null>(null);
+  const [renamingLeagueId, setRenamingLeagueId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
 
   const [newLeagueName, setNewLeagueName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -178,6 +182,22 @@ export default function LeaguesPage() {
     }
   }
 
+  async function handleRenameLeague(leagueId: number) {
+    const name = renameValue.trim();
+    if (!name) return;
+    setRenameBusy(true);
+    setError(null);
+    try {
+      await renameLeague(leagueId, name);
+      setRenamingLeagueId(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't rename that league");
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   async function handleSetMemberRole(leagueId: number, userId: number, role: "commissioner" | "member") {
     setChangingRoleUserId(userId);
     setError(null);
@@ -226,12 +246,51 @@ export default function LeaguesPage() {
               return (
                 <div key={league.id} className="flex flex-col gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium">{league.name}</span>
-                      <span className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-black/60 dark:border-white/10 dark:text-white/60">
-                        {league.role}
+                    {renamingLeagueId === league.id ? (
+                      <span className="flex flex-1 items-center gap-2">
+                        <input
+                          type="text"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          maxLength={40}
+                          autoFocus
+                          className="w-40 rounded-md border border-black/10 bg-transparent px-2 py-1 text-sm font-medium dark:border-white/10"
+                        />
+                        <button
+                          onClick={() => handleRenameLeague(league.id)}
+                          disabled={renameBusy || !renameValue.trim()}
+                          className="rounded-full px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
+                          style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}
+                        >
+                          {renameBusy ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          onClick={() => setRenamingLeagueId(null)}
+                          disabled={renameBusy}
+                          className="text-xs text-black/50 hover:underline dark:text-white/50"
+                        >
+                          Cancel
+                        </button>
                       </span>
-                    </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium">{league.name}</span>
+                        <span className="rounded-full border border-black/10 px-2 py-0.5 text-xs text-black/60 dark:border-white/10 dark:text-white/60">
+                          {league.role}
+                        </span>
+                        {league.role === "commissioner" && (
+                          <button
+                            onClick={() => {
+                              setRenamingLeagueId(league.id);
+                              setRenameValue(league.name);
+                            }}
+                            className="text-xs text-black/50 hover:underline dark:text-white/50"
+                          >
+                            Rename
+                          </button>
+                        )}
+                      </span>
+                    )}
                     {isActive ? (
                       <span
                         className="rounded-full px-2.5 py-1 text-xs font-semibold"

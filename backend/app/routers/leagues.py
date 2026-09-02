@@ -25,6 +25,8 @@ from app.queries import teams as team_queries
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
 
+_LEAGUE_NAME_MAX_LENGTH = 40
+
 
 def _require_session(request: Request) -> dict:
     token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -211,6 +213,29 @@ async def list_members(league_id: int, request: Request):
 
 class SetMemberRoleRequest(BaseModel):
     role: str
+
+
+class RenameLeagueRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{league_id}")
+async def rename_league(league_id: int, body: RenameLeagueRequest, request: Request):
+    """Commissioner-only rename — this name is what shows up on that
+    league's own ticker/label wherever the app distinguishes it from
+    other leagues (see the homepage's league ticker)."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter a league name")
+    if len(name) > _LEAGUE_NAME_MAX_LENGTH:
+        raise HTTPException(status_code=400, detail=f"League name must be {_LEAGUE_NAME_MAX_LENGTH} characters or fewer")
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        await league_queries.rename_league(conn, league_id, name)
+        row = await league_queries.get_league(conn, league_id)
+    return _league_dict(row)
 
 
 @router.patch("/{league_id}/members/{user_id}")

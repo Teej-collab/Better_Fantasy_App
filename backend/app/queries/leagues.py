@@ -65,6 +65,10 @@ async def get_league(conn, league_id: int):
     return await conn.fetchrow("SELECT * FROM leagues WHERE id = $1", league_id)
 
 
+async def rename_league(conn, league_id: int, name: str) -> None:
+    await conn.execute("UPDATE leagues SET name = $2 WHERE id = $1", league_id, name)
+
+
 async def get_membership(conn, league_id: int, user_id: int):
     return await conn.fetchrow(
         "SELECT * FROM league_members WHERE league_id = $1 AND user_id = $2", league_id, user_id

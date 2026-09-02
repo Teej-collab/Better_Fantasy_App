@@ -211,6 +211,20 @@ export function listTeamsServer(sessionCookie: string | undefined, season: numbe
   return getServer<{ teams: Team[] }>(`/seasons/${season}/teams`, sessionCookie);
 }
 
+// The active league's own display name, for the homepage's league
+// ticker label — server-only lookup (unlike lib/leaguesApi.ts's
+// getMyLeagues, which is client-only via the /api/backend proxy and
+// can't be called from an async server component). Null for a
+// signed-out visitor or one with no active league yet, never throws.
+export async function getActiveLeagueName(sessionCookie: string | undefined): Promise<string | null> {
+  const body = await getServerOrNull<{ leagues: { id: number; name: string }[]; active_league_id: number | null }>(
+    "/leagues/mine",
+    sessionCookie
+  );
+  if (!body || body.active_league_id == null) return null;
+  return body.leagues.find((l) => l.id === body.active_league_id)?.name ?? null;
+}
+
 export function getStandings(season: number, sessionCookie: string | undefined) {
   return getServer<{ standings: StandingsRow[]; playoff_team_count: number | null }>(
     `/seasons/${season}/standings`,

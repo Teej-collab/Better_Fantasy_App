@@ -61,6 +61,45 @@ async def test_join_league_rejects_invalid_invite_code(pool):
     assert resp.status_code == 404
 
 
+async def test_commissioner_can_rename_their_league(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-rename-comm@example.com")
+        created = await client.post("/leagues", json={"name": "Test League Rename Original"})
+        league_id = created.json()["id"]
+
+        resp = await client.patch(f"/leagues/{league_id}", json={"name": "Test League Rename Updated"})
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Test League Rename Updated"
+
+        mine_resp = await client.get("/leagues/mine")
+        names = [league["name"] for league in mine_resp.json()["leagues"]]
+        assert "Test League Rename Updated" in names
+
+
+async def test_non_commissioner_cannot_rename_league(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-rename-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Rename Guarded"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-rename-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        resp = await member.patch(f"/leagues/{league_id}", json={"name": "Test League Rename Hijacked"})
+    assert resp.status_code == 403
+
+
+async def test_rename_league_rejects_blank_name(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-rename-blank@example.com")
+        created = await client.post("/leagues", json={"name": "Test League Rename Blank"})
+        league_id = created.json()["id"]
+
+        resp = await client.patch(f"/leagues/{league_id}", json={"name": "   "})
+    assert resp.status_code == 400
+
+
 async def test_create_team_requires_membership(pool):
     async with _client() as creator:
         await _sign_up(creator, "test-leagues-team-creator@example.com")

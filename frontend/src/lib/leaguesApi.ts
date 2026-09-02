@@ -113,6 +113,13 @@ export async function getLeagueMembers(leagueId: number): Promise<Member[]> {
   return members;
 }
 
+// Commissioner-only (backend-enforced via require_commissioner_of) — the
+// name shown on this league's own ticker/label wherever it's
+// distinguished from other leagues (see the homepage's league ticker).
+export async function renameLeague(leagueId: number, name: string): Promise<League> {
+  return patch<League>(`/leagues/${leagueId}`, { name });
+}
+
 // Commissioner-only — the backend enforces this (require_commissioner_of)
 // and also rejects targeting your own user_id, so a commissioner can
 // never accidentally remove their own access through this call.
