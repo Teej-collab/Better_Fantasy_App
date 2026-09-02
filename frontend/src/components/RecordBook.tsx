@@ -1,4 +1,5 @@
 import type { RecordCategory, RecordEntry } from "@/lib/api";
+import { AWARD_DESCRIPTIONS } from "@/lib/awardDescriptions";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const RANK_MEDAL = ["🥇", "🥈", "🥉"];
@@ -51,10 +52,15 @@ export function RecordBook({ categories }: { categories: RecordCategory[] }) {
             className="neon-panel flex flex-col gap-2 rounded-xl p-4"
             style={panelGlowStyle(SECTION_COLORS.awards)}
           >
-            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-              <span aria-hidden>{category.emoji}</span>
-              {category.label}
-            </h3>
+            <div>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                <span aria-hidden>{category.emoji}</span>
+                {category.label}
+              </h3>
+              {AWARD_DESCRIPTIONS[category.key] && (
+                <p className="text-xs text-black/45 dark:text-white/45">{AWARD_DESCRIPTIONS[category.key]}</p>
+              )}
+            </div>
             <ol className="flex flex-col gap-2">
               {category.entries.map((entry, i) => (
                 <li key={`${entry.owner_id}-${entry.season}-${entry.week ?? "season"}`} className="flex items-start gap-2 text-sm">
@@ -63,12 +69,12 @@ export function RecordBook({ categories }: { categories: RecordCategory[] }) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate font-medium">{entry.owner_name}</span>
+                      <span className="break-words font-medium">{entry.owner_name}</span>
                       <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
                         {formatValue(entry, category.unit)}
                       </span>
                     </div>
-                    <p className="truncate text-xs text-black/50 dark:text-white/50">
+                    <p className="break-words text-xs text-black/50 dark:text-white/50">
                       {entry.team_name} · {contextLine(entry)}
                     </p>
                   </div>

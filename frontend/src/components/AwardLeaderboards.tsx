@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AwardLeaderboardCategory } from "@/lib/api";
+import { AWARD_DESCRIPTIONS } from "@/lib/awardDescriptions";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const RANK_MEDAL = ["🥇", "🥈", "🥉"];
@@ -34,10 +35,15 @@ export function AwardLeaderboards({ categories }: { categories: AwardLeaderboard
             className="neon-panel flex flex-col gap-2 rounded-xl p-4"
             style={panelGlowStyle(SECTION_COLORS.awards)}
           >
-            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-              <span aria-hidden>{category.emoji}</span>
-              {category.label}
-            </h3>
+            <div>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                <span aria-hidden>{category.emoji}</span>
+                {category.label}
+              </h3>
+              {AWARD_DESCRIPTIONS[category.key] && (
+                <p className="text-xs text-black/45 dark:text-white/45">{AWARD_DESCRIPTIONS[category.key]}</p>
+              )}
+            </div>
             {category.winners.length === 0 ? (
               <p className="text-xs text-black/40 dark:text-white/40">Not yet awarded.</p>
             ) : (
@@ -47,7 +53,7 @@ export function AwardLeaderboards({ categories }: { categories: AwardLeaderboard
                     <span className="w-5 shrink-0 text-center" aria-hidden>
                       {RANK_MEDAL[i] ?? i + 1}
                     </span>
-                    <Link href={`/owners/${winner.owner_id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">
+                    <Link href={`/owners/${winner.owner_id}`} className="min-w-0 flex-1 break-words font-medium hover:underline">
                       {winner.owner_name}
                     </Link>
                     <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
