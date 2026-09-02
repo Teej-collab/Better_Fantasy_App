@@ -48,7 +48,7 @@ export default async function PlayersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <LeagueSubNav active="playerCards" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} />
       <div>
         <h1 className="text-2xl font-semibold">Player Cards</h1>
         <p className="text-sm text-black/60 dark:text-white/60">

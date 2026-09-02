@@ -34,8 +34,8 @@ export type DestinationKey =
   | "powerRankings"
   | "draft"
   | "gamecast"
-  | "playerResearch"
-  | "awardsAllTime";
+  | "awardsAllTime"
+  | "history";
 
 export type Destination = {
   key: DestinationKey;
@@ -96,18 +96,23 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // signed-in visitor's own matchup, like My Team/Matchups' LiveMark
   // does), so it gets a hue nothing else in this map uses.
   gamecast: { key: "gamecast", label: "Gamecast", color: "#ef4444" },
-  // Not to be confused with "playerCards" (this league's own owners'
-  // trading cards, at /players) — this is real NFL player research.
-  // Violet since cyan (playerCards) and teal (freeAgents) are both
-  // already spoken for by adjacent destinations.
-  playerResearch: { key: "playerResearch", label: "Player Research", color: "#8b5cf6" },
   // Used to be reachable only two taps deep (League -> Awards -> the
   // All-Time Records tab inside SeasonTabs) instead of the one tap
   // every other League-family destination gets from this row —
   // 2026-08-31 audit. A muted gold, distinct from Awards' own bright
   // yellow but clearly in the same family (both real award/record
-  // destinations sitting right next to each other in this row).
+  // destinations sitting right next to each other in this row). No
+  // longer in LEAGUE_SUBNAV_ORDER itself (folded into "history" below,
+  // 2026-09-02) — kept as a real destination since the season Awards
+  // page still links into it directly via SeasonTabs' own extra tab.
   awardsAllTime: { key: "awardsAllTime", label: "All-Time", color: "#ca8a04" },
+  // A single tab for "look back at the league's past" — Awards,
+  // Player Cards, and the lifetime Chug leaderboard, each previously
+  // its own top-level League-sub-nav tab (2026-09-02 simplification,
+  // 10 tabs down to 6 — see frontend/src/app/(app)/history/page.tsx).
+  // Amber: distinct from Awards' yellow and All-Time's gold, but still
+  // clearly in the same "records" family.
+  history: { key: "history", label: "History", color: "#f59e0b" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -135,7 +140,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   powerRankings: "/power-rankings",
   draft: "/draft",
   gamecast: "/gamecast",
-  playerResearch: "/player-research",
+  history: "/history",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -175,16 +180,23 @@ export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "ma
 // Roster/Keepers/Free Agents — see MyTeamSubNav.tsx). This is also the
 // one list Home's Discover tiles and /weekend's vacancy signs both
 // read from now, instead of each keeping its own copy.
+//
+// Down from ten entries to six as of 2026-09-02: Player Cards, Awards,
+// All-Time, and Chug collapsed into the single "history" destination
+// below (see frontend/src/app/(app)/history/page.tsx — a small hub
+// linking out to those three existing, unchanged pages, not a new
+// merged view); Player Research dropped entirely, confirmed to be a
+// near-duplicate of Free Agents (My Team's own sub-nav) — same
+// backend query, same filters/sort, Player Research's only real
+// difference was including already-rostered players with no way to
+// act on them, versus Free Agents' fuller "here's who you can actually
+// add" view.
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
-  "playerCards",
-  "playerResearch",
-  "awards",
-  "awardsAllTime",
+  "history",
   "rivalries",
   "rules",
-  "chug",
   "powerRankings",
 ];
 
@@ -192,19 +204,19 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 // grouping is specific to how that one component presents these tabs,
 // not a reordering of LEAGUE_SUBNAV_ORDER itself (Home's Discover grid
 // still reads that flat list directly and has no concept of "primary").
-// Added 2026-09-02: ten flat, equally-weighted tabs in one scrolling
-// row had no hierarchy at all — the 2026-09-02 re-audit's Critical
-// Issue #4, and notably, two of those ten (Player Research, All-Time)
-// only exist because the *previous* audit had to fix them being buried
-// two taps deep elsewhere — every new League-family feature had
-// nowhere else to go but this same row. Primary = "what's the current
-// state of my league" (checked often, no extra tap); everything else
-// collapses behind LeagueSubNav's own "More" toggle.
+// Added 2026-09-02 (the same day LEAGUE_SUBNAV_ORDER above shrank from
+// ten entries to six): ten flat, equally-weighted tabs in one
+// scrolling row had no hierarchy at all — the 2026-09-02 re-audit's
+// Critical Issue #4. Primary = "what's the current state of my
+// league" (checked often, no extra tap); everything else collapses
+// behind LeagueSubNav's own "More" toggle. "history" takes the primary
+// slot playerCards used to hold — it now carries that same "check it
+// often" weight, being one of the three things folded into it.
 export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
   "league",
   "standings",
   "powerRankings",
-  "playerCards",
+  "history",
 ]);
 
 // My Team's own sub-nav (MyTeamSubNav.tsx) — the "my own roster"

@@ -733,17 +733,15 @@ type DiscoveryTile = { href: string; label: string; description: string };
 // One line of custom copy per tile — the one thing LEAGUE_SUBNAV_ORDER
 // itself doesn't carry (a pill label is enough context in a nav row;
 // a homepage tile wants a real description). Every League-family
-// destination needs an entry here except the two excluded below, so a
+// destination needs an entry here except the one excluded below, so a
 // newly-added one (like Power Rankings was) doesn't silently show up
 // with blank/missing copy.
 const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
   standings: "Full league standings and records",
   rivalries: "All-time rivalry history and grudges",
-  playerCards: "Browse every team's trading card",
-  playerResearch: "Every real NFL player, sorted by fantasy relevance",
   rules: "Scoring, roster, and league settings",
-  chug: "Who owes chugs, who's paid up",
   powerRankings: "Who's actually good this week, plus Luck and Strength of Schedule",
+  history: "Awards, trading cards, and the lifetime Chug leaderboard",
 };
 
 // Derived from LEAGUE_SUBNAV_ORDER (lib/navDestinations.ts) — the same
@@ -751,22 +749,16 @@ const DISCOVER_DESCRIPTIONS: Partial<Record<DestinationKey, string>> = {
 // /weekend's vacancy signs all read from now, instead of each keeping
 // its own hand-copied subset that drifts out of sync the moment
 // something new (like Power Rankings) gets added to just one of them.
-// "league" and "awards" are excluded here specifically: League itself
-// is already a top-level tab on both PrimaryNav and BottomNav, and
-// Awards already has its own dedicated homepage card just above this
-// one when there's a current season — everything else in that shared
-// list is a genuine shortcut that would otherwise require detouring
-// through League's own sub-nav first.
-// awardsAllTime excluded for a different reason than league/awards
-// above: its href is dynamic (depends on the latest season, resolved
-// via awardsHref in LeagueSubNav — see that component) and this grid's
-// tiles are only ever built from DESTINATION_HREF's static map, so
-// including it here would need its own special case rather than
-// silently resolving to an "undefined" href. The 2026-08-31 audit's
-// actual "two taps deep" complaint is already fully fixed by adding it
-// to LeagueSubNav (LEAGUE_SUBNAV_ORDER) — a Discover tile too would be
-// a nice-to-have, not a fix for anything broken.
-const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league", "awards", "awardsAllTime"]);
+// "league" is excluded here specifically: it's already a top-level tab
+// on both PrimaryNav and BottomNav, so a Discover tile for it would be
+// a redundant second way to reach the exact same place one tap away
+// already. Everything else in LEAGUE_SUBNAV_ORDER is a genuine
+// shortcut that would otherwise require detouring through League's own
+// sub-nav first — that now includes "history" (Awards/Player Cards/
+// Chug's old individual entries collapsed into it 2026-09-02), which
+// gets a Discover tile the same as every other real destination in the
+// list.
+const DISCOVER_EXCLUDED = new Set<DestinationKey>(["league"]);
 
 // Gamecast is a primary-nav destination on desktop (PrimaryNav.tsx) but
 // isn't in the mobile bottom bar's fixed 5 slots (see

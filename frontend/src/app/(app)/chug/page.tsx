@@ -43,7 +43,7 @@ export default async function ChugLeaderboardPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="chug" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} />
       {me && <ChugUpload />}
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
