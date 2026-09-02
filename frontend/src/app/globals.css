@@ -90,6 +90,34 @@ textarea:focus-visible,
   outline-offset: 2px;
 }
 
+/* Mobile Safari/Chrome auto-zoom the whole page when a focused text
+   input's font-size is under 16px, then leave it to the visitor to
+   pinch back out — every text input in the app used a Tailwind
+   text-sm (14px), which is what's been triggering it. Forcing 16px
+   here, for every real text-entry element, stops the zoom from ever
+   triggering in the first place (the fix native apps get for free);
+   scoped to mobile widths so nothing changes on desktop, and this is
+   deliberately not paired with a maximumScale/user-scalable=no on the
+   viewport meta tag — that would also block legitimate pinch-zoom,
+   an accessibility regression this doesn't need once the real cause
+   is fixed. */
+@media (max-width: 639px) {
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="datetime-local"],
+  input[type="date"],
+  input[type="time"],
+  input:not([type]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
