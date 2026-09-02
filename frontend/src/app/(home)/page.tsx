@@ -13,11 +13,14 @@ import {
   getWeeklyAwards,
   isNflGameLive,
   buildLeagueTickerItems,
+  getActiveLeagueName,
+  getChugDeadline,
   getWeekLeagueTicker,
   listRivalries,
   listSeasons,
   resolveWeek,
   safeLatestSeason,
+  type ChugDeadline,
   type ChugLeaderboardRow,
   type Rivalry,
   type StandingsRow,
@@ -26,6 +29,7 @@ import {
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
+import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugDueCard } from "@/components/ChugDueCard";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
@@ -68,10 +72,11 @@ export default async function HomePage() {
   const { seasons } = await listSeasons();
   const season = safeLatestSeason(seasons);
 
-  const [myWeek, nflGames, gamecastGames] = await Promise.all([
+  const [myWeek, nflGames, gamecastGames, activeLeagueName] = await Promise.all([
     getMyWeek(sessionCookie),
     getNflScoreboard(),
     getLiveGames(),
+    getActiveLeagueName(sessionCookie),
   ]);
   const isGameDay = isNflGameLive(nflGames);
 
@@ -83,6 +88,7 @@ export default async function HomePage() {
   let topRivalries: Rivalry[] = [];
   let leagueTickerItems: TickerItem[] = [];
   let myChug: ChugLeaderboardRow | null = null;
+  let chugDeadline: ChugDeadline | null = null;
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -110,6 +116,13 @@ export default async function HomePage() {
       .slice(0, 3);
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
     myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
+
+    // Only fetched once the draft's actually done (see cards.chugCountdown
+    // below) — no reason to hit ESPN's live scoreboard for a league that
+    // hasn't drafted yet.
+    if (myWeek?.draft?.status === "complete") {
+      chugDeadline = await getChugDeadline(sessionCookie);
+    }
   }
 
   // "Other" = every matchup except the logged-in owner's own (already
@@ -175,6 +188,11 @@ export default async function HomePage() {
     cards.draftCountdown = (
       <DraftCountdownCard teamName={myWeek.team_name} scheduledStart={myWeek.draft.scheduled_start} />
     );
+  } else if (chugDeadline) {
+    // Takes over the same top slot once the draft's done — Jeffrey's
+    // Rule is relevant every week of the season from here on, not just
+    // a one-time pre-draft moment. See ChugCountdownCard.tsx.
+    cards.draftCountdown = <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} />;
   }
 
   if (standings.length > 0) {
@@ -349,17 +367,27 @@ export default async function HomePage() {
           </div>
           <div className="mt-2 flex flex-col gap-2">
             <LiveTicker items={tickerItems} fast={isGameDay} />
-            {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+            {leagueTickerItems.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {activeLeagueName && (
+                  <span className="text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                    {activeLeagueName}
+                  </span>
+                )}
+                <LiveTicker items={leagueTickerItems} fast={isGameDay} />
+              </div>
+            )}
           </div>
         </div>
 
         {/* Leads the whole page, above even Your Week, whenever it's
-            showing — real, time-sensitive content (a real draft date is
-            set and hasn't happened yet) that's also temporary by
-            nature: it disappears for good the moment the draft starts,
-            unlike every other card here. Earning the top slot while
-            it's relevant beats sitting below the fold underneath cards
-            that are still there every single week. */}
+            showing — real, time-sensitive content that's also temporary
+            by nature, unlike every other card here. Draft Countdown
+            occupies this slot pre-draft; the moment the draft is done it
+            hands the same slot to Chug Countdown (Jeffrey's Rule), which
+            then stays relevant every week for the rest of the season.
+            Earning the top slot while it's relevant beats sitting below
+            the fold underneath cards that are still there every week. */}
         {cards.draftCountdown}
 
         {/* Fixed standard layout, same on every visit for every owner —
