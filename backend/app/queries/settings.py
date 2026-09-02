@@ -33,6 +33,32 @@ async def get_settings(conn, owner_id: int, active_season: int, league_id: int =
     )
 
 
+async def get_account_settings(conn, user_id: int):
+    """Same shape as get_settings, for a signed-in account with no
+    claimed owner identity yet (a fresh email/Google signup, or any
+    account that hasn't joined a league) — there's no owners row to
+    read a display name, chat color, or team from, so those come back
+    null/false, same as get_settings already does for a team-less
+    owner. Without this fallback, GET /settings/me 404s for such an
+    account and the frontend can't tell "not signed in" apart from
+    "signed in, nothing owner-scoped yet" — which used to bounce a
+    genuinely signed-in visitor to the sign-in screen instead of
+    Settings (2026-09 audit, needed so an account with nothing to
+    claim can still reach Account & Security to delete itself)."""
+    return await conn.fetchrow(
+        """
+        SELECT display_name, FALSE AS display_name_is_custom, NULL::text AS chat_color,
+            discord_username, email,
+            (discord_user_id IS NOT NULL) AS has_discord,
+            (google_user_id IS NOT NULL) AS has_google,
+            (password_hash IS NOT NULL) AS has_password,
+            NULL::text AS team_name, NULL::boolean AS team_name_is_custom
+        FROM users WHERE id = $1
+        """,
+        user_id,
+    )
+
+
 async def set_display_name(conn, owner_id: int, display_name: str):
     await conn.execute(
         "UPDATE owners SET display_name = $2, display_name_is_custom = TRUE WHERE owner_id = $1",

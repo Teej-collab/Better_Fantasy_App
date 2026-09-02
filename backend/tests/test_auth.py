@@ -590,6 +590,149 @@ async def test_session_cookie_is_none_and_secure_in_production(pool, monkeypatch
     assert "secure" in raw.lower()
 
 
+async def test_delete_account_requires_session():
+    async with _client() as client:
+        resp = await client.delete("/auth/me")
+    assert resp.status_code == 401
+
+
+async def test_delete_account_removes_a_bare_signup(pool, monkeypatch):
+    """The common case this feature exists for: a self-serve email/
+    Google signup that never joined or created a league — no owner to
+    unlink, no league to leave, just delete the login outright."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        signup = await client.post(
+            "/auth/signup",
+            json={"email": "test-delete-bare@example.com", "password": "correct-horse", "display_name": "Bare"},
+        )
+        user_id = (await client.get("/auth/me")).json()["user_id"]
+
+        resp = await client.delete("/auth/me")
+        assert resp.status_code == 204
+        assert resp.cookies.get("session") is None
+
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 401
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM users WHERE id = $1", user_id)
+    assert row is None
+    assert signup.status_code == 200
+
+
+async def test_delete_account_unlinks_a_claimed_owner_without_deleting_league_history(pool, monkeypatch):
+    """A claimed owner identity (owners.user_id) must survive account
+    deletion — that owner's teams, chat messages, and history are
+    shared with the rest of the league, not this login's to erase."""
+    _set_discord_env(monkeypatch)
+    discord_id = 900000101
+    owner_id = await _seed_owner_with_discord_id(pool, discord_id, "Deletable Discord User")
+
+    async def fake_exchange(config, code):
+        return "fake-access-token"
+
+    async def fake_fetch_user(access_token):
+        return {"id": str(discord_id), "username": "deletable"}
+
+    monkeypatch.setattr("app.routers.auth.discord_oauth.exchange_code_for_token", fake_exchange)
+    monkeypatch.setattr("app.routers.auth.discord_oauth.fetch_discord_user", fake_fetch_user)
+
+    async with _client() as client:
+        login_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        state = login_resp.cookies["oauth_state"]
+        await client.get(
+            "/auth/discord/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+        )
+        user_id = (await client.get("/auth/me")).json()["user_id"]
+
+        resp = await client.delete("/auth/me")
+        assert resp.status_code == 204
+
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow("SELECT id FROM users WHERE id = $1", user_id)
+        owner_row = await conn.fetchrow("SELECT owner_id, user_id, display_name FROM owners WHERE owner_id = $1", owner_id)
+    assert user_row is None
+    assert owner_row is not None
+    assert owner_row["user_id"] is None
+    assert owner_row["display_name"] == "Deletable Discord User"
+
+
+async def test_delete_account_blocked_for_league_creator(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-delete-creator@example.com", "password": "correct-horse", "display_name": "Creator"},
+        )
+        created = await client.post("/leagues", json={"name": "Test League Unkillable"})
+        assert created.status_code == 200
+
+        resp = await client.delete("/auth/me")
+        assert resp.status_code == 409
+        assert "Test League Unkillable" in resp.json()["detail"]
+
+        # Nothing was actually touched.
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 200
+
+
+async def test_delete_account_blocked_for_sole_commissioner_with_other_members(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as creator:
+        await creator.post(
+            "/auth/signup",
+            json={"email": "test-delete-sole-comm@example.com", "password": "correct-horse", "display_name": "Sole Comm"},
+        )
+        created = await creator.post("/leagues", json={"name": "Test League Needs A Commissioner"})
+        invite_code = created.json()["invite_code"]
+
+        async with _client() as member:
+            await member.post(
+                "/auth/signup",
+                json={"email": "test-delete-sole-comm-member@example.com", "password": "correct-horse", "display_name": "Regular Member"},
+            )
+            await member.post("/leagues/join", json={"invite_code": invite_code})
+
+        resp = await creator.delete("/auth/me")
+        assert resp.status_code == 409
+        assert "Test League Needs A Commissioner" in resp.json()["detail"]
+
+
+async def test_delete_account_allowed_for_sole_commissioner_with_no_other_members(pool, monkeypatch):
+    """A league where the commissioner is the only member at all is
+    fine to leave — there's no one else left to be locked out of
+    managing it."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-delete-solo-league@example.com", "password": "correct-horse", "display_name": "Solo"},
+        )
+        # A league this account didn't create (so the created_leagues
+        # guard doesn't fire) but is the sole member/commissioner of —
+        # simulated directly since there's no "join an empty league"
+        # flow; the point under test is sole_commissioner_leagues alone.
+        async with pool.acquire() as conn:
+            other_creator = await conn.fetchval(
+                "INSERT INTO users (email, password_hash, display_name) VALUES "
+                "('test-delete-solo-other-creator@example.com', 'x', 'Other') RETURNING id"
+            )
+            league_id = await conn.fetchval(
+                "INSERT INTO leagues (name, created_by_user_id, invite_code) VALUES "
+                "('Test League Solo Commissioner', $1, 'SOLO-INVITE') RETURNING id",
+                other_creator,
+            )
+            user_id = (await client.get("/auth/me")).json()["user_id"]
+            await conn.execute(
+                "INSERT INTO league_members (league_id, user_id, role) VALUES ($1, $2, 'commissioner')",
+                league_id, user_id,
+            )
+
+        resp = await client.delete("/auth/me")
+        assert resp.status_code == 204
+
+
 async def test_logout_clears_cookie_with_matching_attributes_in_production(monkeypatch):
     """A delete_cookie call that doesn't also mark Secure/SameSite=None
     won't reliably clear a cookie that was set with those attributes —

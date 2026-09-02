@@ -358,3 +358,43 @@ async def logout():
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE_NAME, samesite=config.cookie_samesite, secure=config.cookie_secure)
     return response
+
+
+@router.delete("/me")
+async def delete_my_account(request: Request):
+    """Self-serve account deletion (2026-09 — previously a disabled
+    "Soon" button, see AccountSection.tsx). Only ever deletes the login
+    itself (see auth_queries.delete_account's own docstring for what
+    that does and, just as importantly, doesn't touch) — a league's
+    shared history never depends on any one member still having a
+    working login. Two guards run first so a league is never silently
+    left creator-less or commissioner-less by this."""
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        created = await league_queries.created_leagues(conn, payload["user_id"])
+        if created:
+            names = ", ".join(l["name"] for l in created)
+            raise HTTPException(
+                status_code=409,
+                detail=f"You created {names} — contact support to transfer or delete it before deleting your account.",
+            )
+        sole_commissioner = await league_queries.sole_commissioner_leagues(conn, payload["user_id"])
+        if sole_commissioner:
+            names = ", ".join(l["name"] for l in sole_commissioner)
+            raise HTTPException(
+                status_code=409,
+                detail=f"You're the only commissioner of {names} — promote a co-commissioner first, in League → Members.",
+            )
+        await auth_queries.delete_account(conn, payload["user_id"])
+
+    response = Response(status_code=204)
+    response.delete_cookie(SESSION_COOKIE_NAME, samesite=config.cookie_samesite, secure=config.cookie_secure)
+    return response

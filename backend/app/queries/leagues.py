@@ -180,3 +180,31 @@ async def list_leagues_for_user(conn, user_id: int):
         """,
         user_id,
     )
+
+
+async def created_leagues(conn, user_id: int):
+    """Leagues this user created — leagues.created_by_user_id is a
+    NOT NULL foreign key, so deleting this account while any of these
+    exist would fail at the database level. Checked explicitly first
+    (app/routers/auth.py's delete_my_account) so that failure becomes a
+    clear 409 instead of a raw constraint-violation 500."""
+    return await conn.fetch("SELECT id, name FROM leagues WHERE created_by_user_id = $1", user_id)
+
+
+async def sole_commissioner_leagues(conn, user_id: int):
+    """Leagues where this user is the only commissioner AND at least
+    one other member exists — deleting the account (which removes
+    their league_members row) would leave that league with no one able
+    to manage it. A league where this user is the only member at all
+    is fine to leave uncommissioned; there's no one left to manage."""
+    return await conn.fetch(
+        """
+        SELECT l.id, l.name
+        FROM league_members lm
+        JOIN leagues l ON l.id = lm.league_id
+        WHERE lm.user_id = $1 AND lm.role = 'commissioner'
+          AND (SELECT COUNT(*) FROM league_members c WHERE c.league_id = lm.league_id AND c.role = 'commissioner') = 1
+          AND (SELECT COUNT(*) FROM league_members o WHERE o.league_id = lm.league_id) > 1
+        """,
+        user_id,
+    )

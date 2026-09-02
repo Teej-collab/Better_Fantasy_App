@@ -879,6 +879,29 @@ export async function getMe(sessionCookie: string | undefined): Promise<Me | nul
   return res.json();
 }
 
+// Client-side only (a real user action from a button click, not
+// something SSR ever needs) — routes through /api/backend the same
+// way every other client-initiated write in this app does, so the
+// browser's own cookie rides along without an explicit header.
+// Throws with the backend's own detail message on failure — deletion
+// is blocked (409) if this account created a league or is a league's
+// only commissioner (see auth.py's delete_my_account), and
+// AccountSection.tsx surfaces that message directly rather than a
+// generic error.
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch("/api/backend/auth/me", { method: "DELETE" });
+  if (!res.ok) {
+    let detail = `Delete failed: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // Non-JSON error body — fall back to the generic message above.
+    }
+    throw new Error(detail);
+  }
+}
+
 export type MySettings = {
   display_name: string;
   display_name_is_custom: boolean;

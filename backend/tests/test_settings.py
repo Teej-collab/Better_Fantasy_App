@@ -64,6 +64,38 @@ async def test_get_settings_returns_defaults(pool, monkeypatch):
     assert body["discord_username"] == "teej_8"
 
 
+async def test_get_settings_falls_back_to_account_info_when_theres_no_owner_yet(pool, monkeypatch):
+    """A signed-in account with no claimed owner identity (owner_id is
+    null in the session — a fresh email/Google signup, or any account
+    that hasn't joined a league) used to 404 here, which the frontend
+    read as "not signed in" and bounced to the sign-in screen instead
+    of Settings — a real dead end for an account trying to reach
+    Account & Security to delete itself (2026-09 audit)."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES "
+            "('test-settings-bare@example.com', 'x', 'Bare Account') RETURNING id"
+        )
+    token = create_session_token(_SESSION_SECRET, user_id=user_id, owner_id=None, discord_user_id=None, is_commissioner=False)
+
+    async with _client() as client:
+        client.cookies.update({"session": token})
+        resp = await client.get("/settings/me")
+
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["display_name"] == "Bare Account"
+    assert body["email"] == "test-settings-bare@example.com"
+    assert body["has_password"] is True
+    assert body["has_discord"] is False
+    assert body["team_name"] is None
+    assert body["chat_color"] is None
+
+
 async def test_update_display_name(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 2)

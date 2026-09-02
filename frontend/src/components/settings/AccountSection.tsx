@@ -1,16 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { MySettings } from "@/lib/api";
+import { deleteAccount, type MySettings } from "@/lib/api";
 import { clearSession } from "@/lib/logout";
 
 export function AccountSection({ initial }: { initial: MySettings }) {
   const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleLogout() {
     await clearSession();
     router.push("/");
     router.refresh();
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteAccount();
+      await clearSession();
+      router.push("/");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong deleting your account.");
+      setDeleting(false);
+      setConfirming(false);
+    }
   }
 
   // Every real, currently-linked sign-in method — not a single assumed
@@ -54,22 +73,49 @@ export function AccountSection({ initial }: { initial: MySettings }) {
         <div>
           <h2 className="text-sm font-semibold tracking-wide text-red-500 uppercase">Danger Zone</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Account deletion isn&apos;t available yet — this league&apos;s history (rosters, chug records, chat) is
-            shared with other owners, and safely separating out just your data needs real design work before it
-            ships.
+            Deletes your login for good — the email/Discord/Google connections above, your password, your own
+            feedback. This league&apos;s shared history (rosters, chug records, chat, rivalries, awards) belongs to
+            everyone in it and stays exactly as it is, just no longer linked to a login you can sign into.
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          title="Not available yet"
-          className="flex w-fit items-center gap-2 rounded-full border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500/50 disabled:cursor-not-allowed"
-        >
-          Delete Account
-          <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase">
-            Soon
-          </span>
-        </button>
+
+        {error && (
+          <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{error}</p>
+        )}
+
+        {!confirming ? (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="w-fit rounded-full border border-red-500/30 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10"
+          >
+            Delete Account
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-red-600 dark:text-red-400">
+              Are you sure? This can&apos;t be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="w-fit rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Yes, delete my account"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={deleting}
+                className="w-fit rounded-full border border-black/10 px-4 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

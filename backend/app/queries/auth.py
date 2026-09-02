@@ -89,6 +89,29 @@ async def get_or_create_user_for_google(conn, google_user_id: str, email: str | 
     )
 
 
+async def delete_account(conn, user_id: int) -> None:
+    """Deletes the login itself — never the shared league history it
+    may be linked to. If this account has claimed a historical owner
+    identity (owners.user_id), that owners row and everything hanging
+    off it (teams, matchups, chat messages, chug debts, awards,
+    rivalries — all still visible to and shared with other members) is
+    left fully intact, just unlinked from any login, the same state it
+    was in before this owner ever claimed it. Only the login
+    credentials, this account's own feedback, and its league
+    memberships are actually removed.
+
+    Callers must check leagues.created_leagues / sole_commissioner_leagues
+    first and block with a clear reason (app/routers/auth.py's
+    delete_my_account) — both leagues.created_by_user_id and
+    league_members are NOT ACTION foreign keys, so skipping those
+    checks surfaces as a raw constraint-violation 500 instead."""
+    async with conn.transaction():
+        await conn.execute("DELETE FROM feedback WHERE user_id = $1", user_id)
+        await conn.execute("DELETE FROM league_members WHERE user_id = $1", user_id)
+        await conn.execute("UPDATE owners SET user_id = NULL WHERE user_id = $1", user_id)
+        await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+
+
 async def create_user_with_password(conn, email: str, password_hash: str, display_name: str) -> int:
     """Phase 5 of the multi-league migration (see TODO.md's PHASE 9
     entry) — a self-serve account with no owners row at all: nothing

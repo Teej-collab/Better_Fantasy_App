@@ -77,7 +77,10 @@ async def get_my_settings(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
+        if payload["owner_id"] is None:
+            row = await settings_queries.get_account_settings(conn, payload["user_id"])
+        else:
+            row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
     if row is None:
         raise HTTPException(status_code=404, detail="Owner not found")
     return dict(row)
