@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { awardsHrefFor, listSeasons, listTeams, safeLatestSeason } from "@/lib/api";
+import { cookies } from "next/headers";
+import { awardsHrefFor, getMe, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export const metadata: Metadata = { title: "League — Weekend League" };
@@ -12,12 +15,26 @@ export default async function LeaguePage({
 }: {
   searchParams: Promise<{ season?: string }>;
 }) {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { teams } = season !== null ? await listTeams(season) : { teams: [] };
+  const { teams } = season !== null ? await listTeamsServer(sessionCookie, season) : { teams: [] };
 
   return (
     <div className="flex flex-col gap-4">

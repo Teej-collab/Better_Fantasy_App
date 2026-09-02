@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import {
   awardsHrefFor,
   getAllTimePowerRankings,
   getLatestPowerRankingsWeek,
+  getMe,
   getSeasonPowerRankingsTrend,
   getWeekPowerRankings,
   listSeasons,
@@ -12,7 +14,9 @@ import {
   type WeekPowerRanking,
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { PowerRankingsAllTime } from "@/components/PowerRankingsAllTime";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
@@ -37,6 +41,20 @@ export default async function PowerRankingsPage({
 }: {
   searchParams: Promise<{ view?: string; season?: string; week?: string }>;
 }) {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const { view: rawView, season: rawSeason, week: rawWeek } = await searchParams;
   const view: View = rawView === "trend" || rawView === "all-time" ? rawView : "week";
 
@@ -71,9 +89,11 @@ export default async function PowerRankingsPage({
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => hrefFor(view, s)} />
       )}
 
-      {view === "all-time" && <AllTimeView />}
-      {view === "week" && season !== null && <WeekView season={season} requestedWeek={rawWeek} />}
-      {view === "trend" && season !== null && <TrendView season={season} />}
+      {view === "all-time" && <AllTimeView sessionCookie={sessionCookie} />}
+      {view === "week" && season !== null && (
+        <WeekView season={season} requestedWeek={rawWeek} sessionCookie={sessionCookie} />
+      )}
+      {view === "trend" && season !== null && <TrendView season={season} sessionCookie={sessionCookie} />}
       {season === null && view !== "all-time" && (
         <p className="text-sm text-black/50 dark:text-white/50">No seasons found yet.</p>
       )}
@@ -81,8 +101,8 @@ export default async function PowerRankingsPage({
   );
 }
 
-async function AllTimeView() {
-  const { categories } = await getAllTimePowerRankings();
+async function AllTimeView({ sessionCookie }: { sessionCookie: string | undefined }) {
+  const { categories } = await getAllTimePowerRankings(sessionCookie);
   return <PowerRankingsAllTime categories={categories} />;
 }
 
@@ -98,8 +118,16 @@ function MovementBadge({ movement }: { movement: number | null }) {
   );
 }
 
-async function WeekView({ season, requestedWeek }: { season: number; requestedWeek?: string }) {
-  const { week: latestWeek } = await getLatestPowerRankingsWeek(season);
+async function WeekView({
+  season,
+  requestedWeek,
+  sessionCookie,
+}: {
+  season: number;
+  requestedWeek?: string;
+  sessionCookie: string | undefined;
+}) {
+  const { week: latestWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
   const week = requestedWeek ? Number(requestedWeek) : latestWeek;
 
   if (week === null) {
@@ -111,7 +139,7 @@ async function WeekView({ season, requestedWeek }: { season: number; requestedWe
     );
   }
 
-  const { rankings } = await getWeekPowerRankings(season, week);
+  const { rankings } = await getWeekPowerRankings(season, week, sessionCookie);
 
   return (
     <section
@@ -154,8 +182,8 @@ async function WeekView({ season, requestedWeek }: { season: number; requestedWe
   );
 }
 
-async function TrendView({ season }: { season: number }) {
-  const { teams } = await getSeasonPowerRankingsTrend(season);
+async function TrendView({ season, sessionCookie }: { season: number; sessionCookie: string | undefined }) {
+  const { teams } = await getSeasonPowerRankingsTrend(season, sessionCookie);
   const allWeeks = Array.from(new Set(teams.flatMap((t) => t.weeks.map((w) => w.week)))).sort((a, b) => a - b);
 
   if (teams.length === 0) {

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
-import { awardsHrefFor, getStandings, listSeasons, safeLatestSeason, type StandingsRow } from "@/lib/api";
+import { cookies } from "next/headers";
+import { awardsHrefFor, getMe, getStandings, listSeasons, safeLatestSeason, type StandingsRow } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export const metadata: Metadata = { title: "Standings — Weekend League" };
@@ -13,13 +16,27 @@ export default async function StandingsPage({
 }: {
   searchParams: Promise<{ season?: string }>;
 }) {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
   const { standings, playoff_team_count: playoffTeamCount } =
-    season !== null ? await getStandings(season) : { standings: [], playoff_team_count: null };
+    season !== null ? await getStandings(season, sessionCookie) : { standings: [], playoff_team_count: null };
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
   // regular-season record when it's not — see app/queries/league.py.

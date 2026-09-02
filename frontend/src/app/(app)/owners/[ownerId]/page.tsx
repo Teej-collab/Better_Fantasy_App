@@ -1,25 +1,33 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import {
   getCareerProfile,
+  getMe,
   getOwnerBadges,
-  getSeasonProfile,
+  getSeasonProfileServer,
   listSeasons,
   safeLatestSeason,
   type PeriodSummary,
 } from "@/lib/api";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 // Real per-page title (mobile audit finding — every page fell back to
 // the generic root "Weekend League" title). getCareerProfile() is
-// deduped against the identical call in the page component below.
+// deduped against the identical call in the page component below. A
+// non-member or an owner that genuinely doesn't exist both come back
+// as null, deliberately — never revealing that a specific owner_id
+// exists to someone not authorized to see it.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ ownerId: string }>;
 }): Promise<Metadata> {
   const { ownerId } = await params;
-  const career = await getCareerProfile(Number(ownerId));
+  const sessionCookie = (await cookies()).get("session")?.value;
+  const career = await getCareerProfile(Number(ownerId), sessionCookie);
   return { title: career ? `${career.team_name} — Weekend League` : "Owner not found — Weekend League" };
 }
 
@@ -32,15 +40,30 @@ export default async function OwnerProfilePage({
 }) {
   const { ownerId } = await params;
   const ownerIdNum = Number(ownerId);
+
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
   const [seasonProfile, career, badges] = await Promise.all([
-    season !== null ? getSeasonProfile(ownerIdNum, season) : Promise.resolve(null),
-    getCareerProfile(ownerIdNum),
-    getOwnerBadges(ownerIdNum),
+    season !== null ? getSeasonProfileServer(ownerIdNum, season, sessionCookie) : Promise.resolve(null),
+    getCareerProfile(ownerIdNum, sessionCookie),
+    getOwnerBadges(ownerIdNum, sessionCookie),
   ]);
 
   if (!career) {

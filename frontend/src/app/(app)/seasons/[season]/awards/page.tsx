@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getSeasonAwards, listSeasons } from "@/lib/api";
+import { cookies } from "next/headers";
+import { getMe, getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export async function generateMetadata({
@@ -20,9 +23,23 @@ export default async function SeasonAwardsPage({
   params: Promise<{ season: string }>;
 }) {
   const { season } = await params;
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const [{ seasons }, { champion, awards }] = await Promise.all([
     listSeasons(),
-    getSeasonAwards(Number(season)),
+    getSeasonAwards(Number(season), sessionCookie),
   ]);
 
   return (

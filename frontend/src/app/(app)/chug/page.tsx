@@ -4,6 +4,8 @@ import Link from "next/link";
 import { awardsHrefFor, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
+import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Chug — Weekend League" };
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -20,11 +22,21 @@ export default async function ChugLeaderboardPage({
 
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
 
-  const [{ seasons }, { leaderboard }, me, { seasons: allSeasons }] = await Promise.all([
+  const [{ seasons }, { leaderboard }, { seasons: allSeasons }] = await Promise.all([
     getChugSeasons(),
-    getChugLeaderboard(season),
-    getMe(sessionCookie),
+    getChugLeaderboard(sessionCookie, season),
     listSeasons(),
   ]);
   const latestSeason = safeLatestSeason(allSeasons);

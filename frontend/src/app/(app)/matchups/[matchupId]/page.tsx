@@ -1,25 +1,32 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getMatchup } from "@/lib/api";
+import { getMatchup, getMe } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import type { MatchupContextSide } from "@/lib/api";
 import { NarrativeSection } from "@/components/matchups/NarrativeSection";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
+import { SignInCard } from "@/components/SignInCard";
 import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
 
 // Real per-page title (mobile audit finding) — matters most here since
 // matchup pages are exactly the kind of link owners share with each
 // other. getMatchup() is deduped against the identical call below.
+// A non-member or a matchup that genuinely doesn't exist both come
+// back as null (getServerOrNull) and both render as "not found" here,
+// deliberately — never revealing that a specific matchup_id exists to
+// someone not authorized to see it.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ matchupId: string }>;
 }): Promise<Metadata> {
   const { matchupId } = await params;
-  const matchup = await getMatchup(Number(matchupId));
+  const sessionCookie = (await cookies()).get("session")?.value;
+  const matchup = await getMatchup(Number(matchupId), sessionCookie);
   if (!matchup) return { title: "Matchup not found — Weekend League" };
   return {
     title: `${matchup.home.team_name} vs ${matchup.away.team_name} — Wk ${matchup.week} — Weekend League`,
@@ -32,7 +39,18 @@ export default async function MatchupPage({
   params: Promise<{ matchupId: string }>;
 }) {
   const { matchupId } = await params;
-  const matchup = await getMatchup(Number(matchupId));
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+
+  const matchup = await getMatchup(Number(matchupId), sessionCookie);
   if (!matchup) notFound();
   const { home, away } = matchup;
 

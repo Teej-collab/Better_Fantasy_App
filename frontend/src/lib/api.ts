@@ -45,11 +45,39 @@ async function authedGet<T>(path: string): Promise<T> {
   return res.json();
 }
 
-// For endpoints where "no data" (404) is a normal, expected outcome —
-// e.g. an owner with no team in a given season — not an error to throw on.
-async function getOrNull<T>(path: string): Promise<T | null> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
-  if (res.status === 404) return null;
+// Server-component counterpart to authedGet() — for league-private data
+// (standings, matchups, rosters, rivalries, awards, records, power
+// rankings, owner profiles) now that every one of those backend routes
+// requires real active-league membership (require_league_access,
+// 2026-09 audit — this used to be fully public, no auth at all). Same
+// explicit-cookie pattern as getMe/getMyFreeAgents: a server component
+// has no ambient browser cookie jar for a bare fetch() to a separate
+// origin to ride along on. Throws on 401 (not signed in) and 409 (signed
+// in, no active league) same as any other failure — callers that need to
+// distinguish "not authorized" from "genuinely not found" should catch
+// and inspect res.status themselves rather than use this helper.
+async function getServer<T>(path: string, sessionCookie: string | undefined): Promise<T> {
+  if (!sessionCookie) throw new Error(`GET ${path} failed: not signed in`);
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (!res.ok) {
+    throw new Error(`GET ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// getServer(), but 404 (and "not signed in"/"no active league") come
+// back as null instead of throwing — for pages that render a graceful
+// "sign in to see this" / "not found" state rather than a hard error.
+async function getServerOrNull<T>(path: string, sessionCookie: string | undefined): Promise<T | null> {
+  if (!sessionCookie) return null;
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    cache: "no-store",
+    headers: { Cookie: `session=${sessionCookie}` },
+  });
+  if (res.status === 404 || res.status === 401 || res.status === 403 || res.status === 409) return null;
   if (!res.ok) {
     throw new Error(`GET ${path} failed: ${res.status}`);
   }
@@ -171,12 +199,23 @@ export function matchupsHrefFor(latestSeason: number | null, week: number | null
     : NO_SEASON_FALLBACK_HREF;
 }
 
+// Client-callable (DraftRoom.tsx's fallback fetch) — routed through
+// /api/backend so the browser's own cookie is forwarded, now that this
+// requires real active-league membership (require_league_access,
+// 2026-09 audit). Server components use listTeamsServer below instead.
 export function listTeams(season: number) {
-  return get<{ teams: Team[] }>(`/seasons/${season}/teams`);
+  return authedGet<{ teams: Team[] }>(`/seasons/${season}/teams`);
 }
 
-export function getStandings(season: number) {
-  return get<{ standings: StandingsRow[]; playoff_team_count: number | null }>(`/seasons/${season}/standings`);
+export function listTeamsServer(sessionCookie: string | undefined, season: number) {
+  return getServer<{ teams: Team[] }>(`/seasons/${season}/teams`, sessionCookie);
+}
+
+export function getStandings(season: number, sessionCookie: string | undefined) {
+  return getServer<{ standings: StandingsRow[]; playoff_team_count: number | null }>(
+    `/seasons/${season}/standings`,
+    sessionCookie
+  );
 }
 
 export function listWeekMatchups(season: number, week: number) {
@@ -272,28 +311,31 @@ export type WeekMatchupContext = {
   matchups: WeekMatchupContextItem[];
 };
 
-export function getWeekMatchupContext(season: number, week: number) {
-  return get<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`);
+export function getWeekMatchupContext(season: number, week: number, sessionCookie: string | undefined) {
+  return getServer<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`, sessionCookie);
 }
 
 // Same shape as one WeekMatchupContextItem — GET /matchups/{id} and
 // /matchup-context's per-entry payload are built by the same backend
 // assembler (app/domain/matchup_context.py's _matchup_entry), just one
 // fetched directly by id instead of batched across a whole week.
-// getOrNull, not get — a bad/nonexistent matchup id is a real 404 the
-// page should render as one (via notFound()), not an uncaught throw
-// that falls into the generic error boundary (2026-08-31 audit).
-export function getMatchup(matchupId: number) {
-  return getOrNull<WeekMatchupContextItem>(`/matchups/${matchupId}`);
+// getServerOrNull, not getServer — a bad/nonexistent matchup id is a
+// real 404 the page should render as one (via notFound()), not an
+// uncaught throw that falls into the generic error boundary
+// (2026-08-31 audit). Also folds in "not a member of this matchup's
+// league" as the same 404, rather than leaking that the resource
+// exists in a league the caller can't see.
+export function getMatchup(matchupId: number, sessionCookie: string | undefined) {
+  return getServerOrNull<WeekMatchupContextItem>(`/matchups/${matchupId}`, sessionCookie);
 }
 
-// getOrNull, not get — same reasoning as getMatchup above.
-export function getTeam(teamId: number) {
-  return getOrNull<TeamDetail>(`/teams/${teamId}`);
+// getServerOrNull, not getServer — same reasoning as getMatchup above.
+export function getTeam(teamId: number, sessionCookie: string | undefined) {
+  return getServerOrNull<TeamDetail>(`/teams/${teamId}`, sessionCookie);
 }
 
-export function getTeamRoster(teamId: number, week: number) {
-  return get<TeamRoster>(`/teams/${teamId}/roster?week=${week}`);
+export function getTeamRoster(teamId: number, week: number, sessionCookie: string | undefined) {
+  return getServer<TeamRoster>(`/teams/${teamId}/roster?week=${week}`, sessionCookie);
 }
 
 export type PeriodSummary = {
@@ -391,28 +433,40 @@ export type Rivalry = {
   owner_b_name: string;
 };
 
-export function listOwners() {
-  return get<{ owners: Owner[] }>("/owners");
+export function listOwners(sessionCookie: string | undefined) {
+  return getServer<{ owners: Owner[] }>("/owners", sessionCookie);
 }
 
+// Client-callable (TeamProfileCard.tsx) — routed through /api/backend so
+// the browser's own cookie is forwarded, now that this requires real
+// active-league membership (require_league_access, 2026-09 audit).
+// Server components use getSeasonProfileServer below instead.
 export function getSeasonProfile(ownerId: number, season: number) {
-  return getOrNull<SeasonProfile>(`/owners/${ownerId}/profile?season=${season}`);
+  return authedGet<SeasonProfile | null>(`/owners/${ownerId}/profile?season=${season}`).catch(() => null);
 }
 
-export function getCareerProfile(ownerId: number) {
-  return getOrNull<CareerProfile>(`/owners/${ownerId}/career`);
+export function getSeasonProfileServer(
+  ownerId: number,
+  season: number,
+  sessionCookie: string | undefined
+) {
+  return getServerOrNull<SeasonProfile>(`/owners/${ownerId}/profile?season=${season}`, sessionCookie);
 }
 
-export function getOwnerBadges(ownerId: number) {
-  return get<OwnerBadges>(`/owners/${ownerId}/badges`);
+export function getCareerProfile(ownerId: number, sessionCookie: string | undefined) {
+  return getServerOrNull<CareerProfile>(`/owners/${ownerId}/career`, sessionCookie);
 }
 
-export function getSeasonAwards(season: number) {
-  return get<SeasonAwardsResponse>(`/seasons/${season}/awards`);
+export function getOwnerBadges(ownerId: number, sessionCookie: string | undefined) {
+  return getServer<OwnerBadges>(`/owners/${ownerId}/badges`, sessionCookie);
 }
 
-export function getWeeklyAwards(season: number, week: number) {
-  return get<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`);
+export function getSeasonAwards(season: number, sessionCookie: string | undefined) {
+  return getServer<SeasonAwardsResponse>(`/seasons/${season}/awards`, sessionCookie);
+}
+
+export function getWeeklyAwards(season: number, week: number, sessionCookie: string | undefined) {
+  return getServer<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`, sessionCookie);
 }
 
 export type RecordEntry = {
@@ -444,8 +498,15 @@ export type RecordCategory = {
 // Cached — the record book only moves when a real week's results sync
 // in, not on every page view. See get()'s own comment for why this is
 // a per-call opt-in, not a global default.
-export function getRecordBook() {
-  return get<{ categories: RecordCategory[] }>("/records", { revalidateSeconds: 3600 });
+// No longer cacheable via revalidateSeconds (removed 2026-09): this now
+// requires real active-league membership (require_league_access) via an
+// explicit per-request session cookie — Next's Data Cache keys purely by
+// URL, not by request headers, so caching this would risk serving one
+// visitor's cached response to a completely different, differently-
+// authorized visitor requesting the same URL. Correctness over the
+// perf win here.
+export function getRecordBook(sessionCookie: string | undefined) {
+  return getServer<{ categories: RecordCategory[] }>("/records", sessionCookie);
 }
 
 export type AwardWinner = {
@@ -467,9 +528,9 @@ export type AwardLeaderboardCategory = {
 // (app/domain/awards_all_time.py). Always returns every award type the
 // league offers, even ones nobody's won yet (an empty `winners` list),
 // unlike the record book's categories which hide entirely when empty.
-// Cached — see getRecordBook()'s identical reasoning just above.
-export function getAwardLeaderboards() {
-  return get<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time", { revalidateSeconds: 3600 });
+// No longer cacheable — see getRecordBook()'s identical reasoning above.
+export function getAwardLeaderboards(sessionCookie: string | undefined) {
+  return getServer<{ categories: AwardLeaderboardCategory[] }>("/awards/all-time", sessionCookie);
 }
 
 // ---- Power Rankings / Luck Index / Strength of Schedule
@@ -490,12 +551,15 @@ export type WeekPowerRanking = {
   movement: number | null;
 };
 
-export function getWeekPowerRankings(season: number, week: number) {
-  return get<{ rankings: WeekPowerRanking[] }>(`/seasons/${season}/weeks/${week}/power-rankings`);
+export function getWeekPowerRankings(season: number, week: number, sessionCookie: string | undefined) {
+  return getServer<{ rankings: WeekPowerRanking[] }>(
+    `/seasons/${season}/weeks/${week}/power-rankings`,
+    sessionCookie
+  );
 }
 
-export function getLatestPowerRankingsWeek(season: number) {
-  return get<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`);
+export function getLatestPowerRankingsWeek(season: number, sessionCookie: string | undefined) {
+  return getServer<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`, sessionCookie);
 }
 
 export type PowerRankTrendTeam = {
@@ -506,8 +570,8 @@ export type PowerRankTrendTeam = {
   weeks: { week: number; power_rank: number }[];
 };
 
-export function getSeasonPowerRankingsTrend(season: number) {
-  return get<{ teams: PowerRankTrendTeam[] }>(`/seasons/${season}/power-rankings/trend`);
+export function getSeasonPowerRankingsTrend(season: number, sessionCookie: string | undefined) {
+  return getServer<{ teams: PowerRankTrendTeam[] }>(`/seasons/${season}/power-rankings/trend`, sessionCookie);
 }
 
 export type PowerRankingsAllTimeEntry = { owner_id: number; owner_name: string; value: number };
@@ -522,17 +586,18 @@ export type PowerRankingsAllTimeCategory = {
 // Companion to getRecordBook() — computed live on every request (no
 // separate table, same convention), all-time career averages/counts
 // across the league's whole history, not season-scoped.
-export function getAllTimePowerRankings() {
-  return get<{ categories: PowerRankingsAllTimeCategory[] }>("/power-rankings/all-time");
+export function getAllTimePowerRankings(sessionCookie: string | undefined) {
+  return getServer<{ categories: PowerRankingsAllTimeCategory[] }>("/power-rankings/all-time", sessionCookie);
 }
 
-// Cached — rivalries.all_time_wins_a/b are stored, sync-updated
-// columns (app/queries/league.py::list_rivalries), never computed live
-// from matchups per-request, so this was already only ever as fresh as
-// the last sync regardless. See get()'s own comment for why this is a
-// per-call opt-in, not a global default.
-export function listRivalries() {
-  return get<{ rivalries: Rivalry[] }>("/rivalries", { revalidateSeconds: 3600 });
+// No longer cacheable — see getRecordBook()'s identical reasoning above.
+// rivalries.all_time_wins_a/b are still stored, sync-updated columns
+// (app/queries/league.py::list_rivalries), only as fresh as the last
+// sync regardless — the tradeoff here is purely giving up the
+// revalidateSeconds win in exchange for not risking one visitor's
+// cached response leaking to a differently-authorized visitor.
+export function listRivalries(sessionCookie: string | undefined) {
+  return getServer<{ rivalries: Rivalry[] }>("/rivalries", sessionCookie);
 }
 
 export type YourWeekMatchup = {
@@ -713,9 +778,13 @@ export type LeagueTickerItem = {
 // streaks/head-to-head/rivalry data this ticker never needs, and this
 // renders on every app page (AppTickerBar.tsx), not just the ones
 // already paying for the heavier call.
-export async function getWeekLeagueTicker(season: number, week: number): Promise<{ items: LeagueTickerItem[] }> {
+export async function getWeekLeagueTicker(
+  season: number,
+  week: number,
+  sessionCookie: string | undefined
+): Promise<{ items: LeagueTickerItem[] }> {
   try {
-    return await get<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`);
+    return await getServer<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`, sessionCookie);
   } catch {
     return { items: [] };
   }
@@ -771,8 +840,11 @@ export function getChugSeasons() {
 
 // season omitted -> all-time (summed across every season), matching the
 // Discord bot's /chug_leaderboard default view.
-export function getChugLeaderboard(season?: number) {
-  return get<ChugLeaderboard>(season !== undefined ? `/chug/leaderboard?season=${season}` : "/chug/leaderboard");
+export function getChugLeaderboard(sessionCookie: string | undefined, season?: number) {
+  return getServer<ChugLeaderboard>(
+    season !== undefined ? `/chug/leaderboard?season=${season}` : "/chug/leaderboard",
+    sessionCookie
+  );
 }
 
 // Commissioner-only — marks a real-life chug fine as paid, clearing it

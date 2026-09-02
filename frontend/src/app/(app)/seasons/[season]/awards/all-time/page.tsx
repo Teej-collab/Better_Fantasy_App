@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { getAwardLeaderboards, getRecordBook, listSeasons } from "@/lib/api";
+import { cookies } from "next/headers";
+import { getAwardLeaderboards, getMe, getRecordBook, listSeasons } from "@/lib/api";
 import { AwardLeaderboards } from "@/components/AwardLeaderboards";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 import { RecordBook } from "@/components/RecordBook";
 
 export const metadata: Metadata = { title: "All-Time Records — Weekend League" };
@@ -21,10 +24,24 @@ export default async function AllTimeRecordsPage({
   params: Promise<{ season: string }>;
 }) {
   const { season } = await params;
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const [{ seasons }, { categories }, { categories: awardCategories }] = await Promise.all([
     listSeasons(),
-    getRecordBook(),
-    getAwardLeaderboards(),
+    getRecordBook(sessionCookie),
+    getAwardLeaderboards(sessionCookie),
   ]);
 
   return (

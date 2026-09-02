@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getCurrentWeek, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
+import { getCurrentWeek, getMe, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
+import { SignInCard } from "@/components/SignInCard";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -12,13 +14,18 @@ const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 // actually shares with the league. getTeam() is automatically deduped
 // against the identical call in the page component below (Next's
 // fetch request memoization), so this doesn't cost a second request.
+// A non-member or a team that genuinely doesn't exist both come back
+// as null (getServerOrNull) and both render as "not found," deliberately
+// — never revealing that a specific team_id exists to someone not
+// authorized to see it.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ teamId: string }>;
 }): Promise<Metadata> {
   const { teamId } = await params;
-  const team = await getTeam(Number(teamId));
+  const sessionCookie = (await cookies()).get("session")?.value;
+  const team = await getTeam(Number(teamId), sessionCookie);
   if (!team) return { title: "Team not found — Weekend League" };
   return { title: `${team.team_name} — Weekend League` };
 }
@@ -33,7 +40,18 @@ export default async function TeamPage({
   const { teamId } = await params;
   const { week: weekParam } = await searchParams;
 
-  const team = await getTeam(Number(teamId));
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+
+  const team = await getTeam(Number(teamId), sessionCookie);
   if (!team) notFound();
 
   // Defaults to the season's actual current week (cached from the last
@@ -50,7 +68,7 @@ export default async function TeamPage({
     week = resolveWeek(current_week);
   }
 
-  const { roster } = await getTeamRoster(Number(teamId), week);
+  const { roster } = await getTeamRoster(Number(teamId), week, sessionCookie);
 
   const starters = roster.filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
   const bench = roster.filter((p) => p.lineup_slot === "BE" || p.lineup_slot === "IR");

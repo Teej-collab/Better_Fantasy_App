@@ -80,15 +80,21 @@ export default async function HomePage() {
   let topRivalries: Rivalry[] = [];
   let leagueTickerItems: TickerItem[] = [];
 
-  if (season !== null) {
+  // Every one of these now requires real active-league membership
+  // (require_league_access, 2026-09 audit) — a signed-in account with
+  // no active league yet (just joined via email/Google, hasn't picked
+  // a league on /leagues) sees the dashboard shell with none of this,
+  // same as the "no season synced yet" case below, rather than a
+  // crashed page from an unhandled 409.
+  if (season !== null && me.active_league_id !== null) {
     const { current_week } = await getCurrentWeek(season);
     week = resolveWeek(current_week);
     const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker] = await Promise.all([
-      getStandings(season),
-      getWeeklyAwards(season, week),
-      getWeekMatchupContext(season, week),
-      listRivalries(),
-      getWeekLeagueTicker(season, week),
+      getStandings(season, sessionCookie),
+      getWeeklyAwards(season, week, sessionCookie),
+      getWeekMatchupContext(season, week, sessionCookie),
+      listRivalries(sessionCookie),
+      getWeekLeagueTicker(season, week, sessionCookie),
     ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;

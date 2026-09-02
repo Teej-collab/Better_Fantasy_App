@@ -1,19 +1,44 @@
 import type { Metadata } from "next";
-import { awardsHrefFor, getCareerProfile, getOwnerBadges, listOwners, listSeasons, safeLatestSeason } from "@/lib/api";
+import { cookies } from "next/headers";
+import {
+  awardsHrefFor,
+  getCareerProfile,
+  getMe,
+  getOwnerBadges,
+  listOwners,
+  listSeasons,
+  safeLatestSeason,
+} from "@/lib/api";
 import { CardDeck } from "@/components/CardDeck";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
+import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Player Cards — Weekend League" };
 
 export default async function PlayersPage() {
-  const [{ owners }, { seasons }] = await Promise.all([listOwners(), listSeasons()]);
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
+  const [{ owners }, { seasons }] = await Promise.all([listOwners(sessionCookie), listSeasons()]);
 
   const cards = await Promise.all(
     owners.map(async (owner) => {
       const [career, badges] = await Promise.all([
-        getCareerProfile(owner.owner_id),
-        getOwnerBadges(owner.owner_id),
+        getCareerProfile(owner.owner_id, sessionCookie),
+        getOwnerBadges(owner.owner_id, sessionCookie),
       ]);
       return { owner, career, badges };
     })

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
+import { cookies } from "next/headers";
+import { getMe, getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { MatchupCard } from "@/components/MatchupCard";
+import { SignInCard } from "@/components/SignInCard";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -22,9 +25,23 @@ export default async function WeekMatchupsPage({
   params: Promise<{ season: string; week: string }>;
 }) {
   const { season, week } = await params;
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+  const me = await getMe(sessionCookie);
+  if (!me) {
+    return (
+      <div className="flex justify-center py-6">
+        <SignInCard />
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
+  }
+
   const [{ matchups }, awards] = await Promise.all([
-    getWeekMatchupContext(Number(season), Number(week)),
-    getWeeklyAwards(Number(season), Number(week)),
+    getWeekMatchupContext(Number(season), Number(week), sessionCookie),
+    getWeeklyAwards(Number(season), Number(week), sessionCookie),
   ]);
   const isPlayoffWeek = matchups.some((m) => m.is_playoff);
   const played = matchups.some((m) => m.home.score !== null);

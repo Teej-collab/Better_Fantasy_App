@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import {
   buildLeagueTickerItems,
   buildNflTickerItems,
@@ -35,6 +36,9 @@ import { GameDayRefresher } from "@/components/GameDayRefresher";
  * indefinitely on a page nobody navigated away from.
  */
 export async function AppTickerBar() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("session")?.value;
+
   const [nflGames, { seasons }, gamecastGames] = await Promise.all([
     getNflScoreboard(),
     listSeasons(),
@@ -48,7 +52,7 @@ export async function AppTickerBar() {
   if (latestSeason !== null) {
     const { current_week } = await getCurrentWeek(latestSeason);
     const week = resolveWeek(current_week);
-    const ticker = await getWeekLeagueTicker(latestSeason, week);
+    const ticker = await getWeekLeagueTicker(latestSeason, week, sessionCookie);
     const items = buildLeagueTickerItems(ticker);
     if (items.length > 0) {
       leagueTicker = <LiveTicker items={items} fast={isGameDay} />;
