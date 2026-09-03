@@ -34,12 +34,39 @@ async def _non_member_cookies(pool, suffix: str) -> dict:
     return _session_cookie(user_id)
 
 
+async def _commissioner_cookies(pool, suffix: str) -> dict:
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            f"test-awards-router-commish-{suffix}@example.com", f"Test Awards Commish {suffix}",
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
+    return _session_cookie(user_id)
+
+
+async def _seed_league_state(pool, week, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, $2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            season, week,
+        )
+
+
 async def _get(path, cookies=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         if cookies:
             client.cookies.update(cookies)
         return await client.get(path)
+
+
+async def _post(path, cookies=None):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
+        return await client.post(path)
 
 
 async def _seed_owner_and_team(pool, suffix, display_name, team_name):
@@ -164,3 +191,82 @@ async def test_rivalries_endpoint(pool, monkeypatch):
     assert resp.status_code == 200
     names = [r["name"] for r in resp.json()["rivalries"]]
     assert "Test Rivalry" in names
+
+
+async def test_weekly_recap_get_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/recap")
+    assert resp.status_code == 401
+
+
+async def test_weekly_recap_get_is_null_when_nothing_generated_yet(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    await _seed_league_state(pool, week=6)
+    cookies = await _member_cookies(pool, "recap-get-null")
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/recap", cookies)
+    assert resp.status_code == 200
+    assert resp.json() == {"narrative": None}
+
+
+async def test_weekly_recap_get_returns_cached_narrative(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    await _seed_league_state(pool, week=6)
+    cookies = await _member_cookies(pool, "recap-get-cached")
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO weekly_narratives (season, week, league_id, kind, text, model) "
+            "VALUES ($1, 5, $2, 'recap', $3, 'test-model')",
+            TEST_SEASON, DEFAULT_LEAGUE_ID, "A real cached weekly recap.",
+        )
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/recap", cookies)
+    assert resp.status_code == 200
+    assert resp.json() == {"narrative": {"text": "A real cached weekly recap.", "kind": "recap"}}
+
+
+async def test_weekly_recap_generate_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    resp = await _post(f"/seasons/{TEST_SEASON}/weeks/5/recap/generate")
+    assert resp.status_code == 401
+
+
+async def test_weekly_recap_generate_requires_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "recap-generate-non-commish")
+
+    resp = await _post(f"/seasons/{TEST_SEASON}/weeks/5/recap/generate", cookies)
+    assert resp.status_code == 403
+
+
+async def test_weekly_recap_generate_as_commissioner_fills_and_returns_narratives(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setattr(
+        "app.domain.narrative_engine.generate_narrative",
+        lambda system_prompt, facts, max_tokens=300: "Real generated text.",
+    )
+    monkeypatch.setattr("app.domain.narrative_engine.ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    week = 5
+    owner_a, team_a = await _seed_owner_and_team(pool, 900, "Jerry", "Jerry's Team")
+    owner_b, team_b = await _seed_owner_and_team(pool, 901, "Kelly", "Kelly's Team")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, $2, $3, $4, 110, 95, FALSE)",
+            TEST_SEASON, week, team_a, team_b,
+        )
+    await _seed_league_state(pool, week=week + 1)
+    cookies = await _commissioner_cookies(pool, "recap-generate-commish")
+
+    resp = await _post(f"/seasons/{TEST_SEASON}/weeks/{week}/recap/generate", cookies)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["weekly_narrative"] == {"text": "Real generated text.", "kind": "recap"}
+    assert len(body["matchup_narratives"]) == 1
+    assert list(body["matchup_narratives"].values())[0] == "Real generated text."
+
+    # A plain read afterward picks up the now-cached result without regenerating.
+    get_resp = await _get(f"/seasons/{TEST_SEASON}/weeks/{week}/recap", cookies)
+    assert get_resp.json() == {"narrative": {"text": "Real generated text.", "kind": "recap"}}

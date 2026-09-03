@@ -11,15 +11,28 @@ vulnerability alongside league.py's/profile.py's (see league.py's module
 docstring and app/auth/league_context.py's require_league_access for the
 full story).
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.auth.league_context import require_league_access
+from app.auth.config import SessionConfig
+from app.auth.league_context import require_league_access, require_league_commissioner
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
-from app.domain import awards_all_time, team_profile, weekly_awards
+from app.domain import awards_all_time, narrative_engine, team_profile, weekly_awards
 from app.queries import awards as awards_queries
 from app.queries import league as league_queries
 
 router = APIRouter(tags=["awards"])
+
+
+def _require_session(request: Request) -> dict:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    return payload
 
 
 @router.get("/seasons/{season}/awards")
@@ -69,3 +82,33 @@ async def weekly_awards_endpoint(
         "bust_leaders": busts,
         "game_of_the_week": game_of_week,
     }
+
+
+@router.get("/seasons/{season}/weeks/{week}/recap")
+async def weekly_recap(
+    season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Cache-only read of the whole-week narrative — same reasoning as
+    narrative_engine.get_cached_weekly_narrative's own docstring, this
+    must never trigger a live generation on a plain page view. `null`
+    text means nothing's been generated yet (or nothing's eligible
+    yet); see the POST below for the commissioner-only action that
+    actually generates it."""
+    async with pool.acquire() as conn:
+        narrative = await narrative_engine.get_cached_weekly_narrative(conn, season, week, league_id)
+    return {"narrative": narrative}
+
+
+@router.post("/seasons/{season}/weeks/{week}/recap/generate")
+async def generate_weekly_recap(season: int, week: int, request: Request, pool=Depends(get_pool)):
+    """Commissioner-only, deliberate bulk action: fills in every real
+    matchup's own narrative for the week plus the new whole-week
+    narrative in one request, instead of relying on lazy one-at-a-time
+    generation as visitors happen to click into matchups. See
+    narrative_engine.generate_weekly_recap's own docstring for why this
+    has to be an explicit action rather than automatic."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        result = await narrative_engine.generate_weekly_recap(conn, season, week, league_id)
+    return result

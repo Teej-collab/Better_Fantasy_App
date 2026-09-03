@@ -150,6 +150,7 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM weekly_narratives WHERE season = $1", TEST_SEASON)
         # Also TEST_SEASON - 1: narrative_engine's career-context test
         # seeds a "last season" champion so it can assert real
         # championship-history text distinct from the current season's

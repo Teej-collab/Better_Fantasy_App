@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getMe, getWeekMatchupContext, getWeeklyAwards, type WeeklyAwards } from "@/lib/api";
+import { getMe, getWeekMatchupContext, getWeeklyAwards, getWeeklyRecap, type WeeklyAwards } from "@/lib/api";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { MatchupCard } from "@/components/MatchupCard";
 import { SignInCard } from "@/components/SignInCard";
+import { WeekRecapSection } from "@/components/WeekRecapSection";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -39,9 +40,10 @@ export default async function WeekMatchupsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ matchups }, awards] = await Promise.all([
+  const [{ matchups }, awards, { narrative }] = await Promise.all([
     getWeekMatchupContext(Number(season), Number(week), sessionCookie),
     getWeeklyAwards(Number(season), Number(week), sessionCookie),
+    getWeeklyRecap(Number(season), Number(week), sessionCookie),
   ]);
   const isPlayoffWeek = matchups.some((m) => m.is_playoff);
   const played = matchups.some((m) => m.home.score !== null);
@@ -68,6 +70,13 @@ export default async function WeekMatchupsPage({
           </Link>
         ))}
       </div>
+
+      <WeekRecapSection
+        season={Number(season)}
+        week={Number(week)}
+        narrative={narrative}
+        canGenerate={me.is_commissioner && matchups.length > 0}
+      />
 
       {matchups.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No matchups for this week.</p>

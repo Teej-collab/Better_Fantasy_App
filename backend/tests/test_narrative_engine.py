@@ -1,7 +1,44 @@
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain import narrative_engine
-from app.domain.narrative_engine import _resolve_kind
+from app.domain.narrative_engine import _resolve_kind, _resolve_weekly_kind
 from tests.conftest import TEST_SEASON
+
+
+async def _seed_league_state(pool, week, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, $2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            season, week,
+        )
+
+
+async def _seed_two_teams_with_matchup(pool, suffix, week, home_score, away_score, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        owner_a = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-weekly-narrative-owner-a-{suffix}", "Home Owner",
+        )
+        owner_b = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-weekly-narrative-owner-b-{suffix}", "Away Owner",
+        )
+        team_a = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            season, 810000 + week, owner_a, f"Home Team {suffix}",
+        )
+        team_b = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            season, 820000 + week, owner_b, f"Away Team {suffix}",
+        )
+        await conn.execute(
+            """
+            INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff)
+            VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+            """,
+            season, week, team_a, team_b, home_score, away_score,
+        )
+    return team_a, team_b
 
 
 def _matchup(week=5, home_score=0.0, away_score=0.0):
@@ -197,3 +234,125 @@ async def test_get_or_generate_narrative_includes_career_and_live_league_context
     assert "Scrub Team's owner currently owes 3 under Jeffrey's Rule" in facts
     assert "Champ Team's owner has a clean Jeffrey's Rule chug record" in facts
     assert "is currently ranked" in facts
+
+
+def test_resolve_weekly_kind_recap_once_league_has_moved_past_the_week():
+    assert _resolve_weekly_kind(week=5, current_week=6) == "recap"
+
+
+def test_resolve_weekly_kind_preview_for_a_week_that_has_not_started():
+    assert _resolve_weekly_kind(week=6, current_week=5) == "preview"
+
+
+def test_resolve_weekly_kind_none_for_the_week_in_progress():
+    # Same "don't freeze an incomplete result into the cache" reasoning
+    # as _resolve_kind's own mid-week case — a whole-week narrative for
+    # the live week is doubly premature.
+    assert _resolve_weekly_kind(week=5, current_week=5) is None
+
+
+def test_resolve_weekly_kind_none_when_current_week_unknown():
+    assert _resolve_weekly_kind(week=5, current_week=None) is None
+
+
+async def test_get_cached_weekly_narrative_returns_none_when_nothing_cached(pool):
+    await _seed_league_state(pool, week=6)
+    async with pool.acquire() as conn:
+        result = await narrative_engine.get_cached_weekly_narrative(conn, TEST_SEASON, 5, DEFAULT_LEAGUE_ID)
+    assert result is None
+
+
+async def test_get_cached_weekly_narrative_returns_text_and_kind_once_cached(pool):
+    await _seed_league_state(pool, week=6)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO weekly_narratives (season, week, league_id, kind, text, model) "
+            "VALUES ($1, $2, $3, 'recap', $4, 'test-model')",
+            TEST_SEASON, 5, DEFAULT_LEAGUE_ID, "A real weekly recap.",
+        )
+        result = await narrative_engine.get_cached_weekly_narrative(conn, TEST_SEASON, 5, DEFAULT_LEAGUE_ID)
+    assert result == {"text": "A real weekly recap.", "kind": "recap"}
+
+
+async def test_generate_weekly_recap_returns_empty_for_a_week_with_no_matchups(pool):
+    await _seed_league_state(pool, week=6)
+    async with pool.acquire() as conn:
+        result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, 16, DEFAULT_LEAGUE_ID)
+    assert result == {"weekly_narrative": None, "matchup_narratives": {}}
+
+
+async def test_generate_weekly_recap_fills_matchup_and_weekly_narratives_then_caches(pool, monkeypatch):
+    calls = []
+
+    def fake_generate_narrative(system_prompt, facts, max_tokens=300):
+        calls.append((system_prompt, facts, max_tokens))
+        return f"Generated text #{len(calls)}"
+
+    monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    week = 5
+    team_a, team_b = await _seed_two_teams_with_matchup(
+        pool, "fill", week, home_score=120.0, away_score=90.0
+    )
+    await _seed_league_state(pool, week=week + 1)  # league has moved past week 5 — recap-eligible
+
+    async with pool.acquire() as conn:
+        matchup_id = await conn.fetchval(
+            "SELECT id FROM matchups WHERE season = $1 AND week = $2 AND home_team_id = $3",
+            TEST_SEASON, week, team_a,
+        )
+
+        first = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    # One call for the single matchup's own recap, one for the whole-week recap.
+    assert len(calls) == 2
+    assert first["weekly_narrative"]["kind"] == "recap"
+    assert first["weekly_narrative"]["text"] == "Generated text #2"
+    assert first["matchup_narratives"] == {matchup_id: "Generated text #1"}
+    # The weekly narrative gets a higher max_tokens budget than a per-matchup one.
+    assert calls[1][2] == narrative_engine.WEEKLY_MAX_TOKENS
+
+    async with pool.acquire() as conn:
+        second = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+        cached = await narrative_engine.get_cached_weekly_narrative(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    # Everything was already cached — no new API calls on the second run.
+    assert len(calls) == 2
+    assert second == first
+    assert cached == first["weekly_narrative"]
+
+
+async def test_generate_weekly_recap_preview_for_an_upcoming_week_includes_standings_context(pool, monkeypatch):
+    calls = []
+
+    def fake_generate_narrative(system_prompt, facts, max_tokens=300):
+        calls.append((system_prompt, facts, max_tokens))
+        return "A hyped-up preview."
+
+    monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    week = 7
+    await _seed_two_teams_with_matchup(pool, "preview", week, home_score=0.0, away_score=0.0)
+    await _seed_league_state(pool, week=week - 1)  # week 7 hasn't started yet — preview-eligible
+
+    async with pool.acquire() as conn:
+        result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    assert result["weekly_narrative"]["kind"] == "preview"
+    assert calls[-1][0] == narrative_engine.WEEKLY_PREVIEW_PROMPT
+    assert "League leader right now:" in calls[-1][1]
+
+
+async def test_generate_weekly_recap_without_api_key_fills_nothing_new(pool, monkeypatch):
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", None)
+
+    week = 9
+    await _seed_two_teams_with_matchup(pool, "nokey", week, home_score=100.0, away_score=80.0)
+    await _seed_league_state(pool, week=week + 1)
+
+    async with pool.acquire() as conn:
+        result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    assert result == {"weekly_narrative": None, "matchup_narratives": {}}

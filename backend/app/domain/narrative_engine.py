@@ -33,6 +33,7 @@ today's placeholder rather than erroring on every page load for every
 visitor until a real key is supplied.
 """
 from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
+from app.domain import weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 from app.queries import chug as chug_queries
@@ -76,6 +77,44 @@ harder — a three-time champion losing to a team that's never made the playoffs
 than two rebuilding teams trading punches. Tone: brutal, sharp, specific, genuinely funny — anchor \
 every jab in an actual number or fact, never a generic "you're bad at this." Four to six sentences. \
 No hedging, no disclaimers, no consolation-prize softening for the loser."""
+
+# The whole-week counterparts to the two prompts above — one narrative
+# tying every matchup plus the week's real awards together into a
+# single story, instead of per-matchup blurbs sitting side by side.
+# Same "professional shit-talker, never invent a fact" voice; longer
+# (three to five short paragraphs, not 4-6 sentences) since it's
+# covering a whole week, not one matchup — see generate_narrative's
+# max_tokens override where these two are used.
+WEEKLY_PREVIEW_PROMPT = """You are the voice of a fantasy football league's website, hyping up the \
+whole league's upcoming week — and you are NOT neutral. You are a professional shit-talker previewing \
+every real matchup using ONLY the facts you're given (every matchup's two teams and records, current \
+league standings, and real league-wide context like Jeffrey's Rule chug debts). Never invent a stat, \
+a player, or an event not present in the data — every line must be traceable to a specific fact you \
+were handed.
+
+Cover the week as one story, not a boring list: open by setting the stakes for the week ahead, call \
+out the matchup that matters most and why, needle the teams sitting worst in the standings, and close \
+by building real anticipation for what's coming. Roast freely — nobody is off-limits, everybody's real \
+numbers are fair game. Tone: a hyped-up trash-talking hype man crossed with your most ruthless group \
+chat friend — cocky, funny, a little unhinged, zero mercy. Three to five short paragraphs. No hedging, \
+no disclaimers, no participation-trophy energy."""
+
+WEEKLY_RECAP_PROMPT = """You are the voice of a fantasy football league's website, writing the weekly \
+recap column for the whole league — and you are NOT neutral. You are a professional shit-talker \
+covering every real result from the week using ONLY the facts you're given (every matchup's final \
+score and winner, the week's real awards — overachiever, meltdown, clutch or choke performance, \
+biggest bench crime, boom/bust standouts, Game of the Week — current league standings, and real \
+league-wide context like Jeffrey's Rule chug debts). Never invent a stat, a player, or an event not \
+present in the data — every line must be traceable to a specific fact you were handed.
+
+Cover the week as one story, not a boring list: open with the week's headline moment, move through \
+the results that matter (upsets, blowouts, the closest game), call out the real award-winners by \
+name, and close by setting up where the league actually stands now. Roast freely — nobody is \
+off-limits, everybody's real numbers are fair game. Tone: brutal, sharp, genuinely funny, like a beat \
+writer with zero patience for anyone's excuses. Three to five short paragraphs. No hedging, no \
+disclaimers, no "great week everyone" softening."""
+
+WEEKLY_MAX_TOKENS = 900
 
 
 def _fmt_boom_bust(roster: list[dict]) -> tuple[list[str], list[str]]:
@@ -257,3 +296,193 @@ async def get_or_generate_narrative(conn, matchup: dict) -> str | None:
     text = generate_narrative(system_prompt, facts)
     await narrative_queries.save_narrative(conn, matchup["matchup_id"], kind, text, MODEL)
     return text
+
+
+def _resolve_weekly_kind(week: int, current_week: int | None) -> str | None:
+    """Week-scoped counterpart to _resolve_kind above. There's no
+    per-week "score" pair to check the way a single matchup has, so
+    "started" is read off current_week instead: a week strictly before
+    current_week is fully in the books (recap-eligible), a week
+    strictly after it hasn't happened yet (preview-eligible), and the
+    week matching current_week itself is still live — same as a
+    matchup with a game in progress, that's None, not a stale
+    generate-now target."""
+    if current_week is None:
+        return None
+    if week < current_week:
+        return "recap"
+    if week > current_week:
+        return "preview"
+    return None
+
+
+def _standings_record_str(row) -> str:
+    return f"{row['wins']}-{row['losses']}" + (f"-{row['ties']}" if row["ties"] else "")
+
+
+async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: str) -> str:
+    """Same "real, already-computed data only" discipline as _build_facts
+    above, just assembled from a whole week's worth of matchups
+    (week_context, as already returned by matchup_context.
+    build_week_matchup_context — passed in rather than re-fetched here,
+    since generate_weekly_recap below already has it on hand) plus the
+    week's real awards from weekly_awards.py for a recap, or just each
+    game's pairing/records for a preview."""
+    season, week = week_context["season"], week_context["week"]
+    gow_matchup_id = week_context["game_of_the_week_matchup_id"]
+    matchups = week_context["matchups"]
+
+    # Stated explicitly rather than left for the model to infer — an
+    # early-season week with few results otherwise reads exactly like
+    # Week 1 to the model, and it has no other way to know which real
+    # week this is (2026-09-03 live check caught it guessing "Week 1"
+    # for a real Week 5 recap).
+    facts: list[str] = [
+        f"This is {'the recap for' if kind == 'recap' else 'the preview for'} {season} Week {week}."
+    ]
+    for m in matchups:
+        home, away = m["home"], m["away"]
+        tag = " (Game of the Week)" if m["matchup_id"] == gow_matchup_id else ""
+        if kind == "recap" and home["score"] is not None and away["score"] is not None:
+            if home["score"] == away["score"]:
+                facts.append(f"{home['team_name']} tied {away['team_name']} {home['score']}-{away['score']}{tag}")
+            else:
+                winner, loser = (home, away) if home["score"] > away["score"] else (away, home)
+                facts.append(f"{winner['team_name']} defeated {loser['team_name']} {winner['score']}-{loser['score']}{tag}")
+        else:
+            facts.append(
+                f"{home['team_name']} ({home['record'] or '0-0'}) vs "
+                f"{away['team_name']} ({away['record'] or '0-0'}){tag}"
+            )
+
+    if kind == "recap":
+        overachiever, meltdown = await weekly_awards.get_overachiever_and_meltdown(conn, season, week, league_id)
+        if overachiever:
+            facts.append(
+                f"Overachiever of the week: {overachiever['team_name']} beat their projection by "
+                f"{overachiever['diff']:.1f} points"
+            )
+        if meltdown:
+            facts.append(
+                f"Meltdown of the week: {meltdown['team_name']} missed their projection by "
+                f"{abs(meltdown['diff']):.1f} points"
+            )
+
+        bench_crime = await weekly_awards.get_biggest_bench_crime(conn, season, week, league_id)
+        if bench_crime:
+            facts.append(
+                f"Biggest bench crime: {bench_crime['team_name']} benched {bench_crime['bench_player']}, who "
+                f"outscored started player {bench_crime['started_player']} by {bench_crime['points_diff']} points"
+            )
+
+        clutch, choke = await weekly_awards.get_clutch_choke_of_week(conn, season, week, league_id)
+        if clutch:
+            facts.append(f"Clutch performance of the week: {clutch['team_name']} ({clutch['reason']})")
+        if choke:
+            facts.append(f"Choke of the week: {choke['team_name']} ({choke['reason']})")
+
+        booms, busts = await weekly_awards.get_boom_bust_leaders(conn, season, week, limit=3, league_id=league_id)
+        if booms:
+            facts.append(
+                "Boom performances: "
+                + ", ".join(f"{b['player_name']} ({b['team_name']}, {b['points_scored']} pts)" for b in booms)
+            )
+        if busts:
+            facts.append(
+                "Bust performances: "
+                + ", ".join(f"{b['player_name']} ({b['team_name']}, {b['points_scored']} pts)" for b in busts)
+            )
+
+        gow_matchup = next((m for m in matchups if m["matchup_id"] == gow_matchup_id), None)
+        if gow_matchup:
+            gow_result = await weekly_awards.get_game_of_week_result(
+                conn, season, week,
+                {"home_team_id": gow_matchup["home"]["team_id"], "away_team_id": gow_matchup["away"]["team_id"]},
+                league_id,
+            )
+            if gow_result:
+                facts.append(f"Game of the Week result: {gow_result['winner']} won {gow_result['score']}")
+
+    # Right-now league context, same as _build_facts: current standings
+    # (leader + last place) and real Jeffrey's Rule chug debts — applies
+    # to both preview and recap.
+    standings = await league_queries.get_standings(conn, season, league_id)
+    if standings:
+        leader = standings[0]
+        facts.append(f"League leader right now: {leader['team_name']} ({_standings_record_str(leader)})")
+        trailer = standings[-1]
+        if trailer["team_id"] != leader["team_id"]:
+            facts.append(f"Currently in last place: {trailer['team_name']} ({_standings_record_str(trailer)})")
+
+    chug_by_owner = await chug_queries.get_chug_standing_by_owner(conn, season, league_id)
+    if chug_by_owner:
+        team_name_by_owner: dict[int, str] = {}
+        for m in matchups:
+            team_name_by_owner[m["home"]["owner_id"]] = m["home"]["team_name"]
+            team_name_by_owner[m["away"]["owner_id"]] = m["away"]["team_name"]
+        for owner_id, chug in chug_by_owner.items():
+            team_name = team_name_by_owner.get(owner_id)
+            if team_name is None:
+                continue
+            owed = float(chug["outstanding_owed"] or 0) + float(chug["fined_owed"] or 0)
+            if owed > 0:
+                facts.append(f"{team_name}'s owner currently owes {owed:g} under Jeffrey's Rule this season")
+
+    return "; ".join(facts)
+
+
+async def get_cached_weekly_narrative(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict | None:
+    """Cache read only, never generates — used by the week page's normal
+    load, same reasoning as get_cached_narrative above (a whole-week
+    narrative is an even bigger single call; it must never fire on a
+    plain page view). Returns {"text", "kind"} (kind is "preview" or
+    "recap", so the page can label it "Week N Recap" vs "Week N
+    Preview") or None if nothing's eligible/cached yet."""
+    current_week = await league_queries.get_cached_current_week(conn, season)
+    kind = _resolve_weekly_kind(week, current_week)
+    if kind is None:
+        return None
+    text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
+    if text is None:
+        return None
+    return {"text": text, "kind": kind}
+
+
+async def generate_weekly_recap(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+    """The bulk, commissioner-triggered action described in this
+    module's own plan: fills in every real matchup's own narrative for
+    the week (skipping whatever's already cached, via the existing
+    get_or_generate_narrative) and then generates/caches the new
+    whole-week narrative tying it all together. Returns everything
+    generated so the caller can render immediately rather than having
+    to re-fetch. Degrades the same way get_or_generate_narrative does —
+    no ANTHROPIC_API_KEY means the per-matchup fills still happen if
+    already cached, but nothing new is generated, and weekly_narrative
+    comes back None rather than erroring."""
+    from app.domain.matchup_context import build_week_matchup_context
+
+    week_context = await build_week_matchup_context(conn, season, week, league_id)
+    matchups = week_context["matchups"]
+    if not matchups:
+        return {"weekly_narrative": None, "matchup_narratives": {}}
+
+    matchup_narratives: dict[int, str] = {}
+    for m in matchups:
+        text = await get_or_generate_narrative(conn, m)
+        if text is not None:
+            matchup_narratives[m["matchup_id"]] = text
+
+    weekly_narrative = None
+    current_week = await league_queries.get_cached_current_week(conn, season)
+    kind = _resolve_weekly_kind(week, current_week)
+    if kind is not None:
+        text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
+        if text is None and ANTHROPIC_API_KEY:
+            system_prompt = WEEKLY_RECAP_PROMPT if kind == "recap" else WEEKLY_PREVIEW_PROMPT
+            facts = await _build_weekly_facts(conn, week_context, league_id, kind)
+            text = generate_narrative(system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
+            await narrative_queries.save_weekly_narrative(conn, season, week, league_id, kind, text, MODEL)
+        if text is not None:
+            weekly_narrative = {"text": text, "kind": kind}
+
+    return {"weekly_narrative": weekly_narrative, "matchup_narratives": matchup_narratives}

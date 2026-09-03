@@ -483,6 +483,33 @@ export function getWeeklyAwards(season: number, week: number, sessionCookie: str
   return getServer<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`, sessionCookie);
 }
 
+export type WeeklyNarrative = { text: string; kind: "preview" | "recap" };
+
+// Cache-only read — never triggers a live generation (see
+// app/domain/narrative_engine.py's own docstrings for why). `narrative`
+// is null whenever nothing's eligible/cached yet.
+export function getWeeklyRecap(season: number, week: number, sessionCookie: string | undefined) {
+  return getServer<{ narrative: WeeklyNarrative | null }>(`/seasons/${season}/weeks/${week}/recap`, sessionCookie);
+}
+
+export type GenerateWeeklyRecapResult = {
+  weekly_narrative: WeeklyNarrative | null;
+  matchup_narratives: Record<number, string>;
+};
+
+// Commissioner-only bulk action (WeekRecapGenerateButton.tsx) — fills
+// in every real matchup's own narrative for the week plus the new
+// whole-week narrative in one request. Client-callable through
+// /api/backend so the browser's own session cookie is forwarded.
+export async function generateWeeklyRecap(season: number, week: number): Promise<GenerateWeeklyRecapResult> {
+  const res = await fetch(`/api/backend/seasons/${season}/weeks/${week}/recap/generate`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Generate failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export type RecordEntry = {
   owner_id: number;
   owner_name: string;
