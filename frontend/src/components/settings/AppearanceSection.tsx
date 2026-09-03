@@ -254,7 +254,7 @@ export function AppearanceSection() {
           <span className="rounded-full border-2 border-black dark:border-white px-3 py-1.5 text-sm font-medium">
             Dark
           </span>
-          <span className="rounded-full border-2 border-transparent bg-black/5 px-3 py-1.5 text-sm text-black/40 dark:bg-white/10 dark:text-white/40">
+          <span className="rounded-full border-2 border-transparent bg-black/5 px-3 py-1.5 text-sm text-black/50 dark:bg-white/10 dark:text-white/50">
             System
           </span>
           <span

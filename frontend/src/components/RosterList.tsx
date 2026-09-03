@@ -22,7 +22,7 @@ export function RosterList({
     <div>
       <div className="mb-1 flex items-baseline justify-between">
         <h2 className="text-sm font-medium text-black/60 dark:text-white/60">{title}</h2>
-        <div className="flex gap-3 text-xs text-black/40 dark:text-white/40">
+        <div className="flex gap-3 text-xs text-black/50 dark:text-white/50">
           {showProjected && <span className="w-10 text-right">Proj</span>}
           <span className="w-10 text-right">Final</span>
         </div>

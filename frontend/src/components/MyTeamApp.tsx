@@ -85,7 +85,7 @@ function RosterRow({
           {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
         </span>
         {entry.next_opponent && (
-          <span className="text-xs text-black/40 dark:text-white/40">
+          <span className="text-xs text-black/50 dark:text-white/50">
             {entry.next_opponent}
             {/* Only rendered post-mount: toLocaleDateString/
                 toLocaleTimeString format using the runtime's local
@@ -102,10 +102,10 @@ function RosterRow({
           </span>
         )}
         {entry.bye_week !== null && (
-          <span className="text-xs text-black/40 dark:text-white/40">Bye: Week {entry.bye_week}</span>
+          <span className="text-xs text-black/50 dark:text-white/50">Bye: Week {entry.bye_week}</span>
         )}
         {ownership?.percent_owned !== null && ownership?.percent_owned !== undefined && (
-          <span className="text-xs text-black/40 dark:text-white/40">{ownership.percent_owned.toFixed(0)}% owned</span>
+          <span className="text-xs text-black/50 dark:text-white/50">{ownership.percent_owned.toFixed(0)}% owned</span>
         )}
         {entry.injury_status && entry.injury_status !== "ACTIVE" && (
           <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">

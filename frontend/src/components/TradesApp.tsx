@@ -259,7 +259,7 @@ function PlayerPicker({
     <div className="flex flex-col gap-1.5">
       <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{title}</span>
       {players.length === 0 ? (
-        <p className="text-sm text-black/40 dark:text-white/40">No players.</p>
+        <p className="text-sm text-black/50 dark:text-white/50">No players.</p>
       ) : (
         <div className="flex flex-col gap-1">
           {players.map((p) => (
@@ -273,7 +273,7 @@ function PlayerPicker({
               }
             >
               <span>{p.player_name}</span>
-              <span className={selected.has(p.sleeper_player_id) ? "text-white/70" : "text-black/40 dark:text-white/40"}>
+              <span className={selected.has(p.sleeper_player_id) ? "text-white/70" : "text-black/50 dark:text-white/50"}>
                 {p.position}
               </span>
             </button>
@@ -316,11 +316,11 @@ function TradeRow({
 
       <div className="grid grid-cols-1 gap-2 text-black/70 sm:grid-cols-2 dark:text-white/70">
         <div>
-          <span className="text-xs text-black/40 dark:text-white/40">{isProposer ? "You give" : "They give"}</span>
+          <span className="text-xs text-black/50 dark:text-white/50">{isProposer ? "You give" : "They give"}</span>
           <p>{give.map((a) => a.player_name).join(", ") || "—"}</p>
         </div>
         <div>
-          <span className="text-xs text-black/40 dark:text-white/40">{isProposer ? "You receive" : "They receive"}</span>
+          <span className="text-xs text-black/50 dark:text-white/50">{isProposer ? "You receive" : "They receive"}</span>
           <p>{receive.map((a) => a.player_name).join(", ") || "—"}</p>
         </div>
       </div>

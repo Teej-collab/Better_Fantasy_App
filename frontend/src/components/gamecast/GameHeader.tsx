@@ -28,7 +28,7 @@ export function GameHeader({
     <div className="neon-panel flex flex-col gap-4 rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between text-xs">
         <StatusBadge game={game} connected={connected} />
-        <span className="text-black/40 dark:text-white/40">
+        <span className="text-black/50 dark:text-white/50">
           {connected ? `Updated ${updatedSecondsAgo}s ago` : "Reconnecting…"}
         </span>
       </div>

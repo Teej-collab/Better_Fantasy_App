@@ -73,7 +73,7 @@ export default async function ChugLeaderboardPage({
             <li key={row.owner_id} className="flex flex-col gap-1.5 px-4 py-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                  <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
                   <Link href={`/owners/${row.owner_id}`} className="truncate font-medium hover:underline">
                     {row.owner_name}
                   </Link>
@@ -100,7 +100,7 @@ export default async function ChugLeaderboardPage({
                     {me?.is_commissioner && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
                   </span>
                 )}
-                <span className="text-black/40 dark:text-white/40">Lifetime: {row.lifetime_completed}</span>
+                <span className="text-black/50 dark:text-white/50">Lifetime: {row.lifetime_completed}</span>
               </div>
             </li>
           ))}

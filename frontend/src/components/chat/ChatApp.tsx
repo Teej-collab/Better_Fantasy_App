@@ -410,7 +410,7 @@ export function ChatApp({
           />
         </div>
       ) : (
-        <div className="hidden flex-1 items-center justify-center text-sm text-black/40 sm:flex dark:text-white/40">
+        <div className="hidden flex-1 items-center justify-center text-sm text-black/50 sm:flex dark:text-white/50">
           Select a conversation
         </div>
       )}

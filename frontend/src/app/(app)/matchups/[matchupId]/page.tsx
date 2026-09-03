@@ -78,7 +78,7 @@ export default async function MatchupPage({
 
         <div className="mt-3 flex flex-col gap-1 text-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <TeamScore teamId={home.team_id} name={home.team_name} score={home.score} />
-          <span className="hidden text-black/40 sm:inline dark:text-white/40">vs</span>
+          <span className="hidden text-black/50 sm:inline dark:text-white/50">vs</span>
           <TeamScore teamId={away.team_id} name={away.team_name} score={away.score} align="right" />
         </div>
 

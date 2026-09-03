@@ -216,7 +216,7 @@ export function CommissionerApp() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     {m.display_name}{" "}
-                    <span className="text-xs text-black/40 dark:text-white/40">
+                    <span className="text-xs text-black/50 dark:text-white/50">
                       {m.role === "commissioner" ? "· Commissioner" : ""}
                     </span>
                   </span>
@@ -278,7 +278,7 @@ export function CommissionerApp() {
               <li key={t.team_id} className="flex flex-col gap-2 px-4 py-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
-                    {t.team_name} <span className="text-black/40 dark:text-white/40">— {t.owner_name}</span>
+                    {t.team_name} <span className="text-black/50 dark:text-white/50">— {t.owner_name}</span>
                   </span>
                   <button
                     onClick={() => setReassignTeamId(reassignTeamId === t.team_id ? null : t.team_id)}

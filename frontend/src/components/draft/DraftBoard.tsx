@@ -58,7 +58,7 @@ export function DraftBoard({
         <tbody>
           {rounds.map((round) => (
             <tr key={round}>
-              <td className="pr-1 text-right align-middle text-black/40 tabular-nums dark:text-white/40">
+              <td className="pr-1 text-right align-middle text-black/50 tabular-nums dark:text-white/50">
                 {round}
               </td>
               {columns.map((ownerId) => {

@@ -29,7 +29,7 @@ export function ToggleRow({
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div className="flex min-w-0 flex-col">
-        <span className={`text-sm ${disabled ? "text-black/40 dark:text-white/40" : ""}`}>{label}</span>
+        <span className={`text-sm ${disabled ? "text-black/50 dark:text-white/50" : ""}`}>{label}</span>
         {description && (
           <span className="text-xs text-black/50 dark:text-white/50">{description}</span>
         )}

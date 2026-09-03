@@ -89,7 +89,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
         <li key={p.sleeper_player_id}>
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <span className="flex min-w-0 items-center gap-3">
-              <span className="w-5 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+              <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
               <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={36} />
               <span className="flex min-w-0 flex-col">
                 <button
@@ -164,7 +164,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                         className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                       >
                         {entry.player_name}
-                        <span className="ml-1 text-black/40 dark:text-white/40">({entry.lineup_slot})</span>
+                        <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
                       </button>
                     ))}
                   </div>

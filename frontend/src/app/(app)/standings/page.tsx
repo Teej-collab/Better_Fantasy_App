@@ -125,7 +125,7 @@ function StandingsListRow({ row, rank }: { row: StandingsRow; rank: number }) {
       }
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="w-6 shrink-0 tabular-nums text-black/40 dark:text-white/40">{rank}</span>
+        <span className="w-6 shrink-0 tabular-nums text-black/50 dark:text-white/50">{rank}</span>
         <div className="min-w-0">
           <Link href={`/teams/${row.team_id}`} className="font-medium hover:underline">
             {row.team_name}

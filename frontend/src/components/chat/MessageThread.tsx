@@ -142,7 +142,7 @@ export function MessageThread({
         )}
 
         {messages.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-black/40 dark:text-white/40">No messages yet — say something.</p>
+          <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">No messages yet — say something.</p>
         ) : (
           messages.map((m, i) => (
             <MessageBubble

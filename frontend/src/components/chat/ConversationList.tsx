@@ -82,7 +82,7 @@ export function ConversationList({
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     {c.last_message && (
-                      <span className="text-xs text-black/40 dark:text-white/40">
+                      <span className="text-xs text-black/50 dark:text-white/50">
                         {formatConversationListTimestamp(c.last_message.created_at)}
                       </span>
                     )}

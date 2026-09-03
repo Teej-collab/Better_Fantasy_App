@@ -171,7 +171,7 @@ function PeriodCard({ title, summary }: { title: string; summary: PeriodSummary 
           <Stat label="PA" value={summary.pa} />
         </dl>
       ) : (
-        <p className="text-sm text-black/40 dark:text-white/40">No games</p>
+        <p className="text-sm text-black/50 dark:text-white/50">No games</p>
       )}
     </div>
   );

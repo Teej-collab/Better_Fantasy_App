@@ -120,7 +120,7 @@ function RecentFeedback({ refreshCount }: { refreshCount: number }) {
           {items.map((item) => (
             <li key={item.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
               <p className="text-sm whitespace-pre-wrap">{item.message}</p>
-              <p className="text-xs text-black/40 dark:text-white/40">
+              <p className="text-xs text-black/50 dark:text-white/50">
                 {item.submitted_by} · {new Date(item.created_at).toLocaleString()}
                 {item.page_url && ` · ${item.page_url}`}
               </p>

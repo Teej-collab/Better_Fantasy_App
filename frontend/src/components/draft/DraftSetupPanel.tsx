@@ -101,7 +101,7 @@ function ScheduleEditor({
       </button>
       {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
       {timezoneLabel && (
-        <span className="w-full text-[11px] text-black/40 dark:text-white/40">Setting in {timezoneLabel}.</span>
+        <span className="w-full text-[11px] text-black/50 dark:text-white/50">Setting in {timezoneLabel}.</span>
       )}
     </div>
   );

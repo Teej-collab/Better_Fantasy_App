@@ -40,7 +40,7 @@ export function RecordBook({ categories }: { categories: RecordCategory[] }) {
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           All-Time Records
         </h2>
-        <p className="mt-0.5 text-xs text-black/40 dark:text-white/40">
+        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
           The league&apos;s history, updated the moment a record is broken.
         </p>
       </div>

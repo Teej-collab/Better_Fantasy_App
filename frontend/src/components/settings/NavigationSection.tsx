@@ -130,7 +130,7 @@ function DraggableTab({ destKey }: { destKey: DestinationKey }) {
       <button
         type="button"
         aria-label={`Drag to reorder ${dest.label}`}
-        className="flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded-md text-black/40 active:cursor-grabbing dark:text-white/40"
+        className="flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded-md text-black/50 active:cursor-grabbing dark:text-white/50"
         {...attributes}
         {...listeners}
       >

@@ -305,7 +305,7 @@ export function DraftRoom({
             {secondsRemaining}s
           </div>
         )}
-        <span className="text-xs text-black/40 dark:text-white/40">{connected ? "● live" : "○ reconnecting…"}</span>
+        <span className="text-xs text-black/50 dark:text-white/50">{connected ? "● live" : "○ reconnecting…"}</span>
       </div>
 
       {isCommissioner && <DraftSetupPanel teams={teams} config={config!} onDraftCreated={refreshState} />}
@@ -384,7 +384,7 @@ export function DraftRoom({
                         >
                           {p.full_name}
                         </button>
-                        <span className="truncate text-xs text-black/40 dark:text-white/40">
+                        <span className="truncate text-xs text-black/50 dark:text-white/50">
                           {p.pro_team ?? "—"} · Proj {p.projected_points !== null ? p.projected_points.toFixed(1) : "—"} · Bye{" "}
                           {p.bye_week ?? "—"}
                         </span>
@@ -432,7 +432,7 @@ export function DraftRoom({
                         onClick={() => queue.move(p.sleeper_player_id, -1)}
                         disabled={i === 0}
                         aria-label="Move up"
-                        className="px-1 text-black/40 disabled:opacity-20 dark:text-white/40"
+                        className="px-1 text-black/50 disabled:opacity-20 dark:text-white/50"
                       >
                         ↑
                       </button>
@@ -440,14 +440,14 @@ export function DraftRoom({
                         onClick={() => queue.move(p.sleeper_player_id, 1)}
                         disabled={i === queuedPlayers.length - 1}
                         aria-label="Move down"
-                        className="px-1 text-black/40 disabled:opacity-20 dark:text-white/40"
+                        className="px-1 text-black/50 disabled:opacity-20 dark:text-white/50"
                       >
                         ↓
                       </button>
                       <button
                         onClick={() => queue.remove(p.sleeper_player_id)}
                         aria-label="Remove from queue"
-                        className="px-1 text-black/40 dark:text-white/40"
+                        className="px-1 text-black/50 dark:text-white/50"
                       >
                         ×
                       </button>
@@ -477,7 +477,7 @@ export function DraftRoom({
               </h2>
               {recentPicks.map((p) => (
                 <p key={p.pick_number} className="text-sm">
-                  <span className="text-black/40 dark:text-white/40">#{p.pick_number}</span>{" "}
+                  <span className="text-black/50 dark:text-white/50">#{p.pick_number}</span>{" "}
                   {teamNameByOwner.get(p.owner_id) ?? p.owner_name}:{" "}
                   {p.sleeper_player_id ? (
                     <button onClick={() => openPlayerCard(p.sleeper_player_id!)} className="hover:underline">

@@ -195,7 +195,7 @@ export function MessageBubble({
             <span
               className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
                 message.deleted
-                  ? "italic text-black/40 dark:text-white/40"
+                  ? "italic text-black/50 dark:text-white/50"
                   : `${mine ? "chat-bubble--mine" : "chat-bubble--other"} ${
                       lastInRun ? (mine ? "chat-bubble--tail-mine" : "chat-bubble--tail-other") : ""
                     }`
@@ -309,7 +309,7 @@ function MessageActions({
           onToggleReactionPicker();
         }}
         title="React"
-        className="rounded-full p-1.5 text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+        className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
       >
         🙂
       </button>
@@ -319,7 +319,7 @@ function MessageActions({
           onReply();
         }}
         title="Reply"
-        className="rounded-full p-1.5 text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+        className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
       >
         ↩
       </button>
@@ -329,7 +329,7 @@ function MessageActions({
           onCopy();
         }}
         title="Copy"
-        className="rounded-full p-1.5 text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+        className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
       >
         📋
       </button>
@@ -340,7 +340,7 @@ function MessageActions({
             onDelete();
           }}
           title="Delete"
-          className="rounded-full p-1.5 text-black/40 hover:bg-red-500/10 hover:text-red-500 dark:text-white/40"
+          className="rounded-full p-1.5 text-black/50 hover:bg-red-500/10 hover:text-red-500 dark:text-white/50"
         >
           🗑
         </button>

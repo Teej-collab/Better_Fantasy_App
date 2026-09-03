@@ -75,7 +75,7 @@ export function RecentMeetingsTable({
             >
               {g.home_score.toFixed(1)}
             </span>
-            <span className="shrink-0 text-center text-xs text-black/40 dark:text-white/40">
+            <span className="shrink-0 text-center text-xs text-black/50 dark:text-white/50">
               {g.season} Wk{g.week}
             </span>
             <span

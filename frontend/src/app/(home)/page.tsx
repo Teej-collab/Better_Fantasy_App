@@ -205,7 +205,7 @@ export default async function HomePage() {
           {standings.slice(0, 5).map((row, i) => (
             <li key={row.team_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors">
               <span className="flex min-w-0 items-center gap-2">
-                <span className="w-4 shrink-0 text-black/40 tabular-nums dark:text-white/40">{i + 1}</span>
+                <span className="w-4 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
                 <span className="truncate">{row.team_name}</span>
               </span>
               <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
@@ -369,7 +369,7 @@ export default async function HomePage() {
             {leagueTickerItems.length > 0 && (
               <div className="flex flex-col gap-1">
                 {activeLeagueName && (
-                  <span className="text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                  <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                     {activeLeagueName}
                   </span>
                 )}

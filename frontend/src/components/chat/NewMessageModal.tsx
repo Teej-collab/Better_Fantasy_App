@@ -27,7 +27,7 @@ export function NewMessageModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
           >
             ✕
           </button>
@@ -46,7 +46,7 @@ export function NewMessageModal({
           {filtered.map((m) => (
             <MemberRow key={m.owner_id} member={m} onSelect={onSelect} />
           ))}
-          {filtered.length === 0 && <p className="px-2 py-4 text-center text-sm text-black/40 dark:text-white/40">No members found.</p>}
+          {filtered.length === 0 && <p className="px-2 py-4 text-center text-sm text-black/50 dark:text-white/50">No members found.</p>}
         </ul>
       </div>
     </div>

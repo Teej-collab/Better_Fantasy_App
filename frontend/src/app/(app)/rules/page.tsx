@@ -366,7 +366,7 @@ export default async function RulesPage() {
         <br />
         May your group chat remain toxic.
       </Manifesto>
-      <p className="pb-2 text-center text-xs text-black/40 dark:text-white/40">— Commissioner&apos;s Office</p>
+      <p className="pb-2 text-center text-xs text-black/50 dark:text-white/50">— Commissioner&apos;s Office</p>
     </div>
   );
 }

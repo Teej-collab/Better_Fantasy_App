@@ -219,7 +219,7 @@ export function NotificationsSection() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-black/40 dark:text-white/40">
+        <p className="text-xs text-black/50 dark:text-white/50">
           {prefs.sunday_mode
             ? `Active: ${SUNDAY_MODES.find((m) => m.key === prefs.sunday_mode)?.label}`
             : "Customized — doesn't match a preset."}
@@ -249,7 +249,7 @@ export function NotificationsSection() {
           </p>
         </div>
 
-        {push === null && <p className="text-xs text-black/40 dark:text-white/40">Checking this device…</p>}
+        {push === null && <p className="text-xs text-black/50 dark:text-white/50">Checking this device…</p>}
 
         {push && !push.supported && !push.iosNeedsInstall && (
           <p className="text-xs text-black/50 dark:text-white/50">

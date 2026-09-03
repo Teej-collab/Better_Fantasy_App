@@ -23,7 +23,7 @@ export function AwardLeaderboards({ categories }: { categories: AwardLeaderboard
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           All-Time Awards
         </h2>
-        <p className="mt-0.5 text-xs text-black/40 dark:text-white/40">
+        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
           Every yearly award the league hands out, and who&apos;s won it the most.
         </p>
       </div>
@@ -45,7 +45,7 @@ export function AwardLeaderboards({ categories }: { categories: AwardLeaderboard
               )}
             </div>
             {category.winners.length === 0 ? (
-              <p className="text-xs text-black/40 dark:text-white/40">Not yet awarded.</p>
+              <p className="text-xs text-black/50 dark:text-white/50">Not yet awarded.</p>
             ) : (
               <ol className="flex flex-col gap-2">
                 {category.winners.map((winner, i) => (

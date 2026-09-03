@@ -73,7 +73,7 @@ export async function AppTickerBar() {
           not just the one where the collision was actually noticed. */}
       <div className="flex items-center gap-1.5">
         <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
-        <span className="text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+        <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           This Week, Live
         </span>
       </div>

@@ -51,7 +51,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
         <button
           onClick={onClose}
           aria-label="Close"
-          className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-black/70 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
         >
           ✕
         </button>
@@ -138,7 +138,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
               )}
             </div>
             {!card.projection && (
-              <p className="text-center text-[0.7rem] text-black/40 dark:text-white/40">
+              <p className="text-center text-[0.7rem] text-black/50 dark:text-white/50">
                 Live ESPN projections aren&apos;t available for this player right now.
               </p>
             )}
@@ -152,7 +152,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
             {card.overview?.season_outlook && (
               <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
-                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                   Season Outlook
                 </h3>
                 <p className="text-black/80 dark:text-white/80">{card.overview.season_outlook}</p>
@@ -161,7 +161,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
             {card.overview?.latest_note && (
               <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
-                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                   Latest Note
                 </h3>
                 <p className="font-medium">{card.overview.latest_note.headline}</p>
@@ -173,7 +173,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
             {card.overview && card.overview.news.length > 0 && (
               <div className="flex flex-col gap-2 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
-                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                   Recent News
                 </h3>
                 <ul className="flex flex-col gap-2">
@@ -206,7 +206,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 function BioStat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[0.65rem] uppercase tracking-wide text-black/40 dark:text-white/40">{label}</span>
+      <span className="text-[0.65rem] uppercase tracking-wide text-black/50 dark:text-white/50">{label}</span>
       <span className="text-sm font-semibold">{value}</span>
     </div>
   );

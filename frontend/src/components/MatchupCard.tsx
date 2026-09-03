@@ -47,7 +47,7 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
               {home.team_name}
               {STREAK_ICON[home.streak]}
             </span>
-            <span className="text-xs text-black/40 sm:text-sm dark:text-white/40">vs</span>
+            <span className="text-xs text-black/50 sm:text-sm dark:text-white/50">vs</span>
             <span className="truncate">
               {away.team_name}
               {STREAK_ICON[away.streak]}
@@ -59,7 +59,7 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
               {away.score !== null ? away.score.toFixed(1) : "—"}
             </span>
             <span
-              className={`text-black/40 transition-transform dark:text-white/40 ${open ? "rotate-180" : ""}`}
+              className={`text-black/50 transition-transform dark:text-white/50 ${open ? "rotate-180" : ""}`}
               aria-hidden
             >
               ▾
