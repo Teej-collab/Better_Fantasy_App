@@ -2,7 +2,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
 from app.main import app
-from tests.conftest import TEST_SEASON
+from tests.conftest import TEST_SEASON, make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
@@ -11,9 +11,9 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=123, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=123, is_commissioner=False
     )
     return {"session": token}
 
@@ -51,7 +51,7 @@ async def test_get_settings_returns_defaults(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 1, discord_username="teej_8")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/settings/me")
 
     await _cleanup_user(pool, owner_id)
@@ -101,7 +101,7 @@ async def test_update_display_name(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 2)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/display-name", json={"display_name": "  The Commissioner  "})
 
     async with pool.acquire() as conn:
@@ -119,7 +119,7 @@ async def test_update_display_name_rejects_empty(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 3)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/display-name", json={"display_name": "   "})
 
     assert resp.status_code == 400
@@ -130,7 +130,7 @@ async def test_update_display_name_rejects_too_long(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 4)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/display-name", json={"display_name": "x" * 41})
 
     assert resp.status_code == 400
@@ -141,7 +141,7 @@ async def test_reset_display_name_lets_next_sync_restore_it(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 5)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.put("/settings/display-name", json={"display_name": "Custom Name"})
         resp = await client.post("/settings/display-name/reset")
 
@@ -160,7 +160,7 @@ async def test_update_chat_color_accepts_valid_hex(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 6)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/chat-color", json={"chat_color": "#39ff6a"})
 
     async with pool.acquire() as conn:
@@ -175,7 +175,7 @@ async def test_update_chat_color_rejects_non_hex(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 7)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         for bad in ["red", "#zzzzzz", "#fff", "39ff6a", "#39ff6a; } * { display:none"]:
             resp = await client.put("/settings/chat-color", json={"chat_color": bad})
             assert resp.status_code == 400, bad
@@ -186,7 +186,7 @@ async def test_update_chat_color_null_resets_to_default(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 8)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.put("/settings/chat-color", json={"chat_color": "#39ff6a"})
         resp = await client.put("/settings/chat-color", json={"chat_color": None})
 
@@ -205,7 +205,7 @@ async def test_update_logo_accepts_a_real_blob_url(pool, monkeypatch):
     url = f"https://{CHAT_IMAGE_HOST}/logos/some-logo.png"
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/logo", json={"logo_url": url})
 
     async with pool.acquire() as conn:
@@ -220,7 +220,7 @@ async def test_update_logo_rejects_a_url_not_on_our_blob_host(pool, monkeypatch)
     owner_id = await _seed_owner(pool, 31)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         for bad in [
             "https://evil.example.com/logo.png",
             "http://ls7srleyqyy06rjq.public.blob.vercel-storage.com/logo.png",  # not https
@@ -242,7 +242,7 @@ async def test_update_logo_null_removes_it(pool, monkeypatch):
     url = f"https://{CHAT_IMAGE_HOST}/logos/some-logo.png"
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.put("/settings/logo", json={"logo_url": url})
         resp = await client.put("/settings/logo", json={"logo_url": None})
 
@@ -268,7 +268,7 @@ async def test_update_team_name(pool, monkeypatch):
     await _seed_team(pool, owner_id, 11, TEST_SEASON)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/team-name", json={"team_name": "  The Replacements  "})
 
     async with pool.acquire() as conn:
@@ -289,7 +289,7 @@ async def test_update_team_name_rejects_empty(pool, monkeypatch):
     await _seed_team(pool, owner_id, 12, TEST_SEASON)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/team-name", json={"team_name": "   "})
 
     assert resp.status_code == 400
@@ -302,7 +302,7 @@ async def test_update_team_name_rejects_too_long(pool, monkeypatch):
     await _seed_team(pool, owner_id, 13, TEST_SEASON)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/team-name", json={"team_name": "x" * 41})
 
     assert resp.status_code == 400
@@ -314,7 +314,7 @@ async def test_update_team_name_404s_when_owner_has_no_team_this_season(pool, mo
     owner_id = await _seed_owner(pool, 14)  # no teams_by_season row seeded
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/team-name", json={"team_name": "New Name"})
 
     assert resp.status_code == 404
@@ -327,7 +327,7 @@ async def test_reset_team_name_lets_next_sync_restore_it(pool, monkeypatch):
     await _seed_team(pool, owner_id, 15, TEST_SEASON)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.put("/settings/team-name", json={"team_name": "Custom Team"})
         resp = await client.post("/settings/team-name/reset")
 
@@ -351,7 +351,7 @@ async def test_owner_can_only_ever_modify_their_own_settings(pool, monkeypatch):
     owner_b = await _seed_owner(pool, 10)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a))
+        client.cookies.update(await _session_cookie(pool, owner_a))
         await client.put("/settings/display-name", json={"display_name": "Owner A's Name"})
 
     async with pool.acquire() as conn:

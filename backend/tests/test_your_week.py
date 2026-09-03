@@ -3,7 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.domain.your_week import build_your_week
 from app.main import app
-from tests.conftest import TEST_SEASON
+from tests.conftest import TEST_SEASON, make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
@@ -12,9 +12,9 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=999, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=999, is_commissioner=False
     )
     return {"session": token}
 
@@ -163,7 +163,7 @@ async def test_week_endpoint_returns_your_week(pool, monkeypatch):
     owner_id, _ = await _seed_owner_and_team(pool)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/week")
     assert resp.status_code == 200
     assert resp.json()["team_name"] == "Team Alpha"
@@ -175,6 +175,6 @@ async def test_week_endpoint_404_when_no_team_in_active_season(pool, monkeypatch
     owner_id, _ = await _seed_owner_and_team(pool)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/week")
     assert resp.status_code == 404

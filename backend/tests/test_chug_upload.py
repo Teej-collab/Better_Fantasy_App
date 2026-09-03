@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token, create_ticket_token
 from app.main import app
-from tests.conftest import TEST_SEASON
+from tests.conftest import TEST_SEASON, make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _DISCORD_USER_ID = 424242
@@ -21,16 +21,16 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=_DISCORD_USER_ID, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=_DISCORD_USER_ID, is_commissioner=False
     )
     return {"session": token}
 
 
-def _upload_ticket(owner_id: int):
+async def _upload_ticket(pool, owner_id: int):
     return create_ticket_token(
-        _SESSION_SECRET, purpose="chug_upload", user_id=1, owner_id=owner_id,
+        _SESSION_SECRET, purpose="chug_upload", user_id=await make_safe_session_user_id(pool), owner_id=owner_id,
         discord_user_id=_DISCORD_USER_ID, is_commissioner=False,
     )
 
@@ -60,7 +60,7 @@ async def test_upload_rejects_unsupported_extension(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 1)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.txt", b"not a video", "text/plain")})
 
     assert resp.status_code == 400
@@ -72,7 +72,7 @@ async def test_upload_rejects_oversized_file(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 2)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/chug/upload", files={"video": ("clip.mp4", b"x" * 1000, "video/mp4")}
         )
@@ -91,7 +91,7 @@ async def test_upload_no_contact_detected_does_not_save_a_score(pool, monkeypatc
     monkeypatch.setattr("app.routers.chug.run_chug_analysis", fake_analysis)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
 
     async with pool.acquire() as conn:
@@ -133,7 +133,7 @@ async def test_upload_successful_analysis_saves_score_and_cleans_up_temp_file(po
     monkeypatch.setattr("app.routers.chug.run_chug_analysis", fake_analysis)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.mov", b"fake video bytes", "video/quicktime")})
 
     async with pool.acquire() as conn:
@@ -189,7 +189,7 @@ async def test_upload_authenticates_via_ticket_when_no_session_cookie(pool, monk
 
     async with _client() as client:
         resp = await client.post(
-            f"/chug/upload?ticket={_upload_ticket(owner_id)}",
+            f"/chug/upload?ticket={await _upload_ticket(pool, owner_id)}",
             files={"video": ("clip.mov", b"fake video bytes", "video/quicktime")},
         )
     await _cleanup(pool)
@@ -222,7 +222,7 @@ async def test_upload_with_real_debt_pays_it_down(pool, monkeypatch):
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
 
     await _cleanup(pool)
@@ -246,7 +246,7 @@ async def test_upload_with_nothing_owed_is_for_funsies_and_does_not_bank(pool, m
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
 
     async with pool.acquire() as conn:

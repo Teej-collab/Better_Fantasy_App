@@ -3,6 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.main import app
 from app.queries import owner_preferences as preferences_queries
+from tests.conftest import make_safe_session_user_id
 from app.queries import push_subscriptions as queries
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -12,9 +13,9 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 
@@ -49,7 +50,7 @@ async def test_subscribe_creates_a_row_and_enables_push(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 1)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/push/subscribe", json=_sub_body("owner1"))
 
     assert resp.status_code == 200
@@ -65,7 +66,7 @@ async def test_resubscribing_the_same_endpoint_upserts_not_duplicates(pool, monk
     owner_id = await _seed_owner(pool, 2)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         first = await client.post("/push/subscribe", json=_sub_body("owner2"))
         second = await client.post("/push/subscribe", json=_sub_body("owner2", device="Updated Label"))
 
@@ -89,12 +90,12 @@ async def test_unsubscribe_only_affects_the_caller_own_subscription(pool, monkey
     owner_b = await _seed_owner(pool, 4)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_a))
+        client.cookies.update(await _session_cookie(pool, owner_a))
         await client.post("/push/subscribe", json=_sub_body("owner3"))
 
         # owner_b tries to unsubscribe owner_a's endpoint — must fail,
         # never succeed just because the endpoint string is known.
-        client.cookies.update(_session_cookie(owner_b))
+        client.cookies.update(await _session_cookie(pool, owner_b))
         resp = await client.post("/push/unsubscribe", json={"endpoint": _sub_body("owner3")["endpoint"]})
 
     assert resp.status_code == 404
@@ -108,7 +109,7 @@ async def test_multi_device_disabling_one_leaves_the_other_active(pool, monkeypa
     owner_id = await _seed_owner(pool, 5)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.post("/push/subscribe", json=_sub_body("owner5-iphone"))
         await client.post("/push/subscribe", json=_sub_body("owner5-mac"))
 
@@ -130,7 +131,7 @@ async def test_disabling_every_device_turns_off_the_master_toggle(pool, monkeypa
     owner_id = await _seed_owner(pool, 6)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.post("/push/subscribe", json=_sub_body("owner6"))
         await client.post("/push/unsubscribe", json={"endpoint": _sub_body("owner6")["endpoint"]})
 
@@ -144,7 +145,7 @@ async def test_subscribe_rejects_missing_fields(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 7)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/push/subscribe", json={"endpoint": "", "keys": {"p256dh": "", "auth": ""}}
         )
@@ -159,7 +160,7 @@ async def test_send_test_notification_requires_an_active_subscription(pool, monk
     owner_id = await _seed_owner(pool, 8)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/push/test")
     assert resp.status_code == 400
 
@@ -191,7 +192,7 @@ async def test_send_test_notification_delivers_to_own_subscriptions_only(pool, m
 
     owner_id = await _seed_owner(pool, 9)
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         await client.post("/push/subscribe", json=_sub_body("owner9"))
         resp = await client.post("/push/test")
 

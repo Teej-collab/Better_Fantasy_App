@@ -1,4 +1,5 @@
 import os
+import uuid
 
 import pytest
 import pytest_asyncio
@@ -16,6 +17,7 @@ os.environ.setdefault("GAMECAST_PROVIDER", "mock")
 
 from app import db as db_module
 from app.auth.rate_limit import reset_for_tests as _reset_rate_limits_for_tests
+from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
 
@@ -62,6 +64,57 @@ async def _close_pool_stashed_by_a_websocket_test():
 @pytest_asyncio.fixture
 async def pool(_close_pool_stashed_by_a_websocket_test):
     return await get_pool()
+
+
+async def make_safe_session_user_id(pool) -> int:
+    """A fresh, real, isolated (test-%-email) users row with a known
+    token_version=1 — for the ~8 test files whose local
+    _session_cookie() helpers used to hardcode the real production
+    user_id=1 to mint session tokens against. That hardcoding broke for
+    real (2026-09): app/main.py's session_revocation middleware checks
+    a token's token_version claim against users.token_version fresh on
+    every request, and the real production user_id=1's value had since
+    moved on from genuine logout activity, 401ing every one of those
+    tests' otherwise-unrelated requests at once — the same root cause
+    test_draft_router.py's own docstring already called out ("a
+    hardcoded user_id=1 would silently read/depend on the real
+    production owner's own row rather than isolated test data").
+
+    A plain per-call insert (not a shared/cached id) rather than one
+    reusable row set up once — a session- or module-scoped version, or
+    any value handed across modules via a plain Python import, silently
+    breaks here: tests/ has no __init__.py, so pytest's own conftest.py
+    auto-discovery and a test file's `from tests.conftest import X`
+    load two SEPARATE module instances of this file, each with its own
+    copy of any shared mutable state — a fixture-side mutation is
+    invisible to the copy a test file imported (caught by adding a
+    debug print on both sides: the fixture really did set its own
+    value, but decode_session_token, at the actual request, still saw
+    the untouched initial placeholder). A plain function call, invoked
+    directly from within each test via `pool` (a parameter every
+    affected test already has), sidesteps that split entirely — no
+    shared state to duplicate. Whatever's created is swept up by
+    cleanup_test_season's normal `DELETE FROM users WHERE email LIKE
+    'test-%'` at the end of that same test, same as any other test
+    fixture row.
+
+    active_league_id is set to DEFAULT_LEAGUE_ID up front, matching
+    where these same test files' own seeded owners/teams already live
+    (no explicit league_id override in any of them) — routes gated by
+    require_active_league_id (app/auth/league_context.py) need a real
+    active league, which the real production account these tests used
+    to borrow had simply by being a genuine long-time member; a brand
+    new row has none unless this sets it."""
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            """
+            INSERT INTO users (email, password_hash, display_name, token_version, active_league_id)
+            VALUES ($1, 'x', 'Test Session User', 1, $2)
+            RETURNING id
+            """,
+            f"test-session-user-{uuid.uuid4().hex[:16]}@example.com",
+            DEFAULT_LEAGUE_ID,
+        )
 
 
 @pytest.fixture(autouse=True)

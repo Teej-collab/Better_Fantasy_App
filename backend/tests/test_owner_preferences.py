@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.main import app
 from app.queries import owner_preferences as preferences_queries
+from tests.conftest import make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
@@ -13,9 +14,9 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 
@@ -109,7 +110,7 @@ async def test_put_preferences_partial_patch_end_to_end(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 6)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"neon_intensity": "high", "reduced_motion": True})
 
     assert resp.status_code == 200
@@ -124,7 +125,7 @@ async def test_put_preferences_rejects_invalid_neon_intensity(pool, monkeypatch)
     owner_id = await _seed_owner(pool, 7)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"neon_intensity": "extremely-loud"})
 
     assert resp.status_code == 400
@@ -142,7 +143,7 @@ async def test_put_preferences_sets_cosmic_theme(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 41)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"theme": "cosmic"})
 
     assert resp.status_code == 200
@@ -158,7 +159,7 @@ async def test_put_preferences_rejects_invalid_theme(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 42)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"theme": "purple-haze"})
 
     assert resp.status_code == 400
@@ -169,7 +170,7 @@ async def test_put_preferences_sets_and_clears_accent_color(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 11)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"accent_color": "#0ea5e9"})
         assert resp.status_code == 200
         assert resp.json()["accent_color"] == "#0ea5e9"
@@ -185,10 +186,79 @@ async def test_put_preferences_rejects_invalid_accent_color(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 12)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.put("/settings/preferences", json={"accent_color": "not-a-color"})
 
     assert resp.status_code == 400
+
+
+async def test_put_preferences_sets_and_clears_your_week_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 50)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"your_week_color": "#facc15"})
+        assert resp.status_code == 200
+        assert resp.json()["your_week_color"] == "#facc15"
+
+        resp = await client.put("/settings/preferences", json={"your_week_color": None})
+        assert resp.status_code == 200
+        assert resp.json()["your_week_color"] is None
+
+
+async def test_put_preferences_rejects_invalid_your_week_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 51)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"your_week_color": "not-a-color"})
+
+    assert resp.status_code == 400
+
+
+async def test_put_preferences_sets_and_clears_border_glow_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 52)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"border_glow_color": "#ec4899"})
+        assert resp.status_code == 200
+        assert resp.json()["border_glow_color"] == "#ec4899"
+
+        resp = await client.put("/settings/preferences", json={"border_glow_color": None})
+        assert resp.status_code == 200
+        assert resp.json()["border_glow_color"] is None
+
+
+async def test_put_preferences_rejects_invalid_border_glow_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 53)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"border_glow_color": "not-a-color"})
+
+    assert resp.status_code == 400
+
+
+async def test_your_week_color_and_border_glow_color_are_independent(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 54)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put(
+            "/settings/preferences",
+            json={"your_week_color": "#facc15", "border_glow_color": "#ec4899", "accent_color": "#39ff14"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["your_week_color"] == "#facc15"
+        assert body["border_glow_color"] == "#ec4899"
+        assert body["accent_color"] == "#39ff14"
 
 
 async def test_put_preferences_sets_and_clears_home_card_order(pool, monkeypatch):
@@ -196,7 +266,7 @@ async def test_put_preferences_sets_and_clears_home_card_order(pool, monkeypatch
     owner_id = await _seed_owner(pool, 13)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         order = '["standings","yourWeek","matchups","rivalries","awards","discover"]'
         resp = await client.put("/settings/preferences", json={"home_card_order": order})
         assert resp.status_code == 200
@@ -212,7 +282,7 @@ async def test_put_preferences_rejects_invalid_home_card_order(pool, monkeypatch
     owner_id = await _seed_owner(pool, 14)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
 
         not_json = await client.put("/settings/preferences", json={"home_card_order": "not-json"})
         assert not_json.status_code == 400
@@ -236,7 +306,7 @@ async def test_put_preferences_sets_and_clears_bottom_nav_order(pool, monkeypatc
     owner_id = await _seed_owner(pool, 15)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         order = '["chat","team","home","league","matchups","gamecast"]'
         resp = await client.put("/settings/preferences", json={"bottom_nav_order": order})
         assert resp.status_code == 200
@@ -252,7 +322,7 @@ async def test_put_preferences_rejects_invalid_bottom_nav_order(pool, monkeypatc
     owner_id = await _seed_owner(pool, 16)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
 
         # missing "home" — not a permutation of the fixed 6
         missing_one = await client.put(
@@ -279,7 +349,7 @@ async def test_put_preferences_sets_and_clears_home_hidden_cards(pool, monkeypat
     owner_id = await _seed_owner(pool, 17)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         hidden = '["awards","discover"]'
         resp = await client.put("/settings/preferences", json={"home_hidden_cards": hidden})
         assert resp.status_code == 200
@@ -295,7 +365,7 @@ async def test_put_preferences_rejects_invalid_home_hidden_cards(pool, monkeypat
     owner_id = await _seed_owner(pool, 18)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
 
         unknown_key = await client.put(
             "/settings/preferences", json={"home_hidden_cards": '["not-a-real-card"]'}
@@ -311,7 +381,7 @@ async def test_put_preferences_sets_and_clears_home_desktop_layout(pool, monkeyp
     owner_id = await _seed_owner(pool, 19)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         layout = '[{"i":"standings","x":0,"y":0,"w":2,"h":2},{"i":"awards","x":2,"y":0,"w":1,"h":1}]'
         resp = await client.put("/settings/preferences", json={"home_desktop_layout": layout})
         assert resp.status_code == 200
@@ -327,7 +397,7 @@ async def test_put_preferences_rejects_invalid_home_desktop_layout(pool, monkeyp
     owner_id = await _seed_owner(pool, 20)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
 
         unknown_key = await client.put(
             "/settings/preferences",
@@ -367,7 +437,7 @@ async def test_sunday_mode_endpoint_rejects_unknown_preset(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 8)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/settings/preferences/sunday-mode", json={"preset": "vibes_only"})
 
     assert resp.status_code == 400
@@ -378,7 +448,7 @@ async def test_sunday_mode_endpoint_applies_full_send(pool, monkeypatch):
     owner_id = await _seed_owner(pool, 9)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/settings/preferences/sunday-mode", json={"preset": "full_send"})
 
     assert resp.status_code == 200

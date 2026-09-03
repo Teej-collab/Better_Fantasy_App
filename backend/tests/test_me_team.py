@@ -4,7 +4,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
 from app.main import app
-from tests.conftest import TEST_SEASON
+from tests.conftest import TEST_SEASON, make_safe_session_user_id
 from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -15,9 +15,9 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=123, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=123, is_commissioner=False
     )
     return {"session": token}
 
@@ -95,7 +95,7 @@ async def test_my_team_404s_without_a_team_this_season(pool, monkeypatch):
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
     assert resp.status_code == 404
 
@@ -108,7 +108,7 @@ async def test_my_team_returns_roster_from_current_rosters(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
 
     assert resp.status_code == 200
@@ -139,7 +139,7 @@ async def test_my_team_includes_bye_week_when_synced(pool, monkeypatch):
         )
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
 
     assert resp.status_code == 200
@@ -177,7 +177,7 @@ async def test_my_team_includes_live_offense_and_redzone_status(pool, monkeypatc
     monkeypatch.setattr(gamecast_service, "all_cached_states", fake_all_cached_states)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
 
     assert resp.status_code == 200
@@ -208,7 +208,7 @@ async def test_my_team_ownership_only_covers_players_with_a_resolved_espn_id(poo
     monkeypatch.setattr("app.routers.me.get_bulk_ownership", fake_get_bulk_ownership)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team/ownership")
 
     assert resp.status_code == 200
@@ -230,7 +230,7 @@ async def test_my_team_ownership_empty_with_no_crosswalk_at_all(pool, monkeypatc
     monkeypatch.setattr("app.routers.me.get_bulk_ownership", fail_if_called)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team/ownership")
 
     assert resp.status_code == 200
@@ -259,7 +259,7 @@ async def test_my_team_includes_this_weeks_score_when_computed(pool, monkeypatch
     monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
 
     assert resp.status_code == 200
@@ -287,7 +287,7 @@ async def test_my_team_includes_next_opponent_and_game_time_from_scoreboard(pool
     monkeypatch.setattr("app.routers.me.get_week_scoreboard", _fake_scoreboard)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team")
 
     assert resp.status_code == 200
@@ -306,7 +306,7 @@ async def test_preview_move_reports_no_displacement_to_open_slot(pool, monkeypat
     await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/preview-move", json={"sleeper_player_id": player, "to_slot": "RB"}
         )
@@ -331,7 +331,7 @@ async def test_preview_move_reports_displacement_when_slot_full(pool, monkeypatc
     await _seed_roster_entry(pool, team_id, starter_qb, lineup_slot="QB")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/preview-move", json={"sleeper_player_id": bench_qb, "to_slot": "QB"}
         )
@@ -349,7 +349,7 @@ async def test_preview_move_rejects_ineligible_slot(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, wr_only, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/preview-move", json={"sleeper_player_id": wr_only, "to_slot": "QB"}
         )
@@ -373,7 +373,7 @@ async def test_preview_move_ambiguous_displacement_when_slot_has_multiple_occupa
     await _seed_roster_entry(pool, team_id, starter_rb2, lineup_slot="RB")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/preview-move", json={"sleeper_player_id": bench_rb, "to_slot": "RB"}
         )
@@ -392,7 +392,7 @@ async def test_preview_swap(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, bencher, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/preview-swap",
             json={"sleeper_player_id_a": starter, "sleeper_player_id_b": bencher},
@@ -419,7 +419,7 @@ async def test_submit_move_updates_current_rosters(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": player, "to_slot": "RB"})
 
     assert resp.status_code == 200
@@ -445,7 +445,7 @@ async def test_submit_swap_updates_both_players(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, bencher, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/lineup/swap",
             json={"sleeper_player_id_a": starter, "sleeper_player_id_b": bencher},
@@ -473,7 +473,7 @@ async def test_drop_player_removes_them_from_the_roster(pool, monkeypatch):
     await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": player})
 
     assert resp.status_code == 200
@@ -487,7 +487,7 @@ async def test_drop_player_rejects_a_player_not_on_the_roster(pool, monkeypatch)
     owner_id, _ = await _seed_owner_with_team(pool, "drop2", espn_team_id=112)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": "not-rostered"})
 
     assert resp.status_code == 404
@@ -508,7 +508,7 @@ async def test_drop_player_only_ever_targets_the_callers_own_team(pool, monkeypa
     await _seed_roster_entry(pool, team_a, player_a, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_b))
+        client.cookies.update(await _session_cookie(pool, owner_b))
         resp = await client.post("/me/team/lineup/drop", json={"sleeper_player_id": player_a})
 
     # owner_b doesn't have player_a on their roster at all.
@@ -529,7 +529,7 @@ async def test_lineup_moves_only_ever_target_the_callers_own_team(pool, monkeypa
     await _seed_roster_entry(pool, team_a, player_a, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_b))
+        client.cookies.update(await _session_cookie(pool, owner_b))
         resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": player_a, "to_slot": "RB"})
 
     # owner_b doesn't have player_a on their roster at all.
@@ -545,7 +545,7 @@ async def test_new_free_agents_list_excludes_rostered_players(pool, monkeypatch)
     await _seed_roster_entry(pool, team_id, rostered, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.get("/me/team/free-agents", params={"position": "WR"})
 
     assert resp.status_code == 200
@@ -562,7 +562,7 @@ async def test_add_free_agent_real_write_with_open_spot(pool, monkeypatch):
     player = await _seed_player(pool, "fa2", position="WR")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
 
     assert resp.status_code == 200
@@ -580,7 +580,7 @@ async def test_add_free_agent_rejects_already_rostered_player(pool, monkeypatch)
     await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
 
     assert resp.status_code == 400
@@ -612,7 +612,7 @@ async def test_add_free_agent_roster_full_without_drop_returns_roster_full(pool,
     new_player = await _seed_player(pool, "fa4_new", position="WR")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": new_player})
 
     assert resp.status_code == 409
@@ -629,7 +629,7 @@ async def test_add_free_agent_roster_full_with_drop_succeeds(pool, monkeypatch):
     new_player = await _seed_player(pool, "fa5_new", position="WR")
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(owner_id))
+        client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post(
             "/me/team/free-agents/add",
             json={"sleeper_player_id": new_player, "drop_sleeper_player_id": already_on_roster},

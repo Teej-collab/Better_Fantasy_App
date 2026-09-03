@@ -7,6 +7,7 @@ from app.chat.manager import manager as chat_manager
 from app.main import app
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
+from tests.conftest import make_safe_session_user_id
 from tests.conftest import TEST_SEASON
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -16,16 +17,16 @@ def _client():
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 
 
-def _ws_ticket(owner_id: int):
+async def _ws_ticket(pool, owner_id: int):
     return create_ticket_token(
-        _SESSION_SECRET, purpose="ws", user_id=1, owner_id=owner_id,
+        _SESSION_SECRET, purpose="ws", user_id=await make_safe_session_user_id(pool), owner_id=owner_id,
         discord_user_id=100000 + owner_id, is_commissioner=False,
     )
 
@@ -133,7 +134,7 @@ async def test_messages_endpoint_rejects_non_participant(pool, monkeypatch):
     conversation_id = await _seed_direct_conversation(pool, a, b)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(outsider))
+        client.cookies.update(await _session_cookie(pool, outsider))
         resp = await client.get(f"/chat/conversations/{conversation_id}/messages")
     assert resp.status_code == 403
 
@@ -151,7 +152,7 @@ async def test_messages_pagination_with_before_cursor(pool, monkeypatch):
             ids.append(row["id"])
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         first_page = await client.get(f"/chat/conversations/{conversation_id}/messages?limit=2")
         second_page = await client.get(
             f"/chat/conversations/{conversation_id}/messages?limit=2&before={first_page.json()['messages'][0]['id']}"
@@ -173,7 +174,7 @@ async def test_messages_include_senders_custom_chat_color(pool, monkeypatch):
         await chat_queries.insert_message(conn, conversation_id, b, "hi", None)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         resp = await client.get(f"/chat/conversations/{conversation_id}/messages")
 
     by_owner = {m["owner_id"]: m["owner_chat_color"] for m in resp.json()["messages"]}
@@ -188,7 +189,7 @@ async def test_start_direct_conversation_rejects_self_and_non_member(pool, monke
     await _seed_team(pool, a, 10)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         self_resp = await client.post("/chat/conversations/direct", json={"owner_id": a})
         stranger_resp = await client.post("/chat/conversations/direct", json={"owner_id": 999999})
 
@@ -205,7 +206,7 @@ async def test_start_direct_conversation_reuses_existing(pool, monkeypatch):
     await _seed_team(pool, b, 12)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         first = await client.post("/chat/conversations/direct", json={"owner_id": b})
         second = await client.post("/chat/conversations/direct", json={"owner_id": b})
 
@@ -221,7 +222,7 @@ async def test_list_members_excludes_self(pool, monkeypatch):
     await _seed_team(pool, b, 14)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         resp = await client.get("/chat/members")
 
     names = [m["display_name"] for m in resp.json()["members"]]
@@ -249,7 +250,7 @@ async def test_list_members_reports_real_presence(pool, monkeypatch):
     monkeypatch.setattr(chat_router.manager, "is_connected", lambda owner_id: owner_id == b)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         resp = await client.get("/chat/members")
 
     by_id = {m["owner_id"]: m["online"] for m in resp.json()["members"]}
@@ -270,7 +271,7 @@ async def test_mark_read_zeroes_unread_count(pool, monkeypatch):
         await chat_queries.insert_message(conn, conversation_id, a, "read me", None)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(b))
+        client.cookies.update(await _session_cookie(pool, b))
         await client.post(f"/chat/conversations/{conversation_id}/read")
 
         from app.domain.chat import get_conversations_summary
@@ -299,7 +300,7 @@ async def test_mark_read_broadcasts_a_read_event_by_default(pool, monkeypatch):
     monkeypatch.setattr(chat_manager, "broadcast_to_owners", fake_broadcast)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(b))
+        client.cookies.update(await _session_cookie(pool, b))
         resp = await client.post(f"/chat/conversations/{conversation_id}/read")
 
     assert resp.status_code == 200
@@ -329,7 +330,7 @@ async def test_mark_read_suppresses_broadcast_when_read_receipts_disabled(pool, 
     monkeypatch.setattr(chat_manager, "broadcast_to_owners", fake_broadcast)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(b))
+        client.cookies.update(await _session_cookie(pool, b))
         resp = await client.post(f"/chat/conversations/{conversation_id}/read")
 
         from app.domain.chat import get_conversations_summary
@@ -354,7 +355,7 @@ async def test_react_toggles_and_rejects_invalid_emoji(pool, monkeypatch):
         row = await chat_queries.insert_message(conn, conversation_id, a, "react to this", None)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(b))
+        client.cookies.update(await _session_cookie(pool, b))
         bad = await client.post(f"/chat/messages/{row['id']}/react", json={"emoji": "🐸"})
         added = await client.post(f"/chat/messages/{row['id']}/react", json={"emoji": "🔥"})
         removed = await client.post(f"/chat/messages/{row['id']}/react", json={"emoji": "🔥"})
@@ -374,13 +375,13 @@ async def test_delete_only_own_message(pool, monkeypatch):
         row = await chat_queries.insert_message(conn, conversation_id, a, "mine", None)
 
     async with _client() as client:
-        client.cookies.update(_session_cookie(b))
+        client.cookies.update(await _session_cookie(pool, b))
         forbidden = await client.delete(f"/chat/messages/{row['id']}")
 
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         ok = await client.delete(f"/chat/messages/{row['id']}")
 
-        client.cookies.update(_session_cookie(a))
+        client.cookies.update(await _session_cookie(pool, a))
         page = await client.get(f"/chat/conversations/{conversation_id}/messages")
 
     assert forbidden.status_code == 403
@@ -404,7 +405,7 @@ async def test_websocket_send_with_reply_and_valid_mentions(pool, monkeypatch):
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
         ws.send_json(
             {
                 "type": "message",
@@ -445,7 +446,7 @@ async def test_websocket_message_pushes_to_an_offline_recipient(pool, monkeypatc
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "you there?"})
         ws.receive_json()
         # The WS handler processes one frame fully (including the push
@@ -489,7 +490,7 @@ async def test_websocket_message_skips_push_when_recipient_preference_is_off(poo
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hello"})
         ws.receive_json()
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
@@ -524,7 +525,7 @@ async def test_websocket_message_does_not_push_to_a_currently_connected_recipien
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hey"})
         ws.receive_json()
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
@@ -558,7 +559,7 @@ async def test_websocket_message_with_mention_uses_the_mention_category(pool, mo
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(b)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "@Chatter check this out", "mentions": [a]})
         ws.receive_json()
         # Flush — a plain, non-mention message; a's notify_direct_messages
@@ -584,7 +585,7 @@ async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, m
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect(f"/chat/ws?ticket={_ws_ticket(b)}") as ws:
+    with client.websocket_connect(f"/chat/ws?ticket={await _ws_ticket(pool, b)}") as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "via ticket, not cookie"})
         received = ws.receive_json()
     await _use_fresh_pool_for_websocket()
@@ -605,7 +606,7 @@ async def test_websocket_send_with_valid_image_url_persists_it(pool, monkeypatch
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, a)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "", "image_url": image_url})
         received = ws.receive_json()
     await _use_fresh_pool_for_websocket()
@@ -622,7 +623,7 @@ async def test_websocket_drops_image_url_from_untrusted_host(pool, monkeypatch):
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, a)) as ws:
         # No body, and the image_url doesn't match our Blob store's
         # host — the whole send should be silently dropped, same as an
         # empty text-only send.
@@ -650,7 +651,7 @@ async def test_websocket_filters_mentions_to_real_participants(pool, monkeypatch
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, a)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hi", "mentions": [outsider]})
         received = ws.receive_json()
     await _use_fresh_pool_for_websocket()
@@ -667,7 +668,7 @@ async def test_websocket_ignores_messages_to_conversation_you_are_not_in(pool, m
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(outsider)) as ws:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, outsider)) as ws:
         ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "sneaky"})
         # Nothing should ever arrive for the outsider — send a real event
         # from a real participant afterward and confirm ONLY that one shows
@@ -716,7 +717,7 @@ async def test_websocket_typing_is_not_echoed_to_sender_and_is_suppressed_when_d
 
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
-    with client.websocket_connect("/chat/ws", cookies=_session_cookie(a)) as ws_a:
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, a)) as ws_a:
         ws_a.send_json({"type": "typing", "conversation_id": conversation_id})
         # Prove the typing event wasn't echoed back to its own sender (and
         # that the connection is still alive) by sending a real chat

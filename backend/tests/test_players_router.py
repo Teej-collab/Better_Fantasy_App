@@ -3,14 +3,14 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.domain import player_card
 from app.main import app
-from tests.conftest import TEST_SEASON
+from tests.conftest import TEST_SEASON, make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 
-def _session_cookie(owner_id: int):
+async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=1, owner_id=owner_id, discord_user_id=900000 + owner_id, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=900000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 
@@ -62,9 +62,9 @@ async def test_player_card_requires_session(monkeypatch):
     assert response.status_code == 401
 
 
-async def test_player_card_404s_for_unknown_player(monkeypatch):
+async def test_player_card_404s_for_unknown_player(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    response = await _get("/players/test-playersrouter-nonexistent/card", cookies=_session_cookie(1))
+    response = await _get("/players/test-playersrouter-nonexistent/card", cookies=await _session_cookie(pool, 1))
     assert response.status_code == 404
 
 
@@ -76,7 +76,7 @@ async def test_player_card_returns_real_shaped_data(pool, monkeypatch):
     monkeypatch.setattr(player_card, "get_player_info", lambda espn_player_id, full_name=None: None)
     await _seed_player(pool, "test-playersrouter-1")
 
-    response = await _get("/players/test-playersrouter-1/card", cookies=_session_cookie(1))
+    response = await _get("/players/test-playersrouter-1/card", cookies=await _session_cookie(pool, 1))
 
     assert response.status_code == 200
     body = response.json()
@@ -140,7 +140,7 @@ async def test_list_players_includes_rostered_players_unlike_free_agents(pool, m
     # dev-mirrored DB (thousands, mostly NULL search_rank like these
     # test rows), and the endpoint's LIMIT 300 can't be relied on to
     # include a specific alphabetically-late test row otherwise.
-    response = await _get("/players", cookies=_session_cookie(1), params={"search": "playersrouter"})
+    response = await _get("/players", cookies=await _session_cookie(pool, 1), params={"search": "playersrouter"})
 
     assert response.status_code == 200
     by_id = {p["sleeper_player_id"]: p for p in response.json()["players"]}
@@ -154,13 +154,13 @@ async def test_list_players_filters_by_position_and_search(pool, monkeypatch):
     await _seed_player(pool, "test-playersrouter-qb", position="QB")
     await _seed_player(pool, "test-playersrouter-wr", position="WR")
 
-    response = await _get("/players", cookies=_session_cookie(1), params={"position": "QB"})
+    response = await _get("/players", cookies=await _session_cookie(pool, 1), params={"position": "QB"})
     assert response.status_code == 200
     ids = {p["sleeper_player_id"] for p in response.json()["players"]}
     assert "test-playersrouter-qb" in ids
     assert "test-playersrouter-wr" not in ids
 
-    response = await _get("/players", cookies=_session_cookie(1), params={"search": "playersrouter-wr"})
+    response = await _get("/players", cookies=await _session_cookie(pool, 1), params={"search": "playersrouter-wr"})
     assert response.status_code == 200
     ids = {p["sleeper_player_id"] for p in response.json()["players"]}
     assert ids == {"test-playersrouter-wr"}
@@ -171,7 +171,7 @@ async def test_list_players_excludes_non_draftable(pool, monkeypatch):
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
     await _seed_player(pool, "test-playersrouter-undraftable", draftable=False)
 
-    response = await _get("/players", cookies=_session_cookie(1))
+    response = await _get("/players", cookies=await _session_cookie(pool, 1))
 
     assert response.status_code == 200
     ids = {p["sleeper_player_id"] for p in response.json()["players"]}
