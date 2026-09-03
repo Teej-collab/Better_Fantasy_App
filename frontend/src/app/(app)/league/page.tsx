@@ -44,12 +44,6 @@ export default async function LeaguePage({
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/league?season=${s}`} />
       </div>
 
-      {me.is_commissioner && (
-        <Link href="/commissioner" className="w-fit text-sm text-black/60 hover:underline dark:text-white/60">
-          ⚙ Commissioner Tools
-        </Link>
-      )}
-
       <div
         className="neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
         style={panelGlowStyle(SECTION_COLORS.league)}
