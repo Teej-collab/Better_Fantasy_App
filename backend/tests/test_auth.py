@@ -391,6 +391,56 @@ async def test_a_fresh_login_after_logout_still_works(pool, monkeypatch):
         assert me_resp.status_code == 200
 
 
+async def test_login_entry_points_are_reachable_even_with_a_stale_cookie_attached(pool, monkeypatch):
+    """Real, confirmed-in-production bug (2026-09): session_revocation
+    used to run unconditionally on every request, including the
+    authentication ENTRY points themselves. A browser sends whatever
+    session cookie it has regardless of which endpoint actually needs
+    it — so a visitor with a stale/revoked cookie (logged out, or a
+    frontend cookie a prior bug left un-cleared) got 401'd by THIS
+    middleware on /auth/discord/login itself, before Discord's OAuth
+    flow could even start, and could never recover through normal
+    browsing — only a cookie-less context (private window, or manually
+    clearing cookies) worked. The unrelated pre-existing
+    test_a_fresh_login_after_logout_still_works never exercised this:
+    the backend's own logout correctly clears its cookie, so that
+    test's client never carries a stale one into its next login call."""
+    _set_discord_env(monkeypatch)
+    email = "test-stale-entry-points@example.com"
+
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name, token_version) "
+            "VALUES ($1, 'x', 'Stale Cookie Test', 5) RETURNING id",
+            email,
+        )
+
+    from app.auth.session import create_session_token
+
+    stale_token = create_session_token("test-secret-thats-at-least-32-bytes-long", user_id=user_id, token_version=1)
+
+    async with _client() as client:
+        client.cookies.set("session", stale_token)
+
+        # The protected route must still correctly reject it...
+        me_resp = await client.get("/auth/me")
+        assert me_resp.status_code == 401
+
+        # ...but every real (re)authentication entry point must stay
+        # reachable regardless — that's the whole point of these routes.
+        discord_resp = await client.get("/auth/discord/login", follow_redirects=False)
+        assert discord_resp.status_code in (302, 307)
+
+        signup_resp = await client.post(
+            "/auth/signup",
+            json={"email": "test-stale-entry-points-2@example.com", "password": "correct-horse", "display_name": "X"},
+        )
+        assert signup_resp.status_code == 200
+
+        logout_resp = await client.post("/auth/logout")
+        assert logout_resp.status_code == 204
+
+
 async def test_deleted_account_token_is_rejected(pool, monkeypatch):
     """DELETE /auth/me removes the users row entirely — the same
     session_revocation middleware that enforces logout also has to

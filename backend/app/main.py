@@ -80,18 +80,40 @@ async def session_revocation(request, call_next):
     a visitor's browser at deploy time keeps working, not a forced
     league-wide logout.
     """
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if token:
-        config = SessionConfig()
-        payload = decode_session_token(config.session_secret, token)
-        if payload is not None and "purpose" not in payload:  # real session, not a short-lived ticket
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                current_version = await conn.fetchval(
-                    "SELECT token_version FROM users WHERE id = $1", payload["user_id"]
-                )
-            if current_version is None or current_version != payload.get("token_version", 1):
-                return JSONResponse(status_code=401, content={"detail": "Session expired or invalid"})
+    # 2026-09 fix — real, confirmed-in-production bug, not theoretical:
+    # this ran unconditionally on every request, including the
+    # authentication ENTRY points themselves (/auth/discord/login,
+    # /auth/login, /auth/signup, etc.). Those routes exist specifically
+    # so someone whose session was revoked can get a NEW one — but a
+    # stale cookie still riding along (the browser sends it regardless
+    # of which endpoint actually needs it) got REJECTED by this exact
+    # check before the login route's own handler ever ran, so a visitor
+    # could never recover a revoked session through normal browsing at
+    # all, only by wiping cookies first (nothing left to reject) or
+    # using a private window (nothing to send in the first place).
+    # Confirmed live via Railway logs: real GET /auth/discord/login
+    # requests coming back 401 in production. Every one of these routes
+    # either doesn't need an existing session at all, or (logout) must
+    # stay reachable specifically WHEN the caller's session might
+    # already be stale.
+    AUTH_ENTRY_PATHS = {
+        "/auth/discord/login", "/auth/discord/callback",
+        "/auth/google/login", "/auth/google/callback",
+        "/auth/login", "/auth/signup", "/auth/logout",
+    }
+    if request.url.path not in AUTH_ENTRY_PATHS:
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        if token:
+            config = SessionConfig()
+            payload = decode_session_token(config.session_secret, token)
+            if payload is not None and "purpose" not in payload:  # real session, not a short-lived ticket
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    current_version = await conn.fetchval(
+                        "SELECT token_version FROM users WHERE id = $1", payload["user_id"]
+                    )
+                if current_version is None or current_version != payload.get("token_version", 1):
+                    return JSONResponse(status_code=401, content={"detail": "Session expired or invalid"})
     return await call_next(request)
 
 
