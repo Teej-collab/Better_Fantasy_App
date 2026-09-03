@@ -7,7 +7,7 @@ import {
   type DestinationKey,
 } from "@/lib/navDestinations";
 
-export type MyTeamTab = "team" | "draft" | "keepers" | "freeAgents";
+export type MyTeamTab = "team" | "draft" | "keepers" | "freeAgents" | "trades";
 
 // "Roster" reads better than the shared "My Team" label once it's a
 // tab sitting on top of the My Team page itself, not a link to

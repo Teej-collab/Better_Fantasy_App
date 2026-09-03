@@ -16,6 +16,14 @@ async def _sign_up(client: AsyncClient, email: str, display_name: str = "Test Pe
     assert resp.status_code == 200
 
 
+async def _login(client: AsyncClient, email: str):
+    """For a second AsyncClient (its own cookie jar) representing the
+    SAME already-signed-up person coming back — _sign_up itself can't
+    be reused for this, it 409s on an email that's already registered."""
+    resp = await client.post("/auth/login", json={"email": email, "password": "correct-horse"})
+    assert resp.status_code == 200
+
+
 async def test_create_league_requires_session():
     async with _client() as client:
         resp = await client.post("/leagues", json={"name": "Test League Requires Session"})
@@ -278,3 +286,155 @@ async def test_claim_owner_links_history_and_is_first_claim_wins(pool, monkeypat
         await second_claimer.post("/leagues/join", json={"invite_code": invite_code})
         resp2 = await second_claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_id})
     assert resp2.status_code == 409
+
+
+async def test_commissioner_can_remove_a_member(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-remove-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Remove Member"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-remove-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        member_id = (await member.get("/leagues/mine")).json()["active_league_id"]
+        assert member_id == league_id
+        member_user_resp = await member.get("/auth/me")
+        member_user_id = member_user_resp.json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-remove-creator@example.com")
+        resp = await creator2.delete(f"/leagues/{league_id}/members/{member_user_id}")
+    assert resp.status_code == 200
+    assert resp.json() == {"user_id": member_user_id, "removed": True}
+
+    async with _client() as member2:
+        await _login(member2, "test-leagues-remove-member@example.com")
+        mine_resp = await member2.get("/leagues/mine")
+    names = [league["name"] for league in mine_resp.json()["leagues"]]
+    assert "Test League Remove Member" not in names
+    assert mine_resp.json()["active_league_id"] is None
+
+
+async def test_remove_member_rejects_removing_yourself(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-remove-self@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Remove Self"})
+        league_id = created.json()["id"]
+        my_user_id = (await creator.get("/auth/me")).json()["user_id"]
+        resp = await creator.delete(f"/leagues/{league_id}/members/{my_user_id}")
+    assert resp.status_code == 400
+
+
+async def test_removing_a_co_commissioner_leaves_the_caller_as_commissioner(pool):
+    """There's no separate "can't remove the league's only commissioner"
+    guard needed on top of the self-removal block: the caller must
+    already be a commissioner to reach DELETE .../members/{id} at all,
+    and can never target their own row, so removing anyone else always
+    leaves the caller themselves behind as a commissioner. This proves
+    that directly — removing a co-commissioner succeeds, and the league
+    still has one (the caller)."""
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-remove-coco@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Remove Coco"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-remove-coco-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        member_user_id = (await member.get("/auth/me")).json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-remove-coco@example.com")
+        promote_resp = await creator2.patch(
+            f"/leagues/{league_id}/members/{member_user_id}", json={"role": "commissioner"}
+        )
+        assert promote_resp.status_code == 200
+
+        resp = await creator2.delete(f"/leagues/{league_id}/members/{member_user_id}")
+        assert resp.status_code == 200
+
+        # The caller (still a commissioner) can still do commissioner things.
+        rename_resp = await creator2.patch(f"/leagues/{league_id}", json={"name": "Test League Remove Coco Renamed"})
+    assert rename_resp.status_code == 200
+
+
+async def test_non_commissioner_cannot_remove_a_member(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-remove-unauth-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Remove Unauth"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member_a:
+        await _sign_up(member_a, "test-leagues-remove-unauth-a@example.com")
+        await member_a.post("/leagues/join", json={"invite_code": invite_code})
+        member_a_user_id = (await member_a.get("/auth/me")).json()["user_id"]
+
+    async with _client() as member_b:
+        await _sign_up(member_b, "test-leagues-remove-unauth-b@example.com")
+        await member_b.post("/leagues/join", json={"invite_code": invite_code})
+        resp = await member_b.delete(f"/leagues/{league_id}/members/{member_a_user_id}")
+    assert resp.status_code == 403
+
+
+async def test_commissioner_can_reassign_a_team_to_another_member(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-reassign-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Reassign"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as original_owner:
+        await _sign_up(original_owner, "test-leagues-reassign-original@example.com")
+        await original_owner.post("/leagues/join", json={"invite_code": invite_code})
+        team_resp = await original_owner.post(f"/leagues/{league_id}/teams", json={"team_name": "Original Team"})
+        team_id = team_resp.json()["team_id"]
+
+    async with _client() as replacement:
+        await _sign_up(replacement, "test-leagues-reassign-replacement@example.com", display_name="Replacement Owner")
+        await replacement.post("/leagues/join", json={"invite_code": invite_code})
+        replacement_user_id = (await replacement.get("/auth/me")).json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-reassign-creator@example.com")
+        resp = await creator2.post(
+            f"/leagues/{league_id}/teams/{team_id}/reassign", json={"user_id": replacement_user_id}
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["team_id"] == team_id
+    assert body["team_name"] == "Original Team"
+
+    async with _client() as check:
+        await _login(check, "test-leagues-reassign-creator@example.com")
+        teams_resp = await check.get(f"/leagues/{league_id}/teams")
+    team = next(t for t in teams_resp.json()["teams"] if t["team_id"] == team_id)
+    assert team["owner_name"] == "Replacement Owner"
+
+
+async def test_reassign_team_rejects_a_non_member_target(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-reassign-nonmember-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Reassign Nonmember"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as original_owner:
+        await _sign_up(original_owner, "test-leagues-reassign-nonmember-original@example.com")
+        await original_owner.post("/leagues/join", json={"invite_code": invite_code})
+        team_resp = await original_owner.post(f"/leagues/{league_id}/teams", json={"team_name": "A Team"})
+        team_id = team_resp.json()["team_id"]
+
+    async with _client() as outsider:
+        await _sign_up(outsider, "test-leagues-reassign-nonmember-outsider@example.com")
+        outsider_user_id = (await outsider.get("/auth/me")).json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-reassign-nonmember-creator@example.com")
+        resp = await creator2.post(f"/leagues/{league_id}/teams/{team_id}/reassign", json={"user_id": outsider_user_id})
+    assert resp.status_code == 400

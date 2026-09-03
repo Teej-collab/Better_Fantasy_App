@@ -40,6 +40,31 @@ async def get_team_for_owner_in_league(conn, league_id: int, season: int, owner_
     )
 
 
+async def reassign_team(conn, league_id: int, season: int, team_id: int, new_user_id: int, display_name: str) -> dict | None:
+    """Hands an existing team's roster and history to a different real
+    person — the companion action to removing a member (see
+    queries/leagues.py's remove_member), for when a departed owner's
+    team should go to a replacement rather than sit vacant. Reuses
+    get_or_create_owner_for_user exactly like the self-serve "create a
+    team" flow does, so the new owner gets a real owners row (or their
+    existing one, if they already have one from another team/league)
+    rather than a one-off. Only current_rosters' team_id stays the
+    same — the roster itself, and everything else keyed off it, is
+    completely untouched by this. Returns None (never raises) if no
+    such team exists in this league/season, letting the router turn
+    that into a clean 404."""
+    owner_id = await get_or_create_owner_for_user(conn, new_user_id, display_name)
+    row = await conn.fetchrow(
+        """
+        UPDATE teams_by_season SET owner_id = $1
+        WHERE id = $2 AND league_id = $3 AND season = $4
+        RETURNING id AS team_id, team_name, owner_id
+        """,
+        owner_id, team_id, league_id, season,
+    )
+    return dict(row) if row else None
+
+
 async def list_teams_for_league(conn, league_id: int, season: int):
     return await conn.fetch(
         """

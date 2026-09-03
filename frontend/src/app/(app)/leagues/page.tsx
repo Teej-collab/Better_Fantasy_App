@@ -48,6 +48,14 @@ export default function LeaguesPage() {
   const [renamingLeagueId, setRenamingLeagueId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
+  const [copiedInviteCodeId, setCopiedInviteCodeId] = useState<number | null>(null);
+
+  function copyInviteCode(leagueId: number, inviteCode: string) {
+    navigator.clipboard.writeText(inviteCode).then(() => {
+      setCopiedInviteCodeId(leagueId);
+      setTimeout(() => setCopiedInviteCodeId((current) => (current === leagueId ? null : current)), 2000);
+    });
+  }
 
   const [newLeagueName, setNewLeagueName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -308,8 +316,16 @@ export default function LeaguesPage() {
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-black/50 dark:text-white/50">
-                    Invite code: <code className="font-mono">{league.invite_code}</code>
+                  <p className="flex flex-wrap items-center gap-2 text-xs text-black/50 dark:text-white/50">
+                    <span>
+                      Invite code: <code className="font-mono">{league.invite_code}</code>
+                    </span>
+                    <button
+                      onClick={() => copyInviteCode(league.id, league.invite_code)}
+                      className="rounded-full border border-black/10 px-2 py-0.5 text-[11px] hover:bg-black/[0.03] dark:border-white/10 dark:hover:bg-white/[0.05]"
+                    >
+                      {copiedInviteCodeId === league.id ? "Copied!" : "Copy"}
+                    </button>
                   </p>
                   {teams.length > 0 && (
                     <ul className="text-xs text-black/60 dark:text-white/60">

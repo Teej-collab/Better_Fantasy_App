@@ -258,3 +258,56 @@ async def set_member_role(league_id: int, user_id: int, body: SetMemberRoleReque
         if not changed:
             raise HTTPException(status_code=404, detail="That user isn't a member of this league")
     return {"user_id": user_id, "role": body.role}
+
+
+@router.delete("/{league_id}/members/{user_id}")
+async def remove_member(league_id: int, user_id: int, request: Request):
+    """Revokes a member's access to this league — commissioner-only.
+    Never touches their owners record, history, or any team they
+    currently have (see queries/leagues.py's remove_member docstring);
+    use the reassign-team endpoint below separately if a vacated team
+    should go to someone else. Can't target the caller's own row (same
+    self-protection as set_member_role above) — since the caller must
+    already be a commissioner to reach this point, and can never target
+    themselves, the league always has at least the caller left as a
+    commissioner afterward. No separate "don't remove the only
+    commissioner" guard is needed on top of that: the only way this
+    endpoint could ever be called with the target being the league's
+    sole commissioner is the caller targeting themselves, which is
+    already blocked above."""
+    payload = _require_session(request)
+    if user_id == payload["user_id"]:
+        raise HTTPException(status_code=400, detail="Use another commissioner's account to remove your own access")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        removed = await league_queries.remove_member(conn, league_id, user_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="That user isn't a member of this league")
+    return {"user_id": user_id, "removed": True}
+
+
+class ReassignTeamRequest(BaseModel):
+    user_id: int
+
+
+@router.post("/{league_id}/teams/{team_id}/reassign")
+async def reassign_team(league_id: int, team_id: int, body: ReassignTeamRequest, request: Request):
+    """Hands an existing team's roster and history to a different
+    current league member — commissioner-only. The target must already
+    be a member of this league (join first via invite code, then
+    reassign) — this never invites someone new on its own."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        membership = await league_queries.get_membership(conn, league_id, body.user_id)
+        if membership is None:
+            raise HTTPException(status_code=400, detail="That user isn't a member of this league")
+        user_row = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", body.user_id)
+        display_name = (user_row["display_name"] if user_row else None) or "New Owner"
+        team = await team_queries.reassign_team(conn, league_id, season, team_id, body.user_id, display_name)
+        if team is None:
+            raise HTTPException(status_code=404, detail="No team found for this league/season")
+    return team

@@ -65,6 +65,28 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `DELETE ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `PUT ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getMyLeagues(): Promise<{ leagues: League[]; activeLeagueId: number | null }> {
   const body = await get<{ leagues: League[]; active_league_id: number | null }>("/leagues/mine");
   return { leagues: body.leagues, activeLeagueId: body.active_league_id };
@@ -129,4 +151,36 @@ export async function setMemberRole(
   role: "commissioner" | "member"
 ): Promise<void> {
   await patch(`/leagues/${leagueId}/members/${userId}`, { role });
+}
+
+// Commissioner-only — revokes access only (see backend/app/queries/
+// leagues.py's remove_member docstring): the member's owners record,
+// history, and any current team are untouched. Can't target the
+// caller's own user_id (backend-enforced, same self-protection as
+// setMemberRole above).
+export async function removeMember(leagueId: number, userId: number): Promise<void> {
+  await del(`/leagues/${leagueId}/members/${userId}`);
+}
+
+// Commissioner-only — hands an existing team's roster/history to a
+// different current league member (must already be a member; this
+// never invites someone new on its own).
+export async function reassignTeam(leagueId: number, teamId: number, userId: number): Promise<Team> {
+  return post<Team>(`/leagues/${leagueId}/teams/${teamId}/reassign`, { user_id: userId });
+}
+
+export type ScoringRule = { stat_category: string; points_per_unit: number };
+
+export async function getScoringRules(): Promise<{ season: number; rules: ScoringRule[] }> {
+  return get<{ season: number; rules: ScoringRule[] }>("/league/scoring-rules");
+}
+
+// Commissioner-only — every stat_category already exists per season/
+// league from league creation, so this only ever updates existing
+// rows (see backend/app/queries/leagues.py's upsert_scoring_rules).
+export async function updateScoringRules(
+  season: number,
+  rules: Record<string, number>
+): Promise<{ season: number; rules: ScoringRule[] }> {
+  return put<{ season: number; rules: ScoringRule[] }>("/league/scoring-rules", { season, rules });
 }

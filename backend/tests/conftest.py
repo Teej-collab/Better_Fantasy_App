@@ -206,6 +206,17 @@ async def cleanup_test_season(pool):
             "DELETE FROM conversations WHERE type = 'direct' "
             "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
         )
+        # trade_assets/trades reference teams_by_season(id) (and
+        # trade_assets also references players), so both have to go
+        # before the teams_by_season/players DELETEs below — child
+        # (trade_assets) before parent (trades), same ordering
+        # discipline as current_rosters/draft_picks just below.
+        await conn.execute(
+            "DELETE FROM trade_assets WHERE trade_id IN (SELECT id FROM trades WHERE season = ANY($1::int[]))",
+            [TEST_SEASON, TEST_SEASON - 1],
+        )
+        await conn.execute("DELETE FROM trades WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM league_trade_settings WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         # current_rosters/draft_picks reference teams_by_season(id), so
         # they have to go before the teams_by_season DELETE below.
         await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])

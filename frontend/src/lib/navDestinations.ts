@@ -35,7 +35,8 @@ export type DestinationKey =
   | "draft"
   | "gamecast"
   | "awardsAllTime"
-  | "history";
+  | "history"
+  | "trades";
 
 export type Destination = {
   key: DestinationKey;
@@ -113,6 +114,10 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // Amber: distinct from Awards' yellow and All-Time's gold, but still
   // clearly in the same "records" family.
   history: { key: "history", label: "History", color: "#f59e0b" },
+  // Fresh fuchsia — sits in the same My Team sub-nav row as Draft
+  // (gold)/Keepers (emerald)/Free Agents (teal), distinct from all
+  // three plus everything else in that row's line of sight.
+  trades: { key: "trades", label: "Trades", color: "#d946ef" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -141,6 +146,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   draft: "/draft",
   gamecast: "/gamecast",
   history: "/history",
+  trades: "/trades",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -251,7 +257,7 @@ export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
 // league" ones. `team` itself (labeled "Roster" there) is first but
 // isn't repeated here since it's the page these tabs sit on top of,
 // not a link to itself.
-export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["draft", "keepers", "freeAgents"];
+export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["draft", "keepers", "freeAgents", "trades"];
 
 // /gamecast/[gameId] (a single game) is still deliberately absent from
 // this config — a game_id has no stable identity between weeks, so a

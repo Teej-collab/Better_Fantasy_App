@@ -195,6 +195,52 @@ async def created_leagues(conn, user_id: int):
     return await conn.fetch("SELECT id, name FROM leagues WHERE created_by_user_id = $1", user_id)
 
 
+async def remove_member(conn, league_id: int, user_id: int) -> bool:
+    """Revokes league access only — deletes the league_members row and
+    nothing else. Deliberately does NOT touch owners (the permanent
+    real-person record) or teams_by_season (their current-season team,
+    if any) — a removed member's history and any team they still have
+    stay exactly as they were, matching how this app already treats
+    owners who've left a league entirely (still real, still shown in
+    career stats). Reassigning a vacated team to someone else is a
+    separate, explicit action (see reassign_team in queries/teams.py).
+    Also clears active_league_id if it pointed at this league, so a
+    removed member's next request doesn't keep resolving into a league
+    they can no longer access. Returns False (never raises) if there's
+    no such membership, letting the router turn that into a clean 404."""
+    result = await conn.execute(
+        "DELETE FROM league_members WHERE league_id = $1 AND user_id = $2", league_id, user_id
+    )
+    removed = result != "DELETE 0"
+    if removed:
+        await conn.execute(
+            "UPDATE users SET active_league_id = NULL WHERE id = $1 AND active_league_id = $2",
+            user_id, league_id,
+        )
+    return removed
+
+
+async def get_scoring_rules(conn, league_id: int, season: int):
+    return await conn.fetch(
+        "SELECT stat_category, points_per_unit FROM league_scoring_rules WHERE league_id = $1 AND season = $2 "
+        "ORDER BY stat_category",
+        league_id, season,
+    )
+
+
+async def upsert_scoring_rules(conn, league_id: int, season: int, rules: dict[str, float]) -> None:
+    """Every stat_category already exists per (season, league_id) from
+    seed_default_scoring_rules at league-creation time, so this only
+    ever updates existing rows — an unrecognized key in `rules` (a typo,
+    a stale frontend build) silently affects nothing rather than
+    creating a new, uncomputed stat category, since scoring_engine.py
+    only ever reads categories it already knows to look for."""
+    await conn.executemany(
+        "UPDATE league_scoring_rules SET points_per_unit = $3 WHERE league_id = $1 AND season = $2 AND stat_category = $4",
+        [(league_id, season, value, category) for category, value in rules.items()],
+    )
+
+
 async def sole_commissioner_leagues(conn, user_id: int):
     """Leagues where this user is the only commissioner AND at least
     one other member exists — deleting the account (which removes

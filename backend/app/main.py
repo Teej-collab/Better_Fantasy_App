@@ -22,6 +22,7 @@ from app.routers import (
     gamecast,
     keepers,
     league,
+    league_settings,
     leagues,
     me,
     nfl,
@@ -29,6 +30,7 @@ from app.routers import (
     profile,
     push,
     settings,
+    trades,
 )
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -127,6 +129,7 @@ app.include_router(game_day.router)
 app.include_router(gamecast.router)
 app.include_router(keepers.router)
 app.include_router(league.router)
+app.include_router(league_settings.router)
 app.include_router(leagues.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
@@ -134,6 +137,7 @@ app.include_router(players.router)
 app.include_router(profile.router)
 app.include_router(push.router)
 app.include_router(settings.router)
+app.include_router(trades.router)
 
 
 @app.get("/health")
