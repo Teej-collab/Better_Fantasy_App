@@ -7,6 +7,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { BackButton } from "@/components/BackButton";
 
 export async function generateMetadata({
   params,
@@ -44,6 +45,7 @@ export default async function SeasonAwardsPage({
 
   return (
     <div className="flex flex-col gap-4">
+      <BackButton fallbackHref="/history" label="History" />
       <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>

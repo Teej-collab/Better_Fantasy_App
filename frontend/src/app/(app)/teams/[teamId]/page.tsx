@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getCurrentWeek, getMe, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { SignInCard } from "@/components/SignInCard";
+import { BackButton } from "@/components/BackButton";
 
 const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
 
@@ -76,6 +77,7 @@ export default async function TeamPage({
   return (
     <div className="flex flex-col gap-4">
       <div>
+        <BackButton fallbackHref="/standings" label="Standings" />
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
           <Link href={`/owners/${team.owner_id}?season=${team.season}`} className="hover:underline">

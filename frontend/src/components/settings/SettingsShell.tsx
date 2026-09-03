@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { MySettings } from "@/lib/api";
+import { BackButton } from "@/components/BackButton";
 import { ProfileSection } from "@/components/settings/ProfileSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
 import { ChatSection } from "@/components/settings/ChatSection";
@@ -47,6 +48,7 @@ export function SettingsShell({
 
   return (
     <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+      {!section && <BackButton fallbackHref="/" label="Home" />}
       <nav
         aria-label="Settings sections"
         className={`flex-col gap-0.5 sm:flex sm:w-52 sm:shrink-0 ${section ? "hidden sm:flex" : "flex"}`}
@@ -71,14 +73,7 @@ export function SettingsShell({
       </nav>
 
       <div className={`min-w-0 flex-1 ${section ? "block" : "hidden sm:block"}`}>
-        {section && (
-          <Link
-            href="/settings"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-black/50 sm:hidden dark:text-white/50"
-          >
-            ‹ Settings
-          </Link>
-        )}
+        {section && <BackButton fallbackHref="/settings" label="Settings" />}
         {active === "profile" && <ProfileSection initial={initial} />}
         {active === "notifications" && <NotificationsSection />}
         {active === "chat" && <ChatSection />}

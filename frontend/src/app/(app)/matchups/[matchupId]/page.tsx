@@ -11,6 +11,7 @@ import { NarrativeSection } from "@/components/matchups/NarrativeSection";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 import { SignInCard } from "@/components/SignInCard";
 import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
+import { BackButton } from "@/components/BackButton";
 
 // Real per-page title (mobile audit finding) — matters most here since
 // matchup pages are exactly the kind of link owners share with each
@@ -61,6 +62,8 @@ export default async function MatchupPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
+        <BackButton fallbackHref={`/seasons/${matchup.season}/weeks/${matchup.week}`} label="Matchups" />
+
         {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
             {matchup.is_game_of_the_week && <GameOfWeekBadge />}

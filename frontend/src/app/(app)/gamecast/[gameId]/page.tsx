@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getMe } from "@/lib/api";
 import { getGameState } from "@/lib/gamecastApi";
 import { GamecastShell } from "@/components/gamecast/GamecastShell";
+import { BackButton } from "@/components/BackButton";
 
 // Real per-page title (mobile audit finding). getGameState() is
 // deduped against the identical call in the page component below.
@@ -27,6 +28,7 @@ export default async function GamecastPage({ params }: { params: Promise<{ gameI
   if (!game) {
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
+        <BackButton fallbackHref="/gamecast" label="Gamecast" />
         <h1 className="text-xl font-semibold">Game not found</h1>
         <p className="text-sm text-black/50 dark:text-white/50">
           This game either hasn&apos;t started, has already been archived, or the link is wrong.
@@ -37,6 +39,7 @@ export default async function GamecastPage({ params }: { params: Promise<{ gameI
 
   return (
     <div className="flex flex-col gap-4">
+      <BackButton fallbackHref="/gamecast" label="Gamecast" />
       <h1 className="text-2xl font-semibold">
         {game.away_team.abbr} @ {game.home_team.abbr}
       </h1>

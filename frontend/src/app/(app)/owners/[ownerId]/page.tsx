@@ -13,6 +13,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { BackButton } from "@/components/BackButton";
 
 // Real per-page title (mobile audit finding — every page fell back to
 // the generic root "Weekend League" title). getCareerProfile() is
@@ -73,6 +74,7 @@ export default async function OwnerProfilePage({
   return (
     <div className="flex flex-col gap-8">
       <div>
+        <BackButton fallbackHref="/standings" label="Standings" />
         <h1 className="text-2xl font-semibold">{career.team_name}</h1>
         <Badges championshipYears={badges.championship_years} awardSummary={badges.award_summary} />
       </div>
