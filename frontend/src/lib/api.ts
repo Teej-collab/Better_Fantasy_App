@@ -1046,6 +1046,14 @@ export type OwnerPreferences = {
   neon_intensity: "subtle" | "standard" | "high";
   reduced_motion: boolean;
   accent_color: string | null;
+  // Two independent personal colors layered on top of accent_color
+  // (2026-09): your_week_color tints only the Home page's "Your Week"
+  // hero card; border_glow_color is the moving neon ring on every card
+  // and countdown tile. Both fall back to accent_color, then the app
+  // default, when null — see globals.css's --your-week-color/
+  // --ring-color fallback chains.
+  your_week_color: string | null;
+  border_glow_color: string | null;
   // Settings > Appearance > Look — "calm" (today's shipped near-black,
   // flat-panel palette) or "cosmic" (starfield/nebula background,
   // brighter mint-green default accent). Not a light/dark mode switch;

@@ -28,6 +28,13 @@ _DEFAULT_PREFERENCES = {
     "neon_intensity": "standard",
     "reduced_motion": False,
     "accent_color": None,
+    # Two independent personal colors on top of accent_color (2026-09):
+    # your_week_color tints only the Home page's "Your Week" hero card;
+    # border_glow_color is the moving neon ring on every card/countdown
+    # tile. Both fall back to accent_color (then the app default) when
+    # unset — see globals.css's --your-week-color/--ring-color chains.
+    "your_week_color": None,
+    "border_glow_color": None,
     # Settings > Appearance > Look. "calm" is today's shipped near-black,
     # flat-panel palette; "cosmic" restores the earlier starfield/nebula
     # background and a brighter mint-green accent as an opt-in choice —

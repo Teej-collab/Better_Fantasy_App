@@ -1,38 +1,45 @@
 import type { CSSProperties } from "react";
-import { NAV_ACCENT } from "@/lib/navDestinations";
+import { DESTINATIONS } from "@/lib/navDestinations";
 
-// Every content panel's glow (globals.css's --panel-glow) used to reuse
-// that section's own distinct hue from lib/navDestinations.ts — a
-// different color per topic (Standings sky blue, Matchups pink, Chug
-// amber, etc.). Collapsed to the single app accent (NAV_ACCENT — same
-// constant the nav bar itself now reads, see navDestinations.ts) on
-// 2026-08-31, per the owner's own request: every one of these was
-// still a panel getting its own persistent color even after the glow
-// intensity itself was dampened, which read as "many things ask for
-// attention" rather than "one calm surface, one accent." A page/
-// component with no key at all here already fell through to
-// --user-accent anyway (see .neon-panel in globals.css), so this just
-// makes every section agree with that same default instead of
-// special-casing itself away from it.
+// Every content panel's ring color (globals.css's --panel-glow-cosmic)
+// reuses that section's own distinct hue from lib/navDestinations.ts —
+// a different color per topic (Standings sky blue, Matchups pink, Chug
+// amber, etc.), same values the nav bar's own Cosmic tab colors
+// already use. Collapsed to a single flat app accent on 2026-08-31 to
+// calm the app down (every value here was NAV_ACCENT); restored 2026-09
+// per a later owner request to bring per-section color back — but
+// Cosmic-only this time (globals.css's [data-wl-theme="cosmic"]
+// .neon-panel rule is the only place that reads what panelGlowStyle
+// sets below), so Calm still stays the flat, single-accent look the
+// 2026-08-31 change was actually about. A page/component with no key
+// at all here still falls through to the owner's own Border Animation
+// Color (then Accent Color) — see .neon-panel in globals.css.
 export const SECTION_COLORS: Record<string, string> = {
-  standings: NAV_ACCENT,
-  matchups: NAV_ACCENT,
-  awards: NAV_ACCENT,
-  rivalries: NAV_ACCENT,
-  playerCards: NAV_ACCENT,
-  freeAgents: NAV_ACCENT,
-  rules: NAV_ACCENT,
-  league: NAV_ACCENT,
-  chug: NAV_ACCENT,
-  chat: NAV_ACCENT,
-  powerRankings: NAV_ACCENT,
-  gamecast: NAV_ACCENT,
+  standings: DESTINATIONS.standings.color,
+  matchups: DESTINATIONS.matchups.color,
+  awards: DESTINATIONS.awards.color,
+  rivalries: DESTINATIONS.rivalries.color,
+  playerCards: DESTINATIONS.playerCards.color,
+  freeAgents: DESTINATIONS.freeAgents.color,
+  rules: DESTINATIONS.rules.color,
+  league: DESTINATIONS.league.color,
+  chug: DESTINATIONS.chug.color,
+  chat: DESTINATIONS.chat.color,
+  powerRankings: DESTINATIONS.powerRankings.color,
+  gamecast: DESTINATIONS.gamecast.color,
 };
 
 // CSS custom properties don't have a first-class React prop — every
-// caller that wants a section-colored glow spreads this into its
-// className's element as `style`.
+// caller that wants a section-colored ring spreads this into its
+// className's element as `style`. Sets --panel-glow-cosmic
+// unconditionally, exactly like every nav component already sets
+// --nav-color-cosmic unconditionally — cheap to set even in Calm,
+// where nothing reads it (globals.css's Cosmic-only rule is what
+// decides whether it matters), and it has to be a DIFFERENT property
+// than whatever a stylesheet rule might reassign, per the same
+// inline-style-always-wins reasoning --nav-color-cosmic's own comment
+// documents.
 export function panelGlowStyle(color: string | undefined): CSSProperties | undefined {
   if (!color) return undefined;
-  return { ["--panel-glow" as string]: color } as CSSProperties;
+  return { ["--panel-glow-cosmic" as string]: color } as CSSProperties;
 }

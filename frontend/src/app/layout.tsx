@@ -97,8 +97,12 @@ export const viewport: Viewport = {
 // static generation — the standard technique (same one theme-switchers
 // use for dark mode). wl_accent sets --user-accent, which every
 // .neon-panel without its own section color falls back to
-// (globals.css) — a strict hex check before setProperty so a malformed
-// or hand-edited cookie can't leave the property set to garbage.
+// (globals.css); wl_your_week_color/wl_border_color set two more,
+// narrower personal colors (--your-week-color: just the Home page's
+// Your Week card; --border-glow-color: the moving ring on every card)
+// that themselves fall back to --user-accent when unset — a strict hex
+// check before every setProperty so a malformed or hand-edited cookie
+// can't leave a property set to garbage.
 const APPEARANCE_SCRIPT = `
 (function () {
   try {
@@ -110,6 +114,14 @@ const APPEARANCE_SCRIPT = `
     var a = document.cookie.match(/(?:^|; )wl_accent=([^;]+)/);
     if (a && /^#[0-9a-fA-F]{6}$/.test(a[1])) {
       document.documentElement.style.setProperty("--user-accent", a[1]);
+    }
+    var yw = document.cookie.match(/(?:^|; )wl_your_week_color=([^;]+)/);
+    if (yw && /^#[0-9a-fA-F]{6}$/.test(yw[1])) {
+      document.documentElement.style.setProperty("--your-week-color", yw[1]);
+    }
+    var bg = document.cookie.match(/(?:^|; )wl_border_color=([^;]+)/);
+    if (bg && /^#[0-9a-fA-F]{6}$/.test(bg[1])) {
+      document.documentElement.style.setProperty("--border-glow-color", bg[1]);
     }
     var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
     document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");

@@ -256,6 +256,8 @@ class PreferencesPatch(BaseModel):
     notify_fantasy_team: bool | None = None
     notify_league: bool | None = None
     accent_color: str | None = None
+    your_week_color: str | None = None
+    border_glow_color: str | None = None
     home_card_order: str | None = None
     bottom_nav_order: str | None = None
     home_hidden_cards: str | None = None
@@ -277,6 +279,10 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"theme must be one of {sorted(_VALID_THEMES)}")
     if patch.get("accent_color") is not None and not _HEX_COLOR_RE.match(patch["accent_color"]):
         raise HTTPException(status_code=400, detail="accent_color must be a 6-digit hex color like #39ff14, or null")
+    if patch.get("your_week_color") is not None and not _HEX_COLOR_RE.match(patch["your_week_color"]):
+        raise HTTPException(status_code=400, detail="your_week_color must be a 6-digit hex color like #39ff14, or null")
+    if patch.get("border_glow_color") is not None and not _HEX_COLOR_RE.match(patch["border_glow_color"]):
+        raise HTTPException(status_code=400, detail="border_glow_color must be a 6-digit hex color like #39ff14, or null")
     if patch.get("home_card_order") is not None:
         try:
             order = json.loads(patch["home_card_order"])

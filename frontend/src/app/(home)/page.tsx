@@ -42,7 +42,6 @@ import {
   DESTINATION_HREF,
   DESTINATIONS,
   LEAGUE_SUBNAV_ORDER,
-  NAV_ACCENT,
   type DestinationKey,
 } from "@/lib/navDestinations";
 
@@ -479,7 +478,7 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
       <div className="flex items-center justify-between">
         <span
           className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase"
-          style={{ color: isLive ? "rgba(255,255,255,0.5)" : "var(--user-accent, var(--wl-accent))" }}
+          style={{ color: isLive ? "rgba(255,255,255,0.5)" : "var(--your-week-color, var(--user-accent, var(--wl-accent)))" }}
         >
           Your Week{m.is_playoff ? " — Playoffs" : ""}
           {isLive && (
@@ -562,13 +561,13 @@ function EmptyHero({
     <section
       className="neon-panel flex flex-col gap-1.5 rounded-xl p-4"
       style={{
-        background: `linear-gradient(160deg, color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent), color-mix(in srgb, var(--user-accent, var(--wl-accent)) 2%, transparent))`,
-        borderColor: `color-mix(in srgb, var(--user-accent, var(--wl-accent)) 40%, transparent)`,
+        background: `linear-gradient(160deg, color-mix(in srgb, var(--your-week-color, var(--user-accent, var(--wl-accent))) 14%, transparent), color-mix(in srgb, var(--your-week-color, var(--user-accent, var(--wl-accent))) 2%, transparent))`,
+        borderColor: `color-mix(in srgb, var(--your-week-color, var(--user-accent, var(--wl-accent))) 40%, transparent)`,
       }}
     >
       <span
         className="text-xs font-bold tracking-wide uppercase"
-        style={{ color: "var(--user-accent, var(--wl-accent))" }}
+        style={{ color: "var(--your-week-color, var(--user-accent, var(--wl-accent)))" }}
       >
         Your Week
       </span>
@@ -578,7 +577,7 @@ function EmptyHero({
         <Link
           href={cta.href}
           className="mt-1 text-sm font-semibold"
-          style={{ color: "var(--user-accent, var(--wl-accent))" }}
+          style={{ color: "var(--your-week-color, var(--user-accent, var(--wl-accent)))" }}
         >
           {cta.label}
         </Link>
@@ -767,7 +766,7 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
   );
 }
 
-type DiscoveryTile = { href: string; label: string; description: string };
+type DiscoveryTile = { href: string; label: string; description: string; color: string };
 
 // One line of custom copy per tile — the one thing LEAGUE_SUBNAV_ORDER
 // itself doesn't carry (a pill label is enough context in a nav row;
@@ -809,6 +808,7 @@ const GAMECAST_TILE: DiscoveryTile = {
   href: "/gamecast",
   label: "Gamecast",
   description: "Live play-by-play for this week's real NFL games",
+  color: DESTINATIONS.gamecast.color,
 };
 
 function DiscoveryGrid() {
@@ -818,6 +818,7 @@ function DiscoveryGrid() {
       href: DESTINATION_HREF[key]!,
       label: DESTINATIONS[key].label,
       description: DISCOVER_DESCRIPTIONS[key] ?? DESTINATIONS[key].label,
+      color: DESTINATIONS[key].color,
     })),
   ];
 
@@ -834,17 +835,25 @@ function DiscoveryGrid() {
   );
 }
 
-function DiscoveryTileCard({ href, label, description }: DiscoveryTile) {
+function DiscoveryTileCard({ href, label, description, color }: DiscoveryTile) {
   return (
     <Link
       href={href}
       className="neon-panel flex flex-col gap-0.5 rounded-lg bg-black/[0.015] p-3 transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:bg-white/[0.03] dark:hover:bg-white/5 dark:active:bg-white/10"
-      style={panelGlowStyle(NAV_ACCENT)}
+      style={panelGlowStyle(color)}
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
+        {/* Reads --ring-color (set on the .neon-panel ancestor above,
+            inherited down) rather than this tile's own `color` prop
+            directly — that resolves to the tile's real destination
+            color in Cosmic (via panelGlowStyle above) but the owner's
+            own Border Animation/Accent Color in Calm, same as the
+            moving ring around the tile, instead of a flat NAV_ACCENT
+            dot that never matched what panelGlowStyle already made the
+            ring do. */}
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: NAV_ACCENT, boxShadow: `0 0 5px ${NAV_ACCENT}` }}
+          style={{ backgroundColor: "var(--ring-color)", boxShadow: "0 0 5px var(--ring-color)" }}
           aria-hidden
         />
         {label}

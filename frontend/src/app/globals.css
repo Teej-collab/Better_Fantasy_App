@@ -193,14 +193,16 @@ body {
    blurred glow-outside-the-edge version that made an earlier attempt
    at exactly this (c30dcfe) read as a diffuse "radar sweep" and get
    reverted a day later (5cd215b). Explicitly requested by the owner
-   after seeing the countdown-tile version working. Uses the single
-   shared --user-accent (not per-section --panel-glow) to match the
-   2026-08-31 SECTION_COLORS collapse — this app already decided once
-   that many differently-colored panels read as "too much," so the
-   ring stays one color everywhere, just like every other panel already
-   does. position/isolation below exist only to anchor that ring's
-   ::before to this panel's own edge, same reasoning as
-   .countdown-tile's. --wl-glow-scale (Settings > Appearance > Neon
+   after seeing the countdown-tile version working. Reads --ring-color
+   (below) rather than --user-accent directly, so the owner's Border
+   Animation Color preference (Settings > Appearance, falls back to
+   --user-accent when unset) can override it independently of the
+   general accent — and so Cosmic can override it again per-section
+   (see the [data-wl-theme="cosmic"] rule further down, which finally
+   gives ~18 call sites' long-dormant --panel-glow inline value
+   somewhere to matter again). position/isolation below exist only to
+   anchor that ring's ::before to this panel's own edge, same reasoning
+   as .countdown-tile's. --wl-glow-scale (Settings > Appearance > Neon
    Intensity) scales the ring's opacity, same as every other decorative
    glow in the app; it still scales .home-ambient's wash too. */
 .neon-panel {
@@ -208,6 +210,7 @@ body {
   isolation: isolate;
   background-color: var(--wl-surface);
   border: 1px solid var(--wl-border);
+  --ring-color: var(--border-glow-color, var(--user-accent, var(--wl-accent)));
 }
 @property --panel-border-angle {
   syntax: "<angle>";
@@ -223,7 +226,7 @@ body {
   background: conic-gradient(
     from var(--panel-border-angle),
     transparent 0deg,
-    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 95%, transparent) 90deg,
+    color-mix(in srgb, var(--ring-color) 95%, transparent) 90deg,
     transparent 180deg,
     transparent 360deg
   );
@@ -254,6 +257,30 @@ body {
   .neon-panel::before {
     animation: none;
   }
+}
+
+/* Settings > Appearance > Look ("Cosmic") — restores each card's own
+   distinct ring color (2026-09, same "bring the colors back" request
+   as .neon-navlink's identical-shaped rule below) as an opt-in for
+   Cosmic only; Calm keeps --ring-color's normal chain (Border
+   Animation Color, falling back to Accent Color) for every card.
+   --panel-glow-cosmic is set inline by lib/sectionColors.ts's
+   panelGlowStyle() — the same ~18 call sites that have quietly set
+   --panel-glow inline since 2026-08-31 with nothing reading it (see
+   .neon-panel's own comment above) now also set this, unconditionally,
+   letting this Cosmic-only rule decide whether it matters. Falls back
+   to --ring-color itself (not directly to --user-accent) for any
+   .neon-panel that doesn't map to a real section (Settings, Chat,
+   most panels) — those stay on the owner's own Border Animation Color
+   choice even in Cosmic, exactly like the approved mockup's "Your
+   Week" preview card. Can't be done by reassigning --panel-glow (the
+   inline-set property itself) directly — same reasoning as
+   --nav-color-cosmic below: an inline style always wins over a
+   stylesheet rule for the same custom property, regardless of
+   selector specificity, so the override has to target a DIFFERENT
+   property that only this rule ever assigns. */
+[data-wl-theme="cosmic"] .neon-panel {
+  --ring-color: var(--panel-glow-cosmic, var(--border-glow-color, var(--user-accent, var(--wl-accent))));
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
@@ -334,7 +361,17 @@ body {
    same plain green in Cosmic instead of its own color). Overriding the
    actual visual properties (color/background-color) here instead works,
    since those are never set inline — a more specific selector for them
-   really does win. */
+   really does win.
+
+   2026-09: the rest-state rule below is what actually makes this
+   "always-lit," not just active/hover — until now only :hover and
+   [aria-current="page"] read --nav-color-cosmic (this comment described
+   the always-lit rainbow look before the rule underneath it actually
+   delivered it; every OTHER tab stayed plain gray at rest, same as
+   Calm, until this owner request to bring it back for real). */
+[data-wl-theme="cosmic"] .neon-navlink {
+  color: var(--nav-color-cosmic, var(--nav-color));
+}
 [data-wl-theme="cosmic"] .neon-navlink:hover {
   color: var(--nav-color-cosmic, var(--nav-color));
   background-color: color-mix(in srgb, var(--nav-color-cosmic, var(--nav-color)) 8%, transparent);
@@ -950,13 +987,18 @@ body {
 .countdown-tile {
   position: relative;
   isolation: isolate;
-  /* A constant (non-rotating) ambient glow, same accent color, layered
+  /* Same --ring-color .neon-panel reads (Border Animation Color,
+     falling back to Accent Color) — no Cosmic per-section override
+     here, since a countdown tile isn't tied to any one destination the
+     way Standings/Rivalries/etc. are. */
+  --ring-color: var(--border-glow-color, var(--user-accent, var(--wl-accent)));
+  /* A constant (non-rotating) ambient glow, same ring color, layered
      under the rotating ring below — reads as "neon" even at the moment
      the traveling highlight is on the opposite edge, and scales with
      Settings > Appearance > Neon Intensity like every other decorative
      glow in the app. */
   box-shadow: 0 0 calc(10px * var(--wl-glow-scale, 1))
-    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 30%, transparent);
+    color-mix(in srgb, var(--ring-color) 30%, transparent);
 }
 .countdown-tile::before {
   content: "";
@@ -967,7 +1009,7 @@ body {
   background: conic-gradient(
     from var(--countdown-border-angle),
     transparent 0deg,
-    color-mix(in srgb, var(--user-accent, var(--wl-accent)) 95%, transparent) 90deg,
+    color-mix(in srgb, var(--ring-color) 95%, transparent) 90deg,
     transparent 180deg,
     transparent 360deg
   );

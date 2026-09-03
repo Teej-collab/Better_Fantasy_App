@@ -38,6 +38,31 @@ function applyAccentColor(hex: string | null) {
   }
 }
 
+// Same idea, for the two narrower personal colors layered on top of
+// Accent Color (2026-09): --your-week-color (just the Home page's
+// Your Week card) and --border-glow-color (the moving ring on every
+// card/countdown tile). Both fall back to --user-accent when cleared,
+// same chain globals.css already reads.
+function applyYourWeekColor(hex: string | null) {
+  if (hex) {
+    document.documentElement.style.setProperty("--your-week-color", hex);
+    setPreferenceCookie("wl_your_week_color", hex);
+  } else {
+    document.documentElement.style.removeProperty("--your-week-color");
+    setPreferenceCookie("wl_your_week_color", "");
+  }
+}
+
+function applyBorderGlowColor(hex: string | null) {
+  if (hex) {
+    document.documentElement.style.setProperty("--border-glow-color", hex);
+    setPreferenceCookie("wl_border_color", hex);
+  } else {
+    document.documentElement.style.removeProperty("--border-glow-color");
+    setPreferenceCookie("wl_border_color", "");
+  }
+}
+
 export function AppearanceSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +144,40 @@ export function AppearanceSection() {
     } catch {
       setPrefs(previous);
       applyAccentColor(previous.accent_color);
+      setError("Couldn't save that change — try again.");
+    }
+  }
+
+  async function setYourWeekColor(hex: string | null) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, your_week_color: hex });
+    applyYourWeekColor(hex);
+    try {
+      const updated = await updatePreferences({ your_week_color: hex });
+      setPrefs(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      applyYourWeekColor(previous.your_week_color);
+      setError("Couldn't save that change — try again.");
+    }
+  }
+
+  async function setBorderGlowColor(hex: string | null) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, border_glow_color: hex });
+    applyBorderGlowColor(hex);
+    try {
+      const updated = await updatePreferences({ border_glow_color: hex });
+      setPrefs(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      applyBorderGlowColor(previous.border_glow_color);
       setError("Couldn't save that change — try again.");
     }
   }
@@ -272,6 +331,83 @@ export function AppearanceSection() {
               onClick={() => setAccentColor(preset.hex)}
               className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
                 prefs.accent_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+              }`}
+            >
+              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Your Week Card Color</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            Just your own Your Week card on Home — independent of Accent Color. Default follows your Accent Color.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Your Week Card Color">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.your_week_color === null}
+            onClick={() => setYourWeekColor(null)}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+          </button>
+          {NEON_PALETTE.map((preset) => (
+            <button
+              key={preset.hex}
+              type="button"
+              role="radio"
+              aria-checked={prefs.your_week_color?.toLowerCase() === preset.hex}
+              onClick={() => setYourWeekColor(preset.hex)}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                prefs.your_week_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+              }`}
+            >
+              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Border Animation Color</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            The moving neon ring on every card and countdown tile — independent of Accent Color and Your Week Card
+            Color. Default follows your Accent Color.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Border Animation Color">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.border_glow_color === null}
+            onClick={() => setBorderGlowColor(null)}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+          </button>
+          {NEON_PALETTE.map((preset) => (
+            <button
+              key={preset.hex}
+              type="button"
+              role="radio"
+              aria-checked={prefs.border_glow_color?.toLowerCase() === preset.hex}
+              onClick={() => setBorderGlowColor(preset.hex)}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                prefs.border_glow_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
               }`}
             >
               <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
