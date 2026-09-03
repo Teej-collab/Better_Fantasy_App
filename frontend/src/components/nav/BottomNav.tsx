@@ -1,5 +1,4 @@
 import { NavLink } from "@/components/nav/NavLink";
-import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
@@ -150,8 +149,6 @@ export function BottomNav({
                 {isGameDay && <LiveMark />}
               </NavLink>
             );
-          case "chat":
-            return signedIn && <ChatNavLink key={key} variant="bottom" />;
           default:
             return null;
         }

@@ -36,7 +36,9 @@ function parseOrder(raw: string | null | undefined): DestinationKey[] {
 /**
  * Reorders the app's fixed nav tabs — drives both the mobile bottom
  * bar (BottomNav.tsx) and the desktop header (PrimaryNav.tsx) from the
- * one saved order, since both show the exact same six destinations.
+ * one saved order, since both show the exact same five destinations
+ * (Chat isn't one of them — see navDestinations.ts's PRIMARY_NAV_ORDER
+ * comment).
  * Same drag-and-drop pattern as HomeCardDeck.tsx (a shared drag
  * handle, optimistic save with a swallowed-catch background PUT), but
  * a fixed set with no add/remove: every surface always shows exactly

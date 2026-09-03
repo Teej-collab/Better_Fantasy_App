@@ -1,5 +1,4 @@
 import { NavLink } from "@/components/nav/NavLink";
-import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
 const ACTIVE = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium";
@@ -19,8 +18,8 @@ function LiveMark() {
 }
 
 /**
- * Desktop header row — My Team, League, Home, Matchups, Gamecast, Chat,
- * in the owner's own saved order (`order` prop, NavBar.tsx's parsed
+ * Desktop header row — My Team, League, Home, Matchups, Gamecast, in
+ * the owner's own saved order (`order` prop, NavBar.tsx's parsed
  * owner_preferences.bottom_nav_order — the same preference BottomNav.tsx
  * reads, falling back to MOBILE_NAV_ORDER when null/invalid). Reorderable
  * via Settings > Navigation since 2026-09-02 — previously hardcoded and
@@ -139,8 +138,6 @@ export function PrimaryNav({
                 </span>
               </NavLink>
             );
-          case "chat":
-            return signedIn && <ChatNavLink key={key} variant="primary" />;
           default:
             return null;
         }

@@ -162,7 +162,15 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
 // it.
 export const NAV_ACCENT = "var(--user-accent, var(--wl-accent))";
 
-export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
+// Chat dropped 2026-09-02: no longer one of the reorderable tabs on
+// either bar — it now lives as a fixed icon-only bubble next to the
+// account menu in the header (see NavBar.tsx + ChatNavLink.tsx's
+// "header" variant), the same place on every screen size, so it's
+// never competing with these for one of a limited number of slots
+// (the mobile bar was capped at 6 visible tabs, which the owner found
+// crowded). DESTINATIONS.chat itself is untouched — the header bubble
+// still reads its color and href from there.
+export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast"];
 
 // The fixed slots both the mobile bottom bar (BottomNav.tsx) and the
 // desktop header (PrimaryNav.tsx) draw from — this is the DEFAULT order
@@ -178,8 +186,9 @@ export const PRIMARY_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "m
 // all — a real gap for a destination the 2026-09-02 re-audit
 // specifically called out as strategically important (the app's one
 // genuinely live, real-time feature). Same position relative to
-// matchups/chat as PRIMARY_NAV_ORDER above.
-export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast", "chat"];
+// matchups as PRIMARY_NAV_ORDER above. Chat isn't in this list at all
+// as of 2026-09-02 — see PRIMARY_NAV_ORDER's own comment above.
+export const MOBILE_NAV_ORDER: DestinationKey[] = ["team", "league", "home", "matchups", "gamecast"];
 
 // Shared by BottomNav.tsx and PrimaryNav.tsx — both render from an
 // owner's saved order (bottom_nav_order) but must fall back to the

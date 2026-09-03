@@ -14,6 +14,7 @@ import {
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryNav } from "@/components/nav/PrimaryNav";
 import { BottomNav } from "@/components/nav/BottomNav";
+import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 
 /**
@@ -115,7 +116,10 @@ export async function NavBar() {
               order={bottomNavOrder}
             />
           </div>
-          <AuthStatus />
+          <div className="flex shrink-0 items-center gap-2">
+            {signedIn && <ChatNavLink variant="header" />}
+            <AuthStatus />
+          </div>
         </nav>
       </header>
       <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
