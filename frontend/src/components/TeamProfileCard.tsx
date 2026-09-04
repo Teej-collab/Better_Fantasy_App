@@ -229,6 +229,7 @@ const OWNER_PHOTOS: Record<number, string> = {
   1: "/images/owners/niko.jpg", // Niko
   4: "/images/owners/tj.jpg", // TJ
   7: "/images/owners/ryan-horak.jpg", // Ryan Horak
+  6: "/images/owners/grant-pomerenk.jpg", // Grant Pomerenk
 };
 
 function OwnerPhotoFill({
