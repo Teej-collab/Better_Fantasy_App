@@ -2,7 +2,8 @@
 
 import { upload } from "@vercel/blob/client";
 import { useEffect, useRef, useState } from "react";
-import type { ChatMember, ChatMessage } from "@/lib/api";
+import type { ChatGif, ChatMember, ChatMessage } from "@/lib/api";
+import { GifPicker } from "@/components/chat/GifPicker";
 
 const MAX_LENGTH = 2000;
 const TYPING_DEBOUNCE_MS = 2000;
@@ -30,6 +31,7 @@ export function MessageComposer({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingSentAt = useRef(0);
@@ -89,8 +91,19 @@ export function MessageComposer({
   }
 
   function removeImage() {
-    if (pendingImage && "previewUrl" in pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    // A GIF's previewUrl is a real Tenor URL, not an object URL this
+    // component created — only ever revoke the kind pickImage minted.
+    if (pendingImage?.status === "uploading" || (pendingImage?.status === "done" && pendingImage.previewUrl.startsWith("blob:"))) {
+      URL.revokeObjectURL(pendingImage.previewUrl);
+    }
     setPendingImage(null);
+  }
+
+  // A GIF is already hosted on Tenor's CDN — no upload step, straight
+  // to "done" the same shape pickImage's own upload eventually reaches.
+  function pickGif(gif: ChatGif) {
+    setPendingImage({ status: "done", previewUrl: gif.preview_url, url: gif.url });
+    setShowGifPicker(false);
   }
 
   function send() {
@@ -150,6 +163,8 @@ export function MessageComposer({
         </div>
       )}
 
+      {showGifPicker && <GifPicker onSelect={pickGif} onClose={() => setShowGifPicker(false)} />}
+
       {filteredMembers.length > 0 && (
         <div className="absolute bottom-full left-3 mb-1 flex w-56 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-neutral-900">
           {filteredMembers.map((m) => (
@@ -186,6 +201,17 @@ export function MessageComposer({
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
         >
           +
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowGifPicker((v) => !v)}
+          aria-label="Add GIF"
+          aria-pressed={showGifPicker}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tracking-tight hover:bg-black/5 dark:hover:bg-white/10 ${
+            showGifPicker ? "text-[var(--wl-accent-dim)]" : "text-black/50 dark:text-white/50"
+          }`}
+        >
+          GIF
         </button>
         <textarea
           ref={inputRef}

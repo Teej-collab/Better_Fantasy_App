@@ -1473,6 +1473,40 @@ export async function getChatMembers(): Promise<ChatMember[]> {
   return members;
 }
 
+export type ChatGif = {
+  id: string;
+  description: string;
+  url: string;
+  preview_url: string;
+  width: number | null;
+  height: number | null;
+};
+
+// Thrown by searchGifs on a non-2xx response — carries the real HTTP
+// status so the caller (GifPicker) can tell "GIF search isn't set up
+// yet" (a 503, before a real TENOR_API_KEY exists) apart from a plain
+// network/upstream failure, which a message string alone can't
+// reliably do (the 503's own detail text doesn't contain "503").
+export class GifSearchError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Backend proxies Tenor server-side (app/providers/tenor.py) so the API
+// key never reaches the client.
+export async function searchGifs(query: string): Promise<ChatGif[]> {
+  const res = await fetch(`/api/backend/chat/gifs?search=${encodeURIComponent(query)}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new GifSearchError(res.status, data?.detail ?? `GIF search failed: ${res.status}`);
+  }
+  const { gifs } = await res.json();
+  return gifs;
+}
+
 export async function startDirectConversation(ownerId: number): Promise<number> {
   const res = await fetch(`/api/backend/chat/conversations/direct`, {
     method: "POST",

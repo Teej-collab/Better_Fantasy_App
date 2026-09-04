@@ -238,6 +238,52 @@ async def test_list_conversations_requires_session(pool):
     assert resp.status_code == 401
 
 
+async def test_gif_search_requires_session(pool):
+    async with _client() as client:
+        resp = await client.get("/chat/gifs", params={"search": "touchdown dance"})
+    assert resp.status_code == 401
+
+
+async def test_gif_search_returns_the_provider_results(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 96)
+
+    from app.routers import chat as chat_router
+
+    fake_gifs = [{"id": "1", "description": "touchdown", "url": "https://media.tenor.com/x/y.gif", "preview_url": "https://media.tenor.com/x/y-tiny.gif", "width": 200, "height": 200}]
+
+    async def _fake_search(query, limit=24):
+        assert query == "touchdown dance"
+        return fake_gifs
+
+    monkeypatch.setattr(chat_router.tenor, "search", _fake_search)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, a))
+        resp = await client.get("/chat/gifs", params={"search": "touchdown dance"})
+
+    assert resp.status_code == 200
+    assert resp.json()["gifs"] == fake_gifs
+
+
+async def test_gif_search_returns_503_when_tenor_is_unconfigured(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 97)
+
+    from app.routers import chat as chat_router
+
+    async def _fake_search(query, limit=24):
+        raise RuntimeError("GIF search isn't configured — set TENOR_API_KEY")
+
+    monkeypatch.setattr(chat_router.tenor, "search", _fake_search)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, a))
+        resp = await client.get("/chat/gifs", params={"search": "touchdown dance"})
+
+    assert resp.status_code == 503
+
+
 async def test_messages_endpoint_rejects_non_participant(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     a = await _seed_owner(pool, 5)

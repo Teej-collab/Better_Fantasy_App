@@ -18,6 +18,7 @@ never trusts the client's own idea of which conversations it can see.
 import json
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
@@ -29,6 +30,7 @@ from app.db import get_pool
 from app.domain import chat as chat_domain
 from app.image_url import validate_blob_image_url
 from app.notifications import dispatcher, formatter
+from app.providers import tenor
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
 
@@ -110,6 +112,24 @@ async def list_members(request: Request, pool=Depends(get_pool)):
     # PresenceHeartbeat applies live `presence` WebSocket events on top
     # of this the moment anything changes, same manager.py both read.
     return {"members": [{**dict(r), "online": manager.is_connected(r["owner_id"])} for r in rows]}
+
+
+@router.get("/gifs")
+async def search_gifs(request: Request, search: str = Query(..., min_length=1, max_length=100)):
+    """Server-side proxy to Tenor — see app/providers/tenor.py's own
+    docstring for why this exists (the API key never reaches the
+    client). Session-gated like every other chat route even though
+    nothing here is conversation-specific, simply so a signed-out
+    visitor can't burn this app's Tenor quota."""
+    _require_session(request)
+    try:
+        gifs = await tenor.search(search)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPError:
+        logger.exception("Tenor search failed for query=%r", search)
+        raise HTTPException(status_code=502, detail="GIF search is temporarily unavailable")
+    return {"gifs": gifs}
 
 
 @router.post("/conversations/{conversation_id}/read")
