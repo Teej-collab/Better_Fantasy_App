@@ -241,6 +241,22 @@ async def upsert_scoring_rules(conn, league_id: int, season: int, rules: dict[st
     )
 
 
+async def set_playoff_team_count(conn, league_id: int, season: int, playoff_team_count: int) -> None:
+    """Commissioner-set override of how many teams make the playoffs
+    THIS season — see queries/league.py's get_playoff_team_count for
+    the read side (checks this table first, falls back to inferring
+    from a prior season's real bracket) and that table's own migration
+    docstring for why this exists."""
+    await conn.execute(
+        """
+        INSERT INTO league_playoff_settings (season, league_id, playoff_team_count)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (season, league_id) DO UPDATE SET playoff_team_count = EXCLUDED.playoff_team_count, updated_at = now()
+        """,
+        season, league_id, playoff_team_count,
+    )
+
+
 async def sole_commissioner_leagues(conn, user_id: int):
     """Leagues where this user is the only commissioner AND at least
     one other member exists — deleting the account (which removes

@@ -178,6 +178,20 @@ export async function createTeamForMember(leagueId: number, userId: number, team
   return post<Team>(`/leagues/${leagueId}/teams/for-member`, { user_id: userId, team_name: teamName });
 }
 
+export async function getPlayoffSettings(): Promise<{ season: number; playoff_team_count: number | null }> {
+  return get("/league/playoff-settings");
+}
+
+// Commissioner-only — an explicit override for how many teams make the
+// playoffs THIS season, taking priority over the standings page's own
+// fallback (inferring from a prior completed season's real bracket).
+export async function updatePlayoffSettings(
+  season: number,
+  playoffTeamCount: number
+): Promise<{ season: number; playoff_team_count: number }> {
+  return put("/league/playoff-settings", { season, playoff_team_count: playoffTeamCount });
+}
+
 export type ScoringRule = { stat_category: string; points_per_unit: number };
 
 export async function getScoringRules(): Promise<{ season: number; rules: ScoringRule[] }> {

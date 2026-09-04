@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMyLeagues, renameLeague, type League } from "@/lib/leaguesApi";
+import { getMyLeagues, getPlayoffSettings, renameLeague, updatePlayoffSettings, type League } from "@/lib/leaguesApi";
 
 /**
  * Split out of the old single-page CommissionerApp.tsx (2026-09-03) —
@@ -18,13 +18,36 @@ export function LeagueSettingsSection() {
   const [renameBusy, setRenameBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [playoffSeason, setPlayoffSeason] = useState<number | null>(null);
+  const [playoffTeamCount, setPlayoffTeamCount] = useState("");
+  const [playoffBusy, setPlayoffBusy] = useState(false);
+  const [playoffSaved, setPlayoffSaved] = useState(false);
+
   async function refresh() {
     try {
       const { leagues, activeLeagueId } = await getMyLeagues();
       const active = leagues.find((l) => l.id === activeLeagueId) ?? null;
       setLeague(active);
+
+      const playoff = await getPlayoffSettings();
+      setPlayoffSeason(playoff.season);
+      setPlayoffTeamCount(playoff.playoff_team_count === null ? "" : String(playoff.playoff_team_count));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your league.");
+    }
+  }
+
+  async function savePlayoffTeamCount() {
+    if (playoffSeason === null || !playoffTeamCount) return;
+    setPlayoffBusy(true);
+    setPlayoffSaved(false);
+    try {
+      await updatePlayoffSettings(playoffSeason, Number(playoffTeamCount));
+      setPlayoffSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the playoff format.");
+    } finally {
+      setPlayoffBusy(false);
     }
   }
 
@@ -117,6 +140,37 @@ export function LeagueSettingsSection() {
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
+
+        {playoffSeason !== null && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 dark:border-white/5">
+            <span className="text-sm text-black/50 dark:text-white/50">
+              Playoff teams ({playoffSeason})
+            </span>
+            <input
+              type="number"
+              min={1}
+              value={playoffTeamCount}
+              onChange={(e) => {
+                setPlayoffTeamCount(e.target.value);
+                setPlayoffSaved(false);
+              }}
+              placeholder="Not set"
+              className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
+            />
+            <button
+              onClick={savePlayoffTeamCount}
+              disabled={playoffBusy || !playoffTeamCount}
+              className="rounded-full bg-[var(--wl-accent-dim)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {playoffBusy ? "Saving…" : "Save"}
+            </button>
+            {playoffSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
+            <p className="w-full text-xs text-black/50 dark:text-white/50">
+              Drives the playoff-picture line on the standings page. Without this, it&apos;s inferred from last
+              season&apos;s real bracket once one exists.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

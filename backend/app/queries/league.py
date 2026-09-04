@@ -186,14 +186,23 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
 
 
 async def get_playoff_team_count(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int | None:
-    """How many teams made the playoffs, going by the most recently
-    COMPLETED prior season's own real bracket (matchups.is_playoff,
-    already synced from ESPN) — not a guess or a hardcoded number, this
-    app has no "how many teams make the playoffs" setting stored
-    anywhere. Powers the standings page's playoff-line divider
-    (2026-08-31 audit: "no visible playoff-picture indicator"). None
-    for a brand-new league with no prior season's playoff data yet —
-    the caller shows no line rather than a fabricated one."""
+    """How many teams make the playoffs THIS season — an explicit
+    commissioner setting (league_playoff_settings, PUT /league/
+    playoff-settings) if one exists for this exact season, since
+    2026-09-03; otherwise falls back to inferring it from the most
+    recently COMPLETED prior season's own real bracket (matchups.
+    is_playoff, already synced from ESPN), same as always. Powers the
+    standings page's playoff-line divider (2026-08-31 audit: "no
+    visible playoff-picture indicator"). None if neither an explicit
+    setting nor any prior season's playoff data exists yet — the
+    caller shows no line rather than a fabricated one."""
+    explicit = await conn.fetchval(
+        "SELECT playoff_team_count FROM league_playoff_settings WHERE season = $1 AND league_id = $2",
+        season, league_id,
+    )
+    if explicit is not None:
+        return explicit
+
     last_playoff_season = await conn.fetchval(
         "SELECT MAX(season) FROM matchups WHERE league_id = $1 AND season < $2 AND is_playoff = TRUE",
         league_id, season,
