@@ -7,21 +7,22 @@ known, trusted external CDN we explicitly send clients to."
 One Blob store for the whole app (not per-feature buckets — see
 CHAT_IMAGE_HOST's own history as the first, and until now only, use of
 it), so a single shared check is correct rather than one copy per
-feature that could quietly drift apart. Tenor's own CDN is the one
-deliberate exception (2026-09, the chat GIF picker) — its GIF URLs
-come straight from Tenor's search response (app/providers/tenor.py),
-never uploaded through our own Blob store, but they're still only ever
-reached via our server-side proxy, never a client-typed URL, so this
-is exactly as trustworthy as the Blob store host."""
+feature that could quietly drift apart. GIPHY's own CDN is the one
+deliberate exception (2026-09, the chat GIF picker — originally Tenor,
+swapped to GIPHY the same month) — its GIF URLs come straight from
+GIPHY's search response (app/providers/giphy.py), never uploaded
+through our own Blob store, but they're still only ever reached via
+our server-side proxy, never a client-typed URL, so this is exactly as
+trustworthy as the Blob store host."""
 from urllib.parse import urlparse
 
 from app.config import CHAT_IMAGE_HOST
 
-# Tenor serves GIF media from several numbered/regional subdomains
-# (media.tenor.com, media1.tenor.com, ...) — a suffix check, not one
-# more exact hostname to keep in sync with whichever one a given
-# search result happens to use.
-TENOR_MEDIA_HOST_SUFFIX = ".tenor.com"
+# GIPHY serves media from several numbered CDN subdomains (media.
+# giphy.com, media0.giphy.com, ... media4.giphy.com, i.giphy.com) — a
+# suffix check, not one more exact hostname to keep in sync with
+# whichever one a given search result happens to use.
+GIPHY_MEDIA_HOST_SUFFIX = ".giphy.com"
 
 
 def validate_blob_image_url(value) -> str | None:
@@ -32,6 +33,6 @@ def validate_blob_image_url(value) -> str | None:
         return None
     if parsed.hostname == CHAT_IMAGE_HOST:
         return value
-    if parsed.hostname.endswith(TENOR_MEDIA_HOST_SUFFIX):
+    if parsed.hostname.endswith(GIPHY_MEDIA_HOST_SUFFIX):
         return value
     return None

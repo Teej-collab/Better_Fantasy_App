@@ -30,7 +30,7 @@ from app.db import get_pool
 from app.domain import chat as chat_domain
 from app.image_url import validate_blob_image_url
 from app.notifications import dispatcher, formatter
-from app.providers import tenor
+from app.providers import giphy
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
 
@@ -130,18 +130,18 @@ async def list_members(request: Request, pool=Depends(get_pool)):
 
 @router.get("/gifs")
 async def search_gifs(request: Request, search: str = Query(..., min_length=1, max_length=100)):
-    """Server-side proxy to Tenor — see app/providers/tenor.py's own
+    """Server-side proxy to GIPHY — see app/providers/giphy.py's own
     docstring for why this exists (the API key never reaches the
     client). Session-gated like every other chat route even though
     nothing here is conversation-specific, simply so a signed-out
-    visitor can't burn this app's Tenor quota."""
+    visitor can't burn this app's GIPHY quota."""
     _require_session(request)
     try:
-        gifs = await tenor.search(search)
+        gifs = await giphy.search(search)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except httpx.HTTPError:
-        logger.exception("Tenor search failed for query=%r", search)
+        logger.exception("GIPHY search failed for query=%r", search)
         raise HTTPException(status_code=502, detail="GIF search is temporarily unavailable")
     return {"gifs": gifs}
 

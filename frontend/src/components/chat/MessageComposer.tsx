@@ -166,7 +166,7 @@ export function MessageComposer({
   }
 
   function removeImage() {
-    // A GIF's previewUrl is a real Tenor URL, not an object URL this
+    // A GIF's previewUrl is a real GIPHY URL, not an object URL this
     // component created — only ever revoke the kind pickImage minted.
     if (pendingImage?.status === "uploading" || (pendingImage?.status === "done" && pendingImage.previewUrl.startsWith("blob:"))) {
       URL.revokeObjectURL(pendingImage.previewUrl);
@@ -174,7 +174,7 @@ export function MessageComposer({
     setPendingImage(null);
   }
 
-  // A GIF is already hosted on Tenor's CDN — no upload step, straight
+  // A GIF is already hosted on GIPHY's CDN — no upload step, straight
   // to "done" the same shape pickImage's own upload eventually reaches.
   function pickGif(gif: ChatGif) {
     setPendingImage({ status: "done", previewUrl: gif.preview_url, url: gif.url });

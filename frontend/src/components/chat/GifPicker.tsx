@@ -89,7 +89,7 @@ export function GifPicker({ onSelect, onClose }: { onSelect: (gif: ChatGif) => v
                 aria-label={gif.description || "Send GIF"}
                 className="overflow-hidden rounded-lg bg-black/5 transition-opacity hover:opacity-80 dark:bg-white/5"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element -- an animated Tenor GIF preview, next/image can't preserve GIF animation */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- an animated GIPHY GIF preview, next/image can't preserve GIF animation */}
                 <img src={gif.preview_url} alt={gif.description} className="h-24 w-full object-cover" />
               </button>
             ))}

@@ -1502,7 +1502,7 @@ export type ChatGif = {
 
 // Thrown by searchGifs on a non-2xx response — carries the real HTTP
 // status so the caller (GifPicker) can tell "GIF search isn't set up
-// yet" (a 503, before a real TENOR_API_KEY exists) apart from a plain
+// yet" (a 503, before a real GIPHY_API_KEY exists) apart from a plain
 // network/upstream failure, which a message string alone can't
 // reliably do (the 503's own detail text doesn't contain "503").
 export class GifSearchError extends Error {
@@ -1513,7 +1513,7 @@ export class GifSearchError extends Error {
   }
 }
 
-// Backend proxies Tenor server-side (app/providers/tenor.py) so the API
+// Backend proxies GIPHY server-side (app/providers/giphy.py) so the API
 // key never reaches the client.
 export async function searchGifs(query: string): Promise<ChatGif[]> {
   const res = await fetch(`/api/backend/chat/gifs?search=${encodeURIComponent(query)}`);

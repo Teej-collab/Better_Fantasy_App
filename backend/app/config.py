@@ -36,11 +36,11 @@ DEFAULT_LEAGUE_ID = 1
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-# Chat's GIF picker (app/providers/tenor.py). Optional at import time,
+# Chat's GIF picker (app/providers/giphy.py). Optional at import time,
 # same as ANTHROPIC_API_KEY above — empty until the owner generates a
-# free key and adds it here or on Railway; tenor.search() fails loud
+# free key and adds it here or on Railway; giphy.search() fails loud
 # with a clear message if it's still unset when actually called.
-TENOR_API_KEY = os.getenv("TENOR_API_KEY")
+GIPHY_API_KEY = os.getenv("GIPHY_API_KEY")
 
 # Hostname of the Vercel Blob store chat image uploads land in (see
 # frontend/src/app/api/chat/upload/route.ts). Chat messages only ever
