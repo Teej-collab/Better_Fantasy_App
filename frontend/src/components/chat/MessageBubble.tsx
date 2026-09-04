@@ -208,7 +208,18 @@ export function MessageBubble({
 
           {(message.deleted || message.body) && (
             <div className="relative w-fit">
-              <span
+              {/* A <div>, not a <span> — the previous inline-element
+                  version needed an explicit `display: inline-block`
+                  override (globals.css's .chat-bubble) to get one
+                  continuous box around wrapped multi-line text instead
+                  of one disconnected box per line, and that override
+                  measurably wasn't taking effect for a reason a static
+                  read of the CSS couldn't explain. A <div> is
+                  block-level by its own element default, with no CSS
+                  rule required to make it behave that way — the same
+                  fix, just no longer dependent on one specific
+                  stylesheet rule actually reaching the page. */}
+              <div
                 className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
                   message.deleted
                     ? "italic text-black/50 dark:text-white/50"
@@ -224,7 +235,7 @@ export function MessageBubble({
                 }}
               >
                 {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
-              </span>
+              </div>
               {message.reactions.length > 0 && (
                 <ReactionBadge mine={mine} reactions={message.reactions} messageId={message.id} onReact={onReact} />
               )}
