@@ -16,7 +16,16 @@ import type { ReactNode } from "react";
  * a real two-pane messaging app (ChatApp.tsx) that needs more width and
  * a near-full-height canvas, not a narrow centered column with a lot of
  * dead space on desktop, so it gets a wider max-width and tighter
- * vertical padding instead of the standard treatment.
+ * vertical padding instead of the standard treatment. /draft is the
+ * same story for a different reason — DraftBoard.tsx is a real
+ * round-by-team grid (one column per team) that was getting squeezed
+ * into the standard 896px reading column even on a large desktop
+ * monitor, cutting off teams on the right with no way to see them
+ * short of that table's own overflow-x-auto scrollbar. A much wider
+ * cap here means a normal-sized league's full board actually fits on
+ * a real desktop screen; DraftBoard's own overflow-x-auto is still
+ * there underneath as the fallback for a league with enough teams/
+ * rounds to exceed even this width, or on a narrower laptop screen.
  *
  * Extra bottom padding below `sm:` clears NavBar's fixed BottomNav
  * (same breakpoint BottomNav itself hides at) — otherwise the last
@@ -30,6 +39,9 @@ export function PageShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   if (pathname === "/chat") {
     return <main className="safe-px mx-auto w-full max-w-5xl flex-1 py-4">{children}</main>;
+  }
+  if (pathname === "/draft") {
+    return <main className="safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
   }
   return <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
 }
