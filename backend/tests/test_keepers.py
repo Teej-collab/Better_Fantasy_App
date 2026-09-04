@@ -325,3 +325,49 @@ async def test_consecutive_years_cap_makes_a_player_ineligible(pool, monkeypatch
 
         rejected = await client.put("/keepers/me", json={"espn_player_ids": [10001]})
         assert rejected.status_code == 400
+
+
+async def test_get_keeper_rules_requires_session():
+    async with _client() as client:
+        resp = await client.get("/keepers/rules")
+    assert resp.status_code == 401
+
+
+async def test_get_keeper_rules_reads_open_default_for_a_season_with_none_set(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, 11, 511)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/keepers/rules")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["season"] == TEST_SEASON
+    assert body["max_keepers"] == 0
+    assert body["is_open"] is False
+
+
+async def test_get_keeper_rules_readable_by_any_member_not_just_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 12, 512, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 13, 513)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(commish_user, commissioner_id))
+        set_resp = await client.put(
+            "/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 3, "max_consecutive_years": 2}
+        )
+        assert set_resp.status_code == 200
+
+        # A plain member (not the commissioner) can still read the
+        # rules — this is the pre-fill read the commissioner UI itself
+        # also uses, and read access was deliberately left open (mirrors
+        # GET /league/scoring-rules), not commissioner-gated.
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        get_resp = await client.get("/keepers/rules")
+
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert body["max_keepers"] == 3
+    assert body["max_consecutive_years"] == 2

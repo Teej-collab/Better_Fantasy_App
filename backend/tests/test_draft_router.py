@@ -468,3 +468,93 @@ async def test_seed_keepers_reports_unresolved_players(pool, monkeypatch):
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert detail["unresolved"][0]["espn_player_id"] == 930099
+
+
+async def test_roster_slots_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "rs_noncomm")
+    user_id, owner_id = await _seed_member(pool, league_id, "rs_noncomm_member")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.put("/draft/roster-slots", json={"roster_slots": _ROSTER_SLOTS})
+    assert resp.status_code == 403
+
+
+async def test_get_roster_slots_is_null_and_editable_when_nothing_is_set(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "getrs_none")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/roster-slots")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["roster_slots"] is None
+    assert body["editable"] is True
+
+
+async def test_roster_slots_can_be_staged_before_any_draft_exists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "rs_stage")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        put_resp = await client.put("/draft/roster-slots", json={"roster_slots": _ROSTER_SLOTS})
+        assert put_resp.status_code == 200
+
+        get_resp = await client.get("/draft/roster-slots")
+
+    assert get_resp.json()["roster_slots"] == _ROSTER_SLOTS
+    assert get_resp.json()["editable"] is True
+
+
+async def test_roster_slots_rejected_once_a_real_draft_exists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "rs_locked")
+    _user_b, owner_b = await _seed_member(pool, league_id, "rs_locked_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        different_shape = dict(_ROSTER_SLOTS, BE=99)
+        put_resp = await client.put("/draft/roster-slots", json={"roster_slots": different_shape})
+        assert put_resp.status_code == 409
+
+        get_resp = await client.get("/draft/roster-slots")
+
+    # The real draft_config value is unaffected by the rejected write,
+    # and editable correctly flips to False now that a draft exists.
+    assert get_resp.json()["roster_slots"] == _ROSTER_SLOTS
+    assert get_resp.json()["editable"] is False
+
+
+async def test_setup_does_not_pick_up_a_staged_roster_shape_automatically(pool, monkeypatch):
+    """Unlike the schedule table, staging a roster shape doesn't get
+    silently carried into draft_config — the frontend (DraftSetupPanel)
+    is the one that reads the staged value and passes it explicitly to
+    /draft/setup's own request body, since setup's roster_slots field
+    is the caller's own explicit, required choice."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "rs_nocarry")
+    _user_b, owner_b = await _seed_member(pool, league_id, "rs_nocarry_b")
+
+    staged_shape = dict(_ROSTER_SLOTS, BE=42)
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.put("/draft/roster-slots", json={"roster_slots": staged_shape})
+
+        setup_resp = await client.post(
+            "/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS}
+        )
+        assert setup_resp.json()["config"]["roster_slots"] == _ROSTER_SLOTS
+
+    # The staged row is cleaned up once a real draft exists, same as
+    # league_draft_schedule's own carry-over cleanup.
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT 1 FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2", TEST_SEASON, league_id
+        )
+    assert row is None

@@ -199,6 +199,60 @@ async def set_draft_schedule(body: ScheduleRequest, request: Request):
     return state
 
 
+class RosterSlotsRequest(BaseModel):
+    roster_slots: dict[str, int]
+
+
+@router.get("/roster-slots")
+async def get_roster_slots(request: Request):
+    """The season's roster shape, wherever it currently lives (see
+    get_effective_roster_slots) — any signed-in league member can read
+    this, same openness as GET /draft/schedule; only setting it is
+    commissioner-only. `editable` tells the caller (the commissioner's
+    Roster & Keepers page) whether PUT will actually succeed — false
+    once a real draft exists for this season, since changing shape
+    then would leave already-generated draft_picks rows built for a
+    different round count (see PUT's own docstring)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        roster_slots = await draft_queries.get_effective_roster_slots(conn, season, league_id)
+        draft_exists = await conn.fetchval(
+            "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+        )
+    return {"season": season, "roster_slots": roster_slots, "editable": not draft_exists}
+
+
+@router.put("/roster-slots")
+async def set_roster_slots(body: RosterSlotsRequest, request: Request):
+    """Stages a roster shape ahead of a real draft (league_roster_slots_
+    settings — see that table's own migration docstring for why this
+    can't just write into a stub draft_config row). Refuses once a real
+    draft_config row exists for this season: draft_picks' round count
+    is fixed at setup time from the ORIGINAL roster shape
+    (total_draftable_slots), so silently changing roster_slots
+    afterward would leave those pre-generated pick rows built for the
+    wrong number of rounds — reset the draft first (same requirement
+    changing draft_order/roster_slots via Draft Setup has always had)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        exists = await conn.fetchval(
+            "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+        )
+        if exists:
+            raise HTTPException(
+                status_code=409,
+                detail="A draft already exists for this season — reset it first if you need to change roster shape",
+            )
+        await draft_queries.upsert_roster_slots_setting(conn, season, body.roster_slots, league_id)
+    return {"season": season, "roster_slots": body.roster_slots, "editable": True}
+
+
 @router.post("/reset")
 async def reset_draft(request: Request):
     """Wipes this season's draft entirely (config, every pick,

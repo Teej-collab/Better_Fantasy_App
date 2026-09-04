@@ -251,6 +251,23 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
     return {"selections": [dict(r) | {"created_at": r["created_at"].isoformat()} for r in updated]}
 
 
+@router.get("/rules")
+async def get_keeper_rules(request: Request, pool=Depends(get_pool)):
+    """Read access open to any member (mirrors league_settings.py's own
+    GET /league/scoring-rules, including resolving ACTIVE_SEASON
+    server-side rather than taking it from the caller) — the
+    commissioner-only Keeper Rules UI (2026-09-03) needs to pre-fill
+    its edit form with whatever's currently configured, same shape
+    GET /me's own embedded `rules` already returns for the owner-facing
+    keeper-picker panel."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        row = await keeper_queries.get_rules(conn, season, league_id)
+    return _rules_dict(row, season)
+
+
 class KeeperRulesBody(BaseModel):
     season: int
     max_keepers: int

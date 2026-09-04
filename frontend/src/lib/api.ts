@@ -1583,6 +1583,15 @@ export function updateMyKeepers(espnPlayerIds: number[]): Promise<{ selections: 
   return _keepersRequest("/me", "PUT", { espn_player_ids: espnPlayerIds });
 }
 
+// Read access open to any member (backend enforces via
+// require_active_league_id, not commissioner-only) — the Keeper Rules
+// commissioner UI (2026-09-03) uses this to pre-fill its edit form.
+// Season is resolved server-side (ACTIVE_SEASON), same as
+// getScoringRules — the caller doesn't need to already know it.
+export function getKeeperRules(): Promise<KeeperRules> {
+  return _keepersRequest("/rules", "GET");
+}
+
 // Commissioner-only — backend/app/routers/keepers.py checks
 // is_commissioner itself; these just surface a 403 as a thrown Error
 // like every other request helper here if a non-commissioner calls them.

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   getDraftSchedule,
+  getRosterSlots,
   pauseDraft,
   resetDraft,
   resumeDraft,
@@ -126,6 +127,9 @@ export function DraftSetupPanel({
   );
   const [scheduleSaved, setScheduleSaved] = useState(false);
   const [timezoneLabel, setTimezoneLabel] = useState<string | null>(null);
+  const [rosterSlots, setRosterSlotsState] = useState<Record<string, number>>(
+    config?.roster_slots ?? DEFAULT_ROSTER_SLOTS
+  );
 
   useEffect(() => {
     // setTimeout(0), not a direct setState call in the effect body —
@@ -133,6 +137,26 @@ export function DraftSetupPanel({
     // countdown effect uses (react-hooks/set-state-in-effect).
     const id = setTimeout(() => setTimezoneLabel(detectTimezoneLabel()), 0);
     return () => clearTimeout(id);
+  }, []);
+
+  // No real draft exists yet — a roster shape may already have been
+  // staged on the commissioner's Roster & Keepers page (PUT /draft/
+  // roster-slots), and Draft Setup should submit THAT instead of
+  // always silently sending the hardcoded DEFAULT_ROSTER_SLOTS below
+  // (2026-09-03 — that clobbering was the exact bug this fixes). Same
+  // "skip once a real draft exists" shape as the schedule effect above.
+  useEffect(() => {
+    if (config) return;
+    let cancelled = false;
+    getRosterSlots()
+      .then(({ roster_slots }) => {
+        if (!cancelled && roster_slots) setRosterSlotsState(roster_slots);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // No real draft exists yet (config is undefined) — a previously-set
@@ -246,7 +270,7 @@ export function DraftSetupPanel({
         </div>
         {error && <p className="text-xs text-red-500">{error}</p>}
         <button
-          onClick={() => run(() => setupDraft(order, DEFAULT_ROSTER_SLOTS, DEFAULT_PICK_SECONDS))}
+          onClick={() => run(() => setupDraft(order, rosterSlots, DEFAULT_PICK_SECONDS))}
           disabled={busy || order.length !== teams.length}
           className="w-fit rounded-full bg-sky-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
         >

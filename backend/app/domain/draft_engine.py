@@ -100,6 +100,13 @@ async def create_draft(
             """,
             season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id, pre_set_schedule,
         )
+        # Same cleanup as the pre-set schedule above — draft_config.
+        # roster_slots is the single source of truth from here on, so
+        # any staged league_roster_slots_settings row (PUT /draft/
+        # roster-slots, set ahead of a real draft) is now stale.
+        await conn.execute(
+            "DELETE FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2", season, league_id
+        )
         rows = plan_snake_order(draft_order, rounds)
         await conn.executemany(
             """

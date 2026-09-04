@@ -203,6 +203,21 @@ export async function getDraftSchedule(): Promise<{ scheduled_start: string | nu
   return get<{ scheduled_start: string | null }>("/draft/schedule");
 }
 
+// The season's roster shape even before a real draft exists to hold
+// it — mirrors getDraftSchedule/setDraftSchedule's own pre-setup
+// staging pattern exactly (see backend/app/routers/draft.py's GET/PUT
+// /draft/roster-slots). `editable` is false once a real draft exists
+// for this season (PUT then 409s — reset the draft first).
+export async function getRosterSlots(): Promise<{ roster_slots: Record<string, number> | null; editable: boolean }> {
+  return get("/draft/roster-slots");
+}
+
+export async function setRosterSlots(
+  rosterSlots: Record<string, number>
+): Promise<{ roster_slots: Record<string, number>; editable: boolean }> {
+  return put("/draft/roster-slots", { roster_slots: rosterSlots });
+}
+
 export async function startDraft(): Promise<{ config: DraftConfig }> {
   return post("/draft/start");
 }

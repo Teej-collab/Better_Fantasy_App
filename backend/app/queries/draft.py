@@ -96,3 +96,40 @@ async def get_effective_scheduled_start(conn, season: int, league_id: int = DEFA
     if from_config is not None:
         return from_config
     return await get_schedule_only(conn, season, league_id)
+
+
+async def get_roster_slots_setting(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """A pre-set roster shape staged ahead of a real draft — see
+    league_roster_slots_settings' own migration docstring. None if
+    nothing's been staged (including once a real draft exists)."""
+    row = await conn.fetchval(
+        "SELECT roster_slots FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2",
+        season, league_id,
+    )
+    if isinstance(row, str):
+        return json.loads(row)
+    return row
+
+
+async def upsert_roster_slots_setting(conn, season: int, roster_slots: dict, league_id: int = DEFAULT_LEAGUE_ID):
+    await conn.execute(
+        """
+        INSERT INTO league_roster_slots_settings (season, league_id, roster_slots)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (season, league_id) DO UPDATE SET roster_slots = EXCLUDED.roster_slots, updated_at = now()
+        """,
+        season, league_id, json.dumps(roster_slots),
+    )
+
+
+async def get_effective_roster_slots(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """The season's roster shape, whichever of the two possible homes
+    it's currently in — draft_config.roster_slots once a real draft
+    exists, or the staged league_roster_slots_settings value ahead of
+    that. None if neither has one set (a season nobody's touched yet)."""
+    from_config = await conn.fetchval(
+        "SELECT roster_slots FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    if from_config is not None:
+        return json.loads(from_config) if isinstance(from_config, str) else from_config
+    return await get_roster_slots_setting(conn, season, league_id)

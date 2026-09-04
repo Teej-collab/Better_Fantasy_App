@@ -226,6 +226,9 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM league_draft_schedule WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
         )
+        await conn.execute(
+            "DELETE FROM league_roster_slots_settings WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
+        )
         await conn.execute("DELETE FROM player_week_stats WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM league_scoring_rules WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM teams_by_season WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
