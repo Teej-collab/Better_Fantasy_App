@@ -212,9 +212,9 @@ export function MessageBubble({
                 className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
                   message.deleted
                     ? "italic text-black/50 dark:text-white/50"
-                    : `${mine ? "chat-bubble--mine" : "chat-bubble--other"} ${
-                        lastInRun ? (mine ? "chat-bubble--tail-mine" : "chat-bubble--tail-other") : ""
-                      }`
+                    : mine
+                      ? "chat-bubble--mine"
+                      : "chat-bubble--other"
                 } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
                 style={{
                   ...bubbleCorners(mine, !grouped, lastInRun),

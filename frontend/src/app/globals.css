@@ -1733,28 +1733,18 @@ body {
   color: inherit;
 }
 
-/* The one signature iMessage detail a plain rounded rectangle can't
-   give you on its own — a small tail on the last bubble of a run only
-   (see MessageBubble.tsx's `lastInRun`), color-matched via
-   `background-color: inherit` so it works whether the bubble's color
-   came from --mine/--other or a sender's own custom owner_chat_color. */
-.chat-bubble--tail-mine::after,
-.chat-bubble--tail-other::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  background-color: inherit;
-}
-.chat-bubble--tail-mine::after {
-  right: -5px;
-  border-bottom-left-radius: 10px 8px;
-}
-.chat-bubble--tail-other::after {
-  left: -5px;
-  border-bottom-right-radius: 10px 8px;
-}
+/* A literal comma-shaped iMessage tail used to live here as a 10x10px
+   box with only one corner rounded — the other three stayed perfectly
+   square, so it rendered as a visible half-overlapping block sitting
+   on top of the bubble's own already-rounded corner (reported as a
+   "weird quarter circle" bleeding past the bubble's edge, on both the
+   left side for an incoming bubble and the right side for an outgoing
+   one). Removed rather than replaced with another guessed curve —
+   MessageBubble.tsx's bubbleCorners() already gives the last bubble in
+   a run a fully round outer corner and every other bubble in that run
+   a tight one, which is enough on its own to read as one grouped run
+   (the same "no separate pointer" convention WhatsApp/Signal/Telegram
+   use today), without a second shape that can go visually wrong. */
 
 .chat-mention {
   border-radius: 0.25rem;
