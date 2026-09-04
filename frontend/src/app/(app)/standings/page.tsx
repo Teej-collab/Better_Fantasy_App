@@ -79,7 +79,7 @@ export default async function StandingsPage({
         <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {standings.map((row, i) => (
             <Fragment key={row.team_id}>
-              <StandingsListRow row={row} rank={i + 1} />
+              <StandingsListRow row={row} rank={i + 1} teamCount={standings.length} />
               {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
             </Fragment>
           ))}
@@ -115,13 +115,17 @@ function PlayoffLine({ count }: { count: number }) {
   );
 }
 
-function StandingsListRow({ row, rank }: { row: StandingsRow; rank: number }) {
+function StandingsListRow({ row, rank, teamCount }: { row: StandingsRow; rank: number; teamCount: number }) {
   const isChampion = row.final_rank === 1;
+  // Symmetric with the champion above — only lit up once a season is
+  // actually final (final_rank populated for every row), same as
+  // isChampion; last place in ESPN's own complete final ranking.
+  const isLastPlace = row.final_rank !== null && row.final_rank === teamCount;
   return (
     <li
       className={
         "flex flex-col gap-1.5 py-3 sm:flex-row sm:items-center sm:gap-0" +
-        (isChampion ? " bg-amber-50 dark:bg-amber-400/10" : "")
+        (isChampion ? " bg-amber-50 dark:bg-amber-400/10" : isLastPlace ? " bg-[#f2e8dc] dark:bg-[#8b5a2b]/10" : "")
       }
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -133,6 +137,11 @@ function StandingsListRow({ row, rank }: { row: StandingsRow; rank: number }) {
           {isChampion && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
               🏆 Champion
+            </span>
+          )}
+          {isLastPlace && (
+            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#d9b98a] px-2 py-0.5 text-xs font-medium text-[#5c3a1e] dark:bg-[#8b5a2b]/30 dark:text-[#d9b98a]">
+              💩 League Loser
             </span>
           )}
           <div className="truncate text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
