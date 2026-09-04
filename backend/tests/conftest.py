@@ -267,6 +267,13 @@ async def cleanup_test_season(pool):
             "DELETE FROM league_playoff_settings WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
         await conn.execute(
+            "DELETE FROM poll_votes WHERE poll_id IN (SELECT id FROM league_polls WHERE league_id IN "
+            "(SELECT id FROM leagues WHERE name LIKE 'Test League%'))"
+        )
+        await conn.execute(
+            "DELETE FROM league_polls WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute(
             "DELETE FROM league_members WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
         # users.active_league_id -> leagues.id (migration 119d4af5c920) —

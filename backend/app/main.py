@@ -28,6 +28,7 @@ from app.routers import (
     me,
     nfl,
     players,
+    polls,
     profile,
     push,
     settings,
@@ -158,6 +159,7 @@ app.include_router(leagues.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(players.router)
+app.include_router(polls.router)
 app.include_router(profile.router)
 app.include_router(push.router)
 app.include_router(settings.router)

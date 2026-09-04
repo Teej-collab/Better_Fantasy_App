@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { awardsHrefFor, getMe, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
+import { ActivePollCard } from "@/components/ActivePollCard";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
@@ -43,6 +44,8 @@ export default async function LeaguePage({
         <h1 className="text-2xl font-semibold">League</h1>
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/league?season=${s}`} />
       </div>
+
+      <ActivePollCard leagueId={me.active_league_id} />
 
       <div
         className="neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
