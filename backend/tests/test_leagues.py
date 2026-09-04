@@ -279,13 +279,130 @@ async def test_claim_owner_links_history_and_is_first_claim_wins(pool, monkeypat
         await claimer.post("/leagues/join", json={"invite_code": invite_code})
         resp = await claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_id})
     assert resp.status_code == 200
-    assert resp.json() == {"owner_id": owner_id, "claimed": True}
+    body = resp.json()
+    assert body["owner_id"] == owner_id
+    assert body["claimed"] is True
+    # A real, usable session token, not just a claimed flag — see this
+    # endpoint's own docstring for why: owner_id lives in the JWT, set
+    # once at login, so the caller's OLD cookie still has no owner_id
+    # even after this DB write succeeds. Decoding it here confirms the
+    # NEW token actually carries the newly-linked owner_id.
+    from app.auth.config import SessionConfig
+    from app.auth.session import decode_session_token
+
+    decoded = decode_session_token(SessionConfig().session_secret, body["token"])
+    assert decoded["owner_id"] == owner_id
 
     async with _client() as second_claimer:
         await _sign_up(second_claimer, "test-leagues-claim-second@example.com")
         await second_claimer.post("/leagues/join", json={"invite_code": invite_code})
         resp2 = await second_claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_id})
     assert resp2.status_code == 409
+
+
+async def test_claim_owner_new_token_actually_unlocks_owner_scoped_routes(pool, monkeypatch):
+    """The real, reported bug: a signed-up-by-email owner claims their
+    historical team, then GET /me/team still 404s "No team found for
+    this owner" — because that route reads owner_id straight off the
+    JWT (app/routers/me.py's _require_my_team), and the caller's
+    existing cookie was minted at signup with no owner_id at all.
+    Claiming updates the DB correctly but does nothing for a cookie
+    already sitting in the browser. Confirms the fix: swapping in the
+    token this endpoint now returns is what actually unlocks the route,
+    not the claim DB write by itself."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-claim-unlock-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Claim Unlock"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    from app.db import get_pool as _get_pool
+
+    real_pool = await _get_pool()
+    async with real_pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-leagues-claim-unlock-owner", "Unlockable Owner",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Unlockable FC', $3)",
+            TEST_SEASON, owner_id, league_id,
+        )
+
+    async with _client() as claimer:
+        await _sign_up(claimer, "test-leagues-claim-unlock-claimer@example.com")
+        await claimer.post("/leagues/join", json={"invite_code": invite_code})
+
+        # Before claiming: the caller's own account genuinely has no
+        # team yet, so this 404s correctly.
+        before = await claimer.get("/me/team")
+        assert before.status_code == 404
+
+        resp = await claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_id})
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+
+        # Still using the OLD cookie this client already has: claiming
+        # updated the DB, but not this in-flight session — still 404,
+        # proving the DB write alone was never going to be enough.
+        still_before = await claimer.get("/me/team")
+        assert still_before.status_code == 404
+
+        # Swap in the new token exactly as the frontend now does via
+        # /auth/complete/set-cookie — this is the actual fix.
+        claimer.cookies.set("session", token)
+        after = await claimer.get("/me/team")
+    assert after.status_code == 200
+    assert after.json()["team_name"] == "Unlockable FC"
+
+
+async def test_a_later_password_login_still_carries_the_claimed_owner_id(pool, monkeypatch):
+    """The deeper half of the same bug: fixing claim-owner to reissue a
+    token isn't enough on its own if the NEXT time this person logs in
+    (a new device, a cleared cookie jar, the 30-day cookie finally
+    expiring) mints a fresh owner_id=null token all over again.
+    app/routers/auth.py's login() now resolves owner_id fresh from the
+    DB (app/queries/auth.py's get_owner_id_for_user) on every login,
+    not just at the moment of claiming — this proves a real second
+    login, in a client that never saw the claim-owner response at all,
+    still gets the right owner_id."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-claim-relogin-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Claim Relogin"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    from app.db import get_pool as _get_pool
+
+    real_pool = await _get_pool()
+    async with real_pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-leagues-claim-relogin-owner", "Relogin Owner",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Relogin FC', $3)",
+            TEST_SEASON, owner_id, league_id,
+        )
+
+    async with _client() as claimer:
+        await _sign_up(claimer, "test-leagues-claim-relogin-claimer@example.com")
+        await claimer.post("/leagues/join", json={"invite_code": invite_code})
+        resp = await claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_id})
+        assert resp.status_code == 200
+
+    # A genuinely separate client — no cookie, no token from the claim
+    # response above, just a plain email+password login the way a
+    # returning visitor on a new device would actually experience it.
+    async with _client() as returning:
+        await _login(returning, "test-leagues-claim-relogin-claimer@example.com")
+        me_resp = await returning.get("/auth/me")
+    assert me_resp.status_code == 200
+    assert me_resp.json()["owner_id"] == owner_id
 
 
 async def test_commissioner_can_remove_a_member(pool):

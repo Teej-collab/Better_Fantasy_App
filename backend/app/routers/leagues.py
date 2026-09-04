@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import SESSION_COOKIE_NAME, create_session_token, decode_session_token
 from app.config import _require
 from app.db import get_pool
 from app.queries import auth as auth_queries
@@ -196,7 +196,20 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
     """Self-service history claiming — any League #1 owner can sign up
     by email and claim their own existing chug debts/keeper picks/past
     seasons themselves (see TODO.md's PHASE 9 entry). First-claim-wins:
-    once linked, an owner can never be claimed again."""
+    once linked, an owner can never be claimed again.
+
+    Reissues the session token with the newly-linked owner_id baked in
+    (2026-09 fix) — every owner-scoped route (My Team, Keepers, etc.)
+    reads owner_id straight off the JWT (app/auth/session.py), which is
+    set once at login and never re-derived from the DB. Before this
+    fix, claiming here updated owners.user_id correctly but the
+    caller's existing session token still carried whatever owner_id
+    (typically null) it was minted with at login — so a Google/email
+    signup who claimed their historical team immediately hit "No team
+    found for this owner" everywhere, since nothing had actually told
+    their browser about the new owner_id. The frontend swaps its
+    first-party cookie for this new token the same way the OAuth
+    callback flow does (see auth/complete/set-cookie's own docstring)."""
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -213,7 +226,18 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
         # team-creation hooks above, a claimed owner already has a real
         # team/history and would otherwise never trigger either of them.
         await chat_queries.add_owner_to_league_conversations(conn, league_id, body.owner_id)
-    return {"owner_id": body.owner_id, "claimed": True}
+        token_version = await auth_queries.get_token_version(conn, payload["user_id"])
+
+    config = SessionConfig()
+    token = create_session_token(
+        config.session_secret,
+        user_id=payload["user_id"],
+        owner_id=body.owner_id,
+        discord_user_id=payload.get("discord_user_id"),
+        is_commissioner=payload.get("is_commissioner", False),
+        token_version=token_version,
+    )
+    return {"owner_id": body.owner_id, "claimed": True, "token": token}
 
 
 @router.get("/{league_id}/members")

@@ -11,6 +11,21 @@ async def get_owner_by_discord_id(conn, discord_user_id: int):
     )
 
 
+async def get_owner_id_for_user(conn, user_id: int) -> int | None:
+    """The owner_id (if any) this account is currently linked to —
+    resolved fresh from owners.user_id, never assumed. Every login path
+    that mints a token for an EXISTING account (password /auth/login,
+    /auth/google/callback) needs this so a already-claimed owner is
+    reflected the very next time that account signs in, not only in
+    the one response right after POST /leagues/{id}/claim-owner (which
+    reissues a token itself, for the same reason — see that route's
+    own docstring). Before this existed, only the Discord path ever
+    put a real owner_id in a token at LOGIN time; a Google/email
+    account's session stayed owner_id=null forever unless it happened
+    to still be holding the exact token claim-owner returned."""
+    return await conn.fetchval("SELECT owner_id FROM owners WHERE user_id = $1", user_id)
+
+
 async def get_or_create_user_for_owner(
     conn, owner_id: int, discord_user_id: int, discord_username: str
 ) -> int:

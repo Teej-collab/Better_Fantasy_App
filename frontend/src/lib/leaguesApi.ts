@@ -126,8 +126,29 @@ export async function getUnclaimedOwners(leagueId: number): Promise<UnclaimedOwn
 // past chug debts, keeper picks, seasons, matchups, awards) to the
 // caller's account. First-claim-wins; a 409 means someone already
 // claimed it.
+//
+// The backend reissues a session token with the newly-linked owner_id
+// baked in (see leagues.py's claim_owner docstring for why: owner_id
+// lives in the JWT, set once at login, never re-derived from the DB —
+// without this, every owner-scoped page keeps reading the OLD, still-
+// unlinked owner_id from the caller's existing cookie and shows "No
+// team found for this owner" right after a successful claim). Swaps
+// the frontend's own first-party cookie for it the same way the OAuth
+// callback flow does (auth/complete/page.tsx), so the caller doesn't
+// need to sign out and back in for the claim to actually take effect.
 export async function claimOwner(leagueId: number, ownerId: number): Promise<void> {
-  await post(`/leagues/${leagueId}/claim-owner`, { owner_id: ownerId });
+  const { token } = await post<{ owner_id: number; claimed: boolean; token: string }>(
+    `/leagues/${leagueId}/claim-owner`,
+    { owner_id: ownerId },
+  );
+  const res = await fetch("/auth/complete/set-cookie", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    throw new Error("Claimed, but couldn't refresh your session — please sign out and back in.");
+  }
 }
 
 export async function getLeagueMembers(leagueId: number): Promise<Member[]> {

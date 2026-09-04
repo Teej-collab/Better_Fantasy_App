@@ -130,9 +130,17 @@ async def google_login():
 async def google_callback(request: Request, code: str | None = None, state: str | None = None):
     """Unlike Discord (verified against real league membership), Google
     has no pre-existing membership data to check — this is a self-serve
-    account, same shape as /auth/signup: no owner_id/is_commissioner on
-    the session yet, joining or creating a league happens afterward
-    from /leagues."""
+    account, same shape as /auth/signup: no is_commissioner on the
+    session, joining or creating a league happens afterward from
+    /leagues. owner_id IS resolved fresh here (2026-09 fix, see
+    app/queries/auth.py's get_owner_id_for_user) for a RETURNING
+    visitor whose account has since claimed a historical owner via
+    POST /leagues/{id}/claim-owner — without this, only the token
+    claim-owner itself returns would ever carry that link; every
+    later Google login would mint a fresh owner_id=null token and undo
+    it, which is exactly the reported bug (My Team showing "No team
+    found for this owner" for an owner who really had already
+    claimed one)."""
     config = GoogleAuthConfig()
 
     expected_state = request.cookies.get(STATE_COOKIE_NAME)
@@ -149,8 +157,9 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     async with pool.acquire() as conn:
         user_id = await auth_queries.get_or_create_user_for_google(conn, google_user_id, email, display_name)
         token_version = await auth_queries.get_token_version(conn, user_id)
+        owner_id = await auth_queries.get_owner_id_for_user(conn, user_id)
 
-    token = create_session_token(config.session_secret, user_id=user_id, token_version=token_version)
+    token = create_session_token(config.session_secret, user_id=user_id, owner_id=owner_id, token_version=token_version)
 
     # Same cross-domain token handoff as the Discord callback above —
     # see that handler's own comment for why this can't just be a
@@ -323,7 +332,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
     if not verify_password(body.password, user["password_hash"]):
         raise invalid
 
-    token = create_session_token(config.session_secret, user_id=user["id"], token_version=user["token_version"])
+    async with pool.acquire() as conn:
+        owner_id = await auth_queries.get_owner_id_for_user(conn, user["id"])
+    token = create_session_token(
+        config.session_secret, user_id=user["id"], owner_id=owner_id, token_version=user["token_version"]
+    )
     response.set_cookie(
         SESSION_COOKIE_NAME, token,
         httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
