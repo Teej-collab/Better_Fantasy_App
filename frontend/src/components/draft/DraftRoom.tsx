@@ -53,6 +53,13 @@ export function DraftRoom({
   const [pool, setPool] = useState<DraftPoolPlayer[]>(initialPool);
   const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [connected, setConnected] = useState(false);
+  // Who's actually got the draft room open right now (any device) —
+  // separate from `connected` above, which is THIS client's own socket
+  // state. Seeded from the initial state's snapshot, kept live by
+  // "presence" WS events from there (see the message handler below).
+  const [connectedOwnerIds, setConnectedOwnerIds] = useState<Set<number>>(
+    () => new Set(initialDraftState?.connected_owner_ids ?? [])
+  );
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -93,6 +100,7 @@ export function DraftRoom({
     try {
       const state = await getDraftState();
       setDraftState(state);
+      setConnectedOwnerIds(new Set(state.connected_owner_ids ?? []));
       setLoadError(null);
     } catch (e) {
       // Clears any stale draftState too — a reset (see
@@ -196,8 +204,29 @@ export function DraftRoom({
           setTimeout(connect, RECONNECT_DELAY_MS);
         }
       };
-      socket.onmessage = () => {
-        // Every event type (pick_made/draft_status/pick_undone) just
+      socket.onmessage = (event) => {
+        let msg: { type?: string; owner_id?: number; online?: boolean } | null = null;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          msg = null;
+        }
+        // Presence updates just toggle one owner_id in a local set —
+        // handled directly instead of the full refetch below, since a
+        // connection blip shouldn't trigger a round trip for state
+        // that hasn't actually changed.
+        if (msg?.type === "presence" && typeof msg.owner_id === "number") {
+          const ownerId = msg.owner_id;
+          const online = msg.online;
+          setConnectedOwnerIds((prev) => {
+            const next = new Set(prev);
+            if (online) next.add(ownerId);
+            else next.delete(ownerId);
+            return next;
+          });
+          return;
+        }
+        // Every other event type (pick_made/draft_status/pick_undone) just
         // means "something changed" — a draft pick happens roughly
         // once every 90 seconds for a handful of connected clients, so
         // a full REST refetch on each event is simpler and safer than
@@ -294,7 +323,20 @@ export function DraftRoom({
                   : `Round ${currentPick?.round ?? "—"} · Pick ${config!.current_pick_number}`}
           </p>
           {config!.status === "in_progress" && currentPick && (
-            <p className="text-lg font-semibold">
+            <p className="flex items-center gap-1.5 text-lg font-semibold">
+              {/* ESPN-style "are they actually here" indicator — the
+                  same signal the round-2+ post-autopick grace period
+                  is really watching for (app/domain/draft_engine.py's
+                  AUTOPICK_GRACE_SECONDS), surfaced visually so the room
+                  can see it too, not just infer it from a fast
+                  autopick after the fact. */}
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${
+                  connectedOwnerIds.has(currentPick.owner_id) ? "bg-emerald-500" : "bg-black/20 dark:bg-white/20"
+                }`}
+                title={connectedOwnerIds.has(currentPick.owner_id) ? "Signed into the draft" : "Not signed in"}
+                aria-hidden
+              />
               On the clock: {teamNameByOwner.get(currentPick.owner_id) ?? currentPick.owner_name}
               {isMyTurn && <span className="ml-2 text-sky-500">(you)</span>}
             </p>

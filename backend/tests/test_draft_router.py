@@ -22,7 +22,9 @@ from app import db as db_module
 from app.auth.session import create_session_token, create_ticket_token
 from app.domain import draft_engine
 from app.main import app
+from app.notifications import draft_events
 from app.queries import leagues as league_queries
+from app.queries import owner_preferences as preferences_queries
 from tests.conftest import TEST_SEASON
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -223,6 +225,61 @@ async def test_setup_and_start_and_pick_flow(pool, monkeypatch):
         assert state_resp.json()["config"]["current_pick_number"] == 2
 
 
+async def test_pick_pushes_on_the_clock_to_the_next_picker(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "notify_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "notify_b")
+    player = await _seed_player(pool, "notify1")
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+        return 1
+
+    monkeypatch.setattr(draft_events.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    async with pool.acquire() as conn:
+        await preferences_queries.update_preferences(conn, owner_b, {"push_enabled": True})
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+        await client.post("/draft/start")
+        resp = await client.post("/draft/pick", json={"sleeper_player_id": player})
+        assert resp.status_code == 200
+
+    assert len(sent) == 1
+    notified_owner_id, payload = sent[0]
+    assert notified_owner_id == owner_b  # owner_b is up next after owner_a's pick
+    assert payload["data"]["type"] == "draft_on_the_clock"
+
+
+async def test_pick_does_not_push_when_the_next_picker_has_push_disabled(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "nopush_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "nopush_b")
+    player = await _seed_player(pool, "nopush1")
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+        return 1
+
+    monkeypatch.setattr(draft_events.dispatcher, "send_to_owner", _fake_send_to_owner)
+    # push_enabled defaults to False — owner_b never subscribed.
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+        await client.post("/draft/start")
+        resp = await client.post("/draft/pick", json={"sleeper_player_id": player})
+        assert resp.status_code == 200
+
+    assert sent == []
+
+
 async def test_undo_last_pick_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
     _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "undo_a")
@@ -264,6 +321,34 @@ async def test_websocket_sends_initial_state_via_ticket(pool, monkeypatch):
 
     assert received["type"] == "draft_state"
     assert received["config"]["season"] == TEST_SEASON
+
+
+async def test_websocket_initial_state_reports_only_self_when_alone(pool, monkeypatch):
+    """A single real connection's own connected_owner_ids snapshot —
+    the live multi-socket presence-broadcast behavior itself
+    (connect/disconnect transitions, exclude-self) is covered by
+    test_draft_manager.py's pure unit tests against DraftConnectionManager
+    directly (fake sockets, no real event loop/thread boundary), same
+    split chat/manager.py's own tests use for the identical reason:
+    two *simultaneously open* real WebSocket connections through
+    TestClient's own background thread/event-loop, both touching the
+    single asyncpg pool singleton, is a real way to deadlock or corrupt
+    that pool for every test that runs afterward in the same session —
+    caught the hard way while writing this test."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "presence_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "presence_b")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS, league_id=league_id)
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(user_a, owner_a)}") as ws:
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["type"] == "draft_state"
+    assert received["connected_owner_ids"] == [owner_a]
 
 
 async def test_reset_requires_commissioner(pool, monkeypatch):

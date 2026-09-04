@@ -332,6 +332,16 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM conversations WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        # keeper_selections.league_id -> leagues.id — the owner_id-scoped
+        # sweep further down (for owners.espn_member_id LIKE 'test-%')
+        # doesn't catch a selection tied to a league created by this
+        # fixture but seeded for a non-"test-%"-prefixed owner (e.g. a
+        # real-shaped owner from _seed_league_owner-style helpers), which
+        # otherwise leaves an orphaned row blocking the DELETE FROM
+        # leagues below with a real FK violation.
+        await conn.execute(
+            "DELETE FROM keeper_selections WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owners.user_id -> users.id, so capture which users are linked to
         # test owners *before* deleting those owners, then delete the

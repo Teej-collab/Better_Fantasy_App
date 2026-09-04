@@ -80,3 +80,25 @@ def chat_reply(sender_name: str, body: str) -> dict:
         "url": "/chat",
         "data": {"type": "chat_reply"},
     }
+
+
+def draft_starting_soon(minutes: int) -> dict:
+    return {
+        "title": "🏈 Draft starting soon",
+        "body": f"The draft starts in {minutes} minutes — get in the room.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/draft",
+        "data": {"type": "draft_starting_soon"},
+    }
+
+
+def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:
+    return {
+        "title": "🏈 You're on the clock",
+        "body": f"Round {round_num}, pick {pick_number} — you have {seconds} seconds to pick.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/draft",
+        "data": {"type": "draft_on_the_clock"},
+    }

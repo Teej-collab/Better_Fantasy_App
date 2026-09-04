@@ -41,6 +41,7 @@ from app.domain.draft_exceptions import (
     PlayerNotDraftableError,
 )
 from app.draft.manager import manager
+from app.notifications.draft_events import notify_on_the_clock
 from app.queries import draft as draft_queries
 
 router = APIRouter(prefix="/draft", tags=["draft"])
@@ -97,7 +98,12 @@ async def draft_state(request: Request):
         state = await draft_queries.get_draft_state(conn, season, league_id)
     if state is None:
         raise HTTPException(status_code=404, detail="No draft configured for this season")
-    return state
+    # In-process presence, not a DB read — who's actually got the draft
+    # room open right now (app/draft/manager.py), same "who's signed
+    # in" signal the WS handshake's own draft_state frame carries. This
+    # REST read is what a fresh page load (draft/page.tsx's server-side
+    # fetch, before the WS even connects) shows first.
+    return {**state, "connected_owner_ids": manager.connected_owner_ids((season, league_id))}
 
 
 class PickRequest(BaseModel):
@@ -119,6 +125,7 @@ async def submit_pick(body: PickRequest, request: Request):
         raise _map_draft_error(e) from e
 
     await manager.broadcast_to_draft((season, league_id), {"type": "pick_made", **result})
+    await notify_on_the_clock(season, league_id, result["config"])
     return result
 
 
@@ -359,6 +366,7 @@ async def start_draft(request: Request):
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
     await manager.broadcast_to_draft((season, league_id), result)
+    await notify_on_the_clock(season, league_id, config)
     return result
 
 
@@ -391,6 +399,7 @@ async def resume_draft(request: Request):
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
     await manager.broadcast_to_draft((season, league_id), result)
+    await notify_on_the_clock(season, league_id, config)
     return result
 
 
@@ -406,6 +415,7 @@ async def undo_last_pick(request: Request):
     except DraftError as e:
         raise _map_draft_error(e) from e
     await manager.broadcast_to_draft((season, league_id), {"type": "pick_undone", **result})
+    await notify_on_the_clock(season, league_id, result["config"])
     return result
 
 
@@ -439,14 +449,21 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
             return
         state = await draft_queries.get_draft_state(conn, season, league_id)
 
+    owner_id = payload["owner_id"]
     room = (season, league_id)
-    await manager.connect(room, websocket)
+    await manager.connect(room, owner_id, websocket)
     try:
         if state is None:
             await websocket.send_json({"type": "error", "detail": "No draft configured for this season"})
             await websocket.close(code=4404)
             return
-        await websocket.send_json(jsonable_encoder({"type": "draft_state", **state}))
+        # connected_owner_ids includes this connection itself (just
+        # added above) — a client that joins mid-draft needs this
+        # initial snapshot since it won't see its own past "presence"
+        # broadcasts, same as GET /chat/members' own initial-online-
+        # snapshot reasoning.
+        state_with_presence = {**state, "connected_owner_ids": manager.connected_owner_ids(room)}
+        await websocket.send_json(jsonable_encoder({"type": "draft_state", **state_with_presence}))
 
         # Receive-only, same as gamecast_ws — nothing a client needs to
         # send the draft room beyond the handshake; receive_text() here
@@ -456,4 +473,4 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
     except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(room, websocket)
+        await manager.disconnect(room, owner_id, websocket)

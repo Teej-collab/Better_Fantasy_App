@@ -1,7 +1,7 @@
 import datetime
 
 from app.queries import leagues as league_queries
-from app.scheduler import _run_keeper_lock_job
+from app.scheduler import _run_draft_starting_soon_job, _run_keeper_lock_job
 from tests.conftest import TEST_SEASON
 
 
@@ -105,3 +105,84 @@ async def test_keeper_lock_job_is_idempotent_on_an_already_locked_league(pool, m
         )
 
     assert first == second  # second run is a no-op, doesn't bump locked_at
+
+
+async def test_draft_starting_soon_job_notifies_a_league_within_15_minutes(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "starting-soon-due")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=10))
+
+        # No draft_picks seeded — the job's own owner lookup then finds
+        # nobody to notify, which notify_draft_starting_soon treats as
+        # a no-op before it ever reaches a real push provider. What
+        # this test actually verifies is the idempotency flag itself.
+        await _run_draft_starting_soon_job()
+
+        row = await conn.fetchrow(
+            "SELECT starting_soon_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["starting_soon_notified_at"] is not None
+
+
+async def test_draft_starting_soon_job_leaves_a_league_more_than_15_minutes_out_untouched(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "starting-soon-not-due")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(hours=2))
+
+        await _run_draft_starting_soon_job()
+
+        row = await conn.fetchrow(
+            "SELECT starting_soon_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["starting_soon_notified_at"] is None
+
+
+async def test_draft_starting_soon_job_is_idempotent(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "starting-soon-idempotent")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=5))
+
+        await _run_draft_starting_soon_job()
+        first = await conn.fetchval(
+            "SELECT starting_soon_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+        await _run_draft_starting_soon_job()
+        second = await conn.fetchval(
+            "SELECT starting_soon_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+    assert first == second  # second run is a no-op, doesn't re-notify
+
+
+async def test_draft_starting_soon_job_ignores_a_draft_already_in_progress(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "starting-soon-in-progress")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=5))
+        await conn.execute(
+            "UPDATE draft_config SET status = 'in_progress' WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+        await _run_draft_starting_soon_job()
+
+        row = await conn.fetchrow(
+            "SELECT starting_soon_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["starting_soon_notified_at"] is None

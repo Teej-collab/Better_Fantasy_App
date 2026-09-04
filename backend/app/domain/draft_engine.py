@@ -36,6 +36,33 @@ from app.domain.draft_exceptions import (
 from app.domain.roster_slots import total_draftable_slots
 from app.queries import keepers as keeper_queries
 
+# Fixed per the league's own rules, not a commissioner setting (see
+# draft_config.pick_time_limit_seconds' own comment below) — round 1
+# is slower since the whole room is new to the board, every later
+# round tightens up. AUTOPICK_GRACE_SECONDS is the short window an
+# owner gets on their very next pick after being autopicked (a real
+# signal they were away last round) — not "5 seconds after the normal
+# timer," a flat 5-second deadline in place of it, so a still-absent
+# owner gets autopicked again quickly instead of the room waiting out
+# a full round for someone who's already shown they're not there.
+ROUND_1_PICK_SECONDS = 90
+LATER_ROUND_PICK_SECONDS = 60
+AUTOPICK_GRACE_SECONDS = 5
+
+
+async def _effective_pick_time_limit(conn, season: int, pick, league_id: int) -> int:
+    """How long the owner on the clock for `pick` gets, per the rules
+    above. `pick` is a draft_picks row (or equivalent mapping) for the
+    pick about to become current — needs `round` and `owner_id`."""
+    if pick["round"] > 1:
+        prev_round_pick = await conn.fetchrow(
+            "SELECT is_autopick FROM draft_picks WHERE season = $1 AND league_id = $2 AND owner_id = $3 AND round = $4",
+            season, league_id, pick["owner_id"], pick["round"] - 1,
+        )
+        if prev_round_pick is not None and prev_round_pick["is_autopick"]:
+            return AUTOPICK_GRACE_SECONDS
+    return ROUND_1_PICK_SECONDS if pick["round"] == 1 else LATER_ROUND_PICK_SECONDS
+
 
 def _config_dict(row) -> dict:
     """asyncpg doesn't auto-decode JSONB — roster_slots comes back as a
@@ -74,7 +101,16 @@ async def create_draft(
     mind before the real one). This is deliberately a hard stop, not a
     silent overwrite: draft_picks/current_rosters rows from a real
     draft are exactly the kind of data a silent re-setup could quietly
-    destroy."""
+    destroy.
+
+    pick_time_limit_seconds is still accepted and stored (no caller
+    ever actually set it from a real UI control) but the live clock no
+    longer reads it — _effective_pick_time_limit above computes the
+    real per-pick deadline from fixed league rules (round 1 vs. later
+    rounds, plus the post-autopick grace window) instead of one flat
+    commissioner-set value. Left in place rather than removed: harmless
+    to keep accepting, and easy to wire back up as a real per-league
+    setting later if that's ever wanted again."""
     async with conn.transaction():
         exists = await conn.fetchval(
             "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
@@ -320,13 +356,13 @@ async def seed_keepers_from_locked_selections(conn, season: int, league_id: int 
 
 
 async def _advance_to_next_open_pick(
-    conn, season: int, from_pick_number: int, pick_time_limit_seconds: int, league_id: int = DEFAULT_LEAGUE_ID
+    conn, season: int, from_pick_number: int, league_id: int = DEFAULT_LEAGUE_ID
 ) -> dict:
     """Walks forward from from_pick_number, skipping any pick that
     already has a player (a pre-filled keeper pick — see module
     docstring), and sets draft_config to either the next open pick
-    (with a fresh deadline) or 'complete' if none remain. Returns the
-    updated draft_config row."""
+    (with a fresh deadline, per _effective_pick_time_limit) or
+    'complete' if none remain. Returns the updated draft_config row."""
     pick_number = from_pick_number
     while True:
         pick = await conn.fetchrow(
@@ -344,7 +380,8 @@ async def _advance_to_next_open_pick(
                 pick_number, season, league_id,
             ))
         if pick["sleeper_player_id"] is None:
-            deadline = datetime.now(timezone.utc) + timedelta(seconds=pick_time_limit_seconds)
+            time_limit = await _effective_pick_time_limit(conn, season, pick, league_id)
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=time_limit)
             return _config_dict(await conn.fetchrow(
                 """
                 UPDATE draft_config SET current_pick_number = $1, current_pick_deadline = $2
@@ -366,7 +403,7 @@ async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
             "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1 AND league_id = $2",
             season, league_id,
         )
-        return await _advance_to_next_open_pick(conn, season, 1, config["pick_time_limit_seconds"], league_id)
+        return await _advance_to_next_open_pick(conn, season, 1, league_id)
 
 
 async def pause_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
@@ -395,7 +432,22 @@ async def resume_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) ->
         )
         if config is None or config["status"] != "paused":
             raise DraftNotInProgressError(f"Draft for season {season} isn't paused")
-        remaining = config["paused_remaining_seconds"] or config["pick_time_limit_seconds"]
+        remaining = config["paused_remaining_seconds"]
+        if not remaining:
+            # Defensive fallback — paused_remaining_seconds should
+            # always be a real value coming out of pause_draft (see its
+            # own docstring), but if it's ever missing, fall back to
+            # the current pick's own effective time limit rather than
+            # the no-longer-meaningful flat draft_config value.
+            current_pick = await conn.fetchrow(
+                "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
+                season, config["current_pick_number"], league_id,
+            )
+            remaining = (
+                await _effective_pick_time_limit(conn, season, current_pick, league_id)
+                if current_pick is not None
+                else LATER_ROUND_PICK_SECONDS
+            )
         deadline = datetime.now(timezone.utc) + timedelta(seconds=remaining)
         return _config_dict(await conn.fetchrow(
             """
@@ -453,9 +505,7 @@ async def make_pick(
             "VALUES ($1, $2, $3, 'BE', 'draft', $4)",
             season, team_id, sleeper_player_id, league_id,
         )
-        new_config = await _advance_to_next_open_pick(
-            conn, season, pick["pick_number"] + 1, config["pick_time_limit_seconds"], league_id
-        )
+        new_config = await _advance_to_next_open_pick(conn, season, pick["pick_number"] + 1, league_id)
         made_pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
             season, pick["pick_number"], league_id,
@@ -548,7 +598,8 @@ async def undo_last_pick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) 
             "WHERE season = $1 AND pick_number = $2 AND league_id = $3",
             season, last_pick["pick_number"], league_id,
         )
-        deadline = datetime.now(timezone.utc) + timedelta(seconds=config["pick_time_limit_seconds"])
+        time_limit = await _effective_pick_time_limit(conn, season, last_pick, league_id)
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=time_limit)
         new_config = await conn.fetchrow(
             """
             UPDATE draft_config SET status = 'in_progress', current_pick_number = $1, current_pick_deadline = $2,

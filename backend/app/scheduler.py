@@ -83,6 +83,7 @@ from app.domain.draft_exceptions import DraftError
 from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
+from app.notifications.draft_events import notify_draft_starting_soon, notify_on_the_clock
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
@@ -185,6 +186,7 @@ async def _run_draft_clock_job():
                 logger.exception("Draft autopick failed for season=%s league_id=%s", season, league_id)
                 continue
             await draft_manager.broadcast_to_draft((season, league_id), {"type": "pick_made", **result})
+            await notify_on_the_clock(season, league_id, result["config"])
             logger.info(
                 "Draft autopick: season=%s league_id=%s pick=%s", season, league_id, result["pick"]["pick_number"]
             )
@@ -226,6 +228,47 @@ async def _run_keeper_lock_job():
             locked = await keeper_queries.lock_rules(conn, season, league_id=league_id)
             if locked is not None:
                 logger.info("Keeper auto-lock: season=%s league_id=%s", season, league_id)
+
+
+async def _run_draft_starting_soon_job():
+    """Pushes every real drafting owner once, ~15 minutes before their
+    league's real draft (draft_config.scheduled_start, PUT /draft/
+    schedule) — only ever fires for a draft that hasn't started yet, and
+    only once per draft: starting_soon_notified_at is the idempotency
+    flag (see its own migration), set right after the push goes out, so
+    a league that crosses the threshold gets notified exactly once even
+    though this job re-checks on every tick — same shape as
+    _run_keeper_lock_job above, just without a natural DB state change
+    of its own to key off. The window itself (scheduled_start between
+    now and 15 minutes from now) means a league whose reminder job was
+    down through the whole window silently misses it rather than
+    firing a stale "starting soon" push for a draft that already
+    started — an acceptable trade for staying simple."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        due = await conn.fetch(
+            """
+            SELECT league_id FROM draft_config
+            WHERE season = $1 AND status = 'not_started' AND starting_soon_notified_at IS NULL
+              AND scheduled_start IS NOT NULL
+              AND scheduled_start BETWEEN $2 AND $2 + interval '15 minutes'
+            """,
+            season, datetime.now(timezone.utc),
+        )
+        for row in due:
+            league_id = row["league_id"]
+            owner_rows = await conn.fetch(
+                "SELECT DISTINCT owner_id FROM draft_picks WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            owner_ids = [r["owner_id"] for r in owner_rows]
+            await notify_draft_starting_soon(season, league_id, owner_ids, minutes=15)
+            await conn.execute(
+                "UPDATE draft_config SET starting_soon_notified_at = now() WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            logger.info("Draft starting-soon reminder sent: season=%s league_id=%s", season, league_id)
 
 
 async def _run_weekly_compute_job():
@@ -289,6 +332,11 @@ def start_scheduler():
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
         _scheduler.add_job(_run_draft_clock_job, "interval", seconds=2, id="draft_clock")
         logger.info("Draft clock scheduler started (every 2 seconds)")
+        # Same enable flag as the clock above — both are "is the draft
+        # system live" concerns, not worth a second env var for the
+        # commissioner to remember to set.
+        _scheduler.add_job(_run_draft_starting_soon_job, "interval", seconds=60, id="draft_starting_soon")
+        logger.info("Draft starting-soon reminder scheduler started (every 60 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_KEEPER_LOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):

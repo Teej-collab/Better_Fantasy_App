@@ -52,7 +52,15 @@ export type DraftPick = {
   made_at: string | null;
 };
 
-export type DraftState = { config: DraftConfig; picks: DraftPick[] };
+export type DraftState = {
+  config: DraftConfig;
+  picks: DraftPick[];
+  // In-process presence (app/draft/manager.py), not a DB column — every
+  // owner_id with the draft room open right now, on any device. Kept
+  // current client-side by live "presence" WebSocket events after this
+  // initial snapshot (see DraftRoom.tsx).
+  connected_owner_ids: number[];
+};
 
 export type DraftPoolPlayer = {
   sleeper_player_id: string;

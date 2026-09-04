@@ -5,6 +5,7 @@ engine's whole job is DB transaction/locking correctness, not
 provider-shaped data."""
 import asyncio
 import itertools
+from datetime import datetime, timezone
 
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
@@ -148,6 +149,71 @@ async def test_make_pick_seeds_current_rosters(pool):
         )
     assert row is not None
     assert row["acquired_via"] == "draft"
+
+
+async def test_round_1_pick_gets_a_90_second_deadline(pool):
+    await _setup_two_team_draft(pool)
+    async with pool.acquire() as conn:
+        config = await conn.fetchrow(
+            "SELECT current_pick_deadline FROM draft_config WHERE season = $1", TEST_SEASON
+        )
+    remaining = (config["current_pick_deadline"] - datetime.now(timezone.utc)).total_seconds()
+    assert 85 <= remaining <= 90
+
+
+async def test_round_2_pick_gets_a_60_second_deadline(pool):
+    owner_a, _owner_b = await _setup_two_team_draft(pool)
+    player = await _seed_player(pool, "r2")
+
+    async with pool.acquire() as conn:
+        # Snake order for 2 teams: round 1 = [a, b], round 2 = [b, a] —
+        # owner_a's own pick here is round 1, so the pick that opens
+        # right after it (owner_b, still round 1) is the one to check.
+        result = await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player)
+
+    remaining = (result["config"]["current_pick_deadline"] - datetime.now(timezone.utc)).total_seconds()
+    assert 85 <= remaining <= 90  # still owner_b's round-1 pick, not round 2 yet
+
+
+async def test_autopicked_owner_gets_a_5_second_grace_period_next_round(pool):
+    """owner_a misses round 1 (autopicked) — their round 2 pick (snake
+    order puts it right after owner_b's round-1 AND round-2 picks, the
+    4th pick overall) should get the short grace window instead of the
+    normal 60s, since their last pick was an autopick."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    await _seed_player(pool, "grace-a1")  # for owner_a's autopick
+    player_b1 = await _seed_player(pool, "grace-b1")
+    player_b2 = await _seed_player(pool, "grace-b2")
+
+    async with pool.acquire() as conn:
+        await draft_engine.autopick(conn, TEST_SEASON)  # owner_a's round-1 pick
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b1)  # owner_b round 1
+        result = await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b2)  # owner_b round 2
+
+    config = result["config"]
+    assert config["current_pick_number"] == 4  # owner_a's round-2 pick
+    remaining = (config["current_pick_deadline"] - datetime.now(timezone.utc)).total_seconds()
+    assert 0 <= remaining <= 5
+
+
+async def test_manually_picked_owner_gets_normal_timer_next_round(pool):
+    """Contrast case for the grace-period test above — owner_a picks
+    for themself in round 1 (no autopick involved), so their round-2
+    pick should get the normal 60s, not the grace window."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    player_a1 = await _seed_player(pool, "normal-a1")
+    player_b1 = await _seed_player(pool, "normal-b1")
+    player_b2 = await _seed_player(pool, "normal-b2")
+
+    async with pool.acquire() as conn:
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player_a1)  # owner_a round 1, live pick
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b1)  # owner_b round 1
+        result = await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b2)  # owner_b round 2
+
+    config = result["config"]
+    assert config["current_pick_number"] == 4  # owner_a's round-2 pick
+    remaining = (config["current_pick_deadline"] - datetime.now(timezone.utc)).total_seconds()
+    assert 55 <= remaining <= 60
 
 
 async def test_concurrent_picks_only_one_succeeds(pool):
