@@ -143,38 +143,51 @@ async function WeekView({
 
   return (
     <section
-      className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg dark:divide-white/5"
+      className="neon-panel flex flex-col rounded-lg"
       style={panelGlowStyle(SECTION_COLORS.powerRankings)}
     >
-      <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold text-black/50 uppercase dark:text-white/50">
-        <span>Week {week}</span>
-        <span className="flex gap-4">
-          <span>Luck</span>
-          <span>SOS</span>
-        </span>
-      </div>
-      {rankings.map((r: WeekPowerRanking) => (
-        <div key={r.team_id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="w-6 shrink-0 text-center font-bold tabular-nums">{r.power_rank}</span>
-            <div className="min-w-0">
-              <p className="truncate font-medium">{r.team_name}</p>
-              <p className="truncate text-xs text-black/50 dark:text-white/50">{r.owner_name}</p>
+      {/* overflow-x-auto, matching TrendView's table below — belt-and-
+          suspenders for whatever doesn't fit the tightened widths at
+          extreme accessibility text sizes or very long names, so it's
+          reachable via horizontal swipe instead of being silently
+          clipped by globals.css's page-level overflow-x: hidden.
+          divide-y moved down here (was on the <section> itself) so row
+          dividers still render now that the header/rows are one level
+          deeper, inside this scroll wrapper. */}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-full flex-col divide-y divide-black/5 dark:divide-white/5">
+          <div className="flex items-center justify-between gap-2 px-4 py-2 text-xs font-semibold text-black/50 uppercase dark:text-white/50">
+            <span>Week {week}</span>
+            <span className="flex shrink-0 gap-2">
+              <span className="w-10 text-right">Luck</span>
+              <span className="w-10 text-right">SOS</span>
+              <span className="w-10 text-right">Trend</span>
+            </span>
+          </div>
+          {rankings.map((r: WeekPowerRanking) => (
+            <div key={r.team_id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="w-6 shrink-0 text-center font-bold tabular-nums">{r.power_rank}</span>
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{r.team_name}</p>
+                  <p className="truncate text-xs text-black/50 dark:text-white/50">{r.owner_name}</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 tabular-nums">
+                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
+                  {r.luck_score !== null ? r.luck_score.toFixed(1) : "—"}
+                </span>
+                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
+                  {r.sos !== null ? r.sos.toFixed(2) : "—"}
+                </span>
+                <span className="w-10 text-right text-xs">
+                  <MovementBadge movement={r.movement} />
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-4 tabular-nums">
-            <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
-              {r.luck_score !== null ? r.luck_score.toFixed(1) : "—"}
-            </span>
-            <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
-              {r.sos !== null ? r.sos.toFixed(2) : "—"}
-            </span>
-            <span className="w-10 text-right text-xs">
-              <MovementBadge movement={r.movement} />
-            </span>
-          </div>
+          ))}
         </div>
-      ))}
+      </div>
       {rankings.length === 0 && (
         <p className="px-4 py-3 text-sm text-black/50 dark:text-white/50">No data for week {week}.</p>
       )}

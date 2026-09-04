@@ -384,8 +384,8 @@ function RecordBox({
       {summary ? (
         <div className="grid grid-cols-3 gap-1">
           <MiniStat label="Record" value={summary.record} />
-          <MiniStat label="PF" value={summary.pf} valueClassName="text-sky-300" />
-          <MiniStat label="PA" value={summary.pa} valueClassName="text-orange-300" />
+          <MiniStat label="PF" value={Math.round(summary.pf)} valueClassName="text-sky-300" />
+          <MiniStat label="PA" value={Math.round(summary.pa)} valueClassName="text-orange-300" />
         </div>
       ) : (
         <p className="text-xs text-white/40">{emptyText}</p>
@@ -450,9 +450,16 @@ function MiniStat({
   valueClassName?: string;
 }) {
   return (
-    <div>
+    // min-w-0 is the real fix: a grid item's default min-width: auto
+    // refuses to shrink below its content's intrinsic width no matter
+    // how narrow the grid-cols-3 track above is, which is what let a
+    // long PF/PA value (e.g. "3210.08") overflow sideways into the
+    // next column instead of respecting its own cell — the literal
+    // "bleeding together" bug (2026-09-03). truncate on the value
+    // below is the safety net once this cell can actually shrink.
+    <div className="min-w-0">
       <dt className="text-[10px] tracking-wide text-white/40 uppercase">{label}</dt>
-      <dd className={`text-sm font-semibold tabular-nums ${valueClassName}`}>{value}</dd>
+      <dd className={`truncate text-sm font-semibold tabular-nums ${valueClassName}`}>{value}</dd>
     </div>
   );
 }

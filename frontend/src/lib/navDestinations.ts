@@ -227,29 +227,25 @@ export function isValidNavOrder(order: string[]): order is DestinationKey[] {
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
-  "history",
+  "powerRankings",
   "rivalries",
   "rules",
-  "powerRankings",
+  "history",
 ];
 
 // Primary/secondary split for LeagueSubNav.tsx's own two-tier layout —
 // grouping is specific to how that one component presents these tabs,
 // not a reordering of LEAGUE_SUBNAV_ORDER itself (Home's Discover grid
 // still reads that flat list directly and has no concept of "primary").
-// Added 2026-09-02 (the same day LEAGUE_SUBNAV_ORDER above shrank from
-// ten entries to six): ten flat, equally-weighted tabs in one
-// scrolling row had no hierarchy at all — the 2026-09-02 re-audit's
-// Critical Issue #4. Primary = "what's the current state of my
-// league" (checked often, no extra tap); everything else collapses
-// behind LeagueSubNav's own "More" toggle. "history" takes the primary
-// slot playerCards used to hold — it now carries that same "check it
-// often" weight, being one of the three things folded into it.
+// Exactly 3 tabs each side (2026-09-03 fix) — LeagueSubNav.tsx renders
+// each side as a fixed 3-column grid, so this set's size must stay 3
+// for the two rows to come out even; changing it requires updating
+// LeagueSubNav's grid-cols count to match. Primary = "what's the
+// current state of my league" (checked often, no extra tap).
 export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
   "league",
   "standings",
   "powerRankings",
-  "history",
 ]);
 
 // My Team's own sub-nav (MyTeamSubNav.tsx) — the "my own roster"

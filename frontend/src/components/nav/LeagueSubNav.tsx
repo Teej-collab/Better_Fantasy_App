@@ -29,12 +29,16 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * "League" one click away in the primary header, this is purely the
  * mobile "how do I get back" affordance from spec §23.
  *
- * Two fixed rows since 2026-09-02: LEAGUE_SUBNAV_PRIMARY (lib/
- * navDestinations.ts) is row 1, everything else in LEAGUE_SUBNAV_ORDER
- * is row 2 — both always visible, no collapse/toggle. (A "More" toggle
- * briefly stood in for row 2 the same day; replaced with a second
- * static row per the owner's own follow-up call — a fixed row you can
- * always see beats a hidden one you have to tap open.)
+ * Two fixed rows of 3 since 2026-09-02 (row split rebalanced 2026-09-03
+ * from 4+2 to 3+3): LEAGUE_SUBNAV_PRIMARY (lib/navDestinations.ts) is
+ * row 1, everything else in LEAGUE_SUBNAV_ORDER is row 2 — both always
+ * visible, no collapse/toggle. (A "More" toggle briefly stood in for
+ * row 2 the same day it was introduced; replaced with a second static
+ * row per the owner's own follow-up call — a fixed row you can always
+ * see beats a hidden one you have to tap open.) Each row renders as a
+ * fixed grid-cols-3, not flex-wrap, so it's always exactly one line
+ * regardless of device — see the grid comment below for why flex-wrap
+ * couldn't guarantee that.
  */
 export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
   // awardsAllTime's href is derived from awardsHref the same reason
@@ -56,7 +60,7 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
         key={tab.key}
         href={tab.href}
         aria-current={tab.key === active ? "page" : undefined}
-        className="neon-navlink shrink-0 rounded-full px-3 py-1.5 text-sm font-medium"
+        className="neon-navlink flex w-full items-center justify-center truncate rounded-full px-2 py-1.5 text-xs font-medium sm:px-3 sm:text-sm"
         style={{
           ["--nav-color" as string]: NAV_ACCENT,
           ["--nav-color-cosmic" as string]: DESTINATIONS[tab.key].color,
@@ -76,14 +80,19 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
         ‹ League
       </Link>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
-        {/* flex-wrap, not overflow-x-auto — a narrow mobile viewport
-            can't fit every tab in a row on one line, and a scrolling row
-            with no visible affordance would leave the far end of a row
-            undiscoverable. Wrapping keeps every tab always on screen
-            with no hidden scroll; on desktop's wider primary nav each
-            row still renders as one line, same as before. */}
-        <div className="flex flex-wrap items-center gap-1">{primaryTabs.map(tabLink)}</div>
-        <div className="flex flex-wrap items-center gap-1">{secondaryTabs.map(tabLink)}</div>
+        {/* Fixed 3-column grid, not flex-wrap — flex-wrap's row-break
+            point depends on each pill's rendered text width, which
+            doesn't scale monotonically with viewport width (iOS font
+            metrics/text-size-adjust can make a *wider* phone wrap
+            *more* than a narrower one — confirmed 2026-09-03 from two
+            real devices showing 3 rows vs. 2 rows for identical
+            markup). A 3-item grid-cols-3 row is structurally always
+            exactly one row regardless of device, since grid doesn't
+            add rows until item count exceeds column count. Each pill
+            fills its cell (w-full) and truncates as a safety net
+            rather than sizing to its own content. */}
+        <div className="grid grid-cols-3 gap-1">{primaryTabs.map(tabLink)}</div>
+        <div className="grid grid-cols-3 gap-1">{secondaryTabs.map(tabLink)}</div>
       </nav>
     </div>
   );
