@@ -6,7 +6,16 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearSession } from "@/lib/logout";
 
-export type Me = { user_id: number; owner_id: number; display_name: string | null; is_commissioner: boolean };
+export type Me = {
+  user_id: number;
+  owner_id: number;
+  display_name: string | null;
+  is_commissioner: boolean;
+  // League #1's commissioner specifically (the real site owner) — see
+  // lib/api.ts's Me type for why this is a separate flag from
+  // is_commissioner above, which tracks whichever league is active.
+  is_site_owner: boolean;
+};
 
 /**
  * Replaces the old plain "{name} / Sign out" pair in AuthStatus.tsx —
@@ -96,6 +105,10 @@ export function AccountMenu({ me }: { me: Me }) {
       : []),
     { key: "settings", label: "Settings", href: "/settings" },
     { key: "notifications", label: "Notifications", href: "/settings?section=notifications" },
+    // Site-owner-only (2026-09) — who's currently in the app, usage
+    // stats. Not a per-league commissioner tool, so it lives here
+    // rather than under Commissioner Tools above.
+    ...(me.is_site_owner ? [{ key: "admin", label: "Admin", href: "/admin" }] : []),
     { key: "logout", label: "Log Out", onClick: handleLogout, danger: true },
   ];
 

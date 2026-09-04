@@ -596,6 +596,64 @@ async def test_auth_me_reports_false_commissioner_for_a_regular_member(pool, mon
         assert me_body["is_commissioner"] is False
 
 
+async def test_auth_me_reports_site_owner_true_for_league_one_commissioner(pool, monkeypatch):
+    """is_site_owner is League #1 specifically (app/routers/admin.py's
+    own require_commissioner_of(DEFAULT_LEAGUE_ID) gate), not
+    is_commissioner's "whichever league is active" check — drives the
+    Admin link in AccountMenu.tsx."""
+    from app.config import DEFAULT_LEAGUE_ID
+
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-me-siteowner@example.com", "password": "correct-horse", "display_name": "Site Owner"},
+        )
+        user_id = (await client.get("/auth/me")).json()["user_id"]
+
+        async with pool.acquire() as conn:
+            # Raw upsert, not league_queries.add_member — signup may
+            # already have auto-enrolled this user into League #1 as a
+            # plain member (see app/queries/auth.py), and add_member's
+            # own ON CONFLICT DO NOTHING would leave that role
+            # untouched rather than promoting it to commissioner.
+            await conn.execute(
+                """
+                INSERT INTO league_members (league_id, user_id, role) VALUES ($1, $2, 'commissioner')
+                ON CONFLICT (league_id, user_id) DO UPDATE SET role = 'commissioner'
+                """,
+                DEFAULT_LEAGUE_ID, user_id,
+            )
+
+        me_resp = await client.get("/auth/me")
+        assert me_resp.json()["is_site_owner"] is True
+
+
+async def test_auth_me_reports_site_owner_false_for_a_different_leagues_commissioner(pool, monkeypatch):
+    """A real commissioner of their OWN (non-League-#1) league is still
+    is_commissioner=True for their own active league, but must not be
+    treated as the site owner — the two are genuinely different
+    people, and is_site_owner gates a real capability (the /admin/*
+    usage dashboard) that has nothing to do with running their own
+    league."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={
+                "email": "test-me-notsiteowner@example.com",
+                "password": "correct-horse",
+                "display_name": "Other Commish",
+            },
+        )
+        await client.post("/leagues", json={"name": "Test League Not Site Owner"})
+
+        me_resp = await client.get("/auth/me")
+        me_body = me_resp.json()
+        assert me_body["is_commissioner"] is True
+        assert me_body["is_site_owner"] is False
+
+
 async def test_signup_rejects_duplicate_email(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
     async with _client() as client:

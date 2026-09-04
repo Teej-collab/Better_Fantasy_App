@@ -917,6 +917,11 @@ export type Me = {
   owner_id: number;
   display_name: string | null;
   is_commissioner: boolean;
+  // League #1's commissioner specifically, not "commissioner of
+  // whichever league is currently active" (that's is_commissioner
+  // above) — the same require_commissioner_of(DEFAULT_LEAGUE_ID) gate
+  // /admin/* itself enforces. Drives AccountMenu.tsx's Admin link.
+  is_site_owner: boolean;
   active_league_id: number | null;
 };
 
