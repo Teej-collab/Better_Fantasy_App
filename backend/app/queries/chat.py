@@ -63,6 +63,25 @@ async def list_conversation_participant_ids(conn, conversation_id: int) -> list[
     return [r["owner_id"] for r in rows]
 
 
+async def list_conversation_preview_avatars(conn, conversation_id: int, limit: int = 3):
+    """A handful of participants (deterministic order — by owner_id) for
+    the conversation list's group-avatar-cluster on the league and
+    commish_corner rows, which have no single "other person" the way a
+    direct conversation does."""
+    rows = await conn.fetch(
+        """
+        SELECT o.owner_id, o.display_name, o.chat_color, o.logo_url
+        FROM conversation_participants cp
+        JOIN owners o ON o.owner_id = cp.owner_id
+        WHERE cp.conversation_id = $1
+        ORDER BY o.owner_id
+        LIMIT $2
+        """,
+        conversation_id, limit,
+    )
+    return [dict(r) for r in rows]
+
+
 async def create_conversation_for_league(conn, league_id: int, conv_type: str, owner_ids: list[int]) -> int:
     """The app-layer counterpart to migration e47b2a91c5d8's own one-time
     backfill SQL — used going forward whenever a new league is created
@@ -145,6 +164,15 @@ async def list_conversations_for_owner(conn, owner_id: int):
             JOIN owners o ON o.owner_id = m.owner_id
             ORDER BY m.conversation_id, m.created_at DESC
         ),
+        last_reaction AS (
+            SELECT DISTINCT ON (m.conversation_id)
+                m.conversation_id, r.emoji, r.created_at, r.owner_id AS reactor_owner_id,
+                ro.display_name AS reactor_name, m.body AS reacted_message_body
+            FROM message_reactions r
+            JOIN messages m ON m.id = r.message_id
+            JOIN owners ro ON ro.owner_id = r.owner_id
+            ORDER BY m.conversation_id, r.created_at DESC
+        ),
         unread AS (
             SELECT m.conversation_id, COUNT(*) AS unread_count
             FROM messages m
@@ -160,14 +188,27 @@ async def list_conversations_for_owner(conn, owner_id: int):
             lm.deleted_at AS last_message_deleted_at, lm.owner_name AS last_message_owner_name,
             COALESCE(u.unread_count, 0) AS unread_count,
             (SELECT COUNT(*) FROM conversation_participants cp WHERE cp.conversation_id = c.id) AS member_count,
-            other.owner_id AS other_owner_id, other.display_name AS other_owner_name
+            other.owner_id AS other_owner_id, other.display_name AS other_owner_name,
+            other.chat_color AS other_owner_chat_color, other.logo_url AS other_owner_logo_url,
+            -- Only exposed if the OTHER owner has Read Receipts on —
+            -- their own preference gates whether their read state is
+            -- visible to anyone, same as the live "read" WS broadcast
+            -- (app/routers/chat.py's mark_conversation_read) already
+            -- only fires when the reader's own preference allows it.
+            CASE WHEN COALESCE(other_prefs.read_receipts_enabled, true)
+                 THEN other_cp.last_read_message_id END AS other_last_read_message_id,
+            lr.emoji AS last_reaction_emoji, lr.created_at AS last_reaction_at,
+            lr.reactor_owner_id AS last_reaction_owner_id, lr.reactor_name AS last_reaction_owner_name,
+            lr.reacted_message_body AS last_reaction_message_body
         FROM mine
         JOIN conversations c ON c.id = mine.conversation_id
         LEFT JOIN last_message lm ON lm.conversation_id = c.id
+        LEFT JOIN last_reaction lr ON lr.conversation_id = c.id
         LEFT JOIN unread u ON u.conversation_id = c.id
         LEFT JOIN conversation_participants other_cp
             ON other_cp.conversation_id = c.id AND other_cp.owner_id != $1 AND c.type = 'direct'
         LEFT JOIN owners other ON other.owner_id = other_cp.owner_id
+        LEFT JOIN owner_preferences other_prefs ON other_prefs.owner_id = other_cp.owner_id
         ORDER BY
             CASE c.type WHEN 'league' THEN 0 WHEN 'commish_corner' THEN 1 ELSE 2 END,
             lm.created_at DESC NULLS LAST

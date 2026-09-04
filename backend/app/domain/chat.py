@@ -129,6 +129,31 @@ async def get_conversations_summary(conn, owner_id: int):
                 "body": body,
                 "created_at": r["last_message_at"].isoformat(),
             }
+
+        # A reaction newer than the last message is the more recent real
+        # activity in the conversation — shown as "You reacted ❤️ to
+        # '...'" (or "{Name} reacted...") the same way iMessage's own
+        # conversation list surfaces a tapback as the latest line,
+        # composed here (not left to the frontend) the same way the
+        # "📷 Photo" substitution above already is.
+        if r["last_reaction_at"] is not None and (
+            last_message is None or r["last_reaction_at"] > r["last_message_at"]
+        ):
+            reactor = "You" if r["last_reaction_owner_id"] == owner_id else r["last_reaction_owner_name"]
+            quoted = (r["last_reaction_message_body"] or "").strip() or "a photo"
+            if len(quoted) > 30:
+                quoted = quoted[:30].rstrip() + "…"
+            # owner_name/body are combined by the frontend as
+            # "{owner_name}: {body}" for every other last_message shape
+            # (see ConversationList.tsx) — body here deliberately omits
+            # the reactor's name a second time so that composition still
+            # reads correctly instead of doubling it up.
+            last_message = {
+                "id": r["last_message_id"],
+                "owner_name": reactor,
+                "body": f"reacted {r['last_reaction_emoji']} to “{quoted}”",
+                "created_at": r["last_reaction_at"].isoformat(),
+            }
         # Every conversation type is postable except commish_corner,
         # where only the commissioner of ITS OWN league can — computed
         # here (not left for the frontend to infer from "am I my active
@@ -140,6 +165,21 @@ async def get_conversations_summary(conn, owner_id: int):
         can_post = True
         if r["type"] == "commish_corner":
             can_post = await chat_queries.is_owner_commissioner_of_league(conn, owner_id, r["league_id"])
+
+        # Avatar data for the conversation list: a direct conversation
+        # has one real "other person" (already joined into this row); a
+        # league/commish_corner conversation has no single other person,
+        # so it gets a small cluster of participants instead — fetched
+        # per-row rather than batched since a viewer only ever has a
+        # couple of these (at most one league + one commish_corner per
+        # league they're in), not one per conversation in the whole list.
+        avatar_group = None
+        if r["type"] in ("league", "commish_corner"):
+            avatar_group = [
+                {"owner_id": a["owner_id"], "display_name": a["display_name"], "chat_color": a["chat_color"], "logo_url": a["logo_url"]}
+                for a in await chat_queries.list_conversation_preview_avatars(conn, r["id"])
+            ]
+
         result.append(
             {
                 "id": r["id"],
@@ -147,6 +187,10 @@ async def get_conversations_summary(conn, owner_id: int):
                 "member_count": r["member_count"],
                 "other_owner_id": r["other_owner_id"],
                 "other_owner_name": r["other_owner_name"],
+                "other_owner_chat_color": r["other_owner_chat_color"],
+                "other_owner_logo_url": r["other_owner_logo_url"],
+                "other_last_read_message_id": r["other_last_read_message_id"],
+                "avatar_group": avatar_group,
                 "unread_count": r["unread_count"],
                 "last_message": last_message,
                 "can_post": can_post,

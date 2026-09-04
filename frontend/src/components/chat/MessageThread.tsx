@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
-import { isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
+import { formatMessageTimestamp, isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
 import { usePresence } from "@/components/PresenceProvider";
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
@@ -15,6 +15,8 @@ export function MessageThread({
   members,
   myOwnerId,
   mentionHighlightingEnabled,
+  readReceiptsEnabled,
+  readAt,
   typingUsers,
   connected,
   hasMoreOlder,
@@ -30,6 +32,16 @@ export function MessageThread({
   members: ChatMember[];
   myOwnerId: number;
   mentionHighlightingEnabled: boolean;
+  // My own Settings > Chat > Read Receipts preference — a receipt line
+  // only ever renders when BOTH this and the conversation's own
+  // other_last_read_message_id (already gated server-side on the OTHER
+  // owner's own preference) allow it.
+  readReceiptsEnabled: boolean;
+  // Client-observed ms timestamp of the last live "read" event for this
+  // conversation, or null if none has landed yet this session (an
+  // already-read conversation opened fresh shows a bare "Read" instead
+  // of "Read {time}" — see ChatApp.tsx's readAtByConversation).
+  readAt: number | null;
   typingUsers: { owner_id: number; owner_name: string }[];
   connected: boolean;
   hasMoreOlder: boolean;
@@ -112,6 +124,22 @@ export function MessageThread({
           ? "Connected"
           : "Reconnecting…";
 
+  // "Delivered"/"Read {time}" under my own last bubble — direct
+  // conversations only (a group thread has no single "read by whom" to
+  // report, the same reason iMessage itself never shows this in a group
+  // chat), and only when I've kept my own Read Receipts preference on
+  // (the OTHER side's own preference already gates other_last_read_
+  // message_id itself, server-side — see lib/api.ts's docstring on it).
+  let readReceipt: string | null = null;
+  if (conversation.type === "direct" && readReceiptsEnabled) {
+    const myLastMessage = [...messages].reverse().find((m) => m.owner_id === myOwnerId && !m.deleted);
+    if (myLastMessage) {
+      const wasRead =
+        conversation.other_last_read_message_id !== null && conversation.other_last_read_message_id >= myLastMessage.id;
+      readReceipt = wasRead ? (readAt ? `Read ${formatMessageTimestamp(new Date(readAt).toISOString())}` : "Read") : "Delivered";
+    }
+  }
+
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-black/10 px-4 py-3 dark:border-white/10">
@@ -165,6 +193,9 @@ export function MessageThread({
               onScrollToMessage={scrollToMessage}
             />
           ))
+        )}
+        {readReceipt && (
+          <p className="mt-1 px-1 text-right text-[11px] text-black/35 dark:text-white/35">{readReceipt}</p>
         )}
       </div>
 

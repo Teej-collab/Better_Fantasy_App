@@ -162,6 +162,73 @@ async def test_conversations_summary_includes_unread_count_and_last_message(pool
     assert a_conv["other_owner_id"] == b
 
 
+async def test_conversations_summary_includes_avatar_group_for_league_type(pool):
+    from app.domain.chat import get_conversations_summary
+
+    # A fresh test league, not real production League #1 (id=1) — a
+    # 'league'-type conversation is meant to be one-per-league, and
+    # conftest's cleanup only ever sweeps up conversations that belong
+    # to a "Test League%"-named league, not anything tied to id=1.
+    _, a, league_id = await _seed_league_owner(pool, "avatar-group-a")
+    _, b, _ = await _seed_league_owner(pool, "avatar-group-b", league_id=league_id)
+    async with pool.acquire() as conn:
+        league_conversation_id = await chat_queries.create_conversation_for_league(conn, league_id, "league", [a, b])
+        a_view = await get_conversations_summary(conn, a)
+
+    conv = next(c for c in a_view if c["id"] == league_conversation_id)
+    assert conv["other_owner_id"] is None  # no single "other person" for a group conversation
+    assert conv["avatar_group"] is not None
+    assert {m["owner_id"] for m in conv["avatar_group"]} == {a, b}
+
+
+async def test_conversations_summary_gates_read_receipt_on_the_other_owners_preference(pool):
+    from app.domain.chat import get_conversations_summary
+
+    a = await _seed_owner(pool, 92)
+    b = await _seed_owner(pool, 93)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        msg = await chat_queries.insert_message(conn, conversation_id, a, "hi", None)
+        await chat_queries.mark_read(conn, conversation_id, b, msg["id"])
+
+        # b has read receipts on (the default) — a sees it.
+        a_view = await get_conversations_summary(conn, a)
+        a_conv = next(c for c in a_view if c["id"] == conversation_id)
+        assert a_conv["other_last_read_message_id"] == msg["id"]
+
+        # b turns read receipts off — a must no longer see b's read state,
+        # same as the live "read" WebSocket broadcast already respects.
+        await preferences_queries.update_preferences(conn, b, {"read_receipts_enabled": False})
+        a_view = await get_conversations_summary(conn, a)
+        a_conv = next(c for c in a_view if c["id"] == conversation_id)
+        assert a_conv["other_last_read_message_id"] is None
+
+
+async def test_conversations_summary_shows_a_newer_reaction_over_an_older_message(pool):
+    from app.domain.chat import get_conversations_summary
+
+    a = await _seed_owner(pool, 94)
+    b = await _seed_owner(pool, 95)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        msg = await chat_queries.insert_message(conn, conversation_id, a, "nice pickup this week", None)
+        await chat_queries.toggle_reaction(conn, msg["id"], b, "🔥")
+
+        a_view = await get_conversations_summary(conn, a)
+        b_view = await get_conversations_summary(conn, b)
+
+    a_conv = next(c for c in a_view if c["id"] == conversation_id)
+    b_conv = next(c for c in b_view if c["id"] == conversation_id)
+    # From a's side, b is the reactor — shown by name, not "You".
+    assert a_conv["last_message"]["owner_name"] == "Chatter 95"
+    assert "🔥" in a_conv["last_message"]["body"]
+    assert "nice pickup this week" in a_conv["last_message"]["body"]
+    # From b's own side, b sees themselves as "You".
+    assert b_conv["last_message"]["owner_name"] == "You"
+
+
 # ---- REST: conversations ----------------------------------------------------
 
 

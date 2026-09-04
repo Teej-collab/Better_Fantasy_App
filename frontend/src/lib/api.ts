@@ -1406,12 +1406,26 @@ export type ChatMessage = {
   reactions: ChatReaction[];
 };
 
+export type ChatAvatar = { owner_id: number; display_name: string; chat_color: string | null; logo_url: string | null };
+
 export type ChatConversation = {
   id: number;
   type: "league" | "direct" | "commish_corner";
   member_count: number;
   other_owner_id: number | null;
   other_owner_name: string | null;
+  other_owner_chat_color: string | null;
+  other_owner_logo_url: string | null;
+  // What the OTHER participant has read up to, in a direct conversation
+  // — null for a group conversation (league/commish_corner), where "read
+  // by whom" is ambiguous the same way iMessage itself never shows read
+  // receipts in a group thread. Seeds MessageThread's read-receipt line;
+  // kept live afterward by the "read" WebSocket event.
+  other_last_read_message_id: number | null;
+  // A few participants (fixed order — by owner_id) for the conversation
+  // list's group-avatar-cluster on league/commish_corner rows, which have
+  // no single "other person" a direct conversation's other_owner_* has.
+  avatar_group: ChatAvatar[] | null;
   unread_count: number;
   last_message: { id: number; owner_name: string; body: string; created_at: string } | null;
   // Every type is postable except commish_corner, where only that

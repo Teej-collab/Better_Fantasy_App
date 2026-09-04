@@ -1,7 +1,79 @@
 "use client";
 
-import type { ChatConversation } from "@/lib/api";
+import type { CSSProperties } from "react";
+import type { ChatAvatar, ChatConversation } from "@/lib/api";
 import { formatConversationListTimestamp } from "@/lib/chatFormat";
+import { initialsFor, readableTextColor } from "@/components/chat/MessageBubble";
+
+function Avatar({
+  name,
+  color,
+  logoUrl,
+  className,
+  style,
+}: {
+  name: string;
+  color: string | null;
+  logoUrl: string | null;
+  className: string;
+  style?: CSSProperties;
+}) {
+  if (logoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
+    return <img src={logoUrl} alt="" aria-hidden className={`${className} object-cover`} style={style} />;
+  }
+  const bg = color ?? "#6b7280";
+  return (
+    <span
+      className={`${className} flex items-center justify-center font-semibold`}
+      style={{ backgroundColor: bg, color: readableTextColor(bg), ...style }}
+      aria-hidden
+    >
+      {initialsFor(name)}
+    </span>
+  );
+}
+
+// Fixed fan-out offsets for up to 3 cluster members, top-left origin —
+// later entries stack toward the bottom-right and sit on top, the same
+// overlapping-circles shape the reference screenshots' group threads use.
+const CLUSTER_OFFSETS = [
+  { top: 0, left: 0, zIndex: 1 },
+  { top: 6, left: 6, zIndex: 2 },
+  { top: 12, left: 12, zIndex: 3 },
+];
+
+// A direct conversation gets one 36px avatar; the league and
+// commish_corner conversations have no single "other person" to show,
+// so they get a small overlapping cluster of up to 3 participants
+// instead (matching the reference screenshots' group-thread treatment).
+function ConversationAvatar({ conversation }: { conversation: ChatConversation }) {
+  if (conversation.avatar_group) {
+    const shown = conversation.avatar_group.slice(0, 3);
+    return (
+      <div className="relative h-[2.6rem] w-[2.6rem] shrink-0">
+        {shown.map((m: ChatAvatar, i) => (
+          <Avatar
+            key={m.owner_id}
+            name={m.display_name}
+            color={m.chat_color}
+            logoUrl={m.logo_url}
+            className="absolute h-6 w-6 rounded-full text-[9px] ring-2 ring-white dark:ring-neutral-950"
+            style={CLUSTER_OFFSETS[i]}
+          />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <Avatar
+      name={conversation.other_owner_name ?? "?"}
+      color={conversation.other_owner_chat_color}
+      logoUrl={conversation.other_owner_logo_url}
+      className="h-9 w-9 shrink-0 rounded-full text-xs"
+    />
+  );
+}
 
 export function ConversationList({
   conversations,
@@ -64,11 +136,12 @@ export function ConversationList({
               <li key={c.id}>
                 <button
                   onClick={() => onSelect(c.id)}
-                  className={`flex w-full items-start justify-between gap-2 px-4 py-3 text-left transition-colors ${
+                  className={`flex w-full items-center justify-between gap-2.5 px-4 py-3 text-left transition-colors ${
                     selectedId === c.id ? "bg-black/[0.04] dark:bg-white/[0.06]" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
                   }`}
                 >
-                  <div className="flex min-w-0 flex-col gap-0.5">
+                  <ConversationAvatar conversation={c} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="flex items-center gap-1.5">
                       {c.type === "league" && <span aria-hidden>🏈</span>}
                       {c.type === "commish_corner" && <span aria-hidden>📢</span>}

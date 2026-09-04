@@ -52,6 +52,14 @@ export function ChatApp({
   const [messagesByConversation, setMessagesByConversation] = useState<Record<number, ChatMessage[]>>({});
   const [hasMoreByConversation, setHasMoreByConversation] = useState<Record<number, boolean>>({});
   const [typingByConversation, setTypingByConversation] = useState<Record<number, TypingUser[]>>({});
+  // Client-observed moment a live "read" WebSocket event landed for a
+  // conversation — the backend only tracks last_read_message_id, not
+  // when that happened, so this is an approximation (real enough for
+  // "Read {time}" to feel right) rather than the recipient's actual
+  // read timestamp. A conversation opened already-read (the initial
+  // server-rendered other_last_read_message_id, no live event yet in
+  // this session) has no entry here, so its receipt shows a bare "Read".
+  const [readAtByConversation, setReadAtByConversation] = useState<Record<number, number>>({});
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [connected, setConnected] = useState(false);
   const [showNewMessage, setShowNewMessage] = useState(false);
@@ -301,6 +309,23 @@ export function ChatApp({
             }),
           };
         });
+      } else if (event.type === "read") {
+        // Only meaningful for a direct conversation (see other_last_
+        // read_message_id's own docstring in lib/api.ts) — a "read"
+        // event for the league/commish_corner conversation still
+        // arrives (Read Receipts is a per-owner preference, not per-
+        // conversation-type), it's just never rendered for those.
+        const { conversation_id, owner_id, last_read_message_id } = event as {
+          conversation_id: number;
+          owner_id: number;
+          last_read_message_id: number;
+        };
+        if (owner_id !== myOwnerId) {
+          setConversations((prev) =>
+            prev.map((c) => (c.id === conversation_id ? { ...c, other_last_read_message_id: last_read_message_id } : c))
+          );
+          setReadAtByConversation((prev) => ({ ...prev, [conversation_id]: Date.now() }));
+        }
       } else if (event.type === "deleted") {
         const { message_id, conversation_id } = event as { message_id: number; conversation_id: number };
         setMessagesByConversation((prev) => {
@@ -373,6 +398,10 @@ export function ChatApp({
           member_count: 2,
           other_owner_id: ownerId,
           other_owner_name: member?.display_name ?? "Direct Message",
+          other_owner_chat_color: null,
+          other_owner_logo_url: null,
+          other_last_read_message_id: null,
+          avatar_group: null,
           unread_count: 0,
           last_message: null,
           can_post: true,
@@ -410,6 +439,8 @@ export function ChatApp({
             members={members}
             myOwnerId={myOwnerId}
             mentionHighlightingEnabled={preferences?.mention_highlighting_enabled ?? true}
+            readReceiptsEnabled={preferences?.read_receipts_enabled ?? true}
+            readAt={readAtByConversation[selectedConversation.id] ?? null}
             typingUsers={typingByConversation[selectedConversation.id] ?? []}
             connected={connected}
             hasMoreOlder={hasMoreByConversation[selectedConversation.id] ?? false}

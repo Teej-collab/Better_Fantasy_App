@@ -11,7 +11,7 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function initialsFor(name: string): string {
+export function initialsFor(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -165,7 +165,7 @@ export function MessageBubble({
             <span className="w-6 shrink-0" aria-hidden />
           ))}
 
-        <div className="flex flex-col gap-1">
+        <div className={`relative flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-2.5" : ""}`}>
           {message.reply_to && (
             <button
               onClick={(e) => {
@@ -223,8 +223,13 @@ export function MessageBubble({
             </span>
           )}
 
+          {/* Tapback-style badge hanging off the bubble's bottom corner
+              (the outer corner — matching this bubble's tail side) rather
+              than a row underneath it, closer to the reference
+              screenshots' reaction treatment. Same tap-to-toggle
+              interaction and fixed 6-emoji set as before. */}
           {message.reactions.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className={`absolute -bottom-2.5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
               {message.reactions.map((r) => (
                 <button
                   key={r.emoji}
@@ -232,10 +237,10 @@ export function MessageBubble({
                     e.stopPropagation();
                     onReact(message.id, r.emoji);
                   }}
-                  className={`rounded-full border px-1.5 py-0.5 text-xs ${
+                  className={`rounded-full border px-1.5 py-0.5 text-xs shadow-sm ${
                     r.reacted_by_me
                       ? "border-sky-500/50 bg-sky-500/10"
-                      : "border-black/10 bg-black/[0.03] dark:border-white/10 dark:bg-white/[0.04]"
+                      : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
                   }`}
                 >
                   {r.emoji} {r.count}
