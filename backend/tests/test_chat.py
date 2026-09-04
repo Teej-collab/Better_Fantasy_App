@@ -1102,6 +1102,65 @@ async def test_commish_corner_rejects_a_missing_title_over_websocket(pool, monke
     assert list(rows) == []
 
 
+async def test_commish_corner_accepts_a_body_longer_than_the_plain_message_limit(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-longbody-commish", role="commissioner")
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner]
+        )
+
+    # Longer than MAX_MESSAGE_LENGTH (2000, a plain chat message's own
+    # cap) but under MAX_ANNOUNCEMENT_BODY_LENGTH (10000) — a real
+    # league update, not a one-liner.
+    long_body = "a" * 3000
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
+    ) as ws:
+        ws.send_json(
+            {"type": "message", "conversation_id": conversation_id, "title": "Long update", "body": long_body}
+        )
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["type"] == "message"
+    assert received["message"]["body"] == long_body
+
+
+async def test_commish_corner_rejects_a_body_over_the_announcement_limit(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-toolong-commish", role="commissioner")
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner]
+        )
+
+    too_long_body = "a" * 10001
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
+    ) as ws:
+        ws.send_json(
+            {"type": "message", "conversation_id": conversation_id, "title": "Too long", "body": too_long_body}
+        )
+        # Silently dropped — same "no error frame" behavior an
+        # oversized plain chat message already has, just with a
+        # different (much higher) threshold.
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "title": "Flush", "body": "flush"})
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["message"]["body"] == "flush"  # the oversized send never arrived at all
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT body FROM messages WHERE conversation_id = $1", conversation_id)
+    assert [r["body"] for r in rows] == ["flush"]
+
+
 async def test_commish_corner_message_always_notifies_regardless_of_preference(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     from app.routers import chat as chat_router

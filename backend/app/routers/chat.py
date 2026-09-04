@@ -41,6 +41,10 @@ MAX_MESSAGE_LENGTH = 2000
 # Commish's Corner announcements only (2026-09) — a real headline, not
 # a chat message body, so a much shorter cap than MAX_MESSAGE_LENGTH.
 MAX_TITLE_LENGTH = 200
+# Commish's Corner announcements only — real league updates can run
+# much longer than a chat message, so this gets its own, far more
+# generous cap instead of MAX_MESSAGE_LENGTH.
+MAX_ANNOUNCEMENT_BODY_LENGTH = 10000
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_REACTIONS = {"😂", "🔥", "💀", "👍", "❤️", "😭"}
 
@@ -326,7 +330,7 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
             if event_type == "message":
                 body = str(data.get("body", "")).strip()
                 image_url = validate_blob_image_url(data.get("image_url"))
-                if (not body and not image_url) or len(body) > MAX_MESSAGE_LENGTH:
+                if not body and not image_url:
                     continue
 
                 reply_to_id = data.get("reply_to_id")
@@ -339,7 +343,14 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                 title = None
                 async with pool.acquire() as conn:
                     conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
-                    if conversation and conversation["type"] == "commish_corner":
+                    is_announcement = bool(conversation) and conversation["type"] == "commish_corner"
+                    # An announcement can run much longer than a chat
+                    # message — real league updates, not one-liners —
+                    # so it gets its own, more generous cap instead of
+                    # MAX_MESSAGE_LENGTH.
+                    if len(body) > (MAX_ANNOUNCEMENT_BODY_LENGTH if is_announcement else MAX_MESSAGE_LENGTH):
+                        continue
+                    if is_announcement:
                         allowed = await chat_queries.is_owner_commissioner_of_league(
                             conn, owner_id, conversation["league_id"]
                         )

@@ -4,7 +4,11 @@ import { useState } from "react";
 import { AiTrainingNoticeModal } from "@/components/chat/AiTrainingNoticeModal";
 
 const MAX_TITLE_LENGTH = 200;
-const MAX_BODY_LENGTH = 2000;
+// Matches the backend's own MAX_ANNOUNCEMENT_BODY_LENGTH
+// (app/routers/chat.py) — a real league update can run much longer
+// than a chat message, so this is far more generous than the plain
+// composer's MAX_LENGTH.
+const MAX_BODY_LENGTH = 10000;
 
 // Replaces the plain chat composer for Commish's Corner — an
 // announcement is a short article (headline + body), not a quick chat
@@ -74,7 +78,7 @@ export function PostAnnouncementForm({
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write the announcement..."
           maxLength={MAX_BODY_LENGTH}
-          rows={3}
+          rows={6}
           aria-label="Announcement body"
           className="resize-none rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] dark:border-white/10"
         />

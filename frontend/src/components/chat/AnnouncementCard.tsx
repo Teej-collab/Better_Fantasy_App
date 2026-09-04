@@ -49,7 +49,9 @@ export function AnnouncementCard({
           />
           {message.deleted ? <span className="italic text-black/50 dark:text-white/50">Deleted</span> : message.title}
         </span>
-        <span className={`text-sm text-black/60 dark:text-white/60 ${expanded ? "" : "line-clamp-2"}`}>
+        <span
+          className={`text-sm text-black/60 dark:text-white/60 break-words ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
+        >
           {expanded && !message.deleted ? message.body : previewBody}
         </span>
         <span className="text-xs text-black/40 dark:text-white/40">
