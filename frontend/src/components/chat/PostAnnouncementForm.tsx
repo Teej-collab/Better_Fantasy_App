@@ -93,15 +93,23 @@ export function PostAnnouncementForm({
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write the announcement..."
           maxLength={MAX_BODY_LENGTH}
-          rows={3}
+          rows={1}
           aria-label="Announcement body"
-          // resize-none since the height is already driven by the
-          // effect above — a manual drag-resize handle would just
-          // fight the next keystroke's auto-resize. max-h keeps a
-          // very long post from growing the box past the screen;
-          // overflow-y-auto takes over with a normal scrollbar once
-          // that cap is hit.
-          className="max-h-[60vh] resize-none overflow-y-auto rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] dark:border-white/10"
+          // min-h/rows={1} match MessageComposer.tsx's own plain chat
+          // input exactly — a genuinely normal single-line box, not
+          // just "smaller than before." resize-none since height is
+          // already driven by the effect above — a manual drag handle
+          // would just fight the next keystroke's auto-resize. max-h
+          // keeps a very long post from growing past a reasonable
+          // size; overflow-y-auto takes over with a normal scrollbar
+          // once that cap is hit. min() with a fixed rem cap (rather
+          // than a flat 60vh) keeps mobile's behavior — vh is the
+          // smaller side there — while capping desktop to the same
+          // ~24rem regardless of how tall the monitor is (a flat vh
+          // cap alone is a fraction of the *screen*, not a sane
+          // absolute size, so it grew much taller on a tall desktop
+          // monitor than it ever would on a phone).
+          className="min-h-[2.5rem] max-h-[min(60vh,24rem)] resize-none overflow-y-auto rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] dark:border-white/10"
         />
         <button
           type="submit"
