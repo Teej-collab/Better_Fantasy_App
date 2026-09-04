@@ -1089,16 +1089,16 @@ export type OwnerPreferences = {
   // JSON-encoded array of the 5 mobile bottom-nav destination keys
   // (BottomNav.tsx), in the owner's chosen order — null means "use
   // MOBILE_NAV_ORDER" (lib/navDestinations.ts).
-  //
-  // Note: the backend/DB still has (and returns) home_card_order,
-  // home_hidden_cards, and home_desktop_layout too — the per-owner
-  // "Edit Home" customization those backed was removed from the
-  // frontend 2026-08-31 in favor of one standard layout for everyone,
-  // but the columns themselves were deliberately left alone rather than
-  // migrated away, so this is easy to bring back if that call ever
-  // changes. Just not worth carrying three fields nothing reads in this
-  // type.
   bottom_nav_order: string | null;
+  // JSON-encoded array of the homepage's 6 reorderable card keys (see
+  // HomeCardDeck.tsx and DEFAULT_HOME_CARD_ORDER) — null means "use the
+  // default order". Brought back 2026-09-04 (reorder-only this time —
+  // no hide/show, no resize) after being fully removed 2026-08-31; the
+  // backend/DB column was deliberately left alone the whole time for
+  // exactly this. home_hidden_cards and home_desktop_layout still exist
+  // in the DB from that same original feature but nothing writes them
+  // now — this pass is reorder-only.
+  home_card_order: string | null;
   // Reflects whether the owner has at least one active push
   // subscription — set by the backend from POST /push/subscribe and
   // /push/unsubscribe (app/routers/push.py), never written directly
@@ -1147,6 +1147,12 @@ export function applySundayMode(preset: SundayMode): Promise<OwnerPreferences> {
 // JSON-encode the array itself.
 export function updateBottomNavOrder(order: string[]): Promise<OwnerPreferences> {
   return updatePreferences({ bottom_nav_order: JSON.stringify(order) });
+}
+
+// HomeCardDeck's reorder UI — same thin JSON-encoding wrapper as
+// updateBottomNavOrder above.
+export function updateHomeCardOrder(order: string[]): Promise<OwnerPreferences> {
+  return updatePreferences({ home_card_order: JSON.stringify(order) });
 }
 
 // ---- My Team (backed by our own current_rosters table now, not a live

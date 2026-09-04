@@ -19,13 +19,22 @@ import type { ReactNode } from "react";
  * vertical padding instead of the standard treatment. /draft is the
  * same story for a different reason — DraftBoard.tsx is a real
  * round-by-team grid (one column per team) that was getting squeezed
- * into the standard 896px reading column even on a large desktop
- * monitor, cutting off teams on the right with no way to see them
- * short of that table's own overflow-x-auto scrollbar. A much wider
- * cap here means a normal-sized league's full board actually fits on
- * a real desktop screen; DraftBoard's own overflow-x-auto is still
- * there underneath as the fallback for a league with enough teams/
- * rounds to exceed even this width, or on a narrower laptop screen.
+ * into a narrower reading column even on a large desktop monitor,
+ * cutting off teams on the right with no way to see them short of that
+ * table's own overflow-x-auto scrollbar. A much wider cap there means a
+ * normal-sized league's full board actually fits on a real desktop
+ * screen; DraftBoard's own overflow-x-auto is still there underneath
+ * as the fallback for a league with enough teams/rounds to exceed even
+ * that width, or on a narrower laptop screen.
+ *
+ * Every other page's own content is already responsive row-lists
+ * rather than wide tables (a deliberate choice — see e.g.
+ * RosterList.tsx's own comment on why it's not a <table>), so none of
+ * them were actually cutting content off the way /draft was. They
+ * still sat in a fairly narrow column with a lot of unused space on a
+ * real desktop/laptop screen, though (2026-09-04 audit), so the shared
+ * default below got the same wider treatment as /chat rather than
+ * staying narrower than every page that opts out of it.
  *
  * Extra bottom padding below `sm:` clears NavBar's fixed BottomNav
  * (same breakpoint BottomNav itself hides at) — otherwise the last
@@ -43,5 +52,5 @@ export function PageShell({ children }: { children: ReactNode }) {
   if (pathname === "/draft") {
     return <main className="safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
   }
-  return <main className="safe-px mx-auto w-full max-w-4xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
+  return <main className="safe-px mx-auto w-full max-w-5xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
 }

@@ -33,6 +33,7 @@ import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugDueCard } from "@/components/ChugDueCard";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
@@ -136,12 +137,13 @@ export default async function HomePage() {
     gamecastGames
   );
 
-  // The homepage's six cards, in a fixed standard layout — every owner
-  // sees the same arrangement (no per-owner hide/reorder/resize; that
-  // used to be a whole "Edit Home" mode, removed 2026-08-31 per the
-  // owner's own call to keep the app to one standard look, matching
-  // the approved mock). A card only ever ends up in this map when it
-  // has something real to show this week.
+  // The homepage's cards. Six of them (yourWeek/standings/matchups/
+  // rivalries/awards/discover) are owner-reorderable via HomeCardDeck
+  // below (brought back 2026-09-04, reorder-only — see that
+  // component's own comment); draftCountdown/gamecast/chug are
+  // time-sensitive and stay pinned in a fixed spot instead. A card
+  // only ever ends up in this map when it has something real to show
+  // this week.
   const cards: Record<string, ReactNode> = {};
 
   cards.yourWeek = myWeek?.matchup ? (
@@ -388,33 +390,24 @@ export default async function HomePage() {
             Earning the top slot while it's relevant beats sitting below
             the fold underneath cards that are still there every week. */}
         {cards.draftCountdown}
-
-        {/* Fixed standard layout, same on every visit for every owner —
-            no per-owner hide/reorder/resize (that was "Edit Home" mode,
-            removed 2026-08-31). Desktop: Standings stacked over Your
-            Week hero in a left column, Other Matchups filling the full
-            height of a right column — a real 2-row/2-col CSS grid via
-            named areas (not two independent flex columns), so Matchups
-            naturally spans both rows regardless of how tall the left
-            column's two cards end up. Mobile: Your Week hero leads,
-            then Standings, then Matchups, single column — the same
-            three elements just reflow via the grid's mobile area map,
-            not a second copy of the JSX. Live Now (Gamecast)/Rivalries/
-            Awards/Discover (each only when present) always follow
-            underneath, full width, fixed order, on both breakpoints. */}
-        <div
-          className="grid grid-cols-1 gap-4 [grid-template-areas:'hero'_'standings'_'matchups'] sm:grid-cols-2 sm:gap-6 sm:[grid-template-areas:'standings_matchups'_'hero_matchups']"
-        >
-          {cards.yourWeek && <div style={{ gridArea: "hero" }}>{cards.yourWeek}</div>}
-          {cards.standings && <div style={{ gridArea: "standings" }}>{cards.standings}</div>}
-          {cards.matchups && <div style={{ gridArea: "matchups" }}>{cards.matchups}</div>}
-        </div>
-
         {cards.gamecast}
         {cards.chug}
-        {cards.rivalries}
-        {cards.awards}
-        {cards.discover}
+
+        {/* Owner-reorderable: Your Week, Standings, Matchups,
+            Rivalries, Awards, Discover — same full-width `gap-6`
+            stacking this page already used for Rivalries/Awards/
+            Discover, on every breakpoint, so drag order behaves the
+            same on mobile and desktop. See HomeCardDeck.tsx. */}
+        <HomeCardDeck
+          cards={{
+            yourWeek: cards.yourWeek,
+            standings: cards.standings,
+            matchups: cards.matchups,
+            rivalries: cards.rivalries,
+            awards: cards.awards,
+            discover: cards.discover,
+          }}
+        />
       </div>
     </HomeWelcomeBackEntry>
   );
