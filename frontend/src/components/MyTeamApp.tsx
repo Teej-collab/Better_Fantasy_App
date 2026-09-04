@@ -36,6 +36,7 @@ function RosterRow({
   ownership,
   selectedForSwap,
   swapDisabled,
+  isBenchRow,
   mounted,
   onToggleSwapSelect,
   onViewPlayer,
@@ -45,6 +46,10 @@ function RosterRow({
   ownership: OwnershipInfo | undefined;
   selectedForSwap: boolean;
   swapDisabled: boolean;
+  // Only changes the button's idle-state label (see swapButtonLabel
+  // below) — the actual swap logic doesn't care which list a row is
+  // in, only its lineup_slot.
+  isBenchRow: boolean;
   mounted: boolean;
   onToggleSwapSelect: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
@@ -128,7 +133,7 @@ function RosterRow({
                 : "border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
             }`}
           >
-            {selectedForSwap ? "Selected" : "Swap"}
+            {selectedForSwap ? "Selected" : isBenchRow ? "Start" : "Swap"}
           </button>
           <button
             onClick={() => onDrop(entry)}
@@ -140,6 +145,20 @@ function RosterRow({
       </div>
     </li>
   );
+}
+
+// A swap needs a `selected` player and is otherwise valid per
+// canSwapSlots, but bench<->bench is deliberately excluded here even
+// though it's technically eligible (both slots accept any position) —
+// it's a real no-op for what anyone actually wants ("get this guy
+// into my starting lineup"), and with a full bench, leaving every
+// other bench row lit up as "clickable" buried the one or two starter
+// rows that were the actual point (2026-09 reported: "difficult...
+// to put them in the starter position").
+function isSwapDisabled(selected: RosterEntry | null, entry: RosterEntry): boolean {
+  if (selected === null || selected.player_id === entry.player_id) return false;
+  if (selected.lineup_slot === BENCH_SLOT_LABEL && entry.lineup_slot === BENCH_SLOT_LABEL) return true;
+  return !canSwapSlots(selected.position, selected.lineup_slot, entry.position, entry.lineup_slot);
 }
 
 // Live offense/red-zone status only ever matters during an actual
@@ -413,11 +432,8 @@ export function MyTeamApp({
               entry={e}
               ownership={ownership[e.player_id]}
               selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={
-                selected !== null &&
-                selected.player_id !== e.player_id &&
-                !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
-              }
+              swapDisabled={isSwapDisabled(selected, e)}
+              isBenchRow={false}
               mounted={mounted}
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
@@ -436,11 +452,8 @@ export function MyTeamApp({
               entry={e}
               ownership={ownership[e.player_id]}
               selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={
-                selected !== null &&
-                selected.player_id !== e.player_id &&
-                !canSwapSlots(selected.position, selected.lineup_slot, e.position, e.lineup_slot)
-              }
+              swapDisabled={isSwapDisabled(selected, e)}
+              isBenchRow={true}
               mounted={mounted}
               onToggleSwapSelect={toggleSwapSelect}
               onViewPlayer={openPlayerCard}
