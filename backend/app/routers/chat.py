@@ -21,6 +21,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import require_active_league_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
 from app.chat.manager import manager
 from app.config import _require
@@ -86,7 +87,11 @@ async def start_direct_conversation(request: Request, pool=Depends(get_pool)):
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        eligible_ids = {m["owner_id"] for m in await chat_queries.list_eligible_members(conn, active_season, payload["owner_id"])}
+        league_id = await require_active_league_id(conn, payload)
+        eligible_ids = {
+            m["owner_id"]
+            for m in await chat_queries.list_eligible_members(conn, active_season, league_id, payload["owner_id"])
+        }
         if target_owner_id not in eligible_ids:
             raise HTTPException(status_code=404, detail="Not a current league member")
         conversation_id = await chat_queries.get_or_create_direct_conversation(conn, payload["owner_id"], target_owner_id)
@@ -98,7 +103,8 @@ async def list_members(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        rows = await chat_queries.list_eligible_members(conn, active_season, payload["owner_id"])
+        league_id = await require_active_league_id(conn, payload)
+        rows = await chat_queries.list_eligible_members(conn, active_season, league_id, payload["owner_id"])
     # online is the initial snapshot only (manager.is_connected, in-
     # process presence state, not a DB column) — the frontend's
     # PresenceHeartbeat applies live `presence` WebSocket events on top
@@ -227,7 +233,12 @@ async def _push_notify_new_message(
                     category, build = "notify_league_chat", formatter.chat_league_message
 
                 prefs = await preferences_queries.get_preferences(conn, recipient_id)
-                if prefs["push_enabled"] and prefs[category]:
+                # Commish's Corner is rare, important announcements, not
+                # ordinary chat volume — it always notifies (still
+                # respecting the master push_enabled switch) regardless
+                # of the notify_league_chat category toggle.
+                category_allowed = conversation_type == "commish_corner" or prefs[category]
+                if prefs["push_enabled"] and category_allowed:
                     await dispatcher.send_to_owner(conn, recipient_id, build(sender_name, body))
     except Exception:
         logger.exception("Push notification for chat message in conversation_id=%s failed", conversation_id)
@@ -280,23 +291,47 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                 image_url = validate_blob_image_url(data.get("image_url"))
                 if (not body and not image_url) or len(body) > MAX_MESSAGE_LENGTH:
                     continue
+
                 reply_to_id = data.get("reply_to_id")
                 if not isinstance(reply_to_id, int):
                     reply_to_id = None
                 raw_mentions = data.get("mentions") or []
                 mentions = [m for m in raw_mentions if isinstance(m, int)]
 
+                blocked = False
                 async with pool.acquire() as conn:
-                    participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
-                    # Never trust the client's mention list outright — only
-                    # people actually in this conversation can be mentioned.
-                    valid_mentions = [m for m in mentions if m in participant_ids]
+                    conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
+                    if conversation and conversation["type"] == "commish_corner":
+                        allowed = await chat_queries.is_owner_commissioner_of_league(
+                            conn, owner_id, conversation["league_id"]
+                        )
+                        if not allowed:
+                            # Defense in depth — the frontend already hides
+                            # the composer for non-commissioners here, this
+                            # is for a stale UI state or a modified client
+                            # (same "never trust the client" discipline as
+                            # the mentions filter below).
+                            blocked = True
+                        else:
+                            blocked = False
+                    if blocked:
+                        await websocket.send_text(json.dumps(
+                            {"type": "error", "error": "commish_corner_restricted", "conversation_id": conversation_id}
+                        ))
+                    else:
+                        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+                        # Never trust the client's mention list outright — only
+                        # people actually in this conversation can be mentioned.
+                        valid_mentions = [m for m in mentions if m in participant_ids]
 
-                    row = await chat_queries.insert_message(
-                        conn, conversation_id, owner_id, body, reply_to_id, image_url
-                    )
-                    await chat_queries.insert_mentions(conn, row["id"], valid_mentions)
-                    message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+                        row = await chat_queries.insert_message(
+                            conn, conversation_id, owner_id, body, reply_to_id, image_url
+                        )
+                        await chat_queries.insert_mentions(conn, row["id"], valid_mentions)
+                        message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+
+                if blocked:
+                    continue
 
                 await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
                 await _push_notify_new_message(

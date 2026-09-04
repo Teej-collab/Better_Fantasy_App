@@ -5,12 +5,39 @@ migration 03417db98bb5.
 """
 
 
-async def get_league_conversation_id(conn) -> int:
-    return await conn.fetchval("SELECT id FROM conversations WHERE type = 'league'")
+async def get_league_conversation_id(conn, league_id: int) -> int | None:
+    return await conn.fetchval(
+        "SELECT id FROM conversations WHERE type = 'league' AND league_id = $1", league_id
+    )
 
 
 async def get_conversation_type(conn, conversation_id: int) -> str | None:
     return await conn.fetchval("SELECT type FROM conversations WHERE id = $1", conversation_id)
+
+
+async def get_conversation_type_and_league(conn, conversation_id: int):
+    """Both fields a single query needs to decide "is this a
+    commish_corner conversation, and if so whose league" — used by the
+    WS message handler's posting-restriction check."""
+    row = await conn.fetchrow(
+        "SELECT type, league_id FROM conversations WHERE id = $1", conversation_id
+    )
+    return dict(row) if row else None
+
+
+async def is_owner_commissioner_of_league(conn, owner_id: int, league_id: int) -> bool:
+    """Chat is owner_id-keyed; league membership/role is user_id-keyed
+    (league_members) — same owners.user_id join leagues.py's own
+    membership queries already use to reconcile the two identities."""
+    row = await conn.fetchrow(
+        """
+        SELECT 1 FROM owners o
+        JOIN league_members lm ON lm.user_id = o.user_id
+        WHERE o.owner_id = $1 AND lm.league_id = $2 AND lm.role = 'commissioner'
+        """,
+        owner_id, league_id,
+    )
+    return row is not None
 
 
 async def is_participant(conn, conversation_id: int, owner_id: int) -> bool:
@@ -34,6 +61,43 @@ async def list_conversation_participant_ids(conn, conversation_id: int) -> list[
         "SELECT owner_id FROM conversation_participants WHERE conversation_id = $1", conversation_id
     )
     return [r["owner_id"] for r in rows]
+
+
+async def create_conversation_for_league(conn, league_id: int, conv_type: str, owner_ids: list[int]) -> int:
+    """The app-layer counterpart to migration e47b2a91c5d8's own one-time
+    backfill SQL — used going forward whenever a new league is created
+    (leagues.py's create_league seeds both a 'league' and a
+    'commish_corner' conversation this way)."""
+    conversation_id = await conn.fetchval(
+        "INSERT INTO conversations (type, league_id) VALUES ($1, $2) RETURNING id",
+        conv_type, league_id,
+    )
+    if owner_ids:
+        await conn.executemany(
+            "INSERT INTO conversation_participants (conversation_id, owner_id) VALUES ($1, $2)",
+            [(conversation_id, oid) for oid in owner_ids],
+        )
+    return conversation_id
+
+
+async def add_owner_to_league_conversations(conn, league_id: int, owner_id: int) -> None:
+    """Joins an owner into every 'league'/'commish_corner' conversation
+    for this league — called wherever an owner_id first gets
+    established within a league (create_league for the creator, the
+    self-serve and commissioner-invoked team-creation routes for
+    everyone else), since chat participancy is owner_id-scoped and a
+    bare league_members row alone can't be a chat participant. Safe to
+    call more than once (ON CONFLICT DO NOTHING — conversation_participants'
+    own primary key is (conversation_id, owner_id))."""
+    await conn.execute(
+        """
+        INSERT INTO conversation_participants (conversation_id, owner_id)
+        SELECT c.id, $2 FROM conversations c
+        WHERE c.league_id = $1 AND c.type IN ('league', 'commish_corner')
+        ON CONFLICT DO NOTHING
+        """,
+        league_id, owner_id,
+    )
 
 
 async def get_or_create_direct_conversation(conn, owner_a: int, owner_b: int) -> int:
@@ -104,7 +168,9 @@ async def list_conversations_for_owner(conn, owner_id: int):
         LEFT JOIN conversation_participants other_cp
             ON other_cp.conversation_id = c.id AND other_cp.owner_id != $1 AND c.type = 'direct'
         LEFT JOIN owners other ON other.owner_id = other_cp.owner_id
-        ORDER BY c.type = 'league' DESC, lm.created_at DESC NULLS LAST
+        ORDER BY
+            CASE c.type WHEN 'league' THEN 0 WHEN 'commish_corner' THEN 1 ELSE 2 END,
+            lm.created_at DESC NULLS LAST
         """,
         owner_id,
     )
@@ -244,18 +310,19 @@ async def soft_delete_message(conn, message_id: int):
     await conn.execute("UPDATE messages SET deleted_at = now() WHERE id = $1", message_id)
 
 
-async def list_eligible_members(conn, active_season: int, exclude_owner_id: int):
-    """Every owner with a team in the active season, minus the
-    requesting owner — the pool for @mention autocomplete and "new
-    message" search. Matches the same 12 real managers the league
-    conversation was seeded with."""
+async def list_eligible_members(conn, active_season: int, league_id: int, exclude_owner_id: int):
+    """Every owner with a team in the active season AND league, minus
+    the requesting owner — the pool for @mention autocomplete and "new
+    message" search. Scoped by league_id since 2026-09-04 (chat used
+    to only filter by season, which silently pooled every league's
+    owners together once more than one league existed)."""
     return await conn.fetch(
         """
         SELECT DISTINCT o.owner_id, o.display_name, t.team_name
         FROM owners o
         JOIN teams_by_season t ON t.owner_id = o.owner_id
-        WHERE t.season = $1 AND o.owner_id != $2
+        WHERE t.season = $1 AND t.league_id = $2 AND o.owner_id != $3
         ORDER BY o.display_name
         """,
-        active_season, exclude_owner_id,
+        active_season, league_id, exclude_owner_id,
     )

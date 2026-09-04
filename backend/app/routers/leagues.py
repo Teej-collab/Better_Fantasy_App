@@ -20,6 +20,7 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
 from app.queries import auth as auth_queries
+from app.queries import chat as chat_queries
 from app.queries import leagues as league_queries
 from app.queries import teams as team_queries
 
@@ -90,6 +91,19 @@ async def create_league(body: CreateLeagueRequest, request: Request):
         league_id = await league_queries.create_league(conn, name, payload["user_id"], invite_code)
         await league_queries.add_member(conn, league_id, payload["user_id"], "commissioner")
         await league_queries.seed_default_scoring_rules(conn, league_id, season)
+
+        # Give the new league somewhere to talk from day one — same
+        # precedent as seed_default_scoring_rules above ("give a new
+        # league a working default"), not something the commissioner
+        # has to set up. The creator has no `owners` row yet at this
+        # point (that's only created on first team/history-claim), so
+        # resolve/create one the same way POST /teams below does.
+        user_row = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
+        display_name = (user_row["display_name"] if user_row else None) or "New Owner"
+        owner_id = await team_queries.get_or_create_owner_for_user(conn, payload["user_id"], display_name)
+        await chat_queries.create_conversation_for_league(conn, league_id, "league", [owner_id])
+        await chat_queries.create_conversation_for_league(conn, league_id, "commish_corner", [owner_id])
+
         row = await league_queries.get_league(conn, league_id)
     return _league_dict(row, "commissioner")
 
@@ -135,6 +149,7 @@ async def create_team(league_id: int, body: CreateTeamRequest, request: Request)
         user_row = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
         display_name = (user_row["display_name"] if user_row else None) or "New Owner"
         owner_id = await team_queries.get_or_create_owner_for_user(conn, payload["user_id"], display_name)
+        await chat_queries.add_owner_to_league_conversations(conn, league_id, owner_id)
 
         existing_team = await team_queries.get_team_for_owner_in_league(conn, league_id, season, owner_id)
         if existing_team is not None:
@@ -193,6 +208,11 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
             raise HTTPException(
                 status_code=409, detail="That owner is already claimed, or isn't in this league"
             )
+        # This is the real, common path for an existing historical
+        # owner (pre-dating real accounts) rejoining chat — unlike the
+        # team-creation hooks above, a claimed owner already has a real
+        # team/history and would otherwise never trigger either of them.
+        await chat_queries.add_owner_to_league_conversations(conn, league_id, body.owner_id)
     return {"owner_id": body.owner_id, "claimed": True}
 
 
@@ -342,6 +362,7 @@ async def create_team_for_member(league_id: int, body: CreateTeamForMemberReques
         user_row = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", body.user_id)
         display_name = (user_row["display_name"] if user_row else None) or "New Owner"
         owner_id = await team_queries.get_or_create_owner_for_user(conn, body.user_id, display_name)
+        await chat_queries.add_owner_to_league_conversations(conn, league_id, owner_id)
 
         existing_team = await team_queries.get_team_for_owner_in_league(conn, league_id, season, owner_id)
         if existing_team is not None:

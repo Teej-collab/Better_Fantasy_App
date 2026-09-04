@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -6,7 +8,9 @@ from app.auth.session import create_session_token, create_ticket_token
 from app.chat.manager import manager as chat_manager
 from app.main import app
 from app.queries import chat as chat_queries
+from app.queries import leagues as league_queries
 from app.queries import owner_preferences as preferences_queries
+from app.queries import teams as team_queries
 from tests.conftest import make_safe_session_user_id
 from tests.conftest import TEST_SEASON
 
@@ -20,6 +24,17 @@ def _client():
 async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
         _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+    )
+    return {"session": token}
+
+
+def _league_session_cookie(user_id: int, owner_id: int):
+    """Like _session_cookie, but for a _seed_league_owner() pair —
+    that helper already minted a real user_id tied to a real league
+    membership, so this must NOT call make_safe_session_user_id (which
+    would mint an unrelated second user_id with no league of its own)."""
+    token = create_session_token(
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=200000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 
@@ -77,6 +92,36 @@ async def _seed_team(pool, owner_id, suffix, season=TEST_SEASON):
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
             season, 900 + suffix, owner_id, f"Team {suffix}",
         )
+
+
+async def _seed_league_owner(pool, suffix, role="member", league_id=None):
+    """A user+owner pair that's a real member of its own fresh 'Test
+    League <suffix>' (or of an existing one, when league_id is passed
+    in to add a second member to the same league) — needed for
+    league_id-scoping tests where make_safe_session_user_id's shared
+    DEFAULT_LEAGUE_ID would put every test owner in the same league
+    and defeat the isolation being tested. Mirrors the real signup ->
+    create/join league -> create team flow (app/routers/leagues.py)
+    closely enough to exercise the same owner_id/user_id reconciliation
+    production code goes through, without the overhead of a full HTTP
+    round trip through /auth/signup."""
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            """
+            INSERT INTO users (email, password_hash, display_name, token_version)
+            VALUES ($1, 'x', $2, 1)
+            RETURNING id
+            """,
+            f"test-chatv2-league-{suffix}-{uuid.uuid4().hex[:8]}@example.com", f"Leaguer {suffix}",
+        )
+        if league_id is None:
+            league_id = await league_queries.create_league(
+                conn, f"Test League Chat {suffix}", user_id, f"chat-test-invite-{suffix}-{uuid.uuid4().hex[:8]}"
+            )
+        await league_queries.add_member(conn, league_id, user_id, role)
+        owner_id = await team_queries.get_or_create_owner_for_user(conn, user_id, f"Leaguer {suffix}")
+        await team_queries.create_team(conn, league_id, TEST_SEASON, owner_id, f"Team {suffix}")
+    return user_id, owner_id, league_id
 
 
 # ---- domain/query level ----------------------------------------------------
@@ -731,6 +776,169 @@ async def test_websocket_typing_is_not_echoed_to_sender_and_is_suppressed_when_d
     assert received["message"]["body"] == "after typing"
     assert "typing" not in broadcasts  # suppressed — this owner disabled it
     assert "message" in broadcasts  # the real broadcast path still works
+
+
+# ---- league_id scoping / Commish's Corner (2026-09-04 retrofit) -----------
+
+
+async def test_list_eligible_members_scoped_to_active_league(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    user_a, owner_a, league_a = await _seed_league_owner(pool, "scope-a")
+    _, teammate_owner, _ = await _seed_league_owner(pool, "scope-a-mate", league_id=league_a)
+    _, other_league_owner, _ = await _seed_league_owner(pool, "scope-b")
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, owner_a))
+        resp = await client.get("/chat/members")
+
+    member_ids = {m["owner_id"] for m in resp.json()["members"]}
+    assert teammate_owner in member_ids  # same league — eligible for a DM
+    assert other_league_owner not in member_ids  # different league — must not leak in
+
+
+async def test_start_direct_conversation_rejects_member_from_a_different_league(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    user_a, owner_a, _ = await _seed_league_owner(pool, "cross-a")
+    _, owner_b, _ = await _seed_league_owner(pool, "cross-b")  # a different league entirely
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, owner_a))
+        resp = await client.post("/chat/conversations/direct", json={"owner_id": owner_b})
+
+    assert resp.status_code == 404  # not a member of the caller's active league
+
+
+async def test_create_league_seeds_league_and_commish_corner_conversations(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with _client() as client:
+        resp = await client.post(
+            "/auth/signup",
+            json={
+                "email": f"test-chatv2-commish-{uuid.uuid4().hex[:8]}@example.com",
+                "password": "correct-horse",
+                "display_name": "Corner Commish",
+            },
+        )
+        assert resp.status_code == 200
+        created = await client.post("/leagues", json={"name": f"Test League Commish {uuid.uuid4().hex[:8]}"})
+        assert created.status_code == 200
+        league_id = created.json()["id"]
+
+    # Checked straight against the DB, not via GET /chat/conversations —
+    # that route trusts the session token's own `owner_id` claim, which
+    # a plain email/password signup token never carries (see
+    # create_session_token's docstring); this test is about what
+    # create_league seeded, not about that separate, pre-existing
+    # owner_id-on-token quirk.
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT type FROM conversations WHERE league_id = $1", league_id)
+        types = {r["type"] for r in rows}
+        assert "league" in types
+        assert "commish_corner" in types
+
+        commish_corner_id = await conn.fetchval(
+            "SELECT id FROM conversations WHERE league_id = $1 AND type = 'commish_corner'", league_id
+        )
+        participant_count = await conn.fetchval(
+            "SELECT count(*) FROM conversation_participants WHERE conversation_id = $1", commish_corner_id
+        )
+        assert participant_count == 1  # the creator, seeded automatically
+
+
+async def test_commish_corner_rejects_a_non_commissioner_over_websocket(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-commish", role="commissioner")
+    member_user, member_owner, _ = await _seed_league_owner(pool, "corner-member", role="member", league_id=league_id)
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner, member_owner]
+        )
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(member_user, member_owner)
+    ) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "can I post here?"})
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received == {
+        "type": "error",
+        "error": "commish_corner_restricted",
+        "conversation_id": conversation_id,
+    }
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id FROM messages WHERE conversation_id = $1", conversation_id)
+    assert list(rows) == []  # rejected, never persisted
+
+
+async def test_commish_corner_accepts_the_commissioner_over_websocket(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-ok-commish", role="commissioner")
+    _, member_owner, _ = await _seed_league_owner(pool, "corner-ok-member", role="member", league_id=league_id)
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner, member_owner]
+        )
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
+    ) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "official announcement"})
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["type"] == "message"
+    assert received["message"]["body"] == "official announcement"
+    assert received["message"]["owner_id"] == commish_owner
+
+
+async def test_commish_corner_message_always_notifies_regardless_of_preference(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append(owner_id)
+        return 1
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-notify-commish", role="commissioner")
+    _, member_owner, _ = await _seed_league_owner(pool, "corner-notify-member", role="member", league_id=league_id)
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner, member_owner]
+        )
+        # The member has opted OUT of league-chat push — Commish's Corner
+        # must reach them anyway, unlike ordinary chat volume.
+        await preferences_queries.update_preferences(
+            conn, member_owner, {"push_enabled": True, "notify_league_chat": False}
+        )
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
+    ) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "read this everyone"})
+        ws.receive_json()
+        # Same flush pattern used elsewhere in this file — guarantees the
+        # push dispatch from the first message has actually finished.
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert member_owner in sent
 
 
 async def test_connection_manager_broadcasts_only_to_specified_owners():

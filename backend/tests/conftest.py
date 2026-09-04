@@ -288,6 +288,50 @@ async def cleanup_test_season(pool):
             "UPDATE users SET active_league_id = NULL WHERE active_league_id IN "
             "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        # conversations.league_id -> leagues.id (migration e47b2a91c5d8) —
+        # create_league now seeds a real 'league' + 'commish_corner'
+        # conversation for every test league it creates, so these have to
+        # go (children before parents, same shape as chat's own cleanup
+        # further below) before the leagues DELETE or it FK-violates.
+        await conn.execute(
+            """
+            DELETE FROM message_reactions WHERE message_id IN (
+                SELECT id FROM messages WHERE conversation_id IN (
+                    SELECT id FROM conversations WHERE league_id IN
+                    (SELECT id FROM leagues WHERE name LIKE 'Test League%')
+                )
+            )
+            """
+        )
+        await conn.execute(
+            """
+            DELETE FROM message_mentions WHERE message_id IN (
+                SELECT id FROM messages WHERE conversation_id IN (
+                    SELECT id FROM conversations WHERE league_id IN
+                    (SELECT id FROM leagues WHERE name LIKE 'Test League%')
+                )
+            )
+            """
+        )
+        await conn.execute(
+            """
+            DELETE FROM messages WHERE conversation_id IN (
+                SELECT id FROM conversations WHERE league_id IN
+                (SELECT id FROM leagues WHERE name LIKE 'Test League%')
+            )
+            """
+        )
+        await conn.execute(
+            """
+            DELETE FROM conversation_participants WHERE conversation_id IN (
+                SELECT id FROM conversations WHERE league_id IN
+                (SELECT id FROM leagues WHERE name LIKE 'Test League%')
+            )
+            """
+        )
+        await conn.execute(
+            "DELETE FROM conversations WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owners.user_id -> users.id, so capture which users are linked to
         # test owners *before* deleting those owners, then delete the
@@ -324,6 +368,13 @@ async def cleanup_test_season(pool):
             )
         ]
         if test_signup_owner_ids:
+            # owner_preferences.owner_id -> owners.owner_id — same FK the
+            # espn_member_id-pattern cleanup above already handles for
+            # Discord-style test owners; this pattern's owners need the
+            # same thing or the owners DELETE just below FK-violates.
+            await conn.execute(
+                "DELETE FROM owner_preferences WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
         # league_members.user_id -> users.id, no ON DELETE CASCADE
         # (migration d7deccb620bb) — a test user can join real
