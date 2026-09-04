@@ -1,11 +1,14 @@
 """
-Backing queries for the admin-only usage dashboard
-(app/routers/admin.py's GET /admin/online, POST /admin/track-view,
-GET /admin/usage). Site-owner visibility only — see
-migrations/versions/2587a1c96f73_add_page_view_events_table.py's own
-docstring for why this is owner_id-tied (not anonymous) but still
-gated to a single admin reader, not exposed to the owners it's about.
+Backing queries for the admin dashboard's event system
+(app/routers/admin.py's POST /admin/track, GET /admin/navigation) and
+live presence (GET /admin/online). Site-owner visibility only — see
+migrations/versions/c8ca9b06b451_generalize_page_view_events_into_.py's
+own docstring for the analytics_events schema this reads/writes, and
+app/analytics/taxonomy.py for the event names/metadata shapes it's
+validated against before ever reaching record_event.
 """
+import json
+
 from app.chat.manager import manager as chat_manager
 
 
@@ -25,46 +28,78 @@ async def list_online_owners(conn) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def record_page_view(conn, owner_id: int, path: str) -> None:
+async def record_event(
+    conn,
+    owner_id: int,
+    session_id: str,
+    event_name: str,
+    event_type: str,
+    route: str | None,
+    league_id: int | None,
+    metadata: dict,
+    device_type: str | None,
+    platform: str | None,
+) -> None:
+    """owner_id/session_id are always server-derived (owner_id from
+    the session, session_id from the caller's own validated request
+    body) — never trusted as someone else's, see POST /admin/track's
+    own docstring. metadata has already passed app/analytics/
+    taxonomy.py's validate_event by the time this runs."""
     await conn.execute(
-        "INSERT INTO page_view_events (owner_id, path) VALUES ($1, $2)", owner_id, path
-    )
-
-
-async def get_usage_summary(conn, days: int) -> dict:
-    """Top paths by view count and distinct-owner count, plus a
-    per-owner total, both over the trailing `days` window — "which
-    pages/features get used, how often, by whom" in one read. A
-    ~12-person league's whole view volume is trivial, so this is a
-    plain aggregate query, not a pre-computed rollup table."""
-    top_paths = await conn.fetch(
         """
-        SELECT path, count(*) AS views, count(DISTINCT owner_id) AS unique_owners
-        FROM page_view_events
-        WHERE created_at >= now() - ($1 || ' days')::interval
-        GROUP BY path
-        ORDER BY views DESC
-        LIMIT 25
+        INSERT INTO analytics_events
+            (owner_id, session_id, event_name, event_type, route, league_id, metadata, device_type, platform)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
         """,
-        str(days),
+        owner_id, session_id, event_name, event_type, route, league_id, json.dumps(metadata), device_type, platform,
     )
-    by_owner = await conn.fetch(
+
+
+async def get_navigation_heatmap(conn, days: int) -> dict:
+    """Every page_view event, grouped by route — page views, distinct
+    sessions, and distinct owners over the trailing `days` window.
+    Distinct-session count is what actually makes this a "how much
+    real traffic" signal rather than "how many times did someone leave
+    a tab open on this route" (a single long-lived session refreshing/
+    revisiting the same route repeatedly still only ever accrues real
+    page_view rows on real navigations — see frontend/src/lib/
+    analyticsEvents.ts's trackPageView, called once per route change,
+    not once per render)."""
+    rows = await conn.fetch(
         """
-        SELECT pve.owner_id, o.display_name, count(*) AS views
-        FROM page_view_events pve
-        JOIN owners o ON o.owner_id = pve.owner_id
-        WHERE pve.created_at >= now() - ($1 || ' days')::interval
-        GROUP BY pve.owner_id, o.display_name
+        SELECT event_name, count(*) AS views, count(DISTINCT session_id) AS sessions,
+               count(DISTINCT owner_id) AS unique_owners
+        FROM analytics_events
+        WHERE event_type = 'page_view' AND created_at >= now() - ($1 || ' days')::interval
+        GROUP BY event_name
         ORDER BY views DESC
         """,
         str(days),
     )
     total_views = await conn.fetchval(
-        "SELECT count(*) FROM page_view_events WHERE created_at >= now() - ($1 || ' days')::interval", str(days)
+        "SELECT count(*) FROM analytics_events WHERE event_type = 'page_view' AND created_at >= now() - ($1 || ' days')::interval",
+        str(days),
     )
     return {
         "window_days": days,
         "total_views": total_views,
-        "top_paths": [dict(r) for r in top_paths],
-        "by_owner": [dict(r) for r in by_owner],
+        "routes": [dict(r) for r in rows],
     }
+
+
+async def get_feature_usage(conn, days: int) -> list[dict]:
+    """Same shape as the navigation heat map above, but for `feature`
+    events (app/analytics/taxonomy.py's FEATURE_EVENTS) — a much
+    smaller, deliberately curated list, so this is naturally a short
+    table rather than needing its own pagination."""
+    rows = await conn.fetch(
+        """
+        SELECT event_name, count(*) AS uses, count(DISTINCT owner_id) AS unique_owners
+        FROM analytics_events
+        WHERE event_type = 'feature' AND created_at >= now() - ($1 || ' days')::interval
+        GROUP BY event_name
+        ORDER BY uses DESC
+        """,
+        str(days),
+    )
+    return [dict(r) for r in rows]

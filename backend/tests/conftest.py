@@ -352,11 +352,12 @@ async def cleanup_test_season(pool):
                 "SELECT user_id FROM owners WHERE espn_member_id LIKE 'test-%' AND user_id IS NOT NULL"
             )
         ]
-        # page_view_events.owner_id -> owners.owner_id (2026-09 usage
-        # dashboard) — same "goes before the owners DELETE" requirement
-        # as every other owner_id-referencing table cleaned up here.
+        # analytics_events.owner_id -> owners.owner_id (2026-09 admin
+        # dashboard, page_view_events' successor) — same "goes before
+        # the owners DELETE" requirement as every other owner_id-
+        # referencing table cleaned up here.
         await conn.execute(
-            "DELETE FROM page_view_events WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+            "DELETE FROM analytics_events WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
         if linked_user_ids:
@@ -409,6 +410,12 @@ async def cleanup_test_season(pool):
             await conn.execute("DELETE FROM messages WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
             await conn.execute(
                 "DELETE FROM conversation_participants WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
+            # Same analytics_events FK as the espn_member_id-pattern sweep
+            # above — this owner pattern (real signup, no espn_member_id)
+            # isn't caught by that one's own WHERE clause.
+            await conn.execute(
+                "DELETE FROM analytics_events WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
             )
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
             # A direct conversation between a test_signup_owner_ids owner

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getNflScoreboard, type NflGame } from "@/lib/api";
+import { TrackedGamecastLink } from "@/components/gamecast/TrackedGamecastLink";
 import { findGamecastId, getLiveGames } from "@/lib/gamecastApi";
 import { NFL_TEAM_NAMES } from "@/lib/nfl-teams";
 
@@ -101,11 +101,12 @@ function GameRow({ game }: { game: AnnotatedGame }) {
   }
 
   return (
-    <Link
+    <TrackedGamecastLink
+      gamecastId={game.gamecastId}
       href={`/gamecast/${game.gamecastId}`}
       className="transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
     >
       {content}
-    </Link>
+    </TrackedGamecastLink>
   );
 }

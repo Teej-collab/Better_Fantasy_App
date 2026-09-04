@@ -1737,24 +1737,86 @@ export async function getFeedback(): Promise<{ items: FeedbackItem[] }> {
   return res.json();
 }
 
-// ---- Admin usage dashboard (2026-09) — site-owner-only visibility into
-// who's using the app and which pages/features actually get used. Backed
-// by app/routers/admin.py, gated the same way as every other /admin/*
-// route (require_commissioner_of(DEFAULT_LEAGUE_ID), not "any league's
-// commissioner" — see that router's own docstring). ---------------------
+// ---- Admin dashboard / product intelligence (2026-09) — site-owner-only
+// visibility into who's using The Weekend and how. Backed by
+// app/routers/admin.py, gated the same way as every other /admin/* route
+// (require_commissioner_of(DEFAULT_LEAGUE_ID), not "any league's
+// commissioner" — see that router's own docstring). See
+// ANALYTICS_EVENTS.md and ADMIN_SECURITY.md at the repo root for the
+// full design. -----------------------------------------------------
 
 export type OnlineOwner = { owner_id: number; display_name: string };
 
-export type UsagePathSummary = { path: string; views: number; unique_owners: number };
-export type UsageByOwner = { owner_id: number; display_name: string; views: number };
-export type UsageSummary = {
+export type AdminOverview = {
   window_days: number;
-  total_views: number;
-  top_paths: UsagePathSummary[];
-  by_owner: UsageByOwner[];
+  total_users: number;
+  new_users: number;
+  active_users: number;
+  total_leagues: number;
+  active_leagues: number;
+  online_now: number;
+  // null until the very first analytics event has ever been recorded.
+  // The frontend captions every count with "since {this date}" so a
+  // small number reads as "collection just started," not "nobody's
+  // here" — see app/queries/admin_overview.py's own docstring.
+  tracking_started_at: string | null;
 };
 
-// Server-side reads for the dashboard's first paint — getServerOrNull
+export type NavigationHeatmapRoute = { event_name: string; views: number; sessions: number; unique_owners: number };
+export type NavigationHeatmap = { window_days: number; total_views: number; routes: NavigationHeatmapRoute[] };
+
+export type FeatureUsageRow = { event_name: string; uses: number; unique_owners: number };
+export type FeatureUsage = { window_days: number; features: FeatureUsageRow[] };
+
+export type AdminUserRow = {
+  user_id: number;
+  owner_id: number | null;
+  display_name: string;
+  email: string | null;
+  created_at: string;
+  league_count: number;
+  is_commissioner_anywhere: boolean;
+  last_active: string | null;
+};
+export type AdminUserStatus = "all" | "active" | "inactive" | "new" | "commissioner" | "multiple_leagues" | "no_league";
+export type AdminUserList = { total: number; users: AdminUserRow[] };
+
+export type AdminUserActivityEvent = {
+  event_name: string;
+  event_type: string;
+  route: string | null;
+  metadata: Record<string, unknown>;
+  device_type: string | null;
+  platform: string | null;
+  created_at: string;
+};
+export type AdminUserDetail = AdminUserRow & {
+  leagues: { league_id: number; league_name: string; role: string; joined_at: string }[];
+  recent_activity: AdminUserActivityEvent[];
+};
+
+export type AdminLeagueRow = { id: number; name: string; created_at: string; member_count: number; recent_events: number };
+export type AdminLeagueList = { window_days: number; leagues: AdminLeagueRow[] };
+
+export type AdminLeagueMember = {
+  user_id: number;
+  owner_id: number | null;
+  display_name: string;
+  role: string;
+  joined_at: string;
+  team_name: string | null;
+  last_active: string | null;
+  recent_events: number;
+};
+export type AdminLeagueDetail = {
+  id: number;
+  name: string;
+  created_at: string;
+  invite_code: string;
+  members: AdminLeagueMember[];
+};
+
+// Server-side reads for each admin page's first paint — getServerOrNull
 // turns a 403 (signed in, not the site owner) into null rather than
 // throwing, so the page can render a plain "not authorized" message
 // instead of a crashed error boundary.
@@ -1763,38 +1825,119 @@ export async function getOnlineOwnersServer(sessionCookie: string | undefined): 
   return data ? data.owners : null;
 }
 
-export async function getUsageSummaryServer(
+export async function getAdminOverviewServer(
+  sessionCookie: string | undefined,
+  days = 7
+): Promise<AdminOverview | null> {
+  return getServerOrNull<AdminOverview>(`/admin/overview?days=${days}`, sessionCookie);
+}
+
+export async function getNavigationHeatmapServer(
   sessionCookie: string | undefined,
   days = 30
-): Promise<UsageSummary | null> {
-  return getServerOrNull<UsageSummary>(`/admin/usage?days=${days}`, sessionCookie);
+): Promise<NavigationHeatmap | null> {
+  return getServerOrNull<NavigationHeatmap>(`/admin/navigation?days=${days}`, sessionCookie);
 }
 
-// Client-side counterparts — AdminDashboard.tsx polls these to keep the
-// "who's online" list live without a full page reload.
-export async function getOnlineOwners(): Promise<OnlineOwner[]> {
-  const res = await fetch("/api/backend/admin/online", { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET /admin/online failed: ${res.status}`);
-  const data = await res.json();
-  return data.owners;
+export async function getFeatureUsageServer(
+  sessionCookie: string | undefined,
+  days = 30
+): Promise<FeatureUsage | null> {
+  return getServerOrNull<FeatureUsage>(`/admin/features?days=${days}`, sessionCookie);
 }
 
-export async function getUsageSummary(days = 30): Promise<UsageSummary> {
-  const res = await fetch(`/api/backend/admin/usage?days=${days}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET /admin/usage failed: ${res.status}`);
+export async function listAdminUsersServer(
+  sessionCookie: string | undefined,
+  status: AdminUserStatus = "all"
+): Promise<AdminUserList | null> {
+  return getServerOrNull<AdminUserList>(`/admin/users?status=${status}`, sessionCookie);
+}
+
+export async function listAdminLeaguesServer(
+  sessionCookie: string | undefined,
+  days = 7
+): Promise<AdminLeagueList | null> {
+  return getServerOrNull<AdminLeagueList>(`/admin/leagues?days=${days}`, sessionCookie);
+}
+
+export async function getAdminUserDetailServer(
+  sessionCookie: string | undefined,
+  userId: number | string
+): Promise<AdminUserDetail | null> {
+  return getServerOrNull<AdminUserDetail>(`/admin/users/${userId}`, sessionCookie);
+}
+
+export async function getAdminLeagueDetailServer(
+  sessionCookie: string | undefined,
+  leagueId: number | string,
+  days = 7
+): Promise<AdminLeagueDetail | null> {
+  return getServerOrNull<AdminLeagueDetail>(`/admin/leagues/${leagueId}?days=${days}`, sessionCookie);
+}
+
+// Client-side counterparts — for interactive re-fetches (search/filter,
+// polling "online now", switching a time window) without a full page
+// reload.
+async function _adminGet<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
 
-// Fire-and-forget — called once per route change from
-// PageViewTracker.tsx (mounted app-wide in layout.tsx). Never throws:
-// a failed tracking call is background telemetry, not something a
-// real visitor should ever see surface as an error.
-export async function trackPageView(path: string): Promise<void> {
+export function getOnlineOwners(): Promise<{ owners: OnlineOwner[] }> {
+  return _adminGet("/admin/online");
+}
+
+export function getAdminOverview(days = 7): Promise<AdminOverview> {
+  return _adminGet(`/admin/overview?days=${days}`);
+}
+
+export function getNavigationHeatmap(days = 30): Promise<NavigationHeatmap> {
+  return _adminGet(`/admin/navigation?days=${days}`);
+}
+
+export function getFeatureUsage(days = 30): Promise<FeatureUsage> {
+  return _adminGet(`/admin/features?days=${days}`);
+}
+
+export function listAdminUsers(search: string, status: AdminUserStatus): Promise<AdminUserList> {
+  const params = new URLSearchParams({ status });
+  if (search) params.set("search", search);
+  return _adminGet(`/admin/users?${params.toString()}`);
+}
+
+export function getAdminUserDetail(userId: number): Promise<AdminUserDetail> {
+  return _adminGet(`/admin/users/${userId}`);
+}
+
+export function listAdminLeagues(days = 7): Promise<AdminLeagueList> {
+  return _adminGet(`/admin/leagues?days=${days}`);
+}
+
+export function getAdminLeagueDetail(leagueId: number, days = 7): Promise<AdminLeagueDetail> {
+  return _adminGet(`/admin/leagues/${leagueId}?days=${days}`);
+}
+
+// Fire-and-forget — called from lib/analyticsEvents.ts's trackEvent
+// wrapper (PageViewTracker.tsx on every route change, plus the small
+// curated set of feature-event call sites). Never throws: a failed
+// tracking call is background telemetry, not something a real visitor
+// should ever see surface as an error.
+export async function trackAnalyticsEvent(body: {
+  session_id: string;
+  event_name: string;
+  event_type: "page_view" | "feature";
+  route?: string | null;
+  league_id?: number | null;
+  metadata?: Record<string, unknown>;
+  device_type?: string | null;
+  platform?: string | null;
+}): Promise<void> {
   try {
-    await fetch("/api/backend/admin/track-view", {
+    await fetch("/api/backend/admin/track", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(body),
     });
   } catch {
     // best-effort only

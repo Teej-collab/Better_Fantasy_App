@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { trackPageView } from "@/lib/api";
+import { trackPageView } from "@/lib/analyticsEvents";
 
 // Mounted once, app-wide (app/layout.tsx) — logs one page-view event
 // per route change to the admin-only usage dashboard (app/routers/

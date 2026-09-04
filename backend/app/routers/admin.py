@@ -16,8 +16,10 @@ match everything else rather than staying on the old stopgap
 indefinitely.
 """
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.analytics import taxonomy
+from app.analytics.rate_limit import is_rate_limited
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
@@ -30,7 +32,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
-from app.queries import admin_analytics
+from app.queries import admin_analytics, admin_leagues, admin_overview, admin_users
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -159,12 +161,18 @@ async def trigger_projected_points_sync(request: Request):
     return results
 
 
-# ---- Usage dashboard (2026-09) — site-owner-only visibility into who's
-# using the app right now and which pages/features actually get used.
-# Same commissioner_of(DEFAULT_LEAGUE_ID) gate as everything else in
-# this router for the two READ endpoints; POST /track-view itself is
-# open to any signed-in owner (it only ever writes THEIR OWN page
-# view, never reads anyone else's). ---------------------------------
+# ---- Admin dashboard / product intelligence (2026-09) — site-owner-only
+# visibility into who's using The Weekend and how. Same
+# commissioner_of(DEFAULT_LEAGUE_ID) gate as every other read endpoint
+# in this router; POST /track itself is open to any signed-in owner (it
+# only ever writes an event tagged with THEIR OWN owner_id, server-
+# derived from the session — never a client-supplied one — and never
+# reads anything back). See ADMIN_SECURITY.md and ANALYTICS_EVENTS.md
+# at the repo root for the full design.
+
+
+def _clamp_days(days: int) -> int:
+    return max(1, min(days, 365))
 
 
 @router.get("/online")
@@ -181,41 +189,132 @@ async def get_online_owners(request: Request):
     return {"owners": owners}
 
 
-class TrackViewRequest(BaseModel):
-    path: str
+class TrackEventRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=100)
+    event_name: str = Field(min_length=1, max_length=100)
+    event_type: str
+    route: str | None = None
+    league_id: int | None = None
+    metadata: dict = Field(default_factory=dict)
+    device_type: str | None = None
+    platform: str | None = None
 
 
-_MAX_TRACKED_PATH_LENGTH = 200
-
-
-@router.post("/track-view")
-async def track_view(body: TrackViewRequest, request: Request):
-    """Fire-and-forget page-view log — called once per route change
-    from PageViewTracker.tsx (mounted app-wide in layout.tsx). No
-    admin gate: every signed-in owner can log their OWN view; only the
-    aggregate read below is admin-only. A no-op (not an error) for a
-    session with no owner_id yet (signed up, hasn't joined a league) —
-    see the table's own migration docstring for why an anonymous row
-    would defeat the point of this table."""
+@router.post("/track")
+async def track_event(body: TrackEventRequest, request: Request):
+    """Fire-and-forget event log — called from frontend/src/lib/
+    analyticsEvents.ts's trackEvent() on every route change and every
+    curated feature interaction. No admin gate: every signed-in owner
+    can log their OWN event; only the aggregate reads below are
+    admin-only. A no-op (not an error) for a session with no owner_id
+    yet (signed up, hasn't joined a league) — an anonymous row would
+    defeat the point of this table (see its own migration docstring).
+    event_name/event_type/metadata are validated against
+    app/analytics/taxonomy.py's fixed taxonomy — an unknown event name
+    or a metadata key that taxonomy hasn't allowlisted for that event
+    is rejected outright, not silently accepted (see taxonomy.py's own
+    docstring for why)."""
     payload = _require_session(request)
     owner_id = payload.get("owner_id")
     if owner_id is None:
         return {"ok": True}
-    path = body.path.strip()[:_MAX_TRACKED_PATH_LENGTH]
-    if not path:
-        return {"ok": True}
+    if is_rate_limited(owner_id):
+        raise HTTPException(status_code=429, detail="Too many events — try again shortly")
+
+    error = taxonomy.validate_event(body.event_name, body.event_type, body.metadata, body.device_type, body.platform)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    route = body.route.strip()[: taxonomy.MAX_ROUTE_LENGTH] if body.route else None
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await admin_analytics.record_page_view(conn, owner_id, path)
+        await admin_analytics.record_event(
+            conn, owner_id, body.session_id, body.event_name, body.event_type, route,
+            body.league_id, body.metadata, body.device_type, body.platform,
+        )
     return {"ok": True}
 
 
-@router.get("/usage")
-async def get_usage_summary(request: Request, days: int = 30):
+@router.get("/overview")
+async def get_overview(request: Request, days: int = 7):
     payload = _require_session(request)
-    days = max(1, min(days, 365))
+    days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
-        summary = await admin_analytics.get_usage_summary(conn, days)
-    return summary
+        kpis = await admin_overview.get_overview(conn, days)
+        online = await admin_analytics.list_online_owners(conn)
+    return {**kpis, "online_now": len(online)}
+
+
+@router.get("/navigation")
+async def get_navigation_heatmap(request: Request, days: int = 30):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        heatmap = await admin_analytics.get_navigation_heatmap(conn, days)
+    return heatmap
+
+
+@router.get("/features")
+async def get_feature_usage(request: Request, days: int = 30):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        features = await admin_analytics.get_feature_usage(conn, days)
+    return {"window_days": days, "features": features}
+
+
+@router.get("/users")
+async def list_users(request: Request, search: str | None = None, status: str = "all", limit: int = 50, offset: int = 0):
+    payload = _require_session(request)
+    if status not in admin_users.STATUS_FILTERS:
+        raise HTTPException(status_code=400, detail=f"status must be one of {sorted(admin_users.STATUS_FILTERS)}")
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    search = search.strip()[:100] if search else None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        result = await admin_users.list_users(conn, search, status, limit, offset)
+    return result
+
+
+@router.get("/users/{user_id}")
+async def get_user_detail(user_id: int, request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        user = await admin_users.get_user_detail(conn, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="No user found")
+    return user
+
+
+@router.get("/leagues")
+async def list_leagues(request: Request, days: int = 7):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        leagues = await admin_leagues.list_leagues(conn, days)
+    return {"window_days": days, "leagues": leagues}
+
+
+@router.get("/leagues/{league_id}")
+async def get_league_detail(league_id: int, request: Request, days: int = 7):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        league = await admin_leagues.get_league_detail(conn, league_id, days)
+    if league is None:
+        raise HTTPException(status_code=404, detail="No league found")
+    return league

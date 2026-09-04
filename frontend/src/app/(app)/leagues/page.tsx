@@ -18,6 +18,7 @@ import {
   type Team,
   type UnclaimedOwner,
 } from "@/lib/leaguesApi";
+import { trackLeagueSwitched } from "@/lib/analyticsEvents";
 
 /**
  * Self-serve create/join-a-league + create-your-team + switch-active-
@@ -170,6 +171,7 @@ export default function LeaguesPage() {
     try {
       await selectLeague(leagueId);
       setActiveLeagueId(leagueId);
+      trackLeagueSwitched(leagueId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't switch leagues");
     } finally {
