@@ -120,6 +120,35 @@ async def test_put_preferences_partial_patch_end_to_end(pool, monkeypatch):
     assert body["notify_direct_messages"] is True  # unpatched fields still present, still default
 
 
+async def test_get_preferences_defaults_ai_training_opted_in(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 900)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/settings/preferences")
+
+    body = resp.json()
+    assert body["ai_training_opt_out"] is False  # opt-OUT model — opted in by default
+    assert body["ai_training_notice_seen"] is False
+
+
+async def test_put_preferences_records_ai_training_opt_out_and_notice_seen(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 901)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put(
+            "/settings/preferences", json={"ai_training_opt_out": True, "ai_training_notice_seen": True}
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ai_training_opt_out"] is True
+    assert body["ai_training_notice_seen"] is True
+
+
 async def test_put_preferences_rejects_invalid_neon_intensity(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 7)

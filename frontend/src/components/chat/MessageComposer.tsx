@@ -3,6 +3,7 @@
 import { upload } from "@vercel/blob/client";
 import { useEffect, useRef, useState } from "react";
 import type { ChatGif, ChatMember, ChatMessage } from "@/lib/api";
+import { AiTrainingNoticeModal } from "@/components/chat/AiTrainingNoticeModal";
 import { GifPicker } from "@/components/chat/GifPicker";
 
 const MAX_LENGTH = 2000;
@@ -20,18 +21,27 @@ export function MessageComposer({
   onCancelReply,
   onSend,
   onTyping,
+  aiNoticeSeen,
+  onAiNoticeResolved,
 }: {
   members: ChatMember[];
   replyTo: ChatMessage | null;
   onCancelReply: () => void;
   onSend: (body: string, mentions: number[], imageUrl: string | null) => void;
   onTyping: () => void;
+  // Settings > Chat > "AI Learning From Chat" preference's own
+  // ai_training_notice_seen flag — false means this owner has never
+  // been shown the one-time consent warning yet, so their first real
+  // send attempt below is intercepted to show it instead.
+  aiNoticeSeen: boolean;
+  onAiNoticeResolved: (optOut: boolean) => void;
 }) {
   const [value, setValue] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [showAiNotice, setShowAiNotice] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingSentAt = useRef(0);
@@ -106,7 +116,7 @@ export function MessageComposer({
     setShowGifPicker(false);
   }
 
-  function send() {
+  function doSend() {
     const body = value.trim();
     const imageUrl = pendingImage?.status === "done" ? pendingImage.url : null;
     if (!body && !imageUrl) return;
@@ -119,6 +129,25 @@ export function MessageComposer({
     setPendingMentions(new Map());
     setMentionQuery(null);
     removeImage();
+  }
+
+  function send() {
+    // Nothing to actually send (empty box, still uploading) — never
+    // trigger the one-time consent warning over a no-op send attempt.
+    const hasContent = value.trim() || pendingImage?.status === "done";
+    if (!hasContent || pendingImage?.status === "uploading") return;
+
+    if (!aiNoticeSeen) {
+      setShowAiNotice(true);
+      return;
+    }
+    doSend();
+  }
+
+  function resolveAiNotice(optOut: boolean) {
+    setShowAiNotice(false);
+    onAiNoticeResolved(optOut);
+    doSend();
   }
 
   return (
@@ -238,6 +267,10 @@ export function MessageComposer({
           ➤
         </button>
       </form>
+
+      {showAiNotice && (
+        <AiTrainingNoticeModal onContinue={() => resolveAiNotice(false)} onOptOut={() => resolveAiNotice(true)} />
+      )}
     </div>
   );
 }

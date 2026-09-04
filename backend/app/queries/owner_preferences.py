@@ -65,6 +65,15 @@ _DEFAULT_PREFERENCES = {
     "notify_my_players": False,
     "notify_fantasy_team": True,
     "notify_league": True,
+    # Consent for a not-yet-built feature (AI learning to shit-talk from
+    # real chat messages, migration 6ed29b9f0609) — opt-OUT model, so
+    # the default is False (opted in). ai_training_notice_seen tracks
+    # whether the one-time warning shown before an owner's first-ever
+    # chat send (MessageComposer.tsx) has actually been shown yet —
+    # kept separate from the choice itself so "saw it, chose to stay
+    # opted in" and "never saw it" don't collapse into the same value.
+    "ai_training_opt_out": False,
+    "ai_training_notice_seen": False,
 }
 
 # Every real column except owner_id itself — used to build a full

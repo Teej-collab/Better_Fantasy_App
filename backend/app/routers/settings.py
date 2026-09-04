@@ -262,6 +262,8 @@ class PreferencesPatch(BaseModel):
     bottom_nav_order: str | None = None
     home_hidden_cards: str | None = None
     home_desktop_layout: str | None = None
+    ai_training_opt_out: bool | None = None
+    ai_training_notice_seen: bool | None = None
 
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}

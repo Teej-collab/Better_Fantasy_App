@@ -93,6 +93,22 @@ export function ChatSection() {
           />
         ))}
       </section>
+
+      <section
+        className="neon-panel flex flex-col rounded-xl bg-black/[0.015] px-5 dark:bg-white/[0.03]"
+        style={panelGlowStyle(SECTION_COLORS.chat)}
+      >
+        {/* ai_training_opt_out is stored inverted (true = opted out) —
+            this toggle reads/writes the positive framing a settings
+            page should show ("allow"), same choice offered by the
+            one-time warning before a first-ever chat send. */}
+        <ToggleRow
+          label="AI Learning From Chat"
+          description="Not built yet — reserving the choice now. If this ever ships, allow chat messages to help the AI learn to talk trash like this league does."
+          checked={!prefs.ai_training_opt_out}
+          onChange={(checked) => patch("ai_training_opt_out", !checked)}
+        />
+      </section>
     </div>
   );
 }
