@@ -1722,6 +1722,15 @@ body {
    ============================================================ */
 
 .chat-bubble {
+  /* The element this class lands on is a <span> — plain inline by
+     default. An inline element with padding/background/border-radius
+     renders each WRAPPED LINE as its own separate, disconnected box
+     (a well-known CSS behavior, not a bug in the box model) — visible
+     as two stacked, misaligned rounded rectangles on any bubble whose
+     text wraps to more than one line. inline-block makes the padding/
+     background/radius apply to the whole multi-line block as one
+     shape, the same as every other chat app's bubble. */
+  display: inline-block;
   position: relative;
 }
 .chat-bubble--mine {
