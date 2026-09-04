@@ -124,12 +124,33 @@ export function ChatApp({
       resizeObserver.observe(bottomNavEl);
     }
 
+    // requestAnimationFrame, not a bare call — iOS Safari can fire
+    // visualViewport's own events a frame before the WebKit layout
+    // engine has actually finished resettling the page after the
+    // keyboard opens/closes, so measuring synchronously inside the
+    // event handler sometimes captures a still-transitioning `top`.
+    function scheduleMeasure() {
+      requestAnimationFrame(measure);
+    }
+
     measure();
-    window.addEventListener("resize", measure);
-    desktopQuery.addEventListener("change", measure);
+    window.addEventListener("resize", scheduleMeasure);
+    desktopQuery.addEventListener("change", scheduleMeasure);
+    // The real fix for the stuck-bottom-nav-after-keyboard-close bug:
+    // plain `window.resize` doesn't reliably fire (or fires with stale
+    // geometry) when iOS Safari's on-screen keyboard opens/closes —
+    // `visualViewport` is the API actually built for tracking exactly
+    // this, and its own `resize` AND `scroll` events both matter here
+    // (iOS also scrolls the page to keep the focused composer visible
+    // above the keyboard, which moves panelRef's measured `top` without
+    // necessarily firing a `resize` at all).
+    window.visualViewport?.addEventListener("resize", scheduleMeasure);
+    window.visualViewport?.addEventListener("scroll", scheduleMeasure);
     return () => {
-      window.removeEventListener("resize", measure);
-      desktopQuery.removeEventListener("change", measure);
+      window.removeEventListener("resize", scheduleMeasure);
+      desktopQuery.removeEventListener("change", scheduleMeasure);
+      window.visualViewport?.removeEventListener("resize", scheduleMeasure);
+      window.visualViewport?.removeEventListener("scroll", scheduleMeasure);
       resizeObserver?.disconnect();
     };
   }, []);
