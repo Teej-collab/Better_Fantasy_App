@@ -1,9 +1,8 @@
 """Keeper-league tracking — owners pick their keepers for the active
-season from their roster as it stands LIVE on ESPN right now (not a
-snapshot from our own sync pipeline), the commissioner configures how
-many keepers are allowed, any cap on consecutive years the same player
-can be kept, and the selection deadline, then locks the window once
-it's final.
+season from their real, current in-app roster, the commissioner
+configures how many keepers are allowed, any cap on consecutive years
+the same player can be kept, and the selection deadline, then locks
+the window once it's final.
 
 Owner-facing routes resolve owner_id from the session only, same
 "no owner_id from the caller" discipline as app/routers/settings.py.
@@ -12,31 +11,39 @@ league_context.py) instead of the old global is_commissioner session
 flag — see TODO.md's PHASE 9 entry. Every route also resolves
 league_id from the session, never a client-supplied value.
 
-ROSTER POOL SOURCE — deliberately a live ESPN read, not our own DB
-(see _get_live_roster_pool): this app's `rosters` table only ever
-syncs by real NFL week, so its most recent 2025 snapshot is frozen at
-that season's last playoff week — 7-8 months stale by the time keeper
-selection matters (Aug 2026, ahead of the Sept 5 2026 draft), and any
-offseason waiver moves an owner made on ESPN since then wouldn't show
-up. Calling ESPNLineupClient.get_roster(espn_team_id, active_season)
-instead hits ESPN's live roster for the CURRENT (2026) season context
-directly — already confirmed in production to return a real, full
-roster even with zero 2026 rows synced locally (ESPN carries a team's
-roster over from the prior season until a real draft happens) — so
-this is always exactly "the roster live on ESPN right now," matching
-what keeper eligibility is actually supposed to reflect. This is a
-deliberate, ongoing exception to the rest of the ESPN-independence
-pivot (see TODO.md): reading ESPN's live roster is fine and stays;
-only the WRITE path (lineup management) moved off ESPN.
+ROSTER POOL SOURCE — current_rosters, this app's own in-app draft/
+lineup system of record (app/domain/lineup_engine.py's My Team reads
+from the exact same table), NOT a live ESPN read. This used to hit
+ESPNLineupClient.get_roster(espn_team_id, active_season) directly (see
+git history on this docstring for the original reasoning, from before
+this app had its own in-app draft) — a real production bug (2026-09-04:
+"a user's keeper roster isn't showing"), since that live-ESPN read
+silently returns an empty roster for two real, common cases: (1) any
+team created through the self-serve "create your team" flow has a
+SYNTHETIC espn_team_id (see app/queries/teams.py's create_team —
+`nextval('synthetic_espn_team_id_seq')`, not a real ESPN team), which
+ESPN's API naturally has nothing to return for; (2) even a team with a
+real espn_team_id has a roster that's since diverged from ESPN's own
+copy, because real roster moves (the in-app draft, free agents, lineup
+swaps) happen entirely in this app now, not on ESPN. Both cases are the
+normal case for this league today, not an edge case — current_rosters
+is the only roster source that's actually still correct.
+
+keeper_selections carries a player's identity forward year over year as
+espn_player_id (not sleeper_player_id), so the pool below still reports
+espn_player_id per row — resolved via players.espn_player_id, the same
+crosswalk app/domain/draft_engine.py's seed_keepers_from_locked_selections
+already uses to turn a locked keeper into a real draft pick. A player on
+the roster with no espn_player_id (the crosswalk doesn't cover 100% of
+players — see app/providers/sleeper/ingest.py) can't be offered as a
+keeper under this identity scheme and is left out of the pool, same as
+that other resolution path's own KeeperResolutionError case.
 
 ESPN write-back (pushing locked selections into ESPN's own copy of the
-league) is intentionally NOT implemented here yet — see the project
-plan's Part A: it needs a first-time reverse-engineering spike (a
-commissioner designating a keeper in ESPN's own UI while the real
-request is captured) before we know it's even possible, the same way
-app/providers/espn/lineup_client.py's working write was originally
-captured. This router is fully functional as an in-app system of
-record regardless of whether that spike ever succeeds.
+league) is intentionally NOT implemented here — this league's real
+draft/rosters are no longer ESPN's to begin with, so there's nothing on
+ESPN's side left to write back to. This router is fully functional as
+an in-app system of record on its own.
 """
 import datetime
 
@@ -48,52 +55,31 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
-from app.providers.espn.lineup_client import ESPNLineupClient
-from app.providers.espn.slots import slot_label
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
-from app.queries import league as league_queries
 
 router = APIRouter(prefix="/keepers", tags=["keepers"])
 
-_NON_POSITION_SLOT_LABELS = {"BE", "IR", "RB/WR/TE"}  # bench/IR/flex aren't a real position
 
-
-def _infer_position(eligible_slot_ids: tuple[int, ...]) -> str:
-    """A RosterEntry has no dedicated position field — its real
-    position is whichever eligible slot isn't bench/IR/flex (an RB's
-    own eligible slots are always {RB, RB/WR/TE, BE, IR}, so RB is the
-    one real-position label in that set)."""
-    for slot_id in eligible_slot_ids:
-        label = slot_label(slot_id)
-        if label not in _NON_POSITION_SLOT_LABELS:
-            return label
-    return "—"
-
-
-async def _get_live_roster_pool(owner_id: int, active_season: int, league_id: int) -> list[dict]:
+async def _get_roster_pool(conn, owner_id: int, active_season: int, league_id: int) -> list[dict]:
     """The players an owner can choose a keeper from — their real,
-    live-right-now ESPN roster (see module docstring for why this is a
-    live call, not a DB read). Empty list (not an error) if the owner
-    has no team this season, matching get_owner_roster_pool's old
-    "just an empty pool" behavior for that case."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        team = await league_queries.get_team_for_owner(conn, active_season, owner_id, league_id)
-    if team is None:
-        return []
-
-    client = ESPNLineupClient()
-    roster = client.get_roster(team["espn_team_id"], active_season)
-    return [
-        {
-            "espn_player_id": e.player_id,
-            "player_name": e.player_name,
-            "position": _infer_position(e.eligible_slot_ids),
-            "pro_team": e.pro_team,
-        }
-        for e in roster
-    ]
+    current in-app roster (see module docstring). A JOIN, not a
+    separate "does this owner have a team" check first — naturally
+    returns an empty list (not an error) for an owner with no team,
+    or no draft/roster yet, this season."""
+    rows = await conn.fetch(
+        """
+        SELECT p.espn_player_id, p.full_name AS player_name, p.position, p.pro_team
+        FROM teams_by_season t
+        JOIN current_rosters cr ON cr.team_id = t.id AND cr.season = t.season
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        WHERE t.season = $1 AND t.owner_id = $2 AND t.league_id = $3
+          AND p.espn_player_id IS NOT NULL
+        ORDER BY p.full_name
+        """,
+        active_season, owner_id, league_id,
+    )
+    return [dict(r) for r in rows]
 
 
 def _decode_session(token: str | None) -> dict | None:
@@ -154,9 +140,7 @@ async def get_my_keepers(request: Request, pool=Depends(get_pool)):
 
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-
-    pool_rows = await _get_live_roster_pool(owner_id, active_season, league_id)
-    async with pool.acquire() as conn:
+        pool_rows = await _get_roster_pool(conn, owner_id, active_season, league_id)
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         current = await keeper_queries.get_selections(conn, active_season, owner_id, league_id)
         prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
@@ -222,8 +206,7 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
         if len(ids) > rules["max_keepers"]:
             raise HTTPException(status_code=400, detail=f"You can keep at most {rules['max_keepers']} player(s)")
 
-    pool_rows = await _get_live_roster_pool(owner_id, active_season, league_id)
-    async with pool.acquire() as conn:
+        pool_rows = await _get_roster_pool(conn, owner_id, active_season, league_id)
         pool_by_id = {r["espn_player_id"]: r for r in pool_rows}
         prior = await keeper_queries.get_prior_season_selections(conn, owner_id, prior_season, league_id)
         prior_by_id = {r["espn_player_id"]: r for r in prior}
