@@ -107,7 +107,25 @@ export function ChatApp({
         return;
       }
       const top = panelRef.current.getBoundingClientRect().top;
-      setMobileHeight(`calc(100dvh - ${top}px - ${bottomNavHeight}px - env(safe-area-inset-bottom))`);
+      const viewport = window.visualViewport;
+      if (viewport) {
+        // Pixel math against the real visual viewport, not a `100dvh`
+        // CSS calc string — `dvh` and `fixed bottom-0` both assume the
+        // browser actually honors layout.tsx's interactiveWidget:
+        // "resizes-content" viewport meta, which isn't reliable on
+        // every real device (confirmed live: BottomNav's own position
+        // ended up floating disconnected from both this panel and the
+        // keyboard on an actual phone). BottomNav.tsx's own
+        // useKeyboardInset applies the identical
+        // visualViewport-vs-window.innerHeight gap as a translateY, so
+        // this mirrors that exact math rather than a separate guess,
+        // keeping the panel's bottom edge and the nav bar's repositioned
+        // top edge landing in the same place.
+        const availableBottom = viewport.height + viewport.offsetTop;
+        setMobileHeight(`${Math.max(0, availableBottom - top - bottomNavHeight)}px`);
+      } else {
+        setMobileHeight(`calc(100dvh - ${top}px - ${bottomNavHeight}px - env(safe-area-inset-bottom))`);
+      }
     }
 
     const bottomNavEl = document.getElementById("app-bottom-nav");

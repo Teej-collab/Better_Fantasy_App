@@ -1,6 +1,48 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
+
+// `fixed bottom-0` alone assumes the layout viewport's bottom edge
+// tracks the on-screen keyboard — layout.tsx's own
+// interactiveWidget:"resizes-content" viewport meta is supposed to
+// guarantee that on iOS 17.4+/Android Chrome, but it isn't reliable
+// on every real device (confirmed live: this bar floated disconnected
+// from both the content above it and the keyboard below it on an
+// actual phone, with dead space on both sides — the classic symptom
+// of the layout viewport NOT actually shrinking the way the meta tag
+// promises). window.visualViewport is the one API that always
+// reports the REAL visible region regardless of whether that promise
+// held, so this measures the gap between it and the full window
+// height directly and nudges the bar up by exactly that amount —
+// zero effect whenever the browser's own resize behavior is already
+// correct (the gap is 0), a real fix when it isn't.
+function useKeyboardInset(): number {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    function measure() {
+      if (!viewport) return;
+      const gap = window.innerHeight - viewport.height - viewport.offsetTop;
+      setInset(Math.max(0, Math.round(gap)));
+    }
+
+    measure();
+    viewport.addEventListener("resize", measure);
+    viewport.addEventListener("scroll", measure);
+    return () => {
+      viewport.removeEventListener("resize", measure);
+      viewport.removeEventListener("scroll", measure);
+    };
+  }, []);
+
+  return inset;
+}
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
@@ -61,13 +103,14 @@ export function BottomNav({
   order: string[] | null;
 }) {
   const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
+  const keyboardInset = useKeyboardInset();
 
   return (
     <nav
       id="app-bottom-nav"
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
-      style={{ borderTop: "1px solid var(--wl-border)" }}
+      style={{ borderTop: "1px solid var(--wl-border)", transform: keyboardInset > 0 ? `translateY(-${keyboardInset}px)` : undefined }}
     >
       {tabOrder.map((key) => {
         switch (key) {
