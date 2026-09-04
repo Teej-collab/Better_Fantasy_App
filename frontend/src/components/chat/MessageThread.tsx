@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
+import { AnnouncementFeed } from "@/components/chat/AnnouncementFeed";
 import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
+import { PostAnnouncementForm } from "@/components/chat/PostAnnouncementForm";
 import { formatMessageTimestamp, isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
 import { usePresence } from "@/components/PresenceProvider";
 
@@ -51,7 +53,7 @@ export function MessageThread({
   connected: boolean;
   hasMoreOlder: boolean;
   onLoadOlder: () => void;
-  onSend: (body: string, mentions: number[], replyToId: number | null, imageUrl: string | null) => void;
+  onSend: (body: string, mentions: number[], replyToId: number | null, imageUrl: string | null, title?: string) => void;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
   onTyping: () => void;
@@ -62,6 +64,11 @@ export function MessageThread({
   const [newMessageWaiting, setNewMessageWaiting] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const isGroupConversation = conversation.type === "league" || conversation.type === "commish_corner";
+  // Commish's Corner reads as a feed of tap-to-expand announcement
+  // cards (matching History's own card list), not a chat bubble
+  // stream — a commissioner's post is closer to a short article than
+  // a quick message. See AnnouncementFeed.tsx/AnnouncementCard.tsx.
+  const isAnnouncementFeed = conversation.type === "commish_corner";
   const listRef = useRef<HTMLDivElement>(null);
   const prevMessageCount = useRef(messages.length);
   const prevConversationId = useRef(conversation.id);
@@ -187,44 +194,48 @@ export function MessageThread({
 
       {showGroupInfo && <GroupInfoModal conversation={conversation} onClose={() => setShowGroupInfo(false)} />}
 
-      <div ref={listRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-4 py-3">
-        {hasMoreOlder && (
-          <div className="mb-3 flex justify-center">
-            <button
-              onClick={onLoadOlder}
-              className="rounded-full border border-black/10 px-3 py-1 text-xs text-black/60 hover:bg-black/5 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
-            >
-              Load earlier messages
-            </button>
-          </div>
-        )}
+      {isAnnouncementFeed ? (
+        <AnnouncementFeed messages={messages} myOwnerId={myOwnerId} onReact={onReact} onDelete={onDelete} />
+      ) : (
+        <div ref={listRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-4 py-3">
+          {hasMoreOlder && (
+            <div className="mb-3 flex justify-center">
+              <button
+                onClick={onLoadOlder}
+                className="rounded-full border border-black/10 px-3 py-1 text-xs text-black/60 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+              >
+                Load earlier messages
+              </button>
+            </div>
+          )}
 
-        {messages.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">No messages yet — say something.</p>
-        ) : (
-          messages.map((m, i) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              mine={m.owner_id === myOwnerId}
-              grouped={isGroupedWithPrevious(m, messages[i - 1])}
-              groupedWithNext={isGroupedWithNext(m, messages[i + 1])}
-              highlightMention={mentionHighlightingEnabled && m.mentions.includes(myOwnerId)}
-              memberNames={memberNames}
-              onReply={setReplyTo}
-              onReact={onReact}
-              onDelete={onDelete}
-              onScrollToMessage={scrollToMessage}
-            />
-          ))
-        )}
-        {readReceipt && (
-          <p className="mt-1 px-1 text-right text-[11px] text-black/35 dark:text-white/35">{readReceipt}</p>
-        )}
-      </div>
+          {messages.length === 0 ? (
+            <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">No messages yet — say something.</p>
+          ) : (
+            messages.map((m, i) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                mine={m.owner_id === myOwnerId}
+                grouped={isGroupedWithPrevious(m, messages[i - 1])}
+                groupedWithNext={isGroupedWithNext(m, messages[i + 1])}
+                highlightMention={mentionHighlightingEnabled && m.mentions.includes(myOwnerId)}
+                memberNames={memberNames}
+                onReply={setReplyTo}
+                onReact={onReact}
+                onDelete={onDelete}
+                onScrollToMessage={scrollToMessage}
+              />
+            ))
+          )}
+          {readReceipt && (
+            <p className="mt-1 px-1 text-right text-[11px] text-black/35 dark:text-white/35">{readReceipt}</p>
+          )}
+        </div>
+      )}
 
       <div className="relative">
-        {newMessageWaiting && (
+        {!isAnnouncementFeed && newMessageWaiting && (
           <button
             onClick={() => scrollToBottom("smooth")}
             className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-full bg-[var(--wl-accent-dim)] px-3 py-1 text-xs font-medium text-white shadow-lg"
@@ -232,7 +243,7 @@ export function MessageThread({
             ↓ New message
           </button>
         )}
-        {typingUsers.length > 0 && (
+        {!isAnnouncementFeed && typingUsers.length > 0 && (
           <div className="absolute -top-7 left-4 flex items-center gap-1 text-xs text-black/50 dark:text-white/50">
             <TypingDots />
             {typingUsers.length === 1
@@ -243,7 +254,20 @@ export function MessageThread({
           </div>
         )}
 
-        {conversation.can_post ? (
+        {isAnnouncementFeed ? (
+          conversation.can_post ? (
+            <PostAnnouncementForm
+              onPost={(postTitle, body) => onSend(body, [], null, null, postTitle)}
+              aiNoticeSeen={aiNoticeSeen}
+              onAiNoticeResolved={onAiNoticeResolved}
+            />
+          ) : (
+            <div className="flex items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm text-black/50 dark:border-white/10 dark:text-white/50">
+              <span aria-hidden>🔒</span>
+              Only your commissioner can post here
+            </div>
+          )
+        ) : conversation.can_post ? (
           <MessageComposer
             members={members}
             replyTo={replyTo}

@@ -38,6 +38,9 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 2000
+# Commish's Corner announcements only (2026-09) — a real headline, not
+# a chat message body, so a much shorter cap than MAX_MESSAGE_LENGTH.
+MAX_TITLE_LENGTH = 200
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_REACTIONS = {"😂", "🔥", "💀", "👍", "❤️", "😭"}
 
@@ -332,7 +335,8 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                 raw_mentions = data.get("mentions") or []
                 mentions = [m for m in raw_mentions if isinstance(m, int)]
 
-                blocked = False
+                error_code = None
+                title = None
                 async with pool.acquire() as conn:
                     conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
                     if conversation and conversation["type"] == "commish_corner":
@@ -345,12 +349,19 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                             # is for a stale UI state or a modified client
                             # (same "never trust the client" discipline as
                             # the mentions filter below).
-                            blocked = True
+                            error_code = "commish_corner_restricted"
                         else:
-                            blocked = False
-                    if blocked:
+                            # An announcement is a real headline, not a
+                            # plain chat message — required here, and
+                            # (see insert_message below) never even
+                            # accepted for any other conversation type,
+                            # regardless of what a client sends.
+                            title = str(data.get("title") or "").strip()
+                            if not title or len(title) > MAX_TITLE_LENGTH:
+                                error_code = "commish_corner_title_required"
+                    if error_code:
                         await websocket.send_text(json.dumps(
-                            {"type": "error", "error": "commish_corner_restricted", "conversation_id": conversation_id}
+                            {"type": "error", "error": error_code, "conversation_id": conversation_id}
                         ))
                     else:
                         participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
@@ -359,12 +370,12 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                         valid_mentions = [m for m in mentions if m in participant_ids]
 
                         row = await chat_queries.insert_message(
-                            conn, conversation_id, owner_id, body, reply_to_id, image_url
+                            conn, conversation_id, owner_id, body, reply_to_id, image_url, title
                         )
                         await chat_queries.insert_mentions(conn, row["id"], valid_mentions)
                         message = await chat_domain.get_single_message(conn, row["id"], owner_id)
 
-                if blocked:
+                if error_code:
                     continue
 
                 await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})

@@ -1055,13 +1055,51 @@ async def test_commish_corner_accepts_the_commissioner_over_websocket(pool, monk
     with client.websocket_connect(
         "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
     ) as ws:
-        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "official announcement"})
+        ws.send_json(
+            {
+                "type": "message",
+                "conversation_id": conversation_id,
+                "title": "League Update",
+                "body": "official announcement",
+            }
+        )
         received = ws.receive_json()
     await _use_fresh_pool_for_websocket()
 
     assert received["type"] == "message"
+    assert received["message"]["title"] == "League Update"
     assert received["message"]["body"] == "official announcement"
     assert received["message"]["owner_id"] == commish_owner
+
+
+async def test_commish_corner_rejects_a_missing_title_over_websocket(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "corner-notitle-commish", role="commissioner")
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner]
+        )
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
+    ) as ws:
+        # No title at all — an announcement needs a real headline, not
+        # just a body, unlike every other conversation type.
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "missing a title"})
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received == {
+        "type": "error",
+        "error": "commish_corner_title_required",
+        "conversation_id": conversation_id,
+    }
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id FROM messages WHERE conversation_id = $1", conversation_id)
+    assert list(rows) == []
 
 
 async def test_commish_corner_message_always_notifies_regardless_of_preference(pool, monkeypatch):
@@ -1094,11 +1132,13 @@ async def test_commish_corner_message_always_notifies_regardless_of_preference(p
     with client.websocket_connect(
         "/chat/ws", cookies=_league_session_cookie(commish_user, commish_owner)
     ) as ws:
-        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "read this everyone"})
+        ws.send_json(
+            {"type": "message", "conversation_id": conversation_id, "title": "Read this", "body": "read this everyone"}
+        )
         ws.receive_json()
         # Same flush pattern used elsewhere in this file — guarantees the
         # push dispatch from the first message has actually finished.
-        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "title": "Flush", "body": "flush"})
         ws.receive_json()
     await _use_fresh_pool_for_websocket()
 

@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { ChatMessage, ChatReaction } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 
-const REACTION_CHOICES = ["😂", "🔥", "💀", "👍", "❤️", "😭"];
+export const REACTION_CHOICES = ["😂", "🔥", "💀", "👍", "❤️", "😭"];
 
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

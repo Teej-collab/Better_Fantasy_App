@@ -390,7 +390,13 @@ export function ChatApp({
 
   // ---- actions --------------------------------------------------------------
 
-  function sendMessage(body: string, mentions: number[], replyToId: number | null, imageUrl: string | null) {
+  function sendMessage(
+    body: string,
+    mentions: number[],
+    replyToId: number | null,
+    imageUrl: string | null,
+    title?: string
+  ) {
     if (selectedId === null || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
     socketRef.current.send(
       JSON.stringify({
@@ -400,6 +406,11 @@ export function ChatApp({
         mentions,
         reply_to_id: replyToId,
         image_url: imageUrl,
+        // Only ever meaningful for a Commish's Corner announcement
+        // (app/routers/chat.py's WS handler requires it there, ignores
+        // it everywhere else) — omitted, not sent as null, for a plain
+        // chat message.
+        ...(title ? { title } : {}),
       })
     );
   }

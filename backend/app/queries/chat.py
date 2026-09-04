@@ -248,7 +248,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.id < $2
@@ -262,7 +262,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1
@@ -312,15 +312,25 @@ async def get_mentions_for_messages(conn, message_ids: list[int]):
 
 
 async def insert_message(
-    conn, conversation_id: int, owner_id: int, body: str, reply_to_id: int | None, image_url: str | None = None
+    conn,
+    conversation_id: int,
+    owner_id: int,
+    body: str,
+    reply_to_id: int | None,
+    image_url: str | None = None,
+    title: str | None = None,
 ):
+    # title is only ever non-NULL for a commish_corner announcement
+    # (app/routers/chat.py's WS handler is the sole caller that ever
+    # passes it) — every other conversation type leaves it NULL, same
+    # "column exists, most rows don't use it" shape as image_url.
     return await conn.fetchrow(
         """
-        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url
+        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url, title
         """,
-        conversation_id, owner_id, body, reply_to_id, image_url,
+        conversation_id, owner_id, body, reply_to_id, image_url, title,
     )
 
 

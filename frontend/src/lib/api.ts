@@ -1406,6 +1406,10 @@ export type ChatMessage = {
   owner_logo_url: string | null;
   body: string;
   image_url: string | null;
+  // Commish's Corner announcements only — a real headline the
+  // commissioner wrote, distinct from the body. Always null for every
+  // other conversation type (league/direct never set or accept one).
+  title: string | null;
   deleted: boolean;
   created_at: string;
   reply_to: ChatReplyPreview | null;
