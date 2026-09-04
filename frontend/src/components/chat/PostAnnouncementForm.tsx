@@ -8,7 +8,7 @@ const MAX_TITLE_LENGTH = 200;
 // (app/routers/chat.py) — a real league update can run much longer
 // than a chat message, so this is far more generous than the plain
 // composer's MAX_LENGTH.
-const MAX_BODY_LENGTH = 10000;
+const MAX_BODY_LENGTH = 20000;
 
 // Replaces the plain chat composer for Commish's Corner — an
 // announcement is a short article (headline + body), not a quick chat

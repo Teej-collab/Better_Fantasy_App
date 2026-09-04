@@ -242,7 +242,16 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
     """Newest-first page (before_id for pagination), returned in
     chronological order for display. Reply-to previews and reaction
     counts are batch-fetched separately by the caller (app/domain/chat.py)
-    to avoid an N+1 query per message."""
+    to avoid an N+1 query per message.
+
+    Deleted messages are excluded outright (m.deleted_at IS NULL) —
+    they shouldn't keep showing up in the thread at all, not even as a
+    "This message was deleted." placeholder. A REPLY to a deleted
+    message still shows that placeholder in its own reply-to preview
+    (chat_domain.py's reply_previews, built from a separate by-ID
+    lookup that isn't filtered this way) — useful context on the
+    message that's still visible, not the deleted message reappearing
+    in the main thread."""
     if before_id is not None:
         rows = await conn.fetch(
             """
@@ -251,7 +260,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
                    m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
-            WHERE m.conversation_id = $1 AND m.id < $2
+            WHERE m.conversation_id = $1 AND m.id < $2 AND m.deleted_at IS NULL
             ORDER BY m.id DESC
             LIMIT $3
             """,
@@ -265,7 +274,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
                    m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
-            WHERE m.conversation_id = $1
+            WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
             ORDER BY m.id DESC
             LIMIT $2
             """,

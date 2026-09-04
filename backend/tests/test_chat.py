@@ -595,9 +595,34 @@ async def test_delete_only_own_message(pool, monkeypatch):
 
     assert forbidden.status_code == 403
     assert ok.status_code == 200
-    deleted_msg = next(m for m in page.json()["messages"] if m["id"] == row["id"])
-    assert deleted_msg["deleted"] is True
-    assert deleted_msg["body"] == "This message was deleted."
+    # A deleted message doesn't keep showing up in the thread at all —
+    # not even as a "This message was deleted." placeholder.
+    assert all(m["id"] != row["id"] for m in page.json()["messages"])
+
+
+async def test_a_reply_to_a_deleted_message_still_shows_the_placeholder(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 21)
+    b = await _seed_owner(pool, 22)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with pool.acquire() as conn:
+        original = await chat_queries.insert_message(conn, conversation_id, a, "original", None)
+        reply = await chat_queries.insert_message(conn, conversation_id, b, "a reply", original["id"])
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, a))
+        deleted = await client.delete(f"/chat/messages/{original['id']}")
+        page = await client.get(f"/chat/conversations/{conversation_id}/messages")
+
+    assert deleted.status_code == 200
+    ids = [m["id"] for m in page.json()["messages"]]
+    # The deleted original itself is gone from the thread...
+    assert original["id"] not in ids
+    # ...but the reply that still references it is still there, and
+    # still shows useful context about what it was replying to.
+    reply_msg = next(m for m in page.json()["messages"] if m["id"] == reply["id"])
+    assert reply_msg["reply_to"]["body"] == "This message was deleted."
 
 
 # ---- WebSocket: send, mentions, reply, typing ------------------------------
@@ -1112,9 +1137,9 @@ async def test_commish_corner_accepts_a_body_longer_than_the_plain_message_limit
         )
 
     # Longer than MAX_MESSAGE_LENGTH (2000, a plain chat message's own
-    # cap) but under MAX_ANNOUNCEMENT_BODY_LENGTH (10000) — a real
+    # cap) but under MAX_ANNOUNCEMENT_BODY_LENGTH (20000) — a real
     # league update, not a one-liner.
-    long_body = "a" * 3000
+    long_body = "a" * 15000
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect(
@@ -1139,7 +1164,7 @@ async def test_commish_corner_rejects_a_body_over_the_announcement_limit(pool, m
             conn, league_id, "commish_corner", [commish_owner]
         )
 
-    too_long_body = "a" * 10001
+    too_long_body = "a" * 20001
     await _use_fresh_pool_for_websocket()
     client = TestClient(app)
     with client.websocket_connect(

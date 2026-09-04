@@ -368,13 +368,18 @@ export function ChatApp({
           setReadAtByConversation((prev) => ({ ...prev, [conversation_id]: Date.now() }));
         }
       } else if (event.type === "deleted") {
+        // Removed outright, not marked deleted-in-place — a deleted
+        // message shouldn't keep showing up in the thread at all
+        // (backend's list_messages already excludes it the same way
+        // on the next real fetch; this is what makes an ALREADY-open
+        // thread match that immediately instead of only after reload).
         const { message_id, conversation_id } = event as { message_id: number; conversation_id: number };
         setMessagesByConversation((prev) => {
           const existing = prev[conversation_id];
           if (!existing) return prev;
           return {
             ...prev,
-            [conversation_id]: existing.map((m) => (m.id === message_id ? { ...m, deleted: true, body: "This message was deleted." } : m)),
+            [conversation_id]: existing.filter((m) => m.id !== message_id),
           };
         });
       }

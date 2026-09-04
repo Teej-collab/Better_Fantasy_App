@@ -44,7 +44,7 @@ MAX_TITLE_LENGTH = 200
 # Commish's Corner announcements only — real league updates can run
 # much longer than a chat message, so this gets its own, far more
 # generous cap instead of MAX_MESSAGE_LENGTH.
-MAX_ANNOUNCEMENT_BODY_LENGTH = 10000
+MAX_ANNOUNCEMENT_BODY_LENGTH = 20000
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_REACTIONS = {"😂", "🔥", "💀", "👍", "❤️", "😭"}
 
