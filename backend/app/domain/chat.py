@@ -129,6 +129,17 @@ async def get_conversations_summary(conn, owner_id: int):
                 "body": body,
                 "created_at": r["last_message_at"].isoformat(),
             }
+        # Every conversation type is postable except commish_corner,
+        # where only the commissioner of ITS OWN league can — computed
+        # here (not left for the frontend to infer from "am I my active
+        # league's commissioner") so a member of more than one league,
+        # or viewing a commish_corner that isn't their currently-active
+        # league, still gets the right answer. The real enforcement is
+        # still server-side in the WS message handler regardless of
+        # this — this only drives whether the composer shows as locked.
+        can_post = True
+        if r["type"] == "commish_corner":
+            can_post = await chat_queries.is_owner_commissioner_of_league(conn, owner_id, r["league_id"])
         result.append(
             {
                 "id": r["id"],
@@ -138,6 +149,7 @@ async def get_conversations_summary(conn, owner_id: int):
                 "other_owner_name": r["other_owner_name"],
                 "unread_count": r["unread_count"],
                 "last_message": last_message,
+                "can_post": can_post,
             }
         )
     return result

@@ -155,7 +155,7 @@ async def list_conversations_for_owner(conn, owner_id: int):
             GROUP BY m.conversation_id
         )
         SELECT
-            c.id, c.type,
+            c.id, c.type, c.league_id,
             lm.id AS last_message_id, lm.body AS last_message_body, lm.image_url AS last_message_image_url, lm.created_at AS last_message_at,
             lm.deleted_at AS last_message_deleted_at, lm.owner_name AS last_message_owner_name,
             COALESCE(u.unread_count, 0) AS unread_count,

@@ -93,13 +93,18 @@ export function MessageThread({
     document.getElementById(`chat-message-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  const title = conversation.type === "league" ? "Weekend League" : conversation.other_owner_name ?? "Direct Message";
+  const title =
+    conversation.type === "league"
+      ? "Weekend League"
+      : conversation.type === "commish_corner"
+        ? "Commish's Corner"
+        : conversation.other_owner_name ?? "Direct Message";
   // -1 never matches a real owner_id — a harmless always-false fallback
   // for the league conversation, where there's no single "other" person
   // to show presence for. Hooks always run either way (rules of hooks).
   const otherOnline = usePresence(conversation.other_owner_id ?? -1, false);
   const subtitle =
-    conversation.type === "league"
+    conversation.type === "league" || conversation.type === "commish_corner"
       ? `${conversation.member_count} managers`
       : otherOnline
         ? "Online now"
@@ -115,6 +120,7 @@ export function MessageThread({
         </button>
         <div className="flex min-w-0 flex-col">
           <span className="flex items-center gap-1.5 truncate font-semibold">
+            {conversation.type === "commish_corner" && <span aria-hidden>📢</span>}
             {title}
             {conversation.type === "direct" && otherOnline && (
               <span
@@ -182,16 +188,23 @@ export function MessageThread({
           </div>
         )}
 
-        <MessageComposer
-          members={members}
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-          onSend={(body, mentions, imageUrl) => {
-            onSend(body, mentions, replyTo?.id ?? null, imageUrl);
-            setReplyTo(null);
-          }}
-          onTyping={onTyping}
-        />
+        {conversation.can_post ? (
+          <MessageComposer
+            members={members}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            onSend={(body, mentions, imageUrl) => {
+              onSend(body, mentions, replyTo?.id ?? null, imageUrl);
+              setReplyTo(null);
+            }}
+            onTyping={onTyping}
+          />
+        ) : (
+          <div className="flex items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm text-black/50 dark:border-white/10 dark:text-white/50">
+            <span aria-hidden>🔒</span>
+            Only your commissioner can post here
+          </div>
+        )}
       </div>
     </div>
   );

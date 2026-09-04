@@ -45,13 +45,14 @@ export function ConversationList({
       ) : (
         <ul className="flex-1 divide-y divide-black/5 overflow-y-auto dark:divide-white/5">
           {conversations.map((c) => {
-            const title = c.type === "league" ? "Weekend League" : (c.other_owner_name ?? "Direct Message");
-            const subtitle =
-              c.type === "league"
-                ? `${c.member_count} managers`
-                : c.last_message && messagePreviewsEnabled
-                  ? c.last_message.body
-                  : "";
+            const isGroup = c.type === "league" || c.type === "commish_corner";
+            const title =
+              c.type === "league" ? "Weekend League" : c.type === "commish_corner" ? "Commish's Corner" : (c.other_owner_name ?? "Direct Message");
+            const subtitle = isGroup
+              ? `${c.member_count} managers`
+              : c.last_message && messagePreviewsEnabled
+                ? c.last_message.body
+                : "";
             const preview =
               c.last_message && messagePreviewsEnabled
                 ? `${c.last_message.owner_name}: ${c.last_message.body}`
@@ -70,6 +71,7 @@ export function ConversationList({
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="flex items-center gap-1.5">
                       {c.type === "league" && <span aria-hidden>🏈</span>}
+                      {c.type === "commish_corner" && <span aria-hidden>📢</span>}
                       <span className={`truncate ${c.unread_count > 0 ? "font-semibold" : "font-medium"}`}>{title}</span>
                     </span>
                     <span
@@ -77,7 +79,7 @@ export function ConversationList({
                         c.unread_count > 0 ? "text-black/80 dark:text-white/80" : "text-black/50 dark:text-white/50"
                       }`}
                     >
-                      {c.type === "league" && c.last_message ? preview : c.type === "league" ? subtitle : preview || "No messages yet"}
+                      {isGroup && c.last_message ? preview : isGroup ? subtitle : preview || "No messages yet"}
                     </span>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">

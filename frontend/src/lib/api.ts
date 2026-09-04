@@ -1408,12 +1408,18 @@ export type ChatMessage = {
 
 export type ChatConversation = {
   id: number;
-  type: "league" | "direct";
+  type: "league" | "direct" | "commish_corner";
   member_count: number;
   other_owner_id: number | null;
   other_owner_name: string | null;
   unread_count: number;
   last_message: { id: number; owner_name: string; body: string; created_at: string } | null;
+  // Every type is postable except commish_corner, where only that
+  // conversation's own league's commissioner can — computed server-side
+  // (app/domain/chat.py's get_conversations_summary), the real
+  // enforcement is server-side too (the WS message handler), this only
+  // drives whether MessageComposer renders as locked.
+  can_post: boolean;
 };
 
 // online is a snapshot at fetch time (backend's manager.is_connected) —

@@ -27,6 +27,17 @@ const PAGE_SIZE = 50;
 
 type TypingUser = { owner_id: number; owner_name: string };
 
+// Mirrors the backend's own pin order (app/queries/chat.py's
+// list_conversations_for_owner: league, then commish_corner, then
+// everything else) — kept in sync here only for the case of a live
+// message reordering the list client-side; the initial server-rendered
+// order already comes pre-sorted this way.
+function conversationTypeRank(type: ChatConversation["type"]): number {
+  if (type === "league") return 0;
+  if (type === "commish_corner") return 1;
+  return 2;
+}
+
 export function ChatApp({
   initialConversations,
   myOwnerId,
@@ -223,7 +234,7 @@ export function ChatApp({
                   }
                 : c
             )
-            .sort((a, b) => Number(b.type === "league") - Number(a.type === "league"));
+            .sort((a, b) => conversationTypeRank(a.type) - conversationTypeRank(b.type));
         });
         if (message.conversation_id === selectedIdRef.current) {
           markConversationRead(message.conversation_id);
@@ -364,6 +375,7 @@ export function ChatApp({
           other_owner_name: member?.display_name ?? "Direct Message",
           unread_count: 0,
           last_message: null,
+          can_post: true,
         },
       ]);
     }
