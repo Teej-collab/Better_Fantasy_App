@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import type { ChatMessage } from "@/lib/api";
+import type { ChatMessage, ChatReaction } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 
 const REACTION_CHOICES = ["😂", "🔥", "💀", "👍", "❤️", "😭"];
@@ -165,7 +165,7 @@ export function MessageBubble({
             <span className="w-6 shrink-0" aria-hidden />
           ))}
 
-        <div className={`relative flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-2.5" : ""}`}>
+        <div className={`flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-2.5" : ""}`}>
           {message.reply_to && (
             <button
               onClick={(e) => {
@@ -179,36 +179,56 @@ export function MessageBubble({
             </button>
           )}
 
+          {/* The text bubble below is the real anchor for the reactions
+              badge (text or a deleted-message placeholder); an image-only
+              message — no body at all — falls back to anchoring the
+              badge to the image instead. Whichever one renders last
+              gets its own `relative w-fit` wrapper so the badge's
+              `left-0`/`right-0`/`-bottom-2.5` below is always relative
+              to THAT element's actual rendered box, not the whole
+              flex column (which used to stretch to the widest sibling
+              — reply preview or image — and silently misplaced a short
+              text bubble's badge halfway over its own words). */}
           {!message.deleted && message.image_url && (
-            <a href={message.image_url} target="_blank" rel="noopener noreferrer">
-              <Image
-                src={message.image_url}
-                alt="Attached image"
-                width={400}
-                height={400}
-                className="h-auto max-h-72 w-auto max-w-full rounded-xl"
-              />
-            </a>
+            <div className="relative w-fit">
+              <a href={message.image_url} target="_blank" rel="noopener noreferrer">
+                <Image
+                  src={message.image_url}
+                  alt="Attached image"
+                  width={400}
+                  height={400}
+                  className="h-auto max-h-72 w-auto max-w-full rounded-xl"
+                />
+              </a>
+              {!message.body && message.reactions.length > 0 && (
+                <ReactionBadge mine={mine} reactions={message.reactions} messageId={message.id} onReact={onReact} />
+              )}
+            </div>
           )}
 
           {(message.deleted || message.body) && (
-            <span
-              className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
-                message.deleted
-                  ? "italic text-black/50 dark:text-white/50"
-                  : `${mine ? "chat-bubble--mine" : "chat-bubble--other"} ${
-                      lastInRun ? (mine ? "chat-bubble--tail-mine" : "chat-bubble--tail-other") : ""
-                    }`
-              } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
-              style={{
-                ...bubbleCorners(mine, !grouped, lastInRun),
-                ...(!message.deleted && message.owner_chat_color
-                  ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
-                  : undefined),
-              }}
-            >
-              {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
-            </span>
+            <div className="relative w-fit">
+              <span
+                className={`chat-bubble px-3.5 py-2 text-sm break-words whitespace-pre-wrap ${
+                  message.deleted
+                    ? "italic text-black/50 dark:text-white/50"
+                    : `${mine ? "chat-bubble--mine" : "chat-bubble--other"} ${
+                        lastInRun ? (mine ? "chat-bubble--tail-mine" : "chat-bubble--tail-other") : ""
+                      }`
+                } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
+                style={{
+                  ...bubbleCorners(mine, !grouped, lastInRun),
+                  ...(!message.deleted && message.owner_chat_color
+                    ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
+                    : undefined),
+                }}
+              >
+                {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
+              </span>
+              {message.reactions.length > 0 && (
+                <ReactionBadge mine={mine} reactions={message.reactions} messageId={message.id} onReact={onReact} />
+              )}
+            </div>
           )}
 
           {/* Tap-to-reveal timestamp for a grouped bubble — its own
@@ -221,32 +241,6 @@ export function MessageBubble({
             <span className={`px-1 text-[10px] text-black/35 dark:text-white/35 ${mine ? "text-right" : "text-left"}`}>
               {formatMessageTimestamp(message.created_at)}
             </span>
-          )}
-
-          {/* Tapback-style badge hanging off the bubble's bottom corner
-              (the outer corner — matching this bubble's tail side) rather
-              than a row underneath it, closer to the reference
-              screenshots' reaction treatment. Same tap-to-toggle
-              interaction and fixed 6-emoji set as before. */}
-          {message.reactions.length > 0 && (
-            <div className={`absolute -bottom-2.5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
-              {message.reactions.map((r) => (
-                <button
-                  key={r.emoji}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReact(message.id, r.emoji);
-                  }}
-                  className={`rounded-full border px-1.5 py-0.5 text-xs shadow-sm ${
-                    r.reacted_by_me
-                      ? "border-sky-500/50 bg-sky-500/10"
-                      : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
-                  }`}
-                >
-                  {r.emoji} {r.count}
-                </button>
-              ))}
-            </div>
           )}
 
           {showReactionPicker && (
@@ -280,6 +274,44 @@ export function MessageBubble({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// Tapback-style badge hanging off the bottom corner of whichever
+// element (image or text bubble) it's attached to — the CALLER is
+// responsible for wrapping that element in a `relative w-fit`
+// container so this absolutely-positioned badge sizes against the
+// real content box, not a stretched flex-column sibling.
+function ReactionBadge({
+  mine,
+  reactions,
+  messageId,
+  onReact,
+}: {
+  mine: boolean;
+  reactions: ChatReaction[];
+  messageId: number;
+  onReact: (messageId: number, emoji: string) => void;
+}) {
+  return (
+    <div className={`absolute -bottom-2.5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
+      {reactions.map((r) => (
+        <button
+          key={r.emoji}
+          onClick={(e) => {
+            e.stopPropagation();
+            onReact(messageId, r.emoji);
+          }}
+          className={`rounded-full border px-1.5 py-0.5 text-xs shadow-sm ${
+            r.reacted_by_me
+              ? "border-sky-500/50 bg-sky-500/10"
+              : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
+          }`}
+        >
+          {r.emoji} {r.count}
+        </button>
+      ))}
     </div>
   );
 }
