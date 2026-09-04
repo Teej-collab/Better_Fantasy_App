@@ -2,11 +2,31 @@
 
 ## The one authorization boundary
 
-Every `/admin/*` read endpoint (Overview, Users, Leagues, Navigation, Online) is gated by `require_commissioner_of(DEFAULT_LEAGUE_ID)` — a live database check, run **independently, inside every single endpoint**, not a shared middleware and not a frontend guard.
+Every `/admin/*` **dashboard** endpoint (Overview, Users, Leagues, Navigation, Online, and the admin-grant endpoint itself) is gated by `require_site_admin` (`app/auth/league_context.py`) — a live database check, run **independently, inside every single endpoint**, not a shared middleware and not a frontend guard. The six ESPN-sync/compute endpoints in the same router (`/sync`, `/sync/live`, `/weekly-compute`, `/sync/bye-weeks`, `/players/sync`, `/players/sync-projections`) are a separate, narrower grant — see "Two separate grants" below.
 
-This is deliberately narrower than "any league's commissioner." A real commissioner of some other league is a genuinely different person from the site owner — they must never see admin data just because they run their own league. `is_commissioner` (on `/auth/me`) reflects whichever league is currently active; `is_site_owner` is League #1's commissioner specifically, and it's the only thing that gates anything here. See `backend/app/routers/admin.py`'s own module docstring and `backend/app/routers/auth.py`'s `/me` handler.
+`require_site_admin` passes if **either** of two things is true:
+1. The caller is League #1's commissioner (`is_commissioner` scoped to `DEFAULT_LEAGUE_ID` specifically — not "whichever league is currently active," which is a different, broader check the frontend also reads as plain `is_commissioner`).
+2. `users.is_admin` is set directly on their account (2026-09 addition — see "Granting admin to someone else" below).
 
-There is no role hierarchy (Owner/Admin/Support/Analyst/Moderator) in Phase 1 — deliberately. There's exactly one real admin today; building a permissions system for roles nobody holds is complexity with no payoff. `is_site_owner` is a clean enough boundary to extend later if a second admin is ever added.
+Either is sufficient on its own; neither is required if the other holds. `is_site_owner` on `/auth/me` is this same combined check, exposed to the frontend so `AccountMenu.tsx` knows whether to show the Admin link.
+
+There is still no broader role hierarchy (Owner/Support/Analyst/Moderator) — deliberately. `is_admin` is a flat, single boolean: you either have dashboard access or you don't, granted by another admin. Building a tiered permissions system for roles nobody's asked for is complexity with no payoff yet.
+
+## Two separate grants — don't confuse them
+
+- **League #1 commissioner** (`league_members.role = 'commissioner'` for league 1) — a much bigger grant: full control of League #1 itself (scoring rules, roster edits, trades, ESPN sync triggers) *and* the admin dashboard as a side effect.
+- **`users.is_admin`** — dashboard access *only*. Granting this to someone does **not** make them League #1's commissioner and does **not** let them trigger the six ESPN-sync/compute endpoints, which still check `require_commissioner_of(DEFAULT_LEAGUE_ID)` directly and don't accept the `is_admin` flag at all.
+
+This split exists specifically so the real owner can hand someone (e.g. a second real person helping run things) visibility into usage/users/leagues without also handing them the much bigger keys to League #1 itself.
+
+## Granting admin to someone else
+
+`PATCH /admin/users/{user_id}/admin` (body: `{"is_admin": true|false}`), gated by `require_site_admin` itself — any current admin can grant or revoke another user's flag. Two safety rules, both enforced server-side:
+
+- **Can't target your own row.** Same "the only way to lose access is someone else doing it to you" pattern as `PATCH /leagues/{id}/members/{user_id}`'s own role changes — real risk here specifically, since revoking your own `is_admin` through this endpoint could otherwise lock you out of the very screen you'd need to undo it from (unless you're also League #1's commissioner, which not every admin necessarily is).
+- **404 for an unknown user_id**, not a silent no-op.
+
+The frontend's Grant/Revoke Admin button lives on each user's own Admin > Users detail page (`AdminUserDetail.tsx`) — nowhere else, and not exposed to the person being granted/revoked (they'd need to already be an admin to see that page at all).
 
 ## What "independently, inside every endpoint" means in practice
 

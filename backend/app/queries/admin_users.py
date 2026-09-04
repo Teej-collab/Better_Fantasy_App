@@ -17,7 +17,7 @@ STATUS_FILTERS = {"all", "active", "inactive", "new", "commissioner", "multiple_
 
 _BASE_SELECT = """
     SELECT u.id AS user_id, o.owner_id, COALESCE(o.display_name, u.display_name) AS display_name,
-           u.email, u.created_at,
+           u.email, u.created_at, u.is_admin,
            (SELECT count(*) FROM league_members lm WHERE lm.user_id = u.id) AS league_count,
            EXISTS(
                SELECT 1 FROM league_members lm WHERE lm.user_id = u.id AND lm.role = 'commissioner'
@@ -26,6 +26,18 @@ _BASE_SELECT = """
     FROM users u
     LEFT JOIN owners o ON o.user_id = u.id
 """
+
+
+async def set_is_admin(conn, user_id: int, is_admin: bool) -> dict | None:
+    """Grants or revokes independent admin-dashboard access (see
+    app/auth/league_context.py's is_site_admin) — deliberately separate
+    from league role: a real commissioner isn't necessarily an admin,
+    and an admin isn't necessarily a commissioner of anything. Returns
+    the updated user detail row, or None if user_id doesn't exist."""
+    updated = await conn.fetchval("UPDATE users SET is_admin = $1 WHERE id = $2 RETURNING id", is_admin, user_id)
+    if updated is None:
+        return None
+    return await get_user_detail(conn, user_id)
 
 
 async def list_users(conn, search: str | None, status: str, limit: int, offset: int) -> dict:

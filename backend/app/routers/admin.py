@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from app.analytics import taxonomy
 from app.analytics.rate_limit import is_rate_limited
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_commissioner_of
+from app.auth.league_context import require_commissioner_of, require_site_admin
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
@@ -162,13 +162,20 @@ async def trigger_projected_points_sync(request: Request):
 
 
 # ---- Admin dashboard / product intelligence (2026-09) — site-owner-only
-# visibility into who's using The Weekend and how. Same
-# commissioner_of(DEFAULT_LEAGUE_ID) gate as every other read endpoint
-# in this router; POST /track itself is open to any signed-in owner (it
-# only ever writes an event tagged with THEIR OWN owner_id, server-
-# derived from the session — never a client-supplied one — and never
-# reads anything back). See ADMIN_SECURITY.md and ANALYTICS_EVENTS.md
-# at the repo root for the full design.
+# visibility into who's using The Weekend and how. Gated by
+# require_site_admin (app/auth/league_context.py), NOT the sync
+# endpoints' own require_commissioner_of(DEFAULT_LEAGUE_ID) above —
+# is_site_admin is a strict superset (League #1 commissioner still
+# qualifies) but also grantable independently via users.is_admin, so
+# the real owner can hand someone dashboard access (PATCH
+# /admin/users/{user_id}/admin below) without also handing them full
+# League #1 commissioner power (which the sync endpoints above still
+# require on their own — a deliberately bigger, separate grant). POST
+# /track itself is open to any signed-in owner (it only ever writes an
+# event tagged with THEIR OWN owner_id, server-derived from the session
+# — never a client-supplied one — and never reads anything back). See
+# ADMIN_SECURITY.md and ANALYTICS_EVENTS.md at the repo root for the
+# full design.
 
 
 def _clamp_days(days: int) -> int:
@@ -184,7 +191,7 @@ async def get_online_owners(request: Request):
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         owners = await admin_analytics.list_online_owners(conn)
     return {"owners": owners}
 
@@ -241,7 +248,7 @@ async def get_overview(request: Request, days: int = 7):
     days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         kpis = await admin_overview.get_overview(conn, days)
         online = await admin_analytics.list_online_owners(conn)
     return {**kpis, "online_now": len(online)}
@@ -253,7 +260,7 @@ async def get_navigation_heatmap(request: Request, days: int = 30):
     days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         heatmap = await admin_analytics.get_navigation_heatmap(conn, days)
     return heatmap
 
@@ -264,7 +271,7 @@ async def get_feature_usage(request: Request, days: int = 30):
     days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         features = await admin_analytics.get_feature_usage(conn, days)
     return {"window_days": days, "features": features}
 
@@ -279,7 +286,7 @@ async def list_users(request: Request, search: str | None = None, status: str = 
     search = search.strip()[:100] if search else None
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         result = await admin_users.list_users(conn, search, status, limit, offset)
     return result
 
@@ -289,8 +296,36 @@ async def get_user_detail(user_id: int, request: Request):
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         user = await admin_users.get_user_detail(conn, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="No user found")
+    return user
+
+
+class SetIsAdminRequest(BaseModel):
+    is_admin: bool
+
+
+@router.patch("/users/{user_id}/admin")
+async def set_user_is_admin(user_id: int, body: SetIsAdminRequest, request: Request):
+    """Grants or revokes admin-dashboard access independent of league
+    role (see app/auth/league_context.py's is_site_admin) — the real
+    owner's way to hand someone (e.g. a second commissioner) dashboard
+    access without also handing them full League #1 commissioner
+    power. Can't target your own row, same "the only way to lose it is
+    someone ELSE doing it to you" safety as PATCH /leagues/{id}/members/
+    {user_id} — a real risk here specifically, since revoking your own
+    admin access through this endpoint could otherwise lock you out of
+    the very screen you'd need to undo it from (unless you're also
+    League #1's commissioner, which not every admin necessarily is)."""
+    payload = _require_session(request)
+    if user_id == payload["user_id"]:
+        raise HTTPException(status_code=400, detail="Use another admin's account to change your own access")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        user = await admin_users.set_is_admin(conn, user_id, body.is_admin)
     if user is None:
         raise HTTPException(status_code=404, detail="No user found")
     return user
@@ -302,7 +337,7 @@ async def list_leagues(request: Request, days: int = 7):
     days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         leagues = await admin_leagues.list_leagues(conn, days)
     return {"window_days": days, "leagues": leagues}
 
@@ -313,7 +348,7 @@ async def get_league_detail(league_id: int, request: Request, days: int = 7):
     days = _clamp_days(days)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        await require_site_admin(conn, payload)
         league = await admin_leagues.get_league_detail(conn, league_id, days)
     if league is None:
         raise HTTPException(status_code=404, detail="No league found")

@@ -654,6 +654,28 @@ async def test_auth_me_reports_site_owner_false_for_a_different_leagues_commissi
         assert me_body["is_site_owner"] is False
 
 
+async def test_auth_me_reports_site_owner_true_for_an_explicit_admin_grant(pool, monkeypatch):
+    """is_site_owner is (League #1 commissioner) OR (users.is_admin) —
+    an owner granted admin access directly (2026-09, PATCH /admin/
+    users/{id}/admin) sees the Admin link without needing to be League
+    #1's commissioner at all."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        await client.post(
+            "/auth/signup",
+            json={"email": "test-me-explicitadmin@example.com", "password": "correct-horse", "display_name": "Explicit Admin"},
+        )
+        user_id = (await client.get("/auth/me")).json()["user_id"]
+
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE users SET is_admin = TRUE WHERE id = $1", user_id)
+
+        me_resp = await client.get("/auth/me")
+        me_body = me_resp.json()
+        assert me_body["is_commissioner"] is False
+        assert me_body["is_site_owner"] is True
+
+
 async def test_signup_rejects_duplicate_email(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
     async with _client() as client:

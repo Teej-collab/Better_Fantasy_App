@@ -91,6 +91,11 @@ export function AdminUsers({ initial }: { initial: AdminUserList }) {
                         Commissioner
                       </span>
                     )}
+                    {u.is_admin && (
+                      <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        Admin
+                      </span>
+                    )}
                   </span>
                   <span className="truncate text-xs text-black/50 dark:text-white/50">
                     {u.email ?? "No email"} · {u.league_count} league{u.league_count === 1 ? "" : "s"}

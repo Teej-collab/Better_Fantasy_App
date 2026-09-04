@@ -1774,6 +1774,10 @@ export type AdminUserRow = {
   display_name: string;
   email: string | null;
   created_at: string;
+  // Independent of league role (app/auth/league_context.py's
+  // is_site_admin) — a real commissioner isn't necessarily an admin,
+  // and vice versa. Grantable via setAdminUserIsAdmin below.
+  is_admin: boolean;
   league_count: number;
   is_commissioner_anywhere: boolean;
   last_active: string | null;
@@ -1908,6 +1912,23 @@ export function listAdminUsers(search: string, status: AdminUserStatus): Promise
 
 export function getAdminUserDetail(userId: number): Promise<AdminUserDetail> {
   return _adminGet(`/admin/users/${userId}`);
+}
+
+// Grants or revokes independent admin-dashboard access — see
+// AdminUserRow's own is_admin comment. Can't target your own account
+// (the backend rejects it); AdminUserDetail.tsx only ever shows this
+// button on someone else's page anyway.
+export async function setAdminUserIsAdmin(userId: number, isAdmin: boolean): Promise<AdminUserDetail> {
+  const res = await fetch(`/api/backend/admin/users/${userId}/admin`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
 }
 
 export function listAdminLeagues(days = 7): Promise<AdminLeagueList> {

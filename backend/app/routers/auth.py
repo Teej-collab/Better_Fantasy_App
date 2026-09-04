@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.auth import discord_oauth, google_oauth
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
+from app.auth.league_context import is_site_admin
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.rate_limit import check_login_or_signup_rate_limit
 from app.auth.session import (
@@ -215,17 +216,20 @@ async def me(request: Request):
             membership = await league_queries.get_membership(conn, active_league_id, payload["user_id"])
             is_commissioner = membership is not None and membership["role"] == "commissioner"
 
-        # Deliberately League #1 specifically, not "is_commissioner of
-        # whichever league happens to be active right now" — same
-        # require_commissioner_of(DEFAULT_LEAGUE_ID) gate app/routers/
-        # admin.py's own endpoints enforce for real, so a second real
-        # league's own commissioner (a genuinely different person) never
-        # sees the site-owner-only Admin link light up just because
-        # their own active_league_id happens to be League #1 at some
-        # other moment, and this account never loses it just because
-        # their active league is currently something else.
-        site_owner_membership = await league_queries.get_membership(conn, DEFAULT_LEAGUE_ID, payload["user_id"])
-        is_site_owner = site_owner_membership is not None and site_owner_membership["role"] == "commissioner"
+        # League #1's commissioner OR an explicit users.is_admin grant
+        # (app/auth/league_context.py's is_site_admin — same check
+        # every /admin/* endpoint enforces for real via
+        # require_site_admin) — deliberately not "is_commissioner of
+        # whichever league happens to be active right now," so a second
+        # real league's own commissioner (a genuinely different person)
+        # never sees the site-owner-only Admin link light up just
+        # because their own active_league_id happens to be League #1 at
+        # some other moment, and this account never loses it just
+        # because their active league is currently something else. The
+        # is_admin clause is what lets the real owner grant dashboard
+        # access to someone else (e.g. a second commissioner) without
+        # also handing them full League #1 commissioner power.
+        is_site_owner = await is_site_admin(conn, payload["user_id"])
 
     return {
         "user_id": payload["user_id"],

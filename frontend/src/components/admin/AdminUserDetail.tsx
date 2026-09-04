@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import type { AdminUserDetail as AdminUserDetailData } from "@/lib/api";
+import { setAdminUserIsAdmin, type AdminUserDetail as AdminUserDetailData } from "@/lib/api";
 import { eventLabel } from "@/lib/analyticsEvents";
 import { relativeTime } from "@/lib/adminFormat";
 
@@ -8,24 +11,62 @@ import { relativeTime } from "@/lib/adminFormat";
 // them, so there's nothing here to accidentally leak; this component
 // only ever has the fields listed in AdminUserDetail (lib/api.ts) to
 // work with in the first place.
-export function AdminUserDetail({ user }: { user: AdminUserDetailData }) {
+export function AdminUserDetail({ user: initialUser }: { user: AdminUserDetailData }) {
+  const [user, setUser] = useState(initialUser);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleAdmin() {
+    setBusy(true);
+    setError(null);
+    setAdminUserIsAdmin(user.user_id, !user.is_admin)
+      .then(setUser)
+      .catch((e) => setError(e instanceof Error ? e.message : "Couldn't change admin access"))
+      .finally(() => setBusy(false));
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Link href="/admin/users" className="text-xs text-[var(--admin-accent)] hover:underline">
         ← All Users
       </Link>
 
-      <div>
-        <h2 className="flex items-center gap-2 text-xl font-semibold">
-          {user.display_name}
-          {user.is_commissioner_anywhere && (
-            <span className="rounded-full bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--admin-accent)]">
-              Commissioner
-            </span>
-          )}
-        </h2>
-        <p className="text-sm text-black/50 dark:text-white/50">{user.email ?? "No email on file"}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
+            {user.display_name}
+            {user.is_commissioner_anywhere && (
+              <span className="rounded-full bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)] px-2 py-0.5 text-xs font-semibold text-[var(--admin-accent)]">
+                Commissioner
+              </span>
+            )}
+            {user.is_admin && (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                Admin
+              </span>
+            )}
+          </h2>
+          <p className="text-sm text-black/50 dark:text-white/50">{user.email ?? "No email on file"}</p>
+        </div>
+        <button
+          type="button"
+          onClick={toggleAdmin}
+          disabled={busy}
+          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+            user.is_admin
+              ? "border-red-500/30 text-red-500 hover:bg-red-500/10"
+              : "border-[var(--admin-accent)] text-[var(--admin-accent)] hover:bg-[color-mix(in_srgb,var(--admin-accent)_10%,transparent)]"
+          }`}
+        >
+          {busy ? "Saving…" : user.is_admin ? "Revoke Admin" : "Grant Admin"}
+        </button>
       </div>
+
+      {error && (
+        <p role="alert" className="text-xs text-red-500">
+          {error}
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Joined" value={relativeTime(user.created_at)} />

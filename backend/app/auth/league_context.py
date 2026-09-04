@@ -49,6 +49,27 @@ async def require_commissioner_of(conn, payload: dict, league_id: int) -> None:
         raise HTTPException(status_code=403, detail="Commissioner only")
 
 
+async def is_site_admin(conn, user_id: int) -> bool:
+    """True for League #1's commissioner (the original, implicit
+    grant — see is_site_owner's history on /auth/me) OR anyone with
+    users.is_admin set directly (2026-09, so the real owner can grant
+    admin-dashboard access to someone else — Niko — without also
+    handing them full League #1 commissioner power, a much bigger
+    grant). Either is sufficient on its own."""
+    membership = await league_queries.get_membership(conn, DEFAULT_LEAGUE_ID, user_id)
+    if membership is not None and membership["role"] == "commissioner":
+        return True
+    return bool(await conn.fetchval("SELECT is_admin FROM users WHERE id = $1", user_id))
+
+
+async def require_site_admin(conn, payload: dict) -> None:
+    """The real gate every /admin/* endpoint uses (see
+    app/routers/admin.py) — same two-clause check as is_site_admin
+    above, raising 403 instead of returning False."""
+    if not await is_site_admin(conn, payload["user_id"]):
+        raise HTTPException(status_code=403, detail="Admin only")
+
+
 async def require_league_commissioner(conn, payload: dict) -> int:
     """Like require_active_league_id, but also verifies the caller is
     THEIR ACTIVE league's commissioner. Returns the resolved league_id

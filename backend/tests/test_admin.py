@@ -65,6 +65,25 @@ async def _get(cookies=None, path="/admin/online"):
         return await client.get(path)
 
 
+async def _patch(cookies=None, path="/admin/online", json=None):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
+        return await client.patch(path, json=json)
+
+
+async def _explicit_admin_cookies(pool, suffix: str) -> dict:
+    """A real test user with users.is_admin=TRUE directly, NOT a League
+    #1 commissioner — proves require_site_admin's grant actually works
+    on its own, not just via league role (see app/auth/league_context.py's
+    is_site_admin)."""
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, suffix)
+        await conn.execute("UPDATE users SET is_admin = TRUE WHERE id = $1", user_id)
+    return _session_cookie(user_id, owner_id=1)
+
+
 async def test_sync_requires_session(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     response = await _post_sync()
@@ -424,8 +443,12 @@ async def test_navigation_summarizes_real_page_views(pool, monkeypatch):
     assert response.status_code == 200
     body = response.json()
     routes = {r["event_name"]: r["views"] for r in body["routes"]}
-    assert routes["nav_standings"] == 2
-    assert routes["nav_chat"] == 1
+    # >=, not == — this query is a genuinely global aggregate over the
+    # whole analytics_events table (real production traffic, not test-
+    # isolated), so real concurrent usage can only ever add to these
+    # counts, never subtract from them.
+    assert routes["nav_standings"] >= 2
+    assert routes["nav_chat"] >= 1
 
 
 async def test_users_rejects_non_commissioner(pool, monkeypatch):
@@ -525,3 +548,70 @@ async def test_league_detail_lists_real_members(pool, monkeypatch):
     assert body["name"] == "Test League Admin Detail"
     member_user_ids = [m["user_id"] for m in body["members"]]
     assert creator_user_id in member_user_ids
+
+
+# ---- Independent admin grants (2026-09) -------------------------------
+
+
+async def test_explicit_admin_grant_can_read_the_dashboard_without_being_a_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _explicit_admin_cookies(pool, "explicitadmin-reader"), path="/admin/online")
+    assert response.status_code == 200
+
+
+async def test_set_is_admin_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _patch(path="/admin/users/1/admin", json={"is_admin": True})
+    assert response.status_code == 401
+
+
+async def test_set_is_admin_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "grant-target-reject")
+    response = await _patch(
+        cookies=await _non_commissioner_cookies(pool, "grant-rejector"),
+        path=f"/admin/users/{target_user_id}/admin",
+        json={"is_admin": True},
+    )
+    assert response.status_code == 403
+
+
+async def test_set_is_admin_grants_and_revokes_a_real_row(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "grant-target")
+    admin_cookies = await _commissioner_of_league_one_cookies(pool, "grantor")
+
+    grant = await _patch(cookies=admin_cookies, path=f"/admin/users/{target_user_id}/admin", json={"is_admin": True})
+    assert grant.status_code == 200
+    assert grant.json()["is_admin"] is True
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchval("SELECT is_admin FROM users WHERE id = $1", target_user_id)
+    assert row is True
+
+    revoke = await _patch(cookies=admin_cookies, path=f"/admin/users/{target_user_id}/admin", json={"is_admin": False})
+    assert revoke.status_code == 200
+    assert revoke.json()["is_admin"] is False
+
+
+async def test_set_is_admin_cannot_target_your_own_row(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, "grant-self")
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
+    response = await _patch(
+        cookies=_session_cookie(user_id, owner_id=1), path=f"/admin/users/{user_id}/admin", json={"is_admin": False}
+    )
+    assert response.status_code == 400
+
+
+async def test_set_is_admin_404s_for_an_unknown_user(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _patch(
+        cookies=await _commissioner_of_league_one_cookies(pool, "grant-404"),
+        path="/admin/users/999999999/admin",
+        json={"is_admin": True},
+    )
+    assert response.status_code == 404
