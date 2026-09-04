@@ -1108,6 +1108,13 @@ export type OwnerPreferences = {
   notify_my_players: boolean;
   notify_fantasy_team: boolean;
   notify_league: boolean;
+  // Consent for a not-yet-built feature (AI learning to shit-talk from
+  // real chat messages) — opt-OUT model, so ai_training_opt_out
+  // defaults to false (opted in). ai_training_notice_seen tracks
+  // whether the one-time warning shown before this owner's first-ever
+  // chat send (MessageComposer.tsx) has actually been shown yet.
+  ai_training_opt_out: boolean;
+  ai_training_notice_seen: boolean;
 };
 
 async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {
@@ -1468,6 +1475,17 @@ export async function getChatConversationMessages(
 
 export async function getChatMembers(): Promise<ChatMember[]> {
   const res = await fetch(`/api/backend/chat/members`);
+  if (!res.ok) return [];
+  const { members } = await res.json();
+  return members;
+}
+
+// The full roster for a group conversation's "who's in this chat" info
+// screen (league/commish_corner) — distinct from getChatMembers above,
+// which is the whole league's DM-eligible pool, not one conversation's
+// actual participants.
+export async function getConversationMembers(conversationId: number): Promise<ChatAvatar[]> {
+  const res = await fetch(`/api/backend/chat/conversations/${conversationId}/members`);
   if (!res.ok) return [];
   const { members } = await res.json();
   return members;

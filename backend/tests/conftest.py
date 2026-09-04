@@ -375,7 +375,36 @@ async def cleanup_test_season(pool):
             await conn.execute(
                 "DELETE FROM owner_preferences WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
             )
+            # Chat v2, same shape as the espn_member_id-pattern cleanup
+            # above (lines ~188-205) — a test_signup_owner_ids owner can
+            # be a participant in a direct conversation (e.g. with a
+            # plain _seed_owner()) that the earlier orphaned-direct-
+            # conversation cleanup didn't catch yet, since it ran before
+            # this owner's own participant row existed to be checked.
+            # Reactions/mentions reference messages, so they go first;
+            # conversation_participants references conversations, so it
+            # goes last, right before the owners DELETE below.
+            await conn.execute(
+                "DELETE FROM message_reactions WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
+            await conn.execute(
+                "DELETE FROM message_mentions WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
+            await conn.execute("DELETE FROM messages WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
+            await conn.execute(
+                "DELETE FROM conversation_participants WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
+            # A direct conversation between a test_signup_owner_ids owner
+            # and a plain _seed_owner() one is now fully orphaned (both
+            # sides just deleted above) — the earlier orphaned-direct-
+            # conversation sweep ran before this owner's participant row
+            # was gone, so it didn't catch this one. Same shape as that
+            # earlier sweep, just re-run for what this block just orphaned.
+            await conn.execute(
+                "DELETE FROM conversations WHERE type = 'direct' "
+                "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
+            )
         # league_members.user_id -> users.id, no ON DELETE CASCADE
         # (migration d7deccb620bb) — a test user can join real
         # DEFAULT_LEAGUE_ID membership directly (bypassing owners

@@ -11,6 +11,7 @@ import {
   markConversationRead,
   reactToMessage,
   startDirectConversation,
+  updatePreferences,
   type ChatConversation,
   type ChatMember,
   type ChatMessage,
@@ -28,13 +29,14 @@ const PAGE_SIZE = 50;
 type TypingUser = { owner_id: number; owner_name: string };
 
 // Mirrors the backend's own pin order (app/queries/chat.py's
-// list_conversations_for_owner: league, then commish_corner, then
-// everything else) — kept in sync here only for the case of a live
-// message reordering the list client-side; the initial server-rendered
-// order already comes pre-sorted this way.
+// list_conversations_for_owner: commish_corner, then league, then
+// everything else — announcements pinned above ordinary chat) — kept
+// in sync here only for the case of a live message reordering the list
+// client-side; the initial server-rendered order already comes
+// pre-sorted this way.
 function conversationTypeRank(type: ChatConversation["type"]): number {
-  if (type === "league") return 0;
-  if (type === "commish_corner") return 1;
+  if (type === "commish_corner") return 0;
+  if (type === "league") return 1;
   return 2;
 }
 
@@ -376,6 +378,15 @@ export function ChatApp({
     await deleteChatMessage(messageId);
   }
 
+  // Resolves MessageComposer's one-time AI-training consent warning —
+  // persists both the choice and that it's been shown, so it never
+  // shows again for this owner (Settings > Chat carries the same
+  // toggle afterward for changing their mind).
+  async function resolveAiTrainingNotice(optOut: boolean) {
+    const updated = await updatePreferences({ ai_training_notice_seen: true, ai_training_opt_out: optOut });
+    setPreferences(updated);
+  }
+
   async function loadOlder() {
     if (selectedId === null) return;
     const current = messagesByConversation[selectedId] ?? [];
@@ -441,6 +452,8 @@ export function ChatApp({
             mentionHighlightingEnabled={preferences?.mention_highlighting_enabled ?? true}
             readReceiptsEnabled={preferences?.read_receipts_enabled ?? true}
             readAt={readAtByConversation[selectedConversation.id] ?? null}
+            aiNoticeSeen={preferences?.ai_training_notice_seen ?? false}
+            onAiNoticeResolved={resolveAiTrainingNotice}
             typingUsers={typingByConversation[selectedConversation.id] ?? []}
             connected={connected}
             hasMoreOlder={hasMoreByConversation[selectedConversation.id] ?? false}

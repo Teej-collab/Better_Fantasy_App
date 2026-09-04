@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
+import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
 import { formatMessageTimestamp, isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
@@ -17,6 +18,8 @@ export function MessageThread({
   mentionHighlightingEnabled,
   readReceiptsEnabled,
   readAt,
+  aiNoticeSeen,
+  onAiNoticeResolved,
   typingUsers,
   connected,
   hasMoreOlder,
@@ -37,6 +40,8 @@ export function MessageThread({
   // other_last_read_message_id (already gated server-side on the OTHER
   // owner's own preference) allow it.
   readReceiptsEnabled: boolean;
+  aiNoticeSeen: boolean;
+  onAiNoticeResolved: (optOut: boolean) => void;
   // Client-observed ms timestamp of the last live "read" event for this
   // conversation, or null if none has landed yet this session (an
   // already-read conversation opened fresh shows a bare "Read" instead
@@ -55,6 +60,8 @@ export function MessageThread({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [newMessageWaiting, setNewMessageWaiting] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const isGroupConversation = conversation.type === "league" || conversation.type === "commish_corner";
   const listRef = useRef<HTMLDivElement>(null);
   const prevMessageCount = useRef(messages.length);
   const prevConversationId = useRef(conversation.id);
@@ -146,22 +153,39 @@ export function MessageThread({
         <button onClick={onBack} className="mr-1 text-lg text-black/60 sm:hidden dark:text-white/60" aria-label="Back to Messages">
           ‹
         </button>
-        <div className="flex min-w-0 flex-col">
-          <span className="flex items-center gap-1.5 truncate font-semibold">
-            {conversation.type === "commish_corner" && <span aria-hidden>📢</span>}
-            {title}
-            {conversation.type === "direct" && otherOnline && (
-              <span
-                className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
-                role="img"
-                aria-label="Online now"
-                title="Online now"
-              />
-            )}
-          </span>
-          <span className="truncate text-xs text-black/50 dark:text-white/50">{subtitle}</span>
-        </div>
+        {isGroupConversation ? (
+          <button
+            onClick={() => setShowGroupInfo(true)}
+            className="flex min-w-0 flex-col text-left"
+            aria-label={`${title} info — see who's in this chat`}
+          >
+            <span className="flex items-center gap-1.5 truncate font-semibold">
+              {conversation.type === "commish_corner" && <span aria-hidden>📢</span>}
+              {title}
+            </span>
+            <span className="truncate text-xs text-black/50 dark:text-white/50 underline decoration-black/20 dark:decoration-white/20">
+              {subtitle}
+            </span>
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-col">
+            <span className="flex items-center gap-1.5 truncate font-semibold">
+              {title}
+              {otherOnline && (
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+                  role="img"
+                  aria-label="Online now"
+                  title="Online now"
+                />
+              )}
+            </span>
+            <span className="truncate text-xs text-black/50 dark:text-white/50">{subtitle}</span>
+          </div>
+        )}
       </div>
+
+      {showGroupInfo && <GroupInfoModal conversation={conversation} onClose={() => setShowGroupInfo(false)} />}
 
       <div ref={listRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-4 py-3">
         {hasMoreOlder && (
@@ -229,6 +253,8 @@ export function MessageThread({
               setReplyTo(null);
             }}
             onTyping={onTyping}
+            aiNoticeSeen={aiNoticeSeen}
+            onAiNoticeResolved={onAiNoticeResolved}
           />
         ) : (
           <div className="flex items-center justify-center gap-2 border-t border-black/10 px-4 py-3 text-sm text-black/50 dark:border-white/10 dark:text-white/50">

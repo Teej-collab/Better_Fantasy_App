@@ -77,6 +77,20 @@ async def get_messages(
     return {"messages": messages}
 
 
+@router.get("/conversations/{conversation_id}/members")
+async def get_conversation_members(conversation_id: int, request: Request, pool=Depends(get_pool)):
+    """The "who's in this chat" roster (a league/commish_corner
+    conversation's own group-info screen — a direct conversation's
+    single other person is already shown in its header, no separate
+    screen needed for that case)."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        if not await chat_queries.is_participant(conn, conversation_id, payload["owner_id"]):
+            raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+        members = await chat_queries.list_all_conversation_participants(conn, conversation_id)
+    return {"members": members}
+
+
 @router.post("/conversations/direct")
 async def start_direct_conversation(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)

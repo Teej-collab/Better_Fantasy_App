@@ -181,6 +181,23 @@ async def test_conversations_summary_includes_avatar_group_for_league_type(pool)
     assert {m["owner_id"] for m in conv["avatar_group"]} == {a, b}
 
 
+async def test_conversations_summary_pins_commish_corner_above_league(pool):
+    from app.domain.chat import get_conversations_summary
+
+    _, a, league_id = await _seed_league_owner(pool, "pin-order-a")
+    async with pool.acquire() as conn:
+        league_conversation_id = await chat_queries.create_conversation_for_league(conn, league_id, "league", [a])
+        commish_corner_id = await chat_queries.create_conversation_for_league(conn, league_id, "commish_corner", [a])
+        # A direct message too, to confirm it still sorts to the bottom.
+        b = await _seed_owner(pool, 98)
+        direct_id = await _seed_direct_conversation(pool, a, b)
+
+        a_view = await get_conversations_summary(conn, a)
+
+    ids_in_order = [c["id"] for c in a_view if c["id"] in (league_conversation_id, commish_corner_id, direct_id)]
+    assert ids_in_order == [commish_corner_id, league_conversation_id, direct_id]
+
+
 async def test_conversations_summary_gates_read_receipt_on_the_other_owners_preference(pool):
     from app.domain.chat import get_conversations_summary
 
@@ -386,6 +403,40 @@ async def test_list_members_excludes_self(pool, monkeypatch):
     names = [m["display_name"] for m in resp.json()["members"]]
     assert "Chatter 14" in names
     assert "Chatter 13" not in names
+
+
+async def test_conversation_members_returns_the_full_roster(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    # A fresh test league, not real production League #1 — see the
+    # avatar_group test above for why this matters (conftest's cleanup
+    # only sweeps conversations tied to a "Test League%"-named league).
+    _, a, league_id = await _seed_league_owner(pool, "roster-a")
+    _, b, _ = await _seed_league_owner(pool, "roster-b", league_id=league_id)
+    _, c, _ = await _seed_league_owner(pool, "roster-c", league_id=league_id)
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(conn, league_id, "commish_corner", [a, b, c])
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, a))
+        resp = await client.get(f"/chat/conversations/{conversation_id}/members")
+
+    assert resp.status_code == 200
+    owner_ids = {m["owner_id"] for m in resp.json()["members"]}
+    assert owner_ids == {a, b, c}
+
+
+async def test_conversation_members_rejects_a_non_participant(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    a = await _seed_owner(pool, 102)
+    b = await _seed_owner(pool, 103)
+    outsider = await _seed_owner(pool, 104)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, outsider))
+        resp = await client.get(f"/chat/conversations/{conversation_id}/members")
+
+    assert resp.status_code == 403
 
 
 async def test_list_members_reports_real_presence(pool, monkeypatch):

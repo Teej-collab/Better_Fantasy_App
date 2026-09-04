@@ -82,6 +82,26 @@ async def list_conversation_preview_avatars(conn, conversation_id: int, limit: i
     return [dict(r) for r in rows]
 
 
+async def list_all_conversation_participants(conn, conversation_id: int):
+    """The full roster for a conversation's "who's in this chat" info
+    screen (unlike list_conversation_preview_avatars above, no LIMIT —
+    that one is for the conversation list's small avatar cluster,
+    this one is the real membership list). Ordered by display name
+    rather than owner_id — a name-sorted roster reads naturally,
+    matching how iMessage's own group-info screen presents members."""
+    rows = await conn.fetch(
+        """
+        SELECT o.owner_id, o.display_name, o.chat_color, o.logo_url
+        FROM conversation_participants cp
+        JOIN owners o ON o.owner_id = cp.owner_id
+        WHERE cp.conversation_id = $1
+        ORDER BY o.display_name
+        """,
+        conversation_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def create_conversation_for_league(conn, league_id: int, conv_type: str, owner_ids: list[int]) -> int:
     """The app-layer counterpart to migration e47b2a91c5d8's own one-time
     backfill SQL — used going forward whenever a new league is created
@@ -210,7 +230,7 @@ async def list_conversations_for_owner(conn, owner_id: int):
         LEFT JOIN owners other ON other.owner_id = other_cp.owner_id
         LEFT JOIN owner_preferences other_prefs ON other_prefs.owner_id = other_cp.owner_id
         ORDER BY
-            CASE c.type WHEN 'league' THEN 0 WHEN 'commish_corner' THEN 1 ELSE 2 END,
+            CASE c.type WHEN 'commish_corner' THEN 0 WHEN 'league' THEN 1 ELSE 2 END,
             lm.created_at DESC NULLS LAST
         """,
         owner_id,
