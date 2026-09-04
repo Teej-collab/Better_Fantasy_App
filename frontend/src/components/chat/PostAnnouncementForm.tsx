@@ -78,9 +78,16 @@ export function PostAnnouncementForm({
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write the announcement..."
           maxLength={MAX_BODY_LENGTH}
-          rows={6}
+          rows={4}
           aria-label="Announcement body"
-          className="resize-none rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] dark:border-white/10"
+          // Real default height (not just `rows`, which reads as
+          // cramped once posts run long — a 20,000-char announcement
+          // in a 6-line box meant constant scrolling just to review
+          // what you'd written), taller still on desktop where there's
+          // real room to spare. resize-y instead of resize-none lets
+          // anyone drag it bigger on top of that; max-h keeps a drag-
+          // resize from swallowing the whole screen.
+          className="min-h-32 max-h-[60vh] resize-y rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-[var(--wl-accent-dim)] sm:min-h-64 dark:border-white/10"
         />
         <button
           type="submit"
