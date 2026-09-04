@@ -311,3 +311,41 @@ async def reassign_team(league_id: int, team_id: int, body: ReassignTeamRequest,
         if team is None:
             raise HTTPException(status_code=404, detail="No team found for this league/season")
     return team
+
+
+class CreateTeamForMemberRequest(BaseModel):
+    user_id: int
+    team_name: str
+
+
+@router.post("/{league_id}/teams/for-member")
+async def create_team_for_member(league_id: int, body: CreateTeamForMemberRequest, request: Request):
+    """Commissioner-invoked counterpart to the self-serve POST /{league_id}
+    /teams above — for a new team mid-season (e.g. a member who joined
+    after the league started and hasn't self-served their own team yet),
+    not for handing off an EXISTING team (that's reassign_team above).
+    Same one-team-per-owner-per-season guard as the self-serve version;
+    the target must already be a real member of this league."""
+    payload = _require_session(request)
+    team_name = body.team_name.strip()
+    if not team_name:
+        raise HTTPException(status_code=400, detail="Enter a team name")
+
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        membership = await league_queries.get_membership(conn, league_id, body.user_id)
+        if membership is None:
+            raise HTTPException(status_code=400, detail="That user isn't a member of this league")
+
+        user_row = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", body.user_id)
+        display_name = (user_row["display_name"] if user_row else None) or "New Owner"
+        owner_id = await team_queries.get_or_create_owner_for_user(conn, body.user_id, display_name)
+
+        existing_team = await team_queries.get_team_for_owner_in_league(conn, league_id, season, owner_id)
+        if existing_team is not None:
+            raise HTTPException(status_code=409, detail="That member already has a team in this league")
+
+        team = await team_queries.create_team(conn, league_id, season, owner_id, team_name)
+    return team

@@ -22,8 +22,10 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.domain.draft_autopick import choose_autopick
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
+    DraftAlreadyStartedError,
     DraftNotFoundError,
     DraftNotInProgressError,
+    InvalidDraftOrderError,
     KeeperResolutionError,
     KeeperSelectionsNotLockedError,
     NothingToUndoError,
@@ -118,6 +120,67 @@ async def create_draft(
                 for pick_number, round_num, round_pick, owner_id in rows
             ],
         )
+
+
+async def update_draft_order(
+    conn, season: int, new_order: list[int], league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
+    """Reorders an existing, not-yet-started draft in place — an
+    alternative to reset_draft + setup for the common case of wanting a
+    different pick order without touching roster shape or the pick
+    time limit. Only allowed while status is 'not_started' AND no pick
+    has a player yet (covers both a live pick and a pre-seeded keeper —
+    see seed_keeper_pick's own docstring: a keeper CAN be seeded before
+    the draft technically starts). Reset the draft first if either
+    applies — a keeper tied to a specific (round, owner_id) would need
+    to be re-mapped onto a new pick_number, which this deliberately
+    doesn't attempt to do automatically.
+
+    new_order must be a reordering of the exact same owner_ids already
+    in draft_config.draft_order — adding or removing an owner is a
+    membership change (see leagues.py's add-team-for-member/reassign
+    tools), not a reorder."""
+    async with conn.transaction():
+        config_row = await conn.fetchrow(
+            "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+        )
+        if config_row is None:
+            raise DraftNotFoundError(f"No draft configured for season {season}")
+        config = _config_dict(config_row)
+        if config["status"] != "not_started":
+            raise DraftAlreadyStartedError(
+                f"Draft for season {season} has already started — reset it first to change the order"
+            )
+        if sorted(new_order) != sorted(config["draft_order"]):
+            raise InvalidDraftOrderError("new_order must be a reordering of the same owners already in the draft")
+
+        any_pick_made = await conn.fetchval(
+            "SELECT 1 FROM draft_picks WHERE season = $1 AND league_id = $2 AND sleeper_player_id IS NOT NULL",
+            season, league_id,
+        )
+        if any_pick_made:
+            raise DraftAlreadyStartedError(
+                f"A keeper has already been seeded for season {season} — reset the draft first to change the order"
+            )
+
+        rounds = total_draftable_slots(config["roster_slots"])
+        await conn.execute("DELETE FROM draft_picks WHERE season = $1 AND league_id = $2", season, league_id)
+        rows = plan_snake_order(new_order, rounds)
+        await conn.executemany(
+            """
+            INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id, league_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            """,
+            [
+                (season, pick_number, round_num, round_pick, owner_id, league_id)
+                for pick_number, round_num, round_pick, owner_id in rows
+            ],
+        )
+        updated = await conn.fetchrow(
+            "UPDATE draft_config SET draft_order = $1 WHERE season = $2 AND league_id = $3 RETURNING *",
+            new_order, season, league_id,
+        )
+        return _config_dict(updated)
 
 
 async def set_scheduled_start(conn, season: int, scheduled_start, league_id: int = DEFAULT_LEAGUE_ID) -> None:

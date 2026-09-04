@@ -9,6 +9,7 @@ import {
   resumeDraft,
   seedKeepersIntoDraft,
   SeedKeepersError,
+  setDraftOrder,
   setDraftSchedule,
   setupDraft,
   startDraft,
@@ -130,6 +131,9 @@ export function DraftSetupPanel({
   const [rosterSlots, setRosterSlotsState] = useState<Record<string, number>>(
     config?.roster_slots ?? DEFAULT_ROSTER_SLOTS
   );
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [editOrder, setEditOrder] = useState<number[]>([]);
+  const [editOrderBusy, setEditOrderBusy] = useState(false);
 
   useEffect(() => {
     // setTimeout(0), not a direct setState call in the effect body —
@@ -184,6 +188,10 @@ export function DraftSetupPanel({
     setOrder((prev) => (prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId]));
   }
 
+  function toggleEditOrder(ownerId: number) {
+    setEditOrder((prev) => (prev.includes(ownerId) ? prev.filter((id) => id !== ownerId) : [...prev, ownerId]));
+  }
+
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
@@ -231,6 +239,26 @@ export function DraftSetupPanel({
       setError(e instanceof Error ? e.message : "Couldn't save the draft date");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function startEditingOrder() {
+    setEditOrder(config?.draft_order ?? []);
+    setEditingOrder(true);
+  }
+
+  async function saveEditedOrder() {
+    if (!config || editOrder.length !== config.draft_order.length) return;
+    setEditOrderBusy(true);
+    setError(null);
+    try {
+      await setDraftOrder(editOrder);
+      setEditingOrder(false);
+      onDraftCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the new order");
+    } finally {
+      setEditOrderBusy(false);
     }
   }
 
@@ -306,7 +334,59 @@ export function DraftSetupPanel({
       {error && <p className="w-full text-xs text-red-500">{error}</p>}
       <p className="w-full text-xs text-black/50 dark:text-white/50">
         Draft order: {config.draft_order.map((id, i) => `${i + 1}. ${teamNameByOwner.get(id) ?? id}`).join(" · ")}
+        {config.status === "not_started" && !editingOrder && (
+          <button onClick={startEditingOrder} className="ml-2 text-sky-500 hover:underline">
+            Edit order
+          </button>
+        )}
       </p>
+      {/* Reorder in place instead of Reset + redo Setup — only offered
+          pre-start; update_draft_order itself also refuses once a
+          keeper's been seeded (see its own docstring) even though
+          status is technically still "not_started" then. */}
+      {editingOrder && (
+        <div className="flex w-full flex-col gap-2 rounded-lg border border-sky-500/30 bg-sky-500/[0.04] p-3">
+          <p className="text-xs text-black/50 dark:text-white/50">Click teams below in the new order.</p>
+          <div className="flex flex-wrap gap-2">
+            {teams.map((t) => {
+              const position = editOrder.indexOf(t.owner_id);
+              return (
+                <button
+                  key={t.owner_id}
+                  onClick={() => toggleEditOrder(t.owner_id)}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                    position >= 0
+                      ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                      : "border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+                  }`}
+                >
+                  {position >= 0 && `${position + 1}. `}
+                  {t.team_name}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveEditedOrder}
+              disabled={editOrderBusy || editOrder.length !== config.draft_order.length}
+              className="w-fit rounded-full bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {editOrderBusy
+                ? "Saving…"
+                : editOrder.length !== config.draft_order.length
+                  ? `Select all ${config.draft_order.length} teams (${editOrder.length}/${config.draft_order.length})`
+                  : "Save order"}
+            </button>
+            <button
+              onClick={() => setEditingOrder(false)}
+              className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs dark:border-white/10"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {/* Separate from Setup/Reset above on purpose — the real date can
           be nailed down or adjusted independently, without touching
           the order/roster shape. Drives the homepage's countdown card

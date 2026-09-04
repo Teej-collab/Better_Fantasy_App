@@ -169,6 +169,15 @@ export async function reassignTeam(leagueId: number, teamId: number, userId: num
   return post<Team>(`/leagues/${leagueId}/teams/${teamId}/reassign`, { user_id: userId });
 }
 
+// Commissioner-only — creates a brand new team on behalf of an
+// existing member who hasn't self-served their own (POST /leagues/
+// {leagueId}/teams, which any member can call for themselves). The
+// target must already be a member; one team per owner per season still
+// applies.
+export async function createTeamForMember(leagueId: number, userId: number, teamName: string): Promise<Team> {
+  return post<Team>(`/leagues/${leagueId}/teams/for-member`, { user_id: userId, team_name: teamName });
+}
+
 export type ScoringRule = { stat_category: string; points_per_unit: number };
 
 export async function getScoringRules(): Promise<{ season: number; rules: ScoringRule[] }> {

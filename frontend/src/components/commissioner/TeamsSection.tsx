@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getLeagueMembers, getLeagueTeams, getMyLeagues, reassignTeam, type League, type Member, type Team } from "@/lib/leaguesApi";
+import {
+  createTeamForMember,
+  getLeagueMembers,
+  getLeagueTeams,
+  getMyLeagues,
+  reassignTeam,
+  type League,
+  type Member,
+  type Team,
+} from "@/lib/leaguesApi";
 
 /** Split out of the old single-page CommissionerApp.tsx (2026-09-03). */
 export function TeamsSection() {
@@ -13,6 +22,11 @@ export function TeamsSection() {
   const [reassignTeamId, setReassignTeamId] = useState<number | null>(null);
   const [reassignTargetUserId, setReassignTargetUserId] = useState<number | "">("");
   const [reassignBusy, setReassignBusy] = useState(false);
+
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [addTeamUserId, setAddTeamUserId] = useState<number | "">("");
+  const [addTeamName, setAddTeamName] = useState("");
+  const [addTeamBusy, setAddTeamBusy] = useState(false);
 
   async function refresh() {
     try {
@@ -49,6 +63,22 @@ export function TeamsSection() {
     }
   }
 
+  async function submitAddTeam() {
+    if (!league || addTeamUserId === "" || !addTeamName.trim()) return;
+    setAddTeamBusy(true);
+    try {
+      await createTeamForMember(league.id, addTeamUserId, addTeamName.trim());
+      setShowAddTeam(false);
+      setAddTeamUserId("");
+      setAddTeamName("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create that team.");
+    } finally {
+      setAddTeamBusy(false);
+    }
+  }
+
   if (league === null) {
     return error ? <p className="text-sm text-red-500">{error}</p> : null;
   }
@@ -60,9 +90,44 @@ export function TeamsSection() {
           {error}
         </p>
       )}
-      {/* Add-team-for-member goes here (2026-09-03 plan, item 4) — a
-          commissioner-invoked variant of the self-serve POST /leagues/
-          {id}/teams that takes an explicit target user_id. */}
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => setShowAddTeam((v) => !v)}
+          className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+        >
+          {showAddTeam ? "Cancel" : "+ Add team for a member"}
+        </button>
+        {showAddTeam && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
+            <select
+              value={addTeamUserId}
+              onChange={(e) => setAddTeamUserId(e.target.value ? Number(e.target.value) : "")}
+              className="rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/10"
+            >
+              <option value="">Pick a member…</option>
+              {(members ?? []).map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.display_name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={addTeamName}
+              onChange={(e) => setAddTeamName(e.target.value)}
+              placeholder="Team name"
+              className="min-w-0 flex-1 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/10"
+            />
+            <button
+              onClick={submitAddTeam}
+              disabled={addTeamBusy || addTeamUserId === "" || !addTeamName.trim()}
+              className="rounded-full bg-[var(--wl-accent-dim)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {addTeamBusy ? "Creating…" : "Create team"}
+            </button>
+          </div>
+        )}
+      </div>
+
       {teams === null || teams.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No teams yet.</p>
       ) : (

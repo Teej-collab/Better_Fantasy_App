@@ -241,6 +241,15 @@ export async function resetDraft(): Promise<{ ok: true }> {
   return post("/draft/reset");
 }
 
+// Reorders a not-yet-started draft in place (draft_order must be the
+// exact same owner_ids, just reordered) — an alternative to reset +
+// setup when only the pick order needs to change. 409s once the draft
+// has started or a keeper's been seeded (see backend/app/domain/
+// draft_engine.py's update_draft_order for exactly why).
+export async function setDraftOrder(draftOrder: number[]): Promise<DraftConfig> {
+  return put<DraftConfig>("/draft/order", { draft_order: draftOrder });
+}
+
 export type SeededKeeper = { owner_id: number; player_name: string; sleeper_player_id: string; round: number };
 export type UnresolvedKeeper = { owner_id: number; player_name: string; espn_player_id: number };
 

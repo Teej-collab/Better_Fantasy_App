@@ -30,6 +30,7 @@ from app.db import get_pool
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
+    DraftAlreadyStartedError,
     DraftError,
     DraftNotFoundError,
     DraftNotInProgressError,
@@ -67,6 +68,11 @@ def _map_draft_error(e: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail=str(e))
     if isinstance(e, DraftAlreadyExistsError):
         return HTTPException(status_code=409, detail=str(e))
+    if isinstance(e, DraftAlreadyStartedError):
+        return HTTPException(status_code=409, detail=str(e))
+    # InvalidDraftOrderError falls through to the generic 400 below —
+    # same status the catch-all already gives it, just named for the
+    # domain layer's own "one class per real failure mode" discipline.
     return HTTPException(status_code=400, detail=str(e))
 
 
@@ -251,6 +257,30 @@ async def set_roster_slots(body: RosterSlotsRequest, request: Request):
             )
         await draft_queries.upsert_roster_slots_setting(conn, season, body.roster_slots, league_id)
     return {"season": season, "roster_slots": body.roster_slots, "editable": True}
+
+
+class DraftOrderRequest(BaseModel):
+    draft_order: list[int]
+
+
+@router.put("/order")
+async def set_draft_order(body: DraftOrderRequest, request: Request):
+    """Reorders an existing, not-yet-started draft without resetting it
+    (see draft_engine.update_draft_order's own docstring for exactly
+    when this is and isn't allowed) — the common case of just wanting a
+    different pick order, not a different roster shape or pick-time-
+    limit, which POST /draft/reset + /draft/setup would otherwise force
+    the commissioner to redo from scratch."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            league_id = await require_league_commissioner(conn, payload)
+            config = await draft_engine.update_draft_order(conn, season, body.draft_order, league_id=league_id)
+    except DraftError as e:
+        raise _map_draft_error(e) from e
+    return config
 
 
 @router.post("/reset")

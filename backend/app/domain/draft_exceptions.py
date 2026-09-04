@@ -20,6 +20,24 @@ class DraftNotInProgressError(DraftError):
     pass
 
 
+class DraftAlreadyStartedError(DraftError):
+    """Raised by update_draft_order — reordering only makes sense while
+    the draft is still 'not_started' (no real picks have happened yet);
+    once it's started, reset_draft is the only supported way to change
+    the order, since a pick already made under the old order can't be
+    silently reinterpreted under a new one."""
+    pass
+
+
+class InvalidDraftOrderError(DraftError):
+    """Raised by update_draft_order when the proposed order isn't a
+    reordering of the exact same owner_ids already in draft_config —
+    adding/removing an owner is a membership change (see leagues.py's
+    add-team-for-member/reassign tools), not something a reorder can
+    (or should) do on its own."""
+    pass
+
+
 class NotYourTurnError(DraftError):
     pass
 

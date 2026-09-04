@@ -438,3 +438,92 @@ async def test_reassign_team_rejects_a_non_member_target(pool, monkeypatch):
         await _login(creator2, "test-leagues-reassign-nonmember-creator@example.com")
         resp = await creator2.post(f"/leagues/{league_id}/teams/{team_id}/reassign", json={"user_id": outsider_user_id})
     assert resp.status_code == 400
+
+
+async def test_commissioner_can_create_a_team_for_a_member(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-forteam-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League For Member"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-forteam-member@example.com", display_name="New Member")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        member_user_id = (await member.get("/auth/me")).json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-forteam-creator@example.com")
+        resp = await creator2.post(
+            f"/leagues/{league_id}/teams/for-member", json={"user_id": member_user_id, "team_name": "Commish-Made Team"}
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["team_name"] == "Commish-Made Team"
+
+    async with _client() as check:
+        await _login(check, "test-leagues-forteam-creator@example.com")
+        teams_resp = await check.get(f"/leagues/{league_id}/teams")
+    team = next(t for t in teams_resp.json()["teams"] if t["team_id"] == body["team_id"])
+    assert team["owner_name"] == "New Member"
+
+
+async def test_create_team_for_member_requires_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-forteam-noncomm-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League For Member Noncomm"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-forteam-noncomm-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        member_user_id = (await member.get("/auth/me")).json()["user_id"]
+
+        resp = await member.post(
+            f"/leagues/{league_id}/teams/for-member", json={"user_id": member_user_id, "team_name": "Should Fail"}
+        )
+    assert resp.status_code == 403
+
+
+async def test_create_team_for_member_rejects_a_non_member_target(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-forteam-nonmember-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League For Member Nonmember"})
+        league_id = created.json()["id"]
+
+    async with _client() as outsider:
+        await _sign_up(outsider, "test-leagues-forteam-nonmember-outsider@example.com")
+        outsider_user_id = (await outsider.get("/auth/me")).json()["user_id"]
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-forteam-nonmember-creator@example.com")
+        resp = await creator2.post(
+            f"/leagues/{league_id}/teams/for-member", json={"user_id": outsider_user_id, "team_name": "Should Fail"}
+        )
+    assert resp.status_code == 400
+
+
+async def test_create_team_for_member_rejects_a_second_team_for_the_same_owner(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-forteam-dupe-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League For Member Dupe"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-leagues-forteam-dupe-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        member_user_id = (await member.get("/auth/me")).json()["user_id"]
+        await member.post(f"/leagues/{league_id}/teams", json={"team_name": "Self-Served Team"})
+
+    async with _client() as creator2:
+        await _login(creator2, "test-leagues-forteam-dupe-creator@example.com")
+        resp = await creator2.post(
+            f"/leagues/{league_id}/teams/for-member", json={"user_id": member_user_id, "team_name": "Duplicate Team"}
+        )
+    assert resp.status_code == 409

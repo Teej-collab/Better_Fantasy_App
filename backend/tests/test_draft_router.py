@@ -558,3 +558,92 @@ async def test_setup_does_not_pick_up_a_staged_roster_shape_automatically(pool, 
             "SELECT 1 FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2", TEST_SEASON, league_id
         )
     assert row is None
+
+
+async def test_order_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "order_noncomm")
+    user_id, owner_id = await _seed_member(pool, league_id, "order_noncomm_member")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.put("/draft/order", json={"draft_order": [owner_id]})
+    assert resp.status_code == 403
+
+
+async def test_order_404s_when_no_draft_exists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "order_none")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.put("/draft/order", json={"draft_order": [owner_id]})
+    assert resp.status_code == 404
+
+
+async def test_order_reorders_a_not_started_draft(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "order_ok_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "order_ok_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        resp = await client.put("/draft/order", json={"draft_order": [owner_b, owner_a]})
+        assert resp.status_code == 200
+        assert resp.json()["draft_order"] == [owner_b, owner_a]
+
+        state_resp = await client.get("/draft/state")
+    # Round 1's real pick rows must reflect the new order, not the original.
+    round_1_picks = sorted(
+        (p for p in state_resp.json()["picks"] if p["round"] == 1), key=lambda p: p["round_pick"]
+    )
+    assert [p["owner_id"] for p in round_1_picks] == [owner_b, owner_a]
+
+
+async def test_order_rejects_a_set_that_is_not_a_reordering(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "order_bad_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "order_bad_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        # Dropping owner_b entirely isn't a reorder — that's a membership change.
+        resp = await client.put("/draft/order", json={"draft_order": [owner_a]})
+    assert resp.status_code == 400
+
+
+async def test_order_rejected_once_the_draft_has_started(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "order_started_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "order_started_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+        await client.post("/draft/start")
+
+        resp = await client.put("/draft/order", json={"draft_order": [owner_b, owner_a]})
+    assert resp.status_code == 409
+
+
+async def test_order_rejected_once_a_keeper_is_seeded(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "order_keeper_a")
+    _user_b, owner_b = await _seed_member(pool, league_id, "order_keeper_b")
+    sleeper_player = await _seed_player(pool, "order_keeper", search_rank=1)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+    async with pool.acquire() as conn:
+        await draft_engine.seed_keeper_pick(conn, TEST_SEASON, owner_a, 1, sleeper_player, league_id=league_id)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        resp = await client.put("/draft/order", json={"draft_order": [owner_b, owner_a]})
+    assert resp.status_code == 409
