@@ -42,6 +42,12 @@ export function MessageComposer({
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showAiNotice, setShowAiNotice] = useState(false);
+  // True while a drag carrying a file hovers the composer — dragCounter
+  // (not a plain boolean) survives the dragenter/dragleave pairs that
+  // fire on every child element as the pointer crosses them, which a
+  // naive boolean would flicker off on.
+  const [isDragActive, setIsDragActive] = useState(false);
+  const dragCounter = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingSentAt = useRef(0);
@@ -82,10 +88,18 @@ export function MessageComposer({
     inputRef.current?.focus();
   }
 
-  async function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !ALLOWED_IMAGE_TYPES.includes(file.type)) return;
+  // Shared by every capture path — file picker, clipboard paste, and
+  // drag-and-drop all end up here so upload auth, the MIME allowlist,
+  // and the 8MB server-side cap (app/api/chat/upload/route.ts) are
+  // enforced identically regardless of how the file arrived.
+  async function uploadImageFile(file: File) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return;
+    // One attachment slot, one upload at a time — a second pick/paste/
+    // drop while one is already in flight would otherwise race it: two
+    // concurrent uploads both resolve into the same pendingImage state,
+    // and whichever finishes last silently wins regardless of which
+    // one the user actually meant to send.
+    if (pendingImage?.status === "uploading") return;
 
     const previewUrl = URL.createObjectURL(file);
     setPendingImage({ status: "uploading", previewUrl });
@@ -98,6 +112,57 @@ export function MessageComposer({
     } catch {
       setPendingImage({ status: "error" });
     }
+  }
+
+  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) uploadImageFile(file);
+  }
+
+  // Clipboard paste — a supported image (screenshot, copied GIF,
+  // copied photo) takes over the paste; plain text paste is left
+  // completely alone so normal typing/pasting never breaks. Fires on
+  // the textarea itself, same element normal paste already targets.
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItem = items.find((item) => item.kind === "file" && ALLOWED_IMAGE_TYPES.includes(item.type));
+    if (!imageItem) return; // no supported image on the clipboard — let normal text paste proceed
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    uploadImageFile(file);
+  }
+
+  // Drag-and-drop onto the composer — desktop only in practice (touch
+  // devices don't fire these events), gracefully absent everywhere
+  // else since nothing else in the component depends on it firing.
+  function handleDragEnter(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    setIsDragActive(true);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setIsDragActive(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragActive(false);
+    const file = Array.from(e.dataTransfer.files).find((f) => ALLOWED_IMAGE_TYPES.includes(f.type));
+    if (file) uploadImageFile(file);
   }
 
   function removeImage() {
@@ -151,7 +216,19 @@ export function MessageComposer({
   }
 
   return (
-    <div className="relative border-t border-black/10 bg-[var(--background)] p-3 dark:border-white/10">
+    <div
+      className="relative border-t border-black/10 bg-[var(--background)] p-3 dark:border-white/10"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragActive && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-t-2xl border-2 border-dashed border-[var(--wl-accent-dim)] bg-[var(--background)]/90">
+          <span className="text-sm font-medium text-[var(--wl-accent-dim)]">Drop image to attach</span>
+        </div>
+      )}
+
       {replyTo && (
         <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-black/[0.04] px-3 py-1.5 text-xs dark:bg-white/[0.06]">
           <span className="truncate text-black/60 dark:text-white/60">
@@ -252,6 +329,7 @@ export function MessageComposer({
               send();
             }
           }}
+          onPaste={handlePaste}
           placeholder="Message..."
           maxLength={MAX_LENGTH}
           rows={1}
