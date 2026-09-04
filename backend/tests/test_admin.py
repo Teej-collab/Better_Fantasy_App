@@ -49,12 +49,20 @@ async def _commissioner_of_league_one_cookies(pool, suffix: str) -> dict:
     return _session_cookie(user_id, owner_id=1)
 
 
-async def _post_sync(cookies=None, path="/admin/sync"):
+async def _post_sync(cookies=None, path="/admin/sync", json=None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         if cookies:
             client.cookies.update(cookies)
-        return await client.post(path)
+        return await client.post(path, json=json)
+
+
+async def _get(cookies=None, path="/admin/online"):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
+        return await client.get(path)
 
 
 async def test_sync_requires_session(monkeypatch):
@@ -182,3 +190,129 @@ async def test_projected_points_sync_writes_real_rows(pool, monkeypatch):
             "SELECT projected_points FROM players WHERE sleeper_player_id = 'test-admin-proj-player'"
         )
     assert float(row["projected_points"]) == 199.9
+
+
+# ---- Usage dashboard (2026-09) --------------------------------------
+
+
+class _FakeSocket:
+    async def accept(self):
+        pass
+
+    async def send_json(self, message):
+        pass
+
+
+async def test_online_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/online")
+    assert response.status_code == 401
+
+
+async def test_online_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "online-reject"), path="/admin/online")
+    assert response.status_code == 403
+
+
+async def test_online_reports_username_only_for_connected_owners(pool, monkeypatch):
+    from app.chat.manager import manager as chat_manager
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-online-owner", "Online Owner",
+        )
+
+    await chat_manager.connect(owner_id, _FakeSocket())
+    try:
+        response = await _get(
+            cookies=await _commissioner_of_league_one_cookies(pool, "online-reader"), path="/admin/online"
+        )
+    finally:
+        await chat_manager.disconnect(owner_id, list(chat_manager._connections[owner_id])[0])
+
+    assert response.status_code == 200
+    owners = response.json()["owners"]
+    assert owners == [{"owner_id": owner_id, "display_name": "Online Owner"}]
+
+
+async def test_track_view_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(path="/admin/track-view", json={"path": "/standings"})
+    assert response.status_code == 401
+
+
+async def test_track_view_records_a_real_row(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, "track-view")
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            "test-admin-trackview-owner", "Track View Owner", user_id,
+        )
+    cookies = _session_cookie(user_id, owner_id)
+
+    response = await _post_sync(cookies=cookies, path="/admin/track-view", json={"path": "/standings"})
+    assert response.status_code == 200
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT path FROM page_view_events WHERE owner_id = $1", owner_id
+        )
+    assert row["path"] == "/standings"
+
+
+async def test_track_view_is_a_noop_without_an_owner_id(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, "track-view-noowner")
+    token = create_session_token(_SESSION_SECRET, user_id=user_id)  # no owner_id — hasn't joined a league yet
+
+    response = await _post_sync(
+        cookies={"session": token}, path="/admin/track-view", json={"path": "/test-admin-noowner-path"}
+    )
+    assert response.status_code == 200
+
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT count(*) FROM page_view_events WHERE path = '/test-admin-noowner-path'"
+        )
+    assert count == 0
+
+
+async def test_usage_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/usage")
+    assert response.status_code == 401
+
+
+async def test_usage_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "usage-reject"), path="/admin/usage")
+    assert response.status_code == 403
+
+
+async def test_usage_summarizes_real_views(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-usage-owner", "Usage Owner",
+        )
+        await conn.execute(
+            "INSERT INTO page_view_events (owner_id, path) VALUES ($1, '/standings'), ($1, '/standings'), ($1, '/chat')",
+            owner_id,
+        )
+
+    response = await _get(
+        cookies=await _commissioner_of_league_one_cookies(pool, "usage-reader"), path="/admin/usage?days=7"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["window_days"] == 7
+    top = {row["path"]: row["views"] for row in body["top_paths"]}
+    assert top["/standings"] == 2
+    assert top["/chat"] == 1

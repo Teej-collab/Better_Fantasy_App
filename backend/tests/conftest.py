@@ -352,6 +352,12 @@ async def cleanup_test_season(pool):
                 "SELECT user_id FROM owners WHERE espn_member_id LIKE 'test-%' AND user_id IS NOT NULL"
             )
         ]
+        # page_view_events.owner_id -> owners.owner_id (2026-09 usage
+        # dashboard) — same "goes before the owners DELETE" requirement
+        # as every other owner_id-referencing table cleaned up here.
+        await conn.execute(
+            "DELETE FROM page_view_events WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
         if linked_user_ids:
             # league_members.user_id -> users.id (Phase 2 of the multi-

@@ -3,6 +3,7 @@ import { Geist_Mono, IBM_Plex_Sans, Oswald } from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { PageViewTracker } from "@/components/PageViewTracker";
 import { PresenceProvider } from "@/components/PresenceProvider";
 import { PlayerCardProvider } from "@/components/players/PlayerCardProvider";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
@@ -158,6 +159,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             affects layout, just what's painted behind it. */}
         <div className="cosmic-ambient" aria-hidden />
         <OfflineBanner />
+        <PageViewTracker />
         <PresenceProvider>
           <PlayerCardProvider>{children}</PlayerCardProvider>
         </PresenceProvider>

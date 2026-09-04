@@ -102,3 +102,34 @@ def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:
         "url": "/draft",
         "data": {"type": "draft_on_the_clock"},
     }
+
+
+def fantasy_player_touchdown(player_name: str, team_name: str) -> dict:
+    return {
+        "title": "🔥 Touchdown!",
+        "body": f"{player_name} just scored for your {team_name}.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/team",
+        "data": {"type": "fantasy_player_touchdown"},
+    }
+
+
+def fantasy_matchup_lead_change(now_leading: bool, opponent_name: str) -> dict:
+    if now_leading:
+        return {
+            "title": "📈 You just took the lead",
+            "body": f"You're now ahead of {opponent_name}.",
+            "icon": _DEFAULT_ICON,
+            "badge": _DEFAULT_ICON,
+            "url": "/team",
+            "data": {"type": "fantasy_matchup_lead_change"},
+        }
+    return {
+        "title": "📉 You just lost the lead",
+        "body": f"{opponent_name} just took the lead over you.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/team",
+        "data": {"type": "fantasy_matchup_lead_change"},
+    }

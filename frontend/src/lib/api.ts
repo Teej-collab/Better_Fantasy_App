@@ -1732,3 +1732,67 @@ export async function getFeedback(): Promise<{ items: FeedbackItem[] }> {
   return res.json();
 }
 
+// ---- Admin usage dashboard (2026-09) — site-owner-only visibility into
+// who's using the app and which pages/features actually get used. Backed
+// by app/routers/admin.py, gated the same way as every other /admin/*
+// route (require_commissioner_of(DEFAULT_LEAGUE_ID), not "any league's
+// commissioner" — see that router's own docstring). ---------------------
+
+export type OnlineOwner = { owner_id: number; display_name: string };
+
+export type UsagePathSummary = { path: string; views: number; unique_owners: number };
+export type UsageByOwner = { owner_id: number; display_name: string; views: number };
+export type UsageSummary = {
+  window_days: number;
+  total_views: number;
+  top_paths: UsagePathSummary[];
+  by_owner: UsageByOwner[];
+};
+
+// Server-side reads for the dashboard's first paint — getServerOrNull
+// turns a 403 (signed in, not the site owner) into null rather than
+// throwing, so the page can render a plain "not authorized" message
+// instead of a crashed error boundary.
+export async function getOnlineOwnersServer(sessionCookie: string | undefined): Promise<OnlineOwner[] | null> {
+  const data = await getServerOrNull<{ owners: OnlineOwner[] }>("/admin/online", sessionCookie);
+  return data ? data.owners : null;
+}
+
+export async function getUsageSummaryServer(
+  sessionCookie: string | undefined,
+  days = 30
+): Promise<UsageSummary | null> {
+  return getServerOrNull<UsageSummary>(`/admin/usage?days=${days}`, sessionCookie);
+}
+
+// Client-side counterparts — AdminDashboard.tsx polls these to keep the
+// "who's online" list live without a full page reload.
+export async function getOnlineOwners(): Promise<OnlineOwner[]> {
+  const res = await fetch("/api/backend/admin/online", { cache: "no-store" });
+  if (!res.ok) throw new Error(`GET /admin/online failed: ${res.status}`);
+  const data = await res.json();
+  return data.owners;
+}
+
+export async function getUsageSummary(days = 30): Promise<UsageSummary> {
+  const res = await fetch(`/api/backend/admin/usage?days=${days}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`GET /admin/usage failed: ${res.status}`);
+  return res.json();
+}
+
+// Fire-and-forget — called once per route change from
+// PageViewTracker.tsx (mounted app-wide in layout.tsx). Never throws:
+// a failed tracking call is background telemetry, not something a
+// real visitor should ever see surface as an error.
+export async function trackPageView(path: string): Promise<void> {
+  try {
+    await fetch("/api/backend/admin/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+  } catch {
+    // best-effort only
+  }
+}
+

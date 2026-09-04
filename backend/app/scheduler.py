@@ -83,6 +83,7 @@ from app.domain.draft_exceptions import DraftError
 from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
+from app.notifications import fantasy_events
 from app.notifications.draft_events import notify_draft_starting_soon, notify_on_the_clock
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
@@ -115,8 +116,23 @@ async def _run_live_sync_job():
     provider = ESPNProvider(espn_config)
     season = espn_config.active_season
     week = await provider.get_current_week(season)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        before = await fantasy_events.snapshot_week(conn, season, week)
+
     results = await run_live_sync(provider, season, week)
     logger.info("Live sync finished (season=%s week=%s): %s", season, week, results)
+
+    # Diffed against the snapshot above, not derived from `results`
+    # (a per-step success/failure summary, not the actual numbers) —
+    # see app/notifications/fantasy_events.py's own docstring for why
+    # this watches the same real numbers My Team/Matchups already show
+    # rather than Gamecast's play-by-play (no fantasy-roster
+    # attribution of its own).
+    async with pool.acquire() as conn:
+        after = await fantasy_events.snapshot_week(conn, season, week)
+        await fantasy_events.notify_fantasy_events(conn, season, before, after)
 
 
 async def _run_gamecast_poll_job():

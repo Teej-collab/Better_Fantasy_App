@@ -16,6 +16,7 @@ match everything else rather than staying on the old stopgap
 indefinitely.
 """
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of
@@ -29,6 +30,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
+from app.queries import admin_analytics
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -155,3 +157,65 @@ async def trigger_projected_points_sync(request: Request):
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
         results = await sync_projected_points(conn)
     return results
+
+
+# ---- Usage dashboard (2026-09) — site-owner-only visibility into who's
+# using the app right now and which pages/features actually get used.
+# Same commissioner_of(DEFAULT_LEAGUE_ID) gate as everything else in
+# this router for the two READ endpoints; POST /track-view itself is
+# open to any signed-in owner (it only ever writes THEIR OWN page
+# view, never reads anyone else's). ---------------------------------
+
+
+@router.get("/online")
+async def get_online_owners(request: Request):
+    """Username only, nothing else — who currently has the app open
+    (any page, not just chat — see app/chat/manager.py's
+    connected_owner_ids docstring for why this in-process registry is
+    the real "who's using the app" signal)."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        owners = await admin_analytics.list_online_owners(conn)
+    return {"owners": owners}
+
+
+class TrackViewRequest(BaseModel):
+    path: str
+
+
+_MAX_TRACKED_PATH_LENGTH = 200
+
+
+@router.post("/track-view")
+async def track_view(body: TrackViewRequest, request: Request):
+    """Fire-and-forget page-view log — called once per route change
+    from PageViewTracker.tsx (mounted app-wide in layout.tsx). No
+    admin gate: every signed-in owner can log their OWN view; only the
+    aggregate read below is admin-only. A no-op (not an error) for a
+    session with no owner_id yet (signed up, hasn't joined a league) —
+    see the table's own migration docstring for why an anonymous row
+    would defeat the point of this table."""
+    payload = _require_session(request)
+    owner_id = payload.get("owner_id")
+    if owner_id is None:
+        return {"ok": True}
+    path = body.path.strip()[:_MAX_TRACKED_PATH_LENGTH]
+    if not path:
+        return {"ok": True}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await admin_analytics.record_page_view(conn, owner_id, path)
+    return {"ok": True}
+
+
+@router.get("/usage")
+async def get_usage_summary(request: Request, days: int = 30):
+    payload = _require_session(request)
+    days = max(1, min(days, 365))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        summary = await admin_analytics.get_usage_summary(conn, days)
+    return summary

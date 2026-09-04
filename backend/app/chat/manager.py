@@ -46,6 +46,15 @@ class ChatConnectionManager:
                 {"type": "presence", "owner_id": owner_id, "online": False}, exclude_owner_id=owner_id
             )
 
+    def connected_owner_ids(self) -> list[int]:
+        """Every owner with at least one open socket right now —
+        app-wide, not chat-specific (PresenceProvider.tsx mounts this
+        same connection at the root layout, open regardless of which
+        page is up), which is what makes this the real "who has the
+        app open right now" signal the admin-only GET /admin/online
+        reads, not just "who has Chat open"."""
+        return list(self._connections.keys())
+
     def is_connected(self, owner_id: int) -> bool:
         """True if this owner has at least one open chat WebSocket right
         now — used to skip push notifications for people already
