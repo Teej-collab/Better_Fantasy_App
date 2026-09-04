@@ -165,7 +165,7 @@ export function MessageBubble({
             <span className="w-6 shrink-0" aria-hidden />
           ))}
 
-        <div className={`flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-2.5" : ""}`}>
+        <div className={`flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-6" : ""}`}>
           {message.reply_to && (
             <button
               onClick={(e) => {
@@ -184,7 +184,7 @@ export function MessageBubble({
               message — no body at all — falls back to anchoring the
               badge to the image instead. Whichever one renders last
               gets its own `relative w-fit` wrapper so the badge's
-              `left-0`/`right-0`/`-bottom-2.5` below is always relative
+              `left-0`/`right-0`/`-bottom-5` below is always relative
               to THAT element's actual rendered box, not the whole
               flex column (which used to stretch to the widest sibling
               — reply preview or image — and silently misplaced a short
@@ -283,6 +283,16 @@ export function MessageBubble({
 // responsible for wrapping that element in a `relative w-fit`
 // container so this absolutely-positioned badge sizes against the
 // real content box, not a stretched flex-column sibling.
+//
+// -bottom-5 (20px) is deliberately close to this badge's own rendered
+// height (~22px: text-xs's 16px line-height + py-0.5's 4px + a 2px
+// border) — the badge should hang almost entirely BELOW the bubble
+// with only a couple px of clip at the very corner, not overlap
+// meaningfully into the text above it (a short single-line bubble
+// made that highly visible: an earlier, smaller offset here covered
+// nearly half its own text). The wrapping flex column above reserves
+// mb-6 (24px) whenever a message has reactions, so this hang has room
+// without colliding with the next message below.
 function ReactionBadge({
   mine,
   reactions,
@@ -295,7 +305,7 @@ function ReactionBadge({
   onReact: (messageId: number, emoji: string) => void;
 }) {
   return (
-    <div className={`absolute -bottom-2.5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
+    <div className={`absolute -bottom-5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
       {reactions.map((r) => (
         <button
           key={r.emoji}
