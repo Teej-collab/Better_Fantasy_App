@@ -1,5 +1,4 @@
 import datetime
-import itertools
 
 from httpx import ASGITransport, AsyncClient
 
@@ -9,11 +8,10 @@ from app.main import app
 from app.queries import keepers as keeper_queries
 from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
+from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _PRIOR_SEASON = TEST_SEASON - 1
-
-_sleeper_id_counter = itertools.count(1)
 
 
 def _client():
@@ -29,14 +27,13 @@ def _session_cookie(user_id: int, owner_id: int):
 
 
 async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
-    """Real user + owner + team + real DEFAULT_LEAGUE_ID membership —
-    keepers.py's commissioner routes now do a live per-league DB check
-    (app/auth/league_context.py, see TODO.md's PHASE 9 entry), not the
-    old JWT is_commissioner claim, so a fabricated claim with a
-    hardcoded user_id=1 (the real production commissioner's own id)
-    can no longer stand in for it. Returns (user_id, owner_id, team_id)
-    — team_id (teams_by_season's own serial id, not espn_team_id) is
-    what current_rosters keys off of, see _seed_roster below."""
+    """Real user + owner + team + real DEFAULT_LEAGUE_ID membership.
+    The team row is seeded for the PRIOR season (_PRIOR_SEASON), not
+    TEST_SEASON — the keeper roster pool reads last season's ESPN
+    roster, not this season's (see app/routers/keepers.py's module
+    docstring for why: this season's own roster doesn't exist yet
+    until the draft keepers feed into actually happens). Returns
+    (user_id, owner_id) — pass both into _session_cookie."""
     async with pool.acquire() as conn:
         user_id = await conn.fetchval(
             "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
@@ -47,59 +44,63 @@ async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
             f"test-keepers-owner-{suffix}", f"Owner {suffix}", user_id,
         )
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, role)
-        team_id = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) "
-            "RETURNING id",
-            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+            _PRIOR_SEASON, espn_team_id, owner_id, f"Team {suffix}",
         )
-    return user_id, owner_id, team_id
+    return user_id, owner_id
+
+
+def _set_env(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setenv("ESPN_LEAGUE_ID", "2027626914")
+    monkeypatch.setenv("ESPN_S2", "fake")
+    monkeypatch.setenv("ESPN_SWID", "{00000000-FAKE-0000-FAKE-000000000000}")
+
+
+def _patch_league(monkeypatch, league):
+    monkeypatch.setattr("app.providers.espn.lineup_client.League", lambda **kwargs: league)
 
 
 async def _seed_owner_with_team(pool, suffix, espn_team_id):
+    """The keeper pool comes from a live-ish ESPN read for the PRIOR
+    season (see app/routers/keepers.py's _get_roster_pool) — this only
+    needs a teams_by_season row for that PRIOR season so
+    get_team_for_owner can resolve espn_team_id; the actual roster
+    content comes from whatever FakeLeague/make_fake_team the caller
+    patches in via _patch_league."""
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(
             "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
             f"test-keepers-owner-{suffix}", f"Owner {suffix}",
         )
-        team_id = await conn.fetchval(
-            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) "
-            "RETURNING id",
-            TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+            _PRIOR_SEASON, espn_team_id, owner_id, f"Team {suffix}",
         )
-    return owner_id, team_id
+    return owner_id
 
 
-async def _seed_roster(pool, team_id, players):
-    """players: list of (espn_player_id, player_name, position) — the
-    real roster pool source as of 2026-09-04 (see app/routers/
-    keepers.py's own module docstring for why this replaced a live ESPN
-    read): a real players row (with BOTH espn_player_id and
-    sleeper_player_id — the crosswalk _get_roster_pool joins through)
-    plus a real current_rosters row, the exact same table app/domain/
-    lineup_engine.py's My Team reads from."""
-    async with pool.acquire() as conn:
-        for espn_player_id, player_name, position in players:
-            sleeper_player_id = f"test-keepers-sleeper-{next(_sleeper_id_counter)}"
-            await conn.execute(
-                """
-                INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions,
-                                      pro_team, status, is_draftable)
-                VALUES ($1, $2, $3, $4, $5, 'KC', 'Active', TRUE)
-                """,
-                sleeper_player_id, espn_player_id, player_name, position, [position],
-            )
-            await conn.execute(
-                "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
-                "VALUES ($1, $2, $3, 'BE', 'draft')",
-                TEST_SEASON, team_id, sleeper_player_id,
-            )
+def _fake_roster_league(espn_team_id, players):
+    """players: list of (espn_player_id, player_name, position) — built
+    into a FakeLeague with one team whose roster has each player
+    eligible for their real position + bench, matching a normal
+    non-flex-drafted player's real eligible_slots shape closely enough
+    for _infer_position to resolve correctly."""
+    roster = [
+        make_fake_lineup_player(pid, name, position, [position, "BE"])
+        for pid, name, position in players
+    ]
+    team = make_fake_team(espn_team_id, f"ESPN Team {espn_team_id}", "test-member-1", "Alice", "Smith", roster=roster)
+    return FakeLeague(teams=[team], current_week=1)
 
 
 # ---- query-layer tests -----------------------------------------------------
 
 
 async def test_replace_selections_is_a_full_replace(pool):
-    owner_id, _team_id = await _seed_owner_with_team(pool, 2, 502)
+    owner_id = await _seed_owner_with_team(pool, 2, 502)
     async with pool.acquire() as conn:
         await keeper_queries.replace_selections(
             conn, TEST_SEASON, owner_id, [{"espn_player_id": 2001, "player_name": "Player A"}]
@@ -115,8 +116,8 @@ async def test_replace_selections_is_a_full_replace(pool):
 
 
 async def test_get_all_selections_returns_every_owners_picks(pool):
-    owner_a, _team_a = await _seed_owner_with_team(pool, 11, 511)
-    owner_b, _team_b = await _seed_owner_with_team(pool, 12, 512)
+    owner_a = await _seed_owner_with_team(pool, 11, 511)
+    owner_b = await _seed_owner_with_team(pool, 12, 512)
     async with pool.acquire() as conn:
         await keeper_queries.replace_selections(
             conn, TEST_SEASON, owner_a, [{"espn_player_id": 3001, "player_name": "Player A"}]
@@ -139,10 +140,9 @@ async def test_get_my_keepers_requires_session(pool):
 
 
 async def test_keepers_not_open_with_no_rules_configured(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, 3, 503)
-    await _seed_roster(pool, team_id, [(3001, "Player C", "TE")])
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, 3, 503)
+    _patch_league(monkeypatch, _fake_roster_league(503, [(3001, "Player C", "TE")]))
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
@@ -153,16 +153,17 @@ async def test_keepers_not_open_with_no_rules_configured(pool, monkeypatch):
     assert body["rules"]["max_keepers"] == 0
 
 
-async def test_roster_pool_comes_from_current_rosters(pool, monkeypatch):
-    """The whole point of this fix (2026-09-04): the pool reflects this
-    app's own real, current in-app roster — a live ESPN read used to
-    back this and silently returned nothing for a synthetic
-    espn_team_id or a roster that had since diverged from ESPN's own
-    copy (see app/routers/keepers.py's module docstring)."""
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, "live1", 5031)
-    await _seed_roster(pool, team_id, [(30011, "Live RB", "RB")])
+async def test_roster_pool_comes_from_last_seasons_espn_roster(pool, monkeypatch):
+    """The whole point of this fix: the pool reflects LAST season's
+    final ESPN roster, not this season's (which is empty for everyone
+    pre-draft) and not a live-right-now ESPN read either (which can't
+    work for a team that's since moved to a synthetic espn_team_id).
+    Confirmed here by never writing anything to teams_by_season for
+    the ACTIVE season at all — only the PRIOR season has a team row,
+    and the pool still resolves."""
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "live1", 5031)
+    _patch_league(monkeypatch, _fake_roster_league(5031, [(30011, "Live RB", "RB")]))
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
@@ -173,43 +174,21 @@ async def test_roster_pool_comes_from_current_rosters(pool, monkeypatch):
     assert pool_names == {"Live RB"}
 
 
-async def test_roster_pool_is_empty_for_a_synthetic_espn_team_id_with_no_roster(pool, monkeypatch):
-    """A self-serve-created team (app/queries/teams.py's create_team)
-    gets a synthetic, non-real espn_team_id — the old live-ESPN read
-    silently returned nothing for these. Confirms the real fix: an
-    owner with a team but no current_rosters rows yet (hasn't drafted)
-    gets an honestly empty pool, not a crash."""
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, _team_id = await _seed_member_with_team(pool, "synthetic1", 9999001)
-
-    async with _client() as client:
-        client.cookies.update(_session_cookie(user_id, owner_id))
-        resp = await client.get("/keepers/me")
-
-    assert resp.status_code == 200
-    assert resp.json()["roster_pool"] == []
-
-
-async def test_roster_pool_excludes_a_player_with_no_espn_crosswalk(pool, monkeypatch):
-    """A player current_rosters carries who has no resolved
-    espn_player_id (the Sleeper<->ESPN crosswalk doesn't cover 100% of
-    players) can't be tracked as a keeper under this identity scheme —
-    left out of the pool rather than shown with a null id."""
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, "nocrosswalk1", 5051)
+async def test_roster_pool_is_empty_with_no_prior_season_team(pool, monkeypatch):
+    """A genuine new franchise — no team in the prior season at all —
+    correctly has nothing to keep from, not an error."""
+    _set_env(monkeypatch)
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, "
-            "pro_team, status, is_draftable) VALUES ($1, NULL, $2, $3, $4, 'KC', 'Active', TRUE)",
-            "test-keepers-nocrosswalk-1", "No Crosswalk Player", "WR", ["WR"],
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-keepers-newfranchise@example.com", "New Franchise Owner",
         )
-        await conn.execute(
-            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
-            "VALUES ($1, $2, $3, 'BE', 'draft')",
-            TEST_SEASON, team_id, "test-keepers-nocrosswalk-1",
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            "test-keepers-owner-newfranchise", "New Franchise Owner", user_id,
         )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
+        # No teams_by_season row for this owner in ANY season.
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
@@ -224,10 +203,9 @@ async def test_get_my_keepers_includes_draft_scheduled_start(pool, monkeypatch):
     the same scheduled_start DraftCountdownCard.tsx already counts down
     to — this is the one field GET /keepers/me adds on top of the real
     league_keeper_rules row itself."""
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, "sched1", 5041)
-    await _seed_roster(pool, team_id, [(30021, "Sched Player", "WR")])
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched1", 5041)
+    _patch_league(monkeypatch, _fake_roster_league(5041, [(30021, "Sched Player", "WR")]))
 
     scheduled_start = datetime.datetime(2026, 9, 5, 18, 0, 0, tzinfo=datetime.timezone.utc)
     async with pool.acquire() as conn:
@@ -246,10 +224,9 @@ async def test_get_my_keepers_includes_draft_scheduled_start(pool, monkeypatch):
 
 
 async def test_get_my_keepers_draft_scheduled_start_null_with_no_draft_config(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, "sched2", 5042)
-    await _seed_roster(pool, team_id, [(30022, "No Draft Yet Player", "WR")])
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched2", 5042)
+    _patch_league(monkeypatch, _fake_roster_league(5042, [(30022, "No Draft Yet Player", "WR")]))
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
@@ -263,10 +240,9 @@ async def test_get_my_keepers_draft_scheduled_start_falls_back_to_pre_set_schedu
     """Same fallback as the homepage's Draft Countdown card — a
     commissioner may have set just the date (league_draft_schedule)
     before deciding the draft order at all."""
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, "sched3", 5043)
-    await _seed_roster(pool, team_id, [(30023, "Pre Set Schedule Player", "WR")])
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, "sched3", 5043)
+    _patch_league(monkeypatch, _fake_roster_league(5043, [(30023, "Pre Set Schedule Player", "WR")]))
 
     async with pool.acquire() as conn:
         await conn.execute(
@@ -283,9 +259,8 @@ async def test_get_my_keepers_draft_scheduled_start_falls_back_to_pre_set_schedu
 
 
 async def test_non_commissioner_cannot_set_rules(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, _team_id = await _seed_member_with_team(pool, 4, 504)
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, 4, 504)
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
         resp = await client.put("/keepers/rules", json={"season": TEST_SEASON, "max_keepers": 2})
@@ -293,12 +268,12 @@ async def test_non_commissioner_cannot_set_rules(pool, monkeypatch):
 
 
 async def test_owner_can_select_keepers_within_the_cap(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    commish_user, commissioner_id, _commish_team_id = await _seed_member_with_team(pool, 5, 505, role="commissioner")
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, 6, 506)
-    await _seed_roster(
-        pool, team_id, [(6001, "Player D", "RB"), (6002, "Player E", "RB"), (6003, "Player F", "RB")]
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 5, 505, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 6, 506)
+    _patch_league(
+        monkeypatch,
+        _fake_roster_league(506, [(6001, "Player D", "RB"), (6002, "Player E", "RB"), (6003, "Player F", "RB")]),
     )
 
     async with _client() as client:
@@ -322,11 +297,10 @@ async def test_owner_can_select_keepers_within_the_cap(pool, monkeypatch):
 
 
 async def test_locking_rules_blocks_further_selection_changes(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    commish_user, commissioner_id, _commish_team_id = await _seed_member_with_team(pool, 7, 507, role="commissioner")
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, 8, 508)
-    await _seed_roster(pool, team_id, [(8001, "Player G", "WR")])
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 7, 507, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 8, 508)
+    _patch_league(monkeypatch, _fake_roster_league(508, [(8001, "Player G", "WR")]))
 
     async with _client() as client:
         client.cookies.update(_session_cookie(commish_user, commissioner_id))
@@ -352,11 +326,10 @@ async def test_locking_rules_blocks_further_selection_changes(pool, monkeypatch)
 
 
 async def test_consecutive_years_cap_makes_a_player_ineligible(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    commish_user, commissioner_id, _commish_team_id = await _seed_member_with_team(pool, 9, 509, role="commissioner")
-    user_id, owner_id, team_id = await _seed_member_with_team(pool, 10, 510)
-    await _seed_roster(pool, team_id, [(10001, "Player H", "QB")])
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 9, 509, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 10, 510)
+    _patch_league(monkeypatch, _fake_roster_league(510, [(10001, "Player H", "QB")]))
 
     async with pool.acquire() as conn:
         # This owner already kept Player H last season (consecutive_years_kept=1).
@@ -388,9 +361,8 @@ async def test_get_keeper_rules_requires_session():
 
 
 async def test_get_keeper_rules_reads_open_default_for_a_season_with_none_set(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    user_id, owner_id, _team_id = await _seed_member_with_team(pool, 11, 511)
+    _set_env(monkeypatch)
+    user_id, owner_id = await _seed_member_with_team(pool, 11, 511)
 
     async with _client() as client:
         client.cookies.update(_session_cookie(user_id, owner_id))
@@ -404,10 +376,9 @@ async def test_get_keeper_rules_reads_open_default_for_a_season_with_none_set(po
 
 
 async def test_get_keeper_rules_readable_by_any_member_not_just_commissioner(pool, monkeypatch):
-    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
-    commish_user, commissioner_id, _commish_team_id = await _seed_member_with_team(pool, 12, 512, role="commissioner")
-    user_id, owner_id, _team_id = await _seed_member_with_team(pool, 13, 513)
+    _set_env(monkeypatch)
+    commish_user, commissioner_id = await _seed_member_with_team(pool, 12, 512, role="commissioner")
+    user_id, owner_id = await _seed_member_with_team(pool, 13, 513)
 
     async with _client() as client:
         client.cookies.update(_session_cookie(commish_user, commissioner_id))

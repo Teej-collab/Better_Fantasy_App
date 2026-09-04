@@ -1,8 +1,11 @@
-"""Keeper-league tracking — owners pick their keepers for the active
-season from their real, current in-app roster, the commissioner
-configures how many keepers are allowed, any cap on consecutive years
-the same player can be kept, and the selection deadline, then locks
-the window once it's final.
+"""Keeper-league tracking — owners pick their keepers for the upcoming
+draft from the roster they actually had at the END OF LAST SEASON (not
+this season's in-app roster, which is empty for everyone until the
+draft actually happens — a keeper pick is what carries a player INTO
+that draft, so "this season's roster" can't be the source it's picked
+from), the commissioner configures how many keepers are allowed, any
+cap on consecutive years the same player can be kept, and the
+selection deadline, then locks the window once it's final.
 
 Owner-facing routes resolve owner_id from the session only, same
 "no owner_id from the caller" discipline as app/routers/settings.py.
@@ -11,37 +14,50 @@ league_context.py) instead of the old global is_commissioner session
 flag — see TODO.md's PHASE 9 entry. Every route also resolves
 league_id from the session, never a client-supplied value.
 
-ROSTER POOL SOURCE — current_rosters, this app's own in-app draft/
-lineup system of record (app/domain/lineup_engine.py's My Team reads
-from the exact same table), NOT a live ESPN read. This used to hit
-ESPNLineupClient.get_roster(espn_team_id, active_season) directly (see
-git history on this docstring for the original reasoning, from before
-this app had its own in-app draft) — a real production bug (2026-09-04:
-"a user's keeper roster isn't showing"), since that live-ESPN read
-silently returns an empty roster for two real, common cases: (1) any
-team created through the self-serve "create your team" flow has a
-SYNTHETIC espn_team_id (see app/queries/teams.py's create_team —
-`nextval('synthetic_espn_team_id_seq')`, not a real ESPN team), which
-ESPN's API naturally has nothing to return for; (2) even a team with a
-real espn_team_id has a roster that's since diverged from ESPN's own
-copy, because real roster moves (the in-app draft, free agents, lineup
-swaps) happen entirely in this app now, not on ESPN. Both cases are the
-normal case for this league today, not an edge case — current_rosters
-is the only roster source that's actually still correct.
+ROSTER POOL SOURCE — ESPN, for the PRIOR season specifically (see
+_get_roster_pool): this league played last season on ESPN, before this
+app's own in-app draft/roster system existed, so "the roster you had
+at the end of last season" only exists on ESPN's side, under that
+owner's PRIOR-season teams_by_season row (a real espn_team_id from
+when this league was still fully on ESPN — the historical "claim your
+existing team's history" flow is what links a newly-signed-in owner to
+that same row, same owner_id, no data migration needed). Two real
+production bugs this went through before landing here (2026-09-04, "a
+user's keeper roster isn't showing," then "actually needs to be last
+season's ESPN roster, not this app's own"):
+
+  1. First version hit ESPNLineupClient.get_roster(espn_team_id,
+     ACTIVE_season) — a LIVE read against the CURRENT season. Silently
+     empty for a team with a synthetic espn_team_id (any self-serve-
+     created team — app/queries/teams.py's create_team) and stale for
+     anyone whose real roster has since moved in-app, but neither of
+     those is actually the bug that mattered: this season's roster is
+     supposed to be empty right now, since the draft that would fill
+     it hasn't happened yet.
+  2. Second version read this app's own current_rosters for the
+     ACTIVE season — same fundamental problem from the other
+     direction: current_rosters for a season is only ever populated
+     BY that season's draft, so querying it to decide who's eligible
+     to BE drafted (as a kept player) is circular. Wrong table.
+
+This version resolves the owner's PRIOR-season teams_by_season row and
+reads ESPN for THAT season specifically — a real, closed season ESPN
+reliably serves regardless of what's happened in this app since, which
+is exactly what "the roster you had last season" means. Empty list
+(not an error) if the owner has no team in the prior season — a
+genuine new franchise has nothing to keep from, correctly.
 
 keeper_selections carries a player's identity forward year over year as
-espn_player_id (not sleeper_player_id), so the pool below still reports
-espn_player_id per row — resolved via players.espn_player_id, the same
-crosswalk app/domain/draft_engine.py's seed_keepers_from_locked_selections
-already uses to turn a locked keeper into a real draft pick. A player on
-the roster with no espn_player_id (the crosswalk doesn't cover 100% of
-players — see app/providers/sleeper/ingest.py) can't be offered as a
-keeper under this identity scheme and is left out of the pool, same as
-that other resolution path's own KeeperResolutionError case.
+espn_player_id (not sleeper_player_id) — ESPN's own roster read already
+returns that directly (RosterEntry.player_id), no crosswalk needed here
+the way app/domain/draft_engine.py's seed_keepers_from_locked_selections
+needs one (that path starts from a stored espn_player_id and has to
+resolve INTO this app's own sleeper_player_id space to make a real
+draft pick; this path starts from ESPN and never needs to leave it).
 
 ESPN write-back (pushing locked selections into ESPN's own copy of the
 league) is intentionally NOT implemented here — this league's real
-draft/rosters are no longer ESPN's to begin with, so there's nothing on
+draft/rosters going forward are no longer ESPN's, so there's nothing on
 ESPN's side left to write back to. This router is fully functional as
 an in-app system of record on its own.
 """
@@ -55,31 +71,51 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
+from app.providers.espn.lineup_client import ESPNLineupClient
+from app.providers.espn.slots import slot_label
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
+from app.queries import league as league_queries
 
 router = APIRouter(prefix="/keepers", tags=["keepers"])
 
+_NON_POSITION_SLOT_LABELS = {"BE", "IR", "RB/WR/TE"}  # bench/IR/flex aren't a real position
+
+
+def _infer_position(eligible_slot_ids: tuple[int, ...]) -> str:
+    """A RosterEntry has no dedicated position field — its real
+    position is whichever eligible slot isn't bench/IR/flex (an RB's
+    own eligible slots are always {RB, RB/WR/TE, BE, IR}, so RB is the
+    one real-position label in that set)."""
+    for slot_id in eligible_slot_ids:
+        label = slot_label(slot_id)
+        if label not in _NON_POSITION_SLOT_LABELS:
+            return label
+    return "—"
+
 
 async def _get_roster_pool(conn, owner_id: int, active_season: int, league_id: int) -> list[dict]:
-    """The players an owner can choose a keeper from — their real,
-    current in-app roster (see module docstring). A JOIN, not a
-    separate "does this owner have a team" check first — naturally
-    returns an empty list (not an error) for an owner with no team,
-    or no draft/roster yet, this season."""
-    rows = await conn.fetch(
-        """
-        SELECT p.espn_player_id, p.full_name AS player_name, p.position, p.pro_team
-        FROM teams_by_season t
-        JOIN current_rosters cr ON cr.team_id = t.id AND cr.season = t.season
-        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
-        WHERE t.season = $1 AND t.owner_id = $2 AND t.league_id = $3
-          AND p.espn_player_id IS NOT NULL
-        ORDER BY p.full_name
-        """,
-        active_season, owner_id, league_id,
-    )
-    return [dict(r) for r in rows]
+    """The players an owner can choose a keeper from — their real ESPN
+    roster as it stood at the end of LAST season (see module docstring
+    for why that's the prior season specifically, read from ESPN, not
+    this app's own current_rosters). Empty list (not an error) if the
+    owner has no team in the prior season."""
+    prior_season = active_season - 1
+    team = await league_queries.get_team_for_owner(conn, prior_season, owner_id, league_id)
+    if team is None:
+        return []
+
+    client = ESPNLineupClient()
+    roster = client.get_roster(team["espn_team_id"], prior_season)
+    return [
+        {
+            "espn_player_id": e.player_id,
+            "player_name": e.player_name,
+            "position": _infer_position(e.eligible_slot_ids),
+            "pro_team": e.pro_team,
+        }
+        for e in roster
+    ]
 
 
 def _decode_session(token: str | None) -> dict | None:
