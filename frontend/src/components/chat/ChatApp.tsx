@@ -71,146 +71,82 @@ export function ChatApp({
   const [preferences, setPreferences] = useState<OwnerPreferences | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
-  // Mobile has no room to spare, so the panel's height has to be exact:
-  // `100dvh` minus whatever chrome actually rendered above it (NavBar's
-  // header, plus AppTickerBar's ticker strip(s) — one when there's no
-  // current-week league data, two when there is) minus the fixed
-  // BottomNav below it. Neither the ticker's nor BottomNav's height is a
-  // fixed constant we can bake into a Tailwind class the way the
-  // header's is — BottomNav in particular grows a third row on its
-  // Gamecast tab whenever a game is live (see BottomNav.tsx's LiveMark),
-  // so a hardcoded guess at its height goes stale the moment that row
-  // appears. Instead of guessing either side, this measures the panel's
-  // real distance from the top of the viewport AND BottomNav's real
-  // rendered height (id="app-bottom-nav", watched with a ResizeObserver
-  // so this stays correct even if that bar's height changes after mount,
-  // not just on a window resize) and lets both stand in for "however
-  // tall things actually turned out to be." Getting this wrong doesn't
-  // just look off — the leftover height renders the composer underneath
-  // the fixed BottomNav, which no amount of scrolling can ever reveal
-  // since a fixed element covers the same screen-space band regardless
-  // of scroll position (this happened for real once BottomNav grew its
-  // live-game row — see this component's git history). `null` here means
-  // "not measured yet (or we're at sm: and up, where there's no fixed
-  // BottomNav and the desktop `sm:h-[...]` class already handles it)" —
-  // the JSX below falls back to the old fixed-header-only estimate for
-  // that brief pre-hydration window.
-  const [mobileHeight, setMobileHeight] = useState<string | null>(null);
-
+  // 2026-09 rewrite. Every previous version of this effect computed a
+  // final pixel HEIGHT in JS (visualViewport math, subtracting
+  // BottomNav's height) and pushed it into an inline `height` style —
+  // and kept breaking, because it depended on getting that arithmetic
+  // right at the exact moment the keyboard opened/closed, on a browser
+  // whose own viewport-resize timing is genuinely inconsistent across
+  // devices (see this file's own git history for three separate
+  // attempts at the arithmetic). The actual fix is to stop doing the
+  // arithmetic at all.
+  //
+  // This panel is now `position: fixed` on mobile (JSX below) with
+  // `top`/`bottom` read from two CSS custom properties instead of a
+  // computed height. A `position: fixed` element's top/bottom offsets
+  // are resolved against the CURRENT viewport by the browser itself,
+  // on every single paint, including the instant the keyboard opens or
+  // closes (that's what layout.tsx's interactiveWidget:"resizes-content"
+  // viewport meta is actually FOR) — zero JS involved, so there is no
+  // "measure, then race the keyboard animation" step left to get wrong.
+  //
+  // The two CSS vars this still needs are genuinely static — how far
+  // down the header+ticker chrome extends, and how tall BottomNav
+  // currently is — each published by a single ResizeObserver (this one
+  // for the chrome above; BottomNav.tsx publishes its own height
+  // itself, see that file). Neither reacts to the keyboard at all,
+  // only to real content changes (the ticker gaining a row, BottomNav
+  // growing a live-game row, or hiding itself).
   useLayoutEffect(() => {
-    const desktopQuery = window.matchMedia("(min-width: 640px)");
-
-    function measure() {
-      if (desktopQuery.matches || !panelRef.current) {
-        setMobileHeight(null);
-        return;
-      }
-      const top = panelRef.current.getBoundingClientRect().top;
-      // Read fresh every time, never cached — BottomNav.tsx now hides
-      // itself outright (returns null, real height 0) whenever a real
-      // on-screen keyboard is open, which happens on the exact same
-      // visualViewport signal that triggers this remeasure, and a
-      // React-unmounted/remounted element isn't the same DOM node a
-      // ResizeObserver was told to watch at mount time — this fresh
-      // getBoundingClientRect() is what actually stays correct across
-      // that hide/show cycle instead of a stale captured height.
-      const bottomNavEl = document.getElementById("app-bottom-nav");
-      const bottomNavHeight = bottomNavEl?.getBoundingClientRect().height ?? 0;
-      const viewport = window.visualViewport;
-      if (viewport) {
-        // Pixel math against the real visual viewport, not a `100dvh`
-        // CSS calc string — `dvh` and `fixed bottom-0` both assume the
-        // browser actually honors layout.tsx's interactiveWidget:
-        // "resizes-content" viewport meta, which isn't reliable on
-        // every real device (confirmed live: BottomNav's own position
-        // ended up floating disconnected from both this panel and the
-        // keyboard on an actual phone).
-        const availableBottom = viewport.height + viewport.offsetTop;
-        setMobileHeight(`${Math.max(0, availableBottom - top - bottomNavHeight)}px`);
-      } else {
-        setMobileHeight(`calc(100dvh - ${top}px - ${bottomNavHeight}px - env(safe-area-inset-bottom))`);
-      }
+    function publishTop() {
+      // Measured off the PARENT (PageShell's plain, normal-flow
+      // <main>), never panelRef.current itself — this panel is
+      // position: fixed (JSX below), so its own getBoundingClientRect
+      // just reflects whatever --chat-panel-top last told it to be, a
+      // circular reference back to the value being computed. <main>
+      // stays in normal document flow regardless of what its fixed
+      // child does internally, so its top edge is exactly "how far
+      // down the header+ticker chrome above it extends" — independent
+      // of this panel's own position.
+      const referenceEl = panelRef.current?.parentElement;
+      if (!referenceEl) return;
+      const top = referenceEl.getBoundingClientRect().top;
+      document.documentElement.style.setProperty("--chat-panel-top", `${top}px`);
     }
 
-    // Still worth watching for BottomNav's own height changing without
-    // a viewport/window resize (Gamecast's live-game row growing a
-    // third line, see BottomNav.tsx's LiveMark) — re-attached on every
-    // remeasure trigger below rather than once at mount, so a keyboard
-    // hide/show cycle (a real DOM unmount/remount of the observed
-    // node, not just a resize of it) never leaves this watching a
-    // detached element.
-    let resizeObserver: ResizeObserver | null = null;
-    function watchBottomNav() {
-      resizeObserver?.disconnect();
-      const el = document.getElementById("app-bottom-nav");
-      if (!el) return;
-      resizeObserver = new ResizeObserver(measure);
-      resizeObserver.observe(el);
-    }
-    watchBottomNav();
-
-    // requestAnimationFrame, not a bare call — iOS Safari can fire
-    // visualViewport's own events a frame before the WebKit layout
-    // engine has actually finished resettling the page after the
-    // keyboard opens/closes, so measuring synchronously inside the
-    // event handler sometimes captures a still-transitioning `top`.
-    function scheduleMeasure() {
-      requestAnimationFrame(() => {
-        watchBottomNav();
-        measure();
-      });
-    }
-
-    measure();
-    window.addEventListener("resize", scheduleMeasure);
-    desktopQuery.addEventListener("change", scheduleMeasure);
-    // The real fix for the stuck-bottom-nav-after-keyboard-close bug:
-    // plain `window.resize` doesn't reliably fire (or fires with stale
-    // geometry) when iOS Safari's on-screen keyboard opens/closes —
-    // `visualViewport` is the API actually built for tracking exactly
-    // this, and its own `resize` AND `scroll` events both matter here
-    // (iOS also scrolls the page to keep the focused composer visible
-    // above the keyboard, which moves panelRef's measured `top` without
-    // necessarily firing a `resize` at all).
-    window.visualViewport?.addEventListener("resize", scheduleMeasure);
-    window.visualViewport?.addEventListener("scroll", scheduleMeasure);
+    publishTop();
+    const resizeObserver = new ResizeObserver(publishTop);
+    resizeObserver.observe(document.body);
+    window.addEventListener("resize", publishTop);
     return () => {
-      window.removeEventListener("resize", scheduleMeasure);
-      desktopQuery.removeEventListener("change", scheduleMeasure);
-      window.visualViewport?.removeEventListener("resize", scheduleMeasure);
-      window.visualViewport?.removeEventListener("scroll", scheduleMeasure);
-      resizeObserver?.disconnect();
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", publishTop);
     };
   }, []);
 
-  // Locks the actual page/document scroll position at 0 for as long as
-  // Chat is open (2026-09) — every height calculation above assumes
-  // the PAGE itself never scrolls, only this panel's own internal
-  // message list does. That
-  // held for ordinary touch scrolling once PullToRefresh.tsx stopped
-  // hijacking nested-scrollable gestures, but tapping the composer to
-  // open the on-screen keyboard is a separate path: mobile Safari's own
-  // "keep the focused input visible" behavior scrolls the DOCUMENT
-  // (not just the visual viewport) to bring the composer above the
-  // keyboard, which — since nothing here was pinning document scroll —
-  // dragged the whole page up with it, including the NavBar/ticker
-  // above this panel, exactly the "chat is broken" symptom reported
-  // live (2026-09-04 recording: the header and ticker scroll off-
-  // screen the moment the keyboard opens). Restores the previous
-  // inline styles (not a hardcoded reset) on unmount so leaving Chat
-  // never clobbers some other page's own scroll behavior.
+  // Prevents the page/document from scrolling at all for as long as
+  // Chat is open (2026-09, simplified) — mobile Safari's own "keep the
+  // focused input visible" behavior scrolls the DOCUMENT (not just the
+  // visual viewport) to bring the composer above the keyboard when it
+  // opens, which would otherwise drag the NavBar/ticker chrome above
+  // this panel up and off-screen with it (a real, previously-reported
+  // symptom). Deliberately just `overflow: hidden` now, NOT also
+  // `position: fixed` (an earlier version of this same effect also set
+  // that, on the theory that plain overflow:hidden alone isn't always
+  // enough to stop iOS Safari's own scroll-into-view) — this panel no
+  // longer needs body's scroll position to stay at 0 for its OWN
+  // sizing (it's `position: fixed` against the real viewport now, see
+  // the useLayoutEffect above), so the lower-risk, simpler property is
+  // enough: it only needs to stop the header/ticker chrome from
+  // visibly drifting, not protect a height calculation that no longer
+  // exists. Restores the previous inline style on unmount so leaving
+  // Chat never clobbers some other page's own scroll behavior.
   useEffect(() => {
     const { body } = document;
-    const previous = { overflow: body.style.overflow, position: body.style.position, width: body.style.width, top: body.style.top };
+    const previousOverflow = body.style.overflow;
     body.style.overflow = "hidden";
-    body.style.position = "fixed";
-    body.style.width = "100%";
-    body.style.top = "0";
     return () => {
-      body.style.overflow = previous.overflow;
-      body.style.position = previous.position;
-      body.style.width = previous.width;
-      body.style.top = previous.top;
+      body.style.overflow = previousOverflow;
     };
   }, []);
 
@@ -540,10 +476,8 @@ export function ChatApp({
   return (
     <div
       ref={panelRef}
-      className={`neon-panel relative flex overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl ${
-        mobileHeight ? "" : "h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))]"
-      }`}
-      style={{ ...panelGlowStyle(SECTION_COLORS.chat), ...(mobileHeight ? { height: mobileHeight } : {}) }}
+      className="neon-panel chat-mobile-panel flex overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+      style={panelGlowStyle(SECTION_COLORS.chat)}
     >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
         <ConversationList

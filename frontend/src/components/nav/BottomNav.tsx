@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
@@ -103,11 +103,14 @@ function LiveMark() {
  * hairline border 2026-08-31 to match the approved mock exactly (its
  * phone-frame bottom bar has no glow at all, just var(--wl-border)).
  *
- * The `id="app-bottom-nav"` is load-bearing: ChatApp.tsx measures this
- * element's real rendered height (via ResizeObserver, not a hardcoded
- * guess) to size the chat panel above it on mobile — this bar's height
- * isn't constant (the Gamecast tab grows a third row on game day), so
- * removing this id or renaming it silently breaks that measurement.
+ * The `id="app-bottom-nav"` is load-bearing: this component measures
+ * its OWN real rendered height off this same node (via ResizeObserver,
+ * not a hardcoded guess) and publishes it as the --app-bottom-nav-
+ * height CSS custom property, which ChatApp.tsx's mobile panel reads
+ * directly for its own `bottom` offset — this bar's height isn't
+ * constant (the Gamecast tab grows a third row on game day, and it's 0
+ * outright whenever a keyboard is open, see below), so removing this
+ * id or renaming it silently breaks that measurement.
  */
 export function BottomNav({
   signedIn,
@@ -122,15 +125,38 @@ export function BottomNav({
 }) {
   const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
   const keyboardOpen = useKeyboardOpen();
+  const navRef = useRef<HTMLElement>(null);
+
+  // Publishes this bar's own real height as --app-bottom-nav-height —
+  // ChatApp.tsx's mobile panel reads it directly for its CSS `bottom`
+  // offset (see that component's own comment for the full reasoning:
+  // no JS height math on ChatApp's side at all anymore, just each
+  // independently-sized piece of chrome publishing its own real size).
+  // 0 while a keyboard is open (this bar is hidden outright then, see
+  // below) — no measurement needed for that case, it's exactly 0 by
+  // construction.
+  useLayoutEffect(() => {
+    if (keyboardOpen) {
+      document.documentElement.style.setProperty("--app-bottom-nav-height", "0px");
+      return;
+    }
+    function publish() {
+      if (!navRef.current) return;
+      document.documentElement.style.setProperty("--app-bottom-nav-height", `${navRef.current.getBoundingClientRect().height}px`);
+    }
+    publish();
+    const resizeObserver = new ResizeObserver(publish);
+    if (navRef.current) resizeObserver.observe(navRef.current);
+    return () => resizeObserver.disconnect();
+  }, [keyboardOpen]);
+
   // Hidden outright, not repositioned, while a real keyboard is open —
-  // see this file's own top-of-file comment for why. ChatApp.tsx's
-  // ResizeObserver on this element's id="app-bottom-nav" picks up the
-  // resulting 0 height on its own and gives that space to the message
-  // panel/composer instead, no coordination needed beyond that.
+  // see this file's own top-of-file comment for why.
   if (keyboardOpen) return null;
 
   return (
     <nav
+      ref={navRef}
       id="app-bottom-nav"
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
