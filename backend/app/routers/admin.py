@@ -383,6 +383,31 @@ async def set_user_is_admin(user_id: int, body: SetIsAdminRequest, request: Requ
     return user
 
 
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: int, request: Request):
+    """Hard-deletes an account with zero linked data (see
+    admin_users.get_deletion_blockers) — the cleanup path for
+    abandoned/duplicate signups (a stray OAuth retry, a mistyped-email
+    account) that never became a real league member. Refuses with the
+    specific reasons the moment there's any real history at stake —
+    deliberately NOT a general account-offboarding tool; an account
+    with real data should be unlinked/deactivated by hand, not deleted
+    through this endpoint. Same "can't target your own row" guard as
+    PATCH .../admin above, for the same reason."""
+    payload = _require_session(request)
+    if user_id == payload["user_id"]:
+        raise HTTPException(status_code=400, detail="Can't delete your own account")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        result = await admin_users.delete_user(conn, user_id)
+    if result is False:
+        raise HTTPException(status_code=404, detail="No user found")
+    if result is not True:
+        raise HTTPException(status_code=409, detail={"blockers": result})
+    return {"deleted": True, "user_id": user_id}
+
+
 @router.get("/leagues")
 async def list_leagues(request: Request, days: int = 7):
     payload = _require_session(request)

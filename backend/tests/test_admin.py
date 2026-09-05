@@ -73,6 +73,14 @@ async def _patch(cookies=None, path="/admin/online", json=None):
         return await client.patch(path, json=json)
 
 
+async def _delete(cookies=None, path="/admin/online"):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        if cookies:
+            client.cookies.update(cookies)
+        return await client.delete(path)
+
+
 async def _explicit_admin_cookies(pool, suffix: str) -> dict:
     """A real test user with users.is_admin=TRUE directly, NOT a League
     #1 commissioner — proves require_site_admin's grant actually works
@@ -615,6 +623,92 @@ async def test_set_is_admin_404s_for_an_unknown_user(pool, monkeypatch):
         json={"is_admin": True},
     )
     assert response.status_code == 404
+
+
+# ---- Deleting an account with zero linked data (2026-09) -------------
+
+
+async def test_delete_user_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _delete(path="/admin/users/1")
+    assert response.status_code == 401
+
+
+async def test_delete_user_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "delete-target-reject")
+    response = await _delete(
+        cookies=await _non_commissioner_cookies(pool, "delete-rejector"),
+        path=f"/admin/users/{target_user_id}",
+    )
+    assert response.status_code == 403
+
+
+async def test_delete_user_cannot_target_your_own_row(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await _make_user(conn, "delete-self")
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
+    response = await _delete(cookies=_session_cookie(user_id, owner_id=1), path=f"/admin/users/{user_id}")
+    assert response.status_code == 400
+
+
+async def test_delete_user_404s_for_an_unknown_user(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-404"), path="/admin/users/999999999"
+    )
+    assert response.status_code == 404
+
+
+async def test_delete_user_removes_an_orphaned_account_with_no_linked_data(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "delete-orphan")
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-orphan-admin"),
+        path=f"/admin/users/{target_user_id}",
+    )
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True, "user_id": target_user_id}
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM users WHERE id = $1", target_user_id)
+    assert row is None
+
+
+async def test_delete_user_refuses_an_account_with_a_linked_owner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "delete-has-owner")
+        await conn.execute(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3)",
+            "test-admin-delete-owner", "Delete Test Owner", target_user_id,
+        )
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-has-owner-admin"),
+        path=f"/admin/users/{target_user_id}",
+    )
+    assert response.status_code == 409
+    assert "linked owner" in response.json()["detail"]["blockers"][0]
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM users WHERE id = $1", target_user_id)
+    assert row is not None  # refused, not deleted
+
+
+async def test_delete_user_refuses_a_league_member(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        target_user_id = await _make_user(conn, "delete-is-member")
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, target_user_id, "member")
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-is-member-admin"),
+        path=f"/admin/users/{target_user_id}",
+    )
+    assert response.status_code == 409
+    assert "member of at least one league" in response.json()["detail"]["blockers"][0]
 
 
 async def test_timeseries_requires_session(monkeypatch):

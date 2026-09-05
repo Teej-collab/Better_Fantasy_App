@@ -1829,6 +1829,11 @@ export type AdminUserActivityEvent = {
 export type AdminUserDetail = AdminUserRow & {
   leagues: { league_id: number; league_name: string; role: string; joined_at: string }[];
   recent_activity: AdminUserActivityEvent[];
+  // Empty means DELETE /admin/users/{id} (deleteAdminUser below) will
+  // succeed — a non-empty reason list means this account has real
+  // linked data (an owner, league membership, a poll, feedback, …)
+  // and the backend will refuse a hard delete outright.
+  delete_blockers: string[];
 };
 
 export type AdminLeagueRow = { id: number; name: string; created_at: string; member_count: number; recent_events: number };
@@ -2001,6 +2006,21 @@ export async function setAdminUserIsAdmin(userId: number, isAdmin: boolean): Pro
     throw new Error(data?.detail ?? `Request failed (${res.status})`);
   }
   return res.json();
+}
+
+// Hard-deletes an account with zero linked data — see
+// AdminUserDetail.delete_blockers above. The backend refuses (409,
+// with the specific reasons) any account with a linked owner, league
+// membership, or other real history; this is only ever a cleanup
+// path for abandoned/duplicate signups, never a general offboarding
+// tool.
+export async function deleteAdminUser(userId: number): Promise<void> {
+  const res = await fetch(`/api/backend/admin/users/${userId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const blockers = data?.detail?.blockers as string[] | undefined;
+    throw new Error(blockers?.length ? blockers.join("; ") : (data?.detail ?? `Request failed (${res.status})`));
+  }
 }
 
 export function listAdminLeagues(days = 7): Promise<AdminLeagueList> {

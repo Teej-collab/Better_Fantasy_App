@@ -110,4 +110,50 @@ async def get_user_detail(conn, user_id: int) -> dict | None:
     else:
         user["recent_activity"] = []
 
+    user["delete_blockers"] = await get_deletion_blockers(conn, user_id)
     return user
+
+
+async def get_deletion_blockers(conn, user_id: int) -> list[str]:
+    """Every reason this account can't be safely hard-deleted — an
+    empty list means DELETE /admin/users/{user_id} is safe to call.
+    Checked directly against every real FK to users(id) in this schema
+    (owners.user_id, league_members.user_id, leagues.created_by_user_id,
+    league_polls.created_by_user_id, poll_votes.user_id,
+    feedback.user_id — audited by grepping every migration for
+    "REFERENCES users") rather than trusting a cascade: an owner link
+    in particular fans out into draft picks, chug scores, keeper
+    selections, chat messages and more, all keyed by owner_id, none of
+    which a users-table DELETE would ever touch or warn about on its
+    own. This is deliberately narrow — a real member should be
+    unlinked/deactivated by hand, never hard-deleted through this
+    endpoint; it exists for abandoned/duplicate signups (a stray OAuth
+    retry, a mistyped-email account) that never became anything real."""
+    blockers = []
+    if await conn.fetchval("SELECT 1 FROM owners WHERE user_id = $1", user_id):
+        blockers.append("Has a linked owner (real historical data)")
+    if await conn.fetchval("SELECT 1 FROM league_members WHERE user_id = $1", user_id):
+        blockers.append("Is a member of at least one league")
+    if await conn.fetchval("SELECT 1 FROM leagues WHERE created_by_user_id = $1", user_id):
+        blockers.append("Created a league")
+    if await conn.fetchval("SELECT 1 FROM league_polls WHERE created_by_user_id = $1", user_id):
+        blockers.append("Created a poll")
+    if await conn.fetchval("SELECT 1 FROM poll_votes WHERE user_id = $1", user_id):
+        blockers.append("Voted in a poll")
+    if await conn.fetchval("SELECT 1 FROM feedback WHERE user_id = $1", user_id):
+        blockers.append("Submitted feedback")
+    return blockers
+
+
+async def delete_user(conn, user_id: int) -> bool | list[str]:
+    """Hard-deletes a user row with zero linked data. Re-validates via
+    get_deletion_blockers itself (never trusts a caller who already
+    checked) — returns that same non-empty blocker list if it's not
+    actually safe, or False if the user doesn't exist, so the router
+    can turn either into a clean 409/404 rather than a raw delete
+    happening on stale information."""
+    blockers = await get_deletion_blockers(conn, user_id)
+    if blockers:
+        return blockers
+    result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+    return result != "DELETE 0"

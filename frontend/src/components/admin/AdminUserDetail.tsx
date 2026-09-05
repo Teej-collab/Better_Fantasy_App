@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { setAdminUserIsAdmin, type AdminUserDetail as AdminUserDetailData } from "@/lib/api";
+import { deleteAdminUser, setAdminUserIsAdmin, type AdminUserDetail as AdminUserDetailData } from "@/lib/api";
 import { eventLabel } from "@/lib/analyticsEvents";
 import { relativeTime } from "@/lib/adminFormat";
 
@@ -12,9 +13,12 @@ import { relativeTime } from "@/lib/adminFormat";
 // only ever has the fields listed in AdminUserDetail (lib/api.ts) to
 // work with in the first place.
 export function AdminUserDetail({ user: initialUser }: { user: AdminUserDetailData }) {
+  const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function toggleAdmin() {
     setBusy(true);
@@ -23,6 +27,18 @@ export function AdminUserDetail({ user: initialUser }: { user: AdminUserDetailDa
       .then(setUser)
       .catch((e) => setError(e instanceof Error ? e.message : "Couldn't change admin access"))
       .finally(() => setBusy(false));
+  }
+
+  function deleteAccount() {
+    if (!window.confirm(`Permanently delete ${user.display_name}'s account? This can't be undone.`)) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    deleteAdminUser(user.user_id)
+      .then(() => router.push("/admin/users"))
+      .catch((e) => {
+        setDeleteError(e instanceof Error ? e.message : "Couldn't delete account");
+        setDeleteBusy(false);
+      });
   }
 
   return (
@@ -113,6 +129,41 @@ export function AdminUserDetail({ user: initialUser }: { user: AdminUserDetailDa
               </li>
             ))}
           </ol>
+        )}
+      </section>
+
+      <section className="neon-panel flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.03] p-4">
+        <h3 className="text-xs font-semibold tracking-wide text-red-500 uppercase">Danger Zone</h3>
+        {user.delete_blockers.length === 0 ? (
+          <>
+            <p className="text-sm text-black/60 dark:text-white/60">
+              This account has no linked owner, league membership, or other history — safe to permanently delete.
+            </p>
+            <button
+              type="button"
+              onClick={deleteAccount}
+              disabled={deleteBusy}
+              className="self-start rounded-full border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+            >
+              {deleteBusy ? "Deleting…" : "Delete Account"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-black/60 dark:text-white/60">
+              Can&apos;t be deleted — this account has real data attached:
+            </p>
+            <ul className="list-inside list-disc text-sm text-black/60 dark:text-white/60">
+              {user.delete_blockers.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {deleteError && (
+          <p role="alert" className="text-xs text-red-500">
+            {deleteError}
+          </p>
         )}
       </section>
     </div>
