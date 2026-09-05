@@ -71,7 +71,15 @@ export function MessageThread({
   const isAnnouncementFeed = conversation.type === "commish_corner";
   const listRef = useRef<HTMLDivElement>(null);
   const prevMessageCount = useRef(messages.length);
-  const prevConversationId = useRef(conversation.id);
+  // -1 never matches a real conversation id, unlike initializing this
+  // to conversation.id itself (the previous version) — that made the
+  // very first render's "did the conversation change?" check below
+  // trivially false (it's being compared against itself), so the
+  // scroll-to-bottom effect only ever ran on a SUBSEQUENT conversation
+  // switch, never for whichever conversation is already selected on
+  // Chat's initial page load. A real messaging app always opens
+  // scrolled to the latest message, including the very first time.
+  const prevConversationId = useRef(-1);
 
   const memberNames: Record<number, string> = {};
   for (const m of members) memberNames[m.owner_id] = m.display_name;

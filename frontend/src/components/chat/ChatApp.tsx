@@ -70,21 +70,41 @@ export function ChatApp({
   // load, so there's no flash of "off" before the fetch resolves.
   const [preferences, setPreferences] = useState<OwnerPreferences | null>(null);
 
-  // 2026-09: reverted the entire JS-driven height/position system that
-  // used to live here (three separate attempts today: a computed pixel
-  // height from visualViewport math, then a position:fixed panel with
-  // JS-published CSS custom properties). Every version kept finding a
-  // new way to break, because it was fighting the keyboard instead of
-  // trusting the platform. The actual fix: do nothing special at all.
-  // Free Agents' search box (PlayerSearchInput.tsx) sits on a
-  // completely ordinary page — no special height math, no keyboard
-  // JS, BottomNav untouched — and focusing it works correctly, because
-  // layout.tsx's interactiveWidget:"resizes-content" viewport meta
-  // already does the real work natively. This panel's height below is
-  // the same plain, static `100dvh` calc that was ALREADY sitting here
-  // as a "not measured yet" pre-hydration fallback — it turns out that
-  // fallback was the actually-correct answer the whole time, promoted
-  // to the only answer, matching every other page in this app.
+  // 2026-09: reverted the KEYBOARD-reactive half of the JS that used to
+  // live here (three separate attempts today: a computed pixel height
+  // from visualViewport math, then a position:fixed panel with JS-
+  // published CSS custom properties) — that was fighting the keyboard
+  // instead of trusting layout.tsx's interactiveWidget:"resizes-content",
+  // which already does the real work natively (confirmed: Free Agents'
+  // search box needs zero keyboard-specific JS and just works). This
+  // effect is NOT that: it never touches visualViewport and never
+  // reacts to the keyboard at all — it measures a genuinely different,
+  // boring thing, once, on mount and on a real window resize only
+  // (window.resize famously does NOT reliably fire for an iOS keyboard
+  // open/close, which is exactly why it's safe here and wasn't enough
+  // on its own for the keyboard case above): how tall the real header +
+  // ticker chrome above this panel actually is. That number isn't a
+  // fixed constant — AppTickerBar renders a second row only when there's
+  // current-week league data — so a hardcoded guess (this file's
+  // previous version used a flat 3.5rem, header-only, missing the
+  // ticker entirely) undercounts it by however tall the ticker turns
+  // out to be, which is exactly what pushed this panel's computed
+  // height too tall and hid the composer below the visible screen
+  // (2026-09-04 report). `--chat-top-offset` feeds the static `100dvh`
+  // calc below; 100dvh itself is what actually shrinks natively when
+  // the keyboard opens, no further JS involved.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function measure() {
+      if (!panelRef.current) return;
+      const top = panelRef.current.getBoundingClientRect().top;
+      document.documentElement.style.setProperty("--chat-top-offset", `${top}px`);
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const loadedConversations = useRef(new Set<number>());
@@ -410,7 +430,8 @@ export function ChatApp({
 
   return (
     <div
-      className="neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+      ref={panelRef}
+      className="neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
       style={panelGlowStyle(SECTION_COLORS.chat)}
     >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
