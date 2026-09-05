@@ -33,7 +33,7 @@ router = APIRouter(prefix="/chug", tags=["chug"])
 
 # Same three extensions the Discord bot's chug_watcher.py looked for.
 VIDEO_EXTENSIONS = (".mp4", ".mov", ".m4v")
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # generous for a phone-shot clip a few seconds long
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # a modern phone's 4K clip can be 100MB+ for a few seconds
 
 
 def _decode_session(token: str | None) -> dict | None:
@@ -105,7 +105,7 @@ async def upload_chug(
             while chunk := await video.read(1024 * 1024):
                 total += len(chunk)
                 if total > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Video too large (100MB max)")
+                    raise HTTPException(status_code=413, detail="Video too large (500MB max)")
                 f.write(chunk)
 
         try:
