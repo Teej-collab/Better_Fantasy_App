@@ -28,11 +28,14 @@ def _session_cookie(user_id: int, owner_id: int):
 
 async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
     """Real user + owner + team + real DEFAULT_LEAGUE_ID membership.
-    The team row is seeded for the PRIOR season (_PRIOR_SEASON), not
-    TEST_SEASON — the keeper roster pool reads last season's ESPN
-    roster, not this season's (see app/routers/keepers.py's module
-    docstring for why: this season's own roster doesn't exist yet
-    until the draft keepers feed into actually happens). Returns
+    Seeds a team row for BOTH TEST_SEASON and _PRIOR_SEASON, same
+    espn_team_id on each — the ordinary continuing-owner shape (see
+    app/routers/keepers.py's _get_roster_pool, 2026-09: it resolves
+    the prior season's ESPN roster via THIS season's own espn_team_id,
+    not by matching owner_id directly across seasons, so a current-
+    season row is required for the pool to resolve at all now — see
+    test_ownership_handoff_keeper_pool_follows_the_espn_team_id below
+    for the case that distinction actually exists for). Returns
     (user_id, owner_id) — pass both into _session_cookie."""
     async with pool.acquire() as conn:
         user_id = await conn.fetchval(
@@ -44,9 +47,12 @@ async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
             f"test-keepers-owner-{suffix}", f"Owner {suffix}", user_id,
         )
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, role)
-        await conn.execute(
+        await conn.executemany(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
-            _PRIOR_SEASON, espn_team_id, owner_id, f"Team {suffix}",
+            [
+                (_PRIOR_SEASON, espn_team_id, owner_id, f"Team {suffix}"),
+                (TEST_SEASON, espn_team_id, owner_id, f"Team {suffix}"),
+            ],
         )
     return user_id, owner_id
 
@@ -172,6 +178,68 @@ async def test_roster_pool_comes_from_last_seasons_espn_roster(pool, monkeypatch
     assert resp.status_code == 200
     pool_names = {p["player_name"] for p in resp.json()["roster_pool"]}
     assert pool_names == {"Live RB"}
+
+
+async def test_ownership_handoff_keeper_pool_follows_the_espn_team_id(pool, monkeypatch):
+    """The real 2026-09 scenario this fix was built for: a departed
+    member's team is handed to a real replacement for the new season —
+    same espn_team_id (the real, stable ESPN slot), a genuinely
+    different owner_id, and the OLD owner's historical row is left
+    completely untouched (the commissioner explicitly did not want any
+    historical owner_id/user linkage rewritten — only the roster pool
+    itself needed to follow the team). The new owner still gets last
+    season's real roster to pick a keeper from."""
+    _set_env(monkeypatch)
+    shared_espn_team_id = 50999
+
+    # The departed owner's own historical row, PRIOR season only —
+    # exactly as it would sit forever, untouched.
+    async with pool.acquire() as conn:
+        old_owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-keepers-departed-owner", "Departed Owner",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+            _PRIOR_SEASON, shared_espn_team_id, old_owner_id, "Departed Owner's Old Team",
+        )
+
+    # The new owner: a real signed-up member with a CURRENT-season row
+    # on that same espn_team_id, but no row of their own for the prior
+    # season at all — a fresh account, not a continuing one.
+    async with pool.acquire() as conn:
+        new_user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-keepers-replacement@example.com", "Replacement Owner",
+        )
+        new_owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
+            "test-keepers-owner-replacement", "Replacement Owner", new_user_id,
+        )
+        await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, new_user_id, "member")
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
+            TEST_SEASON, shared_espn_team_id, new_owner_id, "Replacement Owner's New Team",
+        )
+
+    _patch_league(monkeypatch, _fake_roster_league(shared_espn_team_id, [(70011, "Handoff RB", "RB")]))
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(new_user_id, new_owner_id))
+        resp = await client.get("/keepers/me")
+
+    assert resp.status_code == 200
+    pool_names = {p["player_name"] for p in resp.json()["roster_pool"]}
+    assert pool_names == {"Handoff RB"}
+
+    # The departed owner's own historical row is exactly as it was —
+    # never touched by any of this.
+    async with pool.acquire() as conn:
+        old_row = await conn.fetchrow(
+            "SELECT owner_id FROM teams_by_season WHERE season = $1 AND espn_team_id = $2",
+            _PRIOR_SEASON, shared_espn_team_id,
+        )
+    assert old_row["owner_id"] == old_owner_id
 
 
 async def test_roster_pool_is_empty_with_no_prior_season_team(pool, monkeypatch):

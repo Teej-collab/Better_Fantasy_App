@@ -17,14 +17,18 @@ league_id from the session, never a client-supplied value.
 ROSTER POOL SOURCE — ESPN, for the PRIOR season specifically (see
 _get_roster_pool): this league played last season on ESPN, before this
 app's own in-app draft/roster system existed, so "the roster you had
-at the end of last season" only exists on ESPN's side, under that
-owner's PRIOR-season teams_by_season row (a real espn_team_id from
-when this league was still fully on ESPN — the historical "claim your
-existing team's history" flow is what links a newly-signed-in owner to
-that same row, same owner_id, no data migration needed). Two real
-production bugs this went through before landing here (2026-09-04, "a
-user's keeper roster isn't showing," then "actually needs to be last
-season's ESPN roster, not this app's own"):
+at the end of last season" only exists on ESPN's side, keyed by
+espn_team_id — the real, stable per-season slot ESPN itself assigns
+(teams_by_season.espn_team_id), which _get_roster_pool resolves via
+THIS season's own team row, not by assuming owner_id stayed the same
+across the two seasons (see that function's own docstring, 2026-09: an
+ownership handoff — a departed member's team taken over by a real
+replacement this season — is a normal, real event this league goes
+through, and the new owner still needs last season's real roster to
+pick a keeper from without any historical row being rewritten to
+"become" them). Two real production bugs this went through before
+landing here (2026-09-04, "a user's keeper roster isn't showing," then
+"actually needs to be last season's ESPN roster, not this app's own"):
 
   1. First version hit ESPNLineupClient.get_roster(espn_team_id,
      ACTIVE_season) — a LIVE read against the CURRENT season. Silently
@@ -99,14 +103,32 @@ async def _get_roster_pool(conn, owner_id: int, active_season: int, league_id: i
     roster as it stood at the end of LAST season (see module docstring
     for why that's the prior season specifically, read from ESPN, not
     this app's own current_rosters). Empty list (not an error) if the
-    owner has no team in the prior season."""
+    owner has no team this season.
+
+    Resolves via THIS SEASON's own espn_team_id, then reads ESPN for
+    that same id one season back — not by matching owner_id directly
+    across seasons (what this did before 2026-09). espn_team_id is the
+    real, stable franchise slot (ESPN's own numbering); owner_id is not
+    guaranteed stable across an ownership handoff — a new owner taking
+    over an existing team this season (e.g. a departed member's spot
+    handed to a real replacement, teams_by_season.espn_team_id carried
+    forward, owner_id genuinely different) still needs last season's
+    real roster to pick a keeper from, without any historical row
+    having to be rewritten to "become" them — the commissioner
+    explicitly asked for exactly that (owners.user_id / historical
+    owner_id values must stay exactly as-is; only the roster the new
+    owner can pick from should follow the team). For every ordinary
+    continuing owner (the common case, owner_id AND espn_team_id both
+    unchanged year over year) this returns identically to the old
+    owner_id-matched lookup — this is a generalization, not a special
+    case."""
     prior_season = active_season - 1
-    team = await league_queries.get_team_for_owner(conn, prior_season, owner_id, league_id)
-    if team is None:
+    current_team = await league_queries.get_team_for_owner(conn, active_season, owner_id, league_id)
+    if current_team is None:
         return []
 
     client = ESPNLineupClient()
-    roster = client.get_roster(team["espn_team_id"], prior_season)
+    roster = client.get_roster(current_team["espn_team_id"], prior_season)
     return [
         {
             "espn_player_id": e.player_id,
