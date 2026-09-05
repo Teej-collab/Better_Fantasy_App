@@ -35,6 +35,13 @@ class GamecastConnectionManager:
     def live_game_ids(self) -> list[str]:
         return [gid for gid, conns in self._connections.items() if conns]
 
+    def total_connection_count(self) -> int:
+        """Every open Gamecast socket across every game right now — a
+        real, live "how many people are actually watching" number for
+        the admin System Health panel, not a DB read (see this class's
+        own docstring on why this is in-process, not persisted)."""
+        return sum(len(conns) for conns in self._connections.values())
+
     async def broadcast_to_game(self, game_id: str, message: dict) -> None:
         dead = []
         for ws in list(self._connections.get(game_id, ())):

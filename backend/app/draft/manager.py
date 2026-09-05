@@ -87,6 +87,12 @@ class DraftConnectionManager:
         connected client's copy current from there."""
         return list(self._connections.get(room, {}).keys())
 
+    def total_connection_count(self) -> int:
+        """Every owner connected to ANY draft room right now, summed
+        across rooms — a real, live scaling signal for the admin System
+        Health panel (not a DB read, see this class's own docstring)."""
+        return sum(len(room_conns) for room_conns in self._connections.values())
+
     async def broadcast_to_draft(
         self, room: DraftRoomKey, message: dict, exclude_owner_id: int | None = None
     ) -> None:

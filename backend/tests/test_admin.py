@@ -615,3 +615,104 @@ async def test_set_is_admin_404s_for_an_unknown_user(pool, monkeypatch):
         json={"is_admin": True},
     )
     assert response.status_code == 404
+
+
+async def test_timeseries_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/timeseries")
+    assert response.status_code == 401
+
+
+async def test_timeseries_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "timeseries-reject"), path="/admin/timeseries")
+    assert response.status_code == 403
+
+
+async def test_timeseries_is_zero_filled_for_every_day_in_the_window(pool, monkeypatch):
+    """The real point of generate_series in admin_overview.get_timeseries
+    — a quiet day with no signups/events still gets a real 0 row, not a
+    gap, since a line chart needs every x-axis point to actually exist."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _commissioner_of_league_one_cookies(pool, "timeseries-ok"), path="/admin/timeseries?days=7")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["window_days"] == 7
+    assert len(body["days"]) == 8  # inclusive of both endpoints, matches generate_series
+    for day in body["days"]:
+        assert set(day.keys()) == {"day", "signups", "events", "active_owners"}
+
+
+async def test_activity_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/activity")
+    assert response.status_code == 401
+
+
+async def test_activity_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "activity-reject"), path="/admin/activity")
+    assert response.status_code == 403
+
+
+async def test_activity_includes_a_real_new_signup(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        await _make_user(conn, "activity-signup")
+    response = await _get(cookies=await _commissioner_of_league_one_cookies(pool, "activity-ok"), path="/admin/activity?limit=50")
+    assert response.status_code == 200
+    kinds = {item["kind"] for item in response.json()["activity"]}
+    assert "signup" in kinds
+
+
+async def test_alerts_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/alerts")
+    assert response.status_code == 401
+
+
+async def test_alerts_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "alerts-reject"), path="/admin/alerts")
+    assert response.status_code == 403
+
+
+async def test_alerts_flags_an_unclaimed_owner_with_a_real_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-alerts-unclaimed", "Alerts Unclaimed Owner",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES (1900, nextval('synthetic_espn_team_id_seq'), $1, 'Alerts FC', $2)",
+            owner_id, DEFAULT_LEAGUE_ID,
+        )
+    response = await _get(cookies=await _commissioner_of_league_one_cookies(pool, "alerts-ok"), path="/admin/alerts")
+    assert response.status_code == 200
+    messages = " ".join(a["message"] for a in response.json()["alerts"])
+    assert "not yet claimed" in messages
+
+
+async def test_system_health_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(path="/admin/system-health")
+    assert response.status_code == 401
+
+
+async def test_system_health_rejects_non_admin(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _non_commissioner_cookies(pool, "health-reject"), path="/admin/system-health")
+    assert response.status_code == 403
+
+
+async def test_system_health_reports_real_live_signals(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _get(cookies=await _commissioner_of_league_one_cookies(pool, "health-ok"), path="/admin/system-health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["db"]["reachable"] is True
+    assert body["db"]["pool_size"] >= 1
+    assert body["uptime_seconds"] >= 0
+    assert set(body["websocket_connections"].keys()) == {"chat", "draft", "gamecast"}

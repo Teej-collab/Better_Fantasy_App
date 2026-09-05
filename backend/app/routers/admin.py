@@ -32,7 +32,8 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
-from app.queries import admin_analytics, admin_leagues, admin_overview, admin_users
+from app.queries import admin_analytics, admin_leagues, admin_overview, admin_system, admin_users
+from app.scheduler_status import record_job_run
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -63,6 +64,7 @@ async def trigger_sync(request: Request):
     results = await run_full_sync(
         provider, espn_config.league_start_season, espn_config.active_season
     )
+    record_job_run("full_sync")
     return {"results": results}
 
 
@@ -82,6 +84,7 @@ async def trigger_live_sync(request: Request):
     season = espn_config.active_season
     week = await provider.get_current_week(season)
     results = await run_live_sync(provider, season, week)
+    record_job_run("live_sync")
     return {"season": season, "week": week, "results": results}
 
 
@@ -105,6 +108,7 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
     if week is None:
         week = await provider.get_current_week(season)
     results = await compute_and_store_week(await get_pool(), season, week)
+    record_job_run("weekly_compute")
     return {"season": season, "week": week, "results": results}
 
 
@@ -142,6 +146,7 @@ async def trigger_player_sync(request: Request):
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     count = await sync_players(await get_pool())
+    record_job_run("sleeper_player_sync")
     return {"players_upserted": count}
 
 
@@ -158,6 +163,7 @@ async def trigger_projected_points_sync(request: Request):
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
         results = await sync_projected_points(conn)
+    record_job_run("projected_points_sync")
     return results
 
 
@@ -274,6 +280,52 @@ async def get_feature_usage(request: Request, days: int = 30):
         await require_site_admin(conn, payload)
         features = await admin_analytics.get_feature_usage(conn, days)
     return {"window_days": days, "features": features}
+
+
+@router.get("/timeseries")
+async def get_timeseries(request: Request, days: int = 30):
+    """Daily signups/events/active-owners for the Overview page's
+    Activity Over Time chart — see admin_overview.get_timeseries's own
+    docstring on why this is real infrastructure with genuinely sparse
+    early data, not a fabricated trend line."""
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        series = await admin_overview.get_timeseries(conn, days)
+    return {"window_days": days, "days": series}
+
+
+@router.get("/activity")
+async def get_recent_activity(request: Request, limit: int = 15):
+    payload = _require_session(request)
+    limit = max(1, min(limit, 50))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        activity = await admin_overview.get_recent_activity(conn, limit)
+    return {"activity": activity}
+
+
+@router.get("/alerts")
+async def get_alerts(request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        alerts = await admin_overview.get_alerts(conn)
+    return {"alerts": alerts}
+
+
+@router.get("/system-health")
+async def get_system_health(request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        health = await admin_system.get_system_health(conn, pool)
+    return health
 
 
 @router.get("/users")

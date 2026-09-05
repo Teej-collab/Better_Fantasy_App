@@ -56,7 +56,7 @@ Indexed on `created_at`, `(owner_id, created_at)`, `(event_name, created_at)`, a
 
 ## What Phase 1 actually ships
 
-- **Overview** (`/admin`) — Total Users, Active Users, New Users, Active Leagues, Online Now (all real, all for the selected window), captioned with "Tracking since {date}" so a small number reads as "collection just started," not "nobody's here." A top-5 page preview and the live online list.
+- **Overview** (`/admin`) — Total Users, New Users, Active Users, Total Leagues, Active Leagues, Online Now (all real, all for the selected window), captioned with "Tracking since {date}" so a small number reads as "collection just started," not "nobody's here." Below the KPI row (2026-09 redesign, see "Overview redesign" further down): a real Activity Over Time chart, a Feature Usage donut, a cross-cutting Recent Activity feed, a System Health panel (DB pool, live WebSocket connections, scheduled-job freshness), and a rule-based Alerts panel.
 - **Users** (`/admin/users`) — server-side search (name/email/user ID) and filters (Active/Inactive/New/Commissioner/Multiple Leagues/No League — no Verified/Unverified filter, since this app has no email-verification concept at all; adding a fake one would be exactly the fabrication the original spec explicitly ruled out).
 - **User detail** (`/admin/users/[id]`) — account info, real league memberships, a real activity timeline built from `analytics_events`. Never renders `password_hash`, tokens, or push credentials (the backing query never even selects them — see `ADMIN_SECURITY.md`).
 - **Leagues** (`/admin/leagues`) — every league, member counts, an approximated activity signal (see above).

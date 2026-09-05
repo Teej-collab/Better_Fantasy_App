@@ -1759,6 +1759,11 @@ export type AdminOverview = {
   active_users: number;
   total_leagues: number;
   active_leagues: number;
+  // Real historical owners actually linked to a signed-up account (see
+  // leagues.py's claim_owner) — distinct from total_users: someone can
+  // sign up and never claim/link at all (the recent "No team found for
+  // this owner" bug this exact gap caused).
+  total_owners_claimed: number;
   online_now: number;
   // null until the very first analytics event has ever been recorded.
   // The frontend captions every count with "since {this date}" so a
@@ -1772,6 +1777,28 @@ export type NavigationHeatmap = { window_days: number; total_views: number; rout
 
 export type FeatureUsageRow = { event_name: string; uses: number; unique_owners: number };
 export type FeatureUsage = { window_days: number; features: FeatureUsageRow[] };
+
+// Daily signups/events/active-owners, zero-filled for every day in the
+// window (see app/queries/admin_overview.py's get_timeseries — real,
+// genuinely sparse infrastructure today, not a fabricated trend line).
+export type AdminTimeseriesDay = { day: string; signups: number; events: number; active_owners: number };
+export type AdminTimeseries = { window_days: number; days: AdminTimeseriesDay[] };
+
+export type AdminActivityItem = { kind: "signup" | "league_created" | "feedback"; label: string; created_at: string };
+export type AdminActivity = { activity: AdminActivityItem[] };
+
+export type AdminAlert = { severity: "info" | "warning"; message: string };
+export type AdminAlerts = { alerts: AdminAlert[] };
+
+export type AdminSystemHealth = {
+  db: { reachable: boolean; pool_size: number; pool_idle: number; pool_max: number };
+  websocket_connections: { chat: number; draft: number; gamecast: number };
+  uptime_seconds: number;
+  // {job_name: ISO timestamp of its last successful finish} — a job
+  // that's off or hasn't ticked yet since this process started just
+  // never appears (see app/scheduler_status.py's own docstring).
+  jobs: Record<string, string>;
+};
 
 export type AdminUserRow = {
   user_id: number;
@@ -1855,6 +1882,30 @@ export async function getFeatureUsageServer(
   return getServerOrNull<FeatureUsage>(`/admin/features?days=${days}`, sessionCookie);
 }
 
+export async function getAdminTimeseriesServer(
+  sessionCookie: string | undefined,
+  days = 30
+): Promise<AdminTimeseries | null> {
+  return getServerOrNull<AdminTimeseries>(`/admin/timeseries?days=${days}`, sessionCookie);
+}
+
+export async function getAdminActivityServer(
+  sessionCookie: string | undefined,
+  limit = 15
+): Promise<AdminActivity | null> {
+  return getServerOrNull<AdminActivity>(`/admin/activity?limit=${limit}`, sessionCookie);
+}
+
+export async function getAdminAlertsServer(sessionCookie: string | undefined): Promise<AdminAlerts | null> {
+  return getServerOrNull<AdminAlerts>("/admin/alerts", sessionCookie);
+}
+
+export async function getAdminSystemHealthServer(
+  sessionCookie: string | undefined
+): Promise<AdminSystemHealth | null> {
+  return getServerOrNull<AdminSystemHealth>("/admin/system-health", sessionCookie);
+}
+
 export async function listAdminUsersServer(
   sessionCookie: string | undefined,
   status: AdminUserStatus = "all"
@@ -1907,6 +1958,22 @@ export function getNavigationHeatmap(days = 30): Promise<NavigationHeatmap> {
 
 export function getFeatureUsage(days = 30): Promise<FeatureUsage> {
   return _adminGet(`/admin/features?days=${days}`);
+}
+
+export function getAdminTimeseries(days = 30): Promise<AdminTimeseries> {
+  return _adminGet(`/admin/timeseries?days=${days}`);
+}
+
+export function getAdminActivity(limit = 15): Promise<AdminActivity> {
+  return _adminGet(`/admin/activity?limit=${limit}`);
+}
+
+export function getAdminAlerts(): Promise<AdminAlerts> {
+  return _adminGet("/admin/alerts");
+}
+
+export function getAdminSystemHealth(): Promise<AdminSystemHealth> {
+  return _adminGet("/admin/system-health");
 }
 
 export function listAdminUsers(search: string, status: AdminUserStatus): Promise<AdminUserList> {

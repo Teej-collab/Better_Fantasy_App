@@ -92,6 +92,7 @@ from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
 from app.queries import keepers as keeper_queries
+from app.scheduler_status import record_job_run
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ async def _run_full_sync_job():
         provider, espn_config.league_start_season, espn_config.active_season
     )
     logger.info("Scheduled full ESPN sync finished: %s", results)
+    record_job_run("full_sync")
 
 
 async def _run_live_sync_job():
@@ -133,6 +135,7 @@ async def _run_live_sync_job():
     async with pool.acquire() as conn:
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
+    record_job_run("live_sync")
 
 
 async def _run_gamecast_poll_job():
@@ -161,6 +164,7 @@ async def _run_gamecast_poll_job():
 async def _run_sleeper_player_sync_job():
     count = await sync_players(await get_pool())
     logger.info("Sleeper player sync finished: %d players upserted", count)
+    record_job_run("sleeper_player_sync")
 
 
 async def _run_projected_points_sync_job():
@@ -175,6 +179,7 @@ async def _run_projected_points_sync_job():
     async with pool.acquire() as conn:
         results = await sync_projected_points(conn)
     logger.info("Player projections sync finished: %s", results)
+    record_job_run("projected_points_sync")
 
 
 async def _run_draft_clock_job():
@@ -298,6 +303,7 @@ async def _run_weekly_compute_job():
     week = await provider.get_current_week(season)
     results = await weekly_stats.compute_and_store_week(await get_pool(), season, week)
     logger.info("Weekly compute finished (season=%s week=%s): %s", season, week, results)
+    record_job_run("weekly_compute")
 
 
 def start_scheduler():
