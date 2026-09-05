@@ -62,17 +62,37 @@ def _position_capacity(position: str, roster_slots: dict[str, int], position_max
 
 def choose_autopick(
     rostered_positions: list[str], roster_slots: dict[str, int], available_players: list[dict],
-    position_max: dict[str, int] | None = None,
+    position_max: dict[str, int] | None = None, queue: list[str] | None = None,
 ) -> dict | None:
     """available_players: list of {"sleeper_player_id", "position",
     "search_rank"}, already filtered to undrafted/draftable and sorted
     by search_rank ascending (None/unranked last — caller's
-    responsibility, see draft_engine.py's query). Returns the single
-    best-available player overall — real best-player-available, not a
-    needs-first fill (see module docstring) — filtering out only
-    positions this roster has no room left for (physical ceiling,
-    tightened by position_max if the league has one configured — see
-    _position_capacity). Returns None if nothing is available
+    responsibility, see draft_engine.py's query).
+
+    queue (2026-09, draft night feature): this team's own ranked player
+    queue (app/queries/draft_queue.py), ordered highest-priority first.
+    When given, the FIRST queued player who's both still available (in
+    available_players) and roster-eligible (passes the exact same
+    physical/position_max capacity check every other candidate is held
+    to — a queue is a preference list, not permission to break roster
+    rules) wins outright, ignoring search_rank entirely — an owner's
+    own ranking is a deliberate override of best-player-available, not
+    a tiebreaker on top of it. A player queued but already drafted by
+    someone else, or no longer roster-eligible, is silently skipped —
+    exactly like an ordinary human owner scanning down their own list
+    and crossing off names that are gone. If every queued player is
+    unavailable/ineligible (or queue is empty/None), this falls straight
+    through to the exact same best-player-available logic as before —
+    the queue is a preference layer on top of the existing autopick, not
+    a replacement for it, and this must keep behaving identically to
+    today for any team that's never touched the queue feature at all.
+
+    Returns the single best-available player overall when the queue
+    doesn't produce a pick — real best-player-available, not a needs-
+    first fill (see module docstring) — filtering out only positions
+    this roster has no room left for (physical ceiling, tightened by
+    position_max if the league has one configured — see
+    _position_capacity). Returns None if nothing is available at all
     (shouldn't happen in practice — the draft pool is far larger than
     any one draft)."""
     if not available_players:
@@ -82,9 +102,16 @@ def choose_autopick(
     for pos in rostered_positions:
         counts[pos] = counts.get(pos, 0) + 1
 
-    eligible = [
-        p for p in available_players
-        if counts.get(p["position"], 0) < _position_capacity(p["position"], roster_slots, position_max)
-    ]
+    def _is_eligible(player: dict) -> bool:
+        return counts.get(player["position"], 0) < _position_capacity(player["position"], roster_slots, position_max)
+
+    if queue:
+        available_by_id = {p["sleeper_player_id"]: p for p in available_players}
+        for sleeper_player_id in queue:
+            candidate = available_by_id.get(sleeper_player_id)
+            if candidate is not None and _is_eligible(candidate):
+                return candidate
+
+    eligible = [p for p in available_players if _is_eligible(p)]
     pool = eligible if eligible else available_players
     return pool[0]

@@ -21,6 +21,22 @@ import { positionColor } from "@/lib/positionColors";
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
+// The room opens for queue-building 1 hour before the real draft — see
+// backend/app/scheduler.py's _run_draft_auto_start_job, which is the
+// actual server-authoritative thing that flips status to in_progress
+// at scheduled_start. This constant only decides what THIS client
+// shows while waiting for that — real pick submission is gated
+// entirely on config.status === "in_progress" (isMyTurn below), never
+// on this window calculation, so a wrong/stale client clock can only
+// ever affect what's DISPLAYED here, never what's actually allowed.
+const PRE_DRAFT_WINDOW_MS = 60 * 60 * 1000;
+
+function formatCountdown(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+}
 
 function useCountdown(deadline: string | null): number {
   const [seconds, setSeconds] = useState(0);
@@ -165,24 +181,6 @@ export function DraftRoom({
     getDraftPool(positionFilter ?? undefined, search || undefined).then(setPool).catch(() => {});
   }, [positionFilter, search]);
 
-  // A queued player who gets drafted (by anyone — including an
-  // autopick, which no client-side action of ours triggers) needs to
-  // fall out of the queue on its own. Sourced from draftState.picks
-  // (every pick made this draft) rather than `pool`, which only ever
-  // holds the currently filtered view — a queued player who's since
-  // been drafted must be detected even while a different position/
-  // search filter is active.
-  useEffect(() => {
-    if (!draftState) return;
-    const draftedIds = new Set(
-      draftState.picks.filter((p) => p.sleeper_player_id).map((p) => p.sleeper_player_id!)
-    );
-    for (const id of queue.queue) {
-      if (draftedIds.has(id)) queue.remove(id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftState]);
-
   const season = draftState?.config.season;
 
   useEffect(() => {
@@ -231,8 +229,13 @@ export function DraftRoom({
         // once every 90 seconds for a handful of connected clients, so
         // a full REST refetch on each event is simpler and safer than
         // merging partial WS payloads client-side, at negligible cost.
+        // The queue refetch is what makes "a player on my queue just
+        // got drafted by someone else" disappear live (server already
+        // removed it — app/domain/draft_engine.py's make_pick — this
+        // just syncs this client's own view of that).
         refreshState();
         refreshPool();
+        queue.refresh();
       };
     }
 
@@ -248,6 +251,19 @@ export function DraftRoom({
   const secondsRemaining = useCountdown(config?.current_pick_deadline ?? null);
   const currentPick = draftState?.picks.find((p) => p.pick_number === config?.current_pick_number);
   const isMyTurn = currentPick?.owner_id === myOwnerId && config?.status === "in_progress";
+
+  // Pre-draft room: 1 hour of queue-building before the real draft
+  // (see PRE_DRAFT_WINDOW_MS above). secondsUntilStart reuses the same
+  // ticking-countdown hook the pick timer above already uses — only
+  // relevant while status is still "not_started"; once the server
+  // actually flips it to in_progress (auto-start job, or a
+  // commissioner's manual click), the normal live-draft view below
+  // takes over regardless of what this countdown still says.
+  const secondsUntilStart = useCountdown(
+    config?.status === "not_started" ? (config?.scheduled_start ?? null) : null
+  );
+  const preDraftWindowActive =
+    config?.status === "not_started" && config?.scheduled_start != null && secondsUntilStart <= PRE_DRAFT_WINDOW_MS / 1000;
 
   const teamNameByOwner = useMemo(() => {
     const m = new Map<number, string>();
@@ -319,7 +335,9 @@ export function DraftRoom({
               : config!.status === "paused"
                 ? "Paused"
                 : config!.status === "not_started"
-                  ? "Not started"
+                  ? preDraftWindowActive
+                    ? "Draft room open"
+                    : "Not started"
                   : `Round ${currentPick?.round ?? "—"} · Pick ${config!.current_pick_number}`}
           </p>
           {config!.status === "in_progress" && currentPick && (
@@ -347,8 +365,43 @@ export function DraftRoom({
             {secondsRemaining}s
           </div>
         )}
+        {preDraftWindowActive && (
+          <div className="text-3xl font-bold tabular-nums">{formatCountdown(secondsUntilStart)}</div>
+        )}
         <span className="text-xs text-black/50 dark:text-white/50">{connected ? "● live" : "○ reconnecting…"}</span>
       </div>
+
+      {preDraftWindowActive && (
+        <div className="neon-panel flex flex-col items-center gap-1 rounded-xl p-6 text-center">
+          <p className="text-lg font-semibold">
+            {secondsUntilStart > 0 ? (
+              <>
+                Draft begins in <span className="tabular-nums">{formatCountdown(secondsUntilStart)}</span>
+              </>
+            ) : (
+              "Draft is starting momentarily…"
+            )}
+          </p>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            You&apos;re early — build your player queue while you wait. Your queue will automatically be used first
+            if you&apos;re on autodraft when your pick comes up.
+          </p>
+        </div>
+      )}
+
+      {config!.status === "not_started" && !preDraftWindowActive && !isCommissioner && (
+        <div className="neon-panel rounded-xl p-6 text-center text-sm text-black/60 dark:text-white/60">
+          {config!.scheduled_start ? (
+            <>
+              The draft room opens 1 hour before the draft starts.
+              <br />
+              Draft begins {new Date(config!.scheduled_start).toLocaleString()}.
+            </>
+          ) : (
+            "The draft hasn't been scheduled yet — check back soon."
+          )}
+        </div>
+      )}
 
       {isCommissioner && <DraftSetupPanel teams={teams} config={config!} onDraftCreated={refreshState} />}
 
@@ -363,7 +416,7 @@ export function DraftRoom({
         />
       )}
 
-      {config!.status !== "not_started" && (
+      {(config!.status !== "not_started" || preDraftWindowActive) && (
         <div className="flex flex-col gap-4 sm:grid sm:grid-cols-3">
           <section className="neon-panel flex flex-col gap-2 rounded-xl p-4 sm:col-span-2">
             <div className="flex flex-wrap items-center gap-2">

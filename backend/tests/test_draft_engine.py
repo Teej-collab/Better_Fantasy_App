@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
+    DraftAlreadyStartedError,
     DraftNotFoundError,
     DraftNotInProgressError,
     KeeperResolutionError,
@@ -20,6 +21,7 @@ from app.domain.draft_exceptions import (
     PlayerAlreadyDraftedError,
     PlayerNotDraftableError,
 )
+from app.queries import draft_queue as draft_queue_queries
 from tests.conftest import TEST_SEASON
 
 _ROSTER_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR/TE": 1, "D/ST": 1, "K": 1, "BE": 2}
@@ -160,6 +162,27 @@ async def test_round_1_pick_gets_a_90_second_deadline(pool):
         )
     remaining = (config["current_pick_deadline"] - datetime.now(timezone.utc)).total_seconds()
     assert 85 <= remaining <= 90
+
+
+async def test_start_draft_refuses_to_double_start(pool):
+    """Two independent real callers can now both try to start the same
+    draft (a commissioner's manual click, and the new auto-start
+    scheduler job) — a second start_draft() must be refused, not
+    silently rewind current_pick_number back to 1 out from under an
+    already-in-progress draft."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)  # already calls start_draft() once
+    player = await _seed_player(pool, "doublestart1")
+
+    async with pool.acquire() as conn:
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player)  # advance past pick 1
+        try:
+            await draft_engine.start_draft(conn, TEST_SEASON)
+            assert False, "expected DraftAlreadyStartedError"
+        except DraftAlreadyStartedError:
+            pass
+        # The earlier real pick must still stand — not rewound.
+        config = await conn.fetchrow("SELECT current_pick_number FROM draft_config WHERE season = $1", TEST_SEASON)
+    assert config["current_pick_number"] == 2
 
 
 async def test_round_2_pick_gets_a_60_second_deadline(pool):
@@ -395,6 +418,115 @@ async def test_autopick_respects_a_configured_position_max(pool):
         result = await draft_engine.autopick(conn, TEST_SEASON)  # owner_a round 2
 
     assert result["pick"]["sleeper_player_id"] == wr1  # not rb2, despite its better rank
+
+
+async def test_autopick_uses_queue_priority_over_search_rank(pool):
+    """The core queue feature: a team's own ranked queue overrides pure
+    best-player-available — owner_a queues the WORSE-ranked player
+    first, and autopick takes it, not the better-ranked alternative.
+    Negative search ranks for the same real-data-seeded-DB reason as
+    test_autopick_respects_a_configured_position_max above."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    better_ranked = await _seed_player(pool, "queue-better", position="WR", search_rank=-10)
+    queued_worse = await _seed_player(pool, "queue-worse", position="WR", search_rank=-1)
+
+    async with pool.acquire() as conn:
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, queued_worse)
+        result = await draft_engine.autopick(conn, TEST_SEASON)
+
+    assert result["pick"]["sleeper_player_id"] == queued_worse
+
+
+async def test_autopick_skips_unavailable_and_ineligible_queued_players(pool):
+    """Queue rank #1 is already drafted (by the other team, moments
+    earlier), rank #2 would violate a roster rule, rank #3 is the first
+    real hit — matching the exact "Player A/B drafted, Player C
+    eligible" walkthrough from the feature spec."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    already_drafted = await _seed_player(pool, "queue-skip-drafted", position="WR", search_rank=-20)
+    ineligible_qb = await _seed_player(pool, "queue-skip-ineligible-qb", position="QB", search_rank=-5)
+    eligible_hit = await _seed_player(pool, "queue-skip-hit", position="RB", search_rank=-1)
+
+    async with pool.acquire() as conn:
+        # owner_a's roster (_ROSTER_SLOTS) allows 1 starting QB + 0 flex +
+        # 2 bench = 3 QBs max — directly seed 3 rostered QBs so a 4th
+        # queued QB is genuinely roster-ineligible, not just poorly
+        # ranked. Seeded straight into current_rosters (not via real
+        # turn-based picks) since only the resulting roster state
+        # matters here, not how owner_a acquired it.
+        team_id = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", TEST_SEASON, owner_a
+        )
+        for i in range(3):
+            filler_qb = await _seed_player(pool, f"queue-skip-fill-qb-{i}", position="QB")
+            await conn.execute(
+                "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+                "VALUES ($1, $2, $3, 'BE', 'draft')",
+                TEST_SEASON, team_id, filler_qb,
+            )
+        # Snake order for 2 teams: round 1 = [a, b], round 2 = [b, a] —
+        # owner_a's own next pick is round 2's SECOND slot, so both of
+        # round 1 and round 2's first pick need a real pick made first
+        # to actually reach it.
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, await _seed_player(pool, "queue-skip-filler-a1"))
+        # Someone else drafts the top queued player out from under owner_a.
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, already_drafted)
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, await _seed_player(pool, "queue-skip-filler-b2"))
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, already_drafted)
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, ineligible_qb)
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, eligible_hit)
+        result = await draft_engine.autopick(conn, TEST_SEASON)
+
+    assert result["pick"]["sleeper_player_id"] == eligible_hit
+
+
+async def test_autopick_falls_back_to_best_available_when_queue_is_empty(pool):
+    """No queue at all — autopick must behave exactly as it always has
+    (best-available by search rank), the documented fallback."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    best = await _seed_player(pool, "queue-empty-best", position="WR", search_rank=-10)
+    await _seed_player(pool, "queue-empty-worse", position="WR", search_rank=-1)
+
+    async with pool.acquire() as conn:
+        result = await draft_engine.autopick(conn, TEST_SEASON)
+
+    assert result["pick"]["sleeper_player_id"] == best
+
+
+async def test_manual_pick_removes_that_player_from_the_pickers_own_queue(pool):
+    """If a team manually drafts a player who happens to be on their own
+    queue, that player must come out of the queue afterward — the rest
+    stays intact (spec: 'Queue after manual pick')."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    p1 = await _seed_player(pool, "manualq-1")
+    p2 = await _seed_player(pool, "manualq-2")
+    p3 = await _seed_player(pool, "manualq-3")
+
+    async with pool.acquire() as conn:
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, p1)
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, p2)
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, p3)
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, p2)
+        queue = await draft_queue_queries.get_queue(conn, TEST_SEASON, owner_a)
+
+    assert queue == [p1, p3]
+
+
+async def test_a_players_drafted_by_anyone_disappears_from_every_teams_queue(pool):
+    """A queued player drafted by a DIFFERENT team must vanish from the
+    queueing team's list too, not just the picking team's own (spec:
+    'Auto-removal' / 'If another manager drafts that player')."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    contested = await _seed_player(pool, "contestedq", search_rank=-1)
+    owner_a_filler = await _seed_player(pool, "contestedq-filler")
+
+    async with pool.acquire() as conn:
+        await draft_queue_queries.add_to_queue(conn, TEST_SEASON, owner_a, contested)
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, owner_a_filler)
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, contested)
+        queue = await draft_queue_queries.get_queue(conn, TEST_SEASON, owner_a)
+
+    assert queue == []
 
 
 async def test_reset_draft_clears_config_picks_and_rosters(pool):

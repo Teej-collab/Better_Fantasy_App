@@ -174,6 +174,36 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `DELETE ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Server-authoritative draft queue/wishlist (2026-09) — see
+// backend/app/queries/draft_queue.py's own docstring. Always the
+// caller's own queue (owner_id resolved from the session), scoped to
+// this season's draft — there's no owner/team/league id in any of
+// these requests to get wrong.
+export async function getDraftQueue(): Promise<{ queue: string[] }> {
+  return get("/draft/queue");
+}
+
+export async function addToDraftQueue(sleeperPlayerId: string): Promise<{ queue: string[] }> {
+  return post("/draft/queue", { sleeper_player_id: sleeperPlayerId });
+}
+
+export async function removeFromDraftQueue(sleeperPlayerId: string): Promise<{ queue: string[] }> {
+  return del(`/draft/queue/${encodeURIComponent(sleeperPlayerId)}`);
+}
+
+export async function reorderDraftQueue(sleeperPlayerIds: string[]): Promise<{ queue: string[] }> {
+  return put("/draft/queue/reorder", { sleeper_player_ids: sleeperPlayerIds });
+}
+
 // Commissioner-only setup/control — see app/routers/draft.py's
 // _require_commissioner-gated endpoints. The frontend doesn't hide
 // these from a non-commissioner (the page-level isCommissioner check

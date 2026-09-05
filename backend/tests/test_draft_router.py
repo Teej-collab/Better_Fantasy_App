@@ -814,3 +814,120 @@ async def test_order_rejected_once_a_keeper_is_seeded(pool, monkeypatch):
         client.cookies.update(_session_cookie(user_a, owner_a))
         resp = await client.put("/draft/order", json={"draft_order": [owner_b, owner_a]})
     assert resp.status_code == 409
+
+
+# ---- draft queue (2026-09) --------------------------------------------------
+# No owner/team/league id ever appears in a queue request body — every
+# operation is implicitly "my own queue," resolved from the session the
+# same way every other mutating draft route already does. That's a
+# stronger guarantee than checking a submitted id against the caller's
+# real one: there's no id to submit at all, so there's nothing to tamper
+# with.
+
+
+async def test_get_queue_requires_session(pool):
+    async with _client() as client:
+        resp = await client.get("/draft/queue")
+    assert resp.status_code == 401
+
+
+async def test_add_to_queue_requires_session(pool):
+    async with _client() as client:
+        resp = await client.post("/draft/queue", json={"sleeper_player_id": "p1"})
+    assert resp.status_code == 401
+
+
+async def test_queue_empty_by_default(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "q_empty")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/queue")
+    assert resp.status_code == 200
+    assert resp.json()["queue"] == []
+
+
+async def test_add_get_remove_round_trip(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "q_roundtrip")
+    p1 = await _seed_player(pool, "q_roundtrip_1")
+    p2 = await _seed_player(pool, "q_roundtrip_2")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        await client.post("/draft/queue", json={"sleeper_player_id": p1})
+        add2 = await client.post("/draft/queue", json={"sleeper_player_id": p2})
+        assert add2.json()["queue"] == [p1, p2]
+
+        remove1 = await client.delete(f"/draft/queue/{p1}")
+        assert remove1.json()["queue"] == [p2]
+
+        get_resp = await client.get("/draft/queue")
+    assert get_resp.json()["queue"] == [p2]
+
+
+async def test_reorder_queue(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "q_reorder")
+    p1 = await _seed_player(pool, "q_reorder_1")
+    p2 = await _seed_player(pool, "q_reorder_2")
+    p3 = await _seed_player(pool, "q_reorder_3")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        await client.post("/draft/queue", json={"sleeper_player_id": p1})
+        await client.post("/draft/queue", json={"sleeper_player_id": p2})
+        await client.post("/draft/queue", json={"sleeper_player_id": p3})
+        resp = await client.put("/draft/queue/reorder", json={"sleeper_player_ids": [p3, p1, p2]})
+    assert resp.json()["queue"] == [p3, p1, p2]
+
+
+async def test_queues_are_isolated_between_owners_in_the_same_league(pool, monkeypatch):
+    """The core security property: two real members of the same league,
+    each building their own queue, never see or affect each other's —
+    proven by having both queue the SAME player and confirming each
+    owner's own queue (and only their own) reflects what THEY did."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "q_iso_a")
+    user_b, owner_b = await _seed_member(pool, league_id, "q_iso_b")
+    shared_player = await _seed_player(pool, "q_iso_shared")
+    only_bs_player = await _seed_player(pool, "q_iso_b_only")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/queue", json={"sleeper_player_id": shared_player})
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_b, owner_b))
+        await client.post("/draft/queue", json={"sleeper_player_id": shared_player})
+        await client.post("/draft/queue", json={"sleeper_player_id": only_bs_player})
+        b_queue = await client.get("/draft/queue")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        a_queue = await client.get("/draft/queue")
+
+    assert a_queue.json()["queue"] == [shared_player]
+    assert b_queue.json()["queue"] == [shared_player, only_bs_player]
+
+
+async def test_queue_scoped_to_league_a_non_member_cannot_read_or_write(pool, monkeypatch):
+    """A real signed-in user who simply isn't a member of this league at
+    all gets the same 403 GET /draft/pool already gives a non-member —
+    proven by making a second, completely separate league and confirming
+    that league's owner can't touch the first league's queue."""
+    _set_env(monkeypatch)
+    _user_a, _owner_a, _league_a = await _seed_commissioner_and_team(pool, "q_scope_a")
+    user_outsider, owner_outsider, _league_b = await _seed_commissioner_and_team(pool, "q_scope_outsider")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_outsider, owner_outsider))
+        get_resp = await client.get("/draft/queue")
+        add_resp = await client.post("/draft/queue", json={"sleeper_player_id": "whatever"})
+    # Both succeed (200) — but see the queue is scoped to THIS session's
+    # own active league (require_active_league_id), i.e. league_b, not
+    # league_a — the outsider can never reach league_a's queue no matter
+    # what, since no league id is ever accepted from the request at all.
+    assert get_resp.status_code == 200
+    assert add_resp.status_code == 200

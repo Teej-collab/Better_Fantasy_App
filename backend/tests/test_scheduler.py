@@ -1,8 +1,12 @@
 import datetime
+import itertools
 
+from app.domain import draft_engine
 from app.queries import leagues as league_queries
-from app.scheduler import _run_draft_starting_soon_job, _run_keeper_lock_job
+from app.scheduler import _run_draft_auto_start_job, _run_draft_starting_soon_job, _run_keeper_lock_job
 from tests.conftest import TEST_SEASON
+
+_espn_team_id_counter = itertools.count(800001)
 
 
 async def _make_league(conn, suffix: str) -> int:
@@ -13,6 +17,19 @@ async def _make_league(conn, suffix: str) -> int:
     return await league_queries.create_league(
         conn, f"Test League Scheduler {suffix}", creator_user_id, f"scheduler-{suffix}-code"
     )
+
+
+async def _seed_owner_and_team(conn, league_id: int, suffix: str) -> int:
+    owner_id = await conn.fetchval(
+        "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+        f"test-scheduler-owner-{suffix}", f"Owner {suffix}",
+    )
+    await conn.execute(
+        "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+        "VALUES ($1, $2, $3, $4, $5)",
+        TEST_SEASON, next(_espn_team_id_counter), owner_id, f"Team {suffix}", league_id,
+    )
+    return owner_id
 
 
 async def _seed_draft_config(conn, league_id: int, scheduled_start):
@@ -186,3 +203,91 @@ async def test_draft_starting_soon_job_ignores_a_draft_already_in_progress(pool,
             TEST_SEASON, league_id,
         )
     assert row["starting_soon_notified_at"] is None
+
+
+# ---- draft auto-start (2026-09, pre-draft room feature) --------------------
+
+
+async def test_draft_auto_start_job_starts_a_due_draft(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "autostart-due")
+        owner_id = await _seed_owner_and_team(conn, league_id, "autostart-due")
+        await draft_engine.create_draft(
+            conn, TEST_SEASON, [owner_id], {"QB": 1, "BE": 1}, league_id=league_id
+        )
+        await conn.execute(
+            "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2 AND league_id = $3",
+            now - datetime.timedelta(seconds=5), TEST_SEASON, league_id,
+        )
+
+        await _run_draft_auto_start_job()
+
+        config = await conn.fetchrow(
+            "SELECT status, current_pick_number FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert config["status"] == "in_progress"
+    assert config["current_pick_number"] == 1
+
+
+async def test_draft_auto_start_job_leaves_a_future_draft_untouched(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "autostart-future")
+        owner_id = await _seed_owner_and_team(conn, league_id, "autostart-future")
+        await draft_engine.create_draft(
+            conn, TEST_SEASON, [owner_id], {"QB": 1, "BE": 1}, league_id=league_id
+        )
+        await conn.execute(
+            "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2 AND league_id = $3",
+            now + datetime.timedelta(minutes=30), TEST_SEASON, league_id,
+        )
+
+        await _run_draft_auto_start_job()
+
+        config = await conn.fetchrow(
+            "SELECT status FROM draft_config WHERE season = $1 AND league_id = $2", TEST_SEASON, league_id
+        )
+    assert config["status"] == "not_started"
+
+
+async def test_draft_auto_start_job_never_rewinds_an_already_in_progress_draft(pool, monkeypatch):
+    """The exact race this job's own guard exists for: a commissioner
+    already manually started the draft and a real pick has been made,
+    but scheduled_start has also already passed — the job must be a
+    clean no-op, never rewind current_pick_number back to 1."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "autostart-norewind")
+        owner_a = await _seed_owner_and_team(conn, league_id, "autostart-norewind-a")
+        owner_b = await _seed_owner_and_team(conn, league_id, "autostart-norewind-b")
+        await draft_engine.create_draft(
+            conn, TEST_SEASON, [owner_a, owner_b], {"QB": 1, "BE": 1}, league_id=league_id
+        )
+        await conn.execute(
+            "UPDATE draft_config SET scheduled_start = $1 WHERE season = $2 AND league_id = $3",
+            now - datetime.timedelta(seconds=5), TEST_SEASON, league_id,
+        )
+        await draft_engine.start_draft(conn, TEST_SEASON, league_id=league_id)
+        player_id = await conn.fetchval(
+            "INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable) "
+            "VALUES ('test-scheduler-autostart-player', 'Test Player', 'QB', ARRAY['QB'], 'KC', 'Active', TRUE) "
+            "RETURNING sleeper_player_id"
+        )
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player_id, league_id=league_id)
+
+        await _run_draft_auto_start_job()
+
+        config = await conn.fetchrow(
+            "SELECT status, current_pick_number FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert config["status"] == "in_progress"
+    assert config["current_pick_number"] == 2  # not rewound back to 1

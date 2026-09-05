@@ -43,6 +43,7 @@ from app.domain.draft_exceptions import (
 from app.draft.manager import manager
 from app.notifications.draft_events import notify_on_the_clock
 from app.queries import draft as draft_queries
+from app.queries import draft_queue as draft_queue_queries
 
 router = APIRouter(prefix="/draft", tags=["draft"])
 
@@ -104,6 +105,75 @@ async def draft_state(request: Request):
     # REST read is what a fresh page load (draft/page.tsx's server-side
     # fetch, before the WS even connects) shows first.
     return {**state, "connected_owner_ids": manager.connected_owner_ids((season, league_id))}
+
+
+@router.get("/queue")
+async def get_my_queue(request: Request):
+    """The caller's own ranked player queue for this season's draft —
+    always their own (payload["owner_id"]), never a client-supplied
+    owner/team id, same discipline as every other mutating route below.
+    Works at any draft status, including before a draft_config row even
+    exists yet (an owner_id/league_id pair is enough — a real draft
+    isn't a prerequisite for building a queue ahead of one)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+    return {"queue": queue}
+
+
+class QueueAddRequest(BaseModel):
+    sleeper_player_id: str
+
+
+@router.post("/queue")
+async def add_to_my_queue(body: QueueAddRequest, request: Request):
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        await draft_queue_queries.add_to_queue(conn, season, payload["owner_id"], body.sleeper_player_id, league_id)
+        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+    return {"queue": queue}
+
+
+@router.delete("/queue/{sleeper_player_id}")
+async def remove_from_my_queue(sleeper_player_id: str, request: Request):
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        await draft_queue_queries.remove_from_queue(conn, season, payload["owner_id"], sleeper_player_id, league_id)
+        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+    return {"queue": queue}
+
+
+class QueueReorderRequest(BaseModel):
+    sleeper_player_ids: list[str]
+
+
+@router.put("/queue/reorder")
+async def reorder_my_queue(body: QueueReorderRequest, request: Request):
+    """Full reorder — send the complete desired order, ranks 1..N are
+    reassigned from it (see queries/draft_queue.py's reorder_queue for
+    why a player id that's no longer actually in the queue is silently
+    dropped rather than erroring). Powers move-up/move-down, move-to-
+    top/bottom, and drag-and-drop alike — the client always computes
+    its own next full order and sends the whole thing, one code path
+    for every reorder interaction."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        queue = await draft_queue_queries.reorder_queue(
+            conn, season, payload["owner_id"], body.sleeper_player_ids, league_id
+        )
+    return {"queue": queue}
 
 
 class PickRequest(BaseModel):

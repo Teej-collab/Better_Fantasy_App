@@ -222,6 +222,9 @@ async def cleanup_test_season(pool):
         # they have to go before the teams_by_season DELETE below.
         await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_picks WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # draft_queue_items references owners(owner_id), so it has to go
+        # before the owners DELETE further below.
+        await conn.execute("DELETE FROM draft_queue_items WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_config WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute(
             "DELETE FROM league_draft_schedule WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
@@ -391,6 +394,9 @@ async def cleanup_test_season(pool):
             # same thing or the owners DELETE just below FK-violates.
             await conn.execute(
                 "DELETE FROM owner_preferences WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
+            )
+            await conn.execute(
+                "DELETE FROM draft_queue_items WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
             )
             # Chat v2, same shape as the espn_member_id-pattern cleanup
             # above (lines ~188-205) — a test_signup_owner_ids owner can

@@ -34,6 +34,7 @@ from app.domain.draft_exceptions import (
     PlayerNotDraftableError,
 )
 from app.domain.roster_slots import total_draftable_slots
+from app.queries import draft_queue as draft_queue_queries
 from app.queries import keepers as keeper_queries
 
 # Fixed per the league's own rules, not a commissioner setting (see
@@ -427,12 +428,24 @@ async def _advance_to_next_open_pick(
 
 
 async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+    """Guarded against double-starting (2026-09) — two independent
+    callers can both legitimately try to start the same draft now (a
+    commissioner's manual click, and app/scheduler.py's new auto-start
+    job firing at scheduled_start), and the FOR UPDATE lock below only
+    serializes them against each other, it doesn't make the second call
+    a no-op on its own. Without this guard, a second start_draft() on
+    an already-in-progress draft would rewind current_pick_number back
+    to 1 via _advance_to_next_open_pick(..., 1, ...) below — a real
+    "the draft just reset itself mid-pick" bug, not a hypothetical one,
+    now that a second automatic caller genuinely exists."""
     async with conn.transaction():
         config = await conn.fetchrow(
             "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
         )
         if config is None:
             raise DraftNotFoundError(f"No draft configured for season {season}")
+        if config["status"] != "not_started":
+            raise DraftAlreadyStartedError(f"Draft for season {season} has already been started")
         await conn.execute(
             "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1 AND league_id = $2",
             season, league_id,
@@ -539,6 +552,12 @@ async def make_pick(
             "VALUES ($1, $2, $3, 'BE', 'draft', $4)",
             season, team_id, sleeper_player_id, league_id,
         )
+        # Every team's queue drops this player now, not just the one who
+        # picked them — a queued-but-now-unavailable player must never
+        # linger in anyone else's queue (see app/queries/draft_queue.py's
+        # own docstring on why this is a whole-draft operation, not
+        # scoped to the picking team).
+        await draft_queue_queries.remove_player_from_all_queues(conn, season, sleeper_player_id, league_id)
         new_config = await _advance_to_next_open_pick(conn, season, pick["pick_number"] + 1, league_id)
         made_pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
@@ -579,6 +598,7 @@ async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dic
             season, team_id,
         )
         rostered_positions = [r["position"] for r in rostered]
+        queue = await draft_queue_queries.get_queue(conn, season, owner_id, league_id)
 
         available = await conn.fetch(
             """
@@ -592,7 +612,8 @@ async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dic
             season, league_id,
         )
         chosen = choose_autopick(
-            rostered_positions, config["roster_slots"], [dict(r) for r in available], config.get("position_max")
+            rostered_positions, config["roster_slots"], [dict(r) for r in available], config.get("position_max"),
+            queue,
         )
         if chosen is None:
             raise PlayerNotDraftableError("No draftable players remaining")

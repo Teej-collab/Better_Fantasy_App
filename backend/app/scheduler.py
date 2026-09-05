@@ -48,7 +48,19 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   A tight 2-second interval, not 60s/24h like the sync jobs above — a
   countdown clock hitting zero needs to feel immediate during a live
   draft. This must be turned on in production well before the real
-  draft date; it defaults off like everything else here.
+  draft date; it defaults off like everything else here. Same flag also
+  starts draft-starting-soon reminders and draft auto-start (below) —
+  all three are "is the draft system live" concerns, not worth separate
+  env vars.
+- Draft auto-start (same ENABLE_DRAFT_CLOCK_SCHEDULER flag, 2026-09):
+  flips a draft from 'not_started' to 'in_progress' on its own once the
+  real clock reaches draft_config.scheduled_start — the "pre-draft room"
+  feature's server-authoritative live transition, so the room goes live
+  on time even if the commissioner never clicks "Start Draft" manually.
+  Same 2-second tick as the pick clock, for the same "should feel
+  immediate" reason. Relies on start_draft()'s own guard against being
+  called twice (app/domain/draft_engine.py) so this can never race a
+  commissioner's own manual start into rewinding the draft.
 - Keeper auto-lock (ENABLE_KEEPER_LOCK_SCHEDULER): every 60 seconds,
   locks any league's keeper selections (league_keeper_rules.locked_at,
   same as a commissioner's manual "Lock keepers" click) once that
@@ -213,6 +225,43 @@ async def _run_draft_clock_job():
             )
 
 
+async def _run_draft_auto_start_job():
+    """Flips a draft from 'not_started' to 'in_progress' on its own once
+    the real clock reaches draft_config.scheduled_start (2026-09, "pre-
+    draft room" feature) — the server's own clock decides this, not any
+    client's, matching the feature's own "server is authoritative"
+    requirement for the live/not-live transition. Same "is the draft
+    system live" flag as the draft clock job above rather than a new
+    env var (same reasoning as _run_draft_starting_soon_job already
+    documents for reusing it).
+
+    Every league with its own due, not-yet-started draft gets started
+    independently, same "not just League #1" shape as the draft clock
+    job. draft_engine.start_draft() has its own guard against double-
+    starting (2026-09) — if a commissioner manually clicks "Start
+    Draft" in the same instant this tick fires, exactly one of the two
+    wins and the other is a clean no-op, never a rewind back to pick 1."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        due = await conn.fetch(
+            "SELECT league_id FROM draft_config "
+            "WHERE season = $1 AND status = 'not_started' AND scheduled_start IS NOT NULL "
+            "AND scheduled_start <= $2",
+            season, datetime.now(timezone.utc),
+        )
+        for row in due:
+            league_id = row["league_id"]
+            try:
+                config = await draft_engine.start_draft(conn, season, league_id=league_id)
+            except DraftError:
+                logger.exception("Draft auto-start failed for season=%s league_id=%s", season, league_id)
+                continue
+            await draft_manager.broadcast_to_draft((season, league_id), {"type": "draft_status", "config": config})
+            await notify_on_the_clock(season, league_id, config)
+            logger.info("Draft auto-started: season=%s league_id=%s", season, league_id)
+
+
 async def _run_keeper_lock_job():
     """Auto-locks any league's keeper window once its real draft is
     within 1 hour of its own scheduled_start (draft_config.scheduled_start,
@@ -359,6 +408,8 @@ def start_scheduler():
         # commissioner to remember to set.
         _scheduler.add_job(_run_draft_starting_soon_job, "interval", seconds=60, id="draft_starting_soon")
         logger.info("Draft starting-soon reminder scheduler started (every 60 seconds)")
+        _scheduler.add_job(_run_draft_auto_start_job, "interval", seconds=2, id="draft_auto_start")
+        logger.info("Draft auto-start scheduler started (every 2 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_KEEPER_LOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
