@@ -250,8 +250,15 @@ async def _push_notify_new_message(
     Never lets a notification failure break the chat send itself — the
     WebSocket broadcast above has already happened by the time this
     runs, so a bug or a dead push provider here can't cost anyone their
-    message."""
-    others = [p for p in participant_ids if p != sender_id and not manager.is_connected(p)]
+    message.
+
+    Uses has_visible_connection, not is_connected (2026-09 fix) — see
+    that method's own docstring on why plain is_connected was wrong
+    here: PresenceProvider.tsx's app-wide socket keeps is_connected
+    true for as long as the app is open ANYWHERE, including fully
+    backgrounded, which silently suppressed every chat push regardless
+    of preference for anyone who keeps the app open in the background."""
+    others = [p for p in participant_ids if p != sender_id and not manager.has_visible_connection(p)]
     if not others:
         return
     try:
@@ -318,6 +325,19 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                 continue
 
             event_type = data.get("type")
+
+            if event_type == "visibility":
+                # Not conversation-scoped — see manager.set_visibility's
+                # own docstring for why this exists at all: this is the
+                # real fix for chat messages silently never pushing a
+                # notification for someone whose app is merely open
+                # somewhere (PresenceProvider.tsx's own socket, mounted
+                # app-wide) but not actually being looked at right now.
+                visible = data.get("visible")
+                if isinstance(visible, bool):
+                    manager.set_visibility(websocket, visible)
+                continue
+
             conversation_id = data.get("conversation_id")
             if not isinstance(conversation_id, int):
                 continue

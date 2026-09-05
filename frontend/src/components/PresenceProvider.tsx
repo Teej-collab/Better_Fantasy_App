@@ -52,6 +52,27 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       const socket = new WebSocket(getChatWebSocketUrl(ticket));
       socketRef.current = socket;
 
+      // Real fix (2026-09) for chat push notifications silently never
+      // arriving for anyone who keeps the app open in the background:
+      // the backend used to treat "this socket is open at all" as "the
+      // owner is actively watching chat, don't also push" — true for
+      // as long as THIS socket (mounted app-wide, open regardless of
+      // page) stays connected, which a backgrounded tab/PWA commonly
+      // does well past when anyone's actually looking. Reporting real
+      // document.visibilityState lets the backend's own
+      // has_visible_connection (app/chat/manager.py) tell "open" apart
+      // from "actually in the foreground right now."
+      function sendVisibility() {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "visibility", visible: document.visibilityState === "visible" }));
+        }
+      }
+      socket.onopen = sendVisibility;
+      document.addEventListener("visibilitychange", sendVisibility);
+      socket.addEventListener("close", () => document.removeEventListener("visibilitychange", sendVisibility), {
+        once: true,
+      });
+
       socket.onmessage = (event) => {
         let data: { type?: string; owner_id?: number; online?: boolean };
         try {

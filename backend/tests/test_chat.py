@@ -734,12 +734,19 @@ async def test_websocket_message_skips_push_when_recipient_preference_is_off(poo
     assert sent == []
 
 
-async def test_websocket_message_does_not_push_to_a_currently_connected_recipient(pool, monkeypatch):
-    """Someone with chat open right now sees the message over the socket
-    already — pushing too would just be noise. Simulated by monkeypatching
-    is_connected() rather than opening two real simultaneous WebSocket
-    connections through TestClient's single background-thread event
-    loop, which is fragile under concurrent asyncpg use."""
+async def test_websocket_message_does_not_push_to_a_recipient_actively_viewing_chat(pool, monkeypatch):
+    """Someone with chat open AND in the foreground right now sees the
+    message over the socket already — pushing too would just be noise.
+    Simulated by monkeypatching has_visible_connection() rather than
+    opening two real simultaneous WebSocket connections through
+    TestClient's single background-thread event loop, which is fragile
+    under concurrent asyncpg use.
+
+    Uses has_visible_connection, not is_connected (2026-09 fix) — see
+    that method's own docstring on why plain is_connected was wrong: it
+    stays true for as long as the app is open ANYWHERE, including fully
+    backgrounded, which used to silently swallow every push for anyone
+    who keeps the app open in the background."""
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     from app.routers import chat as chat_router
 
@@ -749,7 +756,7 @@ async def test_websocket_message_does_not_push_to_a_currently_connected_recipien
         sent.append((owner_id, payload))
 
     monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
-    monkeypatch.setattr(chat_router.manager, "is_connected", lambda owner_id: owner_id == a)
+    monkeypatch.setattr(chat_router.manager, "has_visible_connection", lambda owner_id: owner_id == a)
 
     a = await _seed_owner(pool, 27)
     b = await _seed_owner(pool, 28)
@@ -767,6 +774,50 @@ async def test_websocket_message_does_not_push_to_a_currently_connected_recipien
     await _use_fresh_pool_for_websocket()
 
     assert sent == []
+
+
+async def test_websocket_message_still_pushes_to_a_backgrounded_recipient(pool, monkeypatch):
+    """The actual regression this session fixed: an owner whose app is
+    open (is_connected True) but not in the foreground (has_visible_
+    connection False — screen off, backgrounded tab) must still get a
+    real push. Before the fix, push suppression checked is_connected
+    alone, which PresenceProvider.tsx's own app-wide socket keeps true
+    in exactly this scenario, so this exact case silently never
+    pushed."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+    # Connected (app open) but NOT visible (backgrounded) — the real
+    # bug scenario. is_connected would say True here too; that's the
+    # whole point of not using it for this check anymore.
+    monkeypatch.setattr(chat_router.manager, "is_connected", lambda owner_id: owner_id == a)
+    monkeypatch.setattr(chat_router.manager, "has_visible_connection", lambda owner_id: False)
+
+    a = await _seed_owner(pool, 29)
+    b = await _seed_owner(pool, 30)
+    conversation_id = await _seed_direct_conversation(pool, a, b)
+    async with pool.acquire() as conn:
+        await preferences_queries.update_preferences(conn, a, {"push_enabled": True, "notify_direct_messages": True})
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, b)) as ws:
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "hey, you there?"})
+        ws.receive_json()
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert len(sent) >= 1
+    owner_id, payload = sent[0]
+    assert owner_id == a
+    assert "you there?" in payload["body"]
 
 
 async def test_websocket_message_with_mention_uses_the_mention_category(pool, monkeypatch):
@@ -1227,6 +1278,98 @@ async def test_commish_corner_message_always_notifies_regardless_of_preference(p
     await _use_fresh_pool_for_websocket()
 
     assert member_owner in sent
+
+
+async def test_connection_manager_has_visible_connection_defaults_true_until_told_otherwise():
+    """A fresh connection is assumed foreground until the client's own
+    first visibility frame says otherwise (sent immediately on open in
+    both PresenceProvider.tsx and ChatApp.tsx) — see set_visibility/
+    has_visible_connection's own docstrings for why this distinction
+    from plain is_connected exists at all."""
+    from app.chat.manager import ChatConnectionManager
+
+    class FakeSocket:
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            pass
+
+    manager = ChatConnectionManager()
+    ws = FakeSocket()
+    await manager.connect(1, ws)
+    assert manager.is_connected(1) is True
+    assert manager.has_visible_connection(1) is True
+
+    manager.set_visibility(ws, False)
+    assert manager.is_connected(1) is True  # still connected — just backgrounded
+    assert manager.has_visible_connection(1) is False
+
+    manager.set_visibility(ws, True)
+    assert manager.has_visible_connection(1) is True
+
+
+async def test_connection_manager_has_visible_connection_true_if_any_of_several_sockets_is():
+    """Two tabs/devices for the same owner — one backgrounded, one in
+    the foreground — should still count as "actively watching," same
+    "any open socket" shape as is_connected itself."""
+    from app.chat.manager import ChatConnectionManager
+
+    class FakeSocket:
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            pass
+
+    manager = ChatConnectionManager()
+    ws_background, ws_foreground = FakeSocket(), FakeSocket()
+    await manager.connect(1, ws_background)
+    await manager.connect(1, ws_foreground)
+    manager.set_visibility(ws_background, False)
+    manager.set_visibility(ws_foreground, True)
+
+    assert manager.has_visible_connection(1) is True
+
+
+async def test_connection_manager_has_visible_connection_false_for_unknown_owner():
+    from app.chat.manager import ChatConnectionManager
+
+    manager = ChatConnectionManager()
+    assert manager.has_visible_connection(999) is False
+
+
+async def test_websocket_visibility_event_updates_manager_state(pool, monkeypatch):
+    """The real end-to-end path: a client's `visibility` frame over its
+    actual WebSocket connection (not a monkeypatched manager) updates
+    has_visible_connection for that exact socket. A `visibility` frame
+    has no reply of its own to synchronize on, so a real chat message
+    (which does echo back to its own sender) is sent right after it —
+    the single-threaded receive loop processes frames in the order
+    they arrived, so receiving that echo proves the visibility frame
+    ahead of it was already handled."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.routers import chat as chat_router
+
+    owner_id = await _seed_owner(pool, 43)
+    other_owner_id = await _seed_owner(pool, 44)
+    conversation_id = await _seed_direct_conversation(pool, owner_id, other_owner_id)
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=await _session_cookie(pool, owner_id)) as ws:
+        assert chat_router.manager.has_visible_connection(owner_id) is True
+
+        ws.send_json({"type": "visibility", "visible": False})
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "sync"})
+        ws.receive_json()
+        assert chat_router.manager.has_visible_connection(owner_id) is False
+
+        ws.send_json({"type": "visibility", "visible": True})
+        ws.send_json({"type": "message", "conversation_id": conversation_id, "body": "sync again"})
+        ws.receive_json()
+        assert chat_router.manager.has_visible_connection(owner_id) is True
+    await _use_fresh_pool_for_websocket()
 
 
 async def test_connection_manager_broadcasts_only_to_specified_owners():

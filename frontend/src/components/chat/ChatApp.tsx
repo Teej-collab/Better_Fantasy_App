@@ -284,9 +284,26 @@ export function ChatApp({
       socket = new WebSocket(getChatWebSocketUrl(ticket));
       socketRef.current = socket;
 
-      socket.onopen = () => setConnected(true);
+      // Reports real document.visibilityState alongside PresenceProvider.tsx's
+      // own identical reporting on its separate socket — see that
+      // component's comment and app/chat/manager.py's
+      // has_visible_connection docstring for the real push-notification
+      // bug this fixes (a socket being open at all used to be treated
+      // as "actively watching chat," true even fully backgrounded).
+      function sendVisibility() {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "visibility", visible: document.visibilityState === "visible" }));
+        }
+      }
+      document.addEventListener("visibilitychange", sendVisibility);
+
+      socket.onopen = () => {
+        setConnected(true);
+        sendVisibility();
+      };
       socket.onclose = (event) => {
         setConnected(false);
+        document.removeEventListener("visibilitychange", sendVisibility);
         if (!cancelled && event.code !== 4401) {
           setTimeout(connect, RECONNECT_DELAY_MS);
         }

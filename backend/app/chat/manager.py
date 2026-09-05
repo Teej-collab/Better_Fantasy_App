@@ -19,11 +19,23 @@ from fastapi import WebSocket
 class ChatConnectionManager:
     def __init__(self):
         self._connections: dict[int, set[WebSocket]] = {}
+        # Per-socket document.visibilityState, reported by the client
+        # itself (frontend/src/components/PresenceProvider.tsx and
+        # ChatApp.tsx both send a `visibility` frame on connect and on
+        # every visibilitychange) — see has_visible_connection's own
+        # docstring for the real bug this exists to fix.
+        self._visible: dict[WebSocket, bool] = {}
 
     async def connect(self, owner_id: int, websocket: WebSocket) -> None:
         await websocket.accept()
         was_offline = owner_id not in self._connections
         self._connections.setdefault(owner_id, set()).add(websocket)
+        # Assumed foreground until the client's own first visibility
+        # frame says otherwise (sent immediately after connect) — a
+        # brief window where a background reconnect could look
+        # "visible" is harmless: worst case, one push arrives that a
+        # strictly correct client wouldn't have needed.
+        self._visible[websocket] = True
         # Only fires on the real 0->1 transition — an owner opening a
         # second tab/device while already connected elsewhere doesn't
         # re-announce "online" (they already are, per every other
@@ -34,6 +46,7 @@ class ChatConnectionManager:
             )
 
     async def disconnect(self, owner_id: int, websocket: WebSocket) -> None:
+        self._visible.pop(websocket, None)
         conns = self._connections.get(owner_id)
         if not conns:
             return
@@ -54,6 +67,31 @@ class ChatConnectionManager:
         app open right now" signal the admin-only GET /admin/online
         reads, not just "who has Chat open"."""
         return list(self._connections.keys())
+
+    def set_visibility(self, websocket: WebSocket, visible: bool) -> None:
+        if websocket in self._visible:
+            self._visible[websocket] = visible
+
+    def has_visible_connection(self, owner_id: int) -> bool:
+        """True if this owner has at least one open socket CURRENTLY in
+        the foreground (document.visibilityState === "visible" on the
+        client) — the real "are they actively watching chat right now"
+        signal for push-notification suppression (app/routers/chat.py's
+        _push_notify_new_message), distinct from is_connected/
+        connected_owner_ids' "has the app open at all."
+
+        This is a real bug fix (2026-09): before this existed, push
+        suppression used plain is_connected, which PresenceProvider.tsx's
+        own app-wide socket keeps true for as long as the app is open
+        ANYWHERE — including fully backgrounded on a phone with the
+        screen off — not just while actually looking at chat. That
+        silently swallowed every chat push notification for anyone who
+        keeps the app open in the background, regardless of their own
+        notify_league_chat/notify_direct_messages/etc. preference —
+        exactly the reported symptom: all notifications on, the test
+        notification works, but real chat messages never push."""
+        conns = self._connections.get(owner_id, ())
+        return any(self._visible.get(ws, False) for ws in conns)
 
     def is_connected(self, owner_id: int) -> bool:
         """True if this owner has at least one open chat WebSocket right
