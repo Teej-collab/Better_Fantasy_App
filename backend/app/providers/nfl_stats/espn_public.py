@@ -16,10 +16,15 @@ round-trip would be wasteful.
 
 Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
-NOT here (2pt conversions, blocked kicks, safeties, field-goal scoring
-by distance — none of these are in ESPN's boxscore stat tables at all,
-only in play-by-play, which isn't parsed here).
+NOT here (2pt conversions, blocked kicks, safeties — none of these are
+in ESPN's boxscore stat tables at all, only in play-by-play, which
+isn't parsed here). Field-goal-by-yardage (fg_yds) WAS in that gap
+list and no longer is (2026-09) — see _parse_fg_yards_by_player below
+for how it's actually captured, from a genuinely different part of the
+same summary response than the rest of this file reads.
 """
+import re
+
 import httpx
 
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary"
@@ -42,7 +47,73 @@ _INDIVIDUAL_STAT_MAP: dict[tuple[str, str], str] = {
     ("kickReturns", "kickReturnTouchdowns"): "ret_td",
     ("puntReturns", "puntReturnTouchdowns"): "ret_td",
     ("interceptions", "interceptionTouchdowns"): "ret_td",
+    # "defensive" already covers sacks (via _TEAM_DST_STAT_MAP below) —
+    # totalTackles is the same category, same per-athlete reliability,
+    # just never read before now (2026-09, the owner's own request).
+    # Genuinely not restricted to defensive positions in ESPN's own
+    # data: a QB who makes a real tackle (e.g. after his own
+    # interception gets returned) shows up in this same "defensive"
+    # category for that game, exactly like anyone else who recorded
+    # one — which is the actual answer to "can we track QB tackles":
+    # yes, because this was never position-scoped to begin with.
+    ("defensive", "totalTackles"): "def_tackle",
 }
+
+_FG_MADE_TEXT_RE = re.compile(r"(\d+) Yd Field Goal$")
+
+
+def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
+    """{espn_player_id: total yards of MADE field goals this game} —
+    real per-kick distances aren't in the boxscore `statistics` tables
+    at all (see this module's own docstring on the gap this used to
+    be); they're in the separate top-level `scoringPlays` array, e.g.
+    {"text": "Brandon Aubrey 41 Yd Field Goal", "type": {"abbreviation":
+    "FG"}, "team": {"abbreviation": "DAL"}} — a kicker's NAME and team,
+    never an athlete id.
+
+    Real player-ID attribution comes from cross-referencing the
+    boxscore's own `kicking` category instead, which — unlike
+    scoringPlays — DOES carry a real espn_player_id per athlete, just
+    without per-kick distance (only game totals). A team with exactly
+    one athlete in that category this game gets every one of that
+    team's made-FG scoringPlays attributed to them; a team with more
+    than one (a backup/emergency kicker mid-game — rare, unverified
+    against real data) is skipped entirely rather than guessed at,
+    same "safer to undercount than guess" rule the rest of this file
+    already follows for def_fum_rec's own known imprecision.
+
+    Misses aren't captured here — makes are the only field goals that
+    ever appear in `scoringPlays` (a miss doesn't score), and a miss's
+    distance isn't in the boxscore's per-athlete kicking totals either
+    (just makes/attempts as a ratio) — a real, separate, currently
+    unaddressed gap, not silently guessed at."""
+    kicker_by_team: dict[str, list[int]] = {}
+    for team_entry in data.get("boxscore", {}).get("players", []):
+        team_abbr = team_entry.get("team", {}).get("abbreviation")
+        if not team_abbr:
+            continue
+        for category in team_entry.get("statistics", []):
+            if category.get("name") != "kicking":
+                continue
+            for athlete_entry in category.get("athletes", []):
+                espn_player_id = athlete_entry.get("athlete", {}).get("id")
+                if espn_player_id is not None:
+                    kicker_by_team.setdefault(team_abbr, []).append(int(espn_player_id))
+
+    yards_by_player: dict[int, float] = {}
+    for play in data.get("scoringPlays", []):
+        if play.get("type", {}).get("abbreviation") != "FG":
+            continue
+        match = _FG_MADE_TEXT_RE.search(play.get("text", ""))
+        if not match:
+            continue
+        team_abbr = play.get("team", {}).get("abbreviation")
+        kickers = kicker_by_team.get(team_abbr, [])
+        if len(kickers) != 1:
+            continue  # ambiguous (0 or 2+ kickers credited) — skip rather than guess
+        yards_by_player[kickers[0]] = yards_by_player.get(kickers[0], 0) + int(match.group(1))
+
+    return yards_by_player
 
 # "made/attempted" combined strings (e.g. "3/4") — only extra points
 # are scored in v1; field goals need distance-bucketed data this
@@ -152,6 +223,20 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
                     made_key = _MADE_ATTEMPTED_MAP.get((category_name, raw_key))
                     if made_key is not None:
                         entry["stat_line"][made_key] = entry["stat_line"].get(made_key, 0) + _parse_made(raw_value)
+
+    # Merged in separately — _parse_fg_yards_by_player reads a
+    # genuinely different part of the response (scoringPlays, not the
+    # boxscore statistics tables the loop above walks) — see that
+    # function's own docstring. setdefault rather than assuming the
+    # player is already in players_by_id: true for every real kicker in
+    # practice (they always show up in the kicking category above too),
+    # but this stays correct even if that ever isn't the case.
+    for espn_player_id, fg_yards in _parse_fg_yards_by_player(data).items():
+        entry = players_by_id.setdefault(
+            espn_player_id,
+            {"espn_player_id": espn_player_id, "player_name": None, "pro_team": None, "stat_line": {}},
+        )
+        entry["stat_line"]["fg_yds"] = entry["stat_line"].get("fg_yds", 0) + fg_yards
 
     return list(players_by_id.values())
 

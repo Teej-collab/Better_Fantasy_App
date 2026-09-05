@@ -125,8 +125,10 @@ async def test_extra_points_made_parsed_from_made_over_attempted_string(monkeypa
     players = await espn_public.get_game_player_stats("401873286")
     kicker = next(p for p in players if p["espn_player_id"] == 9999)
 
-    # Field goals aren't mapped at all (deliberately — see module
-    # docstring), only XP.
+    # Field goal MAKES/ATTEMPTS as a ratio still aren't mapped here —
+    # fg_yds comes from a completely separate part of the response
+    # (scoringPlays, see the dedicated tests below), absent from this
+    # fixture, so no fg_yds key should appear at all.
     assert kicker["stat_line"] == {"xp_made": 3.0}
 
 
@@ -205,6 +207,142 @@ def test_parse_team_dst_stats_return_td_credits_the_team_too():
     # (def_return_td) for the same play.
     stat_lines = espn_public.parse_team_dst_stats(_FAKE_DST_SUMMARY)
     assert stat_lines["LV"]["def_return_td"] == 1
+
+
+# ---- def_tackle / fg_yds tests (2026-09) -----------------------------------
+# Fixture shaped from a real, live-verified capture (event 401772510,
+# DAL @ PHI, 2025 week 1) — confirmed against the actual ESPN response
+# during development: Brandon Aubrey (DAL kicker) made a real 41 Yd and
+# a real 53 Yd field goal (94 total), and Dak Prescott (DAL's QB)
+# genuinely recorded 1 real tackle that game, both exactly reproduced
+# below.
+
+_FAKE_TACKLE_AND_FG_SUMMARY = {
+    "scoringPlays": [
+        {"type": {"abbreviation": "TD"}, "text": "Someone 3 Yd Rush", "team": {"abbreviation": "DAL"}},
+        {"type": {"abbreviation": "FG"}, "text": "Brandon Aubrey 41 Yd Field Goal", "team": {"abbreviation": "DAL"}},
+        {"type": {"abbreviation": "FG"}, "text": "Brandon Aubrey 53 Yd Field Goal", "team": {"abbreviation": "DAL"}},
+        {"type": {"abbreviation": "FG"}, "text": "Jake Elliott 58 Yd Field Goal", "team": {"abbreviation": "PHI"}},
+    ],
+    "boxscore": {
+        "players": [
+            {
+                "team": {"abbreviation": "DAL"},
+                "statistics": [
+                    {
+                        "name": "defensive",
+                        "keys": ["totalTackles", "soloTackles"],
+                        "athletes": [
+                            {"athlete": {"id": "2577417", "displayName": "Dak Prescott"}, "stats": ["1", "1"]},
+                            {"athlete": {"id": "3121415", "displayName": "Malik Hooker"}, "stats": ["9", "4"]},
+                        ],
+                    },
+                    {
+                        "name": "kicking",
+                        "keys": ["fieldGoalsMade/fieldGoalAttempts", "extraPointsMade/extraPointAttempts"],
+                        "athletes": [
+                            {"athlete": {"id": "3953687", "displayName": "Brandon Aubrey"}, "stats": ["2/2", "2/2"]},
+                        ],
+                    },
+                ],
+            },
+            {
+                "team": {"abbreviation": "PHI"},
+                "statistics": [
+                    {
+                        "name": "kicking",
+                        "keys": ["fieldGoalsMade/fieldGoalAttempts", "extraPointsMade/extraPointAttempts"],
+                        "athletes": [
+                            {"athlete": {"id": "3050478", "displayName": "Jake Elliott"}, "stats": ["1/1", "3/3"]},
+                        ],
+                    },
+                ],
+            },
+        ]
+    },
+}
+
+
+async def test_def_tackle_is_captured_for_a_real_tackle_regardless_of_position(monkeypatch):
+    """The actual answer to "can we score QB tackles": yes, because
+    this was never position-scoped — anyone who recorded a real
+    tackle shows up in ESPN's "defensive" boxscore category, QB
+    included (Dak Prescott's own real tackle here, not a fabricated
+    example)."""
+    monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(_FAKE_TACKLE_AND_FG_SUMMARY))
+
+    players = await espn_public.get_game_player_stats("401772510")
+    by_id = {p["espn_player_id"]: p for p in players}
+
+    assert by_id[2577417]["stat_line"]["def_tackle"] == 1.0
+    assert by_id[3121415]["stat_line"]["def_tackle"] == 9.0
+
+
+async def test_fg_yds_sums_real_made_kick_distances_from_scoring_plays(monkeypatch):
+    monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(_FAKE_TACKLE_AND_FG_SUMMARY))
+
+    players = await espn_public.get_game_player_stats("401772510")
+    by_id = {p["espn_player_id"]: p for p in players}
+
+    assert by_id[3953687]["stat_line"]["fg_yds"] == 94  # 41 + 53
+    assert by_id[3050478]["stat_line"]["fg_yds"] == 58
+
+
+async def test_fg_yds_skips_a_team_with_an_ambiguous_kicker_count(monkeypatch):
+    """Two kickers credited on the same team this game (an emergency
+    kicker mid-game, or a data gap) — safer to attribute nothing than
+    guess which one actually made the kick, same rule def_fum_rec's
+    own docstring already documents for a different ambiguity."""
+    summary = {
+        "scoringPlays": [
+            {"type": {"abbreviation": "FG"}, "text": "Someone 40 Yd Field Goal", "team": {"abbreviation": "DAL"}},
+        ],
+        "boxscore": {
+            "players": [
+                {
+                    "team": {"abbreviation": "DAL"},
+                    "statistics": [
+                        {
+                            "name": "kicking",
+                            "keys": ["fieldGoalsMade/fieldGoalAttempts"],
+                            "athletes": [
+                                {"athlete": {"id": "1"}, "stats": ["1/1"]},
+                                {"athlete": {"id": "2"}, "stats": ["0/1"]},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(summary))
+
+    players = await espn_public.get_game_player_stats("401772510")
+    assert all("fg_yds" not in p["stat_line"] for p in players)
+
+
+def _fake_client_for(summary_data):
+    class _Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return summary_data
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, params=None):
+            return _Response()
+
+    return _Client
 
 
 async def test_get_game_stats_returns_both_players_and_team_dst(monkeypatch):

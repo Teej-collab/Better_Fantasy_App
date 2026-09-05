@@ -51,39 +51,39 @@ captured at attempt-level granularity), and defensive
 sacks/tackles/INTs/fumble recoveries are all directly present with
 real per-player identity.
 
-## Known gap — NOT captured, needs a follow-up spike before relying on it
+## Field-goal-by-yardage and tackles — CLOSED (2026-09)
 
-The stat category tables above have **no explicit fields** for:
-- 2-point conversions (passing/rushing/receiving) — this league's
-  scoring has all three at 2 pts each.
-- Blocked punts/PATs/FGs, and blocked-kick return TDs.
-- Safeties (2-pt team safety, 1-pt individual safety per this league's
-  misc scoring section).
-- Individual field-goal makes/misses by exact distance bucket (this
-  league's kicking scoring is bucketed 0-39/40-49/50-59/60+, and the
-  `kicking` category only gives game totals + longest make, not a
-  per-attempt list).
+Both of these used to be in the "known gap" list below; they're real,
+scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
 
-These are all real but rare events — likely present in `scoringPlays`
-(a top-level key on the same summary response, not yet captured/
-parsed) or `drives`/play-by-play text rather than the boxscore
-`statistics` tables. **Decision: ship the initial scoring engine
-covering the verified bulk-stat categories above, explicitly excluding
-these from v1** (i.e., undercounting these specific rare events rather
-than guessing at a shape), and validate the gap's real size by
-comparing engine output against this league's own historical
-ESPN-computed `rosters.points_scored` for 2023-2025 (see `TODO.md`'s
-Phase D entry) — if the discrepancy is negligible in practice, this
-gap may not be worth chasing further; if it's not, that's the trigger
-to capture `scoringPlays`'s real shape and close it.
+- **`fg_yds`** (0.1 pt/yard by default, commissioner-adjustable in
+  Settings > Scoring Rules): the boxscore's `kicking` category only
+  ever gave game totals, as suspected below — but the top-level
+  `scoringPlays` array (sibling to `boxscore`, not nested under it)
+  turned out to have real per-kick text like `"Brandon Aubrey 41 Yd
+  Field Goal"`, exactly the shape guessed at in the old "Not
+  investigated" note. No athlete id on that play itself, though — real
+  player attribution comes from cross-referencing which single athlete
+  the SAME team's `kicking` boxscore category credits that game (see
+  `_parse_fg_yards_by_player`'s own docstring for the full reasoning,
+  including why a team with more than one credited kicker is skipped
+  rather than guessed at). Verified live against event `401772510`
+  (DAL @ PHI): Brandon Aubrey's real 41+53 make and Jake Elliott's real
+  58 both reproduced exactly.
+- **`def_tackle`**: the `defensive` category's `totalTackles`/
+  `soloTackles` fields were already being fetched for sacks; they were
+  just never mapped before. Not position-scoped in ESPN's own data —
+  whoever recorded a real tackle shows up here, including a QB after
+  his own pick gets returned (verified live, same event: Dak Prescott
+  really did record 1 tackle in that game, and it's captured exactly).
 
-## Not investigated
-
-Individual FG make/miss by distance (see gap above) may actually be
-derivable from `drives`/play-by-play descriptions (ESPN's play text
-typically reads like `"J. Smith 42 Yd Field Goal"`) rather than a
-clean structured field — worth checking during the historical-
-validation pass above before assuming a parsing project is needed.
+**Still NOT captured** (unchanged, no new spike done on these): missed
+field goals (a miss doesn't appear in `scoringPlays` at all, and isn't
+distance-tagged in the boxscore's makes/attempts ratio either — a real,
+separate gap), 2-point conversions, blocked kicks, safeties. All are
+real but rare events, likely also derivable from `scoringPlays` given
+that FG-by-yardage turned out to be — a real follow-up, not attempted
+here.
 
 ## Team D/ST — verified and built (2026-08-26)
 
