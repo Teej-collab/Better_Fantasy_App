@@ -197,7 +197,11 @@ export function MessageThread({
       {isAnnouncementFeed ? (
         <AnnouncementFeed messages={messages} myOwnerId={myOwnerId} onReact={onReact} onDelete={onDelete} />
       ) : (
-        <div ref={listRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-4 py-3">
+        <div
+          ref={listRef}
+          onScroll={handleScroll}
+          className="relative flex-1 overflow-y-auto overscroll-y-contain px-4 py-3"
+        >
           {hasMoreOlder && (
             <div className="mb-3 flex justify-center">
               <button

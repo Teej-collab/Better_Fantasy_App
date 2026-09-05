@@ -1706,6 +1706,11 @@ export type FeedbackItem = {
   submitted_by: string;
   message: string;
   page_url: string | null;
+  // A screenshot attached via the same Vercel Blob upload flow chat
+  // images use (app/api/chat/upload/route.ts — one Blob store for the
+  // whole app, no feedback-specific upload endpoint needed). Validated
+  // server-side (app/image_url.py) before ever being stored.
+  image_url: string | null;
   created_at: string;
 };
 
@@ -1714,11 +1719,11 @@ export type FeedbackItem = {
 // write in this file is: a direct browser->backend fetch depends on the
 // browser sending the backend's cross-site cookie, which Safari's ITP
 // blocks by default even with SameSite=None.
-export async function submitFeedback(message: string, pageUrl: string | null): Promise<void> {
+export async function submitFeedback(message: string, pageUrl: string | null, imageUrl: string | null): Promise<void> {
   const res = await fetch("/api/backend/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, page_url: pageUrl }),
+    body: JSON.stringify({ message, page_url: pageUrl, image_url: imageUrl }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { getFeedback, submitFeedback, type FeedbackItem } from "@/lib/api";
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+type PendingImage =
+  | { status: "uploading"; previewUrl: string }
+  | { status: "done"; previewUrl: string; url: string }
+  | { status: "error" };
 
 /**
  * The owner's own request (2026-09-02) — "just like any app would
@@ -13,25 +22,56 @@ import { getFeedback, submitFeedback, type FeedbackItem } from "@/lib/api";
  * captured automatically as free context — whoever reads it later
  * knows what screen the report was actually about without having to
  * ask.
+ *
+ * The screenshot attachment (2026-09) reuses chat's own Vercel Blob
+ * upload flow (app/api/chat/upload/route.ts — any signed-in account,
+ * same 8MB/image-type limits) rather than a new upload endpoint built
+ * just for this; one Blob store for the whole app, see backend's
+ * app/image_url.py.
  */
 export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean }) {
   const [message, setMessage] = useState("");
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Bumped on every successful submit — passed to RecentFeedback as a
   // dependency so a commissioner submitting their own report sees it
   // show up immediately below, instead of only after a manual reload.
   const [refreshCount, setRefreshCount] = useState(0);
 
+  async function uploadImageFile(file: File) {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return;
+    if (pendingImage?.status === "uploading") return;
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingImage({ status: "uploading", previewUrl });
+    try {
+      const blob = await upload(file.name, file, { access: "public", handleUploadUrl: "/api/chat/upload" });
+      setPendingImage({ status: "done", previewUrl, url: blob.url });
+    } catch {
+      setPendingImage({ status: "error" });
+    }
+  }
+
+  function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) uploadImageFile(file);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = message.trim();
-    if (!trimmed) return;
+    const imageUrl = pendingImage?.status === "done" ? pendingImage.url : null;
+    if (!trimmed && !imageUrl) return;
+    if (pendingImage?.status === "uploading") return;
     setStatus("saving");
     setError(null);
     try {
-      await submitFeedback(trimmed, window.location.pathname);
+      await submitFeedback(trimmed, window.location.pathname, imageUrl);
       setMessage("");
+      setPendingImage(null);
       setStatus("sent");
       setRefreshCount((n) => n + 1);
     } catch (e) {
@@ -45,7 +85,7 @@ export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean })
       <div>
         <h1 className="text-xl font-semibold">Feedback</h1>
         <p className="text-sm text-black/50 dark:text-white/50">
-          Found a bug, or have an idea for the league? Send it straight through.
+          Found a bug, or have an idea for the league? Send it straight through — attach a screenshot if it helps.
         </p>
       </div>
 
@@ -66,13 +106,57 @@ export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean })
             placeholder="What's on your mind?"
             className="min-w-0 resize-none rounded-lg border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-black/20"
           />
+
+          {pendingImage && pendingImage.status !== "error" && (
+            <div className="relative w-fit">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL / freshly-uploaded Blob URL, not a static/known-at-build-time asset */}
+              <img
+                src={pendingImage.status === "done" ? pendingImage.url : pendingImage.previewUrl}
+                alt="Attached screenshot"
+                className={`h-auto max-h-40 w-auto max-w-full rounded-lg ${pendingImage.status === "uploading" ? "opacity-50" : ""}`}
+              />
+              <button
+                type="button"
+                onClick={() => setPendingImage(null)}
+                aria-label="Remove screenshot"
+                className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs text-white hover:bg-black/90"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {pendingImage?.status === "error" && (
+            <p className="text-xs text-red-500">
+              Couldn&apos;t upload that image —{" "}
+              <button type="button" onClick={() => setPendingImage(null)} className="underline">
+                dismiss
+              </button>{" "}
+              and try again.
+            </p>
+          )}
+
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={status === "saving" || !message.trim()}
+              disabled={status === "saving" || pendingImage?.status === "uploading" || (!message.trim() && pendingImage?.status !== "done")}
               className="w-fit rounded-full bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
             >
               {status === "saving" ? "Sending…" : "Send feedback"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_IMAGE_TYPES.join(",")}
+              onChange={pickImage}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach a screenshot"
+              className="rounded-full border border-black/10 px-3 py-2 text-sm text-black/60 hover:bg-black/5 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
+            >
+              📎 Screenshot
             </button>
             {status === "sent" && <p className="text-xs text-emerald-600 dark:text-emerald-400">Sent — thanks!</p>}
           </div>
@@ -118,8 +202,19 @@ function RecentFeedback({ refreshCount }: { refreshCount: number }) {
       {items && items.length > 0 && (
         <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {items.map((item) => (
-            <li key={item.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
-              <p className="text-sm whitespace-pre-wrap">{item.message}</p>
+            <li key={item.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+              {item.message && <p className="text-sm whitespace-pre-wrap">{item.message}</p>}
+              {item.image_url && (
+                <a href={item.image_url} target="_blank" rel="noopener noreferrer" className="w-fit">
+                  <Image
+                    src={item.image_url}
+                    alt="Attached screenshot"
+                    width={400}
+                    height={400}
+                    className="h-auto max-h-56 w-auto max-w-full rounded-lg"
+                  />
+                </a>
+              )}
               <p className="text-xs text-black/50 dark:text-white/50">
                 {item.submitted_by} · {new Date(item.created_at).toLocaleString()}
                 {item.page_url && ` · ${item.page_url}`}

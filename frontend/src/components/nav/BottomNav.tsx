@@ -19,6 +19,26 @@ import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/l
 // height directly and nudges the bar up by exactly that amount —
 // zero effect whenever the browser's own resize behavior is already
 // correct (the gap is 0), a real fix when it isn't.
+//
+// MIN_KEYBOARD_GAP_PX guards against a real regression (2026-09): the
+// same innerHeight-vs-visualViewport gap this measures also shows up
+// for reasons that have nothing to do with a keyboard — Safari's own
+// collapsible bottom toolbar being in its expanded state (the default
+// right after navigating somewhere, before a scroll auto-collapses
+// it), or the extra system status bar iOS adds while a phone call is
+// active in the background. Both are real, everyday-sized gaps
+// (tens of px), and without a floor this bar would misread either one
+// as "a keyboard is open" and shift itself upward over content that
+// never actually needed the room — concretely, sliding up over Chat's
+// message composer (ChatApp.tsx sizes the panel above this bar
+// assuming its DEFAULT, non-shifted position, so this bar moving on
+// its own without the panel above it knowing is exactly what re-
+// covers the composer). A real on-screen keyboard eats a much bigger
+// share of the screen than either of those — comfortably clearing this
+// floor on every phone this app supports — so this only ever
+// suppresses the false positives, never a genuine keyboard.
+const MIN_KEYBOARD_GAP_PX = 150;
+
 function useKeyboardInset(): number {
   const [inset, setInset] = useState(0);
 
@@ -29,7 +49,7 @@ function useKeyboardInset(): number {
     function measure() {
       if (!viewport) return;
       const gap = window.innerHeight - viewport.height - viewport.offsetTop;
-      setInset(Math.max(0, Math.round(gap)));
+      setInset(gap > MIN_KEYBOARD_GAP_PX ? Math.round(gap) : 0);
     }
 
     measure();

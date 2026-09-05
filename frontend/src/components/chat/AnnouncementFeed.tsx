@@ -32,7 +32,7 @@ export function AnnouncementFeed({
   const newestFirst = [...messages].reverse();
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-3">
+    <div className="flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
       {newestFirst.length === 0 ? (
         <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">
           No announcements yet.

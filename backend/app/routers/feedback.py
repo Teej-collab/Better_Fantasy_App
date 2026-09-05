@@ -18,6 +18,7 @@ from app.auth.config import SessionConfig
 from app.auth.league_context import require_league_commissioner
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
+from app.image_url import validate_blob_image_url
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -36,12 +37,20 @@ def _require_session(request: Request) -> dict:
 class FeedbackRequest(BaseModel):
     message: str
     page_url: str | None = None
+    # A screenshot attached via the same Vercel Blob upload flow chat
+    # images use (frontend/src/app/api/chat/upload/route.ts — one Blob
+    # store for the whole app, see app/image_url.py's own docstring),
+    # not a new upload path built just for this. Validated the same way
+    # a chat message's image_url is: silently dropped rather than
+    # erroring, if it doesn't actually point at our own Blob store.
+    image_url: str | None = None
 
 
 @router.post("")
 async def submit_feedback(body: FeedbackRequest, request: Request):
     message = body.message.strip()
-    if not message:
+    image_url = validate_blob_image_url(body.image_url)
+    if not message and not image_url:
         raise HTTPException(status_code=400, detail="Feedback message can't be empty")
 
     payload = _require_session(request)
@@ -65,8 +74,8 @@ async def submit_feedback(body: FeedbackRequest, request: Request):
             submitted_by = "Unknown"
 
         await conn.execute(
-            "INSERT INTO feedback (user_id, submitted_by, message, page_url) VALUES ($1, $2, $3, $4)",
-            payload["user_id"], submitted_by, message, body.page_url,
+            "INSERT INTO feedback (user_id, submitted_by, message, page_url, image_url) VALUES ($1, $2, $3, $4, $5)",
+            payload["user_id"], submitted_by, message, body.page_url, image_url,
         )
     return {"status": "ok"}
 
@@ -78,7 +87,7 @@ async def list_feedback(request: Request):
     async with pool.acquire() as conn:
         await require_league_commissioner(conn, payload)
         rows = await conn.fetch(
-            "SELECT id, submitted_by, message, page_url, created_at "
+            "SELECT id, submitted_by, message, page_url, image_url, created_at "
             "FROM feedback ORDER BY created_at DESC LIMIT 200"
         )
     return {"items": [dict(r) for r in rows]}

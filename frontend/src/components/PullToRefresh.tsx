@@ -22,7 +22,32 @@ type PullState = "idle" | "pulling" | "ready" | "refreshing";
  * normal touchstart lower on the page, or a touchmove after the page has
  * scrolled away from the top mid-gesture, is left alone entirely for the
  * browser to handle as ordinary scrolling.
+ *
+ * `window.scrollY > 0` alone isn't enough of a check, though: Chat
+ * (ChatApp.tsx) and any other fixed-height "app shell" screen never
+ * scrolls the actual page at all — window.scrollY is always 0 there —
+ * so without also checking for a nested scrollable ancestor, dragging
+ * DOWN inside the message list (the normal gesture for revealing OLDER
+ * messages) looked to this component exactly like pulling down at the
+ * top of the page, and it would steal the gesture with preventDefault(),
+ * which is the "scrolling messages drags the whole page instead" bug
+ * this was fixed for (2026-09). findScrollableAncestor below makes any
+ * touch that starts inside a nested overflow-y scrollable region (the
+ * chat message list, any future one) hand off to that element's own
+ * native scrolling untouched, regardless of the outer page's scrollY.
  */
+function findScrollableAncestor(node: EventTarget | null, stopAt: HTMLElement | null): boolean {
+  let el = node instanceof Element ? node : null;
+  while (el && el !== stopAt) {
+    const style = window.getComputedStyle(el);
+    if ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+      return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
 export function PullToRefresh({ children }: { children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const refresh = useRefreshApplicationData();
@@ -42,7 +67,11 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
     if (!el) return;
 
     function onTouchStart(e: TouchEvent) {
-      if (window.scrollY > 0 || pullStateRef.current === "refreshing") {
+      if (
+        window.scrollY > 0 ||
+        pullStateRef.current === "refreshing" ||
+        findScrollableAncestor(e.target, el)
+      ) {
         startYRef.current = null;
         return;
       }
