@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getDraftPool,
   getDraftState,
   getDraftWebSocketUrl,
   getDraftWsTicket,
   submitDraftPick,
+  type DraftChatMessage,
   type DraftPoolPlayer,
   type DraftState,
 } from "@/lib/draftApi";
@@ -76,6 +77,16 @@ export function DraftRoom({
   const [connectedOwnerIds, setConnectedOwnerIds] = useState<Set<number>>(
     () => new Set(initialDraftState?.connected_owner_ids ?? [])
   );
+  const [chatMessages, setChatMessages] = useState<DraftChatMessage[]>(initialDraftState?.chat_messages ?? []);
+  const [chatDraft, setChatDraft] = useState("");
+  // Ephemeral "so-and-so joined/left the room" lines interleaved with
+  // real chat — sourced from the same `presence` WS events that already
+  // drive the online-dot indicator above, never persisted (see
+  // draft_room_messages' own migration docstring: "who's online" is
+  // deliberately not stored). Capped so a flaky connection reconnecting
+  // over and over can't grow this list forever.
+  const [presenceEvents, setPresenceEvents] = useState<{ ownerId: number; online: boolean; at: number }[]>([]);
+  const chatLogRef = useRef<HTMLDivElement | null>(null);
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -117,6 +128,7 @@ export function DraftRoom({
       const state = await getDraftState();
       setDraftState(state);
       setConnectedOwnerIds(new Set(state.connected_owner_ids ?? []));
+      setChatMessages(state.chat_messages ?? []);
       setLoadError(null);
     } catch (e) {
       // Clears any stale draftState too — a reset (see
@@ -203,7 +215,7 @@ export function DraftRoom({
         }
       };
       socket.onmessage = (event) => {
-        let msg: { type?: string; owner_id?: number; online?: boolean } | null = null;
+        let msg: { type?: string; owner_id?: number; online?: boolean; message?: DraftChatMessage } | null = null;
         try {
           msg = JSON.parse(event.data);
         } catch {
@@ -212,7 +224,10 @@ export function DraftRoom({
         // Presence updates just toggle one owner_id in a local set —
         // handled directly instead of the full refetch below, since a
         // connection blip shouldn't trigger a round trip for state
-        // that hasn't actually changed.
+        // that hasn't actually changed. Also drops an ephemeral
+        // "joined/left the room" line into the chat log (never
+        // persisted server-side — see draft_room_messages' own
+        // migration docstring).
         if (msg?.type === "presence" && typeof msg.owner_id === "number") {
           const ownerId = msg.owner_id;
           const online = msg.online;
@@ -222,6 +237,16 @@ export function DraftRoom({
             else next.delete(ownerId);
             return next;
           });
+          setPresenceEvents((prev) => [...prev, { ownerId, online: Boolean(online), at: Date.now() }].slice(-20));
+          return;
+        }
+        // A real draft-room chat message — appended directly, no
+        // refetch needed (the server already broadcasts the full
+        // persisted row, same "trust the WS payload" shape as
+        // pick_made elsewhere in this handler).
+        if (msg?.type === "chat" && msg.message) {
+          const message = msg.message;
+          setChatMessages((prev) => [...prev, message]);
           return;
         }
         // Every other event type (pick_made/draft_status/pick_undone) just
@@ -299,6 +324,48 @@ export function DraftRoom({
     () => queue.queue.map((id) => knownPlayers.get(id)).filter((p): p is DraftPoolPlayer => Boolean(p)),
     [queue.queue, knownPlayers]
   );
+
+  function sendChatMessage() {
+    const text = chatDraft.trim();
+    if (!text || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(JSON.stringify({ type: "chat", text }));
+    setChatDraft("");
+  }
+
+  // Merges real persisted chat with ephemeral join/leave lines into one
+  // timeline, oldest first — the only place these two sources meet.
+  const chatTimeline = useMemo(() => {
+    const items: { key: string; at: number; node: ReactNode }[] = [];
+    for (const m of chatMessages) {
+      items.push({
+        key: `msg-${m.id}`,
+        at: new Date(m.created_at).getTime(),
+        node: (
+          <p key={`msg-${m.id}`} className={m.owner_id === myOwnerId ? "text-right" : ""}>
+            <span className="text-black/50 dark:text-white/50">{teamNameByOwner.get(m.owner_id) ?? m.owner_name}: </span>
+            <span>{m.text}</span>
+          </p>
+        ),
+      });
+    }
+    for (const p of presenceEvents) {
+      items.push({
+        key: `presence-${p.ownerId}-${p.at}`,
+        at: p.at,
+        node: (
+          <p key={`presence-${p.ownerId}-${p.at}`} className="text-center text-xs text-black/40 italic dark:text-white/40">
+            {teamNameByOwner.get(p.ownerId) ?? `Owner ${p.ownerId}`} {p.online ? "joined" : "left"} the room
+          </p>
+        ),
+      });
+    }
+    items.sort((a, b) => a.at - b.at);
+    return items;
+  }, [chatMessages, presenceEvents, teamNameByOwner, myOwnerId]);
+
+  useEffect(() => {
+    chatLogRef.current?.scrollTo({ top: chatLogRef.current.scrollHeight });
+  }, [chatTimeline.length]);
 
   async function pick(sleeperPlayerId: string) {
     setSubmitting(true);
@@ -585,6 +652,40 @@ export function DraftRoom({
                   {p.is_keeper && <span className="ml-1 text-[10px] text-emerald-500">KEEPER</span>}
                 </p>
               ))}
+            </section>
+
+            <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
+              <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                Draft room chat
+              </h2>
+              <div ref={chatLogRef} className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
+                {chatTimeline.length === 0 ? (
+                  <p className="text-xs text-black/40 dark:text-white/40">No messages yet — say hi.</p>
+                ) : (
+                  chatTimeline.map((item) => item.node)
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={chatDraft}
+                  onChange={(e) => setChatDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") sendChatMessage();
+                  }}
+                  placeholder={connected ? "Message the room…" : "Reconnecting…"}
+                  disabled={!connected}
+                  aria-label="Draft room chat message"
+                  maxLength={500}
+                  className="min-w-0 flex-1 rounded-full border border-black/10 bg-transparent px-3 py-1 text-sm disabled:opacity-50 dark:border-white/10"
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={!connected || !chatDraft.trim()}
+                  className="shrink-0 rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-30"
+                >
+                  Send
+                </button>
+              </div>
             </section>
           </div>
         </div>

@@ -93,6 +93,39 @@ def draft_starting_soon(minutes: int) -> dict:
     }
 
 
+def draft_room_open() -> dict:
+    return {
+        "title": "🏈 Draft room is open",
+        "body": "Build your player queue now — the real draft starts in an hour.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/draft",
+        "data": {"type": "draft_room_open"},
+    }
+
+
+def draft_live() -> dict:
+    return {
+        "title": "🏈 The draft is live",
+        "body": "Picking has started — get in the room.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/draft",
+        "data": {"type": "draft_live"},
+    }
+
+
+def keeper_deadline_approaching(minutes: int) -> dict:
+    return {
+        "title": "⏰ Keeper picks lock soon",
+        "body": f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.",
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/keepers",
+        "data": {"type": "keeper_deadline_approaching"},
+    }
+
+
 def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:
     return {
         "title": "🏈 You're on the clock",

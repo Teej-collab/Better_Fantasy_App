@@ -23,6 +23,7 @@ from app.auth.session import create_session_token, create_ticket_token
 from app.domain import draft_engine
 from app.main import app
 from app.notifications import draft_events
+from app.queries import draft_room_chat as draft_room_chat_queries
 from app.queries import leagues as league_queries
 from app.queries import owner_preferences as preferences_queries
 from tests.conftest import TEST_SEASON
@@ -249,8 +250,13 @@ async def test_pick_pushes_on_the_clock_to_the_next_picker(pool, monkeypatch):
         resp = await client.post("/draft/pick", json={"sleeper_player_id": player})
         assert resp.status_code == 200
 
-    assert len(sent) == 1
-    notified_owner_id, payload = sent[0]
+    # /draft/start above also pushes a "draft is live" notification to
+    # owner_b (push-enabled, per notify_draft_live) — this test is about
+    # the on-the-clock push specifically, so it isolates that one rather
+    # than asserting a total send count.
+    on_the_clock_sends = [(o, p) for o, p in sent if p["data"]["type"] == "draft_on_the_clock"]
+    assert len(on_the_clock_sends) == 1
+    notified_owner_id, payload = on_the_clock_sends[0]
     assert notified_owner_id == owner_b  # owner_b is up next after owner_a's pick
     assert payload["data"]["type"] == "draft_on_the_clock"
 
@@ -349,6 +355,84 @@ async def test_websocket_initial_state_reports_only_self_when_alone(pool, monkey
 
     assert received["type"] == "draft_state"
     assert received["connected_owner_ids"] == [owner_a]
+
+
+async def test_draft_state_rest_includes_chat_history(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "chat_rest")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS, league_id=league_id)
+        await draft_room_chat_queries.insert_message(conn, TEST_SEASON, league_id, owner_a, "hello room")
+
+    client = _client()
+    resp = await client.get("/draft/state", cookies=_session_cookie(user_a, owner_a))
+    assert resp.status_code == 200
+    messages = resp.json()["chat_messages"]
+    assert [m["text"] for m in messages] == ["hello room"]
+    assert messages[0]["owner_id"] == owner_a
+
+
+async def test_websocket_initial_state_includes_chat_history(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "ws_chat_history")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS, league_id=league_id)
+        await draft_room_chat_queries.insert_message(conn, TEST_SEASON, league_id, owner_a, "earlier message")
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(user_a, owner_a)}") as ws:
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert [m["text"] for m in received["chat_messages"]] == ["earlier message"]
+
+
+async def test_websocket_chat_message_round_trips_and_persists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "ws_chat_send")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS, league_id=league_id)
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(user_a, owner_a)}") as ws:
+        ws.receive_json()  # initial draft_state frame
+        ws.send_json({"type": "chat", "text": "hello from the room"})
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["type"] == "chat"
+    assert received["message"]["text"] == "hello from the room"
+    assert received["message"]["owner_id"] == owner_a
+
+    async with pool.acquire() as conn:
+        messages = await draft_room_chat_queries.get_recent_messages(conn, TEST_SEASON, league_id)
+    assert [m["text"] for m in messages] == ["hello from the room"]
+
+
+async def test_websocket_chat_ignores_blank_text(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "ws_chat_blank")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS, league_id=league_id)
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect(f"/draft/ws?season={TEST_SEASON}&ticket={_ws_ticket(user_a, owner_a)}") as ws:
+        ws.receive_json()  # initial draft_state frame
+        ws.send_json({"type": "chat", "text": "   "})
+        ws.send_json({"type": "chat", "text": "real message"})
+        # The blank send above is silently dropped server-side — the next
+        # frame this socket actually receives is the real message, not an
+        # empty broadcast for the blank one.
+        received = ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["message"]["text"] == "real message"
+    async with pool.acquire() as conn:
+        messages = await draft_room_chat_queries.get_recent_messages(conn, TEST_SEASON, league_id)
+    assert [m["text"] for m in messages] == ["real message"]
 
 
 async def test_reset_requires_commissioner(pool, monkeypatch):

@@ -3,7 +3,13 @@ import itertools
 
 from app.domain import draft_engine
 from app.queries import leagues as league_queries
-from app.scheduler import _run_draft_auto_start_job, _run_draft_starting_soon_job, _run_keeper_lock_job
+from app.scheduler import (
+    _run_draft_auto_start_job,
+    _run_draft_room_open_job,
+    _run_draft_starting_soon_job,
+    _run_keeper_deadline_warning_job,
+    _run_keeper_lock_job,
+)
 from tests.conftest import TEST_SEASON
 
 _espn_team_id_counter = itertools.count(800001)
@@ -291,3 +297,189 @@ async def test_draft_auto_start_job_never_rewinds_an_already_in_progress_draft(p
         )
     assert config["status"] == "in_progress"
     assert config["current_pick_number"] == 2  # not rewound back to 1
+
+
+# ---- draft room open (2026-09, pre-draft room notifications) ---------------
+
+
+async def test_draft_room_open_job_notifies_a_league_within_the_1_hour_window(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "room-open-due")
+        # scheduled_start 45 minutes out — room-open threshold is 1 hour
+        # before scheduled_start, so this is already past it.
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=45))
+
+        await _run_draft_room_open_job()
+
+        row = await conn.fetchrow(
+            "SELECT room_opened_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["room_opened_notified_at"] is not None
+
+
+async def test_draft_room_open_job_leaves_a_league_more_than_1_hour_out_untouched(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "room-open-not-due")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(hours=3))
+
+        await _run_draft_room_open_job()
+
+        row = await conn.fetchrow(
+            "SELECT room_opened_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["room_opened_notified_at"] is None
+
+
+async def test_draft_room_open_job_is_idempotent(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "room-open-idempotent")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=10))
+
+        await _run_draft_room_open_job()
+        first = await conn.fetchval(
+            "SELECT room_opened_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+        await _run_draft_room_open_job()
+        second = await conn.fetchval(
+            "SELECT room_opened_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+    assert first == second  # second run is a no-op, doesn't re-notify
+
+
+async def test_draft_room_open_job_ignores_a_draft_already_in_progress(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "room-open-in-progress")
+        await _seed_draft_config(conn, league_id, now + datetime.timedelta(minutes=10))
+        await conn.execute(
+            "UPDATE draft_config SET status = 'in_progress' WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+        await _run_draft_room_open_job()
+
+        row = await conn.fetchrow(
+            "SELECT room_opened_notified_at FROM draft_config WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["room_opened_notified_at"] is None
+
+
+# ---- keeper deadline warning (2026-09) --------------------------------------
+
+
+async def _seed_keeper_deadline(conn, league_id: int, keeper_deadline, max_keepers: int = 2):
+    await conn.execute(
+        "INSERT INTO league_keeper_rules (season, max_keepers, league_id, keeper_deadline) VALUES ($1, $2, $3, $4)",
+        TEST_SEASON, max_keepers, league_id, keeper_deadline,
+    )
+
+
+async def test_keeper_deadline_warning_job_notifies_a_league_within_30_minutes(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "keeper-warn-due")
+        await _seed_keeper_deadline(conn, league_id, now + datetime.timedelta(minutes=20))
+
+        await _run_keeper_deadline_warning_job()
+
+        row = await conn.fetchrow(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["deadline_warning_notified_at"] is not None
+
+
+async def test_keeper_deadline_warning_job_leaves_a_league_more_than_30_minutes_out_untouched(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "keeper-warn-not-due")
+        await _seed_keeper_deadline(conn, league_id, now + datetime.timedelta(hours=2))
+
+        await _run_keeper_deadline_warning_job()
+
+        row = await conn.fetchrow(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["deadline_warning_notified_at"] is None
+
+
+async def test_keeper_deadline_warning_job_ignores_a_league_with_no_keepers(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "keeper-warn-no-keepers")
+        await _seed_keeper_deadline(conn, league_id, now + datetime.timedelta(minutes=10), max_keepers=0)
+
+        await _run_keeper_deadline_warning_job()
+
+        row = await conn.fetchrow(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["deadline_warning_notified_at"] is None
+
+
+async def test_keeper_deadline_warning_job_ignores_an_already_locked_league(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "keeper-warn-locked")
+        await _seed_keeper_deadline(conn, league_id, now + datetime.timedelta(minutes=10))
+        await conn.execute(
+            "UPDATE league_keeper_rules SET locked_at = now() WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+        await _run_keeper_deadline_warning_job()
+
+        row = await conn.fetchrow(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+    assert row["deadline_warning_notified_at"] is None
+
+
+async def test_keeper_deadline_warning_job_is_idempotent(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    async with pool.acquire() as conn:
+        league_id = await _make_league(conn, "keeper-warn-idempotent")
+        await _seed_keeper_deadline(conn, league_id, now + datetime.timedelta(minutes=5))
+
+        await _run_keeper_deadline_warning_job()
+        first = await conn.fetchval(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+        await _run_keeper_deadline_warning_job()
+        second = await conn.fetchval(
+            "SELECT deadline_warning_notified_at FROM league_keeper_rules WHERE season = $1 AND league_id = $2",
+            TEST_SEASON, league_id,
+        )
+
+    assert first == second  # second run is a no-op, doesn't re-notify

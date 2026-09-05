@@ -16,6 +16,7 @@ client-supplied value — so a signed-in visitor can only ever act on
 their own active league's draft, never one they merely guess the
 season of (see TODO.md's PHASE 9 entry).
 """
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -41,9 +42,10 @@ from app.domain.draft_exceptions import (
     PlayerNotDraftableError,
 )
 from app.draft.manager import manager
-from app.notifications.draft_events import notify_on_the_clock
+from app.notifications.draft_events import notify_draft_live, notify_on_the_clock
 from app.queries import draft as draft_queries
 from app.queries import draft_queue as draft_queue_queries
+from app.queries import draft_room_chat as draft_room_chat_queries
 
 router = APIRouter(prefix="/draft", tags=["draft"])
 
@@ -97,6 +99,7 @@ async def draft_state(request: Request):
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
         state = await draft_queries.get_draft_state(conn, season, league_id)
+        chat_messages = await draft_room_chat_queries.get_recent_messages(conn, season, league_id)
     if state is None:
         raise HTTPException(status_code=404, detail="No draft configured for this season")
     # In-process presence, not a DB read — who's actually got the draft
@@ -104,7 +107,11 @@ async def draft_state(request: Request):
     # in" signal the WS handshake's own draft_state frame carries. This
     # REST read is what a fresh page load (draft/page.tsx's server-side
     # fetch, before the WS even connects) shows first.
-    return {**state, "connected_owner_ids": manager.connected_owner_ids((season, league_id))}
+    return {
+        **state,
+        "connected_owner_ids": manager.connected_owner_ids((season, league_id)),
+        "chat_messages": chat_messages,
+    }
 
 
 @router.get("/queue")
@@ -490,6 +497,11 @@ async def start_draft(request: Request):
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
     await manager.broadcast_to_draft((season, league_id), result)
+    async with pool.acquire() as conn:
+        owner_rows = await conn.fetch(
+            "SELECT DISTINCT owner_id FROM draft_picks WHERE season = $1 AND league_id = $2", season, league_id
+        )
+    await notify_draft_live(season, league_id, [r["owner_id"] for r in owner_rows])
     await notify_on_the_clock(season, league_id, config)
     return result
 
@@ -572,6 +584,7 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
             await websocket.close(code=4401)
             return
         state = await draft_queries.get_draft_state(conn, season, league_id)
+        chat_messages = await draft_room_chat_queries.get_recent_messages(conn, season, league_id)
 
     owner_id = payload["owner_id"]
     room = (season, league_id)
@@ -586,14 +599,33 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
         # initial snapshot since it won't see its own past "presence"
         # broadcasts, same as GET /chat/members' own initial-online-
         # snapshot reasoning.
-        state_with_presence = {**state, "connected_owner_ids": manager.connected_owner_ids(room)}
+        state_with_presence = {
+            **state,
+            "connected_owner_ids": manager.connected_owner_ids(room),
+            "chat_messages": chat_messages,
+        }
         await websocket.send_json(jsonable_encoder({"type": "draft_state", **state_with_presence}))
 
-        # Receive-only, same as gamecast_ws — nothing a client needs to
-        # send the draft room beyond the handshake; receive_text() here
-        # exists purely to detect disconnects.
+        # Same receive-parse shape as app/routers/chat.py's chat_ws — the
+        # only inbound frame type today is "chat" (draft-room text chat,
+        # 2026-09); anything else (a bad frame from a stale/modified
+        # client, or the odd browser keepalive ping) is silently ignored
+        # rather than closing the whole connection, matching chat_ws's
+        # own "continue on garbage" discipline.
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if data.get("type") != "chat":
+                continue
+            text = str(data.get("text", "")).strip()
+            if not text or len(text) > draft_room_chat_queries.MAX_MESSAGE_LENGTH:
+                continue
+            async with pool.acquire() as conn:
+                message = await draft_room_chat_queries.insert_message(conn, season, league_id, owner_id, text)
+            await manager.broadcast_to_draft(room, {"type": "chat", "message": message})
     except WebSocketDisconnect:
         pass
     finally:

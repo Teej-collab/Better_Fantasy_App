@@ -52,6 +52,14 @@ export type DraftPick = {
   made_at: string | null;
 };
 
+export type DraftChatMessage = {
+  id: number;
+  owner_id: number;
+  owner_name: string;
+  text: string;
+  created_at: string;
+};
+
 export type DraftState = {
   config: DraftConfig;
   picks: DraftPick[];
@@ -60,6 +68,10 @@ export type DraftState = {
   // current client-side by live "presence" WebSocket events after this
   // initial snapshot (see DraftRoom.tsx).
   connected_owner_ids: number[];
+  // Persisted draft-room chat history, oldest first — kept current
+  // client-side by live "chat" WebSocket events after this initial
+  // snapshot (see DraftRoom.tsx).
+  chat_messages: DraftChatMessage[];
 };
 
 export type DraftPoolPlayer = {

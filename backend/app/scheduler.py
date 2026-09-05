@@ -61,12 +61,22 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   immediate" reason. Relies on start_draft()'s own guard against being
   called twice (app/domain/draft_engine.py) so this can never race a
   commissioner's own manual start into rewinding the draft.
+- Draft room open (same ENABLE_DRAFT_CLOCK_SCHEDULER flag, 2026-09):
+  every 60 seconds, pushes every real drafting owner once, the moment
+  the pre-draft room opens (scheduled_start minus the room's own
+  1-hour window). draft_config.room_opened_notified_at is the
+  idempotency flag, same pattern as starting_soon_notified_at.
 - Keeper auto-lock (ENABLE_KEEPER_LOCK_SCHEDULER): every 60 seconds,
   locks any league's keeper selections (league_keeper_rules.locked_at,
   same as a commissioner's manual "Lock keepers" click) once that
   league's own real draft is within 1 hour of its scheduled_start —
   previously manual-only. Same "must be turned on before the real
   draft date" note as the draft clock above.
+- Keeper deadline warning (same ENABLE_KEEPER_LOCK_SCHEDULER flag,
+  2026-09): every 60 seconds, pushes every real drafting owner once,
+  ~30 minutes before their league's keeper selection deadline.
+  league_keeper_rules.deadline_warning_notified_at is the idempotency
+  flag, same pattern as room_opened_notified_at above.
 - Weekly compute (ENABLE_WEEKLY_COMPUTE_SCHEDULER): this app's own
   Phase D/F scoring — app/domain/weekly_stats.py's
   compute_and_store_week() — recomputing every rostered player's real
@@ -96,7 +106,13 @@ from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
 from app.notifications import fantasy_events
-from app.notifications.draft_events import notify_draft_starting_soon, notify_on_the_clock
+from app.notifications.draft_events import (
+    notify_draft_live,
+    notify_draft_room_open,
+    notify_draft_starting_soon,
+    notify_keeper_deadline_approaching,
+    notify_on_the_clock,
+)
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
@@ -258,6 +274,11 @@ async def _run_draft_auto_start_job():
                 logger.exception("Draft auto-start failed for season=%s league_id=%s", season, league_id)
                 continue
             await draft_manager.broadcast_to_draft((season, league_id), {"type": "draft_status", "config": config})
+            owner_rows = await conn.fetch(
+                "SELECT DISTINCT owner_id FROM draft_picks WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            await notify_draft_live(season, league_id, [r["owner_id"] for r in owner_rows])
             await notify_on_the_clock(season, league_id, config)
             logger.info("Draft auto-started: season=%s league_id=%s", season, league_id)
 
@@ -341,6 +362,88 @@ async def _run_draft_starting_soon_job():
             logger.info("Draft starting-soon reminder sent: season=%s league_id=%s", season, league_id)
 
 
+async def _run_draft_room_open_job():
+    """Pushes every real drafting owner once, the moment the pre-draft
+    room actually opens — scheduled_start minus the room's own 1-hour
+    window (frontend/src/components/draft/DraftRoom.tsx's
+    PRE_DRAFT_WINDOW_MS). room_opened_notified_at is the idempotency
+    flag (see its own migration), same simple <=-threshold shape as
+    _run_keeper_lock_job/_run_draft_auto_start_job above rather than
+    _run_draft_starting_soon_job's bounded window — "the room is open"
+    stays true no matter how late this job gets to checking, unlike a
+    countdown claim that can go stale, so there's nothing here that
+    needs a narrower window to protect against."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        due = await conn.fetch(
+            """
+            SELECT league_id FROM draft_config
+            WHERE season = $1 AND status = 'not_started' AND room_opened_notified_at IS NULL
+              AND scheduled_start IS NOT NULL
+              AND (scheduled_start - interval '1 hour') <= $2
+            """,
+            season, datetime.now(timezone.utc),
+        )
+        for row in due:
+            league_id = row["league_id"]
+            owner_rows = await conn.fetch(
+                "SELECT DISTINCT owner_id FROM draft_picks WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            owner_ids = [r["owner_id"] for r in owner_rows]
+            await notify_draft_room_open(season, league_id, owner_ids)
+            await conn.execute(
+                "UPDATE draft_config SET room_opened_notified_at = now() WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            logger.info("Draft room-open notification sent: season=%s league_id=%s", season, league_id)
+
+
+async def _run_keeper_deadline_warning_job():
+    """Pushes every real drafting owner once, ~30 minutes before their
+    league's keeper selection deadline (league_keeper_rules.
+    keeper_deadline) — deadline_warning_notified_at is the idempotency
+    flag (see its own migration). Only leagues that actually use
+    keepers (max_keepers > 0) and haven't locked yet are ever selected,
+    same "uses keepers" gate _run_keeper_lock_job above already
+    documents. Owners are read off draft_picks (same source every other
+    draft-day push in this file uses), which requires a real
+    draft_config to already exist for the season — true for any league
+    far enough along to have a real keeper_deadline set in the first
+    place."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        due = await conn.fetch(
+            """
+            SELECT lkr.league_id
+            FROM league_keeper_rules lkr
+            WHERE lkr.season = $1
+              AND lkr.max_keepers > 0
+              AND lkr.locked_at IS NULL
+              AND lkr.deadline_warning_notified_at IS NULL
+              AND lkr.keeper_deadline IS NOT NULL
+              AND (lkr.keeper_deadline - interval '30 minutes') <= $2
+            """,
+            season, datetime.now(timezone.utc),
+        )
+        for row in due:
+            league_id = row["league_id"]
+            owner_rows = await conn.fetch(
+                "SELECT DISTINCT owner_id FROM draft_picks WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            owner_ids = [r["owner_id"] for r in owner_rows]
+            await notify_keeper_deadline_approaching(season, league_id, owner_ids, minutes=30)
+            await conn.execute(
+                "UPDATE league_keeper_rules SET deadline_warning_notified_at = now() "
+                "WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+            logger.info("Keeper-deadline warning sent: season=%s league_id=%s", season, league_id)
+
+
 async def _run_weekly_compute_job():
     games = await get_nfl_scoreboard()
     if not is_nfl_game_live(games):
@@ -410,11 +513,17 @@ def start_scheduler():
         logger.info("Draft starting-soon reminder scheduler started (every 60 seconds)")
         _scheduler.add_job(_run_draft_auto_start_job, "interval", seconds=2, id="draft_auto_start")
         logger.info("Draft auto-start scheduler started (every 2 seconds)")
+        _scheduler.add_job(_run_draft_room_open_job, "interval", seconds=60, id="draft_room_open")
+        logger.info("Draft room-open reminder scheduler started (every 60 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_KEEPER_LOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):
         _scheduler.add_job(_run_keeper_lock_job, "interval", seconds=60, id="keeper_lock")
         logger.info("Keeper auto-lock scheduler started (every 60 seconds)")
+        # Same enable flag as the lock job above — both are "is the keeper
+        # deadline system live" concerns, not worth a second env var.
+        _scheduler.add_job(_run_keeper_deadline_warning_job, "interval", seconds=60, id="keeper_deadline_warning")
+        logger.info("Keeper-deadline warning scheduler started (every 60 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_WEEKLY_COMPUTE_SCHEDULER", "").lower() in ("1", "true", "yes"):
