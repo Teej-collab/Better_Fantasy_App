@@ -125,6 +125,38 @@ async def test_make_pick_rejects_already_drafted_player(pool):
             pass
 
 
+async def test_make_pick_rejects_a_player_already_on_a_roster_via_free_agency(pool):
+    """The real production crash (2026-09, live on draft night): a
+    player added to a roster via free agency (app/routers/me.py, no
+    draft_picks row at all) still shows up in draft_picks as
+    "undrafted" — without checking current_rosters too, make_pick would
+    let this through and crash with a raw UniqueViolationError on
+    current_rosters' own unique constraint instead of a clean
+    PlayerAlreadyDraftedError."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)
+    player = await _seed_player(pool, "faked-rostered")
+
+    async with pool.acquire() as conn:
+        # Simulates a free-agent add — a real current_rosters row with
+        # no corresponding draft_picks row, exactly what app/routers/
+        # me.py's add-free-agent path produces.
+        other_team_id = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2", TEST_SEASON, owner_b
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, 'BE', 'free_agent')",
+            TEST_SEASON, other_team_id, player,
+        )
+
+    async with pool.acquire() as conn:
+        try:
+            await draft_engine.make_pick(conn, TEST_SEASON, owner_a, player)
+            assert False, "expected PlayerAlreadyDraftedError"
+        except PlayerAlreadyDraftedError:
+            pass
+
+
 async def test_make_pick_rejects_non_draftable_player(pool):
     owner_a, owner_b = await _setup_two_team_draft(pool)
     player = await _seed_player(pool, "5", draftable=False)

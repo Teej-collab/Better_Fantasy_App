@@ -178,6 +178,34 @@ async def test_pool_includes_projected_points_and_bye_week(pool, monkeypatch):
     assert row["bye_week"] == 9
 
 
+async def test_pool_marks_a_free_agent_rostered_player_as_drafted(pool, monkeypatch):
+    """The real production bug (2026-09, live on draft night): a player
+    added to a roster via free agency has no draft_picks row at all, so
+    the pool kept showing them as available — a live pick attempt on
+    them then crashed on current_rosters' own unique constraint (see
+    make_pick's matching fix)."""
+    _set_env(monkeypatch)
+    user_id, owner_id, league_id = await _seed_commissioner_and_team(pool, "pool_fa")
+    player = await _seed_player(pool, "p_fa")
+    async with pool.acquire() as conn:
+        team_id = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            TEST_SEASON, owner_id, league_id,
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id) "
+            "VALUES ($1, $2, $3, 'BE', 'free_agent', $4)",
+            TEST_SEASON, team_id, player, league_id,
+        )
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/pool")
+
+    row = next(p for p in resp.json()["players"] if p["sleeper_player_id"] == player)
+    assert row["drafted"] is True
+
+
 async def test_setup_requires_commissioner(pool, monkeypatch):
     _set_env(monkeypatch)
     _commish_user_id, _commish_owner_id, league_id = await _seed_commissioner_and_team(pool, "setup1")

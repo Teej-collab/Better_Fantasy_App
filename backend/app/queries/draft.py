@@ -21,10 +21,18 @@ async def get_draft_pool(
     query = """
         SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
                p.projected_points, tbw.bye_week,
-               dp.pick_number IS NOT NULL AS drafted
+               (dp.pick_number IS NOT NULL OR cr.id IS NOT NULL) AS drafted
         FROM players p
         LEFT JOIN draft_picks dp ON dp.sleeper_player_id = p.sleeper_player_id
             AND dp.season = $1 AND dp.league_id = $2
+        -- A player can land on a real roster via free agency
+        -- (app/routers/me.py's add-free-agent path) with no draft_picks
+        -- row at all — without this, the pool would keep showing them
+        -- as available and a live pick attempt would crash on
+        -- current_rosters' own unique constraint (see make_pick's
+        -- matching fix, 2026-09).
+        LEFT JOIN current_rosters cr ON cr.sleeper_player_id = p.sleeper_player_id
+            AND cr.season = $1 AND cr.league_id = $2
         LEFT JOIN team_bye_weeks tbw ON tbw.season = $1 AND tbw.pro_team = p.pro_team
         WHERE p.is_draftable
     """

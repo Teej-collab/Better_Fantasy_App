@@ -1270,6 +1270,46 @@ export async function getMyTeamOwnershipServer(
   return ownership;
 }
 
+export type LineupMovePreview = {
+  player: RosterEntry;
+  from_slot: string;
+  to_slot: string;
+  displaced_player: RosterEntry | null;
+};
+
+export async function previewLineupMove(playerId: string, toSlot: string): Promise<LineupMovePreview> {
+  const res = await fetch(`/api/backend/me/team/lineup/preview-move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Preview failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// Real write — moves a player straight into to_slot, auto-benching
+// whoever's currently there if the slot's already full (see
+// backend/app/domain/lineup_engine.py's move_player). This is what
+// actually gets a freshly-drafted, all-bench roster into a starting
+// lineup for the first time — submitLineupSwap below needs an already-
+// occupied target row to swap with, which a brand-new roster has none
+// of yet.
+export async function submitLineupMove(playerId: string, toSlot: string): Promise<LineupMutationResult> {
+  const res = await fetch(`/api/backend/me/team/lineup/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Move failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export type LineupSwapPreview = { player_a: RosterEntry; player_b: RosterEntry };
 
 export async function previewLineupSwap(playerAId: string, playerBId: string): Promise<LineupSwapPreview> {

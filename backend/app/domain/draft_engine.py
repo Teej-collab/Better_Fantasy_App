@@ -549,11 +549,25 @@ async def make_pick(
         if player is None or not player["is_draftable"]:
             raise PlayerNotDraftableError(f"{sleeper_player_id} isn't a draftable player")
 
+        # Checks current_rosters too, not just draft_picks (2026-09, a
+        # real production crash): a player can land on a real roster
+        # via free agency (app/routers/me.py's add-free-agent path)
+        # completely independent of a draft pick, and that path doesn't
+        # touch draft_picks at all. Without this, the draft pool would
+        # keep showing that player as available (see get_draft_pool's
+        # own matching fix) and this INSERT below would still hit
+        # current_rosters' real (season, sleeper_player_id, league_id)
+        # unique constraint — a raw UniqueViolationError 500 instead of
+        # the clean PlayerAlreadyDraftedError this is supposed to be.
         already_drafted = await conn.fetchval(
             "SELECT 1 FROM draft_picks WHERE season = $1 AND sleeper_player_id = $2 AND league_id = $3",
             season, sleeper_player_id, league_id,
         )
-        if already_drafted:
+        already_rostered = await conn.fetchval(
+            "SELECT 1 FROM current_rosters WHERE season = $1 AND sleeper_player_id = $2 AND league_id = $3",
+            season, sleeper_player_id, league_id,
+        )
+        if already_drafted or already_rostered:
             raise PlayerAlreadyDraftedError(f"{sleeper_player_id} has already been drafted this season")
 
         await conn.execute(
