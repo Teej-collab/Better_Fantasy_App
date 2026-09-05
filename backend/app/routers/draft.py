@@ -456,6 +456,14 @@ async def seed_keeper(body: KeeperSeedRequest, request: Request):
             )
     except DraftError as e:
         raise _map_draft_error(e) from e
+    # A keeper occupies a real draft_picks row (see seed_keeper_pick's
+    # own docstring) — every connected client, including whoever's own
+    # tab just called this, needs to stop showing that player as
+    # available. DraftRoom.tsx's WS handler treats any type it doesn't
+    # special-case (presence/chat) as "something changed, refetch pool/
+    # state/queue" — same minimal shape as the draft_reset broadcast
+    # below, no real payload needed for that fallback to do its job.
+    await manager.broadcast_to_draft((season, league_id), {"type": "keeper_seeded"})
     return {"ok": True}
 
 
@@ -481,6 +489,12 @@ async def seed_keepers(request: Request):
         ) from e
     except DraftError as e:
         raise _map_draft_error(e) from e
+    # Same "every connected client must stop showing these players as
+    # available" reasoning as POST /draft/keeper above — this is the
+    # batch path (every locked owner at once), so it matters even more:
+    # without it, the whole pool stays stale for everyone in the room
+    # until something else happens to trigger a refetch.
+    await manager.broadcast_to_draft((season, league_id), {"type": "keepers_seeded"})
     return {"seeded": seeded}
 
 

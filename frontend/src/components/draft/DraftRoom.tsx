@@ -148,6 +148,20 @@ export function DraftRoom({
     }
   };
 
+  // DraftSetupPanel's onDraftCreated covers reset/start/order changes
+  // AND seeding keepers — a seeded keeper is a real draft_picks row
+  // (see seed_keeper_pick's own docstring), so the pool has to refresh
+  // too or that player keeps showing as available on the caller's own
+  // screen until something else happens to trigger a refetch. Every
+  // OTHER connected client gets this from the keeper_seeded/
+  // keepers_seeded WS broadcast instead (see the onmessage handler
+  // below) — this covers the one client that isn't relying on its own
+  // broadcast to reach itself.
+  const refreshStateAndPool = async () => {
+    await refreshState();
+    await refreshPool();
+  };
+
   useEffect(() => {
     // draft/page.tsx server-fetches draftState/pool/teams and passes
     // them as initial* props, so the common case never needs this at
@@ -383,7 +397,7 @@ export function DraftRoom({
 
   if (loadError && !draftState) {
     return isCommissioner ? (
-      <DraftSetupPanel teams={teams} onDraftCreated={refreshState} />
+      <DraftSetupPanel teams={teams} onDraftCreated={refreshStateAndPool} />
     ) : (
       <p className="text-sm text-black/50 dark:text-white/50">No draft has been set up yet.</p>
     );
@@ -470,7 +484,7 @@ export function DraftRoom({
         </div>
       )}
 
-      {isCommissioner && <DraftSetupPanel teams={teams} config={config!} onDraftCreated={refreshState} />}
+      {isCommissioner && <DraftSetupPanel teams={teams} config={config!} onDraftCreated={refreshStateAndPool} />}
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 

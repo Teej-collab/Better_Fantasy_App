@@ -614,6 +614,51 @@ async def test_seed_keepers_happy_path(pool, monkeypatch):
     assert seeded[0]["sleeper_player_id"] == sleeper_player
 
 
+async def test_seed_keepers_broadcasts_so_the_pool_refreshes_for_everyone(pool, monkeypatch):
+    """The real bug this covers: a seeded keeper is a genuine
+    draft_picks row (see seed_keeper_pick's own docstring), but with no
+    broadcast, every connected client's player pool kept showing that
+    player as available until something unrelated happened to trigger
+    a refetch. Verified at the broadcast call itself (not a real second
+    WS connection) — see test_websocket_initial_state_reports_only_self_
+    when_alone's own docstring for why two live sockets in one test is
+    a real way to corrupt the shared pool for every later test."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sk_broadcast")
+    sleeper_player = await _seed_player(pool, "sk_broadcast_keeper")
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE players SET espn_player_id = 930002 WHERE sleeper_player_id = $1", sleeper_player
+        )
+        await conn.execute(
+            "INSERT INTO league_keeper_rules (season, max_keepers, locked_at, league_id) VALUES ($1, 1, now(), $2)",
+            TEST_SEASON, league_id,
+        )
+        await conn.execute(
+            "INSERT INTO keeper_selections (season, owner_id, espn_player_id, player_name, league_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, owner_a, 930002, "Test Keeper", league_id,
+        )
+
+    broadcasts = []
+
+    async def _fake_broadcast(room, message, **kwargs):
+        broadcasts.append((room, message))
+
+    from app.draft.manager import manager
+
+    monkeypatch.setattr(manager, "broadcast_to_draft", _fake_broadcast)
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a], "roster_slots": _ROSTER_SLOTS})
+        resp = await client.post("/draft/seed-keepers")
+
+    assert resp.status_code == 200
+    assert ((TEST_SEASON, league_id), {"type": "keepers_seeded"}) in broadcasts
+
+
 async def test_seed_keepers_reports_unresolved_players(pool, monkeypatch):
     _set_env(monkeypatch)
     user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "sk_unres")
