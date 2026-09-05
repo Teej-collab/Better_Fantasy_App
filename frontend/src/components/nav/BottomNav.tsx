@@ -1,47 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
-// `fixed bottom-0` alone assumes the layout viewport's bottom edge
-// tracks the on-screen keyboard — layout.tsx's own
-// interactiveWidget:"resizes-content" viewport meta is supposed to
-// guarantee that on iOS 17.4+/Android Chrome, but it isn't reliable
-// on every real device (confirmed live: this bar floated disconnected
-// from both the content above it and the keyboard below it on an
-// actual phone, with dead space on both sides — the classic symptom
-// of the layout viewport NOT actually shrinking the way the meta tag
-// promises). window.visualViewport is the one API that always
-// reports the REAL visible region regardless of whether that promise
-// held, so this measures the gap between it and the full window
-// height directly and nudges the bar up by exactly that amount —
-// zero effect whenever the browser's own resize behavior is already
-// correct (the gap is 0), a real fix when it isn't.
+// 2026-09 rewrite: this bar used to try to precisely track the on-
+// screen keyboard's height and slide itself up by that exact amount
+// (translateY), on the theory that `position: fixed; bottom: 0` alone
+// can't be trusted to track the keyboard on every real device/browser
+// combination. In practice that approach kept producing real,
+// reported regressions of its own — a floor to stop it misreading
+// Safari's toolbar/call-banner as a keyboard, then a per-page
+// suppression for Chat specifically because it doubled up with that
+// page's own keyboard-avoidance math, and it was STILL visibly
+// sliding over Chat's composer afterward. Precisely choreographing two
+// independently-resizing fixed elements (this bar, and whatever
+// content sits above it) against unpredictable, version-dependent
+// mobile browser keyboard-resize behavior is fundamentally fragile —
+// chasing the next edge case was not converging.
 //
-// MIN_KEYBOARD_GAP_PX guards against a real regression (2026-09): the
-// same innerHeight-vs-visualViewport gap this measures also shows up
-// for reasons that have nothing to do with a keyboard — Safari's own
-// collapsible bottom toolbar being in its expanded state (the default
-// right after navigating somewhere, before a scroll auto-collapses
-// it), or the extra system status bar iOS adds while a phone call is
-// active in the background. Both are real, everyday-sized gaps
-// (tens of px), and without a floor this bar would misread either one
-// as "a keyboard is open" and shift itself upward over content that
-// never actually needed the room — concretely, sliding up over Chat's
-// message composer (ChatApp.tsx sizes the panel above this bar
-// assuming its DEFAULT, non-shifted position, so this bar moving on
-// its own without the panel above it knowing is exactly what re-
-// covers the composer). A real on-screen keyboard eats a much bigger
-// share of the screen than either of those — comfortably clearing this
-// floor on every phone this app supports — so this only ever
-// suppresses the false positives, never a genuine keyboard.
+// The actual fix: don't try to reposition this bar at all. Just hide
+// it outright while a real on-screen keyboard is open, on every page,
+// the same way iMessage/most mobile chat UIs hide their own bottom tab
+// bar while typing. There is no viewport math to get wrong in "don't
+// render something" — it can't overlap content it isn't drawing. The
+// only remaining question is "is a real keyboard open," answered the
+// same way as before (the gap between window.innerHeight and
+// visualViewport.height), with the same MIN_KEYBOARD_GAP_PX floor so
+// Safari's own collapsible toolbar or an active-call status bar (both
+// real, everyday-sized gaps of a few dozen px) are never mistaken for
+// one — a real keyboard eats a much bigger share of the screen than
+// either, comfortably clearing this floor on every phone this app
+// supports.
 const MIN_KEYBOARD_GAP_PX = 150;
 
-function useKeyboardInset(): number {
-  const [inset, setInset] = useState(0);
+function useKeyboardOpen(): boolean {
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -50,19 +45,21 @@ function useKeyboardInset(): number {
     function measure() {
       if (!viewport) return;
       const gap = window.innerHeight - viewport.height - viewport.offsetTop;
-      setInset(gap > MIN_KEYBOARD_GAP_PX ? Math.round(gap) : 0);
+      setOpen(gap > MIN_KEYBOARD_GAP_PX);
     }
 
     measure();
     viewport.addEventListener("resize", measure);
     viewport.addEventListener("scroll", measure);
+    window.addEventListener("resize", measure);
     return () => {
       viewport.removeEventListener("resize", measure);
       viewport.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
     };
   }, []);
 
-  return inset;
+  return open;
 }
 
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
@@ -124,26 +121,20 @@ export function BottomNav({
   order: string[] | null;
 }) {
   const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
-  const rawKeyboardInset = useKeyboardInset();
-  // Chat (ChatApp.tsx) already fully manages the space above this bar
-  // itself — its own mobileHeight measurement shrinks the panel to end
-  // exactly at this bar's DEFAULT, un-shifted position, and the
-  // composer sits at the bottom of that already-correct space. This
-  // bar ALSO shifting up here on the same keyboard-open signal is
-  // double compensation: the confirmed real-device result (2026-09) is
-  // this bar sliding up into the middle of an already-correctly-sized
-  // chat panel, landing squarely on top of the composer instead of
-  // clearing out of its way. Suppressing the shift on /chat isn't a
-  // loss for that page — it never needed this bar to move at all.
-  const pathname = usePathname();
-  const keyboardInset = pathname === "/chat" ? 0 : rawKeyboardInset;
+  const keyboardOpen = useKeyboardOpen();
+  // Hidden outright, not repositioned, while a real keyboard is open —
+  // see this file's own top-of-file comment for why. ChatApp.tsx's
+  // ResizeObserver on this element's id="app-bottom-nav" picks up the
+  // resulting 0 height on its own and gives that space to the message
+  // panel/composer instead, no coordination needed beyond that.
+  if (keyboardOpen) return null;
 
   return (
     <nav
       id="app-bottom-nav"
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
-      style={{ borderTop: "1px solid var(--wl-border)", transform: keyboardInset > 0 ? `translateY(-${keyboardInset}px)` : undefined }}
+      style={{ borderTop: "1px solid var(--wl-border)" }}
     >
       {tabOrder.map((key) => {
         switch (key) {

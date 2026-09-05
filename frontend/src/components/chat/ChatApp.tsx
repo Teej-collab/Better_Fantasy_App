@@ -99,7 +99,6 @@ export function ChatApp({
 
   useLayoutEffect(() => {
     const desktopQuery = window.matchMedia("(min-width: 640px)");
-    let bottomNavHeight = 72; // 4.5rem-equivalent fallback, in case the element isn't found yet
 
     function measure() {
       if (desktopQuery.matches || !panelRef.current) {
@@ -107,6 +106,16 @@ export function ChatApp({
         return;
       }
       const top = panelRef.current.getBoundingClientRect().top;
+      // Read fresh every time, never cached — BottomNav.tsx now hides
+      // itself outright (returns null, real height 0) whenever a real
+      // on-screen keyboard is open, which happens on the exact same
+      // visualViewport signal that triggers this remeasure, and a
+      // React-unmounted/remounted element isn't the same DOM node a
+      // ResizeObserver was told to watch at mount time — this fresh
+      // getBoundingClientRect() is what actually stays correct across
+      // that hide/show cycle instead of a stale captured height.
+      const bottomNavEl = document.getElementById("app-bottom-nav");
+      const bottomNavHeight = bottomNavEl?.getBoundingClientRect().height ?? 0;
       const viewport = window.visualViewport;
       if (viewport) {
         // Pixel math against the real visual viewport, not a `100dvh`
@@ -115,12 +124,7 @@ export function ChatApp({
         // "resizes-content" viewport meta, which isn't reliable on
         // every real device (confirmed live: BottomNav's own position
         // ended up floating disconnected from both this panel and the
-        // keyboard on an actual phone). BottomNav.tsx's own
-        // useKeyboardInset applies the identical
-        // visualViewport-vs-window.innerHeight gap as a translateY, so
-        // this mirrors that exact math rather than a separate guess,
-        // keeping the panel's bottom edge and the nav bar's repositioned
-        // top edge landing in the same place.
+        // keyboard on an actual phone).
         const availableBottom = viewport.height + viewport.offsetTop;
         setMobileHeight(`${Math.max(0, availableBottom - top - bottomNavHeight)}px`);
       } else {
@@ -128,19 +132,22 @@ export function ChatApp({
       }
     }
 
-    const bottomNavEl = document.getElementById("app-bottom-nav");
+    // Still worth watching for BottomNav's own height changing without
+    // a viewport/window resize (Gamecast's live-game row growing a
+    // third line, see BottomNav.tsx's LiveMark) — re-attached on every
+    // remeasure trigger below rather than once at mount, so a keyboard
+    // hide/show cycle (a real DOM unmount/remount of the observed
+    // node, not just a resize of it) never leaves this watching a
+    // detached element.
     let resizeObserver: ResizeObserver | null = null;
-    if (bottomNavEl) {
-      bottomNavHeight = bottomNavEl.getBoundingClientRect().height || bottomNavHeight;
-      resizeObserver = new ResizeObserver((entries) => {
-        const height = entries[0]?.contentRect.height;
-        if (height) {
-          bottomNavHeight = height;
-          measure();
-        }
-      });
-      resizeObserver.observe(bottomNavEl);
+    function watchBottomNav() {
+      resizeObserver?.disconnect();
+      const el = document.getElementById("app-bottom-nav");
+      if (!el) return;
+      resizeObserver = new ResizeObserver(measure);
+      resizeObserver.observe(el);
     }
+    watchBottomNav();
 
     // requestAnimationFrame, not a bare call — iOS Safari can fire
     // visualViewport's own events a frame before the WebKit layout
@@ -148,7 +155,10 @@ export function ChatApp({
     // keyboard opens/closes, so measuring synchronously inside the
     // event handler sometimes captures a still-transitioning `top`.
     function scheduleMeasure() {
-      requestAnimationFrame(measure);
+      requestAnimationFrame(() => {
+        watchBottomNav();
+        measure();
+      });
     }
 
     measure();
@@ -174,9 +184,9 @@ export function ChatApp({
   }, []);
 
   // Locks the actual page/document scroll position at 0 for as long as
-  // Chat is open (2026-09) — every height calculation above, and
-  // BottomNav's own useKeyboardInset, assumes the PAGE itself never
-  // scrolls, only this panel's own internal message list does. That
+  // Chat is open (2026-09) — every height calculation above assumes
+  // the PAGE itself never scrolls, only this panel's own internal
+  // message list does. That
   // held for ordinary touch scrolling once PullToRefresh.tsx stopped
   // hijacking nested-scrollable gestures, but tapping the composer to
   // open the on-screen keyboard is a separate path: mobile Safari's own
