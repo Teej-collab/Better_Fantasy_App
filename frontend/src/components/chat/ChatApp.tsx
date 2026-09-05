@@ -173,6 +173,37 @@ export function ChatApp({
     };
   }, []);
 
+  // Locks the actual page/document scroll position at 0 for as long as
+  // Chat is open (2026-09) — every height calculation above, and
+  // BottomNav's own useKeyboardInset, assumes the PAGE itself never
+  // scrolls, only this panel's own internal message list does. That
+  // held for ordinary touch scrolling once PullToRefresh.tsx stopped
+  // hijacking nested-scrollable gestures, but tapping the composer to
+  // open the on-screen keyboard is a separate path: mobile Safari's own
+  // "keep the focused input visible" behavior scrolls the DOCUMENT
+  // (not just the visual viewport) to bring the composer above the
+  // keyboard, which — since nothing here was pinning document scroll —
+  // dragged the whole page up with it, including the NavBar/ticker
+  // above this panel, exactly the "chat is broken" symptom reported
+  // live (2026-09-04 recording: the header and ticker scroll off-
+  // screen the moment the keyboard opens). Restores the previous
+  // inline styles (not a hardcoded reset) on unmount so leaving Chat
+  // never clobbers some other page's own scroll behavior.
+  useEffect(() => {
+    const { body } = document;
+    const previous = { overflow: body.style.overflow, position: body.style.position, width: body.style.width, top: body.style.top };
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.width = "100%";
+    body.style.top = "0";
+    return () => {
+      body.style.overflow = previous.overflow;
+      body.style.position = previous.position;
+      body.style.width = previous.width;
+      body.style.top = previous.top;
+    };
+  }, []);
+
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const loadedConversations = useRef(new Set<number>());

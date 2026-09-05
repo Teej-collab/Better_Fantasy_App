@@ -65,6 +65,16 @@ const nextConfig: NextConfig = {
       // the Vercel Blob store provisioned for this app; see app/config.py's
       // CHAT_IMAGE_HOST for the backend-side counterpart of this allowlist.
       { protocol: "https", hostname: "ls7srleyqyy06rjq.public.blob.vercel-storage.com" },
+      // Chat GIF picker (MessageComposer.tsx's GifPicker) — GIPHY serves
+      // media from several numbered CDN subdomains (media0-4.giphy.com,
+      // i.giphy.com), same wildcard-by-suffix trust model as the
+      // backend's own GIPHY_MEDIA_HOST_SUFFIX check (app/image_url.py).
+      // Missing this entry is exactly why a sent GIF rendered as a
+      // broken image inline (next/image rejects any src whose hostname
+      // isn't in this allowlist before ever requesting it) while the
+      // same URL opened fine directly in a new tab, bypassing next/
+      // image entirely (2026-09).
+      { protocol: "https", hostname: "*.giphy.com" },
     ],
   },
 };
