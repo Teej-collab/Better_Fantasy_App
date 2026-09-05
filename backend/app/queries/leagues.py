@@ -126,14 +126,20 @@ async def claim_owner(conn, league_id: int, owner_id: int, user_id: int) -> bool
     this league, and only succeeds if nobody's claimed it already
     (first-claim-wins, the same trust level Discord auto-linking
     already has today — see app/queries/auth.py). Returns False
-    (never raises) if the owner doesn't belong to this league or is
-    already claimed, so the router can turn that into a clean 404/409
-    rather than a generic error."""
+    (never raises) if the owner doesn't belong to this league, is
+    already claimed, or the caller already has a different owner
+    linked to their account — owners.user_id is unique (one real
+    person = one owner identity, across every league), so without that
+    last check the UPDATE below would still match the target row and
+    then blow up with a raw UniqueViolationError instead of a clean
+    404/409 the router can return (hit for real in production, 2026-09:
+    a signed-up user tried to self-claim a second historical owner)."""
     result = await conn.execute(
         """
         UPDATE owners SET user_id = $1
         WHERE owner_id = $2 AND user_id IS NULL
           AND EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = owners.owner_id AND t.league_id = $3)
+          AND NOT EXISTS (SELECT 1 FROM owners o2 WHERE o2.user_id = $1)
         """,
         user_id, owner_id, league_id,
     )

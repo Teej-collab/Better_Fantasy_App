@@ -219,7 +219,9 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
         claimed = await league_queries.claim_owner(conn, league_id, body.owner_id, payload["user_id"])
         if not claimed:
             raise HTTPException(
-                status_code=409, detail="That owner is already claimed, or isn't in this league"
+                status_code=409,
+                detail="That owner is already claimed, isn't in this league, "
+                "or your account already has a different owner linked to it",
             )
         # This is the real, common path for an existing historical
         # owner (pre-dating real accounts) rejoining chat — unlike the

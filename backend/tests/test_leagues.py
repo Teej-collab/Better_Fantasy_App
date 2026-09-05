@@ -300,6 +300,50 @@ async def test_claim_owner_links_history_and_is_first_claim_wins(pool, monkeypat
     assert resp2.status_code == 409
 
 
+async def test_claim_owner_rejects_a_caller_who_already_has_a_different_owner_linked(pool, monkeypatch):
+    """The real production bug (2026-09): owners.user_id is unique, so a
+    caller who already claimed owner A must get a clean 409 trying to
+    claim a second, unrelated owner B — not a raw UniqueViolationError
+    500 (see claim_owner's own docstring in app/queries/leagues.py)."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-claim-twice-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Claim Twice"})
+        league_id = created.json()["id"]
+        invite_code = created.json()["invite_code"]
+
+    from app.db import get_pool as _get_pool
+
+    real_pool = await _get_pool()
+    async with real_pool.acquire() as conn:
+        owner_a = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-leagues-claim-twice-a", "Owner A",
+        )
+        owner_b = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-leagues-claim-twice-b", "Owner B",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Team A', $3)",
+            TEST_SEASON, owner_a, league_id,
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Team B', $3)",
+            TEST_SEASON, owner_b, league_id,
+        )
+
+    async with _client() as claimer:
+        await _sign_up(claimer, "test-leagues-claim-twice-claimer@example.com")
+        await claimer.post("/leagues/join", json={"invite_code": invite_code})
+        first = await claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_a})
+        assert first.status_code == 200
+        second = await claimer.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": owner_b})
+    assert second.status_code == 409
+
+
 async def test_claim_owner_new_token_actually_unlocks_owner_scoped_routes(pool, monkeypatch):
     """The real, reported bug: a signed-up-by-email owner claims their
     historical team, then GET /me/team still 404s "No team found for
