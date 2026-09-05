@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteChatMessage,
   getChatConversationMessages,
@@ -70,86 +70,21 @@ export function ChatApp({
   // load, so there's no flash of "off" before the fetch resolves.
   const [preferences, setPreferences] = useState<OwnerPreferences | null>(null);
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  // 2026-09 rewrite. Every previous version of this effect computed a
-  // final pixel HEIGHT in JS (visualViewport math, subtracting
-  // BottomNav's height) and pushed it into an inline `height` style —
-  // and kept breaking, because it depended on getting that arithmetic
-  // right at the exact moment the keyboard opened/closed, on a browser
-  // whose own viewport-resize timing is genuinely inconsistent across
-  // devices (see this file's own git history for three separate
-  // attempts at the arithmetic). The actual fix is to stop doing the
-  // arithmetic at all.
-  //
-  // This panel is now `position: fixed` on mobile (JSX below) with
-  // `top`/`bottom` read from two CSS custom properties instead of a
-  // computed height. A `position: fixed` element's top/bottom offsets
-  // are resolved against the CURRENT viewport by the browser itself,
-  // on every single paint, including the instant the keyboard opens or
-  // closes (that's what layout.tsx's interactiveWidget:"resizes-content"
-  // viewport meta is actually FOR) — zero JS involved, so there is no
-  // "measure, then race the keyboard animation" step left to get wrong.
-  //
-  // The two CSS vars this still needs are genuinely static — how far
-  // down the header+ticker chrome extends, and how tall BottomNav
-  // currently is — each published by a single ResizeObserver (this one
-  // for the chrome above; BottomNav.tsx publishes its own height
-  // itself, see that file). Neither reacts to the keyboard at all,
-  // only to real content changes (the ticker gaining a row, BottomNav
-  // growing a live-game row, or hiding itself).
-  useLayoutEffect(() => {
-    function publishTop() {
-      // Measured off the PARENT (PageShell's plain, normal-flow
-      // <main>), never panelRef.current itself — this panel is
-      // position: fixed (JSX below), so its own getBoundingClientRect
-      // just reflects whatever --chat-panel-top last told it to be, a
-      // circular reference back to the value being computed. <main>
-      // stays in normal document flow regardless of what its fixed
-      // child does internally, so its top edge is exactly "how far
-      // down the header+ticker chrome above it extends" — independent
-      // of this panel's own position.
-      const referenceEl = panelRef.current?.parentElement;
-      if (!referenceEl) return;
-      const top = referenceEl.getBoundingClientRect().top;
-      document.documentElement.style.setProperty("--chat-panel-top", `${top}px`);
-    }
-
-    publishTop();
-    const resizeObserver = new ResizeObserver(publishTop);
-    resizeObserver.observe(document.body);
-    window.addEventListener("resize", publishTop);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", publishTop);
-    };
-  }, []);
-
-  // Prevents the page/document from scrolling at all for as long as
-  // Chat is open (2026-09, simplified) — mobile Safari's own "keep the
-  // focused input visible" behavior scrolls the DOCUMENT (not just the
-  // visual viewport) to bring the composer above the keyboard when it
-  // opens, which would otherwise drag the NavBar/ticker chrome above
-  // this panel up and off-screen with it (a real, previously-reported
-  // symptom). Deliberately just `overflow: hidden` now, NOT also
-  // `position: fixed` (an earlier version of this same effect also set
-  // that, on the theory that plain overflow:hidden alone isn't always
-  // enough to stop iOS Safari's own scroll-into-view) — this panel no
-  // longer needs body's scroll position to stay at 0 for its OWN
-  // sizing (it's `position: fixed` against the real viewport now, see
-  // the useLayoutEffect above), so the lower-risk, simpler property is
-  // enough: it only needs to stop the header/ticker chrome from
-  // visibly drifting, not protect a height calculation that no longer
-  // exists. Restores the previous inline style on unmount so leaving
-  // Chat never clobbers some other page's own scroll behavior.
-  useEffect(() => {
-    const { body } = document;
-    const previousOverflow = body.style.overflow;
-    body.style.overflow = "hidden";
-    return () => {
-      body.style.overflow = previousOverflow;
-    };
-  }, []);
-
+  // 2026-09: reverted the entire JS-driven height/position system that
+  // used to live here (three separate attempts today: a computed pixel
+  // height from visualViewport math, then a position:fixed panel with
+  // JS-published CSS custom properties). Every version kept finding a
+  // new way to break, because it was fighting the keyboard instead of
+  // trusting the platform. The actual fix: do nothing special at all.
+  // Free Agents' search box (PlayerSearchInput.tsx) sits on a
+  // completely ordinary page — no special height math, no keyboard
+  // JS, BottomNav untouched — and focusing it works correctly, because
+  // layout.tsx's interactiveWidget:"resizes-content" viewport meta
+  // already does the real work natively. This panel's height below is
+  // the same plain, static `100dvh` calc that was ALREADY sitting here
+  // as a "not measured yet" pre-hydration fallback — it turns out that
+  // fallback was the actually-correct answer the whole time, promoted
+  // to the only answer, matching every other page in this app.
   const socketRef = useRef<WebSocket | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const loadedConversations = useRef(new Set<number>());
@@ -475,8 +410,7 @@ export function ChatApp({
 
   return (
     <div
-      ref={panelRef}
-      className="neon-panel chat-mobile-panel flex overflow-hidden rounded-none sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+      className="neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-3.5rem-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
       style={panelGlowStyle(SECTION_COLORS.chat)}
     >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>

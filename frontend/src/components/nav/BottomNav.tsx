@@ -1,67 +1,23 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
-// 2026-09 rewrite: this bar used to try to precisely track the on-
-// screen keyboard's height and slide itself up by that exact amount
-// (translateY), on the theory that `position: fixed; bottom: 0` alone
-// can't be trusted to track the keyboard on every real device/browser
-// combination. In practice that approach kept producing real,
-// reported regressions of its own — a floor to stop it misreading
-// Safari's toolbar/call-banner as a keyboard, then a per-page
-// suppression for Chat specifically because it doubled up with that
-// page's own keyboard-avoidance math, and it was STILL visibly
-// sliding over Chat's composer afterward. Precisely choreographing two
-// independently-resizing fixed elements (this bar, and whatever
-// content sits above it) against unpredictable, version-dependent
-// mobile browser keyboard-resize behavior is fundamentally fragile —
-// chasing the next edge case was not converging.
-//
-// The actual fix: don't try to reposition this bar at all. Just hide
-// it outright while a real on-screen keyboard is open, on every page,
-// the same way iMessage/most mobile chat UIs hide their own bottom tab
-// bar while typing. There is no viewport math to get wrong in "don't
-// render something" — it can't overlap content it isn't drawing. The
-// only remaining question is "is a real keyboard open," answered the
-// same way as before (the gap between window.innerHeight and
-// visualViewport.height), with the same MIN_KEYBOARD_GAP_PX floor so
-// Safari's own collapsible toolbar or an active-call status bar (both
-// real, everyday-sized gaps of a few dozen px) are never mistaken for
-// one — a real keyboard eats a much bigger share of the screen than
-// either, comfortably clearing this floor on every phone this app
-// supports.
-const MIN_KEYBOARD_GAP_PX = 150;
-
-function useKeyboardOpen(): boolean {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-
-    function measure() {
-      if (!viewport) return;
-      const gap = window.innerHeight - viewport.height - viewport.offsetTop;
-      setOpen(gap > MIN_KEYBOARD_GAP_PX);
-    }
-
-    measure();
-    viewport.addEventListener("resize", measure);
-    viewport.addEventListener("scroll", measure);
-    window.addEventListener("resize", measure);
-    return () => {
-      viewport.removeEventListener("resize", measure);
-      viewport.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
-
-  return open;
-}
-
+// 2026-09 revert: this bar went through several rounds today trying to
+// actively manage itself around the on-screen keyboard — translateY
+// shifting by a measured inset, then hiding itself outright — on the
+// theory that plain `fixed bottom-0` can't be trusted to behave near a
+// keyboard. Each version produced its own real, reported regression,
+// and the underlying premise turned out to be wrong: Free Agents'
+// search box (PlayerSearchInput.tsx) sits on a completely ordinary
+// page with this exact same bar doing nothing special at all, and
+// focusing it works correctly — keyboard opens, covers whatever it
+// covers, closes, page is back to normal. This bar was never the
+// problem on any OTHER page; the real bug was specific to Chat's own
+// layout (see ChatApp.tsx), not something this shared component should
+// have ever been trying to solve on its own. Back to the simple,
+// unconditional version every other page already proves works.
 const ACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium";
 const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px]";
 
@@ -103,14 +59,10 @@ function LiveMark() {
  * hairline border 2026-08-31 to match the approved mock exactly (its
  * phone-frame bottom bar has no glow at all, just var(--wl-border)).
  *
- * The `id="app-bottom-nav"` is load-bearing: this component measures
- * its OWN real rendered height off this same node (via ResizeObserver,
- * not a hardcoded guess) and publishes it as the --app-bottom-nav-
- * height CSS custom property, which ChatApp.tsx's mobile panel reads
- * directly for its own `bottom` offset — this bar's height isn't
- * constant (the Gamecast tab grows a third row on game day, and it's 0
- * outright whenever a keyboard is open, see below), so removing this
- * id or renaming it silently breaks that measurement.
+ * The `id="app-bottom-nav"` exists purely for other components (e.g.
+ * ChatApp.tsx, on pages that need to know this bar's real height) to
+ * measure it if they need to — this component itself no longer reads
+ * or reacts to anything about its own size.
  */
 export function BottomNav({
   signedIn,
@@ -124,39 +76,9 @@ export function BottomNav({
   order: string[] | null;
 }) {
   const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
-  const keyboardOpen = useKeyboardOpen();
-  const navRef = useRef<HTMLElement>(null);
-
-  // Publishes this bar's own real height as --app-bottom-nav-height —
-  // ChatApp.tsx's mobile panel reads it directly for its CSS `bottom`
-  // offset (see that component's own comment for the full reasoning:
-  // no JS height math on ChatApp's side at all anymore, just each
-  // independently-sized piece of chrome publishing its own real size).
-  // 0 while a keyboard is open (this bar is hidden outright then, see
-  // below) — no measurement needed for that case, it's exactly 0 by
-  // construction.
-  useLayoutEffect(() => {
-    if (keyboardOpen) {
-      document.documentElement.style.setProperty("--app-bottom-nav-height", "0px");
-      return;
-    }
-    function publish() {
-      if (!navRef.current) return;
-      document.documentElement.style.setProperty("--app-bottom-nav-height", `${navRef.current.getBoundingClientRect().height}px`);
-    }
-    publish();
-    const resizeObserver = new ResizeObserver(publish);
-    if (navRef.current) resizeObserver.observe(navRef.current);
-    return () => resizeObserver.disconnect();
-  }, [keyboardOpen]);
-
-  // Hidden outright, not repositioned, while a real keyboard is open —
-  // see this file's own top-of-file comment for why.
-  if (keyboardOpen) return null;
 
   return (
     <nav
-      ref={navRef}
       id="app-bottom-nav"
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"

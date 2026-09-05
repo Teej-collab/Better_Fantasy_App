@@ -213,50 +213,6 @@ body {
   --ring-color: var(--border-glow-color, var(--user-accent, var(--wl-accent)));
 }
 
-/* ChatApp.tsx's mobile panel (2026-09 rewrite) — pinned to the viewport
-   via plain position: fixed with top/bottom read from CSS custom
-   properties, instead of a JS-computed height (see that component's
-   own comment for why: a fixed element's offsets are resolved against
-   the CURRENT viewport by the browser on every paint, including the
-   instant a keyboard opens/closes, with no JS measurement race left to
-   get wrong). Mobile-only (max-width: 639px, matching Tailwind's own
-   `sm` cutoff) and DELIBERATELY has no desktop counterpart at all — at
-   sm: and up this must fall through to plain `.neon-panel` behavior
-   unmodified (position: relative), the same as every other neon-panel
-   in this app, or its own ::before glow ring (which needs a positioned
-   ancestor) breaks. An earlier version of this rule tried to also set
-   `position: static` at sm: and up, which is exactly what broke that
-   ring on desktop — position: relative was never the thing that
-   needed overriding there.
-
-   This can't be done with Tailwind's `fixed`/`sm:static` utility
-   classes on an element that's also `.neon-panel`: this file has no
-   `@layer` wrapping anywhere (see the plain `@import "tailwindcss"` at
-   the top), so every rule here is UNLAYERED CSS — and per the Cascade
-   Layers spec, unlayered rules always win over layered ones (which is
-   what every Tailwind utility class compiles into) regardless of
-   selector specificity or source order. `.neon-panel`'s own `position:
-   relative` above would silently beat a `fixed`/`sm:static` utility
-   class every time. Matching it with another unlayered rule (this one,
-   which comes later in this same file) is what actually lets it win —
-   for the one breakpoint range it actually touches. */
-@media (max-width: 639px) {
-  .chat-mobile-panel {
-    position: fixed;
-    inset-inline: 0;
-    /* --chat-panel-top / --app-bottom-nav-height are published on
-       :root by ChatApp.tsx and BottomNav.tsx respectively (see their
-       own comments) — read here, inside the mobile-only media query,
-       rather than as a React inline style: an inline `top`/`bottom`
-       would ALSO apply at sm: and up, where this element is back to
-       plain position: relative (unmodified .neon-panel) and top/bottom
-       stop being harmless offsets-that-do-nothing (like they are under
-       position: static) and instead really would shift the desktop
-       panel down/up by whatever these variables last held on mobile. */
-    top: var(--chat-panel-top, calc(3.5rem + env(safe-area-inset-top)));
-    bottom: var(--app-bottom-nav-height, calc(4.5rem + env(safe-area-inset-bottom)));
-  }
-}
 @property --panel-border-angle {
   syntax: "<angle>";
   inherits: false;
