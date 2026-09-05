@@ -437,7 +437,22 @@ async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
     an already-in-progress draft would rewind current_pick_number back
     to 1 via _advance_to_next_open_pick(..., 1, ...) below — a real
     "the draft just reset itself mid-pick" bug, not a hypothetical one,
-    now that a second automatic caller genuinely exists."""
+    now that a second automatic caller genuinely exists.
+
+    Also auto-seeds keepers from locked selections (2026-09) if the
+    commissioner locked keeper rules but never got around to the
+    separate POST /draft/seed-keepers step — a real gap now that
+    app/scheduler.py's auto-start job can fire this with nobody
+    watching: without this, a forgotten seed step means every team's
+    LAST round (see seed_keepers_from_locked_selections — it's a real
+    live round for everyone, with a real keeper never actually
+    occupying anyone's final pick) instead of the keeper silently
+    filling it. A no-op if rules aren't locked yet (nothing to seed) or
+    every real keeper is already seeded (that function's own
+    idempotency). A genuine unresolved keeper (KeeperResolutionError)
+    still propagates and blocks the start entirely — better a stalled
+    draft the commissioner has to look at than one that silently
+    started without someone's real keeper."""
     async with conn.transaction():
         config = await conn.fetchrow(
             "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id
@@ -446,6 +461,9 @@ async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
             raise DraftNotFoundError(f"No draft configured for season {season}")
         if config["status"] != "not_started":
             raise DraftAlreadyStartedError(f"Draft for season {season} has already been started")
+        rules = await keeper_queries.get_rules(conn, season, league_id)
+        if rules is not None and rules["locked_at"] is not None:
+            await seed_keepers_from_locked_selections(conn, season, league_id)
         await conn.execute(
             "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1 AND league_id = $2",
             season, league_id,

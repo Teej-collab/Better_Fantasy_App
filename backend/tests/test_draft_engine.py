@@ -704,3 +704,70 @@ async def test_seed_keepers_raises_when_no_draft_configured(pool):
             assert False, "expected DraftNotFoundError"
         except DraftNotFoundError:
             pass
+
+
+# ---- start_draft auto-seeds locked keepers (2026-09) -----------------------
+# The real gap this closes: a commissioner locks keeper rules but never
+# clicks the separate "Seed Keepers" button, and app/scheduler.py's
+# auto-start job fires anyway with nobody watching — without this,
+# every team's last round would be a real live pick instead of their
+# keeper silently occupying it.
+
+
+async def test_start_draft_auto_seeds_a_locked_keeper_into_the_last_round(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "autoseed-a")
+    owner_b, _ = await _seed_owner_and_team(pool, "autoseed-b")
+    sleeper_a = await _seed_player(pool, "autoseed-a-keeper", espn_player_id=930001)
+    await _seed_keeper_rules(pool, locked=True)
+    await _seed_keeper_selection(pool, owner_a, 930001, "Keeper A")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        await draft_engine.start_draft(conn, TEST_SEASON)
+
+    last_round = draft_engine.total_draftable_slots(_ROSTER_SLOTS)
+    async with pool.acquire() as conn:
+        keeper_pick = await conn.fetchrow(
+            "SELECT sleeper_player_id, is_keeper FROM draft_picks "
+            "WHERE season = $1 AND owner_id = $2 AND round = $3",
+            TEST_SEASON, owner_a, last_round,
+        )
+    assert keeper_pick["sleeper_player_id"] == sleeper_a
+    assert keeper_pick["is_keeper"] is True
+
+
+async def test_start_draft_skips_seeding_when_keepers_are_not_locked(pool):
+    """Existing no-keepers-league behavior stays a no-op — start_draft
+    only attempts seeding when rules exist AND are locked."""
+    owner_a, owner_b = await _setup_two_team_draft(pool)  # never locks keeper rules
+    last_round = draft_engine.total_draftable_slots(_ROSTER_SLOTS)
+
+    async with pool.acquire() as conn:
+        keeper_pick = await conn.fetchrow(
+            "SELECT sleeper_player_id FROM draft_picks WHERE season = $1 AND owner_id = $2 AND round = $3",
+            TEST_SEASON, owner_a, last_round,
+        )
+    assert keeper_pick["sleeper_player_id"] is None
+
+
+async def test_start_draft_refuses_and_stays_not_started_when_a_keeper_is_unresolved(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "autoseed-unresolved")
+    await _seed_keeper_rules(pool, locked=True)
+    # No matching players row for this espn_player_id.
+    await _seed_keeper_selection(pool, owner_a, 930099, "Unresolved Keeper")
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a], _ROSTER_SLOTS)
+        try:
+            await draft_engine.start_draft(conn, TEST_SEASON)
+            assert False, "expected KeeperResolutionError"
+        except KeeperResolutionError:
+            pass
+
+    async with pool.acquire() as conn:
+        config = await conn.fetchrow("SELECT status FROM draft_config WHERE season = $1", TEST_SEASON)
+        any_picks_made = await conn.fetchval(
+            "SELECT count(*) FROM draft_picks WHERE season = $1 AND sleeper_player_id IS NOT NULL", TEST_SEASON
+        )
+    assert config["status"] == "not_started"
+    assert any_picks_made == 0
