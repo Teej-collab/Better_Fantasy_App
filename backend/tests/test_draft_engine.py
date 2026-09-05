@@ -5,6 +5,7 @@ engine's whole job is DB transaction/locking correctness, not
 provider-shaped data."""
 import asyncio
 import itertools
+import json
 from datetime import datetime, timezone
 
 from app.domain import draft_engine
@@ -336,6 +337,64 @@ async def test_create_draft_refuses_to_overwrite_existing_config(pool):
             assert False, "expected DraftAlreadyExistsError"
         except DraftAlreadyExistsError:
             pass
+
+
+async def test_create_draft_stores_and_round_trips_position_max(pool):
+    owner_a, _ = await _seed_owner_and_team(pool, "posmax_a")
+    owner_b, _ = await _seed_owner_and_team(pool, "posmax_b")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(
+            conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS, position_max={"QB": 4, "RB": 8}
+        )
+        config = await conn.fetchrow("SELECT position_max FROM draft_config WHERE season = $1", TEST_SEASON)
+    assert json.loads(config["position_max"]) == {"QB": 4, "RB": 8}
+
+
+async def test_create_draft_position_max_defaults_to_none(pool):
+    """No position_max passed at all — every existing league/season that
+    never touches this new setting keeps behaving exactly as before
+    (draft_autopick.py's physical-only guardrail), not a NULL-handling
+    crash."""
+    owner_a, _ = await _seed_owner_and_team(pool, "posmax_none_a")
+    owner_b, _ = await _seed_owner_and_team(pool, "posmax_none_b")
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS)
+        config = await conn.fetchrow("SELECT position_max FROM draft_config WHERE season = $1", TEST_SEASON)
+    assert config["position_max"] is None
+
+
+async def test_autopick_respects_a_configured_position_max(pool):
+    """End-to-end version of test_draft_autopick.py's own unit test —
+    real create_draft -> real autopick, not just choose_autopick called
+    directly. owner_a already has 1 RB rostered (round 1); with RB
+    capped at 1, a much-better-ranked 2nd RB in the pool gets skipped
+    for a worse-ranked WR on owner_a's round-2 autopick.
+
+    autopick() queries every real is_draftable player in the actual
+    `players` table (11,000+ real rows, real search ranks as low as 1
+    — this suite runs against a live-data-seeded DB, not a blank one),
+    so every rank here is negative: the only way to guarantee these 5
+    test players are the sole real contenders for "best available"
+    regardless of what real production data happens to be seeded."""
+    owner_a, _ = await _seed_owner_and_team(pool, "posmax_ap_a")
+    owner_b, _ = await _seed_owner_and_team(pool, "posmax_ap_b")
+    rb1 = await _seed_player(pool, "posmax-rb1", position="RB", search_rank=-5)
+    player_b1 = await _seed_player(pool, "posmax-b1", position="WR", search_rank=-4)
+    player_b2 = await _seed_player(pool, "posmax-b2", position="WR", search_rank=-3)
+    rb2 = await _seed_player(pool, "posmax-rb2", position="RB", search_rank=-2)  # better rank, but RB is capped
+    wr1 = await _seed_player(pool, "posmax-wr1", position="WR", search_rank=-1)
+
+    async with pool.acquire() as conn:
+        await draft_engine.create_draft(
+            conn, TEST_SEASON, [owner_a, owner_b], _ROSTER_SLOTS, position_max={"RB": 1}
+        )
+        await draft_engine.start_draft(conn, TEST_SEASON)
+        await draft_engine.autopick(conn, TEST_SEASON)  # owner_a round 1 -> best overall, rb1
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b1)  # owner_b round 1
+        await draft_engine.make_pick(conn, TEST_SEASON, owner_b, player_b2)  # owner_b round 2
+        result = await draft_engine.autopick(conn, TEST_SEASON)  # owner_a round 2
+
+    assert result["pick"]["sleeper_player_id"] == wr1  # not rb2, despite its better rank
 
 
 async def test_reset_draft_clears_config_picks_and_rosters(pool):

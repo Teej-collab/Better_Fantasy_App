@@ -65,14 +65,18 @@ async def _effective_pick_time_limit(conn, season: int, pick, league_id: int) ->
 
 
 def _config_dict(row) -> dict:
-    """asyncpg doesn't auto-decode JSONB — roster_slots comes back as a
-    raw JSON string from any query that doesn't explicitly parse it, so
-    every draft_config row this module hands back (return value or
-    internal use like choose_autopick's roster_slots argument) goes
-    through here first."""
+    """asyncpg doesn't auto-decode JSONB — roster_slots/position_max
+    come back as raw JSON strings from any query that doesn't
+    explicitly parse them, so every draft_config row this module hands
+    back (return value or internal use like choose_autopick's
+    roster_slots/position_max arguments) goes through here first.
+    position_max is nullable (see its own migration) — None stays None,
+    only a real string gets decoded."""
     d = dict(row)
     if isinstance(d.get("roster_slots"), str):
         d["roster_slots"] = json.loads(d["roster_slots"])
+    if isinstance(d.get("position_max"), str):
+        d["position_max"] = json.loads(d["position_max"])
     return d
 
 
@@ -93,7 +97,7 @@ def plan_snake_order(draft_order: list[int], rounds: int) -> list[tuple[int, int
 
 async def create_draft(
     conn, season: int, draft_order: list[int], roster_slots: dict, pick_time_limit_seconds: int = 90,
-    league_id: int = DEFAULT_LEAGUE_ID,
+    league_id: int = DEFAULT_LEAGUE_ID, position_max: dict | None = None,
 ) -> None:
     """Refuses to overwrite an existing draft_config for this season —
     call reset_draft() first if you need to change the order or roster
@@ -110,7 +114,13 @@ async def create_draft(
     rounds, plus the post-autopick grace window) instead of one flat
     commissioner-set value. Left in place rather than removed: harmless
     to keep accepting, and easy to wire back up as a real per-league
-    setting later if that's ever wanted again."""
+    setting later if that's ever wanted again.
+
+    position_max (optional): per-position roster caps for autopick's
+    own guardrail (see draft_autopick.py's _position_capacity) — e.g.
+    {"QB": 4, "RB": 8} to match ESPN's own league-settings display.
+    None/omitted means no configured caps for this league yet; autopick
+    still falls back to its physical-capacity guardrail either way."""
     async with conn.transaction():
         exists = await conn.fetchval(
             "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
@@ -133,10 +143,12 @@ async def create_draft(
         rounds = total_draftable_slots(roster_slots)
         await conn.execute(
             """
-            INSERT INTO draft_config (season, pick_time_limit_seconds, draft_order, roster_slots, league_id, scheduled_start)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO draft_config
+                (season, pick_time_limit_seconds, draft_order, roster_slots, league_id, scheduled_start, position_max)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id, pre_set_schedule,
+            json.dumps(position_max) if position_max is not None else None,
         )
         # Same cleanup as the pre-set schedule above — draft_config.
         # roster_slots is the single source of truth from here on, so
@@ -217,6 +229,28 @@ async def update_draft_order(
             new_order, season, league_id,
         )
         return _config_dict(updated)
+
+
+async def update_position_max(
+    conn, season: int, position_max: dict, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
+    """Sets/replaces the season's per-position roster caps directly on
+    an existing draft_config — unlike update_draft_order/roster_slots
+    above, this never requires resetting the draft first: it doesn't
+    touch draft_order, round count, or any already-made pick, only a
+    guardrail choose_autopick reads on its NEXT call (see
+    draft_autopick.py). Safe to change at any status, including
+    mid-draft, if a commissioner wants to tighten or loosen a cap while
+    the room is live. Raises DraftNotFoundError if no draft exists yet
+    for this season — use PUT /draft/roster-slots' staging table
+    instead pre-draft (see queries/draft.py's upsert_position_max_setting)."""
+    updated = await conn.fetchrow(
+        "UPDATE draft_config SET position_max = $1 WHERE season = $2 AND league_id = $3 RETURNING *",
+        json.dumps(position_max), season, league_id,
+    )
+    if updated is None:
+        raise DraftNotFoundError(f"No draft configured for season {season}")
+    return _config_dict(updated)
 
 
 async def set_scheduled_start(conn, season: int, scheduled_start, league_id: int = DEFAULT_LEAGUE_ID) -> None:
@@ -557,7 +591,9 @@ async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dic
             """,
             season, league_id,
         )
-        chosen = choose_autopick(rostered_positions, config["roster_slots"], [dict(r) for r in available])
+        chosen = choose_autopick(
+            rostered_positions, config["roster_slots"], [dict(r) for r in available], config.get("position_max")
+        )
         if chosen is None:
             raise PlayerNotDraftableError("No draftable players remaining")
 

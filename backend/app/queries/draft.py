@@ -4,6 +4,7 @@ pick/turn mutations live in app/domain/draft_engine.py)."""
 import json
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_slots import DEFAULT_ROSTER_SLOTS
 
 
 async def get_draft_pool(
@@ -47,6 +48,8 @@ async def get_draft_state(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID)
     config_dict = dict(config)
     if isinstance(config_dict.get("roster_slots"), str):
         config_dict["roster_slots"] = json.loads(config_dict["roster_slots"])
+    if isinstance(config_dict.get("position_max"), str):
+        config_dict["position_max"] = json.loads(config_dict["position_max"])
 
     picks = await conn.fetch(
         """
@@ -133,3 +136,50 @@ async def get_effective_roster_slots(conn, season: int, league_id: int = DEFAULT
     if from_config is not None:
         return json.loads(from_config) if isinstance(from_config, str) else from_config
     return await get_roster_slots_setting(conn, season, league_id)
+
+
+async def get_position_max_setting(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """A pre-set per-position roster cap staged ahead of a real draft —
+    same shape as get_roster_slots_setting above, just the position_max
+    sibling column. None if nothing's been staged (including once a
+    real draft exists, or if this league has never configured caps at
+    all — see draft_autopick.py's own fallback for what that means)."""
+    row = await conn.fetchval(
+        "SELECT position_max FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2",
+        season, league_id,
+    )
+    if isinstance(row, str):
+        return json.loads(row)
+    return row
+
+
+async def upsert_position_max_setting(conn, season: int, position_max: dict, league_id: int = DEFAULT_LEAGUE_ID):
+    # roster_slots is NOT NULL on this table — a commissioner setting
+    # position_max before ever staging a roster shape still needs a
+    # real value on first insert, so DEFAULT_ROSTER_SLOTS fills that
+    # gap. ON CONFLICT only ever touches position_max/updated_at, so
+    # this can never clobber a roster_slots value staged separately
+    # (before or after this call) via upsert_roster_slots_setting.
+    await conn.execute(
+        """
+        INSERT INTO league_roster_slots_settings (season, league_id, roster_slots, position_max)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (season, league_id) DO UPDATE SET position_max = EXCLUDED.position_max, updated_at = now()
+        """,
+        season, league_id, json.dumps(DEFAULT_ROSTER_SLOTS), json.dumps(position_max),
+    )
+
+
+async def get_effective_position_max(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """The season's per-position roster caps, whichever of the two
+    possible homes it's currently in — draft_config.position_max once a
+    real draft exists, or the staged league_roster_slots_settings value
+    ahead of that. None if neither has one set — unlike roster_slots,
+    this is a genuinely normal, common state (a league that's never
+    configured caps at all), not just "a season nobody's touched yet."""
+    from_config = await conn.fetchval(
+        "SELECT position_max FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    if from_config is not None:
+        return json.loads(from_config) if isinstance(from_config, str) else from_config
+    return await get_position_max_setting(conn, season, league_id)

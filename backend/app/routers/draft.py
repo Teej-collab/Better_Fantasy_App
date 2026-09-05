@@ -133,6 +133,7 @@ class SetupRequest(BaseModel):
     draft_order: list[int]
     roster_slots: dict[str, int]
     pick_time_limit_seconds: int = 90
+    position_max: dict[str, int] | None = None
 
 
 @router.post("/setup")
@@ -140,16 +141,25 @@ async def setup_draft(body: SetupRequest, request: Request):
     """Refuses to overwrite an existing draft (see create_draft's
     docstring) — call POST /draft/reset first to change the order or
     roster shape, whether that's redoing a mock draft or genuinely
-    reconfiguring before the real one."""
+    reconfiguring before the real one.
+
+    position_max: falls back to whatever's already staged (PUT /draft/
+    position-max, ahead of this call) when the request omits it, same
+    "don't make the caller re-send something already set" convenience
+    roster_slots itself doesn't need (DraftSetupPanel.tsx always
+    pre-fills and re-sends that one explicitly)."""
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
+            position_max = body.position_max
+            if position_max is None:
+                position_max = await draft_queries.get_position_max_setting(conn, season, league_id)
             await draft_engine.create_draft(
                 conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds,
-                league_id=league_id,
+                league_id=league_id, position_max=position_max,
             )
             state = await draft_queries.get_draft_state(conn, season, league_id)
     except DraftError as e:
@@ -264,6 +274,50 @@ async def set_roster_slots(body: RosterSlotsRequest, request: Request):
             )
         await draft_queries.upsert_roster_slots_setting(conn, season, body.roster_slots, league_id)
     return {"season": season, "roster_slots": body.roster_slots, "editable": True}
+
+
+class PositionMaxRequest(BaseModel):
+    position_max: dict[str, int]
+
+
+@router.get("/position-max")
+async def get_position_max(request: Request):
+    """The season's per-position roster caps (autopick's own guardrail —
+    see draft_autopick.py), wherever they currently live. Unlike
+    roster-slots' `editable`, this is always True: a position cap never
+    affects round count or already-generated draft_picks rows, so it
+    can always be changed, including mid-draft (see PUT's own
+    docstring)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        position_max = await draft_queries.get_effective_position_max(conn, season, league_id)
+    return {"season": season, "position_max": position_max, "editable": True}
+
+
+@router.put("/position-max")
+async def set_position_max(body: PositionMaxRequest, request: Request):
+    """Sets per-position roster caps, e.g. {"QB": 4, "RB": 8} to match
+    ESPN's own league-settings display — updates the live draft_config
+    directly if a real draft already exists for this season (safe at
+    any status, unlike roster-slots: see draft_engine.update_position_max's
+    own docstring for why), otherwise stages it the same way roster-
+    slots does ahead of a real draft."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        exists = await conn.fetchval(
+            "SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+        )
+        if exists:
+            await draft_engine.update_position_max(conn, season, body.position_max, league_id)
+        else:
+            await draft_queries.upsert_position_max_setting(conn, season, body.position_max, league_id)
+    return {"season": season, "position_max": body.position_max, "editable": True}
 
 
 class DraftOrderRequest(BaseModel):

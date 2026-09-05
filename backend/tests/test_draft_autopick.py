@@ -65,3 +65,46 @@ def test_choose_autopick_falls_back_to_best_overall_when_everything_saturated():
 
 def test_choose_autopick_returns_none_on_empty_pool():
     assert choose_autopick([], _ROSTER_SLOTS, []) is None
+
+
+# ---- position_max (2026-09): commissioner-configured roster caps -----------
+# Real reported concern, not hypothetical — the physical guardrail alone
+# (starting slot + flex + full bench) lets an autopick-heavy draft roster
+# 8 QBs deep on an otherwise-ordinary bench. position_max, when a league
+# configures it, narrows that down to a real number (matching ESPN's own
+# "QB (4 max)" league-settings display).
+
+def test_position_capacity_narrows_to_a_configured_max():
+    # Physical ceiling for QB is 8 (see test above); a configured max of
+    # 4 wins since it's tighter.
+    assert _position_capacity("QB", _ROSTER_SLOTS, {"QB": 4}) == 4
+
+
+def test_position_capacity_configured_max_never_loosens_past_the_physical_ceiling():
+    # A configured max looser than what's physically possible (e.g. left
+    # over from a bigger bench a prior season) can't raise the cap above
+    # the real ceiling — min(), not a straight replacement.
+    assert _position_capacity("QB", _ROSTER_SLOTS, {"QB": 99}) == 8
+
+
+def test_position_capacity_falls_back_when_this_position_has_no_configured_max():
+    # position_max configured for other positions, but not this one —
+    # QB still falls back to the physical-only ceiling.
+    assert _position_capacity("QB", _ROSTER_SLOTS, {"RB": 4}) == 8
+
+
+def test_position_capacity_falls_back_when_position_max_is_none():
+    # The common case — a league that's never configured caps at all.
+    assert _position_capacity("QB", _ROSTER_SLOTS, None) == 8
+
+
+def test_choose_autopick_skips_a_position_at_its_configured_max_well_before_the_physical_ceiling():
+    # Only 4 QBs rostered (nowhere near the physical ceiling of 8), but
+    # the league's configured max is 4 — autopick skips straight past
+    # the extra QB in the pool to the next-best real pick, matching the
+    # exact "someone on autodraft ends up with 8 QBs" complaint this was
+    # built for.
+    rostered = ["QB"] * 4
+    pool = [{"sleeper_player_id": "p-qb-extra", "position": "QB", "search_rank": 1}] + _POOL
+    pick = choose_autopick(rostered, _ROSTER_SLOTS, pool, {"QB": 4})
+    assert pick["sleeper_player_id"] == "p-rb1"

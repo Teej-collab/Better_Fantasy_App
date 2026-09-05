@@ -226,6 +226,23 @@ export async function setRosterSlots(
   return put("/draft/roster-slots", { roster_slots: rosterSlots });
 }
 
+// Per-position roster caps (autopick's guardrail against e.g. drafting
+// 8 QBs — see backend/app/domain/draft_autopick.py), matching ESPN's
+// own "QB (4 max)" league-settings display. Unlike roster slots,
+// `editable` is always true here — a position cap never affects round
+// count or already-generated draft_picks rows, so it can be changed
+// even after a real draft exists (backend/app/domain/draft_engine.py's
+// update_position_max updates it in place, no reset required).
+export async function getPositionMax(): Promise<{ position_max: Record<string, number> | null; editable: boolean }> {
+  return get("/draft/position-max");
+}
+
+export async function setPositionMax(
+  positionMax: Record<string, number>
+): Promise<{ position_max: Record<string, number>; editable: boolean }> {
+  return put("/draft/position-max", { position_max: positionMax });
+}
+
 export async function startDraft(): Promise<{ config: DraftConfig }> {
   return post("/draft/start");
 }

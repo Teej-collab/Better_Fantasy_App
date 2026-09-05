@@ -18,35 +18,51 @@ every empty roster starts at zero for all of them, that always picked a
 QB first regardless of rank, a real reported bug (2026-09 mock draft
 autodrafting QBs in round 1).
 
-The one guardrail: a position this roster has no plausible remaining room
-for (more players at that position than every starting slot, flex
-allowance, and the full bench combined could ever use) is skipped, so a
-fully-automated draft can't end up all one position — every other
-position stays eligible the entire draft, same as a human drafting
-straight off a big board.
+Two guardrails stack, tightest wins:
+- Physical: a position this roster has no plausible remaining room for
+  (more players at that position than every starting slot, flex
+  allowance, and the full bench combined could ever use) is skipped —
+  always on, no configuration needed.
+- Configured: a commissioner-set per-position roster max (see
+  league_roster_slots_settings/draft_config's own position_max column,
+  same idea as ESPN's own "QB (4 max)" league-settings display) is
+  skipped once reached, same as the physical guardrail above but a real
+  number instead of a worst-case one. Without this, the physical
+  guardrail alone genuinely allows something like 8 QBs on an
+  otherwise-ordinary roster (1 starting slot + a full bench, unlikely
+  but not degenerate) — a real reported concern (2026-09, an
+  autopick-heavy draft hoarding one position), not a hypothetical.
+  position_max is optional per-league/season; a position with no
+  configured entry falls back to the physical guardrail alone, so
+  every league that's never touched this setting keeps behaving
+  exactly as it always has.
 """
 from app.domain.roster_slots import FLEX_ELIGIBLE_POSITIONS, FLEX_SLOT_LABEL, POSITION_TO_SLOT_LABEL
 
 
-def _position_capacity(position: str, roster_slots: dict[str, int]) -> int:
-    """The most players at `position` this roster could ever plausibly
-    use: its own starting slot, plus every flex slot (a deliberate
-    over-count — flex is shared across RB/WR/TE, but assuming this one
-    position alone could fill every flex spot means this guardrail only
-    ever fires in a genuinely degenerate case, never a normal one), plus
-    the entire bench (bench accepts any position). This is not a model
-    of good roster construction — it only exists to stop autopick from
-    drafting literally every remaining pick at one position."""
+def _position_capacity(position: str, roster_slots: dict[str, int], position_max: dict[str, int] | None = None) -> int:
+    """The most players at `position` this roster will draft: the
+    physical ceiling (its own starting slot, plus every flex slot — a
+    deliberate over-count, see module docstring — plus the entire
+    bench), narrowed further by a configured position_max for this
+    position if one exists. min(), not a straight replacement, so a
+    commissioner-configured value that's larger than physically
+    possible (e.g. left over from a smaller bench a prior season) can
+    never loosen this below the real physical ceiling."""
     label = POSITION_TO_SLOT_LABEL.get(position)
     capacity = roster_slots.get(label, 0) if label else 0
     if position in FLEX_ELIGIBLE_POSITIONS:
         capacity += roster_slots.get(FLEX_SLOT_LABEL, 0)
     capacity += roster_slots.get("BE", 0)
+    configured = (position_max or {}).get(position)
+    if configured is not None:
+        capacity = min(capacity, configured)
     return capacity
 
 
 def choose_autopick(
-    rostered_positions: list[str], roster_slots: dict[str, int], available_players: list[dict]
+    rostered_positions: list[str], roster_slots: dict[str, int], available_players: list[dict],
+    position_max: dict[str, int] | None = None,
 ) -> dict | None:
     """available_players: list of {"sleeper_player_id", "position",
     "search_rank"}, already filtered to undrafted/draftable and sorted
@@ -54,9 +70,11 @@ def choose_autopick(
     responsibility, see draft_engine.py's query). Returns the single
     best-available player overall — real best-player-available, not a
     needs-first fill (see module docstring) — filtering out only
-    positions this roster has no plausible room left for. Returns None
-    if nothing is available (shouldn't happen in practice — the draft
-    pool is far larger than any one draft)."""
+    positions this roster has no room left for (physical ceiling,
+    tightened by position_max if the league has one configured — see
+    _position_capacity). Returns None if nothing is available
+    (shouldn't happen in practice — the draft pool is far larger than
+    any one draft)."""
     if not available_players:
         return None
 
@@ -66,7 +84,7 @@ def choose_autopick(
 
     eligible = [
         p for p in available_players
-        if counts.get(p["position"], 0) < _position_capacity(p["position"], roster_slots)
+        if counts.get(p["position"], 0) < _position_capacity(p["position"], roster_slots, position_max)
     ]
     pool = eligible if eligible else available_players
     return pool[0]

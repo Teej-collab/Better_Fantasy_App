@@ -616,6 +616,88 @@ async def test_roster_slots_rejected_once_a_real_draft_exists(pool, monkeypatch)
     assert get_resp.json()["editable"] is False
 
 
+async def test_position_max_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    _commish_user, _commish_owner, league_id = await _seed_commissioner_and_team(pool, "pm_noncomm")
+    user_id, owner_id = await _seed_member(pool, league_id, "pm_noncomm_member")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.put("/draft/position-max", json={"position_max": {"QB": 4}})
+    assert resp.status_code == 403
+
+
+async def test_get_position_max_is_null_and_editable_when_nothing_is_set(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "getpm_none")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        resp = await client.get("/draft/position-max")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["position_max"] is None
+    assert body["editable"] is True
+
+
+async def test_position_max_can_be_staged_before_any_draft_exists(pool, monkeypatch):
+    _set_env(monkeypatch)
+    user_id, owner_id, _league_id = await _seed_commissioner_and_team(pool, "pm_stage")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        put_resp = await client.put("/draft/position-max", json={"position_max": {"QB": 4, "RB": 8}})
+        assert put_resp.status_code == 200
+
+        get_resp = await client.get("/draft/position-max")
+
+    assert get_resp.json()["position_max"] == {"QB": 4, "RB": 8}
+    assert get_resp.json()["editable"] is True
+
+
+async def test_position_max_stays_editable_after_a_real_draft_exists(pool, monkeypatch):
+    """The real difference from roster-slots (test_roster_slots_rejected_
+    once_a_real_draft_exists above, a 409): a position cap never affects
+    round count or already-generated draft_picks rows, so PUT keeps
+    succeeding — updating the live draft_config directly — even once a
+    real draft is set up."""
+    _set_env(monkeypatch)
+    user_a, owner_a, league_id = await _seed_commissioner_and_team(pool, "pm_live")
+    _user_b, owner_b = await _seed_member(pool, league_id, "pm_live_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_a, owner_a))
+        await client.post("/draft/setup", json={"draft_order": [owner_a, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        put_resp = await client.put("/draft/position-max", json={"position_max": {"QB": 4}})
+        assert put_resp.status_code == 200
+
+        get_resp = await client.get("/draft/position-max")
+
+    assert get_resp.json()["position_max"] == {"QB": 4}
+    assert get_resp.json()["editable"] is True
+
+
+async def test_setup_picks_up_a_staged_position_max_when_omitted_from_the_request(pool, monkeypatch):
+    """Unlike roster_slots (test_setup_does_not_pick_up_a_staged_roster_
+    shape_automatically below), position_max IS picked up automatically
+    when /draft/setup's request omits it — see setup_draft's own
+    docstring for why the two fields behave differently here."""
+    _set_env(monkeypatch)
+    user_id, owner_id, league_id = await _seed_commissioner_and_team(pool, "pm_setup_pickup")
+    _user_b, owner_b = await _seed_member(pool, league_id, "pm_setup_pickup_b")
+
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        await client.put("/draft/position-max", json={"position_max": {"QB": 4}})
+        await client.post("/draft/setup", json={"draft_order": [owner_id, owner_b], "roster_slots": _ROSTER_SLOTS})
+
+        get_resp = await client.get("/draft/position-max")
+
+    assert get_resp.json()["position_max"] == {"QB": 4}
+
+
 async def test_setup_does_not_pick_up_a_staged_roster_shape_automatically(pool, monkeypatch):
     """Unlike the schedule table, staging a roster shape doesn't get
     silently carried into draft_config — the frontend (DraftSetupPanel)

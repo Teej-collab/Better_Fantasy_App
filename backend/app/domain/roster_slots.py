@@ -11,6 +11,16 @@ ESPN-specific vocabulary — app/providers/espn/slots.py's POSITION_MAP
 happens to use the same "RB/WR/TE"/"D/ST" strings, which is a
 coincidence of this league's config, not a dependency on that module.
 """
+# Same real shape frontend/src/components/commissioner/RosterSlotsSection.tsx's
+# own DEFAULT_ROSTER_SLOTS uses — the fallback app/queries/draft.py's
+# upsert_position_max_setting inserts roster_slots as when a
+# commissioner sets position_max before ever staging a roster shape
+# (league_roster_slots_settings.roster_slots is NOT NULL, so a bare
+# position_max upsert still needs some real value on first insert; the
+# ON CONFLICT clause never touches roster_slots on a later run, so a
+# real staged value always wins once one exists).
+DEFAULT_ROSTER_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR/TE": 1, "D/ST": 1, "K": 1, "BE": 7, "IR": 1}
+
 POSITION_TO_SLOT_LABEL = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "K", "DEF": "D/ST"}
 FLEX_ELIGIBLE_POSITIONS = {"RB", "WR", "TE"}
 FLEX_SLOT_LABEL = "RB/WR/TE"
