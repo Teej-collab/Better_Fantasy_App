@@ -115,7 +115,7 @@ export function ConversationList({
           </button>
         </div>
       ) : (
-        <ul className="flex-1 divide-y divide-black/5 overflow-y-auto overscroll-y-contain dark:divide-white/5">
+        <ul className="min-h-0 flex-1 divide-y divide-black/5 overflow-y-auto overscroll-y-contain dark:divide-white/5">
           {conversations.map((c) => {
             const isGroup = c.type === "league" || c.type === "commish_corner";
             const title =

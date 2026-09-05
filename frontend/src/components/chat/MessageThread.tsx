@@ -200,7 +200,13 @@ export function MessageThread({
         <div
           ref={listRef}
           onScroll={handleScroll}
-          className="relative flex-1 overflow-y-auto overscroll-y-contain px-4 py-3"
+          // min-h-0 is load-bearing — see AnnouncementFeed.tsx's own
+          // comment on its identical class for the full reasoning (a
+          // flex item's default auto min-height is its own content
+          // size, not 0, so without this a long real thread can't
+          // shrink to fit the panel's fixed height and pushes the
+          // composer below it instead of scrolling internally).
+          className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3"
         >
           {hasMoreOlder && (
             <div className="mb-3 flex justify-center">

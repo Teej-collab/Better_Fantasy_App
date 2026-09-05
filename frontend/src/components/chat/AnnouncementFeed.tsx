@@ -32,7 +32,19 @@ export function AnnouncementFeed({
   const newestFirst = [...messages].reverse();
 
   return (
-    <div className="flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
+    // min-h-0 is load-bearing (2026-09 fix): a flex item's default
+    // auto min-height is its own content size, not 0 — without this, a
+    // real feed of announcement cards taller than the space left for
+    // it (MessageThread.tsx's own panel has a fixed, JS-measured
+    // total height, not one that grows with content) refuses to
+    // shrink to fit, and PostAnnouncementForm below it gets pushed
+    // past the panel's own overflow-hidden boundary instead of this
+    // list scrolling internally like it's supposed to — the real bug
+    // behind "the composer's submit button is cut off right above the
+    // bottom nav" in Commish's Corner specifically (its 2-field
+    // composer plus a feed of substantial cards is exactly the
+    // combination that exposes this; a short DM thread rarely does).
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
       {newestFirst.length === 0 ? (
         <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">
           No announcements yet.
