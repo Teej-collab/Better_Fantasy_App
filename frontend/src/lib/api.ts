@@ -1200,6 +1200,13 @@ export type MyTeam = {
   team_name: string;
   season: number;
   roster: RosterEntry[];
+  // Per-slot capacity (e.g. RB: 2, WR: 2) from draft_config.roster_slots
+  // — null pre-draft, same as roster itself being empty then. Powers
+  // the edit-lineup modal's "how many of this slot can I fill"
+  // check (MyTeamApp.tsx's editLineupOptions) — a slot can be under-
+  // filled right now even with real capacity remaining, so this can't
+  // be inferred from who's currently occupying it.
+  roster_slots: Record<string, number> | null;
 };
 
 export async function getMyTeam(): Promise<MyTeam> {

@@ -28,6 +28,8 @@ Every endpoint resolves owner_id (and from it, team_id) from the
 session — never trusts a client-supplied team/owner id, same discipline
 as keepers.py/settings.py.
 """
+import json
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -187,7 +189,7 @@ def _live_status_lookup(games: list) -> dict[str, dict]:
 async def my_team(request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, team_name, _ = await _require_my_team(payload, active_season)
+    team_id, team_name, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -197,6 +199,18 @@ async def my_team(request: Request):
         current_week = await league_queries.get_cached_current_week(conn, active_season)
         roster = await lineup_engine.get_roster(conn, active_season, team_id, current_week)
         bye_weeks = await league_queries.get_bye_weeks(conn, active_season)
+        # Per-slot capacity (e.g. RB: 2, WR: 2) — the edit-lineup UI
+        # needs this to know how many occupants a slot can hold, not
+        # just who's in it right now (a slot can be under-filled right
+        # after a draft). None pre-draft, same as roster itself being
+        # empty then; MyTeamApp.tsx's own empty-roster case already
+        # short-circuits before this would matter.
+        raw_roster_slots = await conn.fetchval(
+            "SELECT roster_slots FROM draft_config WHERE season = $1 AND league_id = $2", active_season, league_id
+        )
+        roster_slots = (
+            json.loads(raw_roster_slots) if isinstance(raw_roster_slots, str) else raw_roster_slots
+        )
 
     for entry in roster:
         bye_week = bye_weeks.get(entry["pro_team"])
@@ -227,6 +241,7 @@ async def my_team(request: Request):
         "team_name": team_name,
         "season": active_season,
         "roster": [_roster_entry_dict(e) for e in roster],
+        "roster_slots": roster_slots,
     }
 
 

@@ -6,12 +6,8 @@ import {
   dropPlayer,
   getMyTeam,
   getMyTeamOwnership,
-  previewLineupMove,
-  previewLineupSwap,
   submitLineupMove,
   submitLineupSwap,
-  type LineupMovePreview,
-  type LineupSwapPreview,
   type MyTeam,
   type OwnershipInfo,
   type RosterEntry,
@@ -19,26 +15,38 @@ import {
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
-import {
-  BENCH_SLOT_LABEL,
-  canSwapSlots,
-  isEligibleForSlot,
-  slotDisplayLabel,
-  STARTER_SLOT_ORDER,
-  starterSortIndex,
-} from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 
-// Which starter slots a bench player could move straight into — a
-// brand-new, all-bench roster (right after a draft — see MyTeamApp's
-// own empty-roster case below) has zero occupied starter rows to swap
-// with, so this is the only path that can ever get someone into their
-// FIRST starting lineup; it stays available afterward too, as a
-// quicker one-click alternative to select-then-swap.
+// Which starter slots this position is eligible for at all (e.g. an RB
+// can go RB or FLEX) — the set of destinations editLineupOptions below
+// ever offers alongside the bench.
 function eligibleStarterSlotsFor(position: string): string[] {
   return STARTER_SLOT_ORDER.filter((slot) => isEligibleForSlot(position, slot));
 }
 
 const BENCH_SLOTS = new Set([BENCH_SLOT_LABEL, "IR"]);
+
+type EditLineupOption = { slot: string; occupant: RosterEntry | null };
+
+// Every real destination `entry` could move to right now — one row per
+// open or occupied slot across every eligible starter position plus
+// the bench, using the exact same eligibility/capacity rules the
+// backend enforces (app/domain/lineup_engine.py's is_eligible_for_slot/
+// _find_displacement) so nothing offered here can ever be rejected by
+// the real submit. Includes entry's own current slot (so the modal can
+// show "already here") — callers filter that one out of what's
+// actually clickable.
+function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlots: Record<string, number>): EditLineupOption[] {
+  const options: EditLineupOption[] = [];
+  for (const slot of eligibleStarterSlotsFor(entry.position)) {
+    const capacity = rosterSlots[slot] ?? 0;
+    const occupants = roster.filter((r) => r.lineup_slot === slot);
+    for (const occupant of occupants) options.push({ slot, occupant });
+    if (occupants.length < capacity) options.push({ slot, occupant: null });
+  }
+  options.push(entry.lineup_slot === BENCH_SLOT_LABEL ? { slot: BENCH_SLOT_LABEL, occupant: entry } : { slot: BENCH_SLOT_LABEL, occupant: null });
+  return options;
+}
 
 // "2026-09-21T20:00Z" -> "Sun 3:00 PM" — real ISO8601 from the backend
 // (app/providers/nfl_scoreboard.py), formatted client-side so it
@@ -54,41 +62,27 @@ function formatGameTime(iso: string): string {
 function RosterRow({
   entry,
   ownership,
-  selectedForSwap,
-  swapDisabled,
-  isBenchRow,
-  swapSelectionActive,
   mounted,
-  onToggleSwapSelect,
-  onStartAtSlot,
+  onOpenEdit,
   onViewPlayer,
   onDrop,
 }: {
   entry: RosterEntry;
   ownership: OwnershipInfo | undefined;
-  selectedForSwap: boolean;
-  swapDisabled: boolean;
-  // Only changes the button's idle-state label (see swapButtonLabel
-  // below) — the actual swap logic doesn't care which list a row is
-  // in, only its lineup_slot.
-  isBenchRow: boolean;
-  // Whether some OTHER row is mid-swap-selection right now — a bench
-  // row shows its normal one-click "Start {slot}" buttons by default,
-  // but switches to the same Swap-select button a starter row always
-  // has while a swap is in progress, so completing "select a starter,
-  // then pick who replaces them" still works (see toggleSwapSelect).
-  swapSelectionActive: boolean;
   mounted: boolean;
-  onToggleSwapSelect: (entry: RosterEntry) => void;
-  onStartAtSlot: (entry: RosterEntry, slot: string) => void;
+  onOpenEdit: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
   onDrop: (entry: RosterEntry) => void;
 }) {
   return (
     <li className="flex items-center gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
-      <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 dark:border-white/10 dark:text-white/60">
+      <button
+        onClick={() => onOpenEdit(entry)}
+        title="Edit lineup"
+        className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 hover:border-sky-500 hover:text-sky-600 dark:border-white/10 dark:text-white/60 dark:hover:text-sky-400"
+      >
         {slotDisplayLabel(entry.lineup_slot)}
-      </span>
+      </button>
       <span className="relative inline-flex shrink-0">
         <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         {/* Only ever shown during an actual in-progress game (see
@@ -151,59 +145,15 @@ function RosterRow({
         <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
           {entry.points !== null ? entry.points.toFixed(1) : "—"}
         </span>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
-          {isBenchRow && !swapSelectionActive ? (
-            // One-click straight into a starting slot — works whether
-            // that slot is currently empty (the only path that does,
-            // right after a draft) or occupied (auto-benches whoever's
-            // there, same outcome a select-then-swap would reach).
-            eligibleStarterSlotsFor(entry.position).map((slot) => (
-              <button
-                key={slot}
-                onClick={() => onStartAtSlot(entry, slot)}
-                className="rounded-full border border-black/10 px-2 py-1 text-[11px] font-medium text-black/50 hover:border-sky-500 hover:text-sky-600 dark:border-white/10 dark:text-white/50 dark:hover:text-sky-400"
-              >
-                Start {slotDisplayLabel(slot)}
-              </button>
-            ))
-          ) : (
-            <button
-              onClick={() => onToggleSwapSelect(entry)}
-              disabled={swapDisabled}
-              title={swapDisabled ? "Doesn't qualify for a swap with the selected player" : undefined}
-              className={`rounded-full border px-2 py-1 text-[11px] font-medium disabled:opacity-30 ${
-                selectedForSwap
-                  ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                  : "border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
-              }`}
-            >
-              {selectedForSwap ? "Selected" : "Swap"}
-            </button>
-          )}
-          <button
-            onClick={() => onDrop(entry)}
-            className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
-          >
-            Drop
-          </button>
-        </div>
+        <button
+          onClick={() => onDrop(entry)}
+          className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
+        >
+          Drop
+        </button>
       </div>
     </li>
   );
-}
-
-// A swap needs a `selected` player and is otherwise valid per
-// canSwapSlots, but bench<->bench is deliberately excluded here even
-// though it's technically eligible (both slots accept any position) —
-// it's a real no-op for what anyone actually wants ("get this guy
-// into my starting lineup"), and with a full bench, leaving every
-// other bench row lit up as "clickable" buried the one or two starter
-// rows that were the actual point (2026-09 reported: "difficult...
-// to put them in the starter position").
-function isSwapDisabled(selected: RosterEntry | null, entry: RosterEntry): boolean {
-  if (selected === null || selected.player_id === entry.player_id) return false;
-  if (selected.lineup_slot === BENCH_SLOT_LABEL && entry.lineup_slot === BENCH_SLOT_LABEL) return true;
-  return !canSwapSlots(selected.position, selected.lineup_slot, entry.position, entry.lineup_slot);
 }
 
 // Live offense/red-zone status only ever matters during an actual
@@ -240,15 +190,15 @@ export function MyTeamApp({
     const id = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(id);
   }, []);
-  const [swapPreview, setSwapPreview] = useState<LineupSwapPreview | null>(null);
-  const [movePreview, setMovePreview] = useState<LineupMovePreview | null>(null);
-  // At most one selected at a time — swap is strictly pick-a-player,
-  // then pick a qualifying partner, not "select any two."
-  const [selected, setSelected] = useState<RosterEntry | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  // The one player currently being edited — opens a bottom-sheet
+  // listing every real destination for them (see editLineupOptions).
+  // Tapping a destination submits immediately, no separate preview/
+  // confirm step — matches the reference ESPN flow this was modeled
+  // on (2026-09): tap a player's slot pill, tap where they're going,
+  // done.
+  const [editingEntry, setEditingEntry] = useState<RosterEntry | null>(null);
+  const [actioning, setActioning] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RosterEntry | null>(null);
   const [dropping, setDropping] = useState(false);
@@ -299,90 +249,41 @@ export function MyTeamApp({
     return () => clearInterval(id);
   }, [isGameDay]);
 
-  function confirmSwap() {
-    if (!swapPreview) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    submitLineupSwap(swapPreview.player_a.player_id, swapPreview.player_b.player_id)
+  function openEdit(entry: RosterEntry) {
+    setActionError(null);
+    setSubmitted(null);
+    setEditingEntry(entry);
+  }
+
+  function moveTo(entry: RosterEntry, toSlot: string) {
+    setActioning(true);
+    setActionError(null);
+    submitLineupMove(entry.player_id, toSlot)
       .then((result) => {
-        setSubmitted(`Swapped ${swapPreview.player_a.player_name} and ${swapPreview.player_b.player_name}.`);
-        setSwapPreview(null);
+        setSubmitted(`Moved ${entry.player_name} to ${slotDisplayLabel(toSlot)}.`);
+        setEditingEntry(null);
         setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
       })
-      .catch((e) => setSubmitError(e instanceof Error ? e.message : "Swap failed"))
-      .finally(() => setSubmitting(false));
+      .catch((e) => setActionError(e instanceof Error ? e.message : "Move failed"))
+      .finally(() => setActioning(false));
   }
 
-  function confirmMove() {
-    if (!movePreview) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    submitLineupMove(movePreview.player.player_id, movePreview.to_slot)
+  function swapWith(entry: RosterEntry, other: RosterEntry) {
+    setActioning(true);
+    setActionError(null);
+    submitLineupSwap(entry.player_id, other.player_id)
       .then((result) => {
-        setSubmitted(
-          movePreview.displaced_player
-            ? `Started ${movePreview.player.player_name} at ${slotDisplayLabel(movePreview.to_slot)} — ${movePreview.displaced_player.player_name} moved to the bench.`
-            : `Started ${movePreview.player.player_name} at ${slotDisplayLabel(movePreview.to_slot)}.`
-        );
-        setMovePreview(null);
+        setSubmitted(`Swapped ${entry.player_name} and ${other.player_name}.`);
+        setEditingEntry(null);
         setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
       })
-      .catch((e) => setSubmitError(e instanceof Error ? e.message : "Move failed"))
-      .finally(() => setSubmitting(false));
-  }
-
-  function startMove(entry: RosterEntry, toSlot: string) {
-    setSwapPreview(null);
-    setSelected(null);
-    setPreviewError(null);
-    setSubmitError(null);
-    setSubmitted(null);
-
-    setPreviewing(true);
-    previewLineupMove(entry.player_id, toSlot)
-      .then(setMovePreview)
-      .catch((e) => setPreviewError(e instanceof Error ? e.message : "Preview failed"))
-      .finally(() => setPreviewing(false));
-  }
-
-  function toggleSwapSelect(entry: RosterEntry) {
-    setSwapPreview(null);
-    setMovePreview(null);
-    setPreviewError(null);
-    setSubmitError(null);
-    setSubmitted(null);
-
-    if (selected === null) {
-      setSelected(entry);
-      return;
-    }
-    if (selected.player_id === entry.player_id) {
-      setSelected(null); // clicking the already-selected player deselects it
-      return;
-    }
-    // Any other row rendered as clickable is already a qualifying
-    // partner (see swapDisabled below) — this defensively no-ops if
-    // it somehow isn't, rather than firing an invalid preview.
-    if (!canSwapSlots(selected.position, selected.lineup_slot, entry.position, entry.lineup_slot)) return;
-
-    setPreviewing(true);
-    previewLineupSwap(selected.player_id, entry.player_id)
-      .then((result) => {
-        setSwapPreview(result);
-        setSelected(null);
-      })
-      .catch((e) => {
-        setPreviewError(e instanceof Error ? e.message : "Preview failed");
-        setSelected(null);
-      })
-      .finally(() => setPreviewing(false));
+      .catch((e) => setActionError(e instanceof Error ? e.message : "Swap failed"))
+      .finally(() => setActioning(false));
   }
 
   function startDrop(entry: RosterEntry) {
-    setSwapPreview(null);
-    setMovePreview(null);
-    setSelected(null);
-    setSubmitError(null);
+    setEditingEntry(null);
+    setActionError(null);
     setSubmitted(null);
     setDropTarget(entry);
   }
@@ -390,14 +291,14 @@ export function MyTeamApp({
   function confirmDrop() {
     if (!dropTarget) return;
     setDropping(true);
-    setSubmitError(null);
+    setActionError(null);
     dropPlayer(dropTarget.player_id)
       .then((result) => {
         setSubmitted(`Dropped ${dropTarget.player_name} — back to free agency.`);
         setDropTarget(null);
         setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
       })
-      .catch((e) => setSubmitError(e instanceof Error ? e.message : "Drop failed"))
+      .catch((e) => setActionError(e instanceof Error ? e.message : "Drop failed"))
       .finally(() => setDropping(false));
   }
 
@@ -410,7 +311,7 @@ export function MyTeamApp({
 
   const starters = team.roster
     .filter((e) => !BENCH_SLOTS.has(e.lineup_slot))
-    .sort((a, b) => starterSortIndex(a.lineup_slot) - starterSortIndex(b.lineup_slot));
+    .sort((a, b) => STARTER_SLOT_ORDER.indexOf(a.lineup_slot) - STARTER_SLOT_ORDER.indexOf(b.lineup_slot));
   const bench = team.roster.filter((e) => BENCH_SLOTS.has(e.lineup_slot));
 
   // Real state right now, not a hypothetical edge case: the actual
@@ -437,83 +338,25 @@ export function MyTeamApp({
     );
   }
 
+  const options = editingEntry ? editLineupOptions(editingEntry, team.roster, team.roster_slots ?? {}) : [];
+  const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL);
+  const benchOptions = options.filter((o) => o.slot === BENCH_SLOT_LABEL);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
       </div>
 
-      {previewing && <p className="text-xs text-black/50 dark:text-white/50">Checking…</p>}
-      {previewError && <p className="text-xs text-red-500">{previewError}</p>}
-      {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+      {actioning && <p className="text-xs text-black/50 dark:text-white/50">Saving…</p>}
       {submitted && <p className="text-xs text-emerald-600 dark:text-emerald-400">{submitted}</p>}
-
-      {swapPreview && (
-        <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-3 text-sm">
-          <p>
-            Swap <strong>{swapPreview.player_a.player_name}</strong> ({swapPreview.player_a.lineup_slot})
-            with <strong>{swapPreview.player_b.player_name}</strong> ({swapPreview.player_b.lineup_slot})?
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button
-              onClick={confirmSwap}
-              disabled={submitting}
-              className="rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : "Confirm swap"}
-            </button>
-            <button
-              onClick={() => setSwapPreview(null)}
-              disabled={submitting}
-              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 disabled:opacity-50 dark:border-white/10 dark:text-white/60"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {movePreview && (
-        <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-3 text-sm">
-          <p>
-            Start <strong>{movePreview.player.player_name}</strong> at {slotDisplayLabel(movePreview.to_slot)}?
-            {movePreview.displaced_player && (
-              <>
-                {" "}
-                <strong>{movePreview.displaced_player.player_name}</strong> will move to the bench.
-              </>
-            )}
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button
-              onClick={confirmMove}
-              disabled={submitting}
-              className="rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : "Confirm"}
-            </button>
-            <button
-              onClick={() => setMovePreview(null)}
-              disabled={submitting}
-              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 disabled:opacity-50 dark:border-white/10 dark:text-white/60"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {selected && (
-        <p className="text-xs text-black/50 dark:text-white/50">
-          Selected {selected.player_name} for a swap — pick a player who qualifies for their slot (and vice versa).
-        </p>
-      )}
 
       {dropTarget && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-3 text-sm">
           <p>
             Drop <strong>{dropTarget.player_name}</strong> back to free agency? Anyone else can pick them up.
           </p>
+          {actionError && <p className="mt-1 text-xs text-red-500">{actionError}</p>}
           <div className="mt-2 flex gap-2">
             <button
               onClick={confirmDrop}
@@ -541,13 +384,8 @@ export function MyTeamApp({
               key={e.player_id}
               entry={e}
               ownership={ownership[e.player_id]}
-              selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={isSwapDisabled(selected, e)}
-              isBenchRow={false}
-              swapSelectionActive={selected !== null}
               mounted={mounted}
-              onToggleSwapSelect={toggleSwapSelect}
-              onStartAtSlot={startMove}
+              onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
             />
@@ -563,13 +401,8 @@ export function MyTeamApp({
               key={e.player_id}
               entry={e}
               ownership={ownership[e.player_id]}
-              selectedForSwap={selected?.player_id === e.player_id}
-              swapDisabled={isSwapDisabled(selected, e)}
-              isBenchRow={true}
-              swapSelectionActive={selected !== null}
               mounted={mounted}
-              onToggleSwapSelect={toggleSwapSelect}
-              onStartAtSlot={startMove}
+              onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
             />
@@ -577,6 +410,112 @@ export function MyTeamApp({
         </ul>
       </section>
 
+      {editingEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+          onClick={() => setEditingEntry(null)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl border-t border-black/10 bg-[var(--background)] p-4 sm:rounded-2xl sm:border dark:border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold tracking-wide uppercase">Edit Lineup</h3>
+              <button
+                onClick={() => setEditingEntry(null)}
+                aria-label="Close"
+                className="text-lg text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-black/50 dark:text-white/50">
+              Moving <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong> — tap where
+              they should go.
+            </p>
+            {actionError && <p className="mb-2 text-xs text-red-500">{actionError}</p>}
+
+            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+              Starters
+            </h4>
+            <ul className="mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5">
+              {starterOptions.map((opt, i) => (
+                <EditLineupOptionRow
+                  key={`${opt.slot}-${i}`}
+                  option={opt}
+                  editingEntry={editingEntry}
+                  actioning={actioning}
+                  onMoveTo={moveTo}
+                  onSwapWith={swapWith}
+                />
+              ))}
+            </ul>
+
+            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+              Bench
+            </h4>
+            <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+              {benchOptions.map((opt, i) => (
+                <EditLineupOptionRow
+                  key={`${opt.slot}-${i}`}
+                  option={opt}
+                  editingEntry={editingEntry}
+                  actioning={actioning}
+                  onMoveTo={moveTo}
+                  onSwapWith={swapWith}
+                />
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function EditLineupOptionRow({
+  option,
+  editingEntry,
+  actioning,
+  onMoveTo,
+  onSwapWith,
+}: {
+  option: EditLineupOption;
+  editingEntry: RosterEntry;
+  actioning: boolean;
+  onMoveTo: (entry: RosterEntry, toSlot: string) => void;
+  onSwapWith: (entry: RosterEntry, other: RosterEntry) => void;
+}) {
+  const isCurrent = option.occupant?.player_id === editingEntry.player_id;
+
+  function handleClick() {
+    if (isCurrent || actioning) return;
+    if (option.occupant) onSwapWith(editingEntry, option.occupant);
+    else onMoveTo(editingEntry, option.slot);
+  }
+
+  return (
+    <li>
+      <button
+        onClick={handleClick}
+        disabled={isCurrent || actioning}
+        className={`flex w-full items-center gap-2.5 py-2.5 text-left disabled:cursor-default ${
+          isCurrent ? "" : "hover:bg-sky-500/[0.06]"
+        }`}
+      >
+        <span
+          className={`shrink-0 rounded-full border px-2 py-1 text-center text-[10px] font-semibold ${
+            isCurrent
+              ? "border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+              : "border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+          }`}
+        >
+          {slotDisplayLabel(option.slot)}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm">
+          {option.occupant ? option.occupant.player_name : <span className="text-black/40 dark:text-white/40">Empty</span>}
+        </span>
+      </button>
+    </li>
   );
 }
