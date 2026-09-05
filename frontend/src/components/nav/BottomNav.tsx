@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
@@ -123,7 +124,19 @@ export function BottomNav({
   order: string[] | null;
 }) {
   const tabOrder = order && isValidNavOrder(order) ? order : MOBILE_NAV_ORDER;
-  const keyboardInset = useKeyboardInset();
+  const rawKeyboardInset = useKeyboardInset();
+  // Chat (ChatApp.tsx) already fully manages the space above this bar
+  // itself — its own mobileHeight measurement shrinks the panel to end
+  // exactly at this bar's DEFAULT, un-shifted position, and the
+  // composer sits at the bottom of that already-correct space. This
+  // bar ALSO shifting up here on the same keyboard-open signal is
+  // double compensation: the confirmed real-device result (2026-09) is
+  // this bar sliding up into the middle of an already-correctly-sized
+  // chat panel, landing squarely on top of the composer instead of
+  // clearing out of its way. Suppressing the shift on /chat isn't a
+  // loss for that page — it never needed this bar to move at all.
+  const pathname = usePathname();
+  const keyboardInset = pathname === "/chat" ? 0 : rawKeyboardInset;
 
   return (
     <nav
