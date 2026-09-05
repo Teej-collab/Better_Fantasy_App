@@ -96,7 +96,7 @@ async def get_recent_activity(conn, limit: int) -> list[dict]:
     scope)."""
     rows = await conn.fetch(
         """
-        (SELECT 'signup' AS kind, display_name AS label, created_at FROM users ORDER BY created_at DESC LIMIT $1)
+        (SELECT 'signup' AS kind, coalesce(display_name, 'A new member') AS label, created_at FROM users ORDER BY created_at DESC LIMIT $1)
         UNION ALL
         (SELECT 'league_created' AS kind, name AS label, created_at FROM leagues ORDER BY created_at DESC LIMIT $1)
         UNION ALL
