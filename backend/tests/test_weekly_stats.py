@@ -175,6 +175,53 @@ async def test_compute_week_stats_recomputes_from_scratch_on_a_stat_correction(p
     assert json.loads(second["raw_stats"]) == {"pts_allow_0": 1, "yds_allow_100_199": 1, "def_sack": 1}
 
 
+async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch):
+    """ESPN's own def_tackle stat isn't position-scoped (see
+    espn_public.py's own docstring on totalTackles) — this league
+    scores a QB's own tackle at a different rate, so compute_week_stats
+    renames def_tackle -> qb_tackle in the stat_line before scoring,
+    for QB-position players only. A non-QB's def_tackle passes through
+    unchanged."""
+    await _seed_rules(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit) VALUES "
+            "($1, 'def_tackle', 1), ($1, 'qb_tackle', 15)",
+            TEST_SEASON,
+        )
+    await _seed_player(pool, "test-weeklystats-qb-tackle", espn_player_id=333, position="QB")
+    await _seed_player(pool, "test-weeklystats-lb-tackle", espn_player_id=444, position="LB")
+
+    game = {
+        "players": [
+            {"espn_player_id": 333, "player_name": "Test QB", "pro_team": "KC", "stat_line": {"def_tackle": 1}},
+            {"espn_player_id": 444, "player_name": "Test LB", "pro_team": "KC", "stat_line": {"def_tackle": 9}},
+        ],
+        "team_dst": {},
+    }
+
+    async def fake_get_game_stats(event_id):
+        return game
+
+    monkeypatch.setattr(weekly_stats, "get_game_stats", fake_get_game_stats)
+    async with pool.acquire() as conn:
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        qb_row = await conn.fetchrow(
+            "SELECT * FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+            TEST_SEASON, "test-weeklystats-qb-tackle",
+        )
+        lb_row = await conn.fetchrow(
+            "SELECT * FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+            TEST_SEASON, "test-weeklystats-lb-tackle",
+        )
+
+    assert json.loads(qb_row["raw_stats"]) == {"qb_tackle": 1}
+    assert float(qb_row["fantasy_points"]) == 15.0
+
+    assert json.loads(lb_row["raw_stats"]) == {"def_tackle": 9}
+    assert float(lb_row["fantasy_points"]) == 9.0
+
+
 async def test_compute_week_stats_raises_without_scoring_rules(pool, monkeypatch):
     monkeypatch.setattr(weekly_stats, "get_game_stats", _fake_get_game_stats)
     # No rules seeded for TEST_SEASON.

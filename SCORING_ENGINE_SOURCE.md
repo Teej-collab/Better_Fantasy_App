@@ -51,9 +51,9 @@ captured at attempt-level granularity), and defensive
 sacks/tackles/INTs/fumble recoveries are all directly present with
 real per-player identity.
 
-## Field-goal-by-yardage and tackles — CLOSED (2026-09)
+## Field-goal-by-yardage, missed FGs by distance, and tackles — CLOSED (2026-09)
 
-Both of these used to be in the "known gap" list below; they're real,
+All of these used to be in the "known gap" list below; they're real,
 scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
 
 - **`fg_yds`** (0.1 pt/yard by default, commissioner-adjustable in
@@ -70,19 +70,39 @@ scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
   rather than guessed at). Verified live against event `401772510`
   (DAL @ PHI): Brandon Aubrey's real 41+53 make and Jake Elliott's real
   58 both reproduced exactly.
-- **`def_tackle`**: the `defensive` category's `totalTackles`/
-  `soloTackles` fields were already being fetched for sacks; they were
-  just never mapped before. Not position-scoped in ESPN's own data —
-  whoever recorded a real tackle shows up here, including a QB after
-  his own pick gets returned (verified live, same event: Dak Prescott
-  really did record 1 tackle in that game, and it's captured exactly).
+- **`fg_miss_0_29` / `fg_miss_30_39` / `fg_miss_40_49` / `fg_miss_50_plus`**
+  (-5 / -3 / -1 / 0 by default): a miss's real distance turned out to
+  be available too, just from a genuinely different part of the
+  response than a make's — `drives.previous[].plays[]`, ESPN's full
+  play-by-play (not just scoring plays), each missed FG tagged
+  `type.abbreviation == "FGM"` with a clean structured `statYardage`
+  field (e.g. `44`) — no text parsing needed at all, unlike makes.
+  Player attribution reuses the same single-kicker-per-team heuristic
+  as `fg_yds`, just keyed by numeric team id instead of abbreviation —
+  a missed-FG play's own `teamParticipants` only carries team ids per
+  offense/defense role, never an individual athlete id (see
+  `_parse_fg_misses_by_player`'s own docstring). Verified live against
+  event `401772830` (TB @ ATL): Chase McLaughlin's real 44-yard "Wide
+  Left" and Younghoe Koo's real 44-yard "Wide Right" both correctly
+  landed in `fg_miss_40_49`. Supersedes the old flat `fg_miss_total`
+  (attempts minus makes, no distance) — removed in the same migration
+  that added these.
+- **`def_tackle`** (non-QB) / **`qb_tackle`** (QB, a much higher point
+  value in this league — 15 by default): the `defensive` category's
+  `totalTackles`/`soloTackles` fields were already being fetched for
+  sacks; they were just never mapped before. ESPN's own stat is NOT
+  position-scoped — whoever recorded a real tackle shows up here,
+  including a QB after his own pick gets returned (verified live
+  against event `401772510`: Dak Prescott really did record 1 tackle
+  in that game). This league scores a QB's tackle differently, though,
+  so `app/domain/weekly_stats.py` — not `espn_public.py`, which has no
+  access to a player's position — splits `def_tackle` into `qb_tackle`
+  for QB-position players right before scoring, per player/per game.
 
-**Still NOT captured** (unchanged, no new spike done on these): missed
-field goals (a miss doesn't appear in `scoringPlays` at all, and isn't
-distance-tagged in the boxscore's makes/attempts ratio either — a real,
-separate gap), 2-point conversions, blocked kicks, safeties. All are
-real but rare events, likely also derivable from `scoringPlays` given
-that FG-by-yardage turned out to be — a real follow-up, not attempted
+**Still NOT captured** (unchanged, no new spike done on these): 2-point
+conversions, blocked kicks, safeties. All are real but rare events,
+likely also derivable from the same `drives.previous[].plays[]` source
+that closed the missed-FG gap above — a real follow-up, not attempted
 here.
 
 ## Team D/ST — verified and built (2026-08-26)

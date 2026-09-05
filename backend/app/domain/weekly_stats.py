@@ -83,9 +83,10 @@ async def compute_week_stats(
         raise ValueError(f"No league_scoring_rules configured for season {season}")
 
     crosswalk_rows = await conn.fetch(
-        "SELECT espn_player_id, sleeper_player_id FROM players WHERE espn_player_id IS NOT NULL"
+        "SELECT espn_player_id, sleeper_player_id, position FROM players WHERE espn_player_id IS NOT NULL"
     )
     espn_to_sleeper = {row["espn_player_id"]: row["sleeper_player_id"] for row in crosswalk_rows}
+    espn_to_position = {row["espn_player_id"]: row["position"] for row in crosswalk_rows}
 
     dst_rows = await conn.fetch("SELECT sleeper_player_id FROM players WHERE position = 'DEF'")
     known_dst_ids = {row["sleeper_player_id"] for row in dst_rows}
@@ -99,8 +100,21 @@ async def compute_week_stats(
                 sleeper_id = espn_to_sleeper.get(player["espn_player_id"])
                 if sleeper_id is None:
                     continue
-                points = compute_player_points(player["stat_line"], rules)
-                await _upsert_player_week_stat(conn, season, week, sleeper_id, player["stat_line"], points, league_id)
+                stat_line = player["stat_line"]
+                # A QB's tackle is worth a genuinely different point
+                # value than a defensive player's (this league's own
+                # rule, not an ESPN distinction — ESPN's own
+                # "defensive" category isn't position-scoped at all,
+                # see espn_public.py's def_tackle docstring). Renamed
+                # here, not in espn_public.py, since that's a pure
+                # per-game stat parse with no access to a player's
+                # position — this is the first point in the pipeline
+                # that has both the stat and the position at once.
+                if "def_tackle" in stat_line and espn_to_position.get(player["espn_player_id"]) == "QB":
+                    stat_line = dict(stat_line)
+                    stat_line["qb_tackle"] = stat_line.pop("def_tackle")
+                points = compute_player_points(stat_line, rules)
+                await _upsert_player_week_stat(conn, season, week, sleeper_id, stat_line, points, league_id)
                 counts["players"] += 1
 
             for team_abbr, stat_line in game["team_dst"].items():

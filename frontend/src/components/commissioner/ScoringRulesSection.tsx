@@ -14,6 +14,7 @@ function groupFor(key: string): string {
   if (key.startsWith("rush_")) return "Rushing";
   if (key.startsWith("rec")) return "Receiving";
   if (key.startsWith("fg_") || key === "xp_made") return "Kicking";
+  if (key === "qb_tackle") return "Passing";
   if (key.startsWith("def_")) return "Defense";
   if (key.startsWith("pts_allow_")) return "Points Allowed";
   if (key.startsWith("yds_allow_")) return "Yards Allowed";
@@ -24,7 +25,7 @@ function groupFor(key: string): string {
 // — title-casing "fg"/"xp"/"td"/"int" like every other word produces
 // "Fg"/"Xp"/"Td"/"Int", which reads as a typo rather than the actual
 // abbreviation it is.
-const ACRONYMS: Record<string, string> = { fg: "FG", xp: "XP", td: "TD", int: "INT" };
+const ACRONYMS: Record<string, string> = { fg: "FG", xp: "XP", td: "TD", int: "INT", qb: "QB" };
 
 // stat_category encodes numeric ranges as separate underscore-joined
 // tokens (fg_0_39, pts_allow_14_17, yds_allow_lt100, fg_60_plus) since
@@ -61,17 +62,16 @@ function humanize(key: string): string {
   return parts.join(" ");
 }
 
-// A couple of category names read as narrower than they actually are
-// — "Def Tackle" groups under Defense purely because of its DB naming
-// convention (matching every other def_-prefixed category here), but
-// ESPN's own tackle data was never restricted to defensive positions:
-// whoever actually recorded a real tackle that game shows up, QB
-// included (verified live against a real game where a QB did exactly
-// that). Without this caption, "is there a setting for QB tackles?" is
-// a completely reasonable question to still be asking after finding
-// this row, since nothing about its label says so.
+// ESPN's own tackle data isn't restricted to defensive positions — a
+// QB who records a real tackle (e.g. after his own interception gets
+// returned) shows up in the exact same raw stat as any defender. This
+// league scores that differently, so the backend splits it into two
+// separate categories by the player's position before scoring
+// (app/domain/weekly_stats.py) — these captions make that split
+// visible here, since nothing about either label alone says so.
 const HINTS: Record<string, string> = {
-  def_tackle: "Any player who records a tackle — including a QB after his own pick gets returned.",
+  def_tackle: "Any non-QB player who records a tackle.",
+  qb_tackle: "A QB's own tackle — e.g. after his own interception gets returned — scored separately from Def Tackle.",
 };
 
 type Panel = { status: "idle" } | { status: "saving" } | { status: "saved" } | { status: "error"; message: string };

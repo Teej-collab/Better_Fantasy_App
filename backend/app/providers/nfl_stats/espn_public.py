@@ -18,10 +18,16 @@ Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
 NOT here (2pt conversions, blocked kicks, safeties — none of these are
 in ESPN's boxscore stat tables at all, only in play-by-play, which
-isn't parsed here). Field-goal-by-yardage (fg_yds) WAS in that gap
-list and no longer is (2026-09) — see _parse_fg_yards_by_player below
-for how it's actually captured, from a genuinely different part of the
-same summary response than the rest of this file reads.
+isn't parsed here). Field-goal-by-yardage (fg_yds), missed field goals
+by distance (fg_miss_0_29/30_39/40_49/50_plus), and QB tackles were all
+in that gap list and no longer are (2026-09) — see
+_parse_fg_yards_by_player and _parse_fg_misses_by_player below for how
+makes/misses are actually captured, from genuinely different parts of
+the same summary response than the rest of this file reads (QB tackles
+are scored as a separate stat_category from general tackles —
+app/domain/weekly_stats.py, not this file, does that split, since it
+needs the player's position, which this file's per-game stat parsing
+never looks at).
 """
 import re
 
@@ -62,6 +68,29 @@ _INDIVIDUAL_STAT_MAP: dict[tuple[str, str], str] = {
 _FG_MADE_TEXT_RE = re.compile(r"(\d+) Yd Field Goal$")
 
 
+def _single_kicker_lookup(data: dict, team_key: str) -> dict[str, list[int]]:
+    """{team identifier: [espn_player_id, ...]} from the boxscore's own
+    `kicking` category — this is the ONLY place a real espn_player_id
+    for a kicker lives (game totals only, no per-kick distance).
+    `team_key` is "abbreviation" (scoringPlays keys its plays by team
+    abbreviation) or "id" (drives.previous[].plays[] keys its plays by
+    numeric team id instead) — same underlying boxscore.players[]
+    entries carry both, so one lookup covers either caller."""
+    kicker_by_team: dict[str, list[int]] = {}
+    for team_entry in data.get("boxscore", {}).get("players", []):
+        team_val = team_entry.get("team", {}).get(team_key)
+        if not team_val:
+            continue
+        for category in team_entry.get("statistics", []):
+            if category.get("name") != "kicking":
+                continue
+            for athlete_entry in category.get("athletes", []):
+                espn_player_id = athlete_entry.get("athlete", {}).get("id")
+                if espn_player_id is not None:
+                    kicker_by_team.setdefault(team_val, []).append(int(espn_player_id))
+    return kicker_by_team
+
+
 def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
     """{espn_player_id: total yards of MADE field goals this game} —
     real per-kick distances aren't in the boxscore `statistics` tables
@@ -72,33 +101,20 @@ def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
     never an athlete id.
 
     Real player-ID attribution comes from cross-referencing the
-    boxscore's own `kicking` category instead, which — unlike
-    scoringPlays — DOES carry a real espn_player_id per athlete, just
-    without per-kick distance (only game totals). A team with exactly
-    one athlete in that category this game gets every one of that
-    team's made-FG scoringPlays attributed to them; a team with more
-    than one (a backup/emergency kicker mid-game — rare, unverified
+    boxscore's own `kicking` category instead (_single_kicker_lookup),
+    which — unlike scoringPlays — DOES carry a real espn_player_id per
+    athlete, just without per-kick distance (only game totals). A team
+    with exactly one athlete in that category this game gets every one
+    of that team's made-FG scoringPlays attributed to them; a team with
+    more than one (a backup/emergency kicker mid-game — rare, unverified
     against real data) is skipped entirely rather than guessed at,
     same "safer to undercount than guess" rule the rest of this file
     already follows for def_fum_rec's own known imprecision.
 
-    Misses aren't captured here — makes are the only field goals that
-    ever appear in `scoringPlays` (a miss doesn't score), and a miss's
-    distance isn't in the boxscore's per-athlete kicking totals either
-    (just makes/attempts as a ratio) — a real, separate, currently
-    unaddressed gap, not silently guessed at."""
-    kicker_by_team: dict[str, list[int]] = {}
-    for team_entry in data.get("boxscore", {}).get("players", []):
-        team_abbr = team_entry.get("team", {}).get("abbreviation")
-        if not team_abbr:
-            continue
-        for category in team_entry.get("statistics", []):
-            if category.get("name") != "kicking":
-                continue
-            for athlete_entry in category.get("athletes", []):
-                espn_player_id = athlete_entry.get("athlete", {}).get("id")
-                if espn_player_id is not None:
-                    kicker_by_team.setdefault(team_abbr, []).append(int(espn_player_id))
+    Misses aren't captured here at all — see _parse_fg_misses_by_player
+    for those, which reads a different part of the response entirely
+    (misses don't score, so they never appear in scoringPlays)."""
+    kicker_by_team = _single_kicker_lookup(data, "abbreviation")
 
     yards_by_player: dict[int, float] = {}
     for play in data.get("scoringPlays", []):
@@ -115,30 +131,56 @@ def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
 
     return yards_by_player
 
+
+_FG_MISS_TIERS: list[tuple[int | None, str]] = [
+    (29, "fg_miss_0_29"), (39, "fg_miss_30_39"), (49, "fg_miss_40_49"), (None, "fg_miss_50_plus"),
+]
+
+
+def _parse_fg_misses_by_player(data: dict) -> dict[int, dict[str, float]]:
+    """{espn_player_id: {fg_miss_<tier>: count}} for missed field goals
+    this game, tiered by distance (2026-09, replacing the old flat
+    fg_miss_total). A miss never appears in `scoringPlays` (nothing
+    scored), but it DOES appear in the full play-by-play at
+    `drives.previous[].plays[]`, tagged `type.abbreviation == "FGM"`
+    with a clean structured `statYardage` field (e.g. 44) — no text
+    parsing needed, unlike makes.
+
+    Player attribution reuses the same single-kicker-per-team
+    heuristic as _parse_fg_yards_by_player, just keyed by numeric team
+    id instead of abbreviation — a missed-FG play's own
+    `teamParticipants` only carries team ids per offense/defense role,
+    never an individual athlete id (confirmed against two real misses,
+    event 401772830: Chase McLaughlin's 44-yard "Wide Left", Younghoe
+    Koo's 44-yard "Wide Right" — both real, both correctly bucketed
+    into fg_miss_40_49 during development)."""
+    kicker_by_team_id = _single_kicker_lookup(data, "id")
+
+    misses_by_player: dict[int, dict[str, float]] = {}
+    for drive in data.get("drives", {}).get("previous", []):
+        for play in drive.get("plays", []):
+            if play.get("type", {}).get("abbreviation") != "FGM":
+                continue
+            yardage = play.get("statYardage")
+            if yardage is None:
+                continue
+            offense_team_id = next(
+                (p.get("id") for p in play.get("teamParticipants", []) if p.get("type") == "offense"),
+                None,
+            )
+            kickers = kicker_by_team_id.get(offense_team_id, [])
+            if len(kickers) != 1:
+                continue  # ambiguous (0 or 2+ kickers credited) — skip rather than guess
+            bucket = _tier_category(int(yardage), _FG_MISS_TIERS)
+            player_buckets = misses_by_player.setdefault(kickers[0], {})
+            player_buckets[bucket] = player_buckets.get(bucket, 0) + 1
+
+    return misses_by_player
+
 # "made/attempted" combined strings (e.g. "3/4").
 _MADE_ATTEMPTED_MAP: dict[tuple[str, str], str] = {
     ("kicking", "extraPointsMade/extraPointAttempts"): "xp_made",
 }
-
-# fg_miss_total (2026-09, restored): a missed field goal's own DISTANCE
-# isn't available anywhere in this response — a miss doesn't appear in
-# scoringPlays at all (nothing scored), and isn't broken out from the
-# makes/attempts ratio either — so a per-distance miss penalty (this
-# league's old fg_miss_0_39/40_49/50_plus buckets) genuinely still
-# can't be computed and stays out. A flat per-miss count is different:
-# it's just attempts minus makes, both already sitting in this exact
-# same "made/attempted" string this file already parses for xp_made.
-_MISSED_MAP: dict[tuple[str, str], str] = {
-    ("kicking", "fieldGoalsMade/fieldGoalAttempts"): "fg_miss_total",
-}
-
-
-def _parse_missed(value: str) -> float:
-    try:
-        made, attempted = value.split("/")
-        return float(attempted) - float(made)
-    except (ValueError, IndexError):
-        return 0.0
 
 # Team D/ST aggregate categories — summed across every player on a
 # team's own boxscore.players[] entry. Each of these counts toward
@@ -239,10 +281,6 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
                     made_key = _MADE_ATTEMPTED_MAP.get((category_name, raw_key))
                     if made_key is not None:
                         entry["stat_line"][made_key] = entry["stat_line"].get(made_key, 0) + _parse_made(raw_value)
-                        continue
-                    missed_key = _MISSED_MAP.get((category_name, raw_key))
-                    if missed_key is not None:
-                        entry["stat_line"][missed_key] = entry["stat_line"].get(missed_key, 0) + _parse_missed(raw_value)
 
     # Merged in separately — _parse_fg_yards_by_player reads a
     # genuinely different part of the response (scoringPlays, not the
@@ -257,6 +295,14 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
             {"espn_player_id": espn_player_id, "player_name": None, "pro_team": None, "stat_line": {}},
         )
         entry["stat_line"]["fg_yds"] = entry["stat_line"].get("fg_yds", 0) + fg_yards
+
+    for espn_player_id, miss_buckets in _parse_fg_misses_by_player(data).items():
+        entry = players_by_id.setdefault(
+            espn_player_id,
+            {"espn_player_id": espn_player_id, "player_name": None, "pro_team": None, "stat_line": {}},
+        )
+        for bucket, count in miss_buckets.items():
+            entry["stat_line"][bucket] = entry["stat_line"].get(bucket, 0) + count
 
     return list(players_by_id.values())
 

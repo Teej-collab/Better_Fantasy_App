@@ -125,13 +125,14 @@ async def test_extra_points_made_parsed_from_made_over_attempted_string(monkeypa
     players = await espn_public.get_game_player_stats("401873286")
     kicker = next(p for p in players if p["espn_player_id"] == 9999)
 
-    # This fixture's kicker went 2/3 on field goals — fg_miss_total
-    # (attempts minus makes) is real now (see test_fg_miss_total_is_
-    # attempts_minus_makes for the dedicated case), so it's expected
-    # here too. fg_yds is NOT, though: it comes from a completely
-    # separate part of the response (scoringPlays, see the dedicated
-    # tests below), absent from this fixture, so no fg_yds key at all.
-    assert kicker["stat_line"] == {"xp_made": 3.0, "fg_miss_total": 1.0}
+    # This fixture's kicker went 2/3 on field goals, but the miss
+    # itself is only parsed from drives.previous[].plays[] (see
+    # test_fg_misses_are_bucketed_by_real_distance below) — this
+    # fixture has no `drives` key at all, so no fg_miss_* category
+    # appears here. fg_yds is likewise absent: it comes from a
+    # completely separate part of the response (scoringPlays, see the
+    # dedicated tests below), also missing from this fixture.
+    assert kicker["stat_line"] == {"xp_made": 3.0}
 
 
 # ---- team D/ST tests --------------------------------------------------------
@@ -290,29 +291,68 @@ async def test_fg_yds_sums_real_made_kick_distances_from_scoring_plays(monkeypat
     assert by_id[3050478]["stat_line"]["fg_yds"] == 58
 
 
-async def test_fg_miss_total_is_attempts_minus_makes(monkeypatch):
-    """Restored (2026-09) after being removed alongside the old
-    distance-bucketed miss categories — a miss's own DISTANCE genuinely
-    still can't be computed (it never appears in scoringPlays at all,
-    since a miss doesn't score), but a flat miss COUNT is just attempts
-    minus makes, already sitting in the same "made/attempted" string
-    already parsed for xp_made. Verified live against a real 1/2 game
-    (event 401772830, Younghoe Koo) before this test was written."""
+async def test_fg_misses_are_bucketed_by_real_distance(monkeypatch):
+    """Distance-tiered (2026-09), replacing the old flat fg_miss_total —
+    a miss's real distance IS available after all, just not where a
+    make's is: drives.previous[].plays[] carries a clean structured
+    statYardage field on a FGM-typed play, no text parsing needed.
+    Shaped from two real misses, event 401772830 (TB @ ATL): Chase
+    McLaughlin's 44-yard "Wide Left" (TB kicking, team id 27) and
+    Younghoe Koo's 44-yard "Wide Right" (ATL kicking, team id 1) — both
+    real, both land in fg_miss_40_49 below. Attribution is by numeric
+    team id (teamParticipants), not abbreviation — confirmed the only
+    id present on a missed-FG play, unlike a make's scoringPlays entry."""
     summary = {
         "scoringPlays": [],
         "boxscore": {
             "players": [
                 {
-                    "team": {"abbreviation": "ATL"},
+                    "team": {"abbreviation": "TB", "id": "27"},
                     "statistics": [
                         {
                             "name": "kicking",
-                            "keys": ["fieldGoalsMade/fieldGoalAttempts", "extraPointsMade/extraPointAttempts"],
+                            "keys": ["fieldGoalsMade/fieldGoalAttempts"],
                             "athletes": [
-                                {"athlete": {"id": "1", "displayName": "Younghoe Koo"}, "stats": ["2/3", "2/2"]},
+                                {"athlete": {"id": "1", "displayName": "Chase McLaughlin"}, "stats": ["1/2"]},
                             ],
                         }
                     ],
+                },
+                {
+                    "team": {"abbreviation": "ATL", "id": "1"},
+                    "statistics": [
+                        {
+                            "name": "kicking",
+                            "keys": ["fieldGoalsMade/fieldGoalAttempts"],
+                            "athletes": [
+                                {"athlete": {"id": "2", "displayName": "Younghoe Koo"}, "stats": ["1/2"]},
+                            ],
+                        }
+                    ],
+                },
+            ]
+        },
+        "drives": {
+            "previous": [
+                {
+                    "plays": [
+                        {
+                            "type": {"abbreviation": "FGM"},
+                            "statYardage": 44,
+                            "teamParticipants": [
+                                {"id": "1", "type": "defense"},
+                                {"id": "27", "type": "offense"},
+                            ],
+                        },
+                        {
+                            "type": {"abbreviation": "FGM"},
+                            "statYardage": 44,
+                            "teamParticipants": [
+                                {"id": "27", "type": "defense"},
+                                {"id": "1", "type": "offense"},
+                            ],
+                        },
+                    ]
                 }
             ]
         },
@@ -320,10 +360,54 @@ async def test_fg_miss_total_is_attempts_minus_makes(monkeypatch):
     monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(summary))
 
     players = await espn_public.get_game_player_stats("401772830")
-    kicker = next(p for p in players if p["espn_player_id"] == 1)
+    by_id = {p["espn_player_id"]: p for p in players}
 
-    assert kicker["stat_line"]["fg_miss_total"] == 1.0
-    assert kicker["stat_line"]["xp_made"] == 2.0
+    assert by_id[1]["stat_line"]["fg_miss_40_49"] == 1.0
+    assert by_id[2]["stat_line"]["fg_miss_40_49"] == 1.0
+
+
+async def test_fg_misses_skip_a_team_with_an_ambiguous_kicker_count(monkeypatch):
+    """Same 'safer to undercount than guess' rule as makes — a missed
+    FG play's own teamParticipants only carries team ids, never an
+    individual athlete id, so attribution depends entirely on the
+    boxscore crediting exactly one kicker for that team."""
+    summary = {
+        "scoringPlays": [],
+        "boxscore": {
+            "players": [
+                {
+                    "team": {"abbreviation": "DAL", "id": "6"},
+                    "statistics": [
+                        {
+                            "name": "kicking",
+                            "keys": ["fieldGoalsMade/fieldGoalAttempts"],
+                            "athletes": [
+                                {"athlete": {"id": "1"}, "stats": ["1/2"]},
+                                {"athlete": {"id": "2"}, "stats": ["0/1"]},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+        "drives": {
+            "previous": [
+                {
+                    "plays": [
+                        {
+                            "type": {"abbreviation": "FGM"},
+                            "statYardage": 44,
+                            "teamParticipants": [{"id": "6", "type": "offense"}],
+                        },
+                    ]
+                }
+            ]
+        },
+    }
+    monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(summary))
+
+    players = await espn_public.get_game_player_stats("401772510")
+    assert all(not any(k.startswith("fg_miss_") for k in p["stat_line"]) for p in players)
 
 
 async def test_fg_yds_skips_a_team_with_an_ambiguous_kicker_count(monkeypatch):
