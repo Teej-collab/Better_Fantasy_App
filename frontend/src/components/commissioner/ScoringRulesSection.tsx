@@ -61,6 +61,19 @@ function humanize(key: string): string {
   return parts.join(" ");
 }
 
+// A couple of category names read as narrower than they actually are
+// — "Def Tackle" groups under Defense purely because of its DB naming
+// convention (matching every other def_-prefixed category here), but
+// ESPN's own tackle data was never restricted to defensive positions:
+// whoever actually recorded a real tackle that game shows up, QB
+// included (verified live against a real game where a QB did exactly
+// that). Without this caption, "is there a setting for QB tackles?" is
+// a completely reasonable question to still be asking after finding
+// this row, since nothing about its label says so.
+const HINTS: Record<string, string> = {
+  def_tackle: "Any player who records a tackle — including a QB after his own pick gets returned.",
+};
+
 type Panel = { status: "idle" } | { status: "saving" } | { status: "saved" } | { status: "error"; message: string };
 
 export function ScoringRulesSection() {
@@ -121,7 +134,12 @@ export function ScoringRulesSection() {
                 .sort()
                 .map((key) => (
                   <label key={key} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="text-black/70 dark:text-white/70">{humanize(key)}</span>
+                    <span className="flex min-w-0 flex-col text-black/70 dark:text-white/70">
+                      {humanize(key)}
+                      {HINTS[key] && (
+                        <span className="text-xs font-normal text-black/45 dark:text-white/45">{HINTS[key]}</span>
+                      )}
+                    </span>
                     <input
                       type="number"
                       step="0.01"

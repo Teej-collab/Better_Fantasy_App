@@ -115,14 +115,30 @@ def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
 
     return yards_by_player
 
-# "made/attempted" combined strings (e.g. "3/4") — only extra points
-# are scored in v1; field goals need distance-bucketed data this
-# endpoint's game-total-only kicking category doesn't provide (see
-# SCORING_ENGINE_SOURCE.md), so FG makes/misses are deliberately not
-# mapped here at all rather than scored wrong.
+# "made/attempted" combined strings (e.g. "3/4").
 _MADE_ATTEMPTED_MAP: dict[tuple[str, str], str] = {
     ("kicking", "extraPointsMade/extraPointAttempts"): "xp_made",
 }
+
+# fg_miss_total (2026-09, restored): a missed field goal's own DISTANCE
+# isn't available anywhere in this response — a miss doesn't appear in
+# scoringPlays at all (nothing scored), and isn't broken out from the
+# makes/attempts ratio either — so a per-distance miss penalty (this
+# league's old fg_miss_0_39/40_49/50_plus buckets) genuinely still
+# can't be computed and stays out. A flat per-miss count is different:
+# it's just attempts minus makes, both already sitting in this exact
+# same "made/attempted" string this file already parses for xp_made.
+_MISSED_MAP: dict[tuple[str, str], str] = {
+    ("kicking", "fieldGoalsMade/fieldGoalAttempts"): "fg_miss_total",
+}
+
+
+def _parse_missed(value: str) -> float:
+    try:
+        made, attempted = value.split("/")
+        return float(attempted) - float(made)
+    except (ValueError, IndexError):
+        return 0.0
 
 # Team D/ST aggregate categories — summed across every player on a
 # team's own boxscore.players[] entry. Each of these counts toward
@@ -223,6 +239,10 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
                     made_key = _MADE_ATTEMPTED_MAP.get((category_name, raw_key))
                     if made_key is not None:
                         entry["stat_line"][made_key] = entry["stat_line"].get(made_key, 0) + _parse_made(raw_value)
+                        continue
+                    missed_key = _MISSED_MAP.get((category_name, raw_key))
+                    if missed_key is not None:
+                        entry["stat_line"][missed_key] = entry["stat_line"].get(missed_key, 0) + _parse_missed(raw_value)
 
     # Merged in separately — _parse_fg_yards_by_player reads a
     # genuinely different part of the response (scoringPlays, not the
