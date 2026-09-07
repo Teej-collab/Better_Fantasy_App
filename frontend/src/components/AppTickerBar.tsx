@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import {
+  buildKickoffCountdownItem,
   buildLeagueTickerItems,
   buildNflTickerItems,
   getCurrentWeek,
@@ -56,6 +57,16 @@ export async function AppTickerBar() {
     const items = buildLeagueTickerItems(ticker);
     if (items.length > 0) {
       leagueTicker = <LiveTicker items={items} fast={isGameDay} />;
+    } else {
+      // No matchup has started yet — real NFL kickoff is still the
+      // more honest "second ticker" than nothing at all, so the strip
+      // reads as "the league is live, here's when" instead of quietly
+      // disappearing for the entire pre-kickoff stretch of a real game
+      // week (2026-09 reported).
+      const countdownItem = buildKickoffCountdownItem(nflGames, week);
+      if (countdownItem) {
+        leagueTicker = <LiveTicker items={[countdownItem]} fast={false} />;
+      }
     }
   }
 

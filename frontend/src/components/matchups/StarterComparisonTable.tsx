@@ -24,22 +24,19 @@ function starters(roster: RosterPlayer[]): RosterPlayer[] {
     });
 }
 
-function ProjectedCell({ player, align }: { player: RosterPlayer | null; align: "left" | "right" }) {
-  return (
-    <span className={`w-9 shrink-0 text-xs tabular-nums text-black/50 dark:text-white/50 ${align === "left" ? "text-left" : "text-right"}`}>
-      {player?.points_projected != null ? player.points_projected.toFixed(1) : "—"}
-    </span>
-  );
-}
-
+// Everything for ONE player lives in a single flex column here —
+// deliberately not split across separate flex siblings (an earlier
+// version put the projected-points number in its own sibling box next
+// to a mirrored/flex-row-reverse name block, which on a narrow phone
+// let the two siblings' text visually collide — 2026-09, reported).
+// Keeping name+points on the same line, in the same box, guarantees
+// the browser can never lay them on top of each other.
 function PlayerCell({
   player,
-  align,
   mounted,
   onOpen,
 }: {
   player: RosterPlayer | null;
-  align: "left" | "right";
   mounted: boolean;
   onOpen: (sleeperPlayerId: string) => void;
 }) {
@@ -54,8 +51,13 @@ function PlayerCell({
         name={player.player_name}
         size={32}
       />
-      <span className={`flex min-w-0 flex-col ${align === "right" ? "items-end text-right" : "items-start text-left"}`}>
-        <span className="truncate text-sm font-medium">{player.player_name}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-baseline gap-1">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{player.player_name}</span>
+          <span className="shrink-0 text-xs tabular-nums text-black/50 dark:text-white/50">
+            {player.points_projected != null ? player.points_projected.toFixed(1) : "—"}
+          </span>
+        </span>
         <span className="truncate text-xs text-black/50 dark:text-white/50">
           {player.pro_team ?? "—"}
           {player.next_opponent && ` ${player.next_opponent}`}
@@ -69,7 +71,7 @@ function PlayerCell({
       </span>
     </>
   );
-  const rowClass = `flex min-w-0 flex-1 items-center gap-2 ${align === "right" ? "flex-row-reverse" : ""}`;
+  const rowClass = "flex min-w-0 flex-1 items-center gap-2";
   return clickable ? (
     <button onClick={() => onOpen(player.player_id as string)} className={`${rowClass} text-left hover:underline`}>
       {inner}
@@ -84,8 +86,10 @@ function PlayerCell({
  * (QB/RB/RB/WR/WR/TE/FLEX/D-ST/K), home's player on the left, away's
  * on the right, each with their real projected points, next real
  * opponent/game time, and injury tag when they have one. Bench/IR
- * players never appear here (see the matchup screen's overall roster
- * dump — RosterList further down the page still covers those).
+ * players never appear here. A CSS grid (not nested flex) sizes the
+ * slot label column exactly and gives both sides identical, bounded
+ * space — the layout that produced the mobile overlap bug this
+ * replaces was nested flex with mirrored (flex-row-reverse) sides.
  */
 export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; away: RosterPlayer[] }) {
   const { openPlayerCard } = usePlayerCard();
@@ -113,14 +117,12 @@ export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; a
         const a = awayStarters[i] ?? null;
         const slot = slotDisplayLabel((h ?? a)?.lineup_slot ?? "");
         return (
-          <div key={i} className="flex items-center gap-2 py-2.5">
-            <ProjectedCell player={h} align="left" />
-            <PlayerCell player={h} align="right" mounted={mounted} onOpen={openPlayerCard} />
-            <span className="w-10 shrink-0 text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+          <div key={i} className="grid grid-cols-[1fr_2.25rem_1fr] items-center gap-1.5 py-2.5">
+            <PlayerCell player={h} mounted={mounted} onOpen={openPlayerCard} />
+            <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
               {slot}
             </span>
-            <PlayerCell player={a} align="left" mounted={mounted} onOpen={openPlayerCard} />
-            <ProjectedCell player={a} align="right" />
+            <PlayerCell player={a} mounted={mounted} onOpen={openPlayerCard} />
           </div>
         );
       })}

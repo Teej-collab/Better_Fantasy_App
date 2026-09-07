@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import {
+  buildKickoffCountdownItem,
   buildNflTickerItems,
   getChugLeaderboard,
   getCurrentWeek,
@@ -115,6 +116,13 @@ export default async function HomePage() {
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
       .slice(0, 3);
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
+    if (leagueTickerItems.length === 0) {
+      // No matchup has started yet — real NFL kickoff is still the more
+      // honest "second ticker" than nothing at all for the entire
+      // pre-kickoff stretch of a real game week (2026-09 reported).
+      const countdownItem = buildKickoffCountdownItem(nflGames, week);
+      if (countdownItem) leagueTickerItems = [countdownItem];
+    }
     myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
 
     // Only fetched once the draft's actually done (see cards.chugCountdown

@@ -732,6 +732,10 @@ export type NflGame = {
   state: "pre" | "in" | "post" | null;
   status_detail: string | null;
   completed: boolean;
+  // Real ISO8601 kickoff time (app/providers/nfl_scoreboard.py) — used
+  // for the pre-kickoff ticker countdown (buildKickoffCountdownItem)
+  // rather than parsing status_detail's human string.
+  date: string | null;
 };
 
 export async function getNflScoreboard(): Promise<NflGame[]> {
@@ -877,6 +881,44 @@ export function buildLeagueTickerItems(data: { items: LeagueTickerItem[] }): Tic
       },
     ],
   }));
+}
+
+// "in 2 days", "in 5h 12m", "in 40 minutes" — a duration, not a
+// wall-clock time, so unlike formatGameTime this is safe to compute
+// server-side (AppTickerBar.tsx is a server component): it doesn't
+// depend on the visitor's local timezone the way an absolute clock
+// reading does, so there's no hydration-mismatch risk to gate behind a
+// mounted flag.
+export function formatCountdown(targetIso: string): string {
+  const diffMs = new Date(targetIso).getTime() - Date.now();
+  if (diffMs <= 0) return "now";
+  const days = Math.floor(diffMs / 86_400_000);
+  const hours = Math.floor((diffMs % 86_400_000) / 3_600_000);
+  if (days >= 1) return `in ${days} day${days > 1 ? "s" : ""}${hours > 0 ? ` ${hours}h` : ""}`;
+  const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
+  if (hours >= 1) return `in ${hours}h ${minutes}m`;
+  return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+// The league ticker's real fallback for a live game week where no
+// matchup has actually started yet — real, non-zero scores were the
+// only thing that used to make this ticker render at all
+// (get_week_ticker_data intentionally omits an all-0-0 week), which
+// left it silently blank for the entire pre-kickoff stretch of a real
+// game week rather than reading as "the league is live, kickoff is
+// coming" (2026-09 reported). Sourced from the real NFL scoreboard
+// (already fetched for the top ticker strip), not the fantasy
+// matchups themselves — this is "when does real football start,"
+// independent of whether this league's own scores have moved yet.
+export function buildKickoffCountdownItem(nflGames: NflGame[], week: number): TickerItem | null {
+  const upcoming = [...nflGames]
+    .filter((g): g is NflGame & { date: string } => g.state === "pre" && g.date !== null)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  if (!upcoming) return null;
+  return {
+    key: "kickoff-countdown",
+    segments: [{ text: `Week ${week} kicks off ${formatCountdown(upcoming.date)}` }],
+  };
 }
 
 export type ChugLeaderboardRow = {

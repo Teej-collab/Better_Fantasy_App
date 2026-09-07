@@ -28,6 +28,25 @@ type UploadResult =
 // cookie — never touched by Safari's ITP) carried as a query param,
 // instead of relying on the backend's cookie reaching this
 // cross-site fetch at all.
+//
+// POST /chug/upload streams a heartbeat (a lone space) every ~20s
+// while the upload+analysis is still running server-side, then one
+// final line — the real JSON result — once it's done (see that
+// endpoint's own docstring for why: without this, a slow mobile
+// upload or a longer analysis could sit with zero bytes flowing long
+// enough for Railway's edge to kill the connection, which showed up
+// here as a generic, unhelpful "Load failed" — 2026-09 reported).
+// res.json() would choke on the heartbeat spaces, so this reads the
+// whole body as text and parses just the last non-blank line.
+async function parseStreamedResult(res: Response): Promise<UploadResult> {
+  const text = await res.text();
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1];
+  if (!last) throw new Error("Upload failed — empty response");
+  const data = JSON.parse(last);
+  if (data.error) throw new Error(data.message ?? `Upload failed (${data.status})`);
+  return data as UploadResult;
+}
 export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }) {
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -51,10 +70,15 @@ export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }
         body: form,
       });
       if (!res.ok) {
+        // Only the pre-flight auth check can still fail with a real
+        // HTTP error status now — every other failure (bad file type,
+        // too large, analysis failed) is encoded inside the streamed
+        // body instead, since a status code can't change after
+        // streaming has already started (see parseStreamedResult).
         const body = await res.json().catch(() => null);
         throw new Error(body?.detail ?? `Upload failed (${res.status})`);
       }
-      const data: UploadResult = await res.json();
+      const data = await parseStreamedResult(res);
       setResult(data);
       setStatus("done");
     } catch (e) {

@@ -97,10 +97,12 @@ export default async function MatchupPage({
         awayTouchdowns={away.touchdowns}
       />
 
-      <div className="neon-panel grid grid-cols-1 gap-4 rounded-lg p-4 sm:grid-cols-2">
-        <TeamDetailSummary side={home} />
-        <TeamDetailSummary side={away} />
-      </div>
+      {(home.clutch_choke || home.bench_crime || away.clutch_choke || away.bench_crime) && (
+        <div className="neon-panel grid grid-cols-1 gap-4 rounded-lg p-4 sm:grid-cols-2">
+          <TeamDetailSummary side={home} />
+          <TeamDetailSummary side={away} />
+        </div>
+      )}
 
       <div className="neon-panel rounded-lg p-4">
         <HeadToHeadSection headToHead={matchup.head_to_head} home={home} away={away} />
