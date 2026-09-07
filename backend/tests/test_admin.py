@@ -220,6 +220,62 @@ async def test_projected_points_sync_writes_real_rows(pool, monkeypatch):
     assert float(row["projected_points"]) == 199.9
 
 
+async def test_weekly_team_stats_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(path="/admin/weekly-team-stats?week=1")
+    assert response.status_code == 401
+
+
+async def test_weekly_team_stats_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _post_sync(
+        cookies=await _non_commissioner_cookies(pool, "weekly-team-stats-reject"),
+        path="/admin/weekly-team-stats?week=1",
+    )
+    assert response.status_code == 403
+
+
+async def test_weekly_team_stats_recomputes_projected_total(pool, monkeypatch):
+    from tests.conftest import TEST_SEASON
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-wts-owner", "WTS Owner",
+        )
+        team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 555, owner_id, "WTS Team",
+        )
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-admin-wts-player', 'WTS Player', 'RB', 'KC', TRUE, 22.5)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-admin-wts-player', 'RB', 'draft')",
+            TEST_SEASON, team_id,
+        )
+
+    response = await _post_sync(
+        cookies=await _commissioner_of_league_one_cookies(pool, "weekly-team-stats-writer"),
+        path="/admin/weekly-team-stats?week=1",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["teams_updated"] == 1
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT team_points_projected FROM weekly_team_stats WHERE season = $1 AND week = 1 AND team_id = $2",
+            TEST_SEASON, team_id,
+        )
+    assert float(row["team_points_projected"]) == 22.5
+
+
 # ---- Usage dashboard (2026-09) --------------------------------------
 
 

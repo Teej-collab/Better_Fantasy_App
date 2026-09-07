@@ -28,6 +28,7 @@ from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
 from app.domain.player_projections import sync_projected_points
 from app.domain.weekly_stats import compute_and_store_week
+from app.domain.weekly_team_stats import compute_weekly_team_stats_for_single_week
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
@@ -110,6 +111,29 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
     results = await compute_and_store_week(await get_pool(), season, week)
     record_job_run("weekly_compute")
     return {"season": season, "week": week, "results": results}
+
+
+@router.post("/weekly-team-stats")
+async def trigger_weekly_team_stats(week: int, request: Request):
+    """Manual trigger for just weekly_team_stats.py's
+    compute_weekly_team_stats_for_single_week (power_rank, luck_score,
+    chaos_score, team_points_projected, sos for one week) — deliberately
+    narrower than /admin/sync/live, which also re-runs chug_debts/
+    chug_standing_accrual for that week as a side effect (the exact
+    cause of a real 2026-09 incident: re-running live-sync against a
+    pre-kickoff week misread every honest 0-point starter as a chug-
+    worthy zero — see chug_standing.py's undo_week). Real use case: a
+    real roster change (trade, waiver, current_rosters edit) happened
+    after the pipeline already ran for a week, and team_points_projected
+    needs to reflect it without touching chug debt at all."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+
+    season = ESPNConfig().active_season
+    count = await compute_weekly_team_stats_for_single_week(pool, season, week)
+    return {"season": season, "week": week, "teams_updated": count}
 
 
 @router.post("/sync/bye-weeks")
