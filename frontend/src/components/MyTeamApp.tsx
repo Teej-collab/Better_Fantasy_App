@@ -16,6 +16,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
+import { formatGameTime } from "@/lib/gameTime";
 
 // Which starter slots this position is eligible for at all (e.g. an RB
 // can go RB or FLEX) — the set of destinations editLineupOptions below
@@ -46,17 +47,6 @@ function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlot
   }
   options.push(entry.lineup_slot === BENCH_SLOT_LABEL ? { slot: BENCH_SLOT_LABEL, occupant: entry } : { slot: BENCH_SLOT_LABEL, occupant: null });
   return options;
-}
-
-// "2026-09-21T20:00Z" -> "Sun 3:00 PM" — real ISO8601 from the backend
-// (app/providers/nfl_scoreboard.py), formatted client-side so it
-// renders in the visitor's own local time zone.
-function formatGameTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const weekday = date.toLocaleDateString(undefined, { weekday: "short" });
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${weekday} ${time}`;
 }
 
 function RosterRow({

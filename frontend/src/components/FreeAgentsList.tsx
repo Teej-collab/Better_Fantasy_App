@@ -5,6 +5,11 @@ import { addFreeAgent, getMyTeam, type MyFreeAgent, type RosterEntry } from "@/l
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
+import { formatGameTime } from "@/lib/gameTime";
+
+function formatStat(value: number | null): string {
+  return value !== null ? value.toFixed(1) : "—";
+}
 
 type PanelState =
   | { status: "confirm" }
@@ -33,6 +38,18 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const { openPlayerCard } = usePlayerCard();
+  // Gates game_time's locale-dependent formatting to after hydration —
+  // same reasoning as MyTeamApp.tsx's identical flag (server render and
+  // first client paint must match, or React discards and rebuilds the
+  // row on hydration, a visible jump).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // setTimeout(0), not a direct setState call in the effect body —
+    // same lint-satisfying pattern MyTeamApp.tsx's identical mount
+    // effect uses.
+    const id = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(id);
+  }, []);
 
   // The position tabs and (new) search box both do a soft navigation —
   // page.tsx re-fetches and passes a new `players` prop, but React
@@ -84,98 +101,116 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
   }
 
   return (
-    <ol className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
-      {players.map((p, i) => (
-        <li key={p.sleeper_player_id}>
-          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-              <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={36} />
-              <span className="flex min-w-0 flex-col">
-                <button
-                  onClick={() => openPlayerCard(p.sleeper_player_id)}
-                  className="truncate text-left font-medium hover:underline"
-                >
-                  {p.full_name}
-                </button>
-                <span className="text-xs text-black/50 dark:text-white/50">
-                  {/* players.position stores defenses as the raw "DEF" (Sleeper's own value) — shown as "D/ST" everywhere else in the app. */}
-                  {p.position === "DEF" ? "D/ST" : p.position} ·{" "}
-                  {nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}
-                </span>
-                {p.injury_status && p.injury_status !== "ACTIVE" && (
-                  <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                    {p.injury_status}
+    <div className="neon-panel flex flex-col rounded-lg bg-black/[0.015] dark:bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3 border-b border-black/5 px-4 py-2 text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:border-white/5 dark:text-white/40">
+        <span>Players</span>
+        <span className="flex shrink-0 items-center gap-4">
+          <span className="w-10 text-right">Proj</span>
+          <span className="w-10 text-right">Score</span>
+          <span className="w-[52px]" aria-hidden />
+        </span>
+      </div>
+      <ol className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+        {players.map((p, i) => (
+          <li key={p.sleeper_player_id}>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
+                <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={36} />
+                <span className="flex min-w-0 flex-col">
+                  <button
+                    onClick={() => openPlayerCard(p.sleeper_player_id)}
+                    className="truncate text-left font-medium hover:underline"
+                  >
+                    {p.full_name}
+                  </button>
+                  <span className="text-xs text-black/50 dark:text-white/50">
+                    {/* players.position stores defenses as the raw "DEF" (Sleeper's own value) — shown as "D/ST" everywhere else in the app. */}
+                    {p.position === "DEF" ? "D/ST" : p.position} ·{" "}
+                    {nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}
                   </span>
+                  {p.next_opponent && (
+                    <span className="text-xs text-black/50 dark:text-white/50">
+                      {p.next_opponent}
+                      {p.game_time && mounted && ` · ${formatGameTime(p.game_time)}`}
+                    </span>
+                  )}
+                  {p.injury_status && p.injury_status !== "ACTIVE" && (
+                    <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+                      {p.injury_status}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-4 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
+                <span className="w-10">{formatStat(p.projected_points)}</span>
+                <span className="w-10">{formatStat(p.score)}</span>
+                {activeId === p.sleeper_player_id ? (
+                  <button
+                    onClick={close}
+                    className="w-[52px] rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
+                  >
+                    Close
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => startAdd(p)}
+                    className="w-[52px] rounded-full bg-[var(--wl-accent-dim)] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110"
+                  >
+                    Add
+                  </button>
                 )}
               </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-3 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
-              {activeId === p.sleeper_player_id ? (
-                <button
-                  onClick={close}
-                  className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                >
-                  Close
-                </button>
-              ) : (
-                <button
-                  onClick={() => startAdd(p)}
-                  className="rounded-full bg-[var(--wl-accent-dim)] px-3 py-1.5 text-xs font-medium text-white hover:brightness-110"
-                >
-                  Add
-                </button>
-              )}
-            </span>
-          </div>
-
-          {activeId === p.sleeper_player_id && panel && (
-            <div className="border-t border-black/5 bg-black/[0.02] px-4 py-3 text-sm dark:border-white/5 dark:bg-white/[0.02]">
-              {panel.status === "confirm" && (
-                <div className="flex flex-col gap-2">
-                  <p className="text-black/70 dark:text-white/70">
-                    Add <strong>{p.full_name}</strong> to your bench? This is a real roster move.
-                  </p>
-                  <button
-                    onClick={() => submitAdd(p)}
-                    className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                  >
-                    Confirm add
-                  </button>
-                </div>
-              )}
-
-              {panel.status === "submitting" && <p className="text-black/50 dark:text-white/50">Adding…</p>}
-
-              {panel.status === "success" && (
-                <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
-              )}
-
-              {panel.status === "error" && <p className="text-red-500">{panel.message}</p>}
-
-              {panel.status === "needs-drop" && (
-                <div className="flex flex-col gap-2">
-                  <p className="text-black/70 dark:text-white/70">
-                    Your roster is full — pick a player to drop to add <strong>{p.full_name}</strong>.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {panel.roster.map((entry) => (
-                      <button
-                        key={entry.player_id}
-                        onClick={() => submitAdd(p, entry.player_id)}
-                        className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-                      >
-                        {entry.player_name}
-                        <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
-          )}
-        </li>
-      ))}
-    </ol>
+
+            {activeId === p.sleeper_player_id && panel && (
+              <div className="border-t border-black/5 bg-black/[0.02] px-4 py-3 text-sm dark:border-white/5 dark:bg-white/[0.02]">
+                {panel.status === "confirm" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      Add <strong>{p.full_name}</strong> to your bench? This is a real roster move.
+                    </p>
+                    <button
+                      onClick={() => submitAdd(p)}
+                      className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                    >
+                      Confirm add
+                    </button>
+                  </div>
+                )}
+
+                {panel.status === "submitting" && <p className="text-black/50 dark:text-white/50">Adding…</p>}
+
+                {panel.status === "success" && (
+                  <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
+                )}
+
+                {panel.status === "error" && <p className="text-red-500">{panel.message}</p>}
+
+                {panel.status === "needs-drop" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      Your roster is full — pick a player to drop to add <strong>{p.full_name}</strong>.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {panel.roster.map((entry) => (
+                        <button
+                          key={entry.player_id}
+                          onClick={() => submitAdd(p, entry.player_id)}
+                          className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                        >
+                          {entry.player_name}
+                          <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

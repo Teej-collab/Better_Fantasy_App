@@ -1378,11 +1378,24 @@ export type MyFreeAgent = {
   position: string;
   pro_team: string | null;
   // Sleeper's own global fantasy-relevance ranking (lower = more
-  // relevant) — the sort key the backend already orders this list by.
-  // No live ownership%/projected-points here (unlike the retired ESPN
-  // path): the Sleeper-sourced `players` pool doesn't carry those.
+  // relevant) — a tiebreaker now that the list sorts by projected_points
+  // first (see backend's list_free_agents).
   search_rank: number | null;
   injury_status: string | null;
+  // players.projected_avg_points (ESPN's own per-game average — see
+  // app/domain/player_projections.py) — null for a player ESPN's own
+  // index has no match for (a real, known gap for deep bench/retired
+  // names, not an error).
+  projected_points: number | null;
+  // This week's already-computed real result (app/domain/weekly_stats.py)
+  // — null pre-kickoff, same "-" the reference free-agent browse UI
+  // shows before real scores exist.
+  score: number | null;
+  // Both only present once a season has a cached current week and the
+  // real NFL scoreboard fetch succeeds — same as RosterEntry's own
+  // next_opponent/game_time (backend/app/routers/me.py's _schedule_lookup).
+  next_opponent: string | null;
+  game_time: string | null;
 };
 
 // Called server-side (free-agents/page.tsx) with the session cookie
