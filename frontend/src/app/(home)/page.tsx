@@ -17,6 +17,7 @@ import {
   getActiveLeagueName,
   getChugDeadline,
   getWeekLeagueTicker,
+  getWeekPowerRankings,
   listRivalries,
   listSeasons,
   resolveWeek,
@@ -27,9 +28,11 @@ import {
   type StandingsRow,
   type TickerItem,
   type WeekMatchupContextItem,
+  type WeekPowerRanking,
   type WeeklyAwards,
   type YourWeek,
 } from "@/lib/api";
+import { MovementBadge } from "@/components/MovementBadge";
 import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugDueCard } from "@/components/ChugDueCard";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
@@ -90,6 +93,7 @@ export default async function HomePage() {
   let leagueTickerItems: TickerItem[] = [];
   let myChug: ChugLeaderboardRow | null = null;
   let chugDeadline: ChugDeadline | null = null;
+  let powerRankings: WeekPowerRanking[] = [];
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -100,17 +104,20 @@ export default async function HomePage() {
   if (season !== null && me.active_league_id !== null) {
     const { current_week } = await getCurrentWeek(season);
     week = resolveWeek(current_week);
-    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker, chugRes] = await Promise.all([
-      getStandings(season, sessionCookie),
-      getWeeklyAwards(season, week, sessionCookie),
-      getWeekMatchupContext(season, week, sessionCookie),
-      listRivalries(sessionCookie),
-      getWeekLeagueTicker(season, week, sessionCookie),
-      getChugLeaderboard(sessionCookie, season),
-    ]);
+    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker, chugRes, powerRankingsRes] =
+      await Promise.all([
+        getStandings(season, sessionCookie),
+        getWeeklyAwards(season, week, sessionCookie),
+        getWeekMatchupContext(season, week, sessionCookie),
+        listRivalries(sessionCookie),
+        getWeekLeagueTicker(season, week, sessionCookie),
+        getChugLeaderboard(sessionCookie, season),
+        getWeekPowerRankings(season, week, sessionCookie),
+      ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
     weekMatchups = matchupContextRes.matchups;
+    powerRankings = powerRankingsRes.rankings;
     weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
     topRivalries = [...rivalriesRes.rivalries]
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
@@ -221,6 +228,35 @@ export default async function HomePage() {
               <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
                 {row.wins}-{row.losses}
                 {row.ties ? `-${row.ties}` : ""}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
+
+  if (powerRankings.length > 0) {
+    cards.powerRankings = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Power Rankings" href="/power-rankings" />
+        <ol
+          className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
+          style={panelGlowStyle(SECTION_COLORS.powerRankings)}
+        >
+          {powerRankings.slice(0, 5).map((row) => (
+            <li
+              key={row.team_id}
+              className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="w-4 shrink-0 font-bold text-black/50 tabular-nums dark:text-white/50">
+                  {row.power_rank}
+                </span>
+                <span className="truncate">{row.team_name}</span>
+              </span>
+              <span className="shrink-0 text-xs tabular-nums">
+                <MovementBadge movement={row.movement} />
               </span>
             </li>
           ))}
@@ -401,15 +437,16 @@ export default async function HomePage() {
         {cards.gamecast}
         {cards.chug}
 
-        {/* Owner-reorderable: Your Week, Standings, Matchups,
-            Rivalries, Awards, Discover — same full-width `gap-6`
-            stacking this page already used for Rivalries/Awards/
-            Discover, on every breakpoint, so drag order behaves the
-            same on mobile and desktop. See HomeCardDeck.tsx. */}
+        {/* Owner-reorderable: Your Week, Standings, Power Rankings,
+            Matchups, Rivalries, Awards, Discover — same full-width
+            `gap-6` stacking this page already used for Rivalries/
+            Awards/Discover, on every breakpoint, so drag order behaves
+            the same on mobile and desktop. See HomeCardDeck.tsx. */}
         <HomeCardDeck
           cards={{
             yourWeek: cards.yourWeek,
             standings: cards.standings,
+            powerRankings: cards.powerRankings,
             matchups: cards.matchups,
             rivalries: cards.rivalries,
             awards: cards.awards,

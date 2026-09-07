@@ -14,6 +14,7 @@ follow-up rather than solved here.
 """
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.queries import roster_history as roster_history_queries
 
 
 async def list_seasons(conn, league_id: int = DEFAULT_LEAGUE_ID):
@@ -299,26 +300,6 @@ async def get_team_score_stdev(conn, season: int, league_id: int = DEFAULT_LEAGU
 _SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR"]
 
 
-async def get_roster(conn, team_id: int, week: int):
-    rows = await conn.fetch(
-        """
-        SELECT player_name, position, lineup_slot, points_scored, points_projected,
-               espn_player_id AS player_id, pro_team, is_boom, is_bust
-        FROM rosters
-        WHERE team_id = $1 AND week = $2
-        """,
-        team_id,
-        week,
-    )
-    return sorted(
-        rows,
-        key=lambda r: (
-            _SLOT_ORDER.index(r["lineup_slot"]) if r["lineup_slot"] in _SLOT_ORDER else len(_SLOT_ORDER),
-            r["player_name"],
-        ),
-    )
-
-
 def _sort_roster_rows(rows):
     return sorted(
         rows,
@@ -329,30 +310,9 @@ def _sort_roster_rows(rows):
     )
 
 
-async def get_rosters(conn, team_ids: list[int], week: int) -> dict[int, list]:
-    """Batched get_roster, keyed by team_id — see get_teams above for
-    why this exists. Same per-team sort get_roster already applies,
-    just grouped from one fetch instead of one fetch per team."""
-    if not team_ids:
-        return {}
-    rows = await conn.fetch(
-        """
-        SELECT team_id, player_name, position, lineup_slot, points_scored, points_projected,
-               espn_player_id AS player_id, pro_team, is_boom, is_bust
-        FROM rosters
-        WHERE team_id = ANY($1::int[]) AND week = $2
-        """,
-        team_ids,
-        week,
-    )
-    by_team: dict[int, list] = {tid: [] for tid in team_ids}
-    for r in rows:
-        by_team[r["team_id"]].append(r)
-    return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
-
-
-# The real, in-app roster/scoring equivalent of get_roster/get_rosters
-# above — reads current_rosters (this app's own draft/lineup system,
+# The real, in-app roster/scoring equivalent of the old, now-deleted
+# legacy get_roster/get_rosters (which read `rosters` — see git history
+# if you need them) — reads current_rosters (this app's own draft/lineup system,
 # app/domain/lineup_engine.py) joined with players and
 # player_week_stats, instead of the `rosters` table synced from ESPN's
 # OWN, entirely separate league. 2026-09 fix: this league's real draft
@@ -412,6 +372,40 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
     for r in rows:
         by_team[r["team_id"]].append(r)
     return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
+
+
+# The single real source of truth for "this team's roster in week N" —
+# live current_rosters for the season's actual current week (still
+# editable — waivers/trades/lineup swaps must show up immediately, not
+# a stale frozen snapshot), roster_history's real per-week snapshot for
+# any passed week, falling back to the nearest earlier snapshot, and
+# finally to live current_rosters if no snapshot exists yet at all
+# (e.g. before the very first sync tick after this feature shipped).
+# 2026-09: this is what fixes /teams/{id}/roster — see
+# app/routers/league.py — from reading the wrong (ESPN's own,
+# disconnected) league's roster for every week it shows.
+async def get_roster_for_week(conn, season: int, team_id: int, week: int):
+    current_week = await get_cached_current_week(conn, season)
+    if current_week is not None and week == current_week:
+        return await get_current_roster(conn, season, team_id, week)
+
+    snapshot_week = await roster_history_queries.get_latest_snapshotted_week(conn, season, team_id, week)
+    if snapshot_week is None:
+        return await get_current_roster(conn, season, team_id, week)
+
+    rows = await roster_history_queries.get_roster_history_for_week(conn, season, team_id, snapshot_week, week)
+    return _sort_roster_rows(rows)
+
+
+async def get_rosters_for_week(conn, season: int, team_ids: list[int], week: int) -> dict[int, list]:
+    """Batched get_roster_for_week — a plain per-team loop rather than a
+    new batched roster_history query. Unlike get_teams/get_current_rosters
+    (a real, measured N+1 fix — see get_teams' own comment), this is
+    called for a handful of teams in one matchup week at most, and each
+    call is a single indexed range-scan, not the same cost shape."""
+    if not team_ids:
+        return {}
+    return {tid: await get_roster_for_week(conn, season, tid, week) for tid in team_ids}
 
 
 async def get_touchdowns_for_teams(conn, season: int, week: int, team_ids: list[int]) -> dict[int, list]:

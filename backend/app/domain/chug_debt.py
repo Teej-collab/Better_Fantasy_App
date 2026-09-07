@@ -16,6 +16,7 @@ top of logic that was never finished rather than the real, working rule.
 
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_source import uses_in_app_rosters
 
 
 def compute_chugs_owed(roster_rows: list[dict]) -> int:
@@ -28,19 +29,40 @@ def compute_chugs_owed(roster_rows: list[dict]) -> int:
 
 
 async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    team_owners = await conn.fetch(
-        "SELECT DISTINCT r.team_id, tbs.owner_id FROM rosters r "
-        "JOIN teams_by_season tbs ON r.team_id = tbs.id "
-        "WHERE r.season = $1 AND r.week = $2 AND r.league_id = $3",
-        season, week, league_id,
-    )
+    in_app = await uses_in_app_rosters(conn, season)
+    if in_app:
+        team_owners = await conn.fetch(
+            "SELECT DISTINCT rh.team_id, tbs.owner_id FROM roster_history rh "
+            "JOIN teams_by_season tbs ON rh.team_id = tbs.id "
+            "WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $3",
+            season, week, league_id,
+        )
+    else:
+        team_owners = await conn.fetch(
+            "SELECT DISTINCT r.team_id, tbs.owner_id FROM rosters r "
+            "JOIN teams_by_season tbs ON r.team_id = tbs.id "
+            "WHERE r.season = $1 AND r.week = $2 AND r.league_id = $3",
+            season, week, league_id,
+        )
 
     for t in team_owners:
-        rows = await conn.fetch(
-            "SELECT lineup_slot, points_scored FROM rosters "
-            "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
-            season, week, t["team_id"], league_id,
-        )
+        if in_app:
+            rows = await conn.fetch(
+                """
+                SELECT rh.lineup_slot, pws.fantasy_points AS points_scored
+                FROM roster_history rh
+                LEFT JOIN player_week_stats pws
+                    ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
+                """,
+                season, week, t["team_id"],
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT lineup_slot, points_scored FROM rosters "
+                "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+                season, week, t["team_id"], league_id,
+            )
         chugs_owed = compute_chugs_owed([dict(r) for r in rows])
 
         await conn.execute(
@@ -57,10 +79,15 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
 
 async def compute_chug_debts_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
-            season, league_id,
-        )
+        if await uses_in_app_rosters(conn, season):
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
+            )
+        else:
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+                season, league_id,
+            )
         total = 0
         for w in weeks:
             total += await compute_chug_debts_for_week(conn, season, w["week"], league_id)

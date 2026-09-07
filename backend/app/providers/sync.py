@@ -46,11 +46,19 @@ from app.domain.weekly_team_stats import (
 )
 from app.providers.base import FantasyProvider
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
+from app.queries import roster_history as roster_history_queries
 
 
 async def _update_league_state(pool, season: int, current_week: int) -> None:
     """Caches current_week so pages can read it without hitting ESPN live
-    on every request — see league_state migration for the reasoning."""
+    on every request — see league_state migration for the reasoning.
+    Also mirrors current_rosters into roster_history for this week (see
+    that table's migration) — called here, before the per-season/per-
+    week compute-step loops in both run_full_sync and run_live_sync
+    below (not after, where this used to sit), specifically so
+    boom_bust's is_boom/is_bust writes onto this week's roster_history
+    rows later in the same run aren't immediately wiped by a
+    delete+reinsert snapshot running after them."""
     async with pool.acquire() as conn:
         await conn.execute(
             """
@@ -60,11 +68,27 @@ async def _update_league_state(pool, season: int, current_week: int) -> None:
             """,
             season, current_week,
         )
+        await roster_history_queries.snapshot_week(conn, season, current_week)
 
 
 async def run_full_sync(provider: FantasyProvider, start_season: int, end_season: int) -> dict:
     pool = await get_pool()
     results = {}
+
+    # Fetched and cached up front now (not after the per-season loop,
+    # like before) so end_season's roster_history snapshot already
+    # exists by the time that season's boom_bust/bench_crimes steps run
+    # in the loop below — see _update_league_state's own docstring.
+    # end_season is always the active season in every real caller
+    # (admin endpoint, scheduler) — historical backfill seasons don't
+    # have a meaningful "current week" to cache. Best-effort: one sync
+    # step failing here shouldn't fail the whole (still-to-run) sync.
+    try:
+        current_week = await provider.get_current_week(end_season)
+        await _update_league_state(pool, end_season, current_week)
+    except Exception as e:
+        results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
+        current_week = None
 
     for season in range(start_season, end_season + 1):
         season_results = {}
@@ -86,17 +110,6 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             except Exception as e:
                 season_results[step_name] = {"status": "failed", "detail": str(e)}
         results[season] = season_results
-
-    # end_season is always the active season in every real caller (admin
-    # endpoint, scheduler) — historical backfill seasons don't have a
-    # meaningful "current week" to cache. Best-effort: one sync step
-    # failing here shouldn't fail the whole (already-succeeded) sync.
-    try:
-        current_week = await provider.get_current_week(end_season)
-        await _update_league_state(pool, end_season, current_week)
-    except Exception as e:
-        results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
-        current_week = None
 
     if current_week:
         try:
@@ -121,6 +134,17 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
     pool = await get_pool()
     results = {}
 
+    # The caller already had to fetch current_week (== week here) to know
+    # what to live-sync — reuse it, no extra ESPN call. Done before the
+    # step loop below (not after, like before) so this week's
+    # roster_history snapshot exists before boom_bust/bench_crimes run
+    # against it — see _update_league_state's own docstring.
+    try:
+        await _update_league_state(pool, season, week)
+        results["league_state"] = {"status": "success", "count": week}
+    except Exception as e:
+        results["league_state"] = {"status": "failed", "detail": str(e)}
+
     for step_name, step in (
         ("matchups", lambda p, s: provider.sync_matchups_for_week(p, s, week)),
         ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
@@ -135,14 +159,6 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
             results[step_name] = {"status": "success", "count": count}
         except Exception as e:
             results[step_name] = {"status": "failed", "detail": str(e)}
-
-    # The caller already had to fetch current_week (== week here) to know
-    # what to live-sync — reuse it, no extra ESPN call.
-    try:
-        await _update_league_state(pool, season, week)
-        results["league_state"] = {"status": "success", "count": week}
-    except Exception as e:
-        results["league_state"] = {"status": "failed", "detail": str(e)}
 
     # A live sync only ever runs while a real NFL game is live (see
     # app/scheduler.py) — including, notably, right around a real Monday

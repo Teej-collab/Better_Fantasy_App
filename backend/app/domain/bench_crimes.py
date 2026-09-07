@@ -15,6 +15,7 @@ upserting, same as the original script.
 
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_source import uses_in_app_rosters
 
 
 def classify_severity(points_diff: float) -> str:
@@ -55,19 +56,39 @@ def detect_bench_crimes(roster_rows: list[dict]) -> list[dict]:
 
 
 async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
-        season, week, league_id,
-    )
+    in_app = await uses_in_app_rosters(conn, season)
+    if in_app:
+        team_rows = await conn.fetch(
+            "SELECT DISTINCT team_id FROM roster_history WHERE season = $1 AND week = $2", season, week
+        )
+    else:
+        team_rows = await conn.fetch(
+            "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
+            season, week, league_id,
+        )
 
     total_crimes = 0
     for t in team_rows:
         team_id = t["team_id"]
-        rows = await conn.fetch(
-            "SELECT player_name, position, lineup_slot, points_scored FROM rosters "
-            "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
-            season, week, team_id, league_id,
-        )
+        if in_app:
+            rows = await conn.fetch(
+                """
+                SELECT p.full_name AS player_name, p.position, rh.lineup_slot,
+                       pws.fantasy_points AS points_scored
+                FROM roster_history rh
+                JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+                LEFT JOIN player_week_stats pws
+                    ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
+                """,
+                season, week, team_id,
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT player_name, position, lineup_slot, points_scored FROM rosters "
+                "WHERE season = $1 AND week = $2 AND team_id = $3 AND league_id = $4",
+                season, week, team_id, league_id,
+            )
         crimes = detect_bench_crimes([dict(r) for r in rows])
 
         await conn.execute(
@@ -92,10 +113,15 @@ async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id:
 
 async def compute_bench_crimes_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
-            season, league_id,
-        )
+        if await uses_in_app_rosters(conn, season):
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
+            )
+        else:
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+                season, league_id,
+            )
         total = 0
         for w in weeks:
             total += await compute_bench_crimes_for_week(conn, season, w["week"], league_id)

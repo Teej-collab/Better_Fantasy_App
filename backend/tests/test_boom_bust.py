@@ -83,6 +83,65 @@ async def test_compute_boom_bust_for_week_sets_flags_and_skips_bench(pool):
     assert rows["Bench RB"] == (False, False)
 
 
+async def test_compute_boom_bust_for_week_uses_roster_history_for_in_app_season(pool):
+    """A season with a draft_config row (the in-app-draft signal) must
+    read/write roster_history instead of the legacy rosters table —
+    2026-09 fix, see app/domain/roster_source.py."""
+    team_id = await _seed_team(pool, 3)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO draft_config (season, draft_order, roster_slots) VALUES ($1, '{}', '{}')",
+            TEST_SEASON,
+        )
+        for suffix, name, slot, points in [
+            ("boom", "Boom RB", "RB", 40.0),
+            ("avg", "Average RB", "RB", 10.0),
+            ("bench", "Bench RB", "BE", 5.0),
+        ]:
+            sleeper_id = f"test-boombust-inapp-{suffix}"
+            await conn.execute(
+                "INSERT INTO players (sleeper_player_id, full_name, position, is_draftable) "
+                "VALUES ($1, $2, 'RB', TRUE)",
+                sleeper_id, name,
+            )
+            await conn.execute(
+                "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+                "VALUES ($1, $2, $3, $4, 'draft')",
+                TEST_SEASON, team_id, sleeper_id, slot,
+            )
+            await conn.execute(
+                "INSERT INTO player_week_stats (season, week, sleeper_player_id, fantasy_points) VALUES ($1, 1, $2, $3)",
+                TEST_SEASON, sleeper_id, points,
+            )
+
+        # Freezes current_rosters into roster_history for week 1 — the
+        # real mechanism compute_boom_bust_for_week now reads from for
+        # an in-app-draft season, instead of the legacy rosters table.
+        from app.queries.roster_history import snapshot_week
+        await snapshot_week(conn, TEST_SEASON, 1)
+
+        updated = await compute_boom_bust_for_week(conn, TEST_SEASON, 1)
+        assert updated == 2  # only the 2 starters, bench excluded
+
+        rows = {
+            r["player_name"]: (r["is_boom"], r["is_bust"])
+            for r in await conn.fetch(
+                """
+                SELECT p.full_name AS player_name, rh.is_boom, rh.is_bust
+                FROM roster_history rh JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+                WHERE rh.season = $1 AND rh.week = 1
+                """,
+                TEST_SEASON,
+            )
+        }
+
+    baseline = (40.0 + 10.0) / 2
+    assert rows["Boom RB"] == (40.0 - baseline >= 20, 40.0 - baseline <= -10)
+    assert rows["Average RB"] == (10.0 - baseline >= 20, 10.0 - baseline <= -10)
+    assert rows["Bench RB"] == (False, False)
+
+
 async def test_compute_boom_bust_for_season_covers_all_weeks(pool):
     team_id = await _seed_team(pool, 2)
 

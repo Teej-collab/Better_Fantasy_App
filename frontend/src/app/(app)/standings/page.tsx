@@ -2,11 +2,21 @@ import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { awardsHrefFor, getMe, getStandings, listSeasons, safeLatestSeason, type StandingsRow } from "@/lib/api";
+import {
+  awardsHrefFor,
+  getLatestPowerRankingsWeek,
+  getMe,
+  getStandings,
+  getWeekPowerRankings,
+  listSeasons,
+  safeLatestSeason,
+  type StandingsRow,
+} from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
+import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export const metadata: Metadata = { title: "Standings — Weekend League" };
@@ -37,6 +47,20 @@ export default async function StandingsPage({
 
   const { standings, playoff_team_count: playoffTeamCount } =
     season !== null ? await getStandings(season, sessionCookie) : { standings: [], playoff_team_count: null };
+
+  // Power-rank badges next to each team name — a separate fetch/merge
+  // by team_id rather than joining onto get_standings itself, since
+  // standings' own ordering (win/loss record, or final_rank once a
+  // season's done) is a different concept from the weekly power-rank
+  // composite (app/domain/weekly_team_stats.py's compute_power_ranks).
+  let powerRankByTeam = new Map<number, number>();
+  if (season !== null) {
+    const { week: latestPowerWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
+    if (latestPowerWeek !== null) {
+      const { rankings } = await getWeekPowerRankings(season, latestPowerWeek, sessionCookie);
+      powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
+    }
+  }
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
   // regular-season record when it's not — see app/queries/league.py.
@@ -79,7 +103,12 @@ export default async function StandingsPage({
         <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {standings.map((row, i) => (
             <Fragment key={row.team_id}>
-              <StandingsListRow row={row} rank={i + 1} teamCount={standings.length} />
+              <StandingsListRow
+                row={row}
+                rank={i + 1}
+                teamCount={standings.length}
+                powerRank={powerRankByTeam.get(row.team_id)}
+              />
               {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
             </Fragment>
           ))}
@@ -115,7 +144,17 @@ function PlayoffLine({ count }: { count: number }) {
   );
 }
 
-function StandingsListRow({ row, rank, teamCount }: { row: StandingsRow; rank: number; teamCount: number }) {
+function StandingsListRow({
+  row,
+  rank,
+  teamCount,
+  powerRank,
+}: {
+  row: StandingsRow;
+  rank: number;
+  teamCount: number;
+  powerRank: number | undefined;
+}) {
   const isChampion = row.final_rank === 1;
   // Symmetric with the champion above — only lit up once a season is
   // actually final (final_rank populated for every row), same as
@@ -134,6 +173,7 @@ function StandingsListRow({ row, rank, teamCount }: { row: StandingsRow; rank: n
           <Link href={`/teams/${row.team_id}`} className="font-medium hover:underline">
             {row.team_name}
           </Link>
+          <TeamRankBadge rank={powerRank} />
           {isChampion && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
               🏆 Champion

@@ -14,6 +14,7 @@ import {
   type WeekPowerRanking,
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
+import { MovementBadge } from "@/components/MovementBadge";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
@@ -104,18 +105,6 @@ export default async function PowerRankingsPage({
 async function AllTimeView({ sessionCookie }: { sessionCookie: string | undefined }) {
   const { categories } = await getAllTimePowerRankings(sessionCookie);
   return <PowerRankingsAllTime categories={categories} />;
-}
-
-function MovementBadge({ movement }: { movement: number | null }) {
-  if (movement === null || movement === 0) {
-    return <span className="text-black/30 dark:text-white/30">—</span>;
-  }
-  const up = movement > 0;
-  return (
-    <span className={up ? "text-emerald-500" : "text-red-500"}>
-      {up ? "▲" : "▼"} {Math.abs(movement)}
-    </span>
-  );
 }
 
 async function WeekView({

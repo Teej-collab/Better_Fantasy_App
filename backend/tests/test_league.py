@@ -310,7 +310,7 @@ async def test_roster_ordered_like_espn_lineup(pool, monkeypatch):
 
     async with pool.acquire() as conn:
         # Insert deliberately out of order to prove sorting, not insert order.
-        for name, slot in [
+        for idx, (name, slot) in enumerate([
             ("Bench Guy", "BE"),
             ("Kicker", "K"),
             ("Flex Guy", "RB/WR/TE"),
@@ -322,13 +322,17 @@ async def test_roster_ordered_like_espn_lineup(pool, monkeypatch):
             ("Quarterback", "QB"),
             ("IR Guy", "IR"),
             ("Defense", "D/ST"),
-        ]:
+        ]):
+            sleeper_id = f"test-lg-roster-order-{idx}"
             await conn.execute(
-                """
-                INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-                VALUES ($1, 1, $2, $3, 'X', $4, 1.0, 1.0)
-                """,
-                TEST_SEASON, team_a, name, slot,
+                "INSERT INTO players (sleeper_player_id, full_name, position, is_draftable, projected_avg_points) "
+                "VALUES ($1, $2, 'X', TRUE, 1.0)",
+                sleeper_id, name,
+            )
+            await conn.execute(
+                "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+                "VALUES ($1, $2, $3, $4, 'draft')",
+                TEST_SEASON, team_a, sleeper_id, slot,
             )
 
     resp = await _get(f"/teams/{team_a}/roster?week=1", cookies)
@@ -542,22 +546,26 @@ async def test_team_roster_endpoint(pool, monkeypatch):
 
     async with pool.acquire() as conn:
         await conn.execute(
-            """
-            INSERT INTO rosters
-                (season, week, team_id, player_name, position, lineup_slot, points_scored,
-                 points_projected, espn_player_id, pro_team)
-            VALUES ($1, 3, $2, 'Star Runner', 'RB', 'RB', 20.5, 18.0, 4567, 'KC')
-            """,
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-lg-team-roster-star', 'Star Runner', 'RB', 'KC', TRUE, 18.0)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-lg-team-roster-star', 'RB', 'draft')",
             TEST_SEASON, team_a,
         )
 
+    # No league_state cached for TEST_SEASON, so get_roster_for_week
+    # falls through to the live current_rosters read regardless of
+    # which week is requested — same real-roster path every other
+    # roster-reading endpoint in this file already exercises.
     resp = await _get(f"/teams/{team_a}/roster?week=3", cookies)
     assert resp.status_code == 200
     body = resp.json()
     assert body["team"]["team_name"] == "Team Alpha"
     assert body["week"] == 3
     assert [p["player_name"] for p in body["roster"]] == ["Star Runner"]
-    assert body["roster"][0]["player_id"] == 4567
+    assert body["roster"][0]["player_id"] == "test-lg-team-roster-star"
     assert body["roster"][0]["pro_team"] == "KC"
 
 

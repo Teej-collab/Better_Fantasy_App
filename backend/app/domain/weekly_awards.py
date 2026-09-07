@@ -21,6 +21,7 @@ callers use both modules together, see app/routers/awards.py.
 
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_source import uses_in_app_rosters
 
 
 async def _load_week_context(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
@@ -172,6 +173,35 @@ async def get_clutch_choke_status_by_team(conn, season: int, week: int, league_i
 
 
 async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, league_id: int = DEFAULT_LEAGUE_ID):
+    if await uses_in_app_rosters(conn, season):
+        booms = await conn.fetch(
+            """
+            SELECT p.full_name AS player_name, pws.fantasy_points AS points_scored, tbs.team_name
+            FROM roster_history rh
+            JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+            JOIN teams_by_season tbs ON rh.team_id = tbs.id
+            LEFT JOIN player_week_stats pws
+                ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+            WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4 AND rh.is_boom = TRUE
+            ORDER BY pws.fantasy_points DESC LIMIT $3
+            """,
+            season, week, limit, league_id,
+        )
+        busts = await conn.fetch(
+            """
+            SELECT p.full_name AS player_name, pws.fantasy_points AS points_scored, tbs.team_name
+            FROM roster_history rh
+            JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+            JOIN teams_by_season tbs ON rh.team_id = tbs.id
+            LEFT JOIN player_week_stats pws
+                ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+            WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4 AND rh.is_bust = TRUE
+            ORDER BY pws.fantasy_points ASC LIMIT $3
+            """,
+            season, week, limit, league_id,
+        )
+        return [dict(b) for b in booms], [dict(b) for b in busts]
+
     booms = await conn.fetch(
         """
         SELECT r.player_name, r.points_scored, tbs.team_name FROM rosters r

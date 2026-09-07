@@ -178,7 +178,7 @@ async def team_roster(
         team = await queries.get_team(conn, team_id)
         if team is None or team["league_id"] != league_id:
             raise HTTPException(status_code=404, detail="Team not found")
-        rows = await queries.get_roster(conn, team_id, week)
+        rows = await queries.get_roster_for_week(conn, team["season"], team_id, week)
     return {"team": dict(team), "week": week, "roster": [dict(r) for r in rows]}
 
 

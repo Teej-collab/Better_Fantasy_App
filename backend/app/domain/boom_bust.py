@@ -20,6 +20,7 @@ normal step in the sync pipeline without redoing untouched seasons.
 from collections import defaultdict
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_source import uses_in_app_rosters
 
 BOOM_OFFSET = 20.0
 BUST_OFFSET = 10.0
@@ -45,6 +46,31 @@ def get_baseline(points_projected: float, position_scores: list[float]):
 
 
 async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    if await uses_in_app_rosters(conn, season):
+        rows = await conn.fetch(
+            """
+            SELECT rh.id, p.position, pws.fantasy_points AS points_scored, rh.points_projected
+            FROM roster_history rh
+            JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+            LEFT JOIN player_week_stats pws
+                ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+            WHERE rh.season = $1 AND rh.week = $2 AND rh.lineup_slot NOT IN ('BE', 'IR')
+            """,
+            season, week,
+        )
+        by_position = defaultdict(list)
+        for r in rows:
+            by_position[r["position"]].append(float(r["points_scored"] or 0))
+
+        for r in rows:
+            baseline = get_baseline(float(r["points_projected"] or 0), by_position[r["position"]])
+            is_boom, is_bust = classify_boom_bust(float(r["points_scored"] or 0), baseline)
+            await conn.execute(
+                "UPDATE roster_history SET is_boom = $1, is_bust = $2 WHERE id = $3",
+                is_boom, is_bust, r["id"],
+            )
+        return len(rows)
+
     rows = await conn.fetch(
         """
         SELECT id, position, points_scored, points_projected
@@ -71,10 +97,15 @@ async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: in
 
 async def compute_boom_bust_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        weeks = await conn.fetch(
-            "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
-            season, league_id,
-        )
+        if await uses_in_app_rosters(conn, season):
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
+            )
+        else:
+            weeks = await conn.fetch(
+                "SELECT DISTINCT week FROM rosters WHERE season = $1 AND league_id = $2 ORDER BY week",
+                season, league_id,
+            )
         total = 0
         for w in weeks:
             total += await compute_boom_bust_for_week(conn, season, w["week"], league_id)

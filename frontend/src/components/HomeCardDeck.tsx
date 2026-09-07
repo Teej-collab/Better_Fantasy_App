@@ -17,7 +17,15 @@ import { getPreferences, updateHomeCardOrder } from "@/lib/api";
 // Matches the backend's own _VALID_HOME_CARD_KEYS (app/routers/settings.py)
 // and today's default visual order — the order a first-time visitor (or
 // anyone whose saved home_card_order doesn't parse) sees.
-export const DEFAULT_HOME_CARD_ORDER = ["yourWeek", "standings", "matchups", "rivalries", "awards", "discover"];
+export const DEFAULT_HOME_CARD_ORDER = [
+  "yourWeek",
+  "standings",
+  "powerRankings",
+  "matchups",
+  "rivalries",
+  "awards",
+  "discover",
+];
 
 function parseOrder(raw: string | null | undefined, present: string[]): string[] {
   const presentSet = new Set(present);

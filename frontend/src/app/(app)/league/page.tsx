@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { awardsHrefFor, getMe, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
+import {
+  awardsHrefFor,
+  getLatestPowerRankingsWeek,
+  getMe,
+  getWeekPowerRankings,
+  listSeasons,
+  listTeamsServer,
+  safeLatestSeason,
+} from "@/lib/api";
 import { ActivePollCard } from "@/components/ActivePollCard";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
+import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export const metadata: Metadata = { title: "League — Weekend League" };
@@ -37,6 +46,15 @@ export default async function LeaguePage({
 
   const { teams } = season !== null ? await listTeamsServer(sessionCookie, season) : { teams: [] };
 
+  let powerRankByTeam = new Map<number, number>();
+  if (season !== null) {
+    const { week: latestPowerWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
+    if (latestPowerWeek !== null) {
+      const { rankings } = await getWeekPowerRankings(season, latestPowerWeek, sessionCookie);
+      powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="league" awardsHref={awardsHrefFor(latestSeason)} />
@@ -54,9 +72,12 @@ export default async function LeaguePage({
         <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
           {teams.map((team) => (
             <li key={team.team_id} className="flex items-center justify-between gap-3 py-3">
-              <Link href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
-                {team.team_name}
-              </Link>
+              <span className="flex min-w-0 items-center">
+                <Link href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
+                  {team.team_name}
+                </Link>
+                <TeamRankBadge rank={powerRankByTeam.get(team.team_id)} />
+              </span>
               <span className="shrink-0 text-sm text-black/60 dark:text-white/60">{team.owner_name}</span>
             </li>
           ))}

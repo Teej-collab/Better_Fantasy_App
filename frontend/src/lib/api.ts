@@ -131,18 +131,16 @@ export type RosterPlayer = {
   // unnoticed).
   points_scored: number | null;
   points_projected: number | null;
-  // A number for the legacy ESPN-synced roster (/teams/{id}/roster —
-  // the team detail page) — null there for historical weeks synced
-  // before espn_player_id was backfilled. A string (the real
-  // sleeper_player_id) everywhere sourced from current_rosters instead
-  // (matchup screens — 2026-09 pivot, see backend/app/queries/
-  // league.py's get_current_roster). PlayerHeadshot.tsx branches on
-  // which one it got; falls back to initials when null.
+  // Always a string (the real sleeper_player_id) now — every roster-
+  // reading endpoint, including the team detail page's /teams/{id}/roster,
+  // is sourced from current_rosters/roster_history (2026-09 pivot, see
+  // backend/app/queries/league.py's get_roster_for_week). The `number`
+  // half of this union is legacy dead weight from when the team detail
+  // page read the old ESPN-synced `rosters` table directly; left as a
+  // union rather than narrowed since PlayerHeadshot.tsx already
+  // branches on it harmlessly either way.
   player_id: number | string | null;
   pro_team: string | null;
-  // Only ever populated for current_rosters-sourced rows (matchup
-  // screens) — always null on the legacy ESPN roster path, which never
-  // carried it.
   injury_status: string | null;
   next_opponent: string | null;
   game_time: string | null;

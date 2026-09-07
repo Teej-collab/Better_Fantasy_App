@@ -44,7 +44,7 @@ _TEAM_NAME_MAX_LENGTH = 40
 # set. Validated here, not just trusted from the client, since a
 # malformed value would otherwise silently break the homepage for
 # whoever's account it landed on.
-_VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "matchups", "rivalries", "awards", "discover"}
+_VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "powerRankings", "matchups", "rivalries", "awards", "discover"}
 
 # The nav's fixed 6 slots (lib/navDestinations.ts's MOBILE_NAV_ORDER on
 # the frontend, now driving both the mobile bottom bar and the desktop
