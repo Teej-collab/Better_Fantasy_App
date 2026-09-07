@@ -76,8 +76,8 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
 
     started = my_score is not None and opp_score is not None and not (my_score == 0 and opp_score == 0)
 
-    my_roster = await queries.get_roster(conn, team["team_id"], week)
-    opp_roster = await queries.get_roster(conn, opp_team_id, week)
+    my_roster = await queries.get_current_roster(conn, season, team["team_id"], week)
+    opp_roster = await queries.get_current_roster(conn, season, opp_team_id, week)
     my_projected = _projected_total(my_roster)
     opp_projected = _projected_total(opp_roster)
 

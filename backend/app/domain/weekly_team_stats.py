@@ -259,17 +259,26 @@ async def compute_sos_for_week(conn, season: int, week: int, league_id: int = DE
 
 
 async def compute_team_projected_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Sums players.projected_avg_points for each team's active
+    current_rosters slots (this app's own real draft/lineup data, not
+    ESPN's own separate, now-disconnected league — see
+    app/queries/league.py's get_current_roster docstring). Switched off
+    the legacy `rosters` table 2026-09: that table is synced from
+    ESPN's own stale auto-drafted rosters, which drifted completely
+    from this league's real in-app rosters once the real draft
+    happened here instead."""
     team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
-        season, week, league_id,
+        "SELECT DISTINCT team_id FROM current_rosters WHERE season = $1 AND league_id = $2",
+        season, league_id,
     )
 
     for t in team_rows:
         team_id = t["team_id"]
         total = await conn.fetchval(
-            "SELECT SUM(points_projected) FROM rosters WHERE season = $1 AND week = $2 "
-            "AND team_id = $3 AND lineup_slot NOT IN ('BE', 'IR')",
-            season, week, team_id,
+            "SELECT SUM(p.projected_avg_points) FROM current_rosters cr "
+            "JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id "
+            "WHERE cr.season = $1 AND cr.team_id = $2 AND cr.lineup_slot NOT IN ('BE', 'IR')",
+            season, team_id,
         )
         projected = round(float(total), 2) if total else 0.0
         await _upsert_stat(conn, season, week, team_id, "team_points_projected", projected, league_id)

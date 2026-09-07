@@ -13,11 +13,12 @@ against it. The free-agent browse page (FreeAgentsList.tsx) now reads
 the Sleeper-sourced `players` pool directly instead (GET
 /me/team/free-agents) — see app/routers/me.py's module docstring.
 
-get_all_projected_points below brings League.free_agents() back, but
-only for a read-only display enrichment (the draft pool's inline
-projected-points column, app/domain/player_projections.py) — the same
-crosswalk gap that blocked a write only means some rows show no
-projection there, not a blocked feature.
+get_projections below is unrelated to League.free_agents() (see its
+own docstring for why that path was retired for projections too,
+2026-09) — it feeds the same read-only display enrichment (the draft
+pool's inline projected-points column plus per-week matchup
+projections, app/domain/player_projections.py) via League.player_info/
+player_map instead.
 """
 from espn_api.football import League
 
@@ -42,36 +43,65 @@ def get_waiver_settings(config: ESPNConfig | None = None, season: int | None = N
     }
 
 
-def get_all_projected_points(config: ESPNConfig | None = None, season: int | None = None) -> list[dict]:
-    """Bulk projected-season-points read via League.free_agents() — the
-    same call this file's own docstring says was retired for the
-    roster-WRITE use case over the id-crosswalk gap. That gap only
-    means "some rows get no projection" for a read-only display
-    enrichment like this one, not a broken feature — see
-    app/domain/player_projections.py, which accepts exactly that.
+def get_projections(
+    known_espn_ids: list[int], unresolved_names: list[str],
+    config: ESPNConfig | None = None, season: int | None = None,
+) -> dict:
+    """Bulk projected-points read via League.player_info(playerId=[...]),
+    covering both players this app already has an espn_player_id
+    crosswalk for AND ones that still need one resolved by name —
+    against League.player_map, ESPN's own full player-name index
+    (5000+ real NFL players, independent of roster status on any
+    particular ESPN league, unlike free_agents() below).
 
-    Empirically confirmed (2026-09, live against this league's real
-    ESPN connection) that during the preseason, ESPN's own free-agent/
-    waiver view is essentially every real fantasy-relevant NFL player
-    (840 results with size=2000) — nothing's been drafted on ESPN's own
-    side yet this season, and this app never writes real draft picks
-    back to ESPN, so that holds for the whole season. size=2000 leaves
-    real headroom above that.
+    Replaces a former League.free_agents()-based read (2026-09, real
+    incident): free_agents() only returns players NOT rostered on
+    ESPN's OWN league, which — now that this league's real draft
+    happens in this app instead — silently excluded every actual star
+    player real owners had drafted here, since ESPN's own separate,
+    now-disconnected league had already auto-rostered them elsewhere
+    (Mahomes/McCaffrey/Bowers/Metcalf all came back projected_points=
+    NULL despite a sync having just run, and could never resolve a
+    name match either, for the same reason). player_info/player_map
+    work regardless of a player's ESPN-side roster status, closing
+    both gaps at once.
 
-    posRank/draft_rank both come back as 0 for every player until ESPN
-    itself has computed real position ranks for the season (also
-    empirically confirmed) — not read here at all. This app already has
-    a real ADP-equivalent, players.search_rank (Sleeper's own overall-
-    rank proxy, already shown in the draft pool — see
-    app/domain/draft_autopick.py's own docstring), and doesn't need a
-    second, currently-nonfunctional one from ESPN."""
+    Returns {"by_espn_id": {espn_id: {projected_points,
+    projected_avg_points}}, "resolved_ids_by_name": {name: espn_id}} —
+    the season total (same field the draft pool already showed) and
+    ESPN's own per-game average, the best available stand-in for "this
+    week's projection" before a real week-specific number exists
+    (ESPN's own player data doesn't expose one pre-season —
+    empirically confirmed).
+
+    Empirically confirmed fast/safe as a single batched player_info
+    call at ~650 ids (~1.2s); espn_api's own player_info does one HTTP
+    request total regardless of list size, so this doesn't chunk."""
     config = config or ESPNConfig()
     league = _get_league(config, season)
-    free_agents = league.free_agents(size=2000)
-    # projected_total_points comes back as a raw IEEE-754 double off
-    # ESPN's own JSON (e.g. 283.3899999999999...) — left as-is here;
-    # app/domain/player_projections.py rounds it on the Postgres side
-    # (ROUND(...::numeric, 2)) rather than in Python, since a Python
-    # float round() is still a float with the same representation
-    # problem and wouldn't actually land a clean value in storage.
-    return [{"espn_player_id": p.playerId, "name": p.name, "projected_points": p.projected_total_points} for p in free_agents]
+
+    player_map = league.player_map
+    resolved_ids_by_name = {
+        name: espn_id
+        for name in unresolved_names
+        if isinstance(espn_id := player_map.get(name), int)
+    }
+
+    all_ids = list(known_espn_ids) + list(resolved_ids_by_name.values())
+    if not all_ids:
+        return {"by_espn_id": {}, "resolved_ids_by_name": resolved_ids_by_name}
+
+    result = league.player_info(playerId=all_ids)
+    players = result if isinstance(result, list) else ([result] if result else [])
+    # projected_total_points/projected_avg_points come back as raw
+    # IEEE-754 doubles off ESPN's own JSON (e.g. 283.3899999999999...)
+    # — left as-is here; app/domain/player_projections.py rounds on
+    # the Postgres side (ROUND(...::numeric, 2)) rather than in Python,
+    # since a Python float round() is still a float with the same
+    # representation problem and wouldn't actually land a clean value
+    # in storage.
+    by_espn_id = {
+        p.playerId: {"projected_points": p.projected_total_points, "projected_avg_points": p.projected_avg_points}
+        for p in players
+    }
+    return {"by_espn_id": by_espn_id, "resolved_ids_by_name": resolved_ids_by_name}

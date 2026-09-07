@@ -351,6 +351,69 @@ async def get_rosters(conn, team_ids: list[int], week: int) -> dict[int, list]:
     return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
 
 
+# The real, in-app roster/scoring equivalent of get_roster/get_rosters
+# above — reads current_rosters (this app's own draft/lineup system,
+# app/domain/lineup_engine.py) joined with players and
+# player_week_stats, instead of the `rosters` table synced from ESPN's
+# OWN, entirely separate league. 2026-09 fix: this league's real draft
+# now happens in this app, not on ESPN — `rosters` still gets synced
+# from ESPN's own (stale, disconnected) box scores, which drifted
+# completely from reality the moment ESPN's own league auto-rostered
+# its own copies of these players. Every current-season, "what's
+# happening this week" view (the homepage hero — app/domain/
+# your_week.py — and the matchup screen — app/domain/
+# matchup_context.py) should read through here instead.
+#
+# points_projected here is players.projected_avg_points (ESPN's own
+# per-game average, refreshed by app/domain/player_projections.py via
+# League.player_info — works regardless of ESPN-side roster status,
+# unlike the old free_agents()-based read) — the best stand-in for
+# "this week's projection" until a real week-specific number exists.
+# is_boom/is_bust always come back False: that classification
+# (app/domain/boom_bust.py) is still computed against the legacy
+# `rosters` table only and hasn't been ported to current_rosters yet —
+# a real, known follow-up, not silently fabricated data.
+async def get_current_roster(conn, season: int, team_id: int, week: int):
+    rows = await conn.fetch(
+        """
+        SELECT p.full_name AS player_name, p.position, cr.lineup_slot,
+               pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
+               cr.sleeper_player_id AS player_id, p.pro_team, FALSE AS is_boom, FALSE AS is_bust
+        FROM current_rosters cr
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        LEFT JOIN player_week_stats pws
+            ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND cr.team_id = $2
+        """,
+        season, team_id, week,
+    )
+    return _sort_roster_rows(rows)
+
+
+async def get_current_rosters(conn, season: int, team_ids: list[int], week: int) -> dict[int, list]:
+    """Batched get_current_roster, keyed by team_id — same shape/reason
+    get_rosters exists alongside get_roster above."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT cr.team_id, p.full_name AS player_name, p.position, cr.lineup_slot,
+               pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
+               cr.sleeper_player_id AS player_id, p.pro_team, FALSE AS is_boom, FALSE AS is_bust
+        FROM current_rosters cr
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        LEFT JOIN player_week_stats pws
+            ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND cr.team_id = ANY($2::int[])
+        """,
+        season, team_ids, week,
+    )
+    by_team: dict[int, list] = {tid: [] for tid in team_ids}
+    for r in rows:
+        by_team[r["team_id"]].append(r)
+    return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
+
+
 async def get_rostered_players_by_pro_team(
     conn, season: int, week: int, pro_teams: list[str], league_id: int = DEFAULT_LEAGUE_ID
 ):

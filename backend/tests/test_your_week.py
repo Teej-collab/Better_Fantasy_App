@@ -124,19 +124,41 @@ async def test_in_progress_matchup_computes_win_probability(pool):
             TEST_SEASON, team_id, opp_team_id,
         )
         await conn.execute(
-            "INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected) "
-            "VALUES ($1, 1, $2, 'My Starter', 'RB', 'RB', 30.0, 90.0)",
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-yw-my-starter', 'My Starter', 'RB', 'KC', TRUE, 90.0)"
+        )
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-yw-opp-starter', 'Opp Starter', 'RB', 'SF', TRUE, 40.0)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-yw-my-starter', 'RB', 'draft')",
             TEST_SEASON, team_id,
         )
         await conn.execute(
-            "INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected) "
-            "VALUES ($1, 1, $2, 'Opp Starter', 'RB', 'RB', 20.0, 40.0)",
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-yw-opp-starter', 'RB', 'draft')",
             TEST_SEASON, opp_team_id,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, 'test-yw-my-starter', '{}', 30.0)",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, 'test-yw-opp-starter', '{}', 20.0)",
+            TEST_SEASON,
         )
 
         result = await build_your_week(conn, owner_id, season=TEST_SEASON)
 
-        await conn.execute("DELETE FROM rosters WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM player_week_stats WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM current_rosters WHERE season = $1", TEST_SEASON)
+        await conn.execute(
+            "DELETE FROM players WHERE sleeper_player_id IN ('test-yw-my-starter', 'test-yw-opp-starter')"
+        )
         await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM teams_by_season WHERE id = $1", opp_team_id)

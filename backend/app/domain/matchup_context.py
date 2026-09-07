@@ -207,7 +207,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     # sequential round-trips to the same handful of tables inside what
     # used to be a plain `for m in matchups:` loop.
     teams_by_id = await queries.get_teams(conn, team_ids)
-    rosters_by_id = await queries.get_rosters(conn, team_ids, week)
+    rosters_by_id = await queries.get_current_rosters(conn, season, team_ids, week)
     rivalry_by_pair = {
         frozenset({r["owner_a_id"], r["owner_b_id"]}): r for r in await queries.list_rivalries(conn)
     }
@@ -280,8 +280,8 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
 
     home_team = await queries.get_team(conn, m["home_team_id"])
     away_team = await queries.get_team(conn, m["away_team_id"])
-    home_roster = await queries.get_roster(conn, m["home_team_id"], week)
-    away_roster = await queries.get_roster(conn, m["away_team_id"], week)
+    home_roster = await queries.get_current_roster(conn, season, m["home_team_id"], week)
+    away_roster = await queries.get_current_roster(conn, season, m["away_team_id"], week)
 
     team_ids = [m["home_team_id"], m["away_team_id"]]
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}

@@ -198,10 +198,11 @@ async def test_projected_points_sync_writes_real_rows(pool, monkeypatch):
 
     monkeypatch.setattr(
         player_projections,
-        "get_all_projected_points",
-        lambda config=None, season=None: [
-            {"espn_player_id": 777001, "name": "Test Admin Proj Player", "projected_points": 199.9}
-        ],
+        "get_projections",
+        lambda known_espn_ids, unresolved_names, config=None, season=None: {
+            "by_espn_id": {777001: {"projected_points": 199.9, "projected_avg_points": 11.8}},
+            "resolved_ids_by_name": {},
+        },
     )
 
     response = await _post_sync(

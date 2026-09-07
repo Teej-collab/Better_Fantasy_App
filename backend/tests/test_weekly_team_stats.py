@@ -73,6 +73,17 @@ async def test_compute_weekly_team_stats_for_week_fills_all_columns(pool):
                 "points_scored, points_projected) VALUES ($1, 1, $2, $3, 'QB', 'QB', 30, 20)",
                 TEST_SEASON, team_id, f"QB {name}",
             )
+            sleeper_id = f"test-wts-qb-{name}"
+            await conn.execute(
+                "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+                "VALUES ($1, $2, 'QB', 'KC', TRUE, 20)",
+                sleeper_id, f"QB {name}",
+            )
+            await conn.execute(
+                "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+                "VALUES ($1, $2, $3, 'QB', 'draft')",
+                TEST_SEASON, team_id, sleeper_id,
+            )
 
         await compute_weekly_team_stats_for_week(conn, TEST_SEASON, 1)
 

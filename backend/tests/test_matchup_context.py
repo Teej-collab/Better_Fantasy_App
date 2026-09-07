@@ -178,20 +178,32 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool, monkeypatch)
             TEST_SEASON, team_a, team_b,
         )
         await conn.execute(
-            """
-            INSERT INTO rosters
-                (season, week, team_id, player_name, position, lineup_slot, points_scored,
-                 points_projected, espn_player_id, pro_team)
-            VALUES ($1, 5, $2, 'Starter Guy', 'RB', 'RB', 20.5, 18.0, 4567, 'KC')
-            """,
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-mc-starter-guy', 'Starter Guy', 'RB', 'KC', TRUE, 18.0)"
+        )
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable, projected_avg_points) "
+            "VALUES ('test-mc-bench-guy', 'Bench Guy', 'WR', 'SF', TRUE, 9.0)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-mc-starter-guy', 'RB', 'draft')",
             TEST_SEASON, team_a,
         )
         await conn.execute(
-            """
-            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-            VALUES ($1, 5, $2, 'Bench Guy', 'WR', 'BE', 10.0, 9.0)
-            """,
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-mc-bench-guy', 'BE', 'draft')",
             TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 5, 'test-mc-starter-guy', '{}', 20.5)",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 5, 'test-mc-bench-guy', '{}', 10.0)",
+            TEST_SEASON,
         )
 
     resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/matchup-context", cookies)
@@ -212,9 +224,9 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool, monkeypatch)
     assert m["home"]["team_name"] == "Team Alpha"
     assert m["home"]["projected_total"] == 18.0  # bench excluded from projected total
     assert [p["player_name"] for p in m["home"]["roster"]] == ["Starter Guy", "Bench Guy"]
-    assert m["home"]["roster"][0]["player_id"] == 4567
+    assert m["home"]["roster"][0]["player_id"] == "test-mc-starter-guy"
     assert m["home"]["roster"][0]["pro_team"] == "KC"
-    assert m["home"]["roster"][1]["player_id"] is None  # not stored for this row — no error, just absent
+    assert m["home"]["roster"][1]["player_id"] == "test-mc-bench-guy"
 
 
 async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool, monkeypatch):
