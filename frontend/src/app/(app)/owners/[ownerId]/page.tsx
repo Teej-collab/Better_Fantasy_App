@@ -4,6 +4,7 @@ import {
   getCareerProfile,
   getMe,
   getOwnerBadges,
+  getOwnerDraftGrade,
   getSeasonProfileServer,
   listSeasons,
   safeLatestSeason,
@@ -61,10 +62,13 @@ export default async function OwnerProfilePage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const [seasonProfile, career, badges] = await Promise.all([
+  const [seasonProfile, career, badges, draftGrade] = await Promise.all([
     season !== null ? getSeasonProfileServer(ownerIdNum, season, sessionCookie) : Promise.resolve(null),
     getCareerProfile(ownerIdNum, sessionCookie),
     getOwnerBadges(ownerIdNum, sessionCookie),
+    season !== null
+      ? getOwnerDraftGrade(season, ownerIdNum, sessionCookie)
+      : Promise.resolve({ grade: null, narrative: null }),
   ]);
 
   if (!career) {
@@ -96,7 +100,11 @@ export default async function OwnerProfilePage({
               <Stat label="Worst week" value={seasonProfile.worst_week ? `Wk ${seasonProfile.worst_week.week} — ${seasonProfile.worst_week.score}` : "—"} />
               <Stat label="Avg luck" value={seasonProfile.avg_luck ?? "—"} />
               <Stat label="Power rank" value={seasonProfile.current_power_rank ?? "—"} />
+              <Stat label="Draft grade" value={draftGrade.grade?.letter_grade ?? "—"} />
             </dl>
+            {draftGrade.narrative && (
+              <p className="text-sm text-black/70 dark:text-white/70">{draftGrade.narrative}</p>
+            )}
           </div>
         ) : (
           <p className="text-sm text-black/50 dark:text-white/50">No data for {season}.</p>

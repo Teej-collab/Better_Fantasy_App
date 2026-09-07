@@ -102,6 +102,8 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
+from app.domain.draft_grades import compute_draft_grades
+from app.domain.draft_narratives import generate_draft_narratives
 from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.gamecast import service as gamecast_service
@@ -400,6 +402,46 @@ async def _run_draft_room_open_job():
             logger.info("Draft room-open notification sent: season=%s league_id=%s", season, league_id)
 
 
+async def _run_draft_grades_job():
+    """Polls for any draft_config with status='complete' and no
+    draft_grades computed yet, and computes grades + AI recaps for it —
+    the decoupled follow-up to a draft finishing (see
+    app/domain/draft_engine.py's _advance_to_next_open_pick, the one
+    place a draft actually completes). Deliberately NOT run inline
+    there: that function is on the hot path of every single pick, not
+    just the last one, and grading needs every team's total before any
+    one team's grade is final anyway (it's a batch computation by
+    nature, not a per-pick one). No ACTIVE_SEASON scoping — draft_config
+    is a tiny table, and a plain sweep for "any newly completed draft"
+    means this keeps working across a season rollover with zero extra
+    logic. The NOT EXISTS check against draft_grades is the idempotency
+    gate — a manual re-trigger is just deleting that season/league's
+    rows and waiting for the next tick, same "check whether the derived
+    data already exists" pattern this app already prefers over adding a
+    tracking column to draft_config itself."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        pending = await conn.fetch(
+            """
+            SELECT dc.season, dc.league_id FROM draft_config dc
+            WHERE dc.status = 'complete'
+              AND NOT EXISTS (
+                  SELECT 1 FROM draft_grades dg
+                  WHERE dg.season = dc.season AND dg.league_id = dc.league_id
+              )
+            """
+        )
+        for row in pending:
+            season, league_id = row["season"], row["league_id"]
+            try:
+                count = await compute_draft_grades(conn, season, league_id)
+                if count:
+                    await generate_draft_narratives(conn, season, league_id)
+                logger.info("Draft grades computed: season=%s league_id=%s teams=%s", season, league_id, count)
+            except Exception:
+                logger.exception("Draft grade computation failed: season=%s league_id=%s", season, league_id)
+
+
 async def _run_keeper_deadline_warning_job():
     """Pushes every real drafting owner once, ~30 minutes before their
     league's keeper selection deadline (league_keeper_rules.
@@ -515,6 +557,8 @@ def start_scheduler():
         logger.info("Draft auto-start scheduler started (every 2 seconds)")
         _scheduler.add_job(_run_draft_room_open_job, "interval", seconds=60, id="draft_room_open")
         logger.info("Draft room-open reminder scheduler started (every 60 seconds)")
+        _scheduler.add_job(_run_draft_grades_job, "interval", seconds=60, id="draft_grades")
+        logger.info("Draft grades scheduler started (every 60 seconds)")
         started_any = True
 
     if os.getenv("ENABLE_KEEPER_LOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):

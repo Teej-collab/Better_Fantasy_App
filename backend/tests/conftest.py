@@ -224,10 +224,13 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM roster_history WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_picks WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
-        # draft_queue_items/draft_room_messages reference owners(owner_id),
-        # so they have to go before the owners DELETE further below.
+        # draft_queue_items/draft_room_messages/draft_grades/draft_narratives
+        # reference owners(owner_id), so they have to go before the owners
+        # DELETE further below.
         await conn.execute("DELETE FROM draft_queue_items WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_room_messages WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM draft_grades WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM draft_narratives WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_config WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute(
             "DELETE FROM league_draft_schedule WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]

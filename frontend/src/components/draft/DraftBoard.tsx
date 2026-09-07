@@ -22,11 +22,20 @@ export function DraftBoard({
   picks,
   teamNameByOwner,
   currentPickNumber,
+  gradesByOwner,
+  onOpenGrade,
 }: {
   config: DraftConfig;
   picks: DraftPick[];
   teamNameByOwner: Map<number, string>;
   currentPickNumber: number;
+  // Only ever populated once the draft is complete and grades have been
+  // computed (app/scheduler.py's draft-grades job) — undefined during
+  // a live draft, so this never shows anything mid-pick. Full write-up
+  // text lives elsewhere (too long for this dense grid); clicking the
+  // badge just tells the parent which owner to show it for.
+  gradesByOwner?: Map<number, { letter_grade: string; percentile: number }>;
+  onOpenGrade?: (ownerId: number) => void;
 }) {
   const { openPlayerCard } = usePlayerCard();
 
@@ -45,14 +54,26 @@ export function DraftBoard({
         <thead>
           <tr>
             <th className="w-8" />
-            {columns.map((ownerId) => (
-              <th
-                key={ownerId}
-                className="min-w-28 truncate px-1 pb-1 text-left font-semibold text-black/60 dark:text-white/60"
-              >
-                {teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
-              </th>
-            ))}
+            {columns.map((ownerId) => {
+              const grade = gradesByOwner?.get(ownerId);
+              return (
+                <th
+                  key={ownerId}
+                  className="min-w-28 truncate px-1 pb-1 text-left font-semibold text-black/60 dark:text-white/60"
+                >
+                  {teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
+                  {grade && (
+                    <button
+                      onClick={() => onOpenGrade?.(ownerId)}
+                      className="ml-1.5 inline-flex items-center rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20"
+                      title={`Draft grade: ${grade.letter_grade} (${Math.round(grade.percentile)}th percentile)`}
+                    >
+                      {grade.letter_grade}
+                    </button>
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>

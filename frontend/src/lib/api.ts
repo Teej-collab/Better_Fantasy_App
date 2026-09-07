@@ -509,6 +509,39 @@ export function getWeeklyAwards(season: number, week: number, sessionCookie: str
   return getServer<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`, sessionCookie);
 }
 
+// Real, data-driven draft grade (percentile rank of total drafted
+// players.projected_points, letter-graded) plus an AI recap per team —
+// computed once, shortly after a real draft completes, by
+// app/scheduler.py's draft-grades job. Both fields are null/empty
+// until that job has run, not an error (see app/routers/awards.py's
+// season_draft_grades docstring).
+export type DraftGrade = {
+  season: number;
+  owner_id: number;
+  owner_name: string;
+  total_projected_points: number;
+  league_avg_projected_points: number;
+  percentile: number;
+  letter_grade: string;
+};
+
+export type SeasonDraftResponse = {
+  config: Record<string, unknown>;
+  picks: unknown[];
+  grades: DraftGrade[];
+  narratives: Record<string, string | null>;
+};
+
+export function getSeasonDraft(season: number, sessionCookie: string | undefined) {
+  return getServerOrNull<SeasonDraftResponse>(`/seasons/${season}/draft-grades`, sessionCookie);
+}
+
+export type OwnerDraftGradeResponse = { grade: DraftGrade | null; narrative: string | null };
+
+export function getOwnerDraftGrade(season: number, ownerId: number, sessionCookie: string | undefined) {
+  return getServer<OwnerDraftGradeResponse>(`/seasons/${season}/owners/${ownerId}/draft-grade`, sessionCookie);
+}
+
 export type WeeklyNarrative = { text: string; kind: "preview" | "recap" };
 
 // Cache-only read — never triggers a live generation (see

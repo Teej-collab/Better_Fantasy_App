@@ -18,7 +18,10 @@ from app.auth.league_context import require_league_access, require_league_commis
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
 from app.domain import awards_all_time, narrative_engine, team_profile, weekly_awards
+from app.domain.draft_grades import get_draft_grade, get_draft_grades_for_season
+from app.domain.draft_narratives import get_draft_narrative
 from app.queries import awards as awards_queries
+from app.queries import draft as draft_queries
 from app.queries import league as league_queries
 
 router = APIRouter(tags=["awards"])
@@ -46,6 +49,47 @@ async def season_awards(
         "champion": dict(champion) if champion is not None else None,
         "awards": [dict(a) for a in awards],
     }
+
+
+@router.get("/seasons/{season}/draft-grades")
+async def season_draft_grades(
+    season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Real, completed-draft data for a past OR the active season — every
+    existing /draft/* endpoint hardcodes the live ACTIVE_SEASON (built
+    for "the one live draft happening right now"), so viewing any other
+    season's draft needs this separate, season-parameterized route.
+    Grades/narratives are computed by a scheduler job shortly after a
+    draft completes (app/scheduler.py's _run_draft_grades_job) — both
+    come back empty (not an error) for a season whose draft hasn't
+    finished yet, or whose grades haven't been computed on the next
+    tick yet."""
+    async with pool.acquire() as conn:
+        state = await draft_queries.get_draft_state(conn, season, league_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="No draft found for this season")
+        grades = await get_draft_grades_for_season(conn, season, league_id)
+        narratives = {
+            g["owner_id"]: await get_draft_narrative(conn, season, g["owner_id"], league_id) for g in grades
+        }
+    return {
+        "config": state["config"],
+        "picks": state["picks"],
+        "grades": [dict(g) for g in grades],
+        "narratives": narratives,
+    }
+
+
+@router.get("/seasons/{season}/owners/{owner_id}/draft-grade")
+async def owner_draft_grade(
+    season: int, owner_id: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    async with pool.acquire() as conn:
+        grade = await get_draft_grade(conn, season, owner_id, league_id)
+        if grade is None:
+            return {"grade": None, "narrative": None}
+        narrative = await get_draft_narrative(conn, season, owner_id, league_id)
+    return {"grade": dict(grade), "narrative": narrative}
 
 
 @router.get("/awards/all-time")
