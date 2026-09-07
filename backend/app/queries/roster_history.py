@@ -25,9 +25,12 @@ async def snapshot_week(conn, season: int, week: int) -> int:
         rows = await conn.fetch(
             """
             INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
-            SELECT cr.season, $2, cr.team_id, cr.sleeper_player_id, cr.lineup_slot, p.projected_avg_points
+            SELECT cr.season, $2, cr.team_id, cr.sleeper_player_id, cr.lineup_slot,
+                   COALESCE(pwp.projected_points, p.projected_avg_points)
             FROM current_rosters cr
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+            LEFT JOIN player_weekly_projections pwp
+                ON pwp.season = cr.season AND pwp.week = $2 AND pwp.sleeper_player_id = cr.sleeper_player_id
             WHERE cr.season = $1
             RETURNING id
             """,

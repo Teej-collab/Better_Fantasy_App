@@ -324,25 +324,30 @@ def _sort_roster_rows(rows):
 # your_week.py — and the matchup screen — app/domain/
 # matchup_context.py) should read through here instead.
 #
-# points_projected here is players.projected_avg_points (ESPN's own
-# per-game average, refreshed by app/domain/player_projections.py via
-# League.player_info — works regardless of ESPN-side roster status,
-# unlike the old free_agents()-based read) — the best stand-in for
-# "this week's projection" until a real week-specific number exists.
-# is_boom/is_bust always come back False: that classification
-# (app/domain/boom_bust.py) is still computed against the legacy
-# `rosters` table only and hasn't been ported to current_rosters yet —
-# a real, known follow-up, not silently fabricated data.
+# points_projected prefers a real, week-specific number from
+# player_weekly_projections (harvested from ESPN's box_scores() by
+# app/providers/espn/adapter.py's _save_lineup — see that table's own
+# migration for why this only covers ~83% of a real roster on any given
+# week, not 100%), falling back to players.projected_avg_points (ESPN's
+# season-long per-game average) for whichever players that week's
+# harvest didn't cover. is_boom/is_bust always come back False: that
+# classification (app/domain/boom_bust.py) is still computed against
+# the legacy `rosters` table only and hasn't been ported to
+# current_rosters yet — a real, known follow-up, not silently
+# fabricated data.
 async def get_current_roster(conn, season: int, team_id: int, week: int):
     rows = await conn.fetch(
         """
         SELECT p.full_name AS player_name, p.position, cr.lineup_slot,
-               pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
+               pws.fantasy_points AS points_scored,
+               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
                cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+        LEFT JOIN player_weekly_projections pwp
+            ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = $2
         """,
         season, team_id, week,
@@ -358,12 +363,15 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
     rows = await conn.fetch(
         """
         SELECT cr.team_id, p.full_name AS player_name, p.position, cr.lineup_slot,
-               pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
+               pws.fantasy_points AS points_scored,
+               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
                cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+        LEFT JOIN player_weekly_projections pwp
+            ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = ANY($2::int[])
         """,
         season, team_ids, week,

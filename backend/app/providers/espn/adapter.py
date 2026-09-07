@@ -264,3 +264,22 @@ class ESPNProvider(FantasyProvider):
                 Decimal(str(round(player.points, 2))), Decimal(str(round(player.projected_points, 2))),
                 player.playerId, player.proTeam, league_id,
             )
+            # Harvest this same real, per-week ESPN projection into
+            # player_weekly_projections, matched via this app's real
+            # players.espn_player_id crosswalk — completely independent
+            # of the legacy `rosters` row above (which is ESPN's own,
+            # disconnected league's roster/team). A player with no
+            # crosswalk match (never drafted in this app) is a no-op —
+            # this table only needs to hold projections for players
+            # this app actually knows about. Best-effort per player, not
+            # per whole sync: one unmatched player never blocks the rest.
+            await conn.execute(
+                """
+                INSERT INTO player_weekly_projections (season, week, sleeper_player_id, projected_points)
+                SELECT $1, $2, p.sleeper_player_id, $3
+                FROM players p WHERE p.espn_player_id = $4
+                ON CONFLICT (season, week, sleeper_player_id)
+                DO UPDATE SET projected_points = EXCLUDED.projected_points, synced_at = now()
+                """,
+                season, week, Decimal(str(round(player.projected_points, 2))), player.playerId,
+            )
