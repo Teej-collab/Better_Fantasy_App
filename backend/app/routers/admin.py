@@ -33,7 +33,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
-from app.queries import admin_analytics, admin_leagues, admin_overview, admin_system, admin_users
+from app.queries import admin_analytics, admin_leagues, admin_overview, admin_system, admin_teams, admin_users
 from app.scheduler_status import record_job_run
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -111,6 +111,31 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
     results = await compute_and_store_week(await get_pool(), season, week)
     record_job_run("weekly_compute")
     return {"season": season, "week": week, "results": results}
+
+
+@router.delete("/teams/{team_id}")
+async def delete_team(team_id: int, request: Request):
+    """Hard-deletes a teams_by_season row with zero linked data (see
+    admin_teams.get_team_deletion_blockers) — the cleanup path for a
+    real 2026-09 incident: an ESPN sync created a duplicate "JG
+    Wentworth" team+owner (team_id 18991, owner display_name literally
+    "JG Wentworth", no linked user, no roster, no schedule) alongside
+    the real JG Wentworth team (team_id 3, owned by Bailey Hawn, with a
+    full roster and a real season schedule) that happened to share the
+    same team name. Deliberately NOT a general team-offboarding tool —
+    a real team with any history should be reassigned instead (POST
+    /leagues/{league_id}/teams/{team_id}/reassign), never deleted
+    through this endpoint."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
+        result = await admin_teams.delete_team(conn, team_id)
+    if result is False:
+        raise HTTPException(status_code=404, detail="No team found")
+    if isinstance(result, list):
+        raise HTTPException(status_code=409, detail={"blockers": result})
+    return {"team_id": team_id, "deleted": True}
 
 
 @router.post("/weekly-team-stats")

@@ -276,6 +276,87 @@ async def test_weekly_team_stats_recomputes_projected_total(pool, monkeypatch):
     assert float(row["team_points_projected"]) == 22.5
 
 
+async def test_delete_team_requires_session(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _delete(path="/admin/teams/1")
+    assert response.status_code == 401
+
+
+async def test_delete_team_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _delete(
+        cookies=await _non_commissioner_cookies(pool, "delete-team-reject"), path="/admin/teams/1"
+    )
+    assert response.status_code == 403
+
+
+async def test_delete_team_404s_for_an_unknown_team(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-team-404"), path="/admin/teams/999999999"
+    )
+    assert response.status_code == 404
+
+
+async def test_delete_team_removes_an_empty_team(pool, monkeypatch):
+    from tests.conftest import TEST_SEASON
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-ghost-owner", "Ghost Owner",
+        )
+        team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 9001, owner_id, "Ghost Team",
+        )
+
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-team-writer"), path=f"/admin/teams/{team_id}"
+    )
+    assert response.status_code == 200
+    assert response.json() == {"team_id": team_id, "deleted": True}
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM teams_by_season WHERE id = $1", team_id)
+    assert row is None
+
+
+async def test_delete_team_refuses_a_team_with_a_roster(pool, monkeypatch):
+    from tests.conftest import TEST_SEASON
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-real-owner", "Real Owner",
+        )
+        team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 9002, owner_id, "Real Team",
+        )
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position, is_draftable) "
+            "VALUES ('test-admin-delete-team-player', 'Delete Team Player', 'RB', TRUE)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-admin-delete-team-player', 'RB', 'draft')",
+            TEST_SEASON, team_id,
+        )
+
+    response = await _delete(
+        cookies=await _commissioner_of_league_one_cookies(pool, "delete-team-refused"), path=f"/admin/teams/{team_id}"
+    )
+    assert response.status_code == 409
+    assert "current_rosters roster" in response.json()["detail"]["blockers"][0]
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT id FROM teams_by_season WHERE id = $1", team_id)
+    assert row is not None  # refused, not deleted
+
+
 # ---- Usage dashboard (2026-09) --------------------------------------
 
 

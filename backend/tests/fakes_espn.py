@@ -118,6 +118,13 @@ class FakeLeague:
         return players[:size]
 
     def player_info(self, name=None, playerId=None):
+        # Real espn_api.League.player_info returns a single Player for a
+        # single int id, or a list of Players for a list of ids (see
+        # app/providers/espn/free_agents.py's get_projections, the only
+        # batched caller) — mirrored here rather than only supporting
+        # the single-id shape app/providers/espn/player_info.py uses.
+        if isinstance(playerId, list):
+            return [self._player_info_by_id[pid] for pid in playerId if pid in self._player_info_by_id]
         return self._player_info_by_id.get(playerId)
 
     def scoreboard(self, week):

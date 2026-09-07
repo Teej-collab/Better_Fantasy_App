@@ -20,9 +20,34 @@ pool's inline projected-points column plus per-week matchup
 projections, app/domain/player_projections.py) via League.player_info/
 player_map instead.
 """
+import re
+
 from espn_api.football import League
 
 from app.providers.espn.config import ESPNConfig
+
+# ESPN's player_map carries a trailing suffix for some active players
+# that Sleeper's own full_name doesn't (empirically confirmed 2026-09:
+# real starters "Anthony Richardson"/"Michael Penix"/"Brian Robinson"
+# were silently missing projections because ESPN indexes them as
+# "Anthony Richardson Sr."/"Michael Penix Jr."/"Brian Robinson Jr.").
+_SUFFIX_RE = re.compile(r"\s+(Jr\.?|Sr\.?|II|III|IV)$", re.IGNORECASE)
+
+
+def _strip_suffix(name: str) -> str:
+    return _SUFFIX_RE.sub("", name).strip()
+
+
+def _dst_key(name: str) -> str:
+    """Sleeper stores a D/ST's full_name as the real NFL team's full
+    name ("Houston Texans"); ESPN's player_map indexes the same unit as
+    "<nickname> D/ST" ("Texans D/ST") under a negative playerId
+    (empirically confirmed: -16001..-16034 cover all 32 teams, and
+    player_info returns real projections for them same as any skill
+    player). NFL nicknames are reliably the last word of the full team
+    name for all 32 real teams (no multi-word nickname exists), so this
+    is safe as a plain split rather than a hardcoded 32-team table."""
+    return f"{name.rsplit(' ', 1)[-1]} D/ST"
 
 
 def _get_league(config: ESPNConfig, season: int | None) -> League:
@@ -76,16 +101,35 @@ def get_projections(
 
     Empirically confirmed fast/safe as a single batched player_info
     call at ~650 ids (~1.2s); espn_api's own player_info does one HTTP
-    request total regardless of list size, so this doesn't chunk."""
+    request total regardless of list size, so this doesn't chunk.
+
+    Falls back through two more lookups for a name that doesn't match
+    player_map exactly: the D/ST nickname form (_dst_key) and the
+    suffix-stripped form (_strip_suffix) — see each helper's own
+    docstring for the real gaps they close (every D/ST unit, plus
+    active players like Anthony Richardson/Michael Penix that ESPN
+    carries a Jr./Sr. suffix for)."""
     config = config or ESPNConfig()
     league = _get_league(config, season)
 
     player_map = league.player_map
-    resolved_ids_by_name = {
-        name: espn_id
-        for name in unresolved_names
-        if isinstance(espn_id := player_map.get(name), int)
-    }
+    stripped_map: dict[str, int] = {}
+    for name, pid in player_map.items():
+        if not isinstance(pid, int):
+            continue
+        stripped = _strip_suffix(name)
+        if stripped != name:
+            stripped_map.setdefault(stripped, pid)
+
+    resolved_ids_by_name: dict[str, int] = {}
+    for name in unresolved_names:
+        espn_id = player_map.get(name)
+        if not isinstance(espn_id, int):
+            espn_id = player_map.get(_dst_key(name))
+        if not isinstance(espn_id, int):
+            espn_id = stripped_map.get(name)
+        if isinstance(espn_id, int):
+            resolved_ids_by_name[name] = espn_id
 
     all_ids = list(known_espn_ids) + list(resolved_ids_by_name.values())
     if not all_ids:
