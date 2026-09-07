@@ -99,7 +99,9 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                   {p.full_name}
                 </button>
                 <span className="text-xs text-black/50 dark:text-white/50">
-                  {p.position} · {nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}
+                  {/* players.position stores defenses as the raw "DEF" (Sleeper's own value) — shown as "D/ST" everywhere else in the app. */}
+                  {p.position === "DEF" ? "D/ST" : p.position} ·{" "}
+                  {nflTeamName(p.pro_team ?? undefined) ?? p.pro_team ?? "—"}
                 </span>
                 {p.injury_status && p.injury_status !== "ACTIVE" && (
                   <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">

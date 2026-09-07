@@ -11,6 +11,21 @@ export const metadata: Metadata = { title: "Free Agents — Weekend League" };
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 
+// players.position stores defenses as "DEF" (Sleeper's own value — see
+// backend/app/providers/sleeper/ingest.py), not the "D/ST" display
+// label — the same translation RosterSlotsSection.tsx's own
+// SLOT_TO_POSITION already makes. Without it, the D/ST tab's query
+// (?position=D/ST) matched zero rows against the real stored value
+// (2026-09, reported: real available defenses never showed up here).
+const POSITION_TO_QUERY_VALUE: Record<string, string> = {
+  QB: "QB",
+  RB: "RB",
+  WR: "WR",
+  TE: "TE",
+  "D/ST": "DEF",
+  K: "K",
+};
+
 export default async function FreeAgentsPage({
   searchParams,
 }: {
@@ -61,17 +76,20 @@ export default async function FreeAgentsPage({
         >
           All
         </Link>
-        {POSITIONS.map((p) => (
-          <Link
-            key={p}
-            href={{ pathname: "/free-agents", query: { position: p, ...(search ? { search } : {}) } }}
-            className={
-              position === p ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
-            }
-          >
-            {p}
-          </Link>
-        ))}
+        {POSITIONS.map((p) => {
+          const queryValue = POSITION_TO_QUERY_VALUE[p];
+          return (
+            <Link
+              key={p}
+              href={{ pathname: "/free-agents", query: { position: queryValue, ...(search ? { search } : {}) } }}
+              className={
+                position === queryValue ? "font-semibold underline" : "text-black/60 hover:underline dark:text-white/60"
+              }
+            >
+              {p}
+            </Link>
+          );
+        })}
       </div>
 
       <FreeAgentsList players={players} />
