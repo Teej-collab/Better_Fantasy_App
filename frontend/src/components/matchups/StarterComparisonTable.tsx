@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { RosterPlayer } from "@/lib/api";
-import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { formatGameTime } from "@/lib/gameTime";
+import { teamLogoUrl } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
 
 // Starters only (bench/IR excluded), in the same QB/RB/RB/WR/WR/TE/
@@ -24,6 +24,25 @@ function starters(roster: RosterPlayer[]): RosterPlayer[] {
     });
 }
 
+// "QUESTIONABLE" -> "Q" — the reference layout (real ESPN matchup
+// screen, 2026-09) shows a single-letter flag right next to the name
+// instead of a separate pill on its own line, which is a big part of
+// why it reads as spacious instead of cluttered at the same
+// information density. Falls back to the first letter for a status
+// this map doesn't know about, rather than silently dropping it.
+const INJURY_SHORT_CODE: Record<string, string> = {
+  QUESTIONABLE: "Q",
+  DOUBTFUL: "D",
+  OUT: "O",
+  IR: "IR",
+  PUP: "PUP",
+  SUSPENDED: "S",
+};
+
+function injuryShortCode(status: string): string {
+  return INJURY_SHORT_CODE[status] ?? status.slice(0, 1);
+}
+
 // Everything for ONE player lives in a single flex column here —
 // deliberately not split across separate flex siblings (an earlier
 // version put the projected-points number in its own sibling box next
@@ -31,6 +50,14 @@ function starters(roster: RosterPlayer[]): RosterPlayer[] {
 // let the two siblings' text visually collide — 2026-09, reported).
 // Keeping name+points on the same line, in the same box, guarantees
 // the browser can never lay them on top of each other.
+//
+// Uses the real NFL team's badge (small, 24px) instead of a player
+// headshot photo — matched to the reference screenshot's own choice,
+// which is most of why it reads as roomy at a glance: no headshot
+// means more width for the name to run at a bigger size before
+// truncating, and no headshot column means less to visually parse
+// per row. My Team's own roster view keeps real headshots — this is
+// specific to the matchup screen's side-by-side density.
 function PlayerCell({
   player,
   mounted,
@@ -42,19 +69,30 @@ function PlayerCell({
 }) {
   if (!player) return <div className="min-w-0 flex-1" />;
   const clickable = typeof player.player_id === "string";
+  const logo = teamLogoUrl(player.pro_team);
+  const showInjury = player.injury_status && player.injury_status !== "ACTIVE";
   const inner = (
     <>
-      <PlayerHeadshot
-        playerId={typeof player.player_id === "number" ? player.player_id : null}
-        sleeperPlayerId={typeof player.player_id === "string" ? player.player_id : null}
-        proTeam={player.pro_team}
-        name={player.player_name}
-        size={32}
-      />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-baseline gap-1">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{player.player_name}</span>
-          <span className="shrink-0 text-xs tabular-nums text-black/50 dark:text-white/50">
+      {logo ? (
+        // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
+        <img src={logo} alt="" width={24} height={24} className="h-6 w-6 shrink-0 object-contain" />
+      ) : (
+        <span className="h-6 w-6 shrink-0" aria-hidden />
+      )}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-baseline gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-base font-semibold">
+            {player.player_name}
+            {showInjury && (
+              <span
+                className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+                title={player.injury_status ?? undefined}
+              >
+                {injuryShortCode(player.injury_status as string)}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-sm tabular-nums text-black/50 dark:text-white/50">
             {player.points_projected != null ? player.points_projected.toFixed(1) : "—"}
           </span>
         </span>
@@ -63,15 +101,10 @@ function PlayerCell({
           {player.next_opponent && ` ${player.next_opponent}`}
           {player.game_time && mounted && ` · ${formatGameTime(player.game_time)}`}
         </span>
-        {player.injury_status && player.injury_status !== "ACTIVE" && (
-          <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-            {player.injury_status}
-          </span>
-        )}
       </span>
     </>
   );
-  const rowClass = "flex min-w-0 flex-1 items-center gap-2";
+  const rowClass = "flex min-w-0 flex-1 items-center gap-2.5";
   return clickable ? (
     <button onClick={() => onOpen(player.player_id as string)} className={`${rowClass} text-left hover:underline`}>
       {inner}
@@ -85,11 +118,10 @@ function PlayerCell({
  * The two-column starter breakdown — one row per starter slot
  * (QB/RB/RB/WR/WR/TE/FLEX/D-ST/K), home's player on the left, away's
  * on the right, each with their real projected points, next real
- * opponent/game time, and injury tag when they have one. Bench/IR
- * players never appear here. A CSS grid (not nested flex) sizes the
- * slot label column exactly and gives both sides identical, bounded
- * space — the layout that produced the mobile overlap bug this
- * replaces was nested flex with mirrored (flex-row-reverse) sides.
+ * opponent/game time, and an inline injury flag when they have one.
+ * Bench/IR players never appear here. A CSS grid (not nested flex)
+ * sizes the slot label column exactly and gives both sides identical,
+ * bounded space.
  */
 export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; away: RosterPlayer[] }) {
   const { openPlayerCard } = usePlayerCard();
@@ -117,7 +149,7 @@ export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; a
         const a = awayStarters[i] ?? null;
         const slot = slotDisplayLabel((h ?? a)?.lineup_slot ?? "");
         return (
-          <div key={i} className="grid grid-cols-[1fr_2.25rem_1fr] items-center gap-1.5 py-2.5">
+          <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
             <PlayerCell player={h} mounted={mounted} onOpen={openPlayerCard} />
             <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
               {slot}
