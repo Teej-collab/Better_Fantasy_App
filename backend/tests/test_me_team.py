@@ -554,6 +554,48 @@ async def test_new_free_agents_list_excludes_rostered_players(pool, monkeypatch)
     assert rostered not in ids
 
 
+async def test_free_agents_list_includes_projected_points_and_this_weeks_score(pool, monkeypatch):
+    from app.routers import me as me_router
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async def _fake_scoreboard(week, year):
+        return []
+
+    monkeypatch.setattr(me_router, "get_week_scoreboard", _fake_scoreboard)
+    owner_id, _ = await _seed_owner_with_team(pool, "fa-proj", espn_team_id=111)
+    low = await _seed_player(pool, "fa-proj-low", position="WR")
+    high = await _seed_player(pool, "fa-proj-high", position="WR")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 1) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+        await conn.execute("UPDATE players SET projected_avg_points = 5.0 WHERE sleeper_player_id = $1", low)
+        await conn.execute("UPDATE players SET projected_avg_points = 20.0 WHERE sleeper_player_id = $1", high)
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, $2, '{}', 18.5)",
+            TEST_SEASON, high,
+        )
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team/free-agents", params={"position": "WR"})
+        await pool.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
+
+    assert resp.status_code == 200
+    by_id = {p["sleeper_player_id"]: p for p in resp.json()["players"]}
+    assert float(by_id[high]["projected_points"]) == 20.0
+    assert float(by_id[high]["score"]) == 18.5
+    assert by_id[low]["score"] is None
+    # Sorted by projected points descending — the higher-projected
+    # player should come first.
+    ids_in_order = [p["sleeper_player_id"] for p in resp.json()["players"] if p["sleeper_player_id"] in (low, high)]
+    assert ids_in_order == [high, low]
+
+
 async def test_add_free_agent_real_write_with_open_spot(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))

@@ -437,29 +437,57 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
 async def list_free_agents(request: Request, position: str | None = None, search: str | None = None):
     """The undrafted (season-wide) pool, same shape as /draft/pool minus
     the drafted flag — everyone on this list is by definition
-    available."""
+    available.
+
+    projected_points is players.projected_avg_points (ESPN's own
+    per-game average, refreshed by app/domain/player_projections.py —
+    see that module's docstring for the 2026-09 fix that made this
+    reliable for real rostered/draftable players, D/ST included), not
+    the season-total projected_points column — a per-week number is
+    what's actually useful for "who should I add this week," matching
+    the reference free-agent browse UI this was modeled on. score is
+    this week's already-computed real result (app/domain/
+    weekly_stats.py), null pre-kickoff same as My Team's own roster
+    view. next_opponent/game_time reuse _schedule_lookup below, the
+    same real-scoreboard cross-reference GET /team already does."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        current_week = await league_queries.get_cached_current_week(conn, active_season)
 
         query = """
-            SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status
+            SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
+                   p.projected_avg_points AS projected_points, pws.fantasy_points AS score
             FROM players p
+            LEFT JOIN player_week_stats pws
+                ON pws.season = $1 AND pws.week = $3 AND pws.sleeper_player_id = p.sleeper_player_id
             WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
                 SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
             )
         """
-        params: list = [active_season, league_id]
+        params: list = [active_season, league_id, current_week]
         if position:
             query += f" AND p.position = ${len(params) + 1}"
             params.append(position)
         if search:
             query += f" AND p.full_name ILIKE ${len(params) + 1}"
             params.append(f"%{search}%")
-        query += " ORDER BY p.search_rank ASC NULLS LAST, p.full_name ASC"
+        query += " ORDER BY p.projected_avg_points DESC NULLS LAST, p.search_rank ASC NULLS LAST, p.full_name ASC"
 
-        rows = await conn.fetch(query, *params)
-    return {"players": [dict(r) for r in rows]}
+        rows = [dict(r) for r in await conn.fetch(query, *params)]
+
+    if current_week is not None:
+        try:
+            games = await get_week_scoreboard(current_week, active_season)
+        except Exception:
+            games = []  # a scoreboard fetch failure shouldn't break loading the free-agent list
+        schedule = _schedule_lookup(games)
+        for row in rows:
+            info = schedule.get(row["pro_team"])
+            if info:
+                row.update(info)
+
+    return {"players": rows}
