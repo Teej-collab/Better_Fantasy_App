@@ -236,6 +236,27 @@ export default async function HomePage() {
     );
   }
 
+  if (powerRankings.length === 0 && !weekPlayed && season !== null) {
+    // Power rank is a real, computed-from-actual-scores composite (see
+    // app/domain/weekly_team_stats.py) — it has nothing to rank on
+    // until the first real game of the season finishes, same reason
+    // the dedicated /power-rankings page shows "no data yet" right
+    // now. A silent missing card reads as broken; a real "not yet"
+    // message doesn't, same call already made for the pre-kickoff
+    // ticker fallback below.
+    cards.powerRankings = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Power Rankings" href="/power-rankings" />
+        <div
+          className="neon-panel rounded-lg bg-black/[0.015] px-4 py-3 text-sm text-black/50 dark:bg-white/[0.03] dark:text-white/50"
+          style={panelGlowStyle(SECTION_COLORS.powerRankings)}
+        >
+          Power rankings will appear here once this week&apos;s games have been played.
+        </div>
+      </section>
+    );
+  }
+
   if (powerRankings.length > 0) {
     cards.powerRankings = (
       <section className="flex flex-col gap-2">
