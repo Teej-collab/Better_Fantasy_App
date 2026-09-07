@@ -15,6 +15,11 @@ type PanelState =
   | { status: "confirm" }
   | { status: "submitting" }
   | { status: "needs-drop"; roster: RosterEntry[] }
+  // Picking who to drop used to commit the drop+add immediately on
+  // click — a real accidental-drop risk (2026-09, reported). Now a
+  // separate confirm step, same as every other roster-changing action
+  // in this app requires.
+  | { status: "confirm-drop"; roster: RosterEntry[]; dropCandidate: RosterEntry }
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
@@ -196,13 +201,36 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                       {panel.roster.map((entry) => (
                         <button
                           key={entry.player_id}
-                          onClick={() => submitAdd(p, entry.player_id)}
+                          onClick={() => setPanel({ status: "confirm-drop", roster: panel.roster, dropCandidate: entry })}
                           className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                         >
                           {entry.player_name}
                           <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
                         </button>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {panel.status === "confirm-drop" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      Drop <strong>{panel.dropCandidate.player_name}</strong> to add <strong>{p.full_name}</strong>?
+                      This is a real roster move.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitAdd(p, panel.dropCandidate.player_id)}
+                        className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                      >
+                        Confirm drop &amp; add
+                      </button>
+                      <button
+                        onClick={() => setPanel({ status: "needs-drop", roster: panel.roster })}
+                        className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
+                      >
+                        Back
+                      </button>
                     </div>
                   </div>
                 )}

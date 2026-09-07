@@ -135,6 +135,11 @@ function RosterRow({
         <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
           {entry.points !== null ? entry.points.toFixed(1) : "—"}
         </span>
+        {entry.points_projected !== null && (
+          <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
+            Proj {entry.points_projected.toFixed(1)}
+          </span>
+        )}
         <button
           onClick={() => onDrop(entry)}
           className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"

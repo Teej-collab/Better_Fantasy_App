@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getMatchup, getMe } from "@/lib/api";
-import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import type { MatchupContextSide } from "@/lib/api";
@@ -11,6 +9,9 @@ import { NarrativeSection } from "@/components/matchups/NarrativeSection";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 import { SignInCard } from "@/components/SignInCard";
 import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
+import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
+import { MyTouchdownsSection } from "@/components/matchups/MyTouchdownsSection";
+import { StarterComparisonTable } from "@/components/matchups/StarterComparisonTable";
 import { BackButton } from "@/components/BackButton";
 
 // Real per-page title (mobile audit finding) — matters most here since
@@ -76,10 +77,8 @@ export default async function MatchupPage({
           {matchup.season} — Week {matchup.week}
         </h1>
 
-        <div className="mt-3 flex flex-col gap-1 text-lg sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <TeamScore teamId={home.team_id} name={home.team_name} score={home.score} />
-          <span className="hidden text-black/50 sm:inline dark:text-white/50">vs</span>
-          <TeamScore teamId={away.team_id} name={away.team_name} score={away.score} align="right" />
+        <div className="mt-3">
+          <MatchupScoreHeader home={home} away={away} />
         </div>
 
         {hasWinProbability && (
@@ -91,6 +90,13 @@ export default async function MatchupPage({
 
       <NarrativeSection narrative={matchup.narrative} />
 
+      <MyTouchdownsSection
+        homeName={home.team_name}
+        awayName={away.team_name}
+        homeTouchdowns={home.touchdowns}
+        awayTouchdowns={away.touchdowns}
+      />
+
       <div className="neon-panel grid grid-cols-1 gap-4 rounded-lg p-4 sm:grid-cols-2">
         <TeamDetailSummary side={home} />
         <TeamDetailSummary side={away} />
@@ -100,35 +106,13 @@ export default async function MatchupPage({
         <HeadToHeadSection headToHead={matchup.head_to_head} home={home} away={away} />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <RosterList title={home.team_name} players={home.roster} showProjected />
-        <RosterList title={away.team_name} players={away.roster} showProjected />
+      <div className="neon-panel rounded-lg p-4">
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          Starting Lineups
+        </h2>
+        <StarterComparisonTable home={home.roster} away={away.roster} />
       </div>
     </div>
-  );
-}
-
-function TeamScore({
-  teamId,
-  name,
-  score,
-  align = "left",
-}: {
-  teamId: number;
-  name: string;
-  score: number | null;
-  align?: "left" | "right";
-}) {
-  return (
-    <Link
-      href={`/teams/${teamId}`}
-      className={`flex items-baseline gap-2 hover:underline ${align === "right" ? "sm:flex-row-reverse" : ""}`}
-    >
-      <span>{name}</span>
-      <span className="font-mono tabular-nums text-black/70 dark:text-white/70">
-        {score !== null ? score.toFixed(1) : "—"}
-      </span>
-    </Link>
   );
 }
 

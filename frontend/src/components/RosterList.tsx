@@ -32,7 +32,18 @@ export function RosterList({
           <li key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
             <div className="flex min-w-0 items-center gap-2">
               <span className="w-16 shrink-0 text-xs text-black/50 dark:text-white/50">{p.lineup_slot}</span>
-              <PlayerHeadshot playerId={p.player_id} proTeam={p.pro_team} name={p.player_name} size={28} />
+              {/* player_id is a legacy numeric ESPN id on the team
+                  detail page's roster, or a real sleeper_player_id
+                  string everywhere sourced from current_rosters
+                  instead (matchup screens) — routed to whichever
+                  PlayerHeadshot prop actually matches its type. */}
+              <PlayerHeadshot
+                playerId={typeof p.player_id === "number" ? p.player_id : null}
+                sleeperPlayerId={typeof p.player_id === "string" ? p.player_id : null}
+                proTeam={p.pro_team}
+                name={p.player_name}
+                size={28}
+              />
               <span className="truncate">{p.player_name}</span>
               {p.is_boom && (
                 <span title="Boom performance" aria-hidden>

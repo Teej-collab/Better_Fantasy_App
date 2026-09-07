@@ -131,11 +131,21 @@ export type RosterPlayer = {
   // unnoticed).
   points_scored: number | null;
   points_projected: number | null;
-  // Only present for rows synced after the espn_player_id/pro_team
-  // columns were added — null for historical weeks until a full resync
-  // backfills them. PlayerHeadshot.tsx falls back to initials when null.
-  player_id: number | null;
+  // A number for the legacy ESPN-synced roster (/teams/{id}/roster —
+  // the team detail page) — null there for historical weeks synced
+  // before espn_player_id was backfilled. A string (the real
+  // sleeper_player_id) everywhere sourced from current_rosters instead
+  // (matchup screens — 2026-09 pivot, see backend/app/queries/
+  // league.py's get_current_roster). PlayerHeadshot.tsx branches on
+  // which one it got; falls back to initials when null.
+  player_id: number | string | null;
   pro_team: string | null;
+  // Only ever populated for current_rosters-sourced rows (matchup
+  // screens) — always null on the legacy ESPN roster path, which never
+  // carried it.
+  injury_status: string | null;
+  next_opponent: string | null;
+  game_time: string | null;
   is_boom: boolean;
   is_bust: boolean;
 };
@@ -255,16 +265,34 @@ export type ClutchChoke = {
   reason: string;
 };
 
+// A real touchdown scored by one of this side's active starters this
+// week (see backend's queries.get_touchdowns_for_teams) — how many is
+// almost always 1, but a rare multi-TD game shows the real count.
+export type TeamTouchdown = {
+  player_name: string;
+  position: string | null;
+  touchdowns: number;
+};
+
 export type MatchupContextSide = {
   team_id: number;
   team_name: string;
   owner_id: number;
   owner_name: string;
+  // The fantasy team's own custom logo (owners.logo_url, set in
+  // Settings) — null until an owner uploads one, same fallback-to-
+  // initials convention every other avatar in this app already uses.
+  logo_url: string | null;
   score: number | null;
+  // Real season-to-date total (standings' own points_for) — distinct
+  // from projected_total, which is just this week's starters-only
+  // projection.
+  season_points: number | null;
   record: string | null;
   streak: Streak;
   projected_total: number | null;
   roster: RosterPlayer[];
+  touchdowns: TeamTouchdown[];
   bench_crime: BenchCrime | null;
   clutch_choke: ClutchChoke | null;
   // Only set once the matchup has actually started (real, non-zero
@@ -1184,6 +1212,9 @@ export type RosterEntry = {
   // both null when the current fantasy week isn't resolvable yet
   // (pre-draft/pre-season) or a scoreboard fetch fails.
   points: number | null;
+  // players.projected_avg_points (ESPN's own per-game average) — only
+  // present on the plain GET /team read, same as points above.
+  points_projected: number | null;
   next_opponent: string | null;
   game_time: string | null;
   // bye_week: this player's real NFL team's bye week this season, from
