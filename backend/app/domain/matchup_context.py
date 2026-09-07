@@ -37,10 +37,12 @@ import asyncio
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
+from app.domain.nfl_schedule import schedule_lookup_by_pro_team
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
 from app.domain.win_probability import estimate_win_probability
+from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as queries
 
 _STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
@@ -53,30 +55,48 @@ def _projected_total(roster_rows) -> float | None:
     return round(sum(float(r["points_projected"] or 0) for r in starters), 2)
 
 
-def _roster_list(roster_rows):
-    return [
-        {
-            "player_name": r["player_name"],
-            "position": r["position"],
-            "lineup_slot": r["lineup_slot"],
-            "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
-            "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
-            "player_id": r["player_id"],
-            "pro_team": r["pro_team"],
-            "is_boom": bool(r["is_boom"]),
-            "is_bust": bool(r["is_bust"]),
-        }
-        for r in roster_rows
-    ]
+def _roster_list(roster_rows, schedule_by_pro_team):
+    result = []
+    for r in roster_rows:
+        info = schedule_by_pro_team.get(r["pro_team"], {})
+        result.append(
+            {
+                "player_name": r["player_name"],
+                "position": r["position"],
+                "lineup_slot": r["lineup_slot"],
+                "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
+                "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
+                "player_id": r["player_id"],
+                "pro_team": r["pro_team"],
+                "injury_status": r["injury_status"],
+                # Both null pre-season (no cached current week yet) or
+                # if a real scoreboard fetch fails — see the two
+                # build_* callers below, same "never break the page over
+                # this" discipline app/routers/me.py's GET /team uses.
+                "next_opponent": info.get("next_opponent"),
+                "game_time": info.get("game_time"),
+                "is_boom": bool(r["is_boom"]),
+                "is_bust": bool(r["is_bust"]),
+            }
+        )
+    return result
 
 
-def _side_dict(team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability):
+def _side_dict(
+    team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability,
+    schedule_by_pro_team, touchdowns,
+):
     return {
         "team_id": team_row["team_id"],
         "team_name": team_row["team_name"],
         "owner_id": team_row["owner_id"],
         "owner_name": team_row["owner_name"],
+        "logo_url": team_row["logo_url"],
         "score": float(score) if score is not None else None,
+        # Real season-to-date total (standings' own points_for) — the
+        # "season total" beneath the live score, distinct from
+        # projected_total (this week's starters-only projection).
+        "season_points": float(standings_row["points_for"]) if standings_row else None,
         "record": (
             f"{standings_row['wins']}-{standings_row['losses']}"
             + (f"-{standings_row['ties']}" if standings_row["ties"] else "")
@@ -85,7 +105,12 @@ def _side_dict(team_row, score, standings_row, streak, roster_rows, bench_crimes
         ),
         "streak": streak,
         "projected_total": _projected_total(roster_rows),
-        "roster": _roster_list(roster_rows),
+        "roster": _roster_list(roster_rows, schedule_by_pro_team),
+        # Real touchdowns scored by this team's active starters this
+        # week (see queries.get_touchdowns_for_teams) — empty before
+        # any games have been played, same honest-zero as everything
+        # else on this page pre-kickoff.
+        "touchdowns": touchdowns,
         # Worst crime first (bench_crimes rows already come back ordered
         # by points_diff DESC) — a team can have zero, one, or several;
         # the badge only ever shows the headline one.
@@ -113,7 +138,7 @@ def _matchup_entry(
     home_standing, away_standing, home_streak, away_streak,
     rivalry, h2h, is_gow, score_stdev,
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
-    narrative,
+    narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
@@ -169,10 +194,12 @@ def _matchup_entry(
         "home": _side_dict(
             home_team, home_score, home_standing, home_streak, home_roster,
             home_bench_crimes, home_clutch_choke, home_win_probability,
+            schedule_by_pro_team, home_touchdowns,
         ),
         "away": _side_dict(
             away_team, away_score, away_standing, away_streak, away_roster,
             away_bench_crimes, away_clutch_choke, away_win_probability,
+            schedule_by_pro_team, away_touchdowns,
         ),
         "narrative": narrative,
     }
@@ -189,6 +216,17 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
     bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
     clutch_choke_by_team = await get_clutch_choke_status_by_team(conn, season, week, league_id)
+    touchdowns_by_team = await queries.get_touchdowns_for_teams(conn, season, week, team_ids)
+
+    # One real scoreboard fetch for the whole week — every matchup's
+    # roster rows share the same schedule, cross-referenced by pro_team
+    # (see app/domain/nfl_schedule.py). A fetch failure shouldn't break
+    # the whole week's matchup list, same discipline as GET /team.
+    try:
+        games = await get_week_scoreboard(week, season)
+    except Exception:
+        games = []
+    schedule_by_pro_team = schedule_lookup_by_pro_team(games)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -240,7 +278,8 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             rivalry, h2h, m["matchup_id"] == gow_id, score_stdev,
             bench_crimes_by_team.get(m["home_team_id"], []), bench_crimes_by_team.get(m["away_team_id"], []),
             clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
-            None,
+            None, schedule_by_pro_team,
+            touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -289,6 +328,13 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
     bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
     clutch_choke_by_team = await get_clutch_choke_status_by_team(conn, season, week, league_id)
+    touchdowns_by_team = await queries.get_touchdowns_for_teams(conn, season, week, team_ids)
+
+    try:
+        games = await get_week_scoreboard(week, season)
+    except Exception:
+        games = []
+    schedule_by_pro_team = schedule_lookup_by_pro_team(games)
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"])
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -304,7 +350,8 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         rivalry, h2h, is_gow, score_stdev,
         bench_crimes_by_team.get(m["home_team_id"], []), bench_crimes_by_team.get(m["away_team_id"], []),
         clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
-        None,
+        None, schedule_by_pro_team,
+        touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

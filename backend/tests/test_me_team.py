@@ -270,6 +270,39 @@ async def test_my_team_includes_this_weeks_score_when_computed(pool, monkeypatch
     assert entry["next_opponent"] is None
 
 
+async def test_my_team_includes_projected_points(pool, monkeypatch):
+    """A real 2026-09 gap: the My Team roster view never showed a
+    projection at all, so an owner setting their lineup couldn't see
+    projected points anywhere on the page."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "proj1", espn_team_id=116)
+    player = await _seed_player(pool, "proj1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 3) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "UPDATE players SET projected_avg_points = 12.3 WHERE sleeper_player_id = $1", player
+        )
+
+    async def _empty_scoreboard(week, year, season_type=None):
+        return []
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team")
+
+    assert resp.status_code == 200
+    entry = resp.json()["roster"][0]
+    assert entry["points_projected"] == 12.3
+
+
 async def test_my_team_includes_next_opponent_and_game_time_from_scoreboard(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))

@@ -50,6 +50,7 @@ from app.domain.lineup_exceptions import (
     RosterFullError,
     SlotIneligibleError,
 )
+from app.domain.nfl_schedule import schedule_lookup_by_pro_team
 from app.domain.your_week import build_your_week
 from app.gamecast import service as gamecast_service
 from app.gamecast.models import GameStatus
@@ -122,6 +123,16 @@ def _roster_entry_dict(entry: dict) -> dict:
         # NUMERIC (Decimal) or None from the LEFT JOIN — cast to float
         # so it's never a mix of the two across rows.
         "points": float(entry["points"]) if entry.get("points") is not None else None,
+        # players.projected_avg_points (ESPN's own per-game average —
+        # see app/domain/player_projections.py) — only present on the
+        # plain GET /team read, same "only present when the caller
+        # resolved a current week" shape as points above. A real 2026-09
+        # gap: the My Team roster view had no projection at all before
+        # this, so an owner setting their lineup couldn't see projected
+        # points anywhere on the page.
+        "points_projected": (
+            float(entry["points_projected"]) if entry.get("points_projected") is not None else None
+        ),
         "next_opponent": entry.get("next_opponent"),
         "game_time": entry.get("game_time"),
         "bye_week": entry.get("bye_week"),
@@ -145,22 +156,12 @@ async def week(request: Request):
     return result
 
 
-def _schedule_lookup(games: list[dict]) -> dict[str, dict]:
-    """pro_team abbreviation -> {next_opponent, game_time} for every
-    team playing in a given week's real NFL scoreboard — same public,
-    keyless endpoint the homepage ticker/game-day detection already
-    use (app/providers/nfl_scoreboard.py), just cross-referenced by
-    team abbreviation instead of read wholesale. Works identically for
-    a D/ST roster entry as for an individual player — a D/ST's own
-    pro_team already equals its team abbreviation."""
-    lookup: dict[str, dict] = {}
-    for game in games:
-        home, away = game.get("home_team"), game.get("away_team")
-        if not home or not away:
-            continue
-        lookup[home] = {"next_opponent": f"vs {away}", "game_time": game.get("date")}
-        lookup[away] = {"next_opponent": f"@ {home}", "game_time": game.get("date")}
-    return lookup
+# Moved to app/domain/nfl_schedule.py (2026-09) so
+# app/domain/matchup_context.py can share the exact same real-scoreboard
+# cross-reference for the matchup screen's roster rows instead of a
+# second copy of this join — kept as a local alias so every existing
+# call site here (_schedule_lookup(...)) didn't need touching.
+_schedule_lookup = schedule_lookup_by_pro_team
 
 
 def _live_status_lookup(games: list) -> dict[str, dict]:

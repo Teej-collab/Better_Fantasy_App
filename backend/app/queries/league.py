@@ -96,7 +96,7 @@ async def get_team(conn, team_id: int):
     return await conn.fetchrow(
         """
         SELECT t.id AS team_id, t.season, t.espn_team_id, t.team_name, t.league_id,
-               o.owner_id, o.display_name AS owner_name
+               o.owner_id, o.display_name AS owner_name, o.logo_url
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id
         WHERE t.id = $1
@@ -119,7 +119,7 @@ async def get_teams(conn, team_ids: list[int]) -> dict[int, object]:
     rows = await conn.fetch(
         """
         SELECT t.id AS team_id, t.season, t.espn_team_id, t.team_name,
-               o.owner_id, o.display_name AS owner_name
+               o.owner_id, o.display_name AS owner_name, o.logo_url
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id
         WHERE t.id = ANY($1::int[])
@@ -378,7 +378,7 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
         """
         SELECT p.full_name AS player_name, p.position, cr.lineup_slot,
                pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
-               cr.sleeper_player_id AS player_id, p.pro_team, FALSE AS is_boom, FALSE AS is_bust
+               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
@@ -399,7 +399,7 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
         """
         SELECT cr.team_id, p.full_name AS player_name, p.position, cr.lineup_slot,
                pws.fantasy_points AS points_scored, p.projected_avg_points AS points_projected,
-               cr.sleeper_player_id AS player_id, p.pro_team, FALSE AS is_boom, FALSE AS is_bust
+               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
@@ -412,6 +412,40 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
     for r in rows:
         by_team[r["team_id"]].append(r)
     return {tid: _sort_roster_rows(team_rows) for tid, team_rows in by_team.items()}
+
+
+async def get_touchdowns_for_teams(conn, season: int, week: int, team_ids: list[int]) -> dict[int, list]:
+    """Real "My Touchdowns" data for the matchup screen: each active
+    (non-BE/IR) current_rosters player who scored a real touchdown this
+    week, with how many. Same tds formula (pass_td + rush_td + rec_td)
+    app/notifications/fantasy_events.py's snapshot_week already uses to
+    detect a touchdown event — reused verbatim so a push notification
+    and this screen can never disagree about what counts as one."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT cr.team_id, p.full_name AS player_name, p.position,
+               COALESCE((pws.raw_stats->>'pass_td')::float, 0)
+             + COALESCE((pws.raw_stats->>'rush_td')::float, 0)
+             + COALESCE((pws.raw_stats->>'rec_td')::float, 0) AS touchdowns
+        FROM current_rosters cr
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        JOIN player_week_stats pws
+            ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND cr.team_id = ANY($3::int[]) AND cr.lineup_slot NOT IN ('BE', 'IR')
+        """,
+        season, week, team_ids,
+    )
+    by_team: dict[int, list] = {tid: [] for tid in team_ids}
+    for r in rows:
+        if r["touchdowns"] > 0:
+            by_team[r["team_id"]].append(
+                {"player_name": r["player_name"], "position": r["position"], "touchdowns": int(r["touchdowns"])}
+            )
+    for tid, entries in by_team.items():
+        entries.sort(key=lambda t: -t["touchdowns"])
+    return by_team
 
 
 async def get_rostered_players_by_pro_team(

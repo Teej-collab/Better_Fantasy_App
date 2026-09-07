@@ -48,6 +48,7 @@ _ROSTER_ENTRY_SQL = """
 _ROSTER_ENTRY_WITH_SCORE_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
            p.full_name AS player_name, p.position, p.pro_team, p.injury_status,
+           p.projected_avg_points AS points_projected,
            pws.fantasy_points AS points
     FROM current_rosters cr
     JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
