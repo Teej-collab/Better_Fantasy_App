@@ -23,7 +23,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
-from app.domain.chug_standing import clear_fine, record_completed_chug
+from app.domain.chug_standing import clear_fine, record_completed_chug, undo_week
 from app.providers.chug_analyzer_bridge import run_chug_analysis
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chug as chug_queries
@@ -177,3 +177,26 @@ async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = 
         cleared = await clear_fine(conn, active_season, owner_id, amount, league_id)
 
     return {"owner_id": owner_id, "cleared": cleared}
+
+
+@router.post("/standing/undo-week")
+async def undo_chug_week(week: int, request: Request, pool=Depends(get_pool)):
+    """Commissioner-only correction tool: reverses one week's auto-
+    computed chug debt entirely — every owner's running balance is
+    rolled back by exactly what that week added, and the week's
+    chug_debts/chug_debt_accruals rows are removed. For a week that got
+    computed against data that wasn't real yet (e.g. a manual sync run
+    before that week's actual games were played, where every honest
+    0-point score got misread as a chug-worthy zero — see
+    app/domain/chug_standing.py's undo_week docstring for the real
+    2026-09 incident this was built for)."""
+    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        reverted = await undo_week(conn, active_season, week, league_id)
+
+    return {"season": active_season, "week": week, "owners_reverted": reverted}

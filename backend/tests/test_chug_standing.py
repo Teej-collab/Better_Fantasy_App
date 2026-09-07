@@ -7,6 +7,7 @@ from app.domain.chug_standing import (
     ensure_chug_deadline_settled,
     record_completed_chug,
     settle_deadline_for_week,
+    undo_week,
 )
 from tests.conftest import TEST_SEASON
 
@@ -82,6 +83,58 @@ async def test_accrue_weekly_debt_applies_only_the_delta_on_correction(pool):
 
     standing = await _standing(pool, owner_id)
     assert standing["outstanding_owed"] == 5  # 2 + delta of 3, not 2 + 5
+
+
+async def test_undo_week_reverses_a_premature_computation(pool):
+    """The real production incident this was built for (2026-09): a
+    week got computed and accrued before any real games were played,
+    so every honest 0-point score was misread as a chug-worthy zero."""
+    owner_id = await _seed_owner(pool, 10)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 9)",
+            TEST_SEASON, owner_id,
+        )
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)
+        reverted = await undo_week(conn, TEST_SEASON, 1)
+
+    assert reverted == 1
+    standing = await _standing(pool, owner_id)
+    assert standing["outstanding_owed"] == 0
+
+    async with pool.acquire() as conn:
+        remaining_debt = await conn.fetchval(
+            "SELECT count(*) FROM chug_debts WHERE season = $1 AND week = 1 AND owner_id = $2", TEST_SEASON, owner_id
+        )
+        remaining_accrual = await conn.fetchval(
+            "SELECT count(*) FROM chug_debt_accruals WHERE season = $1 AND week = 1 AND owner_id = $2",
+            TEST_SEASON, owner_id,
+        )
+    assert remaining_debt == 0
+    assert remaining_accrual == 0
+
+
+async def test_undo_week_only_reverses_that_weeks_delta_not_real_prior_debt(pool):
+    """An owner who already had real, legitimate debt from an earlier
+    week keeps it — undo_week only reverses what THIS week's premature
+    computation actually added, never a blind reset to 0."""
+    owner_id = await _seed_owner(pool, 11)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 2)",
+            TEST_SEASON, owner_id,
+        )
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)  # real, legitimate week 1 debt
+
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 2, $2, 9)",
+            TEST_SEASON, owner_id,
+        )
+        await accrue_weekly_debt(conn, TEST_SEASON, 2)  # the erroneous premature week
+        await undo_week(conn, TEST_SEASON, 2)
+
+    standing = await _standing(pool, owner_id)
+    assert standing["outstanding_owed"] == 2  # week 1's real debt untouched
 
 
 async def test_settle_deadline_no_debt_resets_streak(pool):

@@ -40,6 +40,36 @@ MAX_CONSECUTIVE_DOUBLINGS = 3
 FINE_PER_CHUG = 10
 
 
+async def undo_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Commissioner-only correction (see app/routers/chug.py) — reverses
+    accrue_weekly_debt's own effect for one week, then deletes that
+    week's chug_debts row entirely. The exact inverse of
+    compute_chug_debts_for_week + accrue_weekly_debt, for a week that
+    got computed prematurely — e.g. a manual live-sync run against a
+    week whose real games hadn't been played yet, where every active
+    roster slot's real (correct, honest) 0-point score got misread as a
+    chug-worthy zero (2026-09, real production incident: it briefly
+    said every owner owed 9 chugs before a single game had been
+    played). Subtracts exactly the previously-applied delta (never a
+    blind reset to 0), so it's still correct even if the owner already
+    had real, legitimate debt from an earlier week."""
+    accruals = await conn.fetch(
+        "SELECT owner_id, applied_amount FROM chug_debt_accruals WHERE season = $1 AND week = $2 AND league_id = $3",
+        season, week, league_id,
+    )
+    for a in accruals:
+        await conn.execute(
+            "UPDATE chug_standing SET outstanding_owed = GREATEST(outstanding_owed - $1, 0), updated_at = now() "
+            "WHERE season = $2 AND owner_id = $3 AND league_id = $4",
+            a["applied_amount"], season, a["owner_id"], league_id,
+        )
+    await conn.execute(
+        "DELETE FROM chug_debt_accruals WHERE season = $1 AND week = $2 AND league_id = $3", season, week, league_id
+    )
+    await conn.execute("DELETE FROM chug_debts WHERE season = $1 AND week = $2 AND league_id = $3", season, week, league_id)
+    return len(accruals)
+
+
 async def accrue_weekly_debt(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     rows = await conn.fetch(
         "SELECT owner_id, chugs_owed FROM chug_debts WHERE season = $1 AND week = $2 AND league_id = $3",
