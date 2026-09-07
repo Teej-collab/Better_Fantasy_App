@@ -56,6 +56,12 @@ async def test_upload_requires_session(pool):
 
 
 async def test_upload_rejects_unsupported_extension(pool, monkeypatch):
+    # The HTTP status itself stays 200 now — a real 2026-09 fix streams
+    # the response so a slow upload/analysis can't be mistaken for an
+    # idle connection and killed by Railway's edge (see the endpoint's
+    # own docstring), which means the status code is committed before
+    # any of this endpoint's own validation can run. The real error is
+    # still there, just encoded in the streamed body's last line.
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 1)
 
@@ -63,7 +69,10 @@ async def test_upload_rejects_unsupported_extension(pool, monkeypatch):
         client.cookies.update(await _session_cookie(pool, owner_id))
         resp = await client.post("/chug/upload", files={"video": ("clip.txt", b"not a video", "text/plain")})
 
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["error"] is True
+    assert body["status"] == 400
 
 
 async def test_upload_rejects_oversized_file(pool, monkeypatch):
@@ -77,7 +86,42 @@ async def test_upload_rejects_oversized_file(pool, monkeypatch):
             "/chug/upload", files={"video": ("clip.mp4", b"x" * 1000, "video/mp4")}
         )
 
-    assert resp.status_code == 413
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["error"] is True
+    assert body["status"] == 413
+
+
+async def test_upload_sends_heartbeats_while_analysis_is_still_running(pool, monkeypatch):
+    """The real fix for a real 2026-09 incident: a slow upload/analysis
+    used to sit with zero bytes flowing back to the client, which
+    Railway's edge can mistake for an idle connection and kill (see
+    upload_chug's own docstring) — reported as a generic "Load failed."
+    Shrinks the heartbeat interval so this doesn't actually wait 20s,
+    and makes the fake analysis slow enough to guarantee at least one
+    heartbeat fires before the real result."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setattr("app.routers.chug.UPLOAD_HEARTBEAT_SECONDS", 0.05)
+    owner_id = await _seed_owner(pool, "heartbeat")
+
+    async def slow_analysis(video_path):
+        import asyncio
+
+        await asyncio.sleep(0.2)  # several heartbeat intervals
+        return {"can_to_mouth": False, "final": 0.0}
+
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", slow_analysis)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
+
+    assert resp.status_code == 200
+    # At least one heartbeat space landed before the final JSON line —
+    # proof bytes were actually flowing back during the slow analysis,
+    # not just at the very end.
+    assert resp.text.split("\n")[0].strip(" ") == ""
+    assert resp.json()["can_to_mouth"] is False
 
 
 async def test_upload_no_contact_detected_does_not_save_a_score(pool, monkeypatch):

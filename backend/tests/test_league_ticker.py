@@ -76,18 +76,32 @@ async def test_ticker_picks_highest_scoring_starter_and_excludes_bench(pool, mon
         # bench player's bigger day must NOT win "top scorer" for the
         # week, since it never actually counted toward the score.
         await conn.execute(
-            """
-            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-            VALUES ($1, 5, $2, 'Starter Guy', 'RB', 'RB', 22.5, 18.0)
-            """,
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable) "
+            "VALUES ('test-ticker-starter-guy', 'Starter Guy', 'RB', 'KC', TRUE)"
+        )
+        await conn.execute(
+            "INSERT INTO players (sleeper_player_id, full_name, position, pro_team, is_draftable) "
+            "VALUES ('test-ticker-bench-bomber', 'Bench Bomber', 'WR', 'SF', TRUE)"
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-ticker-starter-guy', 'RB', 'draft')",
             TEST_SEASON, team_a,
         )
         await conn.execute(
-            """
-            INSERT INTO rosters (season, week, team_id, player_name, position, lineup_slot, points_scored, points_projected)
-            VALUES ($1, 5, $2, 'Bench Bomber', 'WR', 'BE', 40.0, 9.0)
-            """,
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, 'test-ticker-bench-bomber', 'BE', 'draft')",
             TEST_SEASON, team_a,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 5, 'test-ticker-starter-guy', '{}', 22.5)",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 5, 'test-ticker-bench-bomber', '{}', 40.0)",
+            TEST_SEASON,
         )
 
     resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/ticker", cookies)

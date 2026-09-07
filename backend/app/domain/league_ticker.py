@@ -49,8 +49,8 @@ async def get_week_ticker_data(conn, season: int, week: int, league_id: int = DE
 
         home_team = await queries.get_team(conn, m["home_team_id"])
         away_team = await queries.get_team(conn, m["away_team_id"])
-        home_roster = await queries.get_roster(conn, m["home_team_id"], week)
-        away_roster = await queries.get_roster(conn, m["away_team_id"], week)
+        home_roster = await queries.get_current_roster(conn, season, m["home_team_id"], week)
+        away_roster = await queries.get_current_roster(conn, season, m["away_team_id"], week)
 
         items.append(
             {
