@@ -23,11 +23,13 @@ export function DraftGradesView({
   picks,
   grades,
   narratives,
+  beta = false,
 }: {
   config: DraftConfig;
   picks: DraftPick[];
   grades: DraftGrade[];
   narratives: Record<string, string | null>;
+  beta?: boolean;
 }) {
   const [openOwnerId, setOpenOwnerId] = useState<number | null>(null);
 
@@ -57,6 +59,7 @@ export function DraftGradesView({
           currentPickNumber={config.current_pick_number}
           gradesByOwner={gradesByOwner}
           onOpenGrade={setOpenOwnerId}
+          beta={beta}
         />
       </section>
     </div>

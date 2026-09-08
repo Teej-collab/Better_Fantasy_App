@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { DraftConfig, DraftPick } from "@/lib/draftApi";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { positionColor } from "@/lib/positionColors";
@@ -16,6 +17,17 @@ import { positionColor } from "@/lib/positionColors";
  * (round, owner_id) rather than by column-implies-turn-order — a
  * team's picks always line up in the same column round over round,
  * which is the whole point of a draft board.
+ *
+ * Settings > Labs > "Try the new look" — Documentation/UX/
+ * 00_UX_Audit.md's confirmed mobile finding: the full grid below is a
+ * literal <table> in overflow-x-auto, genuinely horizontal-scrolling
+ * on a phone for any real league size/round count. `beta` swaps to a
+ * one-round-at-a-time row list instead (Documentation/UX/
+ * 01_Design_System.md section 13's "no <table> on mobile" rule) — same
+ * underlying data, just one round's worth of cells at a time, with no
+ * dependency on team count or round count for layout width. The
+ * legacy grid (desktop-appropriate, per Documentation/UX/
+ * 05_Desktop_Strategy.md) is unchanged.
  */
 export function DraftBoard({
   config,
@@ -24,6 +36,7 @@ export function DraftBoard({
   currentPickNumber,
   gradesByOwner,
   onOpenGrade,
+  beta = false,
 }: {
   config: DraftConfig;
   picks: DraftPick[];
@@ -36,6 +49,7 @@ export function DraftBoard({
   // badge just tells the parent which owner to show it for.
   gradesByOwner?: Map<number, { letter_grade: string; percentile: number }>;
   onOpenGrade?: (ownerId: number) => void;
+  beta?: boolean;
 }) {
   const { openPlayerCard } = usePlayerCard();
 
@@ -46,7 +60,105 @@ export function DraftBoard({
   const byRoundAndOwner = new Map<string, DraftPick>();
   for (const p of picks) byRoundAndOwner.set(`${p.round}:${p.owner_id}`, p);
 
+  // Opens on whichever round the current pick actually belongs to
+  // (read off the real pick record, not assumed from a numbering
+  // formula) rather than always round 1 — a user opening the board
+  // mid-draft lands somewhere relevant. Initializer-only: doesn't
+  // auto-follow every subsequent pick, same as a real board a visitor
+  // can browse freely once open.
+  const [selectedRound, setSelectedRound] = useState(
+    () => picks.find((p) => p.pick_number === currentPickNumber)?.round ?? 1
+  );
+
   if (columns.length === 0 || totalRounds === 0) return null;
+
+  if (beta) {
+    const clampedRound = Math.min(Math.max(selectedRound, 1), totalRounds);
+    return (
+      <div className="wl-card flex flex-col gap-2 rounded-xl p-3">
+        <div className="flex items-center justify-between px-1">
+          <button
+            type="button"
+            onClick={() => setSelectedRound((r) => Math.max(1, r - 1))}
+            disabled={clampedRound <= 1}
+            aria-label="Previous round"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-black/50 disabled:opacity-30 dark:text-white/50"
+          >
+            ‹
+          </button>
+          <span className="text-sm font-semibold">
+            Round {clampedRound} <span className="text-black/40 dark:text-white/40">of {totalRounds}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedRound((r) => Math.min(totalRounds, r + 1))}
+            disabled={clampedRound >= totalRounds}
+            aria-label="Next round"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-black/50 disabled:opacity-30 dark:text-white/50"
+          >
+            ›
+          </button>
+        </div>
+        <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+          {columns.map((ownerId) => {
+            const pick = byRoundAndOwner.get(`${clampedRound}:${ownerId}`);
+            const isCurrent = pick?.pick_number === currentPickNumber;
+            const filled = Boolean(pick?.sleeper_player_id);
+            const color = filled ? positionColor(pick?.player_position) : null;
+            const grade = gradesByOwner?.get(ownerId);
+            return (
+              <div key={ownerId} className="flex items-stretch gap-3 py-2.5">
+                <span
+                  className="w-1 shrink-0 self-stretch rounded-full"
+                  style={{ backgroundColor: color ?? (isCurrent ? "var(--wl-accent)" : "transparent") }}
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  disabled={!filled}
+                  onClick={() => filled && openPlayerCard(pick!.sleeper_player_id!)}
+                  className="flex min-w-0 flex-1 flex-col text-left disabled:cursor-default"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-xs font-semibold text-black/60 dark:text-white/60">
+                      {teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
+                    </span>
+                    {grade && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenGrade?.(ownerId);
+                        }}
+                        className="inline-flex items-center rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20"
+                        title={`Draft grade: ${grade.letter_grade} (${Math.round(grade.percentile)}th percentile)`}
+                      >
+                        {grade.letter_grade}
+                      </button>
+                    )}
+                  </span>
+                  {pick?.sleeper_player_id ? (
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <span className="truncate font-medium">{pick.player_name}</span>
+                      <span className="shrink-0 text-[10px]" style={{ color: color ?? undefined }}>
+                        {pick.player_position}
+                      </span>
+                      {pick.is_autopick && <span className="shrink-0 text-[10px] text-amber-500">AUTO</span>}
+                      {pick.is_keeper && <span className="shrink-0 text-[10px] text-emerald-500">KEEP</span>}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-black/25 dark:text-white/25">
+                      {isCurrent ? "On the clock" : "—"}
+                    </span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="neon-panel overflow-x-auto rounded-xl p-3">

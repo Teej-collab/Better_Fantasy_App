@@ -340,6 +340,31 @@ body {
   --wl-warning: #facc15;
 }
 
+/* Global flat-card override for Settings > Labs > "Try the new look".
+   ~15 pages (Home, Matchup, Roster, Standings, Gamecast, Chat, Draft
+   room, Commissioner hub, Settings Appearance, Admin, Records/Awards)
+   got a real per-component `beta` prop threaded through — worth doing
+   by hand there because the redesign also reorders content, adds
+   position-color-coding, etc., not just changes the card treatment.
+   Everywhere else in the app (~40 more files) still uses .neon-panel
+   as-is; threading a prop through every one of them individually,
+   just to remove a glow ring, is exactly the kind of change most
+   likely to collide with other in-progress work touching the same
+   files (this session hit that twice — see the git history around
+   "remove accidental dependency on uncommitted IR/lineup-lock work").
+
+   This rule flattens every remaining .neon-panel app-wide the instant
+   the beta flag is on, with no per-component edits and zero risk to
+   any component's logic: it only ever hides the decorative ::before
+   ring, which is purely a background layer with no interactive or
+   data role. Everything a visitor does — clicks, forms, live data —
+   is completely unaffected. .wl-card--featured is deliberately exempt
+   (shares this same ::before rule by selector, not by this override)
+   since Featured-tier glow stays opt-in and intentional either way. */
+[data-wl-layout="beta"] .neon-panel::before {
+  display: none;
+}
+
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-
    refraction — see ToggleRow.tsx's comment for why) for Settings'
    toggle tracks and the Neon Intensity segmented control. Deliberately

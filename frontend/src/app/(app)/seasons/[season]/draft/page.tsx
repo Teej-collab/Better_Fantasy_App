@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getMe, getSeasonDraft, listSeasons } from "@/lib/api";
+import { getMe, getMyPreferences, getSeasonDraft, listSeasons } from "@/lib/api";
 import type { DraftConfig, DraftPick } from "@/lib/draftApi";
 import { DraftGradesView } from "@/components/draft/DraftGradesView";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -39,7 +39,11 @@ export default async function SeasonDraftPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, draft] = await Promise.all([listSeasons(), getSeasonDraft(Number(season), sessionCookie)]);
+  const [{ seasons }, draft, myPreferences] = await Promise.all([
+    listSeasons(),
+    getSeasonDraft(Number(season), sessionCookie),
+    getMyPreferences(sessionCookie),
+  ]);
   if (!draft) notFound();
 
   return (
@@ -63,6 +67,7 @@ export default async function SeasonDraftPage({
         picks={draft.picks as unknown as DraftPick[]}
         grades={draft.grades}
         narratives={draft.narratives}
+        beta={Boolean(myPreferences?.beta_layout)}
       />
     </div>
   );

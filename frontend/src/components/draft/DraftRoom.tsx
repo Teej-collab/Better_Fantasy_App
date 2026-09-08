@@ -531,6 +531,7 @@ export function DraftRoom({
           currentPickNumber={config!.current_pick_number}
           gradesByOwner={gradesByOwner}
           onOpenGrade={setOpenGradeOwnerId}
+          beta={beta}
         />
       )}
 
