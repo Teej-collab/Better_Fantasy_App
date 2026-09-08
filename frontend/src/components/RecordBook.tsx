@@ -1,8 +1,7 @@
 import type { RecordCategory, RecordEntry } from "@/lib/api";
 import { AWARD_DESCRIPTIONS } from "@/lib/awardDescriptions";
-import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
-
-const RANK_MEDAL = ["🥇", "🥈", "🥉"];
+import { RankedCategoryCard } from "@/components/RankedCategoryCard";
+import { SECTION_COLORS } from "@/lib/sectionColors";
 
 function formatValue(entry: RecordEntry, unit: string): string {
   return `${entry.value.toFixed(1)} ${unit}`;
@@ -29,8 +28,13 @@ function contextLine(entry: RecordEntry): string {
  * whole history. Fetched fresh on every page load (no caching anywhere
  * in the chain), so a newly-broken record shows up the moment it's
  * synced — nothing here needs a manual refresh or recompute step.
+ *
+ * Card rendering delegates to the shared <RankedCategoryCard> —
+ * Documentation/UX/00_UX_Audit.md found this component, AwardLeaderboards,
+ * and PowerRankingsAllTime independently reimplementing the same card
+ * shape; see that shared component's own docstring.
  */
-export function RecordBook({ categories }: { categories: RecordCategory[] }) {
+export function RecordBook({ categories, beta = false }: { categories: RecordCategory[]; beta?: boolean }) {
   const withEntries = categories.filter((c) => c.entries.length > 0);
   if (withEntries.length === 0) return null;
 
@@ -47,41 +51,21 @@ export function RecordBook({ categories }: { categories: RecordCategory[] }) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {withEntries.map((category) => (
-          <div
+          <RankedCategoryCard
             key={category.key}
-            className="neon-panel flex flex-col gap-2 rounded-xl p-4"
-            style={panelGlowStyle(SECTION_COLORS.awards)}
-          >
-            <div>
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                <span aria-hidden>{category.emoji}</span>
-                {category.label}
-              </h3>
-              {AWARD_DESCRIPTIONS[category.key] && (
-                <p className="text-xs text-black/45 dark:text-white/45">{AWARD_DESCRIPTIONS[category.key]}</p>
-              )}
-            </div>
-            <ol className="flex flex-col gap-2">
-              {category.entries.map((entry, i) => (
-                <li key={`${entry.owner_id}-${entry.season}-${entry.week ?? "season"}`} className="flex items-start gap-2 text-sm">
-                  <span className="w-5 shrink-0 text-center" aria-hidden>
-                    {RANK_MEDAL[i] ?? i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="break-words font-medium">{entry.owner_name}</span>
-                      <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
-                        {formatValue(entry, category.unit)}
-                      </span>
-                    </div>
-                    <p className="break-words text-xs text-black/50 dark:text-white/50">
-                      {entry.team_name} · {contextLine(entry)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
+            emoji={category.emoji}
+            label={category.label}
+            description={AWARD_DESCRIPTIONS[category.key]}
+            sectionColor={SECTION_COLORS.awards}
+            beta={beta}
+            entries={category.entries.map((entry) => ({
+              key: `${entry.owner_id}-${entry.season}-${entry.week ?? "season"}`,
+              rank: 0,
+              name: entry.owner_name,
+              value: formatValue(entry, category.unit),
+              context: `${entry.team_name} · ${contextLine(entry)}`,
+            }))}
+          />
         ))}
       </div>
     </section>

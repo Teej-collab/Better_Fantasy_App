@@ -1,9 +1,7 @@
-import Link from "next/link";
 import type { AwardLeaderboardCategory } from "@/lib/api";
 import { AWARD_DESCRIPTIONS } from "@/lib/awardDescriptions";
-import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
-
-const RANK_MEDAL = ["🥇", "🥈", "🥉"];
+import { RankedCategoryCard } from "@/components/RankedCategoryCard";
+import { SECTION_COLORS } from "@/lib/sectionColors";
 
 /**
  * All-time award leaderboards — "who's won this the most" for every
@@ -13,8 +11,11 @@ const RANK_MEDAL = ["🥇", "🥈", "🥉"];
  * nobody's won yet (an empty-state line instead of a leaderboard) — the
  * point of this section is showing the complete set of awards the
  * league runs, not just the ones with history so far.
+ *
+ * Card rendering delegates to the shared <RankedCategoryCard> — see
+ * that component's own docstring for why.
  */
-export function AwardLeaderboards({ categories }: { categories: AwardLeaderboardCategory[] }) {
+export function AwardLeaderboards({ categories, beta = false }: { categories: AwardLeaderboardCategory[]; beta?: boolean }) {
   if (categories.length === 0) return null;
 
   return (
@@ -30,40 +31,22 @@ export function AwardLeaderboards({ categories }: { categories: AwardLeaderboard
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {categories.map((category) => (
-          <div
+          <RankedCategoryCard
             key={category.key}
-            className="neon-panel flex flex-col gap-2 rounded-xl p-4"
-            style={panelGlowStyle(SECTION_COLORS.awards)}
-          >
-            <div>
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                <span aria-hidden>{category.emoji}</span>
-                {category.label}
-              </h3>
-              {AWARD_DESCRIPTIONS[category.key] && (
-                <p className="text-xs text-black/45 dark:text-white/45">{AWARD_DESCRIPTIONS[category.key]}</p>
-              )}
-            </div>
-            {category.winners.length === 0 ? (
-              <p className="text-xs text-black/50 dark:text-white/50">Not yet awarded.</p>
-            ) : (
-              <ol className="flex flex-col gap-2">
-                {category.winners.map((winner, i) => (
-                  <li key={winner.owner_id} className="flex items-center gap-2 text-sm">
-                    <span className="w-5 shrink-0 text-center" aria-hidden>
-                      {RANK_MEDAL[i] ?? i + 1}
-                    </span>
-                    <Link href={`/owners/${winner.owner_id}`} className="min-w-0 flex-1 break-words font-medium hover:underline">
-                      {winner.owner_name}
-                    </Link>
-                    <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">
-                      {winner.wins}x
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
+            emoji={category.emoji}
+            label={category.label}
+            description={AWARD_DESCRIPTIONS[category.key]}
+            sectionColor={SECTION_COLORS.awards}
+            beta={beta}
+            emptyMessage="Not yet awarded."
+            entries={category.winners.map((winner) => ({
+              key: String(winner.owner_id),
+              rank: 0,
+              name: winner.owner_name,
+              nameHref: `/owners/${winner.owner_id}`,
+              value: `${winner.wins}x`,
+            }))}
+          />
         ))}
       </div>
     </section>

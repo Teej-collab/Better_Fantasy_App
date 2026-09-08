@@ -6,6 +6,7 @@ import {
   getAllTimePowerRankings,
   getLatestPowerRankingsWeek,
   getMe,
+  getMyPreferences,
   getSeasonPowerRankingsTrend,
   getWeekPowerRankings,
   listSeasons,
@@ -44,7 +45,7 @@ export default async function PowerRankingsPage({
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const me = await getMe(sessionCookie);
+  const [me, myPreferences] = await Promise.all([getMe(sessionCookie), getMyPreferences(sessionCookie)]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -55,6 +56,7 @@ export default async function PowerRankingsPage({
   if (me.active_league_id === null) {
     return <NeedsLeagueCard />;
   }
+  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   const { view: rawView, season: rawSeason, week: rawWeek } = await searchParams;
   const view: View = rawView === "trend" || rawView === "all-time" ? rawView : "week";
@@ -90,11 +92,13 @@ export default async function PowerRankingsPage({
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => hrefFor(view, s)} />
       )}
 
-      {view === "all-time" && <AllTimeView sessionCookie={sessionCookie} />}
+      {view === "all-time" && <AllTimeView sessionCookie={sessionCookie} beta={betaLayout} />}
       {view === "week" && season !== null && (
-        <WeekView season={season} requestedWeek={rawWeek} sessionCookie={sessionCookie} />
+        <WeekView season={season} requestedWeek={rawWeek} sessionCookie={sessionCookie} beta={betaLayout} />
       )}
-      {view === "trend" && season !== null && <TrendView season={season} sessionCookie={sessionCookie} />}
+      {view === "trend" && season !== null && (
+        <TrendView season={season} sessionCookie={sessionCookie} beta={betaLayout} />
+      )}
       {season === null && view !== "all-time" && (
         <p className="text-sm text-black/50 dark:text-white/50">No seasons found yet.</p>
       )}
@@ -102,19 +106,21 @@ export default async function PowerRankingsPage({
   );
 }
 
-async function AllTimeView({ sessionCookie }: { sessionCookie: string | undefined }) {
+async function AllTimeView({ sessionCookie, beta }: { sessionCookie: string | undefined; beta: boolean }) {
   const { categories } = await getAllTimePowerRankings(sessionCookie);
-  return <PowerRankingsAllTime categories={categories} />;
+  return <PowerRankingsAllTime categories={categories} beta={beta} />;
 }
 
 async function WeekView({
   season,
   requestedWeek,
   sessionCookie,
+  beta,
 }: {
   season: number;
   requestedWeek?: string;
   sessionCookie: string | undefined;
+  beta: boolean;
 }) {
   const { week: latestWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
   const week = requestedWeek ? Number(requestedWeek) : latestWeek;
@@ -132,8 +138,8 @@ async function WeekView({
 
   return (
     <section
-      className="neon-panel flex flex-col rounded-lg"
-      style={panelGlowStyle(SECTION_COLORS.powerRankings)}
+      className={beta ? "wl-card flex flex-col rounded-lg" : "neon-panel flex flex-col rounded-lg"}
+      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.powerRankings)}
     >
       {/* overflow-x-auto, matching TrendView's table below — belt-and-
           suspenders for whatever doesn't fit the tightened widths at
@@ -184,12 +190,69 @@ async function WeekView({
   );
 }
 
-async function TrendView({ season, sessionCookie }: { season: number; sessionCookie: string | undefined }) {
+async function TrendView({
+  season,
+  sessionCookie,
+  beta,
+}: {
+  season: number;
+  sessionCookie: string | undefined;
+  beta: boolean;
+}) {
   const { teams } = await getSeasonPowerRankingsTrend(season, sessionCookie);
   const allWeeks = Array.from(new Set(teams.flatMap((t) => t.weeks.map((w) => w.week)))).sort((a, b) => a - b);
 
   if (teams.length === 0) {
     return <p className="text-sm text-black/50 dark:text-white/50">No power rankings computed for {season} yet.</p>;
+  }
+
+  // Settings > Labs > "Try the new look" — Documentation/UX/
+  // 01_Design_System.md section 13's "no <table> on mobile" rule. The
+  // week-per-column table below genuinely horizontal-scrolls on a
+  // phone for anything past ~week 6-7 (00_UX_Audit.md finding); this
+  // is a per-team row with a compact inline sparkline instead — no
+  // dependency on how many weeks exist, since the SVG scales to a
+  // fixed width regardless of point count.
+  if (beta) {
+    const teamCount = teams.length;
+    return (
+      <div className="wl-card flex flex-col divide-y divide-black/5 rounded-lg dark:divide-white/5">
+        {teams.map((t: PowerRankTrendTeam) => {
+          const points = allWeeks
+            .map((w) => t.weeks.find((wk) => wk.week === w)?.power_rank ?? null)
+            .filter((r): r is number => r !== null);
+          const latest = points[points.length - 1] ?? null;
+          const coords = points
+            .map((rank, i) => {
+              const x = points.length > 1 ? (i / (points.length - 1)) * 100 : 50;
+              // Rank 1 (best) plots high, rank teamCount (worst) plots low.
+              const y = teamCount > 1 ? ((rank - 1) / (teamCount - 1)) * 24 + 3 : 15;
+              return `${x},${y}`;
+            })
+            .join(" ");
+          return (
+            <div key={t.team_id} className="flex items-center gap-3 px-4 py-3 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{t.team_name}</p>
+                <p className="truncate text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
+              </div>
+              {points.length > 1 && (
+                <svg viewBox="0 0 100 30" className="h-6 w-20 shrink-0" preserveAspectRatio="none" aria-hidden>
+                  <polyline
+                    points={coords}
+                    fill="none"
+                    stroke="var(--user-accent, var(--wl-accent))"
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              )}
+              <span className="w-8 shrink-0 text-right font-semibold tabular-nums">{latest ?? "—"}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   return (

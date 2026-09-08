@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getAwardLeaderboards, getMe, getRecordBook, listSeasons } from "@/lib/api";
+import { getAwardLeaderboards, getMe, getMyPreferences, getRecordBook, listSeasons } from "@/lib/api";
 import { AwardLeaderboards } from "@/components/AwardLeaderboards";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
@@ -39,11 +39,13 @@ export default async function AllTimeRecordsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { categories }, { categories: awardCategories }] = await Promise.all([
+  const [{ seasons }, { categories }, { categories: awardCategories }, myPreferences] = await Promise.all([
     listSeasons(),
     getRecordBook(sessionCookie),
     getAwardLeaderboards(sessionCookie),
+    getMyPreferences(sessionCookie),
   ]);
+  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   return (
     <div className="flex flex-col gap-4">
@@ -59,8 +61,8 @@ export default async function AllTimeRecordsPage({
         />
       </div>
 
-      <RecordBook categories={categories} />
-      <AwardLeaderboards categories={awardCategories} />
+      <RecordBook categories={categories} beta={betaLayout} />
+      <AwardLeaderboards categories={awardCategories} beta={betaLayout} />
     </div>
   );
 }
