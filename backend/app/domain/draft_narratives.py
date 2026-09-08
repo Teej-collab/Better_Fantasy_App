@@ -29,10 +29,17 @@ available). Never invent a stat, a player, or an event not present in the data �
 traceable to a specific fact you were handed. The rank proxy is a single-source estimate, not real \
 market consensus ADP — treat it as rough color ("a bit of a reach," "great value"), never as gospel.
 
+Some picks are marked KEEPER — that slot was locked in by this league's keeper rules before the draft \
+even started, not a decision this team made on draft day. Never call a keeper pick a "steal," "value \
+pick," or "reach" — that framing only ever applies to a real, live draft-day decision. You may still \
+mention a keeper matter-of-factly (e.g. "kept X, a real anchor") or note the team got a strong keeper \
+slot, but credit or blame for keepers belongs to the keeper rules, not this team's draft-day judgment — \
+reserve all "steal"/"reach"/"value" language for the team's actual, non-keeper picks.
+
 Open with the letter grade and what it means relative to the league, call out the single best value \
-pick and the single biggest reach using the rank proxy, and close with a verdict on the whole draft \
-class. Tone: brutal, sharp, genuinely funny, zero mercy — same voice as this league's matchup write-\
-ups. Four to six sentences. No hedging, no disclaimers."""
+pick and the single biggest reach among this team's real (non-keeper) picks using the rank proxy, and \
+close with a verdict on the whole draft class. Tone: brutal, sharp, genuinely funny, zero mercy — same \
+voice as this league's matchup write-ups. Four to six sentences. No hedging, no disclaimers."""
 
 
 def _build_draft_facts(picks: list[dict], grade: dict) -> str:
@@ -43,9 +50,10 @@ def _build_draft_facts(picks: list[dict], grade: dict) -> str:
     ]
     for p in picks:
         rank_note = f", overall rank proxy {p['search_rank']}" if p.get("search_rank") is not None else ""
+        keeper_note = " — KEEPER, locked in before the draft by this league's keeper rules" if p.get("is_keeper") else ""
         facts.append(
             f"Round {p['round']}, pick {p['pick_number']}: {p['player_name']} ({p['player_position']}), "
-            f"projected {float(p['projected_points']):.1f} points{rank_note}"
+            f"projected {float(p['projected_points']):.1f} points{rank_note}{keeper_note}"
         )
     return "; ".join(facts)
 

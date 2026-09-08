@@ -48,12 +48,14 @@ _ROSTER_ENTRY_SQL = """
 _ROSTER_ENTRY_WITH_SCORE_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
            p.full_name AS player_name, p.position, p.pro_team, p.injury_status,
-           p.projected_avg_points AS points_projected,
+           COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
            pws.fantasy_points AS points
     FROM current_rosters cr
     JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
     LEFT JOIN player_week_stats pws
         ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+    LEFT JOIN player_weekly_projections pwp
+        ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
     WHERE cr.season = $1 AND cr.team_id = $2
     ORDER BY p.position, p.full_name
 """

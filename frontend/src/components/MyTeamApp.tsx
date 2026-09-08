@@ -53,6 +53,7 @@ function RosterRow({
   entry,
   ownership,
   mounted,
+  editable,
   onOpenEdit,
   onViewPlayer,
   onDrop,
@@ -60,19 +61,26 @@ function RosterRow({
   entry: RosterEntry;
   ownership: OwnershipInfo | undefined;
   mounted: boolean;
+  editable: boolean;
   onOpenEdit: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
   onDrop: (entry: RosterEntry) => void;
 }) {
   return (
     <li className="flex items-center gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
-      <button
-        onClick={() => onOpenEdit(entry)}
-        title="Edit lineup"
-        className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 hover:border-sky-500 hover:text-sky-600 dark:border-white/10 dark:text-white/60 dark:hover:text-sky-400"
-      >
-        {slotDisplayLabel(entry.lineup_slot)}
-      </button>
+      {editable ? (
+        <button
+          onClick={() => onOpenEdit(entry)}
+          title="Edit lineup"
+          className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/60 hover:border-sky-500 hover:text-sky-600 dark:border-white/10 dark:text-white/60 dark:hover:text-sky-400"
+        >
+          {slotDisplayLabel(entry.lineup_slot)}
+        </button>
+      ) : (
+        <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/40 dark:border-white/10 dark:text-white/40">
+          {slotDisplayLabel(entry.lineup_slot)}
+        </span>
+      )}
       <span className="relative inline-flex shrink-0">
         <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
         {/* Only ever shown during an actual in-progress game (see
@@ -140,12 +148,14 @@ function RosterRow({
             Proj {entry.points_projected.toFixed(1)}
           </span>
         )}
-        <button
-          onClick={() => onDrop(entry)}
-          className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
-        >
-          Drop
-        </button>
+        {editable && (
+          <button
+            onClick={() => onDrop(entry)}
+            className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
+          >
+            Drop
+          </button>
+        )}
       </div>
     </li>
   );
@@ -197,6 +207,7 @@ export function MyTeamApp({
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<RosterEntry | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [weekLoading, setWeekLoading] = useState(false);
   const { openPlayerCard } = usePlayerCard();
 
   useEffect(() => {
@@ -232,17 +243,29 @@ export function MyTeamApp({
   }, []);
 
   // Re-fetches the roster (which carries on_offense/is_redzone) on an
-  // interval, but only while a real NFL game is live — see
-  // LIVE_POLL_INTERVAL_MS's own comment.
+  // interval, but only while a real NFL game is live AND the owner is
+  // actually looking at the live/editable week — see
+  // LIVE_POLL_INTERVAL_MS's own comment. Re-fetching the current week
+  // while they've navigated to a past week's read-only view would
+  // silently snap them back to "now" out from under them every 15s.
   useEffect(() => {
-    if (!isGameDay) return;
+    if (!isGameDay || team?.is_editable === false) return;
     const id = setInterval(() => {
       getMyTeam()
         .then(setTeam)
         .catch(() => {});
     }, LIVE_POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [isGameDay]);
+  }, [isGameDay, team?.is_editable]);
+
+  function goToWeek(week: number) {
+    setWeekLoading(true);
+    setActionError(null);
+    getMyTeam(week)
+      .then(setTeam)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load that week"))
+      .finally(() => setWeekLoading(false));
+  }
 
   function openEdit(entry: RosterEntry) {
     setActionError(null);
@@ -337,11 +360,47 @@ export function MyTeamApp({
   const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL);
   const benchOptions = options.filter((o) => o.slot === BENCH_SLOT_LABEL);
 
+  const week = team.week ?? 1;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
       </div>
+
+      {/* ESPN-style "< Week N >" arrow navigation (2026-09) — the
+          current/live week stays fully editable; any other week is a
+          real, read-only historical or future snapshot (see
+          backend/app/routers/me.py's my_team docstring for why editing
+          only ever makes sense for is_editable weeks). Bounded 1-17
+          (regular season + playoffs), same range the team-detail
+          page's own week picker uses. */}
+      <div className="flex items-center justify-center gap-4">
+        <button
+          onClick={() => goToWeek(week - 1)}
+          disabled={week <= 1 || weekLoading}
+          className="text-lg text-black/40 disabled:opacity-30 dark:text-white/40"
+          aria-label="Previous week"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-semibold">Week {week}</span>
+        <button
+          onClick={() => goToWeek(week + 1)}
+          disabled={week >= 17 || weekLoading}
+          className="text-lg text-black/40 disabled:opacity-30 dark:text-white/40"
+          aria-label="Next week"
+        >
+          ›
+        </button>
+      </div>
+      {!team.is_editable && (
+        <p className="text-center text-xs text-black/50 dark:text-white/50">
+          {team.current_week !== null && week < team.current_week
+            ? "Past week — read only."
+            : "Not the current week yet — read only."}
+        </p>
+      )}
 
       {actioning && <p className="text-xs text-black/50 dark:text-white/50">Saving…</p>}
       {submitted && <p className="text-xs text-emerald-600 dark:text-emerald-400">{submitted}</p>}
@@ -380,6 +439,7 @@ export function MyTeamApp({
               entry={e}
               ownership={ownership[e.player_id]}
               mounted={mounted}
+              editable={team.is_editable}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
@@ -397,6 +457,7 @@ export function MyTeamApp({
               entry={e}
               ownership={ownership[e.player_id]}
               mounted={mounted}
+              editable={team.is_editable}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}

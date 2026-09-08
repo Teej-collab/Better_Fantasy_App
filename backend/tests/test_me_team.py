@@ -715,3 +715,118 @@ async def test_add_free_agent_roster_full_with_drop_succeeds(pool, monkeypatch):
     assert body["dropped_player"]["player_id"] == already_on_roster
     assert any(r["player_id"] == new_player for r in body["roster"])
     assert not any(r["player_id"] == already_on_roster for r in body["roster"])
+
+
+async def test_my_team_current_week_is_editable(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "wk1", espn_team_id=120)
+    player = await _seed_player(pool, "wk1", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+
+    async def _empty_scoreboard(week, year, season_type=None):
+        return []
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team")
+        resp_explicit = await client.get("/me/team?week=2")
+
+    for r in (resp, resp_explicit):
+        body = r.json()
+        assert body["week"] == 2
+        assert body["current_week"] == 2
+        assert body["is_editable"] is True
+
+
+async def test_my_team_past_week_is_read_only_and_uses_frozen_roster(pool, monkeypatch):
+    """A past week must show that week's real, frozen roster_history
+    snapshot — not today's live current_rosters — and must never be
+    editable, since lineup_engine's mutation endpoints have no week
+    concept and would silently apply to the wrong week."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "wk2", espn_team_id=121)
+    week1_player = await _seed_player(pool, "wk2_week1", position="RB")
+    await _seed_roster_entry(pool, team_id, week1_player, lineup_slot="RB")
+
+    from app.queries.roster_history import snapshot_week
+
+    async with pool.acquire() as conn:
+        await snapshot_week(conn, TEST_SEASON, 1)
+        # A real roster change after week 1's snapshot was taken — a
+        # past week's view must not reflect this.
+        await conn.execute(
+            "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2", TEST_SEASON, team_id
+        )
+        week2_player = await _seed_player(pool, "wk2_week2", position="WR")
+        await _seed_roster_entry(pool, team_id, week2_player, lineup_slot="WR")
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+
+    async def _empty_scoreboard(week, year, season_type=None):
+        return []
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team?week=1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["week"] == 1
+    assert body["current_week"] == 2
+    assert body["is_editable"] is False
+    player_ids = {r["player_id"] for r in body["roster"]}
+    assert player_ids == {week1_player}
+
+
+async def test_my_team_past_week_shows_frozen_real_weekly_projection(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "wk3", espn_team_id=122)
+    player = await _seed_player(pool, "wk3", position="RB")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
+
+    from app.queries.roster_history import snapshot_week
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE players SET projected_avg_points = 10.0 WHERE sleeper_player_id = $1", player
+        )
+        await conn.execute(
+            "INSERT INTO player_weekly_projections (season, week, sleeper_player_id, projected_points) "
+            "VALUES ($1, 1, $2, 24.5)",
+            TEST_SEASON, player,
+        )
+        await snapshot_week(conn, TEST_SEASON, 1)
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+
+    async def _empty_scoreboard(week, year, season_type=None):
+        return []
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _empty_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team?week=1")
+
+    assert resp.status_code == 200
+    entry = resp.json()["roster"][0]
+    assert entry["points_projected"] == 24.5

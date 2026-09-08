@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
+import { getMe, getSeasonDraft, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
 import { getDraftPoolServer, getDraftStateServer } from "@/lib/draftApi";
 import { DraftRoom } from "@/components/draft/DraftRoom";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
@@ -38,6 +38,16 @@ export default async function DraftPage() {
   const latestSeason = safeLatestSeason(seasons);
   const teams = latestSeason !== null ? (await listTeamsServer(sessionCookie, latestSeason)).teams : [];
 
+  // Grades/narratives only exist once the draft's actually complete
+  // (app/scheduler.py's draft-grades job) — skip the extra request
+  // entirely for a draft that's still in progress, since there's
+  // nothing for it to return yet.
+  const draftSeason = draftState?.config.season ?? latestSeason;
+  const seasonDraft =
+    draftState?.config.status === "complete" && draftSeason !== null
+      ? await getSeasonDraft(draftSeason, sessionCookie)
+      : null;
+
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="draft" />
@@ -48,6 +58,8 @@ export default async function DraftPage() {
         initialDraftState={draftState}
         initialPool={pool}
         initialTeams={teams}
+        grades={seasonDraft?.grades}
+        narratives={seasonDraft?.narratives}
       />
     </div>
   );

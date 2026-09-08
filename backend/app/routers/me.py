@@ -186,8 +186,47 @@ def _live_status_lookup(games: list) -> dict[str, dict]:
     return lookup
 
 
+def _normalize_week_roster_row(row: dict) -> dict:
+    """Reshapes a league_queries.get_roster_for_week row (player_id,
+    points_scored — the shape every roster-history/matchup reader
+    already uses) into lineup_engine.get_roster's row shape
+    (sleeper_player_id, points, acquired_via) so _roster_entry_dict
+    below can build the exact same response either way. acquired_via
+    isn't tracked by that read path — None there is honest (this is a
+    read-only historical/future view, never the edit-lineup UI, so
+    "how was this player acquired" has no real use here anyway)."""
+    return {
+        "sleeper_player_id": row["player_id"],
+        "player_name": row["player_name"],
+        "lineup_slot": row["lineup_slot"],
+        "position": row["position"],
+        "pro_team": row["pro_team"],
+        "injury_status": row["injury_status"],
+        "acquired_via": None,
+        "points": row.get("points_scored"),
+        "points_projected": row.get("points_projected"),
+    }
+
+
 @router.get("/team")
-async def my_team(request: Request):
+async def my_team(request: Request, week: int | None = None):
+    """week is optional — omitted (or equal to the season's real
+    current week) means exactly what this endpoint has always meant:
+    the live, editable lineup. Any OTHER week is a read-only view of
+    that week's real roster (current_rosters for the live current week,
+    a frozen roster_history snapshot for a past week, falling back to
+    live current_rosters for a future one — see
+    league_queries.get_roster_for_week) — 2026-09, matching the
+    reference ESPN app's own My Team tab, which lets you page through
+    real week-specific projections without leaving the roster screen.
+    is_editable in the response tells the frontend whether to show the
+    edit-lineup affordances at all: lineup_engine's mutation endpoints
+    (move/swap/drop) have no week concept whatsoever (see that module)
+    — they always act on the single live current_rosters row set, so
+    editing while "looking at" a non-current week would silently apply
+    to the wrong week. The frontend must hide those controls whenever
+    is_editable is false; this endpoint can't enforce that itself since
+    the mutation endpoints are separate calls."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     team_id, team_name, league_id = await _require_my_team(payload, active_season)
@@ -198,7 +237,15 @@ async def my_team(request: Request):
         # falls back to its no-score shape in that case, same as before
         # this endpoint knew about weeks at all.
         current_week = await league_queries.get_cached_current_week(conn, active_season)
-        roster = await lineup_engine.get_roster(conn, active_season, team_id, current_week)
+        requested_week = week if week is not None else current_week
+        is_editable = current_week is None or requested_week == current_week
+
+        if is_editable:
+            roster = await lineup_engine.get_roster(conn, active_season, team_id, requested_week)
+        else:
+            raw_roster = await league_queries.get_roster_for_week(conn, active_season, team_id, requested_week)
+            roster = [_normalize_week_roster_row(r) for r in raw_roster]
+
         bye_weeks = await league_queries.get_bye_weeks(conn, active_season)
         # Per-slot capacity (e.g. RB: 2, WR: 2) — the edit-lineup UI
         # needs this to know how many occupants a slot can hold, not
@@ -218,9 +265,9 @@ async def my_team(request: Request):
         if bye_week is not None:
             entry["bye_week"] = bye_week
 
-    if current_week is not None:
+    if requested_week is not None:
         try:
-            games = await get_week_scoreboard(current_week, active_season)
+            games = await get_week_scoreboard(requested_week, active_season)
         except Exception:
             # A real scoreboard fetch failure shouldn't break loading
             # your own roster — next_opponent/game_time just stay
@@ -232,15 +279,22 @@ async def my_team(request: Request):
             if info:
                 entry.update(info)
 
-    live_status = _live_status_lookup(gamecast_service.all_cached_states())
-    for entry in roster:
-        info = live_status.get(entry["pro_team"])
-        if info:
-            entry.update(info)
+    # on_offense/is_redzone only ever mean something for a live game
+    # happening right now — never attach them when looking at a
+    # different (necessarily not-currently-live) week.
+    if is_editable:
+        live_status = _live_status_lookup(gamecast_service.all_cached_states())
+        for entry in roster:
+            info = live_status.get(entry["pro_team"])
+            if info:
+                entry.update(info)
 
     return {
         "team_name": team_name,
         "season": active_season,
+        "week": requested_week,
+        "current_week": current_week,
+        "is_editable": is_editable,
         "roster": [_roster_entry_dict(e) for e in roster],
         "roster_slots": roster_slots,
     }
@@ -440,11 +494,15 @@ async def list_free_agents(request: Request, position: str | None = None, search
     the drafted flag — everyone on this list is by definition
     available.
 
-    projected_points is players.projected_avg_points (ESPN's own
-    per-game average, refreshed by app/domain/player_projections.py —
-    see that module's docstring for the 2026-09 fix that made this
-    reliable for real rostered/draftable players, D/ST included), not
-    the season-total projected_points column — a per-week number is
+    projected_points prefers a real, week-specific number from
+    player_weekly_projections (harvested from ESPN's real box scores —
+    see that table's own migration for its ~83% coverage caveat),
+    falling back to players.projected_avg_points (ESPN's own per-game
+    average, refreshed by app/domain/player_projections.py — see that
+    module's docstring for the 2026-09 fix that made this reliable for
+    real rostered/draftable players, D/ST included) for whichever
+    players this week's harvest didn't cover — not the season-total
+    projected_points column either way, since a per-week number is
     what's actually useful for "who should I add this week," matching
     the reference free-agent browse UI this was modeled on. score is
     this week's already-computed real result (app/domain/
@@ -461,10 +519,13 @@ async def list_free_agents(request: Request, position: str | None = None, search
 
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
-                   p.projected_avg_points AS projected_points, pws.fantasy_points AS score
+                   COALESCE(pwp.projected_points, p.projected_avg_points) AS projected_points,
+                   pws.fantasy_points AS score
             FROM players p
             LEFT JOIN player_week_stats pws
                 ON pws.season = $1 AND pws.week = $3 AND pws.sleeper_player_id = p.sleeper_player_id
+            LEFT JOIN player_weekly_projections pwp
+                ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
             WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
                 SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
             )
@@ -476,7 +537,10 @@ async def list_free_agents(request: Request, position: str | None = None, search
         if search:
             query += f" AND p.full_name ILIKE ${len(params) + 1}"
             params.append(f"%{search}%")
-        query += " ORDER BY p.projected_avg_points DESC NULLS LAST, p.search_rank ASC NULLS LAST, p.full_name ASC"
+        query += (
+            " ORDER BY COALESCE(pwp.projected_points, p.projected_avg_points) DESC NULLS LAST, "
+            "p.search_rank ASC NULLS LAST, p.full_name ASC"
+        )
 
         rows = [dict(r) for r in await conn.fetch(query, *params)]
 

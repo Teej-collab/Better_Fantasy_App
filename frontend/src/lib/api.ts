@@ -1303,6 +1303,17 @@ export type RosterEntry = {
 export type MyTeam = {
   team_name: string;
   season: number;
+  // Which week this roster reflects, and the season's real actual
+  // current week — the same value unless a different week was
+  // explicitly requested (see getMyTeam's `week` param). is_editable is
+  // false whenever they differ: lineup_engine's move/swap/drop
+  // endpoints have no week concept at all (they always act on the
+  // single live current_rosters row set), so editing while looking at
+  // any other week would silently apply to the wrong one — MyTeamApp.tsx
+  // must hide every edit affordance whenever this is false.
+  week: number | null;
+  current_week: number | null;
+  is_editable: boolean;
   roster: RosterEntry[];
   // Per-slot capacity (e.g. RB: 2, WR: 2) from draft_config.roster_slots
   // — null pre-draft, same as roster itself being empty then. Powers
@@ -1313,8 +1324,9 @@ export type MyTeam = {
   roster_slots: Record<string, number> | null;
 };
 
-export async function getMyTeam(): Promise<MyTeam> {
-  const res = await fetch(`/api/backend/me/team`, { cache: "no-store" });
+export async function getMyTeam(week?: number): Promise<MyTeam> {
+  const qs = week !== undefined ? `?week=${week}` : "";
+  const res = await fetch(`/api/backend/me/team${qs}`, { cache: "no-store" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Failed to load team (${res.status})`);

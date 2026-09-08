@@ -11,7 +11,7 @@ import {
   type DraftPoolPlayer,
   type DraftState,
 } from "@/lib/draftApi";
-import { listSeasons, listTeams, type Team } from "@/lib/api";
+import { listSeasons, listTeams, type DraftGrade, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
 import { DraftBoard } from "@/components/draft/DraftBoard";
 import { PositionBadge } from "@/components/draft/PositionBadge";
@@ -59,13 +59,23 @@ export function DraftRoom({
   initialDraftState,
   initialPool,
   initialTeams,
+  grades,
+  narratives,
 }: {
   myOwnerId: number;
   isCommissioner: boolean;
   initialDraftState: DraftState | null;
   initialPool: DraftPoolPlayer[];
   initialTeams: Team[];
+  // Only ever populated once the draft is complete and the scheduler's
+  // grading job has run (app/scheduler.py's _run_draft_grades_job) —
+  // undefined during a live draft. Fetched server-side by (app)/draft/
+  // page.tsx rather than by this component, so a live draft's page load
+  // never waits on an extra request that has nothing to show yet.
+  grades?: DraftGrade[];
+  narratives?: Record<string, string | null>;
 }) {
+  const [openGradeOwnerId, setOpenGradeOwnerId] = useState<number | null>(null);
   const [draftState, setDraftState] = useState<DraftState | null>(initialDraftState);
   const [pool, setPool] = useState<DraftPoolPlayer[]>(initialPool);
   const [teams, setTeams] = useState<Team[]>(initialTeams);
@@ -310,6 +320,10 @@ export function DraftRoom({
     return m;
   }, [teams]);
 
+  const gradesByOwner = useMemo(() => new Map((grades ?? []).map((g) => [g.owner_id, g])), [grades]);
+  const openGrade = openGradeOwnerId !== null ? gradesByOwner.get(openGradeOwnerId) : null;
+  const openNarrative = openGradeOwnerId !== null ? narratives?.[String(openGradeOwnerId)] : null;
+
   const myPicks = useMemo(
     () => draftState?.picks.filter((p) => p.owner_id === myOwnerId && p.sleeper_player_id) ?? [],
     [draftState, myOwnerId]
@@ -494,7 +508,34 @@ export function DraftRoom({
           picks={draftState.picks}
           teamNameByOwner={teamNameByOwner}
           currentPickNumber={config!.current_pick_number}
+          gradesByOwner={gradesByOwner}
+          onOpenGrade={setOpenGradeOwnerId}
         />
+      )}
+
+      {openGrade && (
+        <div className="neon-panel flex flex-col gap-2 rounded-lg bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold">
+              {teamNameByOwner.get(openGrade.owner_id)} — Grade {openGrade.letter_grade}
+            </p>
+            <button
+              onClick={() => setOpenGradeOwnerId(null)}
+              className="text-sm text-black/50 hover:underline dark:text-white/50"
+            >
+              Close
+            </button>
+          </div>
+          <p className="text-xs text-black/50 dark:text-white/50">
+            {Math.round(openGrade.percentile)}th percentile · {openGrade.total_projected_points.toFixed(1)} projected
+            points drafted (league avg {openGrade.league_avg_projected_points.toFixed(1)})
+          </p>
+          {openNarrative ? (
+            <p className="text-sm">{openNarrative}</p>
+          ) : (
+            <p className="text-sm text-black/50 dark:text-white/50">No write-up generated yet for this team.</p>
+          )}
+        </div>
       )}
 
       {(config!.status !== "not_started" || preDraftWindowActive) && (
