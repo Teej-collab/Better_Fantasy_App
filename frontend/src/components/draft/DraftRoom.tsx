@@ -14,6 +14,7 @@ import {
 import { listSeasons, listTeams, type DraftGrade, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
 import { DraftBoard } from "@/components/draft/DraftBoard";
+import { DraftGradesLeaderboard } from "@/components/draft/DraftGradesLeaderboard";
 import { PositionBadge } from "@/components/draft/PositionBadge";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { useDraftQueue } from "@/lib/useDraftQueue";
@@ -321,8 +322,6 @@ export function DraftRoom({
   }, [teams]);
 
   const gradesByOwner = useMemo(() => new Map((grades ?? []).map((g) => [g.owner_id, g])), [grades]);
-  const openGrade = openGradeOwnerId !== null ? gradesByOwner.get(openGradeOwnerId) : null;
-  const openNarrative = openGradeOwnerId !== null ? narratives?.[String(openGradeOwnerId)] : null;
 
   const myPicks = useMemo(
     () => draftState?.picks.filter((p) => p.owner_id === myOwnerId && p.sleeper_player_id) ?? [],
@@ -502,6 +501,16 @@ export function DraftRoom({
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
+      {gradesByOwner.size > 0 && (
+        <DraftGradesLeaderboard
+          grades={grades ?? []}
+          narratives={narratives}
+          teamNameByOwner={teamNameByOwner}
+          openOwnerId={openGradeOwnerId}
+          onToggle={(ownerId) => setOpenGradeOwnerId(openGradeOwnerId === ownerId ? null : ownerId)}
+        />
+      )}
+
       {config!.status !== "not_started" && (
         <DraftBoard
           config={config!}
@@ -513,30 +522,6 @@ export function DraftRoom({
         />
       )}
 
-      {openGrade && (
-        <div className="neon-panel flex flex-col gap-2 rounded-lg bg-black/[0.015] p-4 dark:bg-white/[0.03]">
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-semibold">
-              {teamNameByOwner.get(openGrade.owner_id)} — Grade {openGrade.letter_grade}
-            </p>
-            <button
-              onClick={() => setOpenGradeOwnerId(null)}
-              className="text-sm text-black/50 hover:underline dark:text-white/50"
-            >
-              Close
-            </button>
-          </div>
-          <p className="text-xs text-black/50 dark:text-white/50">
-            {Math.round(openGrade.percentile)}th percentile · {openGrade.total_projected_points.toFixed(1)} projected
-            points drafted (league avg {openGrade.league_avg_projected_points.toFixed(1)})
-          </p>
-          {openNarrative ? (
-            <p className="text-sm">{openNarrative}</p>
-          ) : (
-            <p className="text-sm text-black/50 dark:text-white/50">No write-up generated yet for this team.</p>
-          )}
-        </div>
-      )}
 
       {(config!.status !== "not_started" || preDraftWindowActive) && (
         <div className="flex flex-col gap-4 sm:grid sm:grid-cols-3">

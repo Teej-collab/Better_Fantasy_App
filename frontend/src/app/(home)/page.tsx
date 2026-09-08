@@ -18,6 +18,7 @@ import {
   getChugDeadline,
   getWeekLeagueTicker,
   getWeekPowerRankings,
+  getSeasonDraft,
   listRivalries,
   listSeasons,
   resolveWeek,
@@ -25,6 +26,7 @@ import {
   type ChugDeadline,
   type ChugLeaderboardRow,
   type Rivalry,
+  type SeasonDraftResponse,
   type StandingsRow,
   type TickerItem,
   type WeekMatchupContextItem,
@@ -93,6 +95,7 @@ export default async function HomePage() {
   let leagueTickerItems: TickerItem[] = [];
   let myChug: ChugLeaderboardRow | null = null;
   let chugDeadline: ChugDeadline | null = null;
+  let seasonDraft: SeasonDraftResponse | null = null;
   let powerRankings: WeekPowerRanking[] = [];
 
   // Every one of these now requires real active-league membership
@@ -137,6 +140,16 @@ export default async function HomePage() {
     // hasn't drafted yet.
     if (myWeek?.draft?.status === "complete") {
       chugDeadline = await getChugDeadline(sessionCookie);
+      // Real grades/recaps only exist once the post-draft scheduler job
+      // has run (app/scheduler.py's draft-grades job) — getSeasonDraft
+      // returns null (not an error) until then, same "quietly nothing
+      // yet" degrade as everything else on this page. 2026-09 fix: this
+      // used to only be reachable via a small badge buried in the
+      // dense draft board on a page nobody revisits after draft day —
+      // reported as "I don't see it at all anywhere."
+      if (season !== null) {
+        seasonDraft = await getSeasonDraft(season, sessionCookie);
+      }
     }
   }
 
@@ -160,6 +173,35 @@ export default async function HomePage() {
   // only ever ends up in this map when it has something real to show
   // this week.
   const cards: Record<string, ReactNode> = {};
+
+  if (seasonDraft && seasonDraft.grades.length > 0 && season !== null) {
+    const teamNameByOwner = new Map<number, string>();
+    for (const p of seasonDraft.picks as { owner_id: number; owner_name: string }[]) {
+      teamNameByOwner.set(p.owner_id, p.owner_name);
+    }
+    const topGrades = [...seasonDraft.grades].sort((a, b) => b.percentile - a.percentile).slice(0, 5);
+    cards.draftGrades = (
+      <section className="flex flex-col gap-2">
+        <SectionHeader title="Draft Grades" href={`/seasons/${season}/draft`} />
+        <ol
+          className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] px-4 dark:divide-white/5 dark:bg-white/[0.03]"
+          style={panelGlowStyle(SECTION_COLORS.draft)}
+        >
+          {topGrades.map((g) => (
+            <li key={g.owner_id} className="flex items-center gap-3 py-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/10 text-sm font-bold dark:bg-white/10">
+                {g.letter_grade}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{teamNameByOwner.get(g.owner_id) ?? g.owner_name}</span>
+              <span className="shrink-0 text-xs text-black/50 dark:text-white/50">
+                {Math.round(g.percentile)}th pct
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
+  }
 
   cards.yourWeek = myWeek?.matchup ? (
       <YourWeekHero myWeek={myWeek} isGameDay={isGameDay} />
@@ -455,6 +497,7 @@ export default async function HomePage() {
             Earning the top slot while it's relevant beats sitting below
             the fold underneath cards that are still there every week. */}
         {cards.draftCountdown}
+        {cards.draftGrades}
         {cards.gamecast}
         {cards.chug}
 

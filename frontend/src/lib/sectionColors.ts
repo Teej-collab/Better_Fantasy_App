@@ -27,6 +27,7 @@ export const SECTION_COLORS: Record<string, string> = {
   chat: DESTINATIONS.chat.color,
   powerRankings: DESTINATIONS.powerRankings.color,
   gamecast: DESTINATIONS.gamecast.color,
+  draft: DESTINATIONS.draft.color,
 };
 
 // CSS custom properties don't have a first-class React prop — every
