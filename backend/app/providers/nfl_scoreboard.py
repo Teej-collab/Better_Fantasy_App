@@ -93,3 +93,34 @@ async def get_week_scoreboard(week: int, year: int, season_type: int = SEASON_TY
         )
         response.raise_for_status()
         return _parse_scoreboard_events(response.json())
+
+
+async def get_real_current_week() -> int | None:
+    """The real NFL week happening right now, straight off this same
+    public, keyless scoreboard endpoint's own top-level `week.number`
+    field (verified live 2026-09-08: {"week": {"number": 1}, "season":
+    {"type": 2, "year": 2026}} a week before Week 1 kickoff).
+
+    Replaces every real caller's former use of ESPNProvider.
+    get_current_week (app/providers/espn/adapter.py), which read
+    league.current_week off the private, unofficial fantasy-league API
+    — this app's second real ESPN dependency the competitive audit's
+    schedule/playoff finding didn't originally name: "what NFL week is
+    it" is a real, league-agnostic fact, not something that should ever
+    require a specific private fantasy league's own credentials to
+    answer. Every one of app/scheduler.py's live-sync/weekly-compute
+    jobs and app/routers/admin.py's matching manual triggers now call
+    this instead.
+
+    Returns None outside the real NFL regular season (season.type != 2,
+    i.e. preseason or postseason) — this app's fantasy weeks only ever
+    correspond to real regular-season NFL weeks (see
+    SEASON_TYPE_REGULAR above), so None here means "no real current
+    fantasy week to sync/compute," not a guess."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(SCOREBOARD_URL)
+        response.raise_for_status()
+        data = response.json()
+    if data.get("season", {}).get("type") != SEASON_TYPE_REGULAR:
+        return None
+    return data.get("week", {}).get("number")

@@ -7,6 +7,7 @@ import {
   getLatestPowerRankingsWeek,
   getMe,
   getMyPreferences,
+  getPlayoffBracket,
   getStandings,
   getWeekPowerRankings,
   listSeasons,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
+import { PlayoffBracket } from "@/components/PlayoffBracket";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
@@ -85,6 +87,12 @@ export default async function StandingsPage({
   const showPlayoffLine =
     !isFinal && playoffTeamCount !== null && playoffTeamCount > 0 && playoffTeamCount < standings.length;
 
+  // The real in-app bracket (backend/app/domain/playoffs.py) — empty
+  // nodes before a commissioner has generated one for this season,
+  // in which case PlayoffBracket itself renders nothing.
+  const { nodes: bracketNodes } =
+    season !== null ? await getPlayoffBracket(season, sessionCookie) : { nodes: [] };
+
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} />
@@ -132,6 +140,8 @@ export default async function StandingsPage({
           ))}
         </ul>
       </div>
+
+      <PlayoffBracket nodes={bracketNodes} />
     </div>
   );
 }

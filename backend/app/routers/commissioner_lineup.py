@@ -21,12 +21,14 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain import lineup_engine
+from app.domain import waivers
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     LineupError,
     PlayerAlreadyRosteredError,
     PlayerNotDraftableError,
     PlayerNotOnRosterError,
+    PlayerOnWaiversError,
     RosterConfigNotFoundError,
     RosterFullError,
     SlotIneligibleError,
@@ -54,7 +56,7 @@ def _map_lineup_error(e: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(e))
     if isinstance(e, (SlotIneligibleError, AmbiguousDisplacementError)):
         return HTTPException(status_code=400, detail=str(e))
-    if isinstance(e, RosterConfigNotFoundError):
+    if isinstance(e, (RosterConfigNotFoundError, PlayerOnWaiversError)):
         return HTTPException(status_code=409, detail=str(e))
     if isinstance(e, PlayerNotDraftableError):
         return HTTPException(status_code=404, detail=str(e))
@@ -119,6 +121,7 @@ async def commissioner_drop_player(league_id: int, team_id: int, body: Commissio
             await require_commissioner_of(conn, payload, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
             roster = await lineup_engine.drop_player(conn, active_season, team_id, body.sleeper_player_id)
+            await waivers.start_waiver_clock(conn, active_season, league_id, body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e
     return {"roster": [_roster_entry_dict(e) for e in roster]}
@@ -145,6 +148,10 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
                 conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
                 league_id=league_id,
             )
+            if result["dropped_player"] is not None:
+                await waivers.start_waiver_clock(
+                    conn, active_season, league_id, result["dropped_player"]["sleeper_player_id"]
+                )
     except RosterFullError as e:
         return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
     except LineupError as e:

@@ -97,6 +97,7 @@ async def test_league_endpoints_require_session(monkeypatch):
         "/teams/1",
         "/teams/1/roster?week=1",
         "/matchups/1",
+        f"/seasons/{TEST_SEASON}/waivers/priority?week=1",
     ):
         resp = await _get(path)
         assert resp.status_code == 401, f"{path} should require a session"
@@ -111,11 +112,68 @@ async def test_league_endpoints_reject_non_member(pool, monkeypatch):
         f"/seasons/{TEST_SEASON}/weeks/1/matchups",
         "/records",
         "/rivalries",
+        f"/seasons/{TEST_SEASON}/waivers/priority?week=1",
     ):
         resp = await _get(path, cookies)
         # require_active_league_id 409s a signed-in account with no
         # active league at all — never 200, never real League 1 data.
         assert resp.status_code == 409, f"{path} should reject a non-member"
+
+
+async def test_playoff_bracket_empty_before_generation(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    cookies = await _member_cookies(pool, "bracket-empty")
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/playoffs/bracket", cookies)
+
+    assert resp.status_code == 200
+    assert resp.json()["nodes"] == []
+
+
+async def test_playoff_bracket_reflects_generated_bracket(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score) "
+            "VALUES ($1, 1, $2, $3, $4, $5)",
+            TEST_SEASON, team_a, team_b, 10, 20,
+        )
+        await conn.execute(
+            "INSERT INTO league_playoff_settings (season, league_id, playoff_team_count) VALUES ($1, $2, 2)",
+            TEST_SEASON, DEFAULT_LEAGUE_ID,
+        )
+        from app.domain.playoffs import generate_playoff_bracket
+
+        await generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+    cookies = await _member_cookies(pool, "bracket-generated")
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/playoffs/bracket", cookies)
+
+    assert resp.status_code == 200
+    nodes = resp.json()["nodes"]
+    assert len(nodes) == 1
+    assert {nodes[0]["team_a_name"], nodes[0]["team_b_name"]} == {"Team Alpha", "Team Beta"}
+
+
+async def test_waiver_priority_seeds_worst_record_first(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score) "
+            "VALUES ($1, 1, $2, $3, $4, $5)",
+            TEST_SEASON, team_a, team_b, 10, 20,
+        )
+    cookies = await _member_cookies(pool, "waiver-priority")
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/waivers/priority?week=2", cookies)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["week"] == 2
+    by_team = {row["team_id"]: row["priority"] for row in body["priority_order"]}
+    assert by_team[team_a] < by_team[team_b]  # team_a lost, so it picks first
 
 
 async def test_team_and_roster_404_for_non_member_even_with_valid_ids(pool, monkeypatch):

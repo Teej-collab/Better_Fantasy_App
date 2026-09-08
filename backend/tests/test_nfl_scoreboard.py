@@ -1,7 +1,7 @@
 """Never hits the real ESPN scoreboard endpoint in tests — httpx.AsyncClient
 is replaced with a fake that returns a canned response, same principle
 as the ESPN lineup-write tests never sending a real request."""
-from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard, is_nfl_game_live
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 
 
 def test_is_nfl_game_live_true_when_any_game_in_progress():
@@ -116,3 +116,23 @@ async def test_get_week_scoreboard_defaults_to_regular_season(monkeypatch):
     await get_week_scoreboard(week=5, year=2026)
 
     assert captured["params"]["seasontype"] == 2
+
+
+async def test_get_real_current_week_reads_top_level_week_number(monkeypatch):
+    class _CurrentWeekClient(_FakeAsyncClient):
+        async def get(self, url, params=None):
+            return _FakeResponse({"week": {"number": 3}, "season": {"type": 2, "year": 2026}})
+
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _CurrentWeekClient)
+
+    assert await get_real_current_week() == 3
+
+
+async def test_get_real_current_week_none_outside_regular_season(monkeypatch):
+    class _PreseasonClient(_FakeAsyncClient):
+        async def get(self, url, params=None):
+            return _FakeResponse({"week": {"number": 3}, "season": {"type": 1, "year": 2026}})
+
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _PreseasonClient)
+
+    assert await get_real_current_week() is None

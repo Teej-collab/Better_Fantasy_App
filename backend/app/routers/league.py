@@ -25,7 +25,9 @@ from app.db import get_pool
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_matchup_detail, build_week_matchup_context
 from app.domain.records import get_record_book
+from app.domain import playoffs
 from app.domain import power_rankings
+from app.domain import waivers
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -57,6 +59,31 @@ async def standings(season: int, league_id: int = Depends(require_league_access)
         rows = await queries.get_standings(conn, season, league_id)
         playoff_team_count = await queries.get_playoff_team_count(conn, season, league_id)
     return {"standings": [dict(r) for r in rows], "playoff_team_count": playoff_team_count}
+
+
+@router.get("/seasons/{season}/playoffs/bracket")
+async def playoff_bracket(season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """The real in-app playoff bracket (app/domain/playoffs.py) — empty
+    `nodes` before a commissioner has generated one for this season.
+    Same trust/visibility reasoning as standings itself: every league
+    member can see the bracket, not just the commissioner who
+    generates/resolves it (POST /admin/playoffs/generate, /resolve)."""
+    async with pool.acquire() as conn:
+        nodes = await playoffs.get_bracket_view(conn, season, league_id)
+    return {"season": season, "nodes": nodes}
+
+
+@router.get("/seasons/{season}/waivers/priority")
+async def waiver_priority(
+    season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """This week's real waiver order (this league's actual ESPN rule:
+    resets each week to inverse order of standings — see app/domain/
+    waivers.py) — visible to the whole league, same trust reasoning as
+    standings itself, not just the team on top of it."""
+    async with pool.acquire() as conn:
+        order = await waivers.get_priority_order(conn, season, league_id, week)
+    return {"week": week, "priority_order": order}
 
 
 @router.get("/seasons/{season}/weeks/{week}/matchups")

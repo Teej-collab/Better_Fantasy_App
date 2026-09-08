@@ -147,6 +147,16 @@ async def cleanup_test_season(pool):
         # teams_by_season.id) or that FK-violates for TEST_SEASON - 1
         # rows the same way this file already guards against elsewhere.
         await conn.execute("DELETE FROM matchups WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # playoff_bracket_matchups references teams_by_season, so it has
+        # to go before the teams_by_season DELETE below too — same
+        # reasoning as matchups just above (and after it, since matchups
+        # itself references playoff_bracket_matchups).
+        await conn.execute(
+            "DELETE FROM playoff_bracket_matchups WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
+        )
+        await conn.execute(
+            "DELETE FROM league_playoff_settings WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
+        )
         await conn.execute("DELETE FROM bench_crimes WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
         await conn.execute("DELETE FROM final_standings WHERE season = $1", TEST_SEASON)
@@ -224,6 +234,16 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM roster_history WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_picks WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # waiver_claims/waiver_wire reference players(sleeper_player_id)
+        # and teams_by_season(id); team_waiver_priority references
+        # teams_by_season(id) — all three have to go before both the
+        # teams_by_season DELETE below and the players DELETE further
+        # down.
+        await conn.execute("DELETE FROM waiver_claims WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM waiver_wire WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute(
+            "DELETE FROM team_waiver_priority WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
+        )
         # draft_queue_items/draft_room_messages/draft_grades/draft_narratives
         # reference owners(owner_id), so they have to go before the owners
         # DELETE further below.
@@ -277,6 +297,27 @@ async def cleanup_test_season(pool):
         )
         await conn.execute(
             "DELETE FROM league_playoff_settings WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        # matchups/teams_by_season.league_id -> leagues.id — same shape
+        # bug as league_scoring_rules above: a test that generates a
+        # real in-app schedule or playoff bracket (app/domain/
+        # schedule.py, app/domain/playoffs.py) for a self-serve-created
+        # "Test League ..." does so under that endpoint's real
+        # ACTIVE_SEASON (POST /leagues always uses it), not TEST_SEASON,
+        # so the season-scoped matchups/teams_by_season cleanup above
+        # never catches these. playoff_bracket_matchups.team_a_id/
+        # team_b_id/winner_team_id -> teams_by_season.id too, so it has
+        # to go before teams_by_season here; matchups.playoff_bracket_
+        # matchup_id -> playoff_bracket_matchups.id, so matchups goes
+        # before that.
+        await conn.execute(
+            "DELETE FROM matchups WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute(
+            "DELETE FROM playoff_bracket_matchups WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
+        await conn.execute(
+            "DELETE FROM teams_by_season WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
         await conn.execute(
             "DELETE FROM poll_votes WHERE poll_id IN (SELECT id FROM league_polls WHERE league_id IN "

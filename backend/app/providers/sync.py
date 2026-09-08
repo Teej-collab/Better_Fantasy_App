@@ -45,7 +45,7 @@ from app.domain.weekly_team_stats import (
     compute_weekly_team_stats_for_single_week,
 )
 from app.providers.base import FantasyProvider
-from app.providers.nfl_scoreboard import get_nfl_scoreboard
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week
 from app.queries import roster_history as roster_history_queries
 
 
@@ -84,8 +84,9 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
     # have a meaningful "current week" to cache. Best-effort: one sync
     # step failing here shouldn't fail the whole (still-to-run) sync.
     try:
-        current_week = await provider.get_current_week(end_season)
-        await _update_league_state(pool, end_season, current_week)
+        current_week = await get_real_current_week()
+        if current_week is not None:
+            await _update_league_state(pool, end_season, current_week)
     except Exception as e:
         results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
         current_week = None

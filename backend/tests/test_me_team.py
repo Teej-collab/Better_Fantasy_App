@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from httpx import ASGITransport, AsyncClient
 
@@ -9,6 +10,7 @@ from tests.fakes_espn import FakeLeague, make_fake_lineup_player, make_fake_team
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _ROSTER_SLOTS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR/TE": 1, "D/ST": 1, "K": 1, "BE": 2}
+_ROSTER_SLOTS_WITH_IR = {**_ROSTER_SLOTS, "IR": 1}
 
 
 def _client():
@@ -47,25 +49,25 @@ async def _seed_owner_with_team(pool, suffix, espn_team_id):
     return owner_id, team_id
 
 
-async def _ensure_roster_config(pool):
+async def _ensure_roster_config(pool, roster_slots=None):
     async with pool.acquire() as conn:
         exists = await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1", TEST_SEASON)
         if not exists:
             await conn.execute(
                 "INSERT INTO draft_config (season, draft_order, roster_slots) VALUES ($1, $2, $3)",
-                TEST_SEASON, [], json.dumps(_ROSTER_SLOTS),
+                TEST_SEASON, [], json.dumps(roster_slots or _ROSTER_SLOTS),
             )
 
 
-async def _seed_player(pool, suffix, position="RB", draftable=True, espn_player_id=None):
+async def _seed_player(pool, suffix, position="RB", draftable=True, espn_player_id=None, injury_status=None, pro_team="KC"):
     sleeper_id = f"test-meteam-player-{suffix}"
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
-            VALUES ($1, $2, $3, $4, $5, 'KC', 'Active', $6)
+            INSERT INTO players (sleeper_player_id, espn_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable, injury_status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'Active', $7, $8)
             """,
-            sleeper_id, espn_player_id, f"Test Player {suffix}", position, [position], draftable,
+            sleeper_id, espn_player_id, f"Test Player {suffix}", position, [position], pro_team, draftable, injury_status,
         )
     return sleeper_id
 
@@ -390,6 +392,73 @@ async def test_preview_move_rejects_ineligible_slot(pool, monkeypatch):
     assert resp.status_code == 400
 
 
+async def test_preview_move_to_ir_allowed_for_injured_player(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool, roster_slots=_ROSTER_SLOTS_WITH_IR)
+    owner_id, team_id = await _seed_owner_with_team(pool, "ir1", espn_team_id=114)
+    hurt = await _seed_player(pool, "ir1", position="RB", injury_status="Out")
+    await _seed_roster_entry(pool, team_id, hurt, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/lineup/preview-move", json={"sleeper_player_id": hurt, "to_slot": "IR"})
+
+    assert resp.status_code == 200
+
+
+async def test_preview_move_to_ir_rejected_for_healthy_player(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool, roster_slots=_ROSTER_SLOTS_WITH_IR)
+    owner_id, team_id = await _seed_owner_with_team(pool, "ir2", espn_team_id=115)
+    healthy = await _seed_player(pool, "ir2", position="RB", injury_status=None)
+    await _seed_roster_entry(pool, team_id, healthy, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/lineup/preview-move", json={"sleeper_player_id": healthy, "to_slot": "IR"})
+
+    assert resp.status_code == 400
+
+
+async def test_preview_move_to_ir_rejected_for_merely_questionable_player(pool, monkeypatch):
+    # Questionable/Doubtful players are still expected to potentially
+    # play — only a real "out for a while" designation earns IR.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool, roster_slots=_ROSTER_SLOTS_WITH_IR)
+    owner_id, team_id = await _seed_owner_with_team(pool, "ir3", espn_team_id=116)
+    questionable = await _seed_player(pool, "ir3", position="RB", injury_status="Questionable")
+    await _seed_roster_entry(pool, team_id, questionable, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post(
+            "/me/team/lineup/preview-move", json={"sleeper_player_id": questionable, "to_slot": "IR"}
+        )
+
+    assert resp.status_code == 400
+
+
+async def test_submit_move_to_ir_and_back_updates_current_rosters(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool, roster_slots=_ROSTER_SLOTS_WITH_IR)
+    owner_id, team_id = await _seed_owner_with_team(pool, "ir4", espn_team_id=117)
+    hurt = await _seed_player(pool, "ir4", position="RB", injury_status="IR")
+    await _seed_roster_entry(pool, team_id, hurt, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/lineup/move", json={"sleeper_player_id": hurt, "to_slot": "IR"})
+
+    assert resp.status_code == 200
+    roster = resp.json()["roster"]
+    moved = next(r for r in roster if r["player_id"] == hurt)
+    assert moved["lineup_slot"] == "IR"
+
+
 async def test_preview_move_ambiguous_displacement_when_slot_has_multiple_occupants(pool, monkeypatch):
     # RB has capacity 2 — with both RB starter slots already filled, a
     # 3rd player moving in is genuinely ambiguous (which of 2 gets
@@ -435,6 +504,108 @@ async def test_preview_swap(pool, monkeypatch):
     body = resp.json()
     assert body["player_a"]["player_id"] == starter
     assert body["player_b"]["player_id"] == bencher
+
+
+def _scoreboard_with_kickoff(pro_team: str, kickoff: datetime):
+    async def _fake(week, year, season_type=None):
+        return [{"home_team": pro_team, "away_team": "OPP", "date": kickoff.isoformat().replace("+00:00", "Z")}]
+
+    return _fake
+
+
+async def test_preview_move_rejected_once_players_game_has_started(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "lock1", espn_team_id=118)
+    player = await _seed_player(pool, "lock1", position="RB", pro_team="KC")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/lineup/preview-move", json={"sleeper_player_id": player, "to_slot": "RB"})
+
+    assert resp.status_code == 409
+
+
+async def test_preview_move_allowed_before_players_game_has_started(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "lock2", espn_team_id=119)
+    player = await _seed_player(pool, "lock2", position="RB", pro_team="KC")
+    await _seed_roster_entry(pool, team_id, player, lineup_slot="BE")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) + timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/lineup/preview-move", json={"sleeper_player_id": player, "to_slot": "RB"})
+
+    assert resp.status_code == 200
+
+
+async def test_preview_swap_rejected_when_a_player_is_locked(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "lock3", espn_team_id=120)
+    starter = await _seed_player(pool, "lock3a", position="RB", pro_team="KC")
+    bencher = await _seed_player(pool, "lock3b", position="RB", pro_team="KC")
+    await _seed_roster_entry(pool, team_id, starter, lineup_slot="RB")
+    await _seed_roster_entry(pool, team_id, bencher, lineup_slot="BE")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post(
+            "/me/team/lineup/preview-swap",
+            json={"sleeper_player_id_a": starter, "sleeper_player_id_b": bencher},
+        )
+
+    assert resp.status_code == 409
+
+
+async def test_submit_move_rejected_when_the_displaced_starter_is_locked(pool, monkeypatch):
+    # The mover (FA, not on KC) isn't locked, but bumping the current KC
+    # starter to the bench would touch a player whose game already
+    # started — that has to be blocked too, not just moving the locked
+    # player directly.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "lock4", espn_team_id=121)
+    # QB has capacity 1 in _ROSTER_SLOTS — guarantees a real displacement
+    # rather than the mover just filling a second open QB spot.
+    locked_starter = await _seed_player(pool, "lock4a", position="QB", pro_team="KC")
+    healthy_bencher = await _seed_player(pool, "lock4b", position="QB", pro_team="BUF")
+    await _seed_roster_entry(pool, team_id, locked_starter, lineup_slot="QB")
+    await _seed_roster_entry(pool, team_id, healthy_bencher, lineup_slot="BE")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+
+    async def _fake_scoreboard(week, year, season_type=None):
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        return [{"home_team": "KC", "away_team": "OPP", "date": past}]
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _fake_scoreboard)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post(
+            "/me/team/lineup/move", json={"sleeper_player_id": healthy_bencher, "to_slot": "QB"}
+        )
+
+    assert resp.status_code == 409
 
 
 async def test_preview_move_requires_session(pool):

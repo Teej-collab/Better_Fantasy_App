@@ -100,6 +100,122 @@ async def test_commissioner_can_set_playoff_team_count(pool):
     assert get_resp.json()["playoff_team_count"] == 6
 
 
+async def test_commissioner_can_set_weeks_per_matchup_and_start_week(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-playoff-weeks@example.com")
+        await client.post("/leagues", json={"name": "Test League Playoff Weeks"})
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        put_resp = await client.put(
+            "/league/playoff-settings",
+            json={"season": season, "playoff_team_count": 4, "weeks_per_matchup": 2, "start_week": 15},
+        )
+        assert put_resp.status_code == 200
+        assert put_resp.json()["weeks_per_matchup"] == 2
+        assert put_resp.json()["start_week"] == 15
+
+        get_resp = await client.get("/league/playoff-settings")
+    assert get_resp.json()["weeks_per_matchup"] == 2
+    assert get_resp.json()["start_week"] == 15
+
+
+async def test_weeks_per_matchup_defaults_to_one_when_omitted(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-playoff-weeks-default@example.com")
+        await client.post("/leagues", json={"name": "Test League Playoff Weeks Default"})
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        put_resp = await client.put("/league/playoff-settings", json={"season": season, "playoff_team_count": 4})
+    assert put_resp.json()["weeks_per_matchup"] == 1
+    assert put_resp.json()["start_week"] is None
+
+
+async def test_weeks_per_matchup_must_be_positive(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-playoff-weeks-invalid@example.com")
+        await client.post("/leagues", json={"name": "Test League Playoff Weeks Invalid"})
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        resp = await client.put(
+            "/league/playoff-settings", json={"season": season, "playoff_team_count": 4, "weeks_per_matchup": 0}
+        )
+    assert resp.status_code == 400
+
+
+async def test_commissioner_can_generate_regular_season_schedule(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-schedule-gen@example.com")
+        created = await client.post("/leagues", json={"name": "Test League Schedule Gen"})
+        league_id = created.json()["id"]
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        async with pool.acquire() as conn:
+            for i in range(4):
+                owner_id = await conn.fetchval(
+                    "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+                    f"test-schedule-owner-{i}", f"Schedule Owner {i}",
+                )
+                await conn.execute(
+                    "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+                    "VALUES ($1, $2, $3, $4, $5)",
+                    season, 600 + i, owner_id, f"Schedule Team {i}", league_id,
+                )
+
+        resp = await client.post("/league/schedule/generate", json={"season": season, "weeks": 3})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["matchups"]) == 6  # 4 teams, 3 weeks, 2 games/week
+
+
+async def test_generate_schedule_rejects_if_already_scheduled(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-schedule-dup@example.com")
+        created = await client.post("/leagues", json={"name": "Test League Schedule Dup"})
+        league_id = created.json()["id"]
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        async with pool.acquire() as conn:
+            for i in range(2):
+                owner_id = await conn.fetchval(
+                    "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+                    f"test-schedule-dup-owner-{i}", f"Schedule Dup Owner {i}",
+                )
+                await conn.execute(
+                    "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+                    "VALUES ($1, $2, $3, $4, $5)",
+                    season, 610 + i, owner_id, f"Schedule Dup Team {i}", league_id,
+                )
+
+        first = await client.post("/league/schedule/generate", json={"season": season, "weeks": 1})
+        assert first.status_code == 200
+        second = await client.post("/league/schedule/generate", json={"season": season, "weeks": 1})
+    assert second.status_code == 409
+
+
+async def test_generate_schedule_requires_positive_weeks(pool):
+    async with _client() as client:
+        await _sign_up(client, "test-schedule-invalid@example.com")
+        await client.post("/leagues", json={"name": "Test League Schedule Invalid"})
+        season = (await client.get("/league/playoff-settings")).json()["season"]
+
+        resp = await client.post("/league/schedule/generate", json={"season": season, "weeks": 0})
+    assert resp.status_code == 400
+
+
+async def test_non_commissioner_cannot_generate_schedule(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-schedule-unauth-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Schedule Unauth"})
+        invite_code = created.json()["invite_code"]
+        season = (await creator.get("/league/playoff-settings")).json()["season"]
+
+    async with _client() as member:
+        await _sign_up(member, "test-schedule-unauth-member@example.com")
+        await member.post("/leagues/join", json={"invite_code": invite_code})
+        resp = await member.post("/league/schedule/generate", json={"season": season, "weeks": 1})
+    assert resp.status_code == 403
+
+
 async def test_playoff_team_count_must_be_positive(pool):
     async with _client() as client:
         await _sign_up(client, "test-playoff-invalid@example.com")

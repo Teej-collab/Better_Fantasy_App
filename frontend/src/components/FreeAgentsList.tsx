@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addFreeAgent, getMyTeam, type MyFreeAgent, type RosterEntry } from "@/lib/api";
+import { addFreeAgent, getMyTeam, submitWaiverClaim, type MyFreeAgent, type RosterEntry } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
@@ -21,7 +21,19 @@ type PanelState =
   // in this app requires.
   | { status: "confirm-drop"; roster: RosterEntry[]; dropCandidate: RosterEntry }
   | { status: "success"; message: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  // A player still within this league's real 1-day waiver period
+  // (waiver_clears_at) can't be added instantly — these file a claim
+  // instead (backend/app/domain/waivers.py), resolved later by the
+  // scheduler once their waiver period ends. Doesn't remove the player
+  // from the list on success — they're still a free agent until a
+  // claim actually wins.
+  | { status: "claim-menu" }
+  | { status: "claim-pick-drop"; roster: RosterEntry[] }
+  | { status: "claim-confirm-drop"; roster: RosterEntry[]; dropCandidate: RosterEntry }
+  | { status: "claim-submitting" }
+  | { status: "claim-success"; message: string }
+  | { status: "claim-error"; message: string };
 
 /**
  * Client component so "Add" can act against your real live roster —
@@ -96,6 +108,29 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
     }
   }
 
+  function startClaim(player: MyFreeAgent) {
+    setActiveId(player.sleeper_player_id);
+    setPanel({ status: "claim-menu" });
+  }
+
+  async function pickDropForClaim() {
+    const team = await getMyTeam();
+    setPanel({ status: "claim-pick-drop", roster: team.roster });
+  }
+
+  async function submitClaim(player: MyFreeAgent, dropSleeperPlayerId?: string) {
+    setPanel({ status: "claim-submitting" });
+    try {
+      await submitWaiverClaim(player.sleeper_player_id, dropSleeperPlayerId);
+      setPanel({
+        status: "claim-success",
+        message: `Claim filed on ${player.full_name}. It resolves automatically once their waiver period ends.`,
+      });
+    } catch (e) {
+      setPanel({ status: "claim-error", message: e instanceof Error ? e.message : "Claim failed" });
+    }
+  }
+
   function close() {
     setActiveId(null);
     setPanel(null);
@@ -145,6 +180,14 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                       {p.injury_status}
                     </span>
                   )}
+                  {p.waiver_clears_at && (
+                    <span
+                      className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
+                      title="Dropped recently — this league's real 1-day waiver period applies"
+                    >
+                      On waivers{mounted && ` · clears ${formatGameTime(p.waiver_clears_at)}`}
+                    </span>
+                  )}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-4 text-right text-xs tabular-nums text-black/60 dark:text-white/60">
@@ -156,6 +199,13 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                     className="w-[52px] rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
                   >
                     Close
+                  </button>
+                ) : p.waiver_clears_at ? (
+                  <button
+                    onClick={() => startClaim(p)}
+                    className="w-[52px] rounded-full border border-[var(--wl-accent)] px-3 py-1.5 text-xs font-medium text-[var(--wl-accent)] hover:bg-[var(--wl-accent)]/10"
+                  >
+                    Claim
                   </button>
                 ) : (
                   <button
@@ -234,6 +284,85 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                     </div>
                   </div>
                 )}
+
+                {panel.status === "claim-menu" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      <strong>{p.full_name}</strong> is still on waivers
+                      {mounted && p.waiver_clears_at && ` until ${formatGameTime(p.waiver_clears_at)}`}. File a claim —
+                      it resolves automatically, highest this-week priority wins.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => submitClaim(p)}
+                        className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                      >
+                        File claim
+                      </button>
+                      <button
+                        onClick={pickDropForClaim}
+                        className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
+                      >
+                        File claim with a drop
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {panel.status === "claim-pick-drop" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      Pick a player to drop if the claim on <strong>{p.full_name}</strong> wins.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {panel.roster.map((entry) => (
+                        <button
+                          key={entry.player_id}
+                          onClick={() =>
+                            setPanel({ status: "claim-confirm-drop", roster: panel.roster, dropCandidate: entry })
+                          }
+                          className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                        >
+                          {entry.player_name}
+                          <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {panel.status === "claim-confirm-drop" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-black/70 dark:text-white/70">
+                      File a claim: if it wins, drop <strong>{panel.dropCandidate.player_name}</strong> to add{" "}
+                      <strong>{p.full_name}</strong>.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitClaim(p, panel.dropCandidate.player_id)}
+                        className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                      >
+                        Confirm claim
+                      </button>
+                      <button
+                        onClick={() => setPanel({ status: "claim-pick-drop", roster: panel.roster })}
+                        className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {panel.status === "claim-submitting" && (
+                  <p className="text-black/50 dark:text-white/50">Filing claim…</p>
+                )}
+
+                {panel.status === "claim-success" && (
+                  <p className="text-emerald-600 dark:text-emerald-400">{panel.message}</p>
+                )}
+
+                {panel.status === "claim-error" && <p className="text-red-500">{panel.message}</p>}
               </div>
             )}
           </li>

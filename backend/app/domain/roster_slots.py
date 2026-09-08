@@ -25,15 +25,31 @@ POSITION_TO_SLOT_LABEL = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE", "K": "
 FLEX_ELIGIBLE_POSITIONS = {"RB", "WR", "TE"}
 FLEX_SLOT_LABEL = "RB/WR/TE"
 BENCH_SLOT_LABEL = "BE"
+IR_SLOT_LABEL = "IR"
 _STARTER_SLOTS = ("QB", "RB", "WR", "TE", FLEX_SLOT_LABEL, "D/ST", "K")
 
+# Sleeper's own `injury_status` values (this league's real player data
+# source — see app/providers/sleeper/ingest.py) that mean a player is
+# out long enough to stash on IR, matching how every competitor
+# researched in the competitive audit gates its IR slot (a real
+# designation required, not "any bench player"). "Questionable" and
+# "Doubtful" are deliberately excluded — those players are still
+# expected to potentially play this week.
+IR_ELIGIBLE_INJURY_STATUSES = {"IR", "PUP", "OUT", "NA", "COV", "DNR"}
 
-def is_eligible_for_slot(position: str, slot_label: str) -> bool:
-    """Whether a player at `position` (QB/RB/WR/TE/K/DEF) can occupy
-    `slot_label` (QB/RB/WR/TE/RB-WR-TE/D-ST/K/BE). Bench accepts
-    anyone — a real roster spot with no position restriction."""
+
+def is_eligible_for_slot(position: str, slot_label: str, injury_status: str | None = None) -> bool:
+    """Whether a player at `position` (QB/RB/WR/TE/K/DEF), currently
+    carrying `injury_status` (Sleeper's raw string, e.g. "Out"/"IR"/
+    "Questionable"/None), can occupy `slot_label` (QB/RB/WR/TE/
+    RB-WR-TE/D-ST/K/BE/IR). Bench accepts anyone — a real roster spot
+    with no position restriction. IR requires a real injury
+    designation — unlike bench, it's not just "any player of the
+    right position minus one slot count."""
     if slot_label == BENCH_SLOT_LABEL:
         return True
+    if slot_label == IR_SLOT_LABEL:
+        return bool(injury_status) and injury_status.strip().upper() in IR_ELIGIBLE_INJURY_STATUSES
     if slot_label == FLEX_SLOT_LABEL:
         return position in FLEX_ELIGIBLE_POSITIONS
     return POSITION_TO_SLOT_LABEL.get(position) == slot_label

@@ -199,18 +199,41 @@ export async function createTeamForMember(leagueId: number, userId: number, team
   return post<Team>(`/leagues/${leagueId}/teams/for-member`, { user_id: userId, team_name: teamName });
 }
 
-export async function getPlayoffSettings(): Promise<{ season: number; playoff_team_count: number | null }> {
+export type PlayoffSettings = {
+  season: number;
+  playoff_team_count: number | null;
+  // This league's real ESPN settings (the commissioner's own
+  // screenshot): weeks_per_matchup=2. weeks_per_matchup defaults to 1
+  // (single-week matchups) until explicitly set; start_week is null
+  // until explicitly set, meaning app/domain/playoffs.py infers it
+  // from this season's own regular-season matchups at generation time.
+  weeks_per_matchup: number;
+  start_week: number | null;
+};
+
+export async function getPlayoffSettings(): Promise<PlayoffSettings> {
   return get("/league/playoff-settings");
 }
 
 // Commissioner-only — an explicit override for how many teams make the
-// playoffs THIS season, taking priority over the standings page's own
-// fallback (inferring from a prior completed season's real bracket).
+// playoffs THIS season (taking priority over the standings page's own
+// fallback of inferring from a prior completed season's real bracket),
+// plus the two settings that drive app/domain/playoffs.py's bracket
+// generator. A single PUT always writes all three together (see that
+// endpoint's own note) — never call this with only some of them once
+// the others have real values you want to keep.
 export async function updatePlayoffSettings(
   season: number,
-  playoffTeamCount: number
-): Promise<{ season: number; playoff_team_count: number }> {
-  return put("/league/playoff-settings", { season, playoff_team_count: playoffTeamCount });
+  playoffTeamCount: number,
+  weeksPerMatchup: number = 1,
+  startWeek: number | null = null
+): Promise<PlayoffSettings> {
+  return put("/league/playoff-settings", {
+    season,
+    playoff_team_count: playoffTeamCount,
+    weeks_per_matchup: weeksPerMatchup,
+    start_week: startWeek,
+  });
 }
 
 export type ScoringRule = { stat_category: string; points_per_unit: number };

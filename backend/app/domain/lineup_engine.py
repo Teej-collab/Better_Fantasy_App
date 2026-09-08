@@ -17,9 +17,11 @@ import json
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
+    LineupLockedError,
     PlayerAlreadyRosteredError,
     PlayerNotDraftableError,
     PlayerNotOnRosterError,
+    PlayerOnWaiversError,
     RosterConfigNotFoundError,
     RosterFullError,
     SlotIneligibleError,
@@ -107,33 +109,53 @@ async def _find_displacement(conn, season: int, team_id: int, to_slot: str, rost
 
 
 async def plan_move(
-    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID
+    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID,
+    locked_pro_teams: frozenset[str] = frozenset(),
 ) -> dict:
     """Pure validation, no write — same PREVIEW-ONLY role
-    ESPNLineupClient.plan_lineup_change used to play."""
+    ESPNLineupClient.plan_lineup_change used to play. `locked_pro_teams`
+    (real NFL team abbreviations whose game has already kicked off this
+    week — see app/domain/nfl_schedule.py's locked_pro_teams, computed
+    by the caller so this stays a pure-DB function with no network
+    call) is empty by default, meaning "no lock enforced" — every real
+    caller in app/routers/me.py always passes the live set."""
     player = await _get_roster_entry(conn, season, team_id, sleeper_player_id)
-    if not is_eligible_for_slot(player["position"], to_slot):
+    if not is_eligible_for_slot(player["position"], to_slot, player["injury_status"]):
         raise SlotIneligibleError(f"{player['player_name']} ({player['position']}) isn't eligible for slot {to_slot}")
+    if player["pro_team"] in locked_pro_teams:
+        raise LineupLockedError(f"{player['player_name']}'s game has already started — their lineup slot is locked")
     roster_slots = await _get_roster_slots(conn, season, league_id)
     displaced = await _find_displacement(conn, season, team_id, to_slot, roster_slots)
+    if displaced is not None and displaced["pro_team"] in locked_pro_teams:
+        raise LineupLockedError(
+            f"{displaced['player_name']}'s game has already started — they can't be benched to make room"
+        )
     return {"player": player, "from_slot": player["lineup_slot"], "to_slot": to_slot, "displaced_player": displaced}
 
 
-async def plan_swap(conn, season: int, team_id: int, sleeper_player_id_a: str, sleeper_player_id_b: str) -> dict:
+async def plan_swap(
+    conn, season: int, team_id: int, sleeper_player_id_a: str, sleeper_player_id_b: str,
+    locked_pro_teams: frozenset[str] = frozenset(),
+) -> dict:
     player_a = await _get_roster_entry(conn, season, team_id, sleeper_player_id_a)
     player_b = await _get_roster_entry(conn, season, team_id, sleeper_player_id_b)
-    if not is_eligible_for_slot(player_a["position"], player_b["lineup_slot"]):
+    if not is_eligible_for_slot(player_a["position"], player_b["lineup_slot"], player_a["injury_status"]):
         raise SlotIneligibleError(f"{player_a['player_name']} isn't eligible for {player_b['player_name']}'s slot")
-    if not is_eligible_for_slot(player_b["position"], player_a["lineup_slot"]):
+    if not is_eligible_for_slot(player_b["position"], player_a["lineup_slot"], player_b["injury_status"]):
         raise SlotIneligibleError(f"{player_b['player_name']} isn't eligible for {player_a['player_name']}'s slot")
+    if player_a["pro_team"] in locked_pro_teams:
+        raise LineupLockedError(f"{player_a['player_name']}'s game has already started — their lineup slot is locked")
+    if player_b["pro_team"] in locked_pro_teams:
+        raise LineupLockedError(f"{player_b['player_name']}'s game has already started — their lineup slot is locked")
     return {"player_a": player_a, "player_b": player_b}
 
 
 async def move_player(
-    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID
+    conn, season: int, team_id: int, sleeper_player_id: str, to_slot: str, league_id: int = DEFAULT_LEAGUE_ID,
+    locked_pro_teams: frozenset[str] = frozenset(),
 ) -> dict:
     async with conn.transaction():
-        plan = await plan_move(conn, season, team_id, sleeper_player_id, to_slot, league_id)
+        plan = await plan_move(conn, season, team_id, sleeper_player_id, to_slot, league_id, locked_pro_teams)
         if plan["displaced_player"] is not None:
             await conn.execute(
                 "UPDATE current_rosters SET lineup_slot = $1 WHERE season = $2 AND team_id = $3 AND sleeper_player_id = $4",
@@ -146,9 +168,12 @@ async def move_player(
         return await get_roster(conn, season, team_id)
 
 
-async def swap_players(conn, season: int, team_id: int, sleeper_player_id_a: str, sleeper_player_id_b: str) -> dict:
+async def swap_players(
+    conn, season: int, team_id: int, sleeper_player_id_a: str, sleeper_player_id_b: str,
+    locked_pro_teams: frozenset[str] = frozenset(),
+) -> dict:
     async with conn.transaction():
-        plan = await plan_swap(conn, season, team_id, sleeper_player_id_a, sleeper_player_id_b)
+        plan = await plan_swap(conn, season, team_id, sleeper_player_id_a, sleeper_player_id_b, locked_pro_teams)
         await conn.execute(
             "UPDATE current_rosters SET lineup_slot = $1 WHERE season = $2 AND team_id = $3 AND sleeper_player_id = $4",
             plan["player_b"]["lineup_slot"], season, team_id, sleeper_player_id_a,
@@ -192,6 +217,18 @@ async def add_free_agent(
         )
         if already_rostered:
             raise PlayerAlreadyRosteredError(f"{sleeper_player_id} is already on a roster this season")
+
+        # A plain table read, not a call into app/domain/waivers.py — that
+        # module builds on lineup_engine's own concepts (roster_slots,
+        # BENCH_SLOT_LABEL), so importing it back here would be circular.
+        # See waivers.py's own docstring for the real "1-day waiver
+        # period, resets weekly to inverse standings" rule this enforces.
+        on_waivers = await conn.fetchval(
+            "SELECT 1 FROM waiver_wire WHERE season = $1 AND league_id = $2 AND sleeper_player_id = $3 AND clears_at > now()",
+            season, league_id, sleeper_player_id,
+        )
+        if on_waivers:
+            raise PlayerOnWaiversError(f"{sleeper_player_id} is still on waivers — submit a waiver claim instead")
 
         roster_slots = await _get_roster_slots(conn, season, league_id)
         capacity = total_draftable_slots(roster_slots)

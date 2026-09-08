@@ -23,13 +23,17 @@ from app.analytics.rate_limit import is_rate_limited
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, require_site_admin
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
-from app.config import DEFAULT_LEAGUE_ID
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
+from app.domain.playoff_exceptions import PlayoffError
+from app.domain.playoffs import generate_playoff_bracket, resolve_ready_playoff_matchups
 from app.domain.player_projections import sync_projected_points
+from app.domain.waivers import process_expired_waivers
 from app.domain.weekly_stats import compute_and_store_week
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_single_week
 from app.providers.espn.adapter import ESPNProvider
+from app.providers.nfl_scoreboard import get_real_current_week
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
@@ -83,7 +87,9 @@ async def trigger_live_sync(request: Request):
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
     season = espn_config.active_season
-    week = await provider.get_current_week(season)
+    week = await get_real_current_week()
+    if week is None:
+        raise HTTPException(status_code=409, detail="No real current NFL week right now (outside the regular season)")
     results = await run_live_sync(provider, season, week)
     record_job_run("live_sync")
     return {"season": season, "week": week, "results": results}
@@ -104,13 +110,70 @@ async def trigger_weekly_compute(request: Request, week: int | None = None):
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
 
     espn_config = ESPNConfig()
-    provider = ESPNProvider(espn_config)
     season = espn_config.active_season
     if week is None:
-        week = await provider.get_current_week(season)
+        week = await get_real_current_week()
+        if week is None:
+            raise HTTPException(
+                status_code=409, detail="No real current NFL week right now (outside the regular season)"
+            )
     results = await compute_and_store_week(await get_pool(), season, week)
     record_job_run("weekly_compute")
     return {"season": season, "week": week, "results": results}
+
+
+@router.post("/waivers/process")
+async def trigger_waiver_processing(request: Request, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """Manual trigger for app/domain/waivers.py's process_expired_waivers
+    — same thing the scheduled waiver-processing job does hourly, on
+    demand, for testing (or an on-call commissioner) without waiting on
+    the next tick. `week` sets which week's priority order applies —
+    pass the real current NFL week unless deliberately testing a
+    different one."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        results = await process_expired_waivers(conn, int(_require("ACTIVE_SEASON")), league_id, week)
+    record_job_run("waiver_processing")
+    return {"week": week, "league_id": league_id, "results": results}
+
+
+@router.post("/playoffs/generate")
+async def trigger_playoff_bracket_generation(request: Request, league_id: int = DEFAULT_LEAGUE_ID):
+    """Manual trigger for app/domain/playoffs.py's generate_playoff_bracket
+    — the in-app replacement for what used to be an ESPN-synced
+    playoff bracket. Call once, when the regular season is over and
+    playoff_team_count/weeks_per_matchup (PUT /league/playoff-settings)
+    are set the way this season actually needs. Real write; refuses to
+    run twice for the same season (PlayoffAlreadyGeneratedError)."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    season = int(_require("ACTIVE_SEASON"))
+    try:
+        async with pool.acquire() as conn:
+            await require_commissioner_of(conn, payload, league_id)
+            bracket = await generate_playoff_bracket(conn, season, league_id)
+    except PlayoffError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return {"season": season, "league_id": league_id, "bracket": bracket}
+
+
+@router.post("/playoffs/resolve")
+async def trigger_playoff_resolution(request: Request, league_id: int = DEFAULT_LEAGUE_ID):
+    """Manual trigger for app/domain/playoffs.py's
+    resolve_ready_playoff_matchups — same check the scheduled weekly-
+    compute job already runs automatically right after real scores land
+    (app/scheduler.py's _run_weekly_compute_job), on demand. Idempotent:
+    a bracket node that isn't ready yet, or is already resolved, is
+    just skipped."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        resolved = await resolve_ready_playoff_matchups(conn, season, league_id)
+    return {"season": season, "league_id": league_id, "resolved": resolved}
 
 
 @router.delete("/teams/{team_id}")

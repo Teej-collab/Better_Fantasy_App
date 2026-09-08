@@ -12,6 +12,8 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
+from app.domain.schedule import generate_regular_season_schedule
+from app.domain.schedule_exceptions import ScheduleError
 from app.queries import league as league_read_queries
 from app.queries import leagues as league_queries
 
@@ -58,27 +60,68 @@ async def update_scoring_rules(body: ScoringRulesRequest, request: Request, pool
 async def get_playoff_settings(request: Request, pool=Depends(get_pool)):
     """Read access open to any member, same as GET /scoring-rules —
     the commissioner-only edit form uses this to pre-fill, but the
-    setting itself (via queries/league.py's get_playoff_team_count)
-    already powers the public standings page's playoff-line divider."""
+    setting itself (via queries/league.py's get_playoff_settings)
+    already powers the public standings page's playoff-line divider,
+    and now app/domain/playoffs.py's bracket generator."""
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        playoff_team_count = await league_read_queries.get_playoff_team_count(conn, season, league_id)
-    return {"season": season, "playoff_team_count": playoff_team_count}
+        settings = await league_read_queries.get_playoff_settings(conn, season, league_id)
+    return {"season": season, **settings}
 
 
 class PlayoffSettingsRequest(BaseModel):
     season: int
     playoff_team_count: int
+    # This league's real ESPN settings (the commissioner's own
+    # screenshot): weeks_per_matchup=2. Defaults preserve the prior
+    # single-field form's behavior for anyone not yet sending them.
+    weeks_per_matchup: int = 1
+    start_week: int | None = None
 
 
 @router.put("/playoff-settings")
 async def update_playoff_settings(body: PlayoffSettingsRequest, request: Request, pool=Depends(get_pool)):
     if body.playoff_team_count <= 0:
         raise HTTPException(status_code=400, detail="playoff_team_count must be positive")
+    if body.weeks_per_matchup <= 0:
+        raise HTTPException(status_code=400, detail="weeks_per_matchup must be positive")
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
-        await league_queries.set_playoff_team_count(conn, league_id, body.season, body.playoff_team_count)
-    return {"season": body.season, "playoff_team_count": body.playoff_team_count}
+        await league_queries.set_playoff_team_count(
+            conn, league_id, body.season, body.playoff_team_count, body.weeks_per_matchup, body.start_week,
+        )
+    return {
+        "season": body.season,
+        "playoff_team_count": body.playoff_team_count,
+        "weeks_per_matchup": body.weeks_per_matchup,
+        "start_week": body.start_week,
+    }
+
+
+class GenerateScheduleRequest(BaseModel):
+    season: int
+    weeks: int
+
+
+@router.post("/schedule/generate")
+async def generate_schedule(body: GenerateScheduleRequest, request: Request, pool=Depends(get_pool)):
+    """Real write — generates this season's real regular-season matchup
+    schedule in-app (app/domain/schedule.py), no ESPN read involved.
+    Only ever makes sense for a season that hasn't been scheduled yet
+    (typically right after teams exist, e.g. right after the draft) —
+    refuses with 409 if regular-season matchups already exist for this
+    season, rather than silently overwriting a real, possibly-already-
+    played schedule."""
+    if body.weeks <= 0:
+        raise HTTPException(status_code=400, detail="weeks must be positive")
+    payload = _require_session(request)
+    try:
+        async with pool.acquire() as conn:
+            league_id = await require_league_commissioner(conn, payload)
+            created = await generate_regular_season_schedule(conn, body.season, league_id, body.weeks)
+    except ScheduleError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return {"season": body.season, "weeks": body.weeks, "matchups": created}

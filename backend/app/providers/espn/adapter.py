@@ -102,6 +102,26 @@ class ESPNProvider(FantasyProvider):
             return 0
 
         is_playoff = week > reg_season_weeks
+        if is_playoff:
+            # Once this app has generated its own in-app playoff bracket
+            # (app/domain/playoffs.py) for this season, that bracket is
+            # authoritative — syncing ESPN's own separately-computed
+            # shadow-league playoff pairings on top of it would silently
+            # create a second, conflicting "truth" for who played whom
+            # in the postseason. Exactly the structural risk the
+            # competitive audit named; regular-season weeks (is_playoff
+            # False) are unaffected and keep syncing from ESPN as
+            # before — app/domain/schedule.py's own generator only ever
+            # applies to a season that hasn't been scheduled yet
+            # (ScheduleAlreadyExistsError otherwise), so it can't
+            # retroactively replace this season's real, already-synced,
+            # partly-played regular season anyway.
+            has_in_app_bracket = await conn.fetchval(
+                "SELECT 1 FROM playoff_bracket_matchups WHERE season = $1 AND league_id = $2 LIMIT 1",
+                season, league_id,
+            )
+            if has_in_app_bracket:
+                return 0
         saved_count = 0
 
         for m in matchups:

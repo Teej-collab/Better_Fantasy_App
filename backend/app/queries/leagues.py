@@ -247,19 +247,30 @@ async def upsert_scoring_rules(conn, league_id: int, season: int, rules: dict[st
     )
 
 
-async def set_playoff_team_count(conn, league_id: int, season: int, playoff_team_count: int) -> None:
-    """Commissioner-set override of how many teams make the playoffs
-    THIS season — see queries/league.py's get_playoff_team_count for
-    the read side (checks this table first, falls back to inferring
-    from a prior season's real bracket) and that table's own migration
-    docstring for why this exists."""
+async def set_playoff_team_count(
+    conn, league_id: int, season: int, playoff_team_count: int,
+    weeks_per_matchup: int = 1, start_week: int | None = None,
+) -> None:
+    """Commissioner-set playoff settings for THIS season — see
+    queries/league.py's get_playoff_team_count/get_playoff_settings for
+    the read side and that table's own migration docstring for why this
+    exists. weeks_per_matchup/start_week default to the column defaults
+    (1 / inferred) rather than being independently settable, so a
+    single form submission always writes a complete, consistent row —
+    see app/domain/playoffs.py's docstring for what start_week=None
+    (infer from this season's own synced regular-season matchups)
+    means in practice."""
     await conn.execute(
         """
-        INSERT INTO league_playoff_settings (season, league_id, playoff_team_count)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (season, league_id) DO UPDATE SET playoff_team_count = EXCLUDED.playoff_team_count, updated_at = now()
+        INSERT INTO league_playoff_settings (season, league_id, playoff_team_count, weeks_per_matchup, start_week)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (season, league_id) DO UPDATE SET
+            playoff_team_count = EXCLUDED.playoff_team_count,
+            weeks_per_matchup = EXCLUDED.weeks_per_matchup,
+            start_week = EXCLUDED.start_week,
+            updated_at = now()
         """,
-        season, league_id, playoff_team_count,
+        season, league_id, playoff_team_count, weeks_per_matchup, start_week,
     )
 
 

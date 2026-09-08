@@ -240,6 +240,36 @@ export function getStandings(season: number, sessionCookie: string | undefined) 
   );
 }
 
+// The real in-app playoff bracket (backend/app/domain/playoffs.py) —
+// no ESPN read involved. `nodes` is empty before a commissioner has
+// generated one for this season (POST /admin/playoffs/generate).
+export type PlayoffBracketNode = {
+  id: number;
+  round: number;
+  slot: number;
+  team_a_id: number | null;
+  team_a_name: string | null;
+  team_a_seed: number | null;
+  team_b_id: number | null;
+  team_b_name: string | null;
+  team_b_seed: number | null;
+  winner_team_id: number | null;
+  winner_team_name: string | null;
+  // Aggregate real score across however many of this node's
+  // weeks_per_matchup weeks are scored so far — string (numeric from
+  // Postgres SUM), null until at least one week has a real score.
+  team_a_score: string | null;
+  team_b_score: string | null;
+  weeks_played: number;
+};
+
+export function getPlayoffBracket(season: number, sessionCookie: string | undefined) {
+  return getServer<{ season: number; nodes: PlayoffBracketNode[] }>(
+    `/seasons/${season}/playoffs/bracket`,
+    sessionCookie
+  );
+}
+
 export function listWeekMatchups(season: number, week: number) {
   return get<{ matchups: WeekMatchup[] }>(`/seasons/${season}/weeks/${week}/matchups`);
 }
@@ -1303,6 +1333,14 @@ export type RosterEntry = {
   bye_week: number | null;
   on_offense: boolean;
   is_redzone: boolean;
+  // True iff this player's real NFL game has already kicked off this
+  // week — the server-side lineup lock (backend/app/domain/
+  // lineup_engine.py) will reject any move/swap touching them once
+  // this is true, whether they're the one being moved or the one a
+  // move would bench. Only ever populated on the plain GET /team read
+  // for the live current week, same convention as points/next_opponent
+  // above; defaults false everywhere else.
+  is_locked: boolean;
 };
 
 export type MyTeam = {
@@ -1517,6 +1555,11 @@ export type MyFreeAgent = {
   // next_opponent/game_time (backend/app/routers/me.py's _schedule_lookup).
   next_opponent: string | null;
   game_time: string | null;
+  // Non-null iff this player is still within this league's real 1-day
+  // waiver period (backend/app/domain/waivers.py) — addFreeAgent below
+  // will reject them with a 409 until this clears; submitWaiverClaim
+  // is the only way to acquire them before then.
+  waiver_clears_at: string | null;
 };
 
 // Called server-side (free-agents/page.tsx) with the session cookie
@@ -1583,6 +1626,71 @@ export type WaiverSettings = { uses_faab: boolean; acquisition_budget: number };
 
 export function getWaiverSettings(): Promise<WaiverSettings> {
   return get<WaiverSettings>("/free-agents/waiver-settings");
+}
+
+// ---- Waivers (real, in-app — backend/app/domain/waivers.py). This
+// league's actual ESPN rule (the commissioner's own settings
+// screenshot): priority-order waivers, not FAAB; a 1-day waiver
+// period per dropped player; priority resets each week to the inverse
+// of standings. A free agent with waiver_clears_at in the future needs
+// a claim (below), not the instant addFreeAgent above — that endpoint
+// now rejects those with a 409. ---------------------------------------
+
+export type WaiverClaimStatus = "pending" | "successful" | "failed" | "cancelled";
+
+export type WaiverClaim = {
+  id: number;
+  add_sleeper_player_id: string;
+  add_player_name: string;
+  drop_sleeper_player_id: string | null;
+  drop_player_name: string | null;
+  status: WaiverClaimStatus;
+  failure_reason: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
+// Real write — files a claim on a player currently on waivers, resolved
+// later by the daily/hourly scheduler job once their waiver period
+// clears (highest this-week priority wins).
+export async function submitWaiverClaim(addSleeperPlayerId: string, dropSleeperPlayerId?: string): Promise<WaiverClaim> {
+  const res = await fetch(`/api/backend/me/team/waivers/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      add_sleeper_player_id: addSleeperPlayerId,
+      drop_sleeper_player_id: dropSleeperPlayerId ?? null,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Claim failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function listMyWaiverClaims(): Promise<WaiverClaim[]> {
+  const { claims } = await authedGet<{ claims: WaiverClaim[] }>("/me/team/waivers");
+  return claims;
+}
+
+export async function cancelWaiverClaim(claimId: number): Promise<void> {
+  const res = await fetch(`/api/backend/me/team/waivers/claim/${claimId}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Cancel failed (${res.status})`);
+  }
+}
+
+export type WaiverPriorityRow = { team_id: number; team_name: string; priority: number };
+
+// This week's real waiver order — league-wide visible, same trust
+// reasoning as standings (app/routers/league.py).
+export function getWaiverPriority(season: number, week: number, sessionCookie: string | undefined) {
+  return getServer<{ week: number; priority_order: WaiverPriorityRow[] }>(
+    `/seasons/${season}/waivers/priority?week=${week}`,
+    sessionCookie
+  );
 }
 
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean };

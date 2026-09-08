@@ -90,7 +90,25 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   into this league's fantasy points now that scoring is computed
   in-app instead of copied from ESPN. There's also a manual
   POST /admin/weekly-compute trigger, matching /admin/sync/live's
-  pattern, for testing without waiting on a live game.
+  pattern, for testing without waiting on a live game. Immediately
+  after each real compute, also checks app/domain/playoffs.py's
+  resolve_ready_playoff_matchups (best-effort, same flag) — the
+  natural moment to see whether a just-scored week completes some
+  playoff bracket node, now that the bracket itself is generated
+  in-app (app/domain/playoffs.py) instead of read from ESPN.
+- Waiver processing (ENABLE_WAIVER_PROCESSING_SCHEDULER): resolves this
+  league's real 1-day waiver period (app/domain/waivers.py, matching
+  the commissioner's actual ESPN settings — priority-order waivers,
+  not FAAB, resetting each week to inverse standings) — every player
+  whose waiver_wire clock has run out gets its pending claims processed
+  and leaves the wire either way, whether a claim won or there were
+  none at all. Runs hourly by default (WAIVER_PROCESSING_INTERVAL_
+  SECONDS), not once daily like a real platform's overnight batch —
+  keeps an actual drop-to-clear gap close to the real "1 Day" setting
+  regardless of what time of day the drop happened, rather than adding
+  up to 24h of extra delay waiting for one fixed nightly slot. Loops
+  over every league with an expired waiver_wire row, same "not just
+  League #1" shape as the keeper/draft-clock jobs above.
 """
 import logging
 import os
@@ -98,7 +116,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.config import _require
+from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
@@ -118,10 +136,13 @@ from app.notifications.draft_events import (
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
-from app.providers.nfl_scoreboard import get_nfl_scoreboard, is_nfl_game_live
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
+from app.domain import waivers
+from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
+from app.queries import league as league_queries
 from app.scheduler_status import record_job_run
 
 logger = logging.getLogger(__name__)
@@ -147,7 +168,9 @@ async def _run_live_sync_job():
     espn_config = ESPNConfig()
     provider = ESPNProvider(espn_config)
     season = espn_config.active_season
-    week = await provider.get_current_week(season)
+    week = await get_real_current_week()
+    if week is None:
+        return
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -492,12 +515,54 @@ async def _run_weekly_compute_job():
         return
 
     espn_config = ESPNConfig()
-    provider = ESPNProvider(espn_config)
     season = espn_config.active_season
-    week = await provider.get_current_week(season)
+    week = await get_real_current_week()
+    if week is None:
+        return
     results = await weekly_stats.compute_and_store_week(await get_pool(), season, week)
     logger.info("Weekly compute finished (season=%s week=%s): %s", season, week, results)
     record_job_run("weekly_compute")
+
+    # Real scores for this week just landed — this is the natural place
+    # to check whether any playoff bracket node (app/domain/playoffs.py)
+    # is now fully scored and ready to resolve. A no-op most weeks (no
+    # bracket generated yet, or nothing ready); best-effort so a
+    # playoff-resolution failure never breaks the compute step above.
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            resolved = await resolve_ready_playoff_matchups(conn, season, DEFAULT_LEAGUE_ID)
+        if resolved:
+            logger.info("Playoff bracket resolved (season=%s): %s", season, resolved)
+    except Exception:
+        logger.exception("Playoff bracket resolution failed (season=%s week=%s)", season, week)
+
+
+async def _run_waiver_processing_job():
+    """See this module's own docstring — resolves every league's expired
+    waiver_wire rows. Needs the real current NFL week (to know which
+    week's priority order applies); skipped entirely, with no
+    record_job_run call, if that isn't resolvable yet (pre-season/
+    pre-sync), same "nothing to do" shape as _run_weekly_compute_job's
+    own is_nfl_game_live early-return above."""
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        current_week = await league_queries.get_cached_current_week(conn, season)
+        if current_week is None:
+            return
+        due_leagues = await conn.fetch(
+            "SELECT DISTINCT league_id FROM waiver_wire WHERE season = $1 AND clears_at <= now()", season,
+        )
+        for row in due_leagues:
+            league_id = row["league_id"]
+            results = await waivers.process_expired_waivers(conn, season, league_id, current_week)
+            if results:
+                logger.info(
+                    "Waiver processing: season=%s league_id=%s week=%s results=%s",
+                    season, league_id, current_week, results,
+                )
+    record_job_run("waiver_processing")
 
 
 def start_scheduler():
@@ -577,6 +642,12 @@ def start_scheduler():
             "Weekly compute scheduler started (every %d seconds, only during NFL game windows)",
             interval_seconds,
         )
+        started_any = True
+
+    if os.getenv("ENABLE_WAIVER_PROCESSING_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_seconds = int(os.getenv("WAIVER_PROCESSING_INTERVAL_SECONDS", "3600"))
+        _scheduler.add_job(_run_waiver_processing_job, "interval", seconds=interval_seconds, id="waiver_processing")
+        logger.info("Waiver processing scheduler started (every %d seconds)", interval_seconds)
         started_any = True
 
     if started_any:

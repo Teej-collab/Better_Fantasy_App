@@ -6,17 +6,32 @@ const POSITION_TO_SLOT_LABEL: Record<string, string> = { QB: "QB", RB: "RB", WR:
 const FLEX_ELIGIBLE_POSITIONS = new Set(["RB", "WR", "TE"]);
 export const FLEX_SLOT_LABEL = "RB/WR/TE";
 export const BENCH_SLOT_LABEL = "BE";
+export const IR_SLOT_LABEL = "IR";
 
-export function isEligibleForSlot(position: string, slotLabel: string): boolean {
+// Sleeper's own injury_status values that mean a player is out long
+// enough to stash on IR — mirrors backend/app/domain/roster_slots.py's
+// IR_ELIGIBLE_INJURY_STATUSES. "Questionable"/"Doubtful" are
+// deliberately excluded — those players might still play this week.
+const IR_ELIGIBLE_INJURY_STATUSES = new Set(["IR", "PUP", "OUT", "NA", "COV", "DNR"]);
+
+export function isIrEligible(injuryStatus: string | null | undefined): boolean {
+  return !!injuryStatus && IR_ELIGIBLE_INJURY_STATUSES.has(injuryStatus.trim().toUpperCase());
+}
+
+export function isEligibleForSlot(position: string, slotLabel: string, injuryStatus?: string | null): boolean {
   if (slotLabel === BENCH_SLOT_LABEL) return true;
+  if (slotLabel === IR_SLOT_LABEL) return isIrEligible(injuryStatus);
   if (slotLabel === FLEX_SLOT_LABEL) return FLEX_ELIGIBLE_POSITIONS.has(position);
   return POSITION_TO_SLOT_LABEL[position] === slotLabel;
 }
 
 // Two players can trade places iff each is actually eligible for the
 // slot the other currently occupies.
-export function canSwapSlots(positionA: string, slotA: string, positionB: string, slotB: string): boolean {
-  return isEligibleForSlot(positionA, slotB) && isEligibleForSlot(positionB, slotA);
+export function canSwapSlots(
+  positionA: string, slotA: string, positionB: string, slotB: string,
+  injuryStatusA?: string | null, injuryStatusB?: string | null,
+): boolean {
+  return isEligibleForSlot(positionA, slotB, injuryStatusA) && isEligibleForSlot(positionB, slotA, injuryStatusB);
 }
 
 // ESPN's own starter display order — QB, RB, RB, WR, WR, TE, FLEX,

@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getMe, getMyFreeAgents, getWaiverSettings } from "@/lib/api";
+import {
+  getCurrentWeek,
+  getMe,
+  getMyFreeAgents,
+  getWaiverPriority,
+  getWaiverSettings,
+  listSeasons,
+  resolveWeek,
+  safeLatestSeason,
+} from "@/lib/api";
 import { FreeAgentsList } from "@/components/FreeAgentsList";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { MyWaiverClaims } from "@/components/MyWaiverClaims";
 import { PlayerSearchInput } from "@/components/PlayerSearchInput";
 import { SignInCard } from "@/components/SignInCard";
 
@@ -47,9 +57,16 @@ export default async function FreeAgentsPage({
     );
   }
 
-  const [players, waiverSettings] = await Promise.all([
+  const { seasons } = await listSeasons();
+  const latestSeason = safeLatestSeason(seasons);
+  const { current_week: currentWeek } =
+    latestSeason !== null ? await getCurrentWeek(latestSeason) : { current_week: null };
+  const week = resolveWeek(currentWeek);
+
+  const [players, waiverSettings, waiverPriority] = await Promise.all([
     getMyFreeAgents(sessionCookie, position, search),
     getWaiverSettings(),
+    latestSeason !== null ? getWaiverPriority(latestSeason, week, sessionCookie) : Promise.resolve(null),
   ]);
 
   return (
@@ -91,6 +108,28 @@ export default async function FreeAgentsPage({
           );
         })}
       </div>
+
+      <MyWaiverClaims />
+
+      {waiverPriority && waiverPriority.priority_order.length > 0 && (
+        <details className="neon-panel rounded-lg bg-black/[0.015] px-4 py-2.5 text-sm dark:bg-white/[0.03]">
+          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+            Waiver order — Week {waiverPriority.week}
+          </summary>
+          <p className="mt-2 text-xs text-black/50 dark:text-white/50">
+            Resets each week to the inverse of standings — worst record claims first. Winning a claim moves that team
+            to the back of this list until next week.
+          </p>
+          <ol className="mt-2 flex flex-col gap-1">
+            {waiverPriority.priority_order.map((row) => (
+              <li key={row.team_id} className="flex gap-2 text-black/70 dark:text-white/70">
+                <span className="w-5 tabular-nums text-black/50 dark:text-white/50">{row.priority}.</span>
+                <span>{row.team_name}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
 
       <FreeAgentsList players={players} />
     </div>

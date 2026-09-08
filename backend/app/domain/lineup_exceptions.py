@@ -38,3 +38,24 @@ class PlayerAlreadyRosteredError(LineupError):
 
 class RosterFullError(LineupError):
     pass
+
+
+class PlayerOnWaiversError(LineupError):
+    """Raised by add_free_agent when the target player is still within
+    this league's real waiver period (app/domain/waivers.py) — they
+    were dropped too recently to be instantly addable; the caller has
+    to submit a waiver claim instead (POST /me/team/waivers/claim)."""
+
+    pass
+
+
+class LineupLockedError(LineupError):
+    """Raised when a move/swap would touch a player whose real NFL game
+    has already kicked off this week — mirrors app/providers/espn/
+    lineup_exceptions.py's class of the same name, the retired ESPN-
+    backed lineup client's own per-player kickoff lock. This app's
+    in-app lineup engine had no equivalent until now (a confirmed real
+    gap: a manager could start or bench a player after their game
+    ended, with zero backend enforcement)."""
+
+    pass

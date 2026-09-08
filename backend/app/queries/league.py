@@ -222,6 +222,28 @@ async def get_playoff_team_count(conn, season: int, league_id: int = DEFAULT_LEA
     )
 
 
+async def get_playoff_settings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+    """playoff_team_count (see get_playoff_team_count's own fallback
+    chain above) plus weeks_per_matchup/start_week — the two real
+    settings (this league's own ESPN screenshot: "Playoff Teams: 4,
+    Weeks Per Playoff Matchup: 2") that were never persisted anywhere
+    before app/domain/playoffs.py existed. Unlike playoff_team_count,
+    these two have no cross-season inference — a league that's never
+    touched them gets the plain column defaults (weeks_per_matchup=1,
+    start_week=None, meaning "infer from this season's own regular-
+    season matchups at generation time" — see playoffs.py)."""
+    playoff_team_count = await get_playoff_team_count(conn, season, league_id)
+    row = await conn.fetchrow(
+        "SELECT weeks_per_matchup, start_week FROM league_playoff_settings WHERE season = $1 AND league_id = $2",
+        season, league_id,
+    )
+    return {
+        "playoff_team_count": playoff_team_count,
+        "weeks_per_matchup": row["weeks_per_matchup"] if row else 1,
+        "start_week": row["start_week"] if row else None,
+    }
+
+
 async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """

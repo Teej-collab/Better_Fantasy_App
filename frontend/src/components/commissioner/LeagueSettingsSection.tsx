@@ -20,6 +20,8 @@ export function LeagueSettingsSection() {
 
   const [playoffSeason, setPlayoffSeason] = useState<number | null>(null);
   const [playoffTeamCount, setPlayoffTeamCount] = useState("");
+  const [weeksPerMatchup, setWeeksPerMatchup] = useState("1");
+  const [startWeek, setStartWeek] = useState("");
   const [playoffBusy, setPlayoffBusy] = useState(false);
   const [playoffSaved, setPlayoffSaved] = useState(false);
 
@@ -32,6 +34,8 @@ export function LeagueSettingsSection() {
       const playoff = await getPlayoffSettings();
       setPlayoffSeason(playoff.season);
       setPlayoffTeamCount(playoff.playoff_team_count === null ? "" : String(playoff.playoff_team_count));
+      setWeeksPerMatchup(String(playoff.weeks_per_matchup));
+      setStartWeek(playoff.start_week === null ? "" : String(playoff.start_week));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load your league.");
     }
@@ -42,7 +46,12 @@ export function LeagueSettingsSection() {
     setPlayoffBusy(true);
     setPlayoffSaved(false);
     try {
-      await updatePlayoffSettings(playoffSeason, Number(playoffTeamCount));
+      await updatePlayoffSettings(
+        playoffSeason,
+        Number(playoffTeamCount),
+        weeksPerMatchup ? Number(weeksPerMatchup) : 1,
+        startWeek ? Number(startWeek) : null
+      );
       setPlayoffSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save the playoff format.");
@@ -157,6 +166,32 @@ export function LeagueSettingsSection() {
               placeholder="Not set"
               className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
             />
+
+            <span className="ml-2 text-sm text-black/50 dark:text-white/50">Weeks per matchup</span>
+            <input
+              type="number"
+              min={1}
+              value={weeksPerMatchup}
+              onChange={(e) => {
+                setWeeksPerMatchup(e.target.value);
+                setPlayoffSaved(false);
+              }}
+              className="w-16 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
+            />
+
+            <span className="ml-2 text-sm text-black/50 dark:text-white/50">Start week</span>
+            <input
+              type="number"
+              min={1}
+              value={startWeek}
+              onChange={(e) => {
+                setStartWeek(e.target.value);
+                setPlayoffSaved(false);
+              }}
+              placeholder="Auto"
+              className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
+            />
+
             <button
               onClick={savePlayoffTeamCount}
               disabled={playoffBusy || !playoffTeamCount}
@@ -166,8 +201,9 @@ export function LeagueSettingsSection() {
             </button>
             {playoffSaved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
             <p className="w-full text-xs text-black/50 dark:text-white/50">
-              Drives the playoff-picture line on the standings page. Without this, it&apos;s inferred from last
-              season&apos;s real bracket once one exists.
+              Drives the in-app playoff bracket generator (real matchups, no ESPN dependency) and the
+              playoff-picture line on the standings page. Leave start week blank to infer it automatically from
+              this season&apos;s own regular-season schedule once it&apos;s complete.
             </p>
           </div>
         )}

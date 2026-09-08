@@ -40,17 +40,27 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain import lineup_engine
+from app.domain import waivers
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     LineupError,
+    LineupLockedError,
     PlayerAlreadyRosteredError,
     PlayerNotDraftableError,
     PlayerNotOnRosterError,
+    PlayerOnWaiversError,
     RosterConfigNotFoundError,
     RosterFullError,
     SlotIneligibleError,
 )
-from app.domain.nfl_schedule import schedule_lookup_by_pro_team
+from app.domain.nfl_schedule import locked_pro_teams, schedule_lookup_by_pro_team
+from app.domain.waiver_exceptions import (
+    ClaimNotCancellableError,
+    ClaimNotFoundError,
+    DuplicateClaimError,
+    PlayerNotOnWaiversError,
+    WaiverError,
+)
 from app.domain.your_week import build_your_week
 from app.gamecast import service as gamecast_service
 from app.gamecast.models import GameStatus
@@ -97,6 +107,8 @@ def _map_lineup_error(e: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(e))
     if isinstance(e, (SlotIneligibleError, AmbiguousDisplacementError)):
         return HTTPException(status_code=400, detail=str(e))
+    if isinstance(e, (LineupLockedError, PlayerOnWaiversError)):
+        return HTTPException(status_code=409, detail=str(e))
     if isinstance(e, RosterConfigNotFoundError):
         return HTTPException(status_code=409, detail=str(e))
     if isinstance(e, PlayerNotDraftableError):
@@ -104,6 +116,32 @@ def _map_lineup_error(e: Exception) -> HTTPException:
     if isinstance(e, PlayerAlreadyRosteredError):
         return HTTPException(status_code=400, detail=str(e))
     return HTTPException(status_code=400, detail=str(e))
+
+
+def _map_waiver_error(e: Exception) -> HTTPException:
+    if isinstance(e, (ClaimNotFoundError, PlayerNotOnRosterError)):
+        return HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, (PlayerNotOnWaiversError, DuplicateClaimError, ClaimNotCancellableError)):
+        return HTTPException(status_code=400, detail=str(e))
+    return HTTPException(status_code=400, detail=str(e))
+
+
+async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozenset[str]:
+    """The server-side half of the per-player lineup lock: every real
+    NFL team whose game has already kicked off in the league's current
+    fantasy week. Best-effort, same disclosed trade-off as my_team's
+    own scoreboard fetch above — a flaky/unreachable ESPN scoreboard
+    fails OPEN (no lock enforced) rather than blocking every lineup
+    edit in the app, since this is a fairness safeguard, not the
+    primary gate on roster integrity."""
+    current_week = await league_queries.get_cached_current_week(conn, active_season)
+    if current_week is None:
+        return frozenset()
+    try:
+        games = await get_week_scoreboard(current_week, active_season)
+    except Exception:
+        return frozenset()
+    return locked_pro_teams(games)
 
 
 def _roster_entry_dict(entry: dict) -> dict:
@@ -138,6 +176,11 @@ def _roster_entry_dict(entry: dict) -> dict:
         "bye_week": entry.get("bye_week"),
         "on_offense": entry.get("on_offense", False),
         "is_redzone": entry.get("is_redzone", False),
+        # Only meaningful (and only ever True) on the plain GET /team
+        # read for the live current week — see my_team above. Absent
+        # elsewhere, same "only present when the caller attached it"
+        # convention as next_opponent/game_time.
+        "is_locked": entry.get("is_locked", False),
     }
 
 
@@ -278,6 +321,14 @@ async def my_team(request: Request, week: int | None = None):
             info = schedule.get(entry["pro_team"])
             if info:
                 entry.update(info)
+        # Surfaced only so the edit-lineup UI can show a lock affordance
+        # up front rather than a surprise 409 after the tap — the real
+        # enforcement lives server-side in lineup_engine's move/swap
+        # (see _locked_pro_teams_for_current_week above), not here.
+        if is_editable:
+            locked = locked_pro_teams(games)
+            for entry in roster:
+                entry["is_locked"] = entry["pro_team"] in locked
 
     # on_offense/is_redzone only ever mean something for a live game
     # happening right now — never attach them when looking at a
@@ -363,8 +414,10 @@ async def preview_lineup_move(body: LineupMoveRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
             plan = await lineup_engine.plan_move(
-                conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id
+                conn, active_season, team_id, body.sleeper_player_id, body.to_slot,
+                league_id=league_id, locked_pro_teams=locked,
             )
     except LineupError as e:
         raise _map_lineup_error(e) from e
@@ -386,8 +439,10 @@ async def preview_lineup_swap(body: LineupSwapRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
             plan = await lineup_engine.plan_swap(
-                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b
+                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
+                locked_pro_teams=locked,
             )
     except LineupError as e:
         raise _map_lineup_error(e) from e
@@ -407,8 +462,10 @@ async def submit_lineup_move(body: LineupMoveRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
             roster = await lineup_engine.move_player(
-                conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id
+                conn, active_season, team_id, body.sleeper_player_id, body.to_slot,
+                league_id=league_id, locked_pro_teams=locked,
             )
     except LineupError as e:
         raise _map_lineup_error(e) from e
@@ -424,8 +481,10 @@ async def submit_lineup_swap(body: LineupSwapRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
             roster = await lineup_engine.swap_players(
-                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b
+                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
+                locked_pro_teams=locked,
             )
     except LineupError as e:
         raise _map_lineup_error(e) from e
@@ -439,15 +498,19 @@ class DropPlayerRequest(BaseModel):
 @router.post("/team/lineup/drop")
 async def drop_player(body: DropPlayerRequest, request: Request):
     """Real write — sends a player back to free agency, no drop target
-    (that's add_free_agent's job when the roster's already full)."""
+    (that's add_free_agent's job when the roster's already full). Starts
+    this league's real 1-day waiver clock for the dropped player (see
+    app/domain/waivers.py) — they aren't instantly re-addable by anyone,
+    including this same team, until it clears or a claim resolves it."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _, _ = await _require_my_team(payload, active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
             roster = await lineup_engine.drop_player(conn, active_season, team_id, body.sleeper_player_id)
+            await waivers.start_waiver_clock(conn, active_season, league_id, body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e
     return {"roster": [_roster_entry_dict(e) for e in roster]}
@@ -477,6 +540,10 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
                 conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
                 league_id=league_id,
             )
+            if result["dropped_player"] is not None:
+                await waivers.start_waiver_clock(
+                    conn, active_season, league_id, result["dropped_player"]["sleeper_player_id"]
+                )
     except RosterFullError as e:
         return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
     except LineupError as e:
@@ -544,6 +611,18 @@ async def list_free_agents(request: Request, position: str | None = None, search
 
         rows = [dict(r) for r in await conn.fetch(query, *params)]
 
+        # This league's real 1-day waiver period (app/domain/waivers.py)
+        # — a row here means this "free agent" actually needs a waiver
+        # claim, not an instant add; POST /team/free-agents/add rejects
+        # those with PlayerOnWaiversError regardless of what this list
+        # shows, this is purely so the browse UI can be honest up front.
+        clears_at_by_player = await waivers.get_waiver_clears_at(
+            conn, active_season, league_id, [r["sleeper_player_id"] for r in rows]
+        )
+        for row in rows:
+            clears_at = clears_at_by_player.get(row["sleeper_player_id"])
+            row["waiver_clears_at"] = clears_at.isoformat() if clears_at else None
+
     if current_week is not None:
         try:
             games = await get_week_scoreboard(current_week, active_season)
@@ -556,3 +635,71 @@ async def list_free_agents(request: Request, position: str | None = None, search
                 row.update(info)
 
     return {"players": rows}
+
+
+@router.get("/team/waivers")
+async def list_my_waiver_claims(request: Request):
+    """Every claim this team has ever submitted, most recent first —
+    pending, successful, failed, and cancelled all included so a
+    manager can see what happened to an old claim, not just what's
+    still in flight."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _, league_id = await _require_my_team(payload, active_season)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        claims = await waivers.list_claims_for_team(conn, active_season, league_id, team_id)
+    return {
+        "claims": [
+            {**c, "created_at": c["created_at"].isoformat(), "processed_at": c["processed_at"].isoformat() if c["processed_at"] else None}
+            for c in claims
+        ]
+    }
+
+
+class WaiverClaimRequest(BaseModel):
+    add_sleeper_player_id: str
+    drop_sleeper_player_id: str | None = None
+
+
+@router.post("/team/waivers/claim")
+async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
+    """Real write — files a claim on a player currently within this
+    league's 1-day waiver period. Resolved later by the daily scheduler
+    job (app/scheduler.py's _run_waiver_processing_job), highest
+    priority (this week's real inverse-standings order) wins."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _, league_id = await _require_my_team(payload, active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            claim = await waivers.submit_claim(
+                conn, active_season, league_id, team_id, body.add_sleeper_player_id, body.drop_sleeper_player_id,
+            )
+    except WaiverError as e:
+        raise _map_waiver_error(e) from e
+    except PlayerNotOnRosterError as e:
+        raise _map_waiver_error(e) from e
+    return {
+        **claim,
+        "created_at": claim["created_at"].isoformat(),
+        "processed_at": claim["processed_at"].isoformat() if claim["processed_at"] else None,
+    }
+
+
+@router.post("/team/waivers/claim/{claim_id}/cancel")
+async def cancel_waiver_claim(claim_id: int, request: Request):
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _, league_id = await _require_my_team(payload, active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await waivers.cancel_claim(conn, active_season, league_id, team_id, claim_id)
+    except WaiverError as e:
+        raise _map_waiver_error(e) from e
+    return {"status": "cancelled"}
