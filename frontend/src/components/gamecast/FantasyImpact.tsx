@@ -23,7 +23,15 @@ const MAX_PLAYERS = 6;
  * play they were involved in, honestly, with no fabricated number
  * attached.
  */
-export function FantasyImpact({ game, isSignedIn }: { game: LiveGame; isSignedIn: boolean }) {
+export function FantasyImpact({
+  game,
+  isSignedIn,
+  beta = false,
+}: {
+  game: LiveGame;
+  isSignedIn: boolean;
+  beta?: boolean;
+}) {
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
 
   useEffect(() => {
@@ -53,7 +61,10 @@ export function FantasyImpact({ game, isSignedIn }: { game: LiveGame; isSignedIn
 
   if (involved.size === 0) {
     return (
-      <div className="neon-panel flex flex-col gap-2 rounded-xl p-4 sm:p-5" style={panelGlowStyle(SECTION_COLORS.league)}>
+      <div
+        className={`flex flex-col gap-2 rounded-xl p-4 sm:p-5 ${beta ? "wl-card" : "neon-panel"}`}
+        style={beta ? undefined : panelGlowStyle(SECTION_COLORS.league)}
+      >
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Fantasy Impact</h2>
         <p className="text-sm text-black/50 dark:text-white/50">No player activity to show yet.</p>
       </div>
@@ -61,7 +72,10 @@ export function FantasyImpact({ game, isSignedIn }: { game: LiveGame; isSignedIn
   }
 
   return (
-    <div className="neon-panel flex flex-col gap-3 rounded-xl p-4 sm:p-5" style={panelGlowStyle(SECTION_COLORS.league)}>
+    <div
+      className={`flex flex-col gap-3 rounded-xl p-4 sm:p-5 ${beta ? "wl-card" : "neon-panel"}`}
+      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.league)}
+    >
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Fantasy Impact</h2>
       <ul className="flex flex-col gap-2">
         {[...involved.values()].map((p) => {

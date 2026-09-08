@@ -13,10 +13,13 @@ export function GameHeader({
   game,
   connected,
   updatedSecondsAgo,
+  beta = false,
 }: {
   game: LiveGame;
   connected: boolean;
   updatedSecondsAgo: number;
+  // Settings > Labs > "Try the new look" — see GamecastShell.tsx.
+  beta?: boolean;
 }) {
   const isLive = game.status === "in_progress";
   const homeColor = nflTeamColor(game.home_team.abbr) ?? "var(--wl-text)";
@@ -25,7 +28,7 @@ export function GameHeader({
   const awayHasBall = game.possession_team_abbr === game.away_team.abbr;
 
   return (
-    <div className="neon-panel flex flex-col gap-4 rounded-xl p-4 sm:p-5">
+    <div className={`flex flex-col gap-4 rounded-xl p-4 sm:p-5 ${beta ? "wl-card" : "neon-panel"}`}>
       <div className="flex items-center justify-between text-xs">
         <StatusBadge game={game} connected={connected} />
         <span className="text-black/50 dark:text-white/50">

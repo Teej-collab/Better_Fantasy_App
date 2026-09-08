@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getMatchup, getMe } from "@/lib/api";
+import { getMatchup, getMe, getMyPreferences } from "@/lib/api";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import type { MatchupContextSide } from "@/lib/api";
@@ -12,6 +12,7 @@ import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
 import { MyTouchdownsSection } from "@/components/matchups/MyTouchdownsSection";
 import { StarterComparisonTable } from "@/components/matchups/StarterComparisonTable";
+import { MatchupPageBeta } from "@/components/matchups/MatchupPageBeta";
 import { BackButton } from "@/components/BackButton";
 
 // Real per-page title (mobile audit finding) — matters most here since
@@ -52,9 +53,18 @@ export default async function MatchupPage({
     );
   }
 
-  const matchup = await getMatchup(Number(matchupId), sessionCookie);
+  const [matchup, myPreferences] = await Promise.all([
+    getMatchup(Number(matchupId), sessionCookie),
+    getMyPreferences(sessionCookie),
+  ]);
   if (!matchup) notFound();
   const { home, away } = matchup;
+
+  // Settings > Labs > "Try the new look" — see MatchupPageBeta.tsx and
+  // Documentation/UX/06_Implementation_Roadmap.md section 0.
+  if (myPreferences?.beta_layout) {
+    return <MatchupPageBeta matchup={matchup} />;
+  }
 
   // Same "no meaningful 50/50 before kickoff" gate win_probability.py
   // itself enforces — both sides only ever come back non-null together.

@@ -15,8 +15,9 @@ import {
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
-import { BENCH_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
+import { positionColor } from "@/lib/positionColors";
 
 // Which starter slots this position is eligible for at all (e.g. an RB
 // can go RB or FLEX) — the set of destinations editLineupOptions below
@@ -42,10 +43,19 @@ function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlot
   for (const slot of eligibleStarterSlotsFor(entry.position)) {
     const capacity = rosterSlots[slot] ?? 0;
     const occupants = roster.filter((r) => r.lineup_slot === slot);
-    for (const occupant of occupants) options.push({ slot, occupant });
+    // A swap with a locked occupant would always be rejected server-side
+    // (their game already started — see lineup_engine.py's plan_move/
+    // plan_swap) — don't offer a destination the backend can only 409.
+    for (const occupant of occupants) if (!occupant.is_locked) options.push({ slot, occupant });
     if (occupants.length < capacity) options.push({ slot, occupant: null });
   }
   options.push(entry.lineup_slot === BENCH_SLOT_LABEL ? { slot: BENCH_SLOT_LABEL, occupant: entry } : { slot: BENCH_SLOT_LABEL, occupant: null });
+  if (isIrEligible(entry.injury_status)) {
+    const irCapacity = rosterSlots[IR_SLOT_LABEL] ?? 0;
+    const irOccupants = roster.filter((r) => r.lineup_slot === IR_SLOT_LABEL);
+    for (const occupant of irOccupants) if (!occupant.is_locked) options.push({ slot: IR_SLOT_LABEL, occupant });
+    if (irOccupants.length < irCapacity) options.push({ slot: IR_SLOT_LABEL, occupant: null });
+  }
   return options;
 }
 
@@ -54,6 +64,7 @@ function RosterRow({
   ownership,
   mounted,
   editable,
+  beta = false,
   onOpenEdit,
   onViewPlayer,
   onDrop,
@@ -62,10 +73,119 @@ function RosterRow({
   ownership: OwnershipInfo | undefined;
   mounted: boolean;
   editable: boolean;
+  // Settings > Labs > "Try the new look" — see MyTeamApp's own comment
+  // on why this is a prop on the existing component rather than a
+  // forked one: the edit/swap/drop logic below must never have two
+  // copies to drift apart on a page that moves real roster state.
+  // Only presentation/density changes under this flag (Documentation/
+  // UX/04_Mobile_Strategy.md section 7 — cap status pills, combine
+  // secondary lines) plus position-color-coding (01_Design_System.md
+  // section 2, already built for Draft but never wired in here).
+  beta?: boolean;
   onOpenEdit: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
   onDrop: (entry: RosterEntry) => void;
 }) {
+  if (beta) {
+    const metaParts: string[] = [];
+    if (entry.next_opponent) {
+      metaParts.push(entry.game_time && mounted ? `${entry.next_opponent} · ${formatGameTime(entry.game_time)}` : entry.next_opponent);
+    }
+    if (entry.bye_week !== null) metaParts.push(`Bye Wk ${entry.bye_week}`);
+    if (ownership?.percent_owned !== null && ownership?.percent_owned !== undefined) {
+      metaParts.push(`${ownership.percent_owned.toFixed(0)}% owned`);
+    }
+    const hasInjury = Boolean(entry.injury_status && entry.injury_status !== "ACTIVE");
+
+    return (
+      <li className="flex items-stretch gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
+        <span
+          className="w-1 shrink-0 self-stretch rounded-full"
+          style={{ backgroundColor: positionColor(entry.position) }}
+          aria-hidden
+        />
+        {editable ? (
+          <button
+            onClick={() => onOpenEdit(entry)}
+            title="Edit lineup"
+            className="flex min-h-11 shrink-0 items-center rounded-full border border-black/10 px-2.5 text-center text-[10px] font-semibold text-black/60 hover:border-sky-500 hover:text-sky-600 dark:border-white/10 dark:text-white/60 dark:hover:text-sky-400"
+          >
+            {slotDisplayLabel(entry.lineup_slot)}
+          </button>
+        ) : (
+          <span className="flex min-h-11 shrink-0 items-center rounded-full border border-black/10 px-2.5 text-center text-[10px] font-semibold text-black/40 dark:border-white/10 dark:text-white/40">
+            {slotDisplayLabel(entry.lineup_slot)}
+          </span>
+        )}
+        <span className="relative inline-flex shrink-0 items-center">
+          <PlayerHeadshot sleeperPlayerId={entry.player_id} proTeam={entry.pro_team} name={entry.player_name} size={36} />
+          {entry.is_redzone ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-[var(--background)]"
+              title="In the red zone"
+            />
+          ) : entry.on_offense ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-[var(--background)]"
+              title="On offense"
+            />
+          ) : null}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <button
+            onClick={() => onViewPlayer(entry.player_id)}
+            className="truncate text-left text-sm font-medium hover:underline"
+          >
+            {entry.player_name}
+          </button>
+          <span className="text-xs text-black/50 dark:text-white/50">
+            {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
+          </span>
+          {metaParts.length > 0 && (
+            <span className="truncate text-xs text-black/50 dark:text-white/50">{metaParts.join(" · ")}</span>
+          )}
+          {/* Capped at 2 status pills, shown inline together, per
+              Documentation/UX/01_Design_System.md section 6. */}
+          {(hasInjury || entry.is_locked) && (
+            <span className="mt-0.5 flex flex-wrap items-center gap-1">
+              {hasInjury && (
+                <span className="w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+                  {entry.injury_status}
+                </span>
+              )}
+              {entry.is_locked && (
+                <span
+                  className="w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
+                  title="This player's game has already started — their lineup slot is locked for the week"
+                >
+                  Locked
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col items-end justify-center gap-1">
+          <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
+            {entry.points !== null ? entry.points.toFixed(1) : "—"}
+          </span>
+          {entry.points_projected !== null && (
+            <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
+              Proj {entry.points_projected.toFixed(1)}
+            </span>
+          )}
+          {editable && (
+            <button
+              onClick={() => onDrop(entry)}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-red-500/20 px-3 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
+            >
+              Drop
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li className="flex items-center gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
       {editable ? (
@@ -138,6 +258,14 @@ function RosterRow({
             {entry.injury_status}
           </span>
         )}
+        {entry.is_locked && (
+          <span
+            className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
+            title="This player's game has already started — their lineup slot is locked for the week"
+          >
+            Locked
+          </span>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
@@ -175,10 +303,13 @@ export function MyTeamApp({
   isGameDay,
   initialTeam,
   initialOwnership,
+  beta = false,
 }: {
   isGameDay: boolean;
   initialTeam: MyTeam | null;
   initialOwnership: Record<string, OwnershipInfo> | null;
+  // Settings > Labs > "Try the new look" — see RosterRow's own comment.
+  beta?: boolean;
 }) {
   const [team, setTeam] = useState<MyTeam | null>(initialTeam);
   const [ownership, setOwnership] = useState<Record<string, OwnershipInfo>>(initialOwnership ?? {});
@@ -357,8 +488,9 @@ export function MyTeamApp({
   }
 
   const options = editingEntry ? editLineupOptions(editingEntry, team.roster, team.roster_slots ?? {}) : [];
-  const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL);
+  const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL && o.slot !== IR_SLOT_LABEL);
   const benchOptions = options.filter((o) => o.slot === BENCH_SLOT_LABEL);
+  const irOptions = options.filter((o) => o.slot === IR_SLOT_LABEL);
 
   const week = team.week ?? 1;
 
@@ -432,7 +564,7 @@ export function MyTeamApp({
 
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
-        <ul className="neon-panel rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]">
+        <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
           {starters.map((e) => (
             <RosterRow
               key={e.player_id}
@@ -440,6 +572,7 @@ export function MyTeamApp({
               ownership={ownership[e.player_id]}
               mounted={mounted}
               editable={team.is_editable}
+              beta={beta}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
@@ -450,7 +583,7 @@ export function MyTeamApp({
 
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h2>
-        <ul className="neon-panel rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]">
+        <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
           {bench.map((e) => (
             <RosterRow
               key={e.player_id}
@@ -458,6 +591,7 @@ export function MyTeamApp({
               ownership={ownership[e.player_id]}
               mounted={mounted}
               editable={team.is_editable}
+              beta={beta}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
               onDrop={startDrop}
@@ -485,43 +619,78 @@ export function MyTeamApp({
                 ✕
               </button>
             </div>
-            <p className="mb-3 text-xs text-black/50 dark:text-white/50">
-              Moving <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong> — tap where
-              they should go.
-            </p>
-            {actionError && <p className="mb-2 text-xs text-red-500">{actionError}</p>}
+            {editingEntry.is_locked ? (
+              <p className="text-xs text-black/60 dark:text-white/60">
+                <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong>&rsquo;s game
+                has already started this week — their lineup slot is locked until next week.
+              </p>
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-black/50 dark:text-white/50">
+                  Moving <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong> — tap
+                  where they should go.
+                </p>
+                {actionError && <p className="mb-2 text-xs text-red-500">{actionError}</p>}
 
-            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-              Starters
-            </h4>
-            <ul className="mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5">
-              {starterOptions.map((opt, i) => (
-                <EditLineupOptionRow
-                  key={`${opt.slot}-${i}`}
-                  option={opt}
-                  editingEntry={editingEntry}
-                  actioning={actioning}
-                  onMoveTo={moveTo}
-                  onSwapWith={swapWith}
-                />
-              ))}
-            </ul>
+                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                  Starters
+                </h4>
+                <ul className="mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5">
+                  {starterOptions.map((opt, i) => (
+                    <EditLineupOptionRow
+                      key={`${opt.slot}-${i}`}
+                      option={opt}
+                      editingEntry={editingEntry}
+                      actioning={actioning}
+                      onMoveTo={moveTo}
+                      onSwapWith={swapWith}
+                    />
+                  ))}
+                </ul>
 
-            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-              Bench
-            </h4>
-            <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-              {benchOptions.map((opt, i) => (
-                <EditLineupOptionRow
-                  key={`${opt.slot}-${i}`}
-                  option={opt}
-                  editingEntry={editingEntry}
-                  actioning={actioning}
-                  onMoveTo={moveTo}
-                  onSwapWith={swapWith}
-                />
-              ))}
-            </ul>
+                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                  Bench
+                </h4>
+                <ul
+                  className={
+                    irOptions.length > 0
+                      ? "mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5"
+                      : "flex flex-col divide-y divide-black/5 dark:divide-white/5"
+                  }
+                >
+                  {benchOptions.map((opt, i) => (
+                    <EditLineupOptionRow
+                      key={`${opt.slot}-${i}`}
+                      option={opt}
+                      editingEntry={editingEntry}
+                      actioning={actioning}
+                      onMoveTo={moveTo}
+                      onSwapWith={swapWith}
+                    />
+                  ))}
+                </ul>
+
+                {irOptions.length > 0 && (
+                  <>
+                    <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                      Injured Reserve
+                    </h4>
+                    <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+                      {irOptions.map((opt, i) => (
+                        <EditLineupOptionRow
+                          key={`${opt.slot}-${i}`}
+                          option={opt}
+                          editingEntry={editingEntry}
+                          actioning={actioning}
+                          onMoveTo={moveTo}
+                          onSwapWith={swapWith}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

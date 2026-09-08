@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, getMyTeamOwnershipServer, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
+import { getMe, getMyPreferences, getMyTeamOwnershipServer, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { SignInCard } from "@/components/SignInCard";
@@ -31,17 +31,23 @@ export default async function MyTeamPage() {
   // mount effect) so the "% owned" line never appears after hydration —
   // that was adding height to every roster row post-paint, the dominant
   // cause of a reported layout shift on this page (2026-09 mobile audit).
-  const [team, ownership, nflGames] = await Promise.all([
+  const [team, ownership, nflGames, myPreferences] = await Promise.all([
     getMyTeamServer(sessionCookie),
     getMyTeamOwnershipServer(sessionCookie),
     getNflScoreboard(),
+    getMyPreferences(sessionCookie),
   ]);
   const isGameDay = isNflGameLive(nflGames);
 
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="team" />
-      <MyTeamApp isGameDay={isGameDay} initialTeam={team} initialOwnership={ownership} />
+      <MyTeamApp
+        isGameDay={isGameDay}
+        initialTeam={team}
+        initialOwnership={ownership}
+        beta={Boolean(myPreferences?.beta_layout)}
+      />
     </div>
   );
 }

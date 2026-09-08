@@ -14,7 +14,7 @@ const YARD_TICKS = [0, 10, 20, 30, 40, 50, 40, 30, 20, 10, 0];
  * .gamecast-marker (globals.css) so they glide to a new spot on
  * re-render instead of jumping.
  */
-export function FieldVisualization({ game }: { game: LiveGame }) {
+export function FieldVisualization({ game, beta = false }: { game: LiveGame; beta?: boolean }) {
   const hasLiveBall = game.status === "in_progress" && game.yards_to_goal !== null;
   const possessionColor = game.possession_team_abbr ? nflTeamColor(game.possession_team_abbr) : null;
 
@@ -22,8 +22,15 @@ export function FieldVisualization({ game }: { game: LiveGame }) {
   const firstDownPercent =
     hasLiveBall && game.distance !== null ? 100 - Math.max(0, game.yards_to_goal! - game.distance) : null;
 
+  // The one live-tier card on this screen (Documentation/UX/
+  // 01_Design_System.md's motion-budget rule) — the field literally
+  // shows the ball moving, so it's the one place a static live accent
+  // earns its keep; everything else on Gamecast goes flat under beta.
   return (
-    <div className="neon-panel flex flex-col gap-3 rounded-xl p-4 sm:p-5" style={possessionColor ? { ["--panel-glow" as string]: possessionColor } : undefined}>
+    <div
+      className={`flex flex-col gap-3 rounded-xl p-4 sm:p-5 ${beta ? (hasLiveBall ? "wl-card--live" : "wl-card") : "neon-panel"}`}
+      style={!beta && possessionColor ? { ["--panel-glow" as string]: possessionColor } : undefined}
+    >
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Field Position</h2>
         {game.is_redzone && (

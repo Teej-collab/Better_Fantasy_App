@@ -6,6 +6,7 @@ import {
   awardsHrefFor,
   getLatestPowerRankingsWeek,
   getMe,
+  getMyPreferences,
   getStandings,
   getWeekPowerRankings,
   listSeasons,
@@ -17,6 +18,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
+import { MovementBadge } from "@/components/MovementBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 export const metadata: Metadata = { title: "Standings — Weekend League" };
@@ -45,20 +47,30 @@ export default async function StandingsPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { standings, playoff_team_count: playoffTeamCount } =
-    season !== null ? await getStandings(season, sessionCookie) : { standings: [], playoff_team_count: null };
+  const [{ standings, playoff_team_count: playoffTeamCount }, myPreferences] = await Promise.all([
+    season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
+    getMyPreferences(sessionCookie),
+  ]);
+  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   // Power-rank badges next to each team name — a separate fetch/merge
   // by team_id rather than joining onto get_standings itself, since
   // standings' own ordering (win/loss record, or final_rank once a
   // season's done) is a different concept from the weekly power-rank
   // composite (app/domain/weekly_team_stats.py's compute_power_ranks).
+  // Settings > Labs > "Try the new look" also reuses this same fetch's
+  // `movement` field per row — Documentation/UX/00_UX_Audit.md's P2
+  // finding was that Standings doesn't convey momentum despite
+  // MovementBadge already existing and being wired into Power Rankings
+  // — this is a pure reuse, not a new data source.
   let powerRankByTeam = new Map<number, number>();
+  let movementByTeam = new Map<number, number | null>();
   if (season !== null) {
     const { week: latestPowerWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
     if (latestPowerWeek !== null) {
       const { rankings } = await getWeekPowerRankings(season, latestPowerWeek, sessionCookie);
       powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
+      movementByTeam = new Map(rankings.map((r) => [r.team_id, r.movement]));
     }
   }
   // Already ordered by final_rank (ESPN's real final-season rank, full
@@ -88,13 +100,18 @@ export default async function StandingsPage({
       </p>
 
       <div
-        className="neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
-        style={panelGlowStyle(SECTION_COLORS.standings)}
+        className={
+          betaLayout
+            ? "wl-card flex flex-col rounded-lg px-4"
+            : "neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
+        }
+        style={betaLayout ? undefined : panelGlowStyle(SECTION_COLORS.standings)}
       >
         {/* Column headers only from sm up — on mobile each row labels itself */}
         <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
           <span className="w-6 shrink-0" />
           <span className="flex-1">Team</span>
+          {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
           <span className="w-20 shrink-0 text-right">W-L-T</span>
           <span className="w-16 shrink-0 text-right">PF</span>
           <span className="w-16 shrink-0 text-right">PA</span>
@@ -108,6 +125,7 @@ export default async function StandingsPage({
                 rank={i + 1}
                 teamCount={standings.length}
                 powerRank={powerRankByTeam.get(row.team_id)}
+                movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
               />
               {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
             </Fragment>
@@ -149,11 +167,16 @@ function StandingsListRow({
   rank,
   teamCount,
   powerRank,
+  movement,
 }: {
   row: StandingsRow;
   rank: number;
   teamCount: number;
   powerRank: number | undefined;
+  // Settings > Labs > "Try the new look" — undefined (not just null)
+  // when the beta layout is off, so the column never renders at all
+  // for the legacy page rather than showing an empty dash everywhere.
+  movement?: number | null;
 }) {
   const isChampion = row.final_rank === 1;
   // Symmetric with the champion above — only lit up once a season is
@@ -188,6 +211,11 @@ function StandingsListRow({
         </div>
       </div>
       <div className="flex gap-4 pl-8 text-sm sm:gap-0 sm:pl-0">
+        {movement !== undefined && (
+          <span className="text-xs tabular-nums sm:w-14 sm:shrink-0 sm:text-right">
+            <MovementBadge movement={movement} />
+          </span>
+        )}
         <span className="tabular-nums font-medium sm:w-20 sm:shrink-0 sm:text-right">
           {row.wins}-{row.losses}-{row.ties}
         </span>

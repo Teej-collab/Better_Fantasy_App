@@ -8,11 +8,14 @@ const SCORE_EMOJI: Record<string, string> = { TD: "🏈", FG: "🎯", SAFETY: "�
  * A compact chronological summary of how the score developed — the
  * "how did we get here" companion to the live score up in GameHeader.
  */
-export function ScoringSummary({ game }: { game: LiveGame }) {
+export function ScoringSummary({ game, beta = false }: { game: LiveGame; beta?: boolean }) {
   if (game.scoring_plays.length === 0) return null;
 
   return (
-    <div className="neon-panel flex flex-col gap-3 rounded-xl p-4 sm:p-5" style={panelGlowStyle(SECTION_COLORS.awards)}>
+    <div
+      className={`flex flex-col gap-3 rounded-xl p-4 sm:p-5 ${beta ? "wl-card" : "neon-panel"}`}
+      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.awards)}
+    >
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Scoring</h2>
       <ol className="flex flex-col gap-3">
         {[...game.scoring_plays].reverse().map((sp) => {

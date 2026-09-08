@@ -29,10 +29,20 @@ export function GamecastShell({
   gameId,
   initialGame,
   isSignedIn,
+  beta = false,
 }: {
   gameId: string;
   initialGame: LiveGame;
   isSignedIn: boolean;
+  // Settings > Labs > "Try the new look" — threaded into each child
+  // instead of forking this component, since it owns the live
+  // WebSocket connection/reconnect lifecycle (see this file's own
+  // comment) and that logic must never have two copies to drift apart.
+  // Only card treatment changes under this flag — Documentation/UX/
+  // 00_UX_Audit.md's Gamecast finding was up to 5 independently-colored
+  // glow rings on screen at once; FieldVisualization becomes the one
+  // live-tier card, everything else goes flat.
+  beta?: boolean;
 }) {
   const [game, setGame] = useState(initialGame);
   const [connected, setConnected] = useState(false);
@@ -100,19 +110,19 @@ export function GamecastShell({
 
   return (
     <div className="flex flex-col gap-4">
-      <GameHeader game={game} connected={connected || !isLiveStatus} updatedSecondsAgo={updatedSecondsAgo} />
+      <GameHeader game={game} connected={connected || !isLiveStatus} updatedSecondsAgo={updatedSecondsAgo} beta={beta} />
 
       <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
-        <FieldVisualization game={game} />
-        <CurrentDrive game={game} />
+        <FieldVisualization game={game} beta={beta} />
+        <CurrentDrive game={game} beta={beta} />
       </div>
 
       <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
-        <ScoringSummary game={game} />
-        <FantasyImpact game={game} isSignedIn={isSignedIn} />
+        <ScoringSummary game={game} beta={beta} />
+        <FantasyImpact game={game} isSignedIn={isSignedIn} beta={beta} />
       </div>
 
-      <PlayByPlay game={game} />
+      <PlayByPlay game={game} beta={beta} />
     </div>
   );
 }

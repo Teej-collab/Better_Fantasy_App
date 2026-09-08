@@ -29,7 +29,7 @@ const EMPHASIS_STYLE: Record<"score" | "turnover" | "big", string> = {
  * no new plays never re-triggers it. No manual "have I seen this play
  * before" bookkeeping needed for that to be true.
  */
-export function PlayByPlay({ game }: { game: LiveGame }) {
+export function PlayByPlay({ game, beta = false }: { game: LiveGame; beta?: boolean }) {
   // Collapsed by default — the play-by-play list is the longest thing
   // on the page and, unlike Scoring/Fantasy Impact above it, isn't
   // usually what someone opens Gamecast to check first. One tap away
@@ -37,7 +37,10 @@ export function PlayByPlay({ game }: { game: LiveGame }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="neon-panel flex flex-col gap-3 rounded-xl p-4 sm:p-5" style={panelGlowStyle(SECTION_COLORS.chat)}>
+    <div
+      className={`flex flex-col gap-3 rounded-xl p-4 sm:p-5 ${beta ? "wl-card" : "neon-panel"}`}
+      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.chat)}
+    >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Live Play-by-Play</h2>
         {game.plays.length > 0 && (
