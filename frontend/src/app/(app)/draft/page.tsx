@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, getSeasonDraft, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
+import { getMe, getMyPreferences, getSeasonDraft, listSeasons, listTeamsServer, safeLatestSeason } from "@/lib/api";
 import { getDraftPoolServer, getDraftStateServer } from "@/lib/draftApi";
 import { DraftRoom } from "@/components/draft/DraftRoom";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
@@ -30,10 +30,11 @@ export default async function DraftPage() {
   // just resolved server-side now: listSeasons() returns every season
   // with a synced teams_by_season row, so the highest one is the
   // current one (safeLatestSeason, not a bare Math.max — see its doc).
-  const [draftState, pool, { seasons }] = await Promise.all([
+  const [draftState, pool, { seasons }, myPreferences] = await Promise.all([
     getDraftStateServer(sessionCookie),
     getDraftPoolServer(sessionCookie),
     listSeasons(),
+    getMyPreferences(sessionCookie),
   ]);
   const latestSeason = safeLatestSeason(seasons);
   const teams = latestSeason !== null ? (await listTeamsServer(sessionCookie, latestSeason)).teams : [];
@@ -60,6 +61,7 @@ export default async function DraftPage() {
         initialTeams={teams}
         grades={seasonDraft?.grades}
         narratives={seasonDraft?.narratives}
+        beta={Boolean(myPreferences?.beta_layout)}
       />
     </div>
   );

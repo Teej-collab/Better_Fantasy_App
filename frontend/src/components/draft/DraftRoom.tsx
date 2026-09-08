@@ -62,6 +62,7 @@ export function DraftRoom({
   initialTeams,
   grades,
   narratives,
+  beta = false,
 }: {
   myOwnerId: number;
   isCommissioner: boolean;
@@ -75,6 +76,13 @@ export function DraftRoom({
   // never waits on an extra request that has nothing to show yet.
   grades?: DraftGrade[];
   narratives?: Record<string, string | null>;
+  // Settings > Labs > "Try the new look" — visual-only (card tier
+  // classNames), never threaded into any state/WebSocket/pick-submit
+  // logic above. Documentation/UX/00_UX_Audit.md's Draft finding: the
+  // live room could stack 5-6 simultaneously-glowing .neon-panel
+  // blocks at once. The pick-clock bar becomes the one live-tier card
+  // while a pick is actually running; everything else goes flat.
+  beta?: boolean;
 }) {
   const [openGradeOwnerId, setOpenGradeOwnerId] = useState<number | null>(null);
   const [draftState, setDraftState] = useState<DraftState | null>(initialDraftState);
@@ -421,7 +429,11 @@ export function DraftRoom({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="neon-panel flex flex-wrap items-center justify-between gap-3 rounded-xl p-4">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl p-4 ${
+          beta ? (config!.status === "in_progress" ? "wl-card--live" : "wl-card") : "neon-panel"
+        }`}
+      >
         <div>
           <p className="text-xs text-black/50 dark:text-white/50">
             {config!.status === "complete"
@@ -466,7 +478,7 @@ export function DraftRoom({
       </div>
 
       {preDraftWindowActive && (
-        <div className="neon-panel flex flex-col items-center gap-1 rounded-xl p-6 text-center">
+        <div className={`flex flex-col items-center gap-1 rounded-xl p-6 text-center ${beta ? "wl-card" : "neon-panel"}`}>
           <p className="text-lg font-semibold">
             {secondsUntilStart > 0 ? (
               <>
@@ -484,7 +496,7 @@ export function DraftRoom({
       )}
 
       {config!.status === "not_started" && !preDraftWindowActive && !isCommissioner && (
-        <div className="neon-panel rounded-xl p-6 text-center text-sm text-black/60 dark:text-white/60">
+        <div className={`rounded-xl p-6 text-center text-sm text-black/60 dark:text-white/60 ${beta ? "wl-card" : "neon-panel"}`}>
           {config!.scheduled_start ? (
             <>
               The draft room opens 1 hour before the draft starts.
@@ -525,7 +537,7 @@ export function DraftRoom({
 
       {(config!.status !== "not_started" || preDraftWindowActive) && (
         <div className="flex flex-col gap-4 sm:grid sm:grid-cols-3">
-          <section className="neon-panel flex flex-col gap-2 rounded-xl p-4 sm:col-span-2">
+          <section className={`flex flex-col gap-2 rounded-xl p-4 sm:col-span-2 ${beta ? "wl-card" : "neon-panel"}`}>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={search}
@@ -607,7 +619,7 @@ export function DraftRoom({
 
           <div className="flex flex-col gap-4">
             {queuedPlayers.length > 0 && (
-              <section className="neon-panel flex flex-col gap-1 rounded-xl p-4">
+              <section className={`flex flex-col gap-1 rounded-xl p-4 ${beta ? "wl-card" : "neon-panel"}`}>
                 <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                   My Queue ({queuedPlayers.length})
                 </h2>
@@ -659,7 +671,7 @@ export function DraftRoom({
               </section>
             )}
 
-            <section className="neon-panel flex flex-col gap-1 rounded-xl p-4">
+            <section className={`flex flex-col gap-1 rounded-xl p-4 ${beta ? "wl-card" : "neon-panel"}`}>
               <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                 My team ({myPicks.length})
               </h2>
@@ -673,7 +685,7 @@ export function DraftRoom({
               ))}
             </section>
 
-            <section className="neon-panel flex flex-col gap-1 rounded-xl p-4">
+            <section className={`flex flex-col gap-1 rounded-xl p-4 ${beta ? "wl-card" : "neon-panel"}`}>
               <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                 Recent picks
               </h2>
@@ -694,7 +706,7 @@ export function DraftRoom({
               ))}
             </section>
 
-            <section className="neon-panel flex flex-col gap-2 rounded-xl p-4">
+            <section className={`flex flex-col gap-2 rounded-xl p-4 ${beta ? "wl-card" : "neon-panel"}`}>
               <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                 Draft room chat
               </h2>
