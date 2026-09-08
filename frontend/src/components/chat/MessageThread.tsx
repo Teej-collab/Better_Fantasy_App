@@ -31,11 +31,14 @@ export function MessageThread({
   onDelete,
   onTyping,
   onBack,
+  beta = false,
 }: {
   conversation: ChatConversation;
   messages: ChatMessage[];
   members: ChatMember[];
   myOwnerId: number;
+  // Settings > Labs > "Try the new look" — see ChatApp.tsx / AnnouncementCard.tsx.
+  beta?: boolean;
   mentionHighlightingEnabled: boolean;
   // My own Settings > Chat > Read Receipts preference — a receipt line
   // only ever renders when BOTH this and the conversation's own
@@ -203,7 +206,7 @@ export function MessageThread({
       {showGroupInfo && <GroupInfoModal conversation={conversation} onClose={() => setShowGroupInfo(false)} />}
 
       {isAnnouncementFeed ? (
-        <AnnouncementFeed messages={messages} myOwnerId={myOwnerId} onReact={onReact} onDelete={onDelete} />
+        <AnnouncementFeed messages={messages} myOwnerId={myOwnerId} beta={beta} onReact={onReact} onDelete={onDelete} />
       ) : (
         <div
           ref={listRef}

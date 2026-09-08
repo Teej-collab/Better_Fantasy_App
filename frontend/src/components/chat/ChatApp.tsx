@@ -428,11 +428,26 @@ export function ChatApp({
 
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
 
+  // Settings > Labs > "Try the new look" — Documentation/UX/
+  // 00_UX_Audit.md's single biggest Chat finding: a rotating glow ring
+  // animating continuously around the app's most dynamic, constantly-
+  // updating surface (new messages, typing dots, reactions) was the
+  // clearest tonal mismatch found anywhere in the app. Flat under beta.
+  // Derived straight from `preferences` (already fetched above for
+  // message-preview/mention/read-receipt settings) rather than a
+  // threaded prop — briefly false until that fetch resolves, same
+  // "default true until loaded" tradeoff those other reads already make.
+  const beta = preferences?.beta_layout ?? false;
+
   return (
     <div
       ref={panelRef}
-      className="neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
-      style={panelGlowStyle(SECTION_COLORS.chat)}
+      className={
+        beta
+          ? "wl-card relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+          : "neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+      }
+      style={beta ? undefined : panelGlowStyle(SECTION_COLORS.chat)}
     >
       <div className={`h-full w-full sm:flex ${selectedId !== null ? "hidden sm:flex" : "flex"}`}>
         <ConversationList
@@ -458,6 +473,7 @@ export function ChatApp({
             onAiNoticeResolved={resolveAiTrainingNotice}
             typingUsers={typingByConversation[selectedConversation.id] ?? []}
             connected={connected}
+            beta={beta}
             hasMoreOlder={hasMoreByConversation[selectedConversation.id] ?? false}
             onLoadOlder={loadOlder}
             onSend={sendMessage}

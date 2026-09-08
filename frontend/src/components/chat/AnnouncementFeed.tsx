@@ -10,11 +10,13 @@ import { AnnouncementCard } from "@/components/chat/AnnouncementCard";
 export function AnnouncementFeed({
   messages,
   myOwnerId,
+  beta = false,
   onReact,
   onDelete,
 }: {
   messages: ChatMessage[];
   myOwnerId: number;
+  beta?: boolean;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
 }) {
@@ -57,6 +59,7 @@ export function AnnouncementFeed({
               message={m}
               mine={m.owner_id === myOwnerId}
               expanded={expandedIds.has(m.id)}
+              beta={beta}
               onToggle={() => toggle(m.id)}
               onReact={onReact}
               onDelete={onDelete}

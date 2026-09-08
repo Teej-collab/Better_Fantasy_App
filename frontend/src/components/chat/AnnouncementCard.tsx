@@ -18,6 +18,7 @@ export function AnnouncementCard({
   message,
   mine,
   expanded,
+  beta = false,
   onToggle,
   onReact,
   onDelete,
@@ -25,6 +26,10 @@ export function AnnouncementCard({
   message: ChatMessage;
   mine: boolean;
   expanded: boolean;
+  // Settings > Labs > "Try the new look" — see ChatApp.tsx. Each card
+  // in the feed carried its own glow ring, multiplying with feed
+  // length; flat under beta, same as the rest of Chat.
+  beta?: boolean;
   onToggle: () => void;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
@@ -37,8 +42,12 @@ export function AnnouncementCard({
 
   return (
     <div
-      className="neon-panel flex flex-col gap-1.5 rounded-xl bg-black/[0.015] p-4 transition-all dark:bg-white/[0.03]"
-      style={panelGlowStyle(accent)}
+      className={
+        beta
+          ? "wl-card flex flex-col gap-1.5 rounded-xl p-4 transition-colors"
+          : "neon-panel flex flex-col gap-1.5 rounded-xl bg-black/[0.015] p-4 transition-all dark:bg-white/[0.03]"
+      }
+      style={beta ? undefined : panelGlowStyle(accent)}
     >
       <button onClick={onToggle} className="flex flex-col gap-1 text-left active:scale-[0.99]">
         <span className="flex items-center gap-1.5 font-medium">
