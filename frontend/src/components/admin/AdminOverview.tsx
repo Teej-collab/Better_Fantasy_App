@@ -67,6 +67,7 @@ export function AdminOverview({
   initialAlerts,
   initialHealth,
   initialOnline,
+  beta = false,
 }: {
   initialOverview: AdminOverviewData;
   initialTimeseries: AdminTimeseries;
@@ -75,7 +76,17 @@ export function AdminOverview({
   initialAlerts: AdminAlerts;
   initialHealth: AdminSystemHealth;
   initialOnline: OnlineOwner[];
+  // Settings > Labs > "Try the new look" — Documentation/UX/
+  // 00_UX_Audit.md's Admin finding: a real control-room accent color
+  // was already added here, but every panel still carried the same
+  // rotating glow ring as the fan-facing app, so it read as "the same
+  // app, blue-tinted" rather than a genuinely distinct internal tool.
+  // Flat under beta, same as every other section on this page.
+  beta?: boolean;
 }) {
+  const sectionClass = beta
+    ? "wl-card flex flex-col gap-2 rounded-xl p-4"
+    : "neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]";
   const [overview, setOverview] = useState(initialOverview);
   const [timeseries, setTimeseries] = useState(initialTimeseries);
   const [activity, setActivity] = useState(initialActivity);
@@ -123,16 +134,16 @@ export function AdminOverview({
       <p className="text-xs text-black/50 dark:text-white/50">{sinceLabel(overview.tracking_started_at)}</p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KpiCard label="Total Users" value={overview.total_users} />
-        <KpiCard label={`New (${overview.window_days}d)`} value={overview.new_users} />
-        <KpiCard label={`Active (${overview.window_days}d)`} value={overview.active_users} />
-        <KpiCard label="Total Leagues" value={overview.total_leagues} />
-        <KpiCard label={`Active Leagues (${overview.window_days}d)`} value={overview.active_leagues} />
-        <KpiCard label="Online Now" value={overview.online_now} live />
+        <KpiCard label="Total Users" value={overview.total_users} beta={beta} />
+        <KpiCard label={`New (${overview.window_days}d)`} value={overview.new_users} beta={beta} />
+        <KpiCard label={`Active (${overview.window_days}d)`} value={overview.active_users} beta={beta} />
+        <KpiCard label="Total Leagues" value={overview.total_leagues} beta={beta} />
+        <KpiCard label={`Active Leagues (${overview.window_days}d)`} value={overview.active_leagues} beta={beta} />
+        <KpiCard label="Online Now" value={overview.online_now} live beta={beta} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-4 lg:col-span-2 dark:bg-white/[0.03]">
+        <section className={`${sectionClass} lg:col-span-2`}>
           <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             Activity Over Time ({timeseries.window_days}d)
           </h2>
@@ -149,7 +160,7 @@ export function AdminOverview({
           </p>
         </section>
 
-        <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+        <section className={sectionClass}>
           <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             Feature Usage (30d)
           </h2>
@@ -158,7 +169,7 @@ export function AdminOverview({
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+        <section className={sectionClass}>
           <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             Recent Activity
           </h2>
@@ -179,7 +190,7 @@ export function AdminOverview({
           )}
         </section>
 
-        <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+        <section className={sectionClass}>
           <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             System Health
           </h2>
@@ -237,7 +248,7 @@ export function AdminOverview({
           )}
         </section>
 
-        <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+        <section className={sectionClass}>
           <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Alerts</h2>
           {alerts.alerts.length === 0 ? (
             <p className="text-sm text-black/50 dark:text-white/50">Nothing needs your attention.</p>
@@ -254,7 +265,7 @@ export function AdminOverview({
         </section>
       </div>
 
-      <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 text-xs text-black/50 dark:bg-white/[0.03] dark:text-white/50">
+      <section className={`${sectionClass} text-xs text-black/50 dark:text-white/50`}>
         <p>
           <strong className="text-black/70 dark:text-white/70">Not built yet:</strong> retention (Day 1/7/30) needs
           cohorts of users who signed up weeks ago; error monitoring, security monitoring, and the admin audit log

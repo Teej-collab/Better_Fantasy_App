@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getMe } from "@/lib/api";
+import { getMe, getMyPreferences } from "@/lib/api";
 import { SignInCard } from "@/components/SignInCard";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { NAV_ACCENT } from "@/lib/navDestinations";
@@ -25,7 +25,8 @@ export const metadata: Metadata = { title: "Commissioner Tools — Weekend Leagu
 export default async function CommissionerPage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const me = await getMe(sessionCookie);
+  const [me, myPreferences] = await Promise.all([getMe(sessionCookie), getMyPreferences(sessionCookie)]);
+  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   if (!me) {
     return (
@@ -95,18 +96,27 @@ export default async function CommissionerPage() {
         <p className="text-sm text-black/60 dark:text-white/60">Everything you can manage for your league.</p>
       </div>
 
+      {/* Flat under the beta layout — Documentation/UX/00_UX_Audit.md's
+          Commissioner finding was that nothing here visually signals
+          "you're in an admin tool," since every tile shared the exact
+          same rotating-glow treatment as fan-facing content. Legacy
+          rendering (.neon-panel + panelGlowStyle) is unchanged. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((tile) => (
           <Link
             key={tile.href}
             href={tile.href}
-            className="neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-4 transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:bg-white/[0.03] dark:hover:bg-white/5 dark:active:bg-white/10"
-            style={panelGlowStyle(NAV_ACCENT)}
+            className={
+              betaLayout
+                ? "wl-card flex flex-col gap-1 rounded-xl p-4 transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                : "neon-panel flex flex-col gap-1 rounded-xl bg-black/[0.015] p-4 transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:bg-white/[0.03] dark:hover:bg-white/5 dark:active:bg-white/10"
+            }
+            style={betaLayout ? undefined : panelGlowStyle(NAV_ACCENT)}
           >
             <span className="flex items-center gap-1.5 font-medium">
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: NAV_ACCENT, boxShadow: `0 0 5px ${NAV_ACCENT}` }}
+                style={{ backgroundColor: NAV_ACCENT, boxShadow: betaLayout ? undefined : `0 0 5px ${NAV_ACCENT}` }}
                 aria-hidden
               />
               {tile.title}

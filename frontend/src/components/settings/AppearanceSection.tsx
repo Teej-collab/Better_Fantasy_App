@@ -340,82 +340,190 @@ export function AppearanceSection() {
         </div>
       </section>
 
-      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-        <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Your Week Card Color</h2>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Just your own Your Week card on Home — independent of Accent Color. Default follows your Accent Color.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Your Week Card Color">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={prefs.your_week_color === null}
-            onClick={() => setYourWeekColor(null)}
-            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-              prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
-            }`}
-          >
-            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
-            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
-          </button>
-          {NEON_PALETTE.map((preset) => (
-            <button
-              key={preset.hex}
-              type="button"
-              role="radio"
-              aria-checked={prefs.your_week_color?.toLowerCase() === preset.hex}
-              onClick={() => setYourWeekColor(preset.hex)}
-              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-                prefs.your_week_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
-              }`}
-            >
-              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
-              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* Settings > Labs > "Try the new look" collapses these two
+          power-user color pickers behind a disclosure instead of
+          always showing all three — Documentation/UX/00_UX_Audit.md's
+          P3 finding was that most owners will only ever touch Accent
+          Color, but every visit paid the cost (visual weight + 2 more
+          .neon-panel glow rings) of the other two regardless. Legacy
+          rendering (both sections always open) is unchanged. */}
+      {prefs.beta_layout ? (
+        <details className="wl-card group rounded-xl p-5">
+          <summary className="cursor-pointer list-none text-sm font-semibold tracking-wide text-black/70 uppercase select-none dark:text-white/70">
+            <span className="inline-flex items-center gap-1.5">
+              Advanced colors
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="transition-transform group-open:rotate-90"
+                aria-hidden
+              >
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </span>
+          </summary>
+          <div className="mt-4 flex flex-col gap-5">
+            <div>
+              <h3 className="text-xs font-semibold tracking-wide text-black/60 uppercase dark:text-white/60">
+                Your Week Card Color
+              </h3>
+              <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+                Just your own Your Week card on Home. Default follows your Accent Color.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Your Week Card Color">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={prefs.your_week_color === null}
+                  onClick={() => setYourWeekColor(null)}
+                  className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                    prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
+                  }`}
+                >
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                  <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+                </button>
+                {NEON_PALETTE.map((preset) => (
+                  <button
+                    key={preset.hex}
+                    type="button"
+                    role="radio"
+                    aria-checked={prefs.your_week_color?.toLowerCase() === preset.hex}
+                    onClick={() => setYourWeekColor(preset.hex)}
+                    className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                      prefs.your_week_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+                    }`}
+                  >
+                    <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+                    <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-        <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Border Animation Color</h2>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            The moving neon ring on every card and countdown tile — independent of Accent Color and Your Week Card
-            Color. Default follows your Accent Color.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Border Animation Color">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={prefs.border_glow_color === null}
-            onClick={() => setBorderGlowColor(null)}
-            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-              prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
-            }`}
-          >
-            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
-            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
-          </button>
-          {NEON_PALETTE.map((preset) => (
-            <button
-              key={preset.hex}
-              type="button"
-              role="radio"
-              aria-checked={prefs.border_glow_color?.toLowerCase() === preset.hex}
-              onClick={() => setBorderGlowColor(preset.hex)}
-              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-                prefs.border_glow_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
-              }`}
-            >
-              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
-              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+            <div>
+              <h3 className="text-xs font-semibold tracking-wide text-black/60 uppercase dark:text-white/60">
+                Border Animation Color
+              </h3>
+              <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+                The moving neon ring on every card and countdown tile. Default follows your Accent Color.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Border Animation Color">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={prefs.border_glow_color === null}
+                  onClick={() => setBorderGlowColor(null)}
+                  className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                    prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
+                  }`}
+                >
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                  <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+                </button>
+                {NEON_PALETTE.map((preset) => (
+                  <button
+                    key={preset.hex}
+                    type="button"
+                    role="radio"
+                    aria-checked={prefs.border_glow_color?.toLowerCase() === preset.hex}
+                    onClick={() => setBorderGlowColor(preset.hex)}
+                    className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                      prefs.border_glow_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+                    }`}
+                  >
+                    <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+                    <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </details>
+      ) : (
+        <>
+          <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+            <div>
+              <h2 className="text-sm font-semibold tracking-wide uppercase">Your Week Card Color</h2>
+              <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+                Just your own Your Week card on Home — independent of Accent Color. Default follows your Accent Color.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Your Week Card Color">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={prefs.your_week_color === null}
+                onClick={() => setYourWeekColor(null)}
+                className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                  prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
+                }`}
+              >
+                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+              </button>
+              {NEON_PALETTE.map((preset) => (
+                <button
+                  key={preset.hex}
+                  type="button"
+                  role="radio"
+                  aria-checked={prefs.your_week_color?.toLowerCase() === preset.hex}
+                  onClick={() => setYourWeekColor(preset.hex)}
+                  className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                    prefs.your_week_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+                  }`}
+                >
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+                  <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+            <div>
+              <h2 className="text-sm font-semibold tracking-wide uppercase">Border Animation Color</h2>
+              <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+                The moving neon ring on every card and countdown tile — independent of Accent Color and Your Week Card
+                Color. Default follows your Accent Color.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Border Animation Color">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={prefs.border_glow_color === null}
+                onClick={() => setBorderGlowColor(null)}
+                className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                  prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
+                }`}
+              >
+                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
+              </button>
+              {NEON_PALETTE.map((preset) => (
+                <button
+                  key={preset.hex}
+                  type="button"
+                  role="radio"
+                  aria-checked={prefs.border_glow_color?.toLowerCase() === preset.hex}
+                  onClick={() => setBorderGlowColor(preset.hex)}
+                  className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                    prefs.border_glow_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+                  }`}
+                >
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+                  <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>

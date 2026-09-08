@@ -7,6 +7,7 @@ import {
   getAdminSystemHealthServer,
   getAdminTimeseriesServer,
   getFeatureUsageServer,
+  getMyPreferences,
   getOnlineOwnersServer,
 } from "@/lib/api";
 import { AdminOverview } from "@/components/admin/AdminOverview";
@@ -17,7 +18,7 @@ export default async function AdminOverviewPage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [overview, timeseries, features, activity, alerts, health, owners] = await Promise.all([
+  const [overview, timeseries, features, activity, alerts, health, owners, myPreferences] = await Promise.all([
     getAdminOverviewServer(sessionCookie),
     getAdminTimeseriesServer(sessionCookie, 30),
     getFeatureUsageServer(sessionCookie, 30),
@@ -25,6 +26,7 @@ export default async function AdminOverviewPage() {
     getAdminAlertsServer(sessionCookie),
     getAdminSystemHealthServer(sessionCookie),
     getOnlineOwnersServer(sessionCookie),
+    getMyPreferences(sessionCookie),
   ]);
 
   if (!overview || !timeseries || !features || !activity || !alerts || !health || !owners) {
@@ -40,6 +42,7 @@ export default async function AdminOverviewPage() {
       initialAlerts={alerts}
       initialHealth={health}
       initialOnline={owners}
+      beta={Boolean(myPreferences?.beta_layout)}
     />
   );
 }
