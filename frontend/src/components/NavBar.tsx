@@ -14,6 +14,8 @@ import {
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryNav } from "@/components/nav/PrimaryNav";
 import { BottomNav } from "@/components/nav/BottomNav";
+import { PrimaryNavBeta } from "@/components/nav/PrimaryNavBeta";
+import { BottomNavBeta } from "@/components/nav/BottomNavBeta";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 
@@ -78,6 +80,12 @@ export async function NavBar() {
     }
   }
 
+  // Settings > Labs > "Try the new look" — see LabsSection.tsx and
+  // Documentation/UX/06_Implementation_Roadmap.md section 0. Signed-out
+  // visitors always get the legacy nav (the preference is per-owner and
+  // there's no session to read it from).
+  const betaLayout = Boolean(myPreferences?.beta_layout);
+
   return (
     <>
       {/* sticky, not the pre-2026-08-31 static-in-flow header — a header
@@ -108,21 +116,32 @@ export async function NavBar() {
           <div className="flex min-w-0 items-center gap-1">
             <BrandMark href="/" />
             <span className="mx-2 hidden h-5 w-px bg-black/10 sm:block dark:bg-white/10" aria-hidden />
-            <PrimaryNav
-              signedIn={signedIn}
-              matchupsHref={matchupsHref}
-              myMatchupLive={myMatchupLive}
-              isGameDay={isGameDay}
-              order={bottomNavOrder}
-            />
+            {betaLayout ? (
+              <PrimaryNavBeta signedIn={signedIn} matchupsHref={matchupsHref} />
+            ) : (
+              <PrimaryNav
+                signedIn={signedIn}
+                matchupsHref={matchupsHref}
+                myMatchupLive={myMatchupLive}
+                isGameDay={isGameDay}
+                order={bottomNavOrder}
+              />
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {signedIn && <ChatNavLink variant="header" />}
+            {/* Beta nav carries Chat as a real tab (PrimaryNavBeta/
+                BottomNavBeta) instead of this header-only icon — see
+                Documentation/UX/02_Information_Architecture.md. */}
+            {signedIn && !betaLayout && <ChatNavLink variant="header" />}
             <AuthStatus />
           </div>
         </nav>
       </header>
-      <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
+      {betaLayout ? (
+        <BottomNavBeta signedIn={signedIn} matchupsHref={matchupsHref} />
+      ) : (
+        <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
+      )}
     </>
   );
 }

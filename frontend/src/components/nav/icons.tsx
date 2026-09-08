@@ -90,3 +90,26 @@ export function GamecastIcon(props: IconProps) {
   );
 }
 
+// Beta nav (Documentation/UX/02_Information_Architecture.md) — a
+// 3x3 dot grid for "More," matching the same mark used across the
+// redesign mockups rather than a generic hamburger/ellipsis, since
+// "More" here is a real catch-all destination (My Team, Draft,
+// Keepers, Free Agents, Trades, Gamecast, Settings, League
+// Management), not a menu of secondary actions.
+export function MoreIcon(props: IconProps) {
+  const p = base(props);
+  return (
+    <svg {...p} fill="currentColor" stroke="none">
+      <circle cx="6" cy="6" r="1.6" />
+      <circle cx="12" cy="6" r="1.6" />
+      <circle cx="18" cy="6" r="1.6" />
+      <circle cx="6" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="18" cy="12" r="1.6" />
+      <circle cx="6" cy="18" r="1.6" />
+      <circle cx="12" cy="18" r="1.6" />
+      <circle cx="18" cy="18" r="1.6" />
+    </svg>
+  );
+}
+

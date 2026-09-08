@@ -1192,6 +1192,11 @@ export type OwnerPreferences = {
   // brighter mint-green default accent). Not a light/dark mode switch;
   // the app stays dark either way.
   theme: "calm" | "cosmic";
+  // Settings > Labs > "Try the new look" — opts into the redesigned
+  // nav (Home/League/Matchup/Chat/More) and page layouts. Orthogonal
+  // to theme above (palette vs. structure) — see
+  // Documentation/UX/06_Implementation_Roadmap.md section 0.
+  beta_layout: boolean;
   // JSON-encoded array of the 5 mobile bottom-nav destination keys
   // (BottomNav.tsx), in the owner's chosen order — null means "use
   // MOBILE_NAV_ORDER" (lib/navDestinations.ts).

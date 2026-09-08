@@ -126,6 +126,16 @@ const APPEARANCE_SCRIPT = `
     }
     var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
     document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");
+    // Settings > Labs > "Try the new look" (wl_beta_layout, mirrored by
+    // LabsSection.tsx same as every other cookie above) — data-wl-layout
+    // gates the redesigned nav/page components (NavBar.tsx picks
+    // PrimaryNav/BottomNav vs. their Beta counterparts from this same
+    // signal server-side via owner_preferences.beta_layout; this
+    // attribute is what lets any CSS that needs to know before
+    // hydration read it too, same reasoning as data-wl-theme above).
+    if (/(?:^|; )wl_beta_layout=1(?:;|$)/.test(document.cookie)) {
+      document.documentElement.setAttribute("data-wl-layout", "beta");
+    }
   } catch (e) {}
 })();
 `;

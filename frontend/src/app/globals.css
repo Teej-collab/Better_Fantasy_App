@@ -205,12 +205,22 @@ body {
    as .countdown-tile's. --wl-glow-scale (Settings > Appearance > Neon
    Intensity) scales the ring's opacity, same as every other decorative
    glow in the app; it still scales .home-ambient's wash too. */
-.neon-panel {
+.neon-panel,
+.wl-card--featured {
   position: relative;
   isolation: isolate;
   background-color: var(--wl-surface);
   border: 1px solid var(--wl-border);
   --ring-color: var(--border-glow-color, var(--user-accent, var(--wl-accent)));
+}
+/* Unlike .neon-panel (which relies on each of its ~100 existing call
+   sites pairing it with its own Tailwind rounded-* utility),
+   .wl-card--featured gets a default radius here so every new
+   beta-flagged component doesn't have to remember to add one — this
+   rule only ever matches the new class, never .neon-panel alone, so
+   it can't affect existing call sites. */
+.wl-card--featured {
+  border-radius: 0.875rem;
 }
 
 @property --panel-border-angle {
@@ -218,7 +228,8 @@ body {
   inherits: false;
   initial-value: 0deg;
 }
-.neon-panel::before {
+.neon-panel::before,
+.wl-card--featured::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -251,11 +262,13 @@ body {
     --panel-border-angle: 360deg;
   }
 }
-.motion-reduced .neon-panel::before {
+.motion-reduced .neon-panel::before,
+.motion-reduced .wl-card--featured::before {
   animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .neon-panel::before {
+  .neon-panel::before,
+  .wl-card--featured::before {
     animation: none;
   }
 }
@@ -282,6 +295,49 @@ body {
    property that only this rule ever assigns. */
 [data-wl-theme="cosmic"] .neon-panel {
   --ring-color: var(--panel-glow-cosmic, var(--border-glow-color, var(--user-accent, var(--wl-accent))));
+}
+
+/* Card tier system (Documentation/UX/01_Design_System.md section 4) —
+   the redesign's flat-by-default alternative to .neon-panel's
+   permanent rotating glow ring, used only by pages gated behind
+   Settings > Labs > "Try the new look" (owner_preferences.beta_layout,
+   see NavBar.tsx). New class names, not a change to .neon-panel
+   itself, so nothing outside the beta-flagged pages is affected.
+
+   Three tiers, one rule: glow/motion is a signal, not a background
+   style. .wl-card is the shared flat base (matte surface, hairline
+   border, no ring, no motion) — the default for anything that isn't
+   happening right now. .wl-card--live adds a static accent-colored
+   left edge for something genuinely live/time-sensitive (a game in
+   progress, an active matchup) without any continuous animation.
+   .wl-card--featured is .neon-panel's existing rotating ring, reused
+   deliberately (not reinvented) but reserved for rare, big moments —
+   see the design doc's motion-budget rule: at most one featured card
+   and two live indicators visible on screen at once. */
+.wl-card {
+  background-color: var(--wl-surface);
+  border: 1px solid var(--wl-border);
+  border-radius: 0.875rem;
+}
+.wl-card--live {
+  background-color: var(--wl-surface);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-left: 3px solid var(--wl-live);
+  border-radius: 0.875rem;
+}
+/* .wl-card--featured's actual ring comes from being added to
+   .neon-panel/.neon-panel::before's own selector lists below (search
+   "wl-card--featured" in this file) — plain CSS has no `composes`
+   (that's a CSS Modules feature; this file isn't one), so reuse here
+   means literally sharing the rule, not aliasing to it. */
+
+/* --wl-success/--wl-warning: additive tokens from the design doc's
+   color section — win/positive-delta and pending/needs-action states
+   that today get improvised per-component instead of sharing one
+   value. Additive only; no existing rule reads these yet. */
+:root {
+  --wl-success: #22c55e;
+  --wl-warning: #facc15;
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-

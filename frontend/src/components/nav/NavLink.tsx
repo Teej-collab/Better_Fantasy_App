@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 // primary section). /seasons/{s}/awards (League) and
 // /seasons/{s}/weeks/{w} (Matchups) share a root segment, so this
 // needs real patterns, not a simple prefix string.
-export type NavSection = "team" | "league" | "home" | "matchups" | "gamecast" | "chat";
+export type NavSection = "team" | "league" | "home" | "matchups" | "gamecast" | "chat" | "more";
 
 const SECTION_PATTERNS: Record<NavSection, RegExp[]> = {
   // Exact root only — a prefix match here would light up Home on every
@@ -34,6 +34,24 @@ const SECTION_PATTERNS: Record<NavSection, RegExp[]> = {
   matchups: [/^\/seasons\/[^/]+\/weeks\//, /^\/matchups\//],
   gamecast: [/^\/gamecast(\/|$)/],
   chat: [/^\/chat(\/|$)/],
+  // Beta nav's catch-all tab (Documentation/UX/02_Information_Architecture.md)
+  // — everything that moved out of a dedicated top-level slot to make
+  // room for Chat: My Team's own sub-nav destinations, Gamecast,
+  // Settings, and League Management. Independent of the legacy "team"/
+  // "gamecast" patterns above — the two nav trees never render at the
+  // same time (gated by beta_layout), so there's no conflict in a
+  // route matching both.
+  more: [
+    /^\/more(\/|$)/,
+    /^\/team(\/|$)/,
+    /^\/draft(\/|$)/,
+    /^\/keepers(\/|$)/,
+    /^\/free-agents(\/|$)/,
+    /^\/trades(\/|$)/,
+    /^\/gamecast(\/|$)/,
+    /^\/settings(\/|$)/,
+    /^\/commissioner(\/|$)/,
+  ],
 };
 
 export function isSectionActive(section: NavSection, pathname: string): boolean {

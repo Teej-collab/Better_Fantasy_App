@@ -251,6 +251,7 @@ class PreferencesPatch(BaseModel):
     neon_intensity: str | None = None
     reduced_motion: bool | None = None
     theme: str | None = None
+    beta_layout: bool | None = None
     notify_game_alerts: bool | None = None
     notify_my_players: bool | None = None
     notify_fantasy_team: bool | None = None

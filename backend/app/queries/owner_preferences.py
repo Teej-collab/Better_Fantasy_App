@@ -43,6 +43,16 @@ _DEFAULT_PREFERENCES = {
     # data-wl-theme on <html> (app/layout.tsx), the same before-first-
     # paint cookie mechanism neon_intensity already uses.
     "theme": "calm",
+    # Settings > Labs > "Try the new look" — an opt-in beta for the
+    # redesigned nav (Home/League/Matchup/Chat/More) and page layouts
+    # proposed in Documentation/UX/. Orthogonal to theme above: this
+    # gates structure (which nav/components render), theme gates
+    # palette only. See Documentation/UX/06_Implementation_Roadmap.md
+    # section 0 for the rollout plan — opt-in during the beta window,
+    # then becomes the only layout and this column (and the legacy nav
+    # it replaces) gets deleted rather than living on as a permanent
+    # third theme option.
+    "beta_layout": False,
     "home_card_order": None,
     # None on all three below means "use the app's hardcoded default" —
     # same convention as home_card_order. home_hidden_cards is

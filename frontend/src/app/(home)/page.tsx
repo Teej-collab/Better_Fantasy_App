@@ -7,6 +7,7 @@ import {
   getChugLeaderboard,
   getCurrentWeek,
   getMe,
+  getMyPreferences,
   getMyWeek,
   getNflScoreboard,
   getStandings,
@@ -40,6 +41,7 @@ import { ChugDueCard } from "@/components/ChugDueCard";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeCardDeck } from "@/components/HomeCardDeck";
+import { HomePageBeta } from "@/components/HomePageBeta";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
@@ -78,13 +80,20 @@ export default async function HomePage() {
   const { seasons } = await listSeasons();
   const season = safeLatestSeason(seasons);
 
-  const [myWeek, nflGames, gamecastGames, activeLeagueName] = await Promise.all([
+  const [myWeek, nflGames, gamecastGames, activeLeagueName, myPreferences] = await Promise.all([
     getMyWeek(sessionCookie),
     getNflScoreboard(),
     getLiveGames(),
     getActiveLeagueName(sessionCookie),
+    getMyPreferences(sessionCookie),
   ]);
   const isGameDay = isNflGameLive(nflGames);
+  // Settings > Labs > "Try the new look" — see LabsSection.tsx and
+  // Documentation/UX/06_Implementation_Roadmap.md section 0. HomePageBeta
+  // gets the same fetched data as the legacy render below; it's a
+  // separate component (not a threaded-through boolean) so the legacy
+  // path stays completely untouched.
+  const betaLayout = Boolean(myPreferences?.beta_layout);
 
   let week: number | null = null;
   let standings: StandingsRow[] = [];
@@ -450,6 +459,33 @@ export default async function HomePage() {
 
   cards.discover = <DiscoveryGrid />;
 
+  if (betaLayout) {
+    return (
+      <HomeWelcomeBackEntry displayName={me.display_name} needsLeague={me.active_league_id === null}>
+        <HomePageBeta
+          myWeek={myWeek}
+          isGameDay={isGameDay}
+          tickerItems={tickerItems}
+          leagueTickerItems={leagueTickerItems}
+          activeLeagueName={activeLeagueName}
+          standings={standings}
+          powerRankings={powerRankings}
+          weekPlayed={weekPlayed}
+          season={season}
+          otherMatchups={otherMatchups}
+          currentWeek={week}
+          rivalryGamesThisWeek={rivalryGamesThisWeek}
+          topRivalries={topRivalries}
+          weeklyAwards={weeklyAwards}
+          seasonDraft={seasonDraft}
+          liveNflGames={liveNflGames}
+          gamecastGames={gamecastGames}
+          draftCountdownOrChugCard={cards.draftCountdown ?? null}
+        />
+      </HomeWelcomeBackEntry>
+    );
+  }
+
   return (
     <HomeWelcomeBackEntry displayName={me.display_name} needsLeague={me.active_league_id === null}>
       <div className="flex flex-col gap-6">
@@ -778,7 +814,7 @@ function buildAwardTiles(awards: WeeklyAwards): Tile[] {
   return tiles;
 }
 
-function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
+export function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   const tiles = buildAwardTiles(awards);
   if (tiles.length === 0) return null;
 
