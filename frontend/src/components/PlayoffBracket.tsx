@@ -1,4 +1,4 @@
-import type { PlayoffBracketNode } from "@/lib/api";
+import type { PlayoffBracketNode, ProjectedPlayoffMatchup } from "@/lib/api";
 
 function roundLabel(round: number, maxRound: number): string {
   if (round === maxRound) return "Final";
@@ -89,6 +89,54 @@ export function PlayoffBracket({ nodes }: { nodes: PlayoffBracketNode[] }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "If the season ended today" — round 1's real seeded matchups,
+ * recomputed live from current standings on every page load (backend/
+ * app/domain/playoffs.py's get_projected_playoff_picture). No real
+ * games attached, no score, no winner — purely a projection, labeled
+ * as one so it's never mistaken for the real bracket. Renders nothing
+ * once the real PlayoffBracket has something to show (the page itself
+ * only ever passes one of the two in — see the Standings page), or
+ * before there's enough real data (playoff settings, standings) to
+ * project from.
+ */
+export function ProjectedPlayoffPicture({ matchups }: { matchups: ProjectedPlayoffMatchup[] | null }) {
+  if (!matchups || matchups.length === 0) return null;
+
+  return (
+    <div className="neon-panel flex flex-col gap-3 rounded-lg bg-black/[0.015] p-4 dark:bg-white/[0.03]">
+      <div>
+        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          Projected Playoff Picture
+        </h2>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          If the season ended today — recalculated every week from current standings. Not a guaranteed clinch.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {matchups
+          .slice()
+          .sort((a, b) => a.slot - b.slot)
+          .map((m) => (
+            <div
+              key={m.slot}
+              className="flex min-w-[200px] flex-1 flex-col divide-y divide-black/5 rounded-lg border border-dashed border-black/15 dark:divide-white/5 dark:border-white/15"
+            >
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
+                <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_a_seed}</span>
+                <span className="truncate">{m.team_a_name}</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
+                <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_b_seed}</span>
+                <span className="truncate">{m.team_b_name}</span>
+              </div>
+            </div>
+          ))}
       </div>
     </div>
   );

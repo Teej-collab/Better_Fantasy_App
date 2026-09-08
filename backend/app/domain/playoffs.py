@@ -275,3 +275,49 @@ async def get_bracket_view(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID
         season, league_id,
     )
     return [dict(r) for r in rows]
+
+
+async def get_projected_playoff_picture(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict] | None:
+    """"If the season ended today" — round 1's real seeded matchups,
+    recomputed live from get_standings on every call (no DB write, no
+    bracket_matchups row, no real matchups row) rather than generated
+    once. Purely a projection: deliberately stops at round 1 rather
+    than guessing who'd win to fabricate a full bracket — same "a
+    preview, not a guaranteed clinch" restraint the standings page's
+    own playoff-line divider already applies, and the same reasoning
+    get_standings' own tiebreak-shallow ordering already carries here
+    (wins DESC, points_for DESC, no head-to-head/points-against
+    tiebreak — a real limitation this projection inherits, not a new
+    one it introduces).
+
+    Returns None once a real bracket has actually been generated for
+    this season (get_bracket_view is authoritative from that point on
+    — showing a hypothetical alongside a real one would just be
+    confusing) or when there isn't yet enough real data to project
+    from (playoff_team_count unknown, not enough teams, or not a
+    supported power-of-2 count)."""
+    has_real_bracket = await conn.fetchval(
+        "SELECT 1 FROM playoff_bracket_matchups WHERE season = $1 AND league_id = $2 LIMIT 1", season, league_id,
+    )
+    if has_real_bracket:
+        return None
+
+    settings = await get_playoff_settings(conn, season, league_id)
+    team_count = settings["playoff_team_count"]
+    if team_count is None or not _is_power_of_two(team_count):
+        return None
+
+    standings = await get_standings(conn, season, league_id)
+    if len(standings) < team_count:
+        return None
+    seeds = [dict(row) for row in standings[:team_count]]
+
+    return [
+        {
+            "slot": i,
+            "team_a_id": seeds[i]["team_id"], "team_a_name": seeds[i]["team_name"], "team_a_seed": i + 1,
+            "team_b_id": seeds[team_count - 1 - i]["team_id"], "team_b_name": seeds[team_count - 1 - i]["team_name"],
+            "team_b_seed": team_count - i,
+        }
+        for i in range(team_count // 2)
+    ]

@@ -98,6 +98,8 @@ async def test_league_endpoints_require_session(monkeypatch):
         "/teams/1/roster?week=1",
         "/matchups/1",
         f"/seasons/{TEST_SEASON}/waivers/priority?week=1",
+        f"/seasons/{TEST_SEASON}/playoffs/bracket",
+        f"/seasons/{TEST_SEASON}/playoffs/projected",
     ):
         resp = await _get(path)
         assert resp.status_code == 401, f"{path} should require a session"
@@ -113,6 +115,8 @@ async def test_league_endpoints_reject_non_member(pool, monkeypatch):
         "/records",
         "/rivalries",
         f"/seasons/{TEST_SEASON}/waivers/priority?week=1",
+        f"/seasons/{TEST_SEASON}/playoffs/bracket",
+        f"/seasons/{TEST_SEASON}/playoffs/projected",
     ):
         resp = await _get(path, cookies)
         # require_active_league_id 409s a signed-in account with no
@@ -153,7 +157,30 @@ async def test_playoff_bracket_reflects_generated_bracket(pool, monkeypatch):
     assert resp.status_code == 200
     nodes = resp.json()["nodes"]
     assert len(nodes) == 1
-    assert {nodes[0]["team_a_name"], nodes[0]["team_b_name"]} == {"Team Alpha", "Team Beta"}
+
+
+async def test_projected_playoff_picture_reflects_live_standings(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    team_a, team_b = await _seed_two_teams(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score) "
+            "VALUES ($1, 1, $2, $3, $4, $5)",
+            TEST_SEASON, team_a, team_b, 10, 20,
+        )
+        await conn.execute(
+            "INSERT INTO league_playoff_settings (season, league_id, playoff_team_count) VALUES ($1, $2, 2)",
+            TEST_SEASON, DEFAULT_LEAGUE_ID,
+        )
+    cookies = await _member_cookies(pool, "projected-picture")
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/playoffs/projected", cookies)
+
+    assert resp.status_code == 200
+    matchups = resp.json()["matchups"]
+    assert len(matchups) == 1
+    assert {matchups[0]["team_a_id"], matchups[0]["team_b_id"]} == {team_a, team_b}
+    assert {matchups[0]["team_a_name"], matchups[0]["team_b_name"]} == {"Team Alpha", "Team Beta"}
 
 
 async def test_waiver_priority_seeds_worst_record_first(pool, monkeypatch):

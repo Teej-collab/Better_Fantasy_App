@@ -270,6 +270,29 @@ export function getPlayoffBracket(season: number, sessionCookie: string | undefi
   );
 }
 
+// "If the season ended today" — round 1's real seeded matchups,
+// recomputed live from current standings on every request (backend/
+// app/domain/playoffs.py's get_projected_playoff_picture). No real
+// games attached; `matchups` is null once a real bracket has been
+// generated (getPlayoffBracket above takes over from that point) or
+// before there's enough real data to project from.
+export type ProjectedPlayoffMatchup = {
+  slot: number;
+  team_a_id: number;
+  team_a_name: string;
+  team_a_seed: number;
+  team_b_id: number;
+  team_b_name: string;
+  team_b_seed: number;
+};
+
+export function getProjectedPlayoffPicture(season: number, sessionCookie: string | undefined) {
+  return getServer<{ season: number; matchups: ProjectedPlayoffMatchup[] | null }>(
+    `/seasons/${season}/playoffs/projected`,
+    sessionCookie
+  );
+}
+
 export function listWeekMatchups(season: number, week: number) {
   return get<{ matchups: WeekMatchup[] }>(`/seasons/${season}/weeks/${week}/matchups`);
 }

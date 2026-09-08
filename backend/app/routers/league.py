@@ -73,6 +73,19 @@ async def playoff_bracket(season: int, league_id: int = Depends(require_league_a
     return {"season": season, "nodes": nodes}
 
 
+@router.get("/seasons/{season}/playoffs/projected")
+async def projected_playoff_picture(season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """"If the season ended today" — round 1's real seeded matchups,
+    recomputed live from current standings on every request (see
+    app/domain/playoffs.py's get_projected_playoff_picture). `matchups`
+    is null once a real bracket has been generated (GET .../bracket
+    above takes over from that point) or before there's enough real
+    data to project from."""
+    async with pool.acquire() as conn:
+        matchups = await playoffs.get_projected_playoff_picture(conn, season, league_id)
+    return {"season": season, "matchups": matchups}
+
+
 @router.get("/seasons/{season}/waivers/priority")
 async def waiver_priority(
     season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)

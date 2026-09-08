@@ -8,6 +8,7 @@ import {
   getMe,
   getMyPreferences,
   getPlayoffBracket,
+  getProjectedPlayoffPicture,
   getStandings,
   getWeekPowerRankings,
   listSeasons,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
-import { PlayoffBracket } from "@/components/PlayoffBracket";
+import { PlayoffBracket, ProjectedPlayoffPicture } from "@/components/PlayoffBracket";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
@@ -92,6 +93,14 @@ export default async function StandingsPage({
   // in which case PlayoffBracket itself renders nothing.
   const { nodes: bracketNodes } =
     season !== null ? await getPlayoffBracket(season, sessionCookie) : { nodes: [] };
+  // "If the season ended today" — only fetched/shown once the real
+  // bracket doesn't exist yet (the backend itself also returns null
+  // once a real one exists, so this is a pure optimization, not the
+  // only guard).
+  const { matchups: projectedMatchups } =
+    season !== null && bracketNodes.length === 0
+      ? await getProjectedPlayoffPicture(season, sessionCookie)
+      : { matchups: null };
 
   return (
     <div className="flex flex-col gap-4">
@@ -142,6 +151,7 @@ export default async function StandingsPage({
       </div>
 
       <PlayoffBracket nodes={bracketNodes} />
+      <ProjectedPlayoffPicture matchups={projectedMatchups} />
     </div>
   );
 }

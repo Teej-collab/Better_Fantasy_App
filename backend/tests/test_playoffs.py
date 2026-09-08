@@ -271,3 +271,36 @@ async def test_resolve_ready_playoff_matchups_is_idempotent(pool):
         second = await playoffs.resolve_ready_playoff_matchups(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
     assert len(first) == 1
     assert second == []
+
+
+async def test_projected_playoff_picture_seeds_from_current_standings(pool):
+    team_1, team_2, team_3, team_4 = await _four_team_bracket_fixture(pool)
+    await _set_playoff_settings(pool, playoff_team_count=4)
+
+    async with pool.acquire() as conn:
+        projected = await playoffs.get_projected_playoff_picture(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+
+    assert len(projected) == 2
+    matchup_by_slot = {m["slot"]: m for m in projected}
+    assert matchup_by_slot[0]["team_a_id"] == team_1 and matchup_by_slot[0]["team_a_seed"] == 1
+    assert matchup_by_slot[0]["team_b_id"] == team_4 and matchup_by_slot[0]["team_b_seed"] == 4
+    assert matchup_by_slot[1]["team_a_id"] == team_2 and matchup_by_slot[1]["team_a_seed"] == 2
+    assert matchup_by_slot[1]["team_b_id"] == team_3 and matchup_by_slot[1]["team_b_seed"] == 3
+
+
+async def test_projected_playoff_picture_none_without_playoff_settings(pool):
+    await _four_team_bracket_fixture(pool)
+
+    async with pool.acquire() as conn:
+        projected = await playoffs.get_projected_playoff_picture(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+    assert projected is None
+
+
+async def test_projected_playoff_picture_none_once_a_real_bracket_exists(pool):
+    await _four_team_bracket_fixture(pool)
+    await _set_playoff_settings(pool, playoff_team_count=4)
+
+    async with pool.acquire() as conn:
+        await playoffs.generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+        projected = await playoffs.get_projected_playoff_picture(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+    assert projected is None
