@@ -15,7 +15,7 @@ import {
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
-import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
 import { positionColor } from "@/lib/positionColors";
 
@@ -43,19 +43,10 @@ function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlot
   for (const slot of eligibleStarterSlotsFor(entry.position)) {
     const capacity = rosterSlots[slot] ?? 0;
     const occupants = roster.filter((r) => r.lineup_slot === slot);
-    // A swap with a locked occupant would always be rejected server-side
-    // (their game already started — see lineup_engine.py's plan_move/
-    // plan_swap) — don't offer a destination the backend can only 409.
-    for (const occupant of occupants) if (!occupant.is_locked) options.push({ slot, occupant });
+    for (const occupant of occupants) options.push({ slot, occupant });
     if (occupants.length < capacity) options.push({ slot, occupant: null });
   }
   options.push(entry.lineup_slot === BENCH_SLOT_LABEL ? { slot: BENCH_SLOT_LABEL, occupant: entry } : { slot: BENCH_SLOT_LABEL, occupant: null });
-  if (isIrEligible(entry.injury_status)) {
-    const irCapacity = rosterSlots[IR_SLOT_LABEL] ?? 0;
-    const irOccupants = roster.filter((r) => r.lineup_slot === IR_SLOT_LABEL);
-    for (const occupant of irOccupants) if (!occupant.is_locked) options.push({ slot: IR_SLOT_LABEL, occupant });
-    if (irOccupants.length < irCapacity) options.push({ slot: IR_SLOT_LABEL, occupant: null });
-  }
   return options;
 }
 
@@ -144,23 +135,9 @@ function RosterRow({
           {metaParts.length > 0 && (
             <span className="truncate text-xs text-black/50 dark:text-white/50">{metaParts.join(" · ")}</span>
           )}
-          {/* Capped at 2 status pills, shown inline together, per
-              Documentation/UX/01_Design_System.md section 6. */}
-          {(hasInjury || entry.is_locked) && (
-            <span className="mt-0.5 flex flex-wrap items-center gap-1">
-              {hasInjury && (
-                <span className="w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                  {entry.injury_status}
-                </span>
-              )}
-              {entry.is_locked && (
-                <span
-                  className="w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
-                  title="This player's game has already started — their lineup slot is locked for the week"
-                >
-                  Locked
-                </span>
-              )}
+          {hasInjury && (
+            <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
+              {entry.injury_status}
             </span>
           )}
         </div>
@@ -256,14 +233,6 @@ function RosterRow({
         {entry.injury_status && entry.injury_status !== "ACTIVE" && (
           <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
             {entry.injury_status}
-          </span>
-        )}
-        {entry.is_locked && (
-          <span
-            className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
-            title="This player's game has already started — their lineup slot is locked for the week"
-          >
-            Locked
           </span>
         )}
       </div>
@@ -488,9 +457,8 @@ export function MyTeamApp({
   }
 
   const options = editingEntry ? editLineupOptions(editingEntry, team.roster, team.roster_slots ?? {}) : [];
-  const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL && o.slot !== IR_SLOT_LABEL);
+  const starterOptions = options.filter((o) => o.slot !== BENCH_SLOT_LABEL);
   const benchOptions = options.filter((o) => o.slot === BENCH_SLOT_LABEL);
-  const irOptions = options.filter((o) => o.slot === IR_SLOT_LABEL);
 
   const week = team.week ?? 1;
 
@@ -619,78 +587,43 @@ export function MyTeamApp({
                 ✕
               </button>
             </div>
-            {editingEntry.is_locked ? (
-              <p className="text-xs text-black/60 dark:text-white/60">
-                <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong>&rsquo;s game
-                has already started this week — their lineup slot is locked until next week.
-              </p>
-            ) : (
-              <>
-                <p className="mb-3 text-xs text-black/50 dark:text-white/50">
-                  Moving <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong> — tap
-                  where they should go.
-                </p>
-                {actionError && <p className="mb-2 text-xs text-red-500">{actionError}</p>}
+            <p className="mb-3 text-xs text-black/50 dark:text-white/50">
+              Moving <strong className="text-black/80 dark:text-white/80">{editingEntry.player_name}</strong> — tap where
+              they should go.
+            </p>
+            {actionError && <p className="mb-2 text-xs text-red-500">{actionError}</p>}
 
-                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-                  Starters
-                </h4>
-                <ul className="mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5">
-                  {starterOptions.map((opt, i) => (
-                    <EditLineupOptionRow
-                      key={`${opt.slot}-${i}`}
-                      option={opt}
-                      editingEntry={editingEntry}
-                      actioning={actioning}
-                      onMoveTo={moveTo}
-                      onSwapWith={swapWith}
-                    />
-                  ))}
-                </ul>
+            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+              Starters
+            </h4>
+            <ul className="mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5">
+              {starterOptions.map((opt, i) => (
+                <EditLineupOptionRow
+                  key={`${opt.slot}-${i}`}
+                  option={opt}
+                  editingEntry={editingEntry}
+                  actioning={actioning}
+                  onMoveTo={moveTo}
+                  onSwapWith={swapWith}
+                />
+              ))}
+            </ul>
 
-                <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-                  Bench
-                </h4>
-                <ul
-                  className={
-                    irOptions.length > 0
-                      ? "mb-3 flex flex-col divide-y divide-black/5 dark:divide-white/5"
-                      : "flex flex-col divide-y divide-black/5 dark:divide-white/5"
-                  }
-                >
-                  {benchOptions.map((opt, i) => (
-                    <EditLineupOptionRow
-                      key={`${opt.slot}-${i}`}
-                      option={opt}
-                      editingEntry={editingEntry}
-                      actioning={actioning}
-                      onMoveTo={moveTo}
-                      onSwapWith={swapWith}
-                    />
-                  ))}
-                </ul>
-
-                {irOptions.length > 0 && (
-                  <>
-                    <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-                      Injured Reserve
-                    </h4>
-                    <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-                      {irOptions.map((opt, i) => (
-                        <EditLineupOptionRow
-                          key={`${opt.slot}-${i}`}
-                          option={opt}
-                          editingEntry={editingEntry}
-                          actioning={actioning}
-                          onMoveTo={moveTo}
-                          onSwapWith={swapWith}
-                        />
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </>
-            )}
+            <h4 className="mb-1 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+              Bench
+            </h4>
+            <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+              {benchOptions.map((opt, i) => (
+                <EditLineupOptionRow
+                  key={`${opt.slot}-${i}`}
+                  option={opt}
+                  editingEntry={editingEntry}
+                  actioning={actioning}
+                  onMoveTo={moveTo}
+                  onSwapWith={swapWith}
+                />
+              ))}
+            </ul>
           </div>
         </div>
       )}
