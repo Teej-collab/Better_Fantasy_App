@@ -74,8 +74,8 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
     for grade in grades:
         picks = await conn.fetch(
             """
-            SELECT dp.round, dp.pick_number, p.full_name AS player_name, p.position AS player_position,
-                   p.projected_points, p.search_rank
+            SELECT dp.round, dp.pick_number, dp.is_keeper, p.full_name AS player_name,
+                   p.position AS player_position, p.projected_points, p.search_rank
             FROM draft_picks dp JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id
             WHERE dp.season = $1 AND dp.league_id = $2 AND dp.owner_id = $3
             ORDER BY dp.pick_number
@@ -85,7 +85,12 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         if not picks:
             continue
         facts = _build_draft_facts([dict(p) for p in picks], dict(grade))
-        text = await asyncio.to_thread(generate_narrative, DRAFT_RECAP_PROMPT, facts)
+        # max_tokens above the 500 default: a real production failure
+        # (2026-09) showed the model can spend its whole budget on
+        # internal reasoning before ever emitting the actual text block
+        # when given ~16 real picks' worth of facts to weigh — 500 left
+        # no room for the answer itself once that happened.
+        text = await asyncio.to_thread(generate_narrative, DRAFT_RECAP_PROMPT, facts, 1200)
         await conn.execute(
             """
             INSERT INTO draft_narratives (season, league_id, owner_id, text, model)

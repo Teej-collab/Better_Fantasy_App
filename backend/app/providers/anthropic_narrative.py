@@ -47,4 +47,12 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
         system=system_prompt,
         messages=[{"role": "user", "content": facts}],
     )
-    return response.content[0].text.strip()
+    # response.content[0] isn't reliably the text block — the model can
+    # emit a ThinkingBlock (no .text attribute) ahead of the real
+    # TextBlock, and did in production (2026-09, AttributeError on a
+    # real draft-narrative regeneration). Find the actual text block by
+    # type instead of assuming position 0.
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            return block.text.strip()
+    raise RuntimeError("Anthropic response contained no text block")

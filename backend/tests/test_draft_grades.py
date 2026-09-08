@@ -12,7 +12,7 @@ async def _seed_owner(conn, suffix):
     )
 
 
-async def _seed_pick(conn, owner_id, pick_number, sleeper_id, name, projected, search_rank=None):
+async def _seed_pick(conn, owner_id, pick_number, sleeper_id, name, projected, search_rank=None, is_keeper=False):
     await conn.execute(
         "INSERT INTO players (sleeper_player_id, full_name, position, is_draftable, projected_points, search_rank) "
         "VALUES ($1, $2, 'RB', TRUE, $3, $4) "
@@ -21,11 +21,11 @@ async def _seed_pick(conn, owner_id, pick_number, sleeper_id, name, projected, s
     )
     await conn.execute(
         """
-        INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id, sleeper_player_id, league_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id, sleeper_player_id, league_id, is_keeper)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         TEST_SEASON, pick_number, (pick_number - 1) // 4 + 1, (pick_number - 1) % 4 + 1,
-        owner_id, sleeper_id, DEFAULT_LEAGUE_ID,
+        owner_id, sleeper_id, DEFAULT_LEAGUE_ID, is_keeper,
     )
 
 
@@ -147,3 +147,29 @@ async def test_build_draft_facts_never_calls_search_rank_adp(pool):
         facts = draft_narratives._build_draft_facts([dict(p) for p in picks], dict(grade))
         assert "ADP" not in facts
         assert "rank proxy" in facts
+
+
+async def test_generate_draft_narratives_flags_keeper_picks_in_the_real_facts_sent(pool, monkeypatch):
+    """Real production bug (2026-09): a keeper pick was praised as a
+    draft-day "steal" because generate_draft_narratives's own SQL never
+    selected dp.is_keeper at all, so _build_draft_facts's keeper check
+    always saw None regardless of the real flag. This exercises the
+    FULL pipeline (the SQL, not just the facts-builder in isolation) so
+    a regression there is actually caught."""
+    captured_facts = {}
+
+    def fake_generate_narrative(system_prompt, facts, max_tokens=500):
+        captured_facts["value"] = facts
+        return "recap"
+
+    monkeypatch.setattr(draft_narratives, "generate_narrative", fake_generate_narrative)
+    monkeypatch.setattr(draft_narratives.config, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    async with pool.acquire() as conn:
+        owner_id = await _seed_owner(conn, 60)
+        await _seed_pick(conn, owner_id, 601, "test-dg-keeper", "Kept Player", 200.0, is_keeper=True)
+        await compute_draft_grades(conn, TEST_SEASON)
+        await generate_draft_narratives(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+
+    assert "KEEPER" in captured_facts["value"]
+    assert "Kept Player" in captured_facts["value"]
