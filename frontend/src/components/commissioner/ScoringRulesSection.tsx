@@ -65,13 +65,15 @@ function humanize(key: string): string {
 // ESPN's own tackle data isn't restricted to defensive positions — a
 // QB who records a real tackle (e.g. after his own interception gets
 // returned) shows up in the exact same raw stat as any defender. This
-// league scores that differently, so the backend splits it into two
-// separate categories by the player's position before scoring
-// (app/domain/weekly_stats.py) — these captions make that split
-// visible here, since nothing about either label alone says so.
+// league's own rule (2026-09): nobody except a QB is ever awarded
+// points for a tackle — D/ST is scored on sacks, not tackles — so the
+// backend (app/domain/weekly_stats.py) drops the stat outright for
+// anyone else, and def_tackle no longer exists as a selectable
+// category at all (see migration 224c44524737). This caption is the
+// only place that split is explained, since nothing about the
+// qb_tackle label alone says so.
 const HINTS: Record<string, string> = {
-  def_tackle: "Any non-QB player who records a tackle.",
-  qb_tackle: "A QB's own tackle — e.g. after his own interception gets returned — scored separately from Def Tackle.",
+  qb_tackle: "A QB's own tackle — e.g. after his own interception gets returned. The only position awarded points for a tackle in this league.",
 };
 
 type Panel = { status: "idle" } | { status: "saving" } | { status: "saved" } | { status: "error"; message: string };

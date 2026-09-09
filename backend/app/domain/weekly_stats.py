@@ -101,18 +101,29 @@ async def compute_week_stats(
                 if sleeper_id is None:
                     continue
                 stat_line = player["stat_line"]
-                # A QB's tackle is worth a genuinely different point
-                # value than a defensive player's (this league's own
-                # rule, not an ESPN distinction — ESPN's own
-                # "defensive" category isn't position-scoped at all,
-                # see espn_public.py's def_tackle docstring). Renamed
-                # here, not in espn_public.py, since that's a pure
-                # per-game stat parse with no access to a player's
-                # position — this is the first point in the pipeline
-                # that has both the stat and the position at once.
-                if "def_tackle" in stat_line and espn_to_position.get(player["espn_player_id"]) == "QB":
+                # Nobody except a QB is ever awarded points for a
+                # tackle in this league (2026-09, the owner's explicit
+                # rule — D/ST is scored on sacks, not tackles). ESPN's
+                # own "defensive"/totalTackles category isn't position-
+                # scoped at all (see espn_public.py's docstring) — a
+                # rostered RB/WR/TE occasionally records a real one
+                # (e.g. chasing down a turnover), and without this it
+                # would silently carry a real (if usually zero-priced)
+                # def_tackle entry. That category no longer exists as
+                # a real scoring lever at all (removed from
+                # league_scoring_rules, not just zeroed — see migration
+                # 224c44524737), so it's dropped here rather than
+                # renamed for anyone but a QB. Handled here, not in
+                # espn_public.py, since that's a pure per-game stat
+                # parse with no access to a player's position — this is
+                # the first point in the pipeline with both the stat
+                # and the position at once.
+                if "def_tackle" in stat_line:
                     stat_line = dict(stat_line)
-                    stat_line["qb_tackle"] = stat_line.pop("def_tackle")
+                    if espn_to_position.get(player["espn_player_id"]) == "QB":
+                        stat_line["qb_tackle"] = stat_line.pop("def_tackle")
+                    else:
+                        del stat_line["def_tackle"]
                 points = compute_player_points(stat_line, rules)
                 await _upsert_player_week_stat(conn, season, week, sleeper_id, stat_line, points, league_id)
                 counts["players"] += 1

@@ -177,16 +177,16 @@ async def test_compute_week_stats_recomputes_from_scratch_on_a_stat_correction(p
 
 async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch):
     """ESPN's own def_tackle stat isn't position-scoped (see
-    espn_public.py's own docstring on totalTackles) — this league
-    scores a QB's own tackle at a different rate, so compute_week_stats
-    renames def_tackle -> qb_tackle in the stat_line before scoring,
-    for QB-position players only. A non-QB's def_tackle passes through
-    unchanged."""
+    espn_public.py's own docstring on totalTackles) — this league's
+    real rule (2026-09): nobody except a QB is ever awarded points for
+    a tackle. compute_week_stats renames def_tackle -> qb_tackle in the
+    stat_line before scoring for QB-position players only, and drops
+    the stat entirely for anyone else — def_tackle no longer exists as
+    a real scoring category at all (migration 224c44524737)."""
     await _seed_rules(pool)
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit) VALUES "
-            "($1, 'def_tackle', 1), ($1, 'qb_tackle', 15)",
+            "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit) VALUES ($1, 'qb_tackle', 15)",
             TEST_SEASON,
         )
     await _seed_player(pool, "test-weeklystats-qb-tackle", espn_player_id=333, position="QB")
@@ -218,8 +218,8 @@ async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch)
     assert json.loads(qb_row["raw_stats"]) == {"qb_tackle": 1}
     assert float(qb_row["fantasy_points"]) == 15.0
 
-    assert json.loads(lb_row["raw_stats"]) == {"def_tackle": 9}
-    assert float(lb_row["fantasy_points"]) == 9.0
+    assert json.loads(lb_row["raw_stats"]) == {}
+    assert float(lb_row["fantasy_points"]) == 0.0
 
 
 async def test_compute_week_stats_raises_without_scoring_rules(pool, monkeypatch):
