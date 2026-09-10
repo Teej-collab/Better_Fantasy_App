@@ -17,6 +17,7 @@ top of logic that was never finished rather than the real, working rule.
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.roster_source import uses_in_app_rosters
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 
 
 def compute_chugs_owed(roster_rows: list[dict]) -> int:
@@ -29,6 +30,19 @@ def compute_chugs_owed(roster_rows: list[dict]) -> int:
 
 
 async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    # 2026-09-10 fix, real incident: this is called every live-sync tick
+    # (every ~60s) while a game is live, and compute_chugs_owed treats a
+    # NULL points_scored (a rostered starter whose real game just hasn't
+    # happened yet this week — most players on a Wed-kickoff week like
+    # this one) the same as a real 0-point bust. That's the correct rule
+    # once the week is actually over (an inactive/bye starter *should*
+    # owe a chug), but mid-week it was charging chugs for players who
+    # simply hadn't played yet. Chugs are only ever really "owed" once
+    # every game in the week has been played — see is_week_final.
+    games = await get_week_scoreboard(week=week, year=season)
+    if not is_week_final(games):
+        return 0
+
     in_app = await uses_in_app_rosters(conn, season)
     if in_app:
         team_owners = await conn.fetch(

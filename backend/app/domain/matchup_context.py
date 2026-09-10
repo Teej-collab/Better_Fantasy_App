@@ -38,7 +38,7 @@ import json
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
-from app.domain.nfl_schedule import schedule_lookup_by_pro_team
+from app.domain.nfl_schedule import locked_pro_teams, schedule_lookup_by_pro_team
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
@@ -54,6 +54,36 @@ def _projected_total(roster_rows) -> float | None:
     if not starters:
         return None
     return round(sum(float(r["points_projected"] or 0) for r in starters), 2)
+
+
+# 2026-09-10 fix, real user report: win probability "doesn't live update
+# to the games." estimate_win_probability's own max(my_score,
+# my_projected_total) is a *team*-level floor — but my_projected_total
+# used to be _projected_total(), the whole team's static pregame
+# projection sum. Early in a real week (most starters' games haven't
+# kicked off yet), a team's live score sits far below that whole-team
+# number almost all week, so the team-level max() just returns the
+# static pregame projection regardless of what's actually happening —
+# win probability silently tracked "who had the better preseason
+# projection," not the live game. Applying the same max() logic per
+# PLAYER instead of once for the whole team fixes that: a starter whose
+# real game hasn't kicked off yet still contributes their projection
+# (unchanged), but one who has already played contributes whichever is
+# higher of their real live score or their own projection — so the
+# team's expected total actually moves as each player's own game
+# happens, instead of waiting for the whole team's live total to
+# clear its entire pregame number (which realistically never happens
+# before very late Monday night).
+def _expected_total(roster_rows, locked_teams: frozenset[str]) -> float:
+    starters = [r for r in roster_rows if r["lineup_slot"] not in _STARTER_EXCLUDED_SLOTS]
+    total = 0.0
+    for r in starters:
+        projected = float(r["points_projected"] or 0)
+        if r["pro_team"] in locked_teams:
+            total += max(float(r["points_scored"] or 0), projected)
+        else:
+            total += projected
+    return round(total, 2)
 
 
 def _roster_list(roster_rows, schedule_by_pro_team):
@@ -146,6 +176,7 @@ def _matchup_entry(
     rivalry, h2h, is_gow, score_stdev,
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
     narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
+    locked_teams=frozenset(),
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
@@ -159,8 +190,8 @@ def _matchup_entry(
     away_win_probability = None
     if started:
         home_win_probability = estimate_win_probability(
-            float(home_score), _projected_total(home_roster) or 0.0,
-            float(away_score), _projected_total(away_roster) or 0.0,
+            float(home_score), _expected_total(home_roster, locked_teams),
+            float(away_score), _expected_total(away_roster, locked_teams),
             score_stdev,
         )
         away_win_probability = round(100 - home_win_probability, 1)
@@ -234,6 +265,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     except Exception:
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
+    locked_teams = locked_pro_teams(games)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -287,6 +319,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
             None, schedule_by_pro_team,
             touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
+            locked_teams,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -342,6 +375,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     except Exception:
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
+    locked_teams = locked_pro_teams(games)
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -359,6 +393,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
         None, schedule_by_pro_team,
         touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
+        locked_teams,
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

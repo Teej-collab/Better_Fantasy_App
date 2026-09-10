@@ -601,7 +601,21 @@ async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int, league_id: in
     compute_head_to_head, unchanged logic — but called live for ANY
     owner pair here, not just curated rivalries (that script only ever
     ran it for the names in rivalry_map.py and cached the result on the
-    rivalries row). Same 0-0-means-unplayed exclusion as get_standings."""
+    rivalries row). Same 0-0-means-unplayed exclusion as get_standings,
+    plus the same 2026-09-09 is_week_final fix: a live, in-progress
+    score is not 0-0, so that exclusion alone let a still-undecided
+    current-week game show up as a real, colored "last 4" win/loss
+    (real incident, Week 1 2026: the all-time head-to-head card marked
+    a game green mid-kickoff). Only the *active* season's *current*
+    week can possibly be live/undecided — every other row here already
+    finished whenever it was actually played."""
+    active = await conn.fetchrow("SELECT season, current_week FROM league_state ORDER BY season DESC LIMIT 1")
+    exclude_season, exclude_week = None, None
+    if active is not None and active["current_week"] is not None:
+        current_games = await get_week_scoreboard(week=active["current_week"], year=active["season"])
+        if not is_week_final(current_games):
+            exclude_season, exclude_week = active["season"], active["current_week"]
+
     games = await conn.fetch(
         """
         SELECT m.season, m.week,
@@ -614,9 +628,10 @@ async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int, league_id: in
           AND NOT (m.home_score = 0 AND m.away_score = 0)
           AND ((th.owner_id = $1 AND ta.owner_id = $2) OR (th.owner_id = $2 AND ta.owner_id = $1))
           AND m.league_id = $3
+          AND ($4::int IS NULL OR NOT (m.season = $4 AND m.week = $5))
         ORDER BY m.season, m.week
         """,
-        owner_a_id, owner_b_id, league_id,
+        owner_a_id, owner_b_id, league_id, exclude_season, exclude_week,
     )
 
     wins_a = sum(1 for g in games if g["a_score"] > g["b_score"])
