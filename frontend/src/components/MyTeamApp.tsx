@@ -379,14 +379,38 @@ export function MyTeamApp({
   // LIVE_POLL_INTERVAL_MS's own comment. Re-fetching the current week
   // while they've navigated to a past week's read-only view would
   // silently snap them back to "now" out from under them every 15s.
+  //
+  // Also paused whenever the tab/PWA isn't visible — a backgrounded
+  // app during a live game shouldn't keep polling the roster every
+  // 15s for however long the game runs (2026-09 battery audit, P0-2).
+  // Re-fetches once immediately on return to visible.
   useEffect(() => {
     if (!isGameDay || team?.is_editable === false) return;
-    const id = setInterval(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    function poll() {
       getMyTeam()
         .then(setTeam)
         .catch(() => {});
-    }, LIVE_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    }
+    function startOrStop() {
+      if (document.visibilityState === "visible") {
+        if (id === null) {
+          poll();
+          id = setInterval(poll, LIVE_POLL_INTERVAL_MS);
+        }
+      } else if (id !== null) {
+        clearInterval(id);
+        id = null;
+      }
+    }
+
+    startOrStop();
+    document.addEventListener("visibilitychange", startOrStop);
+    return () => {
+      document.removeEventListener("visibilitychange", startOrStop);
+      if (id !== null) clearInterval(id);
+    };
   }, [isGameDay, team?.is_editable]);
 
   function goToWeek(week: number) {

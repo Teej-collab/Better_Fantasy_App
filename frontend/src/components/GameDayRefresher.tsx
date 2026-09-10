@@ -18,13 +18,37 @@ const REFRESH_INTERVAL_MS = 45 * 1000;
  * probability) actually updates without the user having to reload.
  * Outside a live game this component isn't rendered at all, so there's
  * no background polling the rest of the time.
+ *
+ * Paused whenever the tab/PWA isn't actually visible — a user who
+ * backgrounds the app during a live game shouldn't keep firing a
+ * full-page refresh every 45s for however many hours of football
+ * remain (2026-09 battery audit, P0-1). Refreshes once immediately on
+ * return to visible so the gap doesn't show up as stale data.
  */
 export function GameDayRefresher() {
   const router = useRouter();
 
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    function startOrStop() {
+      if (document.visibilityState === "visible") {
+        if (id === null) {
+          router.refresh();
+          id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
+        }
+      } else if (id !== null) {
+        clearInterval(id);
+        id = null;
+      }
+    }
+
+    startOrStop();
+    document.addEventListener("visibilitychange", startOrStop);
+    return () => {
+      document.removeEventListener("visibilitychange", startOrStop);
+      if (id !== null) clearInterval(id);
+    };
   }, [router]);
 
   return null;
