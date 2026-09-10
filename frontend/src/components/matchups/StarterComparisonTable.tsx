@@ -92,8 +92,18 @@ function PlayerCell({
               </span>
             )}
           </span>
-          <span className="shrink-0 text-sm tabular-nums text-black/50 dark:text-white/50">
-            {player.points_projected != null ? player.points_projected.toFixed(1) : "—"}
+          <span
+            className={
+              player.points_scored != null
+                ? "shrink-0 text-sm font-semibold tabular-nums"
+                : "shrink-0 text-sm tabular-nums text-black/50 dark:text-white/50"
+            }
+          >
+            {player.points_scored != null
+              ? player.points_scored.toFixed(1)
+              : player.points_projected != null
+                ? player.points_projected.toFixed(1)
+                : "—"}
           </span>
         </span>
         <span className="truncate text-xs text-black/50 dark:text-white/50">
