@@ -1,0 +1,40 @@
+#!/bin/sh
+# Blocks force-pushes and deletion of main from this machine.
+#
+# GitHub's own branch protection needs a paid plan for a private repo
+# (confirmed 2026-09 — both the classic branch-protection API and the
+# newer rulesets API returned "Upgrade to GitHub Pro" for this repo).
+# This is the local stand-in for that: it runs before `git push` on
+# any machine that has enabled it (see README below), and refuses a
+# push that would delete main or rewrite its history out from under
+# whatever's already on GitHub. It does NOT block ordinary pushes —
+# only ones that require --force or that delete the branch outright.
+#
+# One-time setup on each machine (Mac and Windows both):
+#   git config core.hooksPath .githooks
+#
+# To intentionally bypass this once (rare — only if you really mean
+# it and have already reviewed why):
+#   git -c core.hooksPath=/dev/null push ...
+
+protected_branch='refs/heads/main'
+z40=0000000000000000000000000000000000000000
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_ref" = "$protected_branch" ]; then
+        if [ "$local_sha" = "$z40" ]; then
+            echo "Blocked: this push would delete $protected_branch." >&2
+            echo "If you really mean to, see the bypass instructions in .githooks/pre-push." >&2
+            exit 1
+        fi
+        if [ "$remote_sha" != "$z40" ]; then
+            if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+                echo "Blocked: this push would force/rewrite history on $protected_branch." >&2
+                echo "If you really mean to, see the bypass instructions in .githooks/pre-push." >&2
+                exit 1
+            fi
+        fi
+    fi
+done
+
+exit 0
