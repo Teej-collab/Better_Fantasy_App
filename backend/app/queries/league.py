@@ -385,7 +385,7 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
     rows = await conn.fetch(
         """
         SELECT p.full_name AS player_name, p.position, cr.lineup_slot,
-               pws.fantasy_points AS points_scored,
+               pws.fantasy_points AS points_scored, pws.raw_stats,
                COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
                cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr

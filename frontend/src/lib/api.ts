@@ -146,6 +146,11 @@ export type RosterPlayer = {
   game_time: string | null;
   is_boom: boolean;
   is_bust: boolean;
+  // Raw per-category stat counts behind points_scored (rec/rec_yd/
+  // pass_td/def_sack/...), null until a real player_week_stats row
+  // exists for this player this week — see backend/app/domain/
+  // scoring_engine.py for the full category list.
+  raw_stats: Record<string, number> | null;
 };
 
 export type TeamDetail = {

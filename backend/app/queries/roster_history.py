@@ -62,7 +62,7 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
     return await conn.fetch(
         """
         SELECT p.full_name AS player_name, p.position, rh.lineup_slot,
-               pws.fantasy_points AS points_scored, rh.points_projected,
+               pws.fantasy_points AS points_scored, pws.raw_stats, rh.points_projected,
                rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status, rh.is_boom, rh.is_bust
         FROM roster_history rh
         JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id

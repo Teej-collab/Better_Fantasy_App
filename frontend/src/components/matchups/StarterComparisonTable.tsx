@@ -43,6 +43,45 @@ function injuryShortCode(status: string): string {
   return INJURY_SHORT_CODE[status] ?? status.slice(0, 1);
 }
 
+// Compact live box-score line ("5 REC, 53 YDS, 1 TD") from the same
+// raw per-category stat counts app/domain/scoring_engine.py scores off
+// of — the reference (real ESPN matchup screen, 2026-09) shows this
+// instead of the schedule line once a player has actually recorded
+// real stats. Only nonzero categories render; yardage gets a RUSH/REC/
+// PASS prefix only when a player has more than one yardage category
+// this week (a dual-threat game), otherwise bare "YDS" reads cleaner
+// and unambiguous. The pts_allow_*/yds_allow_* categories are bucket
+// flags (e.g. pts_allow_7_13: 1), not the literal points/yards allowed
+// number, so they're deliberately left out rather than shown as a
+// misleading "1 PA".
+function formatStatLine(rawStats: Record<string, number> | null): string | null {
+  if (!rawStats) return null;
+  const n = (key: string) => rawStats[key] ?? 0;
+  const yardageKeys = ["rush_yd", "rec_yd", "pass_yd"].filter((k) => n(k) > 0);
+  const yardLabel = (key: string, prefix: string) =>
+    n(key) > 0 ? `${Math.round(n(key))} ${yardageKeys.length > 1 ? `${prefix} ` : ""}YDS` : null;
+
+  const parts = [
+    n("pass_td") > 0 && `${n("pass_td")} PASS TD`,
+    yardLabel("pass_yd", "PASS"),
+    n("pass_int") > 0 && `${n("pass_int")} INT`,
+    n("rush_td") > 0 && `${n("rush_td")} RUSH TD`,
+    yardLabel("rush_yd", "RUSH"),
+    n("rec") > 0 && `${n("rec")} REC`,
+    yardLabel("rec_yd", "REC"),
+    n("rec_td") > 0 && `${n("rec_td")} REC TD`,
+    (n("def_return_td") > 0 || n("ret_td") > 0) && `${n("def_return_td") + n("ret_td")} TD`,
+    n("def_sack") > 0 && `${n("def_sack")} SACK`,
+    n("def_int") > 0 && `${n("def_int")} INT`,
+    n("def_fum_rec") > 0 && `${n("def_fum_rec")} FR`,
+    n("def_safety") > 0 && `${n("def_safety")} SFTY`,
+    n("fum_lost") > 0 && `${n("fum_lost")} FUM`,
+    n("xp_made") > 0 && `${n("xp_made")} XP`,
+  ].filter(Boolean) as string[];
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 // Everything for ONE player lives in a single flex column here —
 // deliberately not split across separate flex siblings (an earlier
 // version put the projected-points number in its own sibling box next
@@ -71,6 +110,7 @@ function PlayerCell({
   const clickable = typeof player.player_id === "string";
   const logo = teamLogoUrl(player.pro_team);
   const showInjury = player.injury_status && player.injury_status !== "ACTIVE";
+  const statLine = formatStatLine(player.raw_stats);
   const inner = (
     <>
       {logo ? (
@@ -107,9 +147,13 @@ function PlayerCell({
           </span>
         </span>
         <span className="truncate text-xs text-black/50 dark:text-white/50">
-          {player.pro_team ?? "—"}
-          {player.next_opponent && ` ${player.next_opponent}`}
-          {player.game_time && mounted && ` · ${formatGameTime(player.game_time)}`}
+          {statLine ?? (
+            <>
+              {player.pro_team ?? "—"}
+              {player.next_opponent && ` ${player.next_opponent}`}
+              {player.game_time && mounted && ` · ${formatGameTime(player.game_time)}`}
+            </>
+          )}
         </span>
       </span>
     </>

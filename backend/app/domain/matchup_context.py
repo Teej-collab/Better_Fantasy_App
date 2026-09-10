@@ -33,6 +33,7 @@ docstring for why); build_matchup_detail is the one path allowed to
 actually generate.
 """
 import asyncio
+import json
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
@@ -66,6 +67,12 @@ def _roster_list(roster_rows, schedule_by_pro_team):
                 "lineup_slot": r["lineup_slot"],
                 "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
                 "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
+                # Raw per-category stat counts (rec/rec_yd/pass_td/...,
+                # see app/domain/scoring_engine.py) behind this week's
+                # points_scored — asyncpg returns jsonb as text (no
+                # codec registered), so this decodes it into a real
+                # object rather than a JSON-string-inside-JSON.
+                "raw_stats": json.loads(r["raw_stats"]) if r.get("raw_stats") else None,
                 "player_id": r["player_id"],
                 "pro_team": r["pro_team"],
                 "injury_status": r["injury_status"],
