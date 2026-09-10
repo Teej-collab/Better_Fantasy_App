@@ -2,10 +2,28 @@
 
 import { useEffect, useState } from "react";
 import type { RosterPlayer } from "@/lib/api";
+import { getScoringRules } from "@/lib/leaguesApi";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { formatGameTime } from "@/lib/gameTime";
-import { teamLogoUrl } from "@/lib/nfl-teams";
+import { humanizeStatCategory } from "@/lib/scoringLabels";
+import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
+
+// "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
+// matchup screen, 2026-09) always shows first-initial + last name, not
+// because it's shorter on average but because it's the LAST name (the
+// one someone actually recognizes at a glance) that's guaranteed to
+// survive truncation on a narrow phone instead of the first. A D/ST
+// row's player_name is a real full team name ("Seattle Seahawks"), not
+// a person — initialing "Seattle" into "S. Seahawks" would be wrong,
+// not just ugly, so those pass through unchanged.
+function displayName(player: RosterPlayer): string {
+  if (player.position === "DEF") return player.player_name;
+  const parts = player.player_name.trim().split(/\s+/);
+  if (parts.length < 2) return player.player_name;
+  return `${parts[0].charAt(0)}. ${parts.slice(1).join(" ")}`;
+}
 
 // Starters only (bench/IR excluded), in the same QB/RB/RB/WR/WR/TE/
 // FLEX/D-ST/K order the roster edit UI already uses (STARTER_SLOT_ORDER
@@ -82,13 +100,110 @@ function formatStatLine(rawStats: Record<string, number> | null): string | null 
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+// Reference: real ESPN player-score modal, 2026-09 — headshot, name,
+// "Week N vs. Team", then a SCORING CATEGORY / PTS PER / # / SCORE
+// table, one row per stat category that actually contributed. Only
+// categories with both a nonzero count AND a nonzero league rate show
+// — a bucket that genuinely happened but is worth 0 points this league
+// (e.g. an 18-27-point-allowed week) isn't a "score," so leaving it out
+// keeps the visible rows summing to the real total instead of adding
+// zero-value noise. TOTAL always shows the player's real
+// points_scored, not a client-side re-sum of these rows — the backend
+// (app/domain/scoring_engine.py) is the one source of truth for that
+// number; this table only ever explains it.
+function ScoreBreakdownModal({
+  player,
+  week,
+  rates,
+  onClose,
+}: {
+  player: RosterPlayer;
+  week: number;
+  rates: Record<string, number>;
+  onClose: () => void;
+}) {
+  const rows = Object.entries(player.raw_stats ?? {})
+    .map(([key, count]) => ({ key, label: humanizeStatCategory(key), rate: rates[key] ?? 0, count }))
+    .filter((r) => r.count !== 0 && r.rate !== 0)
+    .map((r) => ({ ...r, score: r.rate * r.count }))
+    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+
+  const oppAbbr = player.next_opponent?.replace(/^(vs|@)\s*/, "").trim() || null;
+  const oppName = oppAbbr ? nflTeamName(oppAbbr) : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="wl-card relative flex max-h-[85vh] w-full max-w-sm flex-col overflow-y-auto rounded-xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-lg text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
+        >
+          {"✕"}
+        </button>
+
+        <div className="flex flex-col items-center gap-2 pt-2 text-center">
+          <PlayerHeadshot
+            playerId={typeof player.player_id === "number" ? player.player_id : null}
+            sleeperPlayerId={typeof player.player_id === "string" ? player.player_id : null}
+            proTeam={player.pro_team}
+            name={player.player_name}
+            size={72}
+          />
+          <h2 className="text-lg font-bold">{player.player_name}</h2>
+          <p className="text-sm text-black/50 dark:text-white/50">
+            Week {week}
+            {oppName && ` vs. ${oppName}`}
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-col divide-y divide-black/5 dark:divide-white/5">
+          <div className="grid grid-cols-[1fr_3.5rem_2rem_3rem] gap-2 pb-2 text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+            <span>Scoring Category</span>
+            <span className="text-right">Pts Per</span>
+            <span className="text-right">#</span>
+            <span className="text-right">Score</span>
+          </div>
+          {rows.length === 0 ? (
+            <p className="py-3 text-sm text-black/50 dark:text-white/50">No scoring stats recorded yet.</p>
+          ) : (
+            rows.map((r) => (
+              <div key={r.key} className="grid grid-cols-[1fr_3.5rem_2rem_3rem] items-center gap-2 py-2.5 text-sm">
+                <span className="min-w-0">{r.label}</span>
+                <span className="text-right tabular-nums text-black/50 dark:text-white/50">{r.rate}</span>
+                <span className="text-right tabular-nums text-black/50 dark:text-white/50">{r.count}</span>
+                <span className="text-right font-semibold tabular-nums">{r.score.toFixed(1)}</span>
+              </div>
+            ))
+          )}
+          <div className="flex items-center justify-between pt-2.5 text-base font-bold">
+            <span>Total</span>
+            <span className="tabular-nums">{(player.points_scored ?? 0).toFixed(1)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Everything for ONE player lives in a single flex column here —
 // deliberately not split across separate flex siblings (an earlier
 // version put the projected-points number in its own sibling box next
 // to a mirrored/flex-row-reverse name block, which on a narrow phone
 // let the two siblings' text visually collide — 2026-09, reported).
 // Keeping name+points on the same line, in the same box, guarantees
-// the browser can never lay them on top of each other.
+// the browser can never lay them on top of each other. The name and
+// the score are still two independent buttons (not one wrapping the
+// whole row) — nested <button>s aren't valid HTML, and they open two
+// different things (the player card vs. this week's score breakdown).
 //
 // Uses the real NFL team's badge (small, 24px) instead of a player
 // headshot photo — matched to the reference screenshot's own choice,
@@ -101,18 +216,67 @@ function PlayerCell({
   player,
   mounted,
   onOpen,
+  onOpenBreakdown,
 }: {
   player: RosterPlayer | null;
   mounted: boolean;
   onOpen: (sleeperPlayerId: string) => void;
+  onOpenBreakdown: (player: RosterPlayer) => void;
 }) {
   if (!player) return <div className="min-w-0 flex-1" />;
   const clickable = typeof player.player_id === "string";
   const logo = teamLogoUrl(player.pro_team);
   const showInjury = player.injury_status && player.injury_status !== "ACTIVE";
   const statLine = formatStatLine(player.raw_stats);
-  const inner = (
+  // The score is only worth a click once there's a real breakdown to
+  // show — a still-just-projected number has no raw_stats behind it.
+  const scoreClickable = clickable && player.points_scored != null;
+
+  const nameSpan = (
     <>
+      {displayName(player)}
+      {showInjury && (
+        <span
+          className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+          title={player.injury_status ?? undefined}
+        >
+          {injuryShortCode(player.injury_status as string)}
+        </span>
+      )}
+    </>
+  );
+
+  // Reference (real ESPN matchup screen, 2026-09): the live score sits
+  // above, the projection stays visible in a smaller/muted line right
+  // underneath it — never replaced outright, so "what was this player
+  // supposed to do" stays one glance away from "what they actually
+  // did." Pre-kickoff (no live score yet) collapses back to the single
+  // projected number, same as before.
+  const scoreSpan = (
+    <span className="flex shrink-0 flex-col items-end leading-tight">
+      <span
+        className={
+          player.points_scored != null
+            ? "text-sm font-semibold tabular-nums"
+            : "text-sm tabular-nums text-black/50 dark:text-white/50"
+        }
+      >
+        {player.points_scored != null
+          ? player.points_scored.toFixed(1)
+          : player.points_projected != null
+            ? player.points_projected.toFixed(1)
+            : "—"}
+      </span>
+      {player.points_scored != null && player.points_projected != null && (
+        <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
+          {player.points_projected.toFixed(1)}
+        </span>
+      )}
+    </span>
+  );
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5">
       {logo ? (
         // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
         <img src={logo} alt="" width={24} height={24} className="h-6 w-6 shrink-0 object-contain" />
@@ -121,30 +285,23 @@ function PlayerCell({
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-base font-semibold">
-            {player.player_name}
-            {showInjury && (
-              <span
-                className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
-                title={player.injury_status ?? undefined}
-              >
-                {injuryShortCode(player.injury_status as string)}
-              </span>
-            )}
-          </span>
-          <span
-            className={
-              player.points_scored != null
-                ? "shrink-0 text-sm font-semibold tabular-nums"
-                : "shrink-0 text-sm tabular-nums text-black/50 dark:text-white/50"
-            }
-          >
-            {player.points_scored != null
-              ? player.points_scored.toFixed(1)
-              : player.points_projected != null
-                ? player.points_projected.toFixed(1)
-                : "—"}
-          </span>
+          {clickable ? (
+            <button
+              onClick={() => onOpen(player.player_id as string)}
+              className="min-w-0 flex-1 truncate text-left text-base font-semibold hover:underline"
+            >
+              {nameSpan}
+            </button>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-base font-semibold">{nameSpan}</span>
+          )}
+          {scoreClickable ? (
+            <button onClick={() => onOpenBreakdown(player)} className="shrink-0 hover:underline">
+              {scoreSpan}
+            </button>
+          ) : (
+            scoreSpan
+          )}
         </span>
         <span className="truncate text-xs text-black/50 dark:text-white/50">
           {statLine ?? (
@@ -156,15 +313,7 @@ function PlayerCell({
           )}
         </span>
       </span>
-    </>
-  );
-  const rowClass = "flex min-w-0 flex-1 items-center gap-2.5";
-  return clickable ? (
-    <button onClick={() => onOpen(player.player_id as string)} className={`${rowClass} text-left hover:underline`}>
-      {inner}
-    </button>
-  ) : (
-    <div className={rowClass}>{inner}</div>
+    </div>
   );
 }
 
@@ -177,9 +326,22 @@ function PlayerCell({
  * sizes the slot label column exactly and gives both sides identical,
  * bounded space.
  */
-export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; away: RosterPlayer[] }) {
+export function StarterComparisonTable({
+  home,
+  away,
+  season,
+  week,
+}: {
+  home: RosterPlayer[];
+  away: RosterPlayer[];
+  season: number;
+  week: number;
+}) {
   const { openPlayerCard } = usePlayerCard();
   const [mounted, setMounted] = useState(false);
+  const [rates, setRates] = useState<Record<string, number>>({});
+  const [breakdownPlayer, setBreakdownPlayer] = useState<RosterPlayer | null>(null);
+
   useEffect(() => {
     // setTimeout(0), not a direct setState call in the effect body —
     // same lint-satisfying pattern FreeAgentsList.tsx's identical mount
@@ -187,6 +349,16 @@ export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; a
     const id = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(id);
   }, []);
+
+  useEffect(() => {
+    // Fetched once per season, not per player-click — the same rates
+    // apply to every starter on this page.
+    getScoringRules(season)
+      .then(({ rules }) => setRates(Object.fromEntries(rules.map((r) => [r.stat_category, r.points_per_unit]))))
+      .catch(() => {
+        /* the breakdown modal just won't open without a real rate to show — see scoreClickable */
+      });
+  }, [season]);
 
   const homeStarters = starters(home);
   const awayStarters = starters(away);
@@ -204,14 +376,22 @@ export function StarterComparisonTable({ home, away }: { home: RosterPlayer[]; a
         const slot = slotDisplayLabel((h ?? a)?.lineup_slot ?? "");
         return (
           <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
-            <PlayerCell player={h} mounted={mounted} onOpen={openPlayerCard} />
+            <PlayerCell player={h} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
             <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
               {slot}
             </span>
-            <PlayerCell player={a} mounted={mounted} onOpen={openPlayerCard} />
+            <PlayerCell player={a} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
           </div>
         );
       })}
+      {breakdownPlayer && (
+        <ScoreBreakdownModal
+          player={breakdownPlayer}
+          week={week}
+          rates={rates}
+          onClose={() => setBreakdownPlayer(null)}
+        />
+      )}
     </div>
   );
 }

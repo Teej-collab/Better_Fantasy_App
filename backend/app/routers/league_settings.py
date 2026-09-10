@@ -32,13 +32,18 @@ def _require_session(request: Request) -> dict:
 
 
 @router.get("/scoring-rules")
-async def get_scoring_rules(request: Request, pool=Depends(get_pool)):
+async def get_scoring_rules(request: Request, season: int | None = None, pool=Depends(get_pool)):
     payload = _require_session(request)
-    season = int(_require("ACTIVE_SEASON"))
+    # Defaults to the active season (existing behavior, e.g. the
+    # Commissioner editor) — an explicit ?season= lets a caller resolve
+    # the real rates for a *past* season's matchup (a per-player score
+    # breakdown on an old week needs that season's own rules, which can
+    # differ after a mid-season change — see upsert_scoring_rules).
+    resolved_season = season if season is not None else int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        rows = await league_queries.get_scoring_rules(conn, league_id, season)
-    return {"season": season, "rules": [dict(r) for r in rows]}
+        rows = await league_queries.get_scoring_rules(conn, league_id, resolved_season)
+    return {"season": resolved_season, "rules": [dict(r) for r in rows]}
 
 
 class ScoringRulesRequest(BaseModel):

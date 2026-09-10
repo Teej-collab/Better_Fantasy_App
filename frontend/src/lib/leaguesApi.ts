@@ -238,8 +238,13 @@ export async function updatePlayoffSettings(
 
 export type ScoringRule = { stat_category: string; points_per_unit: number };
 
-export async function getScoringRules(): Promise<{ season: number; rules: ScoringRule[] }> {
-  return get<{ season: number; rules: ScoringRule[] }>("/league/scoring-rules");
+// Omit `season` for the active season (the Commissioner editor's own
+// use) — pass it to resolve a *past* season's real rates instead (a
+// score breakdown on an old matchup needs that season's own rules,
+// which can differ after a mid-season change).
+export async function getScoringRules(season?: number): Promise<{ season: number; rules: ScoringRule[] }> {
+  const query = season != null ? `?season=${season}` : "";
+  return get<{ season: number; rules: ScoringRule[] }>(`/league/scoring-rules${query}`);
 }
 
 // Commissioner-only — every stat_category already exists per season/

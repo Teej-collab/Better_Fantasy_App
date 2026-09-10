@@ -62,7 +62,7 @@ export function MatchupPageBeta({ matchup }: { matchup: WeekMatchupContextItem }
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           Starting Lineups
         </h2>
-        <StarterComparisonTable home={home.roster} away={away.roster} />
+        <StarterComparisonTable home={home.roster} away={away.roster} season={matchup.season} week={matchup.week} />
       </div>
 
       {/* Only renders with a real write-up — no permanent "coming

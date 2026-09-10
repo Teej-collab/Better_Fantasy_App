@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getScoringRules, updateScoringRules, type ScoringRule } from "@/lib/leaguesApi";
+import { humanizeStatCategory } from "@/lib/scoringLabels";
 
 // The DB only stores flat stat_category strings (no grouping/label
 // metadata table) — this groups them by prefix and title-cases the
@@ -19,47 +20,6 @@ function groupFor(key: string): string {
   if (key.startsWith("pts_allow_")) return "Points Allowed";
   if (key.startsWith("yds_allow_")) return "Yards Allowed";
   return "Misc";
-}
-
-// A handful of stat_category names are real acronyms, not plain words
-// — title-casing "fg"/"xp"/"td"/"int" like every other word produces
-// "Fg"/"Xp"/"Td"/"Int", which reads as a typo rather than the actual
-// abbreviation it is.
-const ACRONYMS: Record<string, string> = { fg: "FG", xp: "XP", td: "TD", int: "INT", qb: "QB" };
-
-// stat_category encodes numeric ranges as separate underscore-joined
-// tokens (fg_0_39, pts_allow_14_17, yds_allow_lt100, fg_60_plus) since
-// the DB has no range-typed column — title-casing each token
-// independently loses that structure entirely ("Fg 0 39" reads as
-// three unrelated words, not the range it actually is). This
-// reconstructs it: two adjacent numeric tokens become "0-39", a
-// numeric token followed by "plus" becomes "60+", and "lt100" becomes
-// "<100" — the three range shapes that actually appear in this app's
-// stat_category values (verified against every real row in
-// league_scoring_rules, not just the ones a screenshot happened to
-// show).
-function humanize(key: string): string {
-  const words = key.split("_");
-  const parts: string[] = [];
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    const lessThanMatch = w.match(/^lt(\d+)$/);
-    if (lessThanMatch) {
-      parts.push(`<${lessThanMatch[1]}`);
-      continue;
-    }
-    if (w === "plus" && parts.length > 0 && /^\d/.test(words[i - 1])) {
-      parts[parts.length - 1] = `${parts[parts.length - 1]}+`;
-      continue;
-    }
-    if (/^\d+$/.test(w) && i + 1 < words.length && /^\d+$/.test(words[i + 1])) {
-      parts.push(`${w}-${words[i + 1]}`);
-      i++;
-      continue;
-    }
-    parts.push(ACRONYMS[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1));
-  }
-  return parts.join(" ");
 }
 
 // ESPN's own tackle data isn't restricted to defensive positions — a
@@ -137,7 +97,7 @@ export function ScoringRulesSection() {
                 .map((key) => (
                   <label key={key} className="flex items-center justify-between gap-2 text-sm">
                     <span className="flex min-w-0 flex-col text-black/70 dark:text-white/70">
-                      {humanize(key)}
+                      {humanizeStatCategory(key)}
                       {HINTS[key] && (
                         <span className="text-xs font-normal text-black/45 dark:text-white/45">{HINTS[key]}</span>
                       )}
