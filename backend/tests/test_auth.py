@@ -1033,6 +1033,68 @@ async def test_delete_account_allowed_for_sole_commissioner_with_no_other_member
         assert resp.status_code == 204
 
 
+async def test_bearer_token_authenticates_without_a_cookie(pool, monkeypatch):
+    """A native client has no cookie jar shared with this app's browser
+    frontend — it authenticates by sending the token /auth/signup's own
+    JSON body already returns as an `Authorization: Bearer` header
+    instead. Uses a second, cookie-less client to prove this isn't
+    secretly working off the first client's cookie."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as signup_client:
+        resp = await signup_client.post(
+            "/auth/signup",
+            json={"email": "test-bearer-1@example.com", "password": "correct-horse", "display_name": "Bearer Person"},
+        )
+        token = resp.json()["token"]
+
+    async with _client() as bare_client:
+        assert "session" not in bare_client.cookies
+        me_resp = await bare_client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["display_name"] == "Bearer Person"
+
+
+async def test_bearer_token_rejected_after_logout_same_as_a_cookie(pool, monkeypatch):
+    """Revocation (session_revocation middleware, keyed on
+    users.token_version) has to apply to a bearer token exactly the
+    same as a cookie — otherwise logging out on the web wouldn't
+    actually invalidate a token a native client copied out of the
+    signup/login response body."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        resp = await client.post(
+            "/auth/signup",
+            json={"email": "test-bearer-revoke@example.com", "password": "correct-horse", "display_name": "Revoke Me"},
+        )
+        token = resp.json()["token"]
+        await client.post("/auth/logout")
+
+    async with _client() as bare_client:
+        me_resp = await bare_client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 401
+
+
+async def test_bearer_token_works_on_a_league_scoped_route(pool, monkeypatch):
+    """Proves bearer support isn't just wired into auth.py — polls.py
+    (like every other router) goes through the same get_session_token
+    helper, so a native client can reach ordinary league-scoped data
+    with no cookie at all."""
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    async with _client() as client:
+        signup = await client.post(
+            "/auth/signup",
+            json={"email": "test-bearer-league@example.com", "password": "correct-horse", "display_name": "League Person"},
+        )
+        token = signup.json()["token"]
+        created = await client.post("/leagues", json={"name": "Test League Bearer"})
+        league_id = created.json()["id"]
+
+    async with _client() as bare_client:
+        resp = await bare_client.get(f"/leagues/{league_id}/polls", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert resp.json() == {"polls": []}
+
+
 async def test_logout_clears_cookie_with_matching_attributes_in_production(monkeypatch):
     """A delete_cookie call that doesn't also mark Secure/SameSite=None
     won't reliably clear a cookie that was set with those attributes —

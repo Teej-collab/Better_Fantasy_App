@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_league_access, require_league_commissioner
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
 from app.domain import awards_all_time, narrative_engine, team_profile, weekly_awards
 from app.domain.draft_grades import get_draft_grade, get_draft_grades_for_season
@@ -29,7 +29,7 @@ router = APIRouter(tags=["awards"])
 
 
 def _require_session(request: Request) -> dict:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     config = SessionConfig()

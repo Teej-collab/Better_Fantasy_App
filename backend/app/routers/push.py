@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.config import VAPID_PUBLIC_KEY
 from app.db import get_pool
 from app.notifications import dispatcher, formatter
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/push", tags=["push"])
 
 
 def _require_session(request: Request) -> dict:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     config = SessionConfig()

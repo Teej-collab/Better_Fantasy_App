@@ -22,7 +22,7 @@ from app.analytics import taxonomy
 from app.analytics.rate_limit import is_rate_limited
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, require_site_admin
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
@@ -51,7 +51,7 @@ def _decode_session(token: str | None) -> dict | None:
 
 
 def _require_session(request: Request) -> dict:
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
     return payload

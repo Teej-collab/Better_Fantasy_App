@@ -21,7 +21,7 @@ from app.auth.league_context import (
     require_league_access,
     require_league_commissioner,
 )
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
+from app.auth.session import decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
@@ -186,7 +186,7 @@ async def upload_chug(
     once it's done. ChugUpload.tsx reads the whole body as text and
     parses just the last non-blank line.
     """
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None and ticket:
         # Same fallback as chat_ws — a direct browser->backend upload
         # is a cross-site request just like the WebSocket handshake,
@@ -218,7 +218,7 @@ async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = 
     fined_owed. A fined chug can only ever be cleared this way — never
     by completing a real chug (see app/domain/chug_standing.py) — so
     this is deliberately not self-serve."""
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
 
@@ -241,7 +241,7 @@ async def undo_chug_week(week: int, request: Request, pool=Depends(get_pool)):
     0-point score got misread as a chug-worthy zero — see
     app/domain/chug_standing.py's undo_week docstring for the real
     2026-09 incident this was built for)."""
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
 

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, require_member_of
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
 from app.queries import polls as poll_queries
 
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/leagues", tags=["polls"])
 
 
 def _require_session(request: Request) -> dict:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     config = SessionConfig()

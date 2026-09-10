@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.chat.manager import manager
 from app.config import _require
 from app.db import get_pool
@@ -57,7 +57,7 @@ def _decode_session(token: str | None) -> dict | None:
 
 
 def _require_session(request: Request) -> dict:
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
     return payload

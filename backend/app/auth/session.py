@@ -79,6 +79,27 @@ def create_ticket_token(
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
+def get_session_token(request) -> str | None:
+    """Returns the session token from an `Authorization: Bearer <token>`
+    header if present, else from the session cookie. Added for a native
+    client (iOS/Android — no shared cookie jar with this app's browser
+    frontend), which can already get a token from /auth/login's and
+    /auth/signup's own JSON body (`{"token": ...}`, already returned
+    alongside the Set-Cookie for exactly this reason) and send it back
+    as a header instead of relying on a cookie. An explicit header
+    always wins over a stray cookie if a caller somehow sent both.
+    Every call site that used to read
+    request.cookies.get(SESSION_COOKIE_NAME) directly should go through
+    this instead, so bearer-token support is one change, not ~20 — see
+    app/main.py's session_revocation middleware, which also goes
+    through this, so revocation applies to a bearer token exactly the
+    same as a cookie."""
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header[len("Bearer "):].strip() or None
+    return request.cookies.get(SESSION_COOKIE_NAME)
+
+
 def decode_ticket_token(secret: str, token: str, expected_purpose: str) -> dict | None:
     """Same secret as a real session token, deliberately — a ticket is
     just a session token with a `purpose` claim and a much shorter

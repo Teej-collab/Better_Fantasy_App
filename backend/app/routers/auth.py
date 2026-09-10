@@ -24,6 +24,7 @@ from app.auth.session import (
     create_session_token,
     create_ticket_token,
     decode_session_token,
+    get_session_token,
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
@@ -179,7 +180,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
 
 @router.get("/me")
 async def me(request: Request):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
 
@@ -431,7 +432,7 @@ async def issue_ticket(request: Request, purpose: str):
     if purpose not in TICKET_PURPOSES:
         raise HTTPException(status_code=400, detail="Invalid ticket purpose")
 
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
 
@@ -467,7 +468,7 @@ async def logout(request: Request):
     # stayed fully valid regardless of logout). Silently a no-op if
     # there's no valid session to log out of — logout should never fail
     # just because the cookie was already gone or malformed.
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if token:
         payload = decode_session_token(config.session_secret, token)
         if payload is not None:
@@ -491,7 +492,7 @@ async def delete_my_account(request: Request):
     shared history never depends on any one member still having a
     working login. Two guards run first so a league is never silently
     left creator-less or commissioner-less by this."""
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     config = SessionConfig()

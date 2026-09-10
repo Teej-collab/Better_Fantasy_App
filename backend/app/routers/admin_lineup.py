@@ -33,7 +33,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.providers.espn.lineup_client import ESPNLineupClient
@@ -44,7 +44,7 @@ router = APIRouter(prefix="/admin/lineup", tags=["admin"])
 
 def _require_session(request: Request) -> dict:
     config = SessionConfig()
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     payload = decode_session_token(config.session_secret, token)

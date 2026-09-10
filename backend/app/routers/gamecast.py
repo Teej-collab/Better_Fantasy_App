@@ -16,7 +16,7 @@ import json
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.db import get_pool
 from app.gamecast import service
 from app.gamecast.manager import manager

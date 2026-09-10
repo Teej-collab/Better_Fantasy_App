@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
 from app.image_url import validate_blob_image_url
@@ -72,7 +72,7 @@ def _decode_session(token: str | None) -> dict | None:
 
 
 def _require_session(request: Request) -> dict:
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    payload = _decode_session(get_session_token(request))
     if payload is None:
         raise HTTPException(status_code=401, detail="Not signed in")
     return payload

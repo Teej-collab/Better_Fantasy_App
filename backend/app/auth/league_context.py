@@ -9,7 +9,7 @@ way `users.active_league_id` changes is POST /leagues/{id}/select
 from fastapi import Depends, HTTPException, Request
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.queries import leagues as league_queries
@@ -101,7 +101,7 @@ async def require_league_commissioner(conn, payload: dict) -> int:
 
 
 def _decode_session_or_401(request: Request) -> dict:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = get_session_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
     config = SessionConfig()

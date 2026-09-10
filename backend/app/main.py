@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.auth.config import SessionConfig
-from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
+from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
 from app.routers import (
     admin,
@@ -104,7 +104,7 @@ async def session_revocation(request, call_next):
         "/auth/login", "/auth/signup", "/auth/logout",
     }
     if request.url.path not in AUTH_ENTRY_PATHS:
-        token = request.cookies.get(SESSION_COOKIE_NAME)
+        token = get_session_token(request)
         if token:
             config = SessionConfig()
             payload = decode_session_token(config.session_secret, token)
