@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getMe, getSeasonAwards, listSeasons } from "@/lib/api";
+import { getActiveLeagueName, getMe, getSeasonAwards, listSeasons } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
@@ -38,15 +38,16 @@ export default async function SeasonAwardsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { champion, awards }] = await Promise.all([
+  const [{ seasons }, { champion, awards }, activeLeagueName] = await Promise.all([
     listSeasons(),
     getSeasonAwards(Number(season), sessionCookie),
+    getActiveLeagueName(sessionCookie),
   ]);
 
   return (
     <div className="flex flex-col gap-4">
       <BackButton fallbackHref="/history" label="History" />
-      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} />
+      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} activeLeagueName={activeLeagueName} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
         <SeasonTabs

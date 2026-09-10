@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getAwardLeaderboards, getMe, getMyPreferences, getRecordBook, listSeasons } from "@/lib/api";
+import { getActiveLeagueName, getAwardLeaderboards, getMe, getMyPreferences, getRecordBook, listSeasons } from "@/lib/api";
 import { AwardLeaderboards } from "@/components/AwardLeaderboards";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
@@ -39,18 +39,20 @@ export default async function AllTimeRecordsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { categories }, { categories: awardCategories }, myPreferences] = await Promise.all([
-    listSeasons(),
-    getRecordBook(sessionCookie),
-    getAwardLeaderboards(sessionCookie),
-    getMyPreferences(sessionCookie),
-  ]);
+  const [{ seasons }, { categories }, { categories: awardCategories }, myPreferences, activeLeagueName] =
+    await Promise.all([
+      listSeasons(),
+      getRecordBook(sessionCookie),
+      getAwardLeaderboards(sessionCookie),
+      getMyPreferences(sessionCookie),
+      getActiveLeagueName(sessionCookie),
+    ]);
   const betaLayout = Boolean(myPreferences?.beta_layout);
 
   return (
     <div className="flex flex-col gap-4">
       <BackButton fallbackHref={`/seasons/${season}/awards`} label="Awards" />
-      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} />
+      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} activeLeagueName={activeLeagueName} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Awards</h1>
         <SeasonTabs

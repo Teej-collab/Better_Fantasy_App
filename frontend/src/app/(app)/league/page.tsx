@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   awardsHrefFor,
+  getActiveLeagueName,
   getLatestPowerRankingsWeek,
   getMe,
   getWeekPowerRankings,
@@ -44,7 +45,10 @@ export default async function LeaguePage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const { teams } = season !== null ? await listTeamsServer(sessionCookie, season) : { teams: [] };
+  const [{ teams }, activeLeagueName] = await Promise.all([
+    season !== null ? listTeamsServer(sessionCookie, season) : Promise.resolve({ teams: [] }),
+    getActiveLeagueName(sessionCookie),
+  ]);
 
   let powerRankByTeam = new Map<number, number>();
   if (season !== null) {
@@ -57,7 +61,7 @@ export default async function LeaguePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="league" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="league" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">League</h1>
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/league?season=${s}`} />

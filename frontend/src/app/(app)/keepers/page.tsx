@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { API_BASE_URL, getMe } from "@/lib/api";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { KeepersPanel } from "@/components/KeepersPanel";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 
 export const metadata: Metadata = { title: "Keepers — Weekend League" };
 
@@ -27,6 +28,14 @@ export default async function KeepersPage() {
             Sign in with Discord
           </a>
         </section>
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="keepers" />
+        <NeedsLeagueCard />
       </div>
     );
   }

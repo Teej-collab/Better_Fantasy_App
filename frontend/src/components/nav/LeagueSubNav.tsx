@@ -40,7 +40,19 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * regardless of device — see the grid comment below for why flex-wrap
  * couldn't guarantee that.
  */
-export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awardsHref: string }) {
+export function LeagueSubNav({
+  active,
+  awardsHref,
+  activeLeagueName,
+}: {
+  active: LeagueTab;
+  awardsHref: string;
+  // Null/omitted for a signed-out visitor or one with no active league
+  // yet (NeedsLeagueCard/SignInCard handle those states before this
+  // ever renders in practice) — a member of more than one league is
+  // the only case this chip actually needs to disambiguate for.
+  activeLeagueName?: string | null;
+}) {
   // awardsAllTime's href is derived from awardsHref the same reason
   // awards' own is passed in rather than living in DESTINATION_HREF —
   // both depend on the latest season, which this component doesn't
@@ -73,12 +85,23 @@ export function LeagueSubNav({ active, awardsHref }: { active: LeagueTab; awards
 
   return (
     <div className="mb-4 flex flex-col gap-2">
-      <Link
-        href="/league"
-        className="flex w-fit items-center gap-1 text-sm text-black/50 sm:hidden dark:text-white/50"
-      >
-        ‹ League
-      </Link>
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          href="/league"
+          className="flex w-fit items-center gap-1 text-sm text-black/50 sm:hidden dark:text-white/50"
+        >
+          ‹ League
+        </Link>
+        {activeLeagueName && (
+          <span
+            className="ml-auto truncate rounded-full px-2.5 py-1 text-xs font-medium"
+            style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)", color: "var(--wl-text-secondary)" }}
+            title="Your active league"
+          >
+            {activeLeagueName}
+          </span>
+        )}
+      </div>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
         {/* Fixed 3-column grid, not flex-wrap — flex-wrap's row-break
             point depends on each pill's rendered text width, which

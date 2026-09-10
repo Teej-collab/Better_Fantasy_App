@@ -4,6 +4,7 @@ import { getMe, getMyPreferences, getSeasonDraft, listSeasons, listTeamsServer, 
 import { getDraftPoolServer, getDraftStateServer } from "@/lib/draftApi";
 import { DraftRoom } from "@/components/draft/DraftRoom";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Draft — Weekend League" };
@@ -20,6 +21,14 @@ export default async function DraftPage() {
         <div className="flex justify-center py-6">
           <SignInCard />
         </div>
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="draft" />
+        <NeedsLeagueCard />
       </div>
     );
   }

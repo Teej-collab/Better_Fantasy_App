@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { awardsHrefFor, getMe, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getMe, listRivalries, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
@@ -24,12 +24,16 @@ export default async function RivalriesPage() {
     return <NeedsLeagueCard />;
   }
 
-  const [{ rivalries }, { seasons }] = await Promise.all([listRivalries(sessionCookie), listSeasons()]);
+  const [{ rivalries }, { seasons }, activeLeagueName] = await Promise.all([
+    listRivalries(sessionCookie),
+    listSeasons(),
+    getActiveLeagueName(sessionCookie),
+  ]);
   const latestSeason = safeLatestSeason(seasons);
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="rivalries" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="rivalries" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <h1 className="text-2xl font-semibold">Rivalries</h1>
 
       {rivalries.length === 0 ? (

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import {
   awardsHrefFor,
+  getActiveLeagueName,
   getCareerProfile,
   getMe,
   getOwnerBadges,
@@ -32,7 +33,11 @@ export default async function PlayersPage() {
     return <NeedsLeagueCard />;
   }
 
-  const [{ owners }, { seasons }] = await Promise.all([listOwners(sessionCookie), listSeasons()]);
+  const [{ owners }, { seasons }, activeLeagueName] = await Promise.all([
+    listOwners(sessionCookie),
+    listSeasons(),
+    getActiveLeagueName(sessionCookie),
+  ]);
 
   const cards = await Promise.all(
     owners.map(async (owner) => {
@@ -48,7 +53,7 @@ export default async function PlayersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <div>
         <h1 className="text-2xl font-semibold">Player Cards</h1>
         <p className="text-sm text-black/60 dark:text-white/60">

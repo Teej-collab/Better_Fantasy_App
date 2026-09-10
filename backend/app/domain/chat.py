@@ -112,8 +112,8 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
     return [_serialize_message_row(r, reply_previews, reactions_by_message, mentions_by_message) for r in rows]
 
 
-async def get_conversations_summary(conn, owner_id: int):
-    rows = await chat_queries.list_conversations_for_owner(conn, owner_id)
+async def get_conversations_summary(conn, owner_id: int, league_id: int):
+    rows = await chat_queries.list_conversations_for_owner(conn, owner_id, league_id)
     result = []
     for r in rows:
         last_message = None

@@ -14,6 +14,7 @@ import {
 import { FreeAgentsList } from "@/components/FreeAgentsList";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { MyWaiverClaims } from "@/components/MyWaiverClaims";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayerSearchInput } from "@/components/PlayerSearchInput";
 import { SignInCard } from "@/components/SignInCard";
 
@@ -53,6 +54,14 @@ export default async function FreeAgentsPage({
         <div className="flex justify-center py-6">
           <SignInCard />
         </div>
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="freeAgents" />
+        <NeedsLeagueCard />
       </div>
     );
   }

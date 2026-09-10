@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from app import db as db_module
 from app.auth.session import create_session_token, create_ticket_token
 from app.chat.manager import manager as chat_manager
+from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
 from app.queries import chat as chat_queries
 from app.queries import leagues as league_queries
@@ -148,8 +149,8 @@ async def test_conversations_summary_includes_unread_count_and_last_message(pool
         await chat_queries.insert_message(conn, conversation_id, a, "second", None)
         from app.domain.chat import get_conversations_summary
 
-        b_view = await get_conversations_summary(conn, b)
-        a_view = await get_conversations_summary(conn, a)
+        b_view = await get_conversations_summary(conn, b, DEFAULT_LEAGUE_ID)
+        a_view = await get_conversations_summary(conn, a, DEFAULT_LEAGUE_ID)
 
     b_conv = next(c for c in b_view if c["id"] == conversation_id)
     assert b_conv["unread_count"] == 2
@@ -173,7 +174,7 @@ async def test_conversations_summary_includes_avatar_group_for_league_type(pool)
     _, b, _ = await _seed_league_owner(pool, "avatar-group-b", league_id=league_id)
     async with pool.acquire() as conn:
         league_conversation_id = await chat_queries.create_conversation_for_league(conn, league_id, "league", [a, b])
-        a_view = await get_conversations_summary(conn, a)
+        a_view = await get_conversations_summary(conn, a, league_id)
 
     conv = next(c for c in a_view if c["id"] == league_conversation_id)
     assert conv["other_owner_id"] is None  # no single "other person" for a group conversation
@@ -192,7 +193,7 @@ async def test_conversations_summary_pins_commish_corner_above_league(pool):
         b = await _seed_owner(pool, 98)
         direct_id = await _seed_direct_conversation(pool, a, b)
 
-        a_view = await get_conversations_summary(conn, a)
+        a_view = await get_conversations_summary(conn, a, league_id)
 
     ids_in_order = [c["id"] for c in a_view if c["id"] in (league_conversation_id, commish_corner_id, direct_id)]
     assert ids_in_order == [commish_corner_id, league_conversation_id, direct_id]
@@ -210,14 +211,14 @@ async def test_conversations_summary_gates_read_receipt_on_the_other_owners_pref
         await chat_queries.mark_read(conn, conversation_id, b, msg["id"])
 
         # b has read receipts on (the default) — a sees it.
-        a_view = await get_conversations_summary(conn, a)
+        a_view = await get_conversations_summary(conn, a, DEFAULT_LEAGUE_ID)
         a_conv = next(c for c in a_view if c["id"] == conversation_id)
         assert a_conv["other_last_read_message_id"] == msg["id"]
 
         # b turns read receipts off — a must no longer see b's read state,
         # same as the live "read" WebSocket broadcast already respects.
         await preferences_queries.update_preferences(conn, b, {"read_receipts_enabled": False})
-        a_view = await get_conversations_summary(conn, a)
+        a_view = await get_conversations_summary(conn, a, DEFAULT_LEAGUE_ID)
         a_conv = next(c for c in a_view if c["id"] == conversation_id)
         assert a_conv["other_last_read_message_id"] is None
 
@@ -233,8 +234,8 @@ async def test_conversations_summary_shows_a_newer_reaction_over_an_older_messag
         msg = await chat_queries.insert_message(conn, conversation_id, a, "nice pickup this week", None)
         await chat_queries.toggle_reaction(conn, msg["id"], b, "🔥")
 
-        a_view = await get_conversations_summary(conn, a)
-        b_view = await get_conversations_summary(conn, b)
+        a_view = await get_conversations_summary(conn, a, DEFAULT_LEAGUE_ID)
+        b_view = await get_conversations_summary(conn, b, DEFAULT_LEAGUE_ID)
 
     a_conv = next(c for c in a_view if c["id"] == conversation_id)
     b_conv = next(c for c in b_view if c["id"] == conversation_id)
@@ -486,7 +487,7 @@ async def test_mark_read_zeroes_unread_count(pool, monkeypatch):
         from app.domain.chat import get_conversations_summary
 
         async with pool.acquire() as conn:
-            b_view = await get_conversations_summary(conn, b)
+            b_view = await get_conversations_summary(conn, b, DEFAULT_LEAGUE_ID)
 
     b_conv = next(c for c in b_view if c["id"] == conversation_id)
     assert b_conv["unread_count"] == 0
@@ -545,7 +546,7 @@ async def test_mark_read_suppresses_broadcast_when_read_receipts_disabled(pool, 
         from app.domain.chat import get_conversations_summary
 
         async with pool.acquire() as conn:
-            b_view = await get_conversations_summary(conn, b)
+            b_view = await get_conversations_summary(conn, b, DEFAULT_LEAGUE_ID)
 
     assert resp.status_code == 200
     assert resp.json()["last_read_message_id"] is not None

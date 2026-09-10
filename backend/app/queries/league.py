@@ -5,12 +5,6 @@ final_rank layered in when available — see get_standings). The
 stats_engine-derived views (team profile, awards) live in
 app/domain/ + app/queries/awards.py instead — see MIGRATION_MAP.md.
 
-Note: `rivalries` has no league_id yet (it isn't season-scoped, so it
-was missed by the Phase 3 migration's season-scoped-table sweep — see
-TODO.md's PHASE 9 entry). get_rivalry_for_owners/list_rivalries below
-are left unfiltered for now rather than faking a column that doesn't
-exist; a real fix needs its own small migration, flagged as a
-follow-up rather than solved here.
 """
 
 from app.config import DEFAULT_LEAGUE_ID
@@ -583,7 +577,7 @@ async def get_bench_crimes_by_team(conn, season: int, week: int, team_ids: list[
     return by_team
 
 
-async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
+async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int, league_id: int = DEFAULT_LEAGUE_ID):
     """Ported from Fantasy_Helper's bot/memory/rivalry_graph.py
     get_rivalry, unchanged: only owner pairs someone has curated into
     the rivalries table (name/emoji/tagline/tier) match here — most
@@ -595,9 +589,10 @@ async def get_rivalry_for_owners(conn, owner_a_id: int, owner_b_id: int):
         FROM rivalries r
         JOIN owners oa ON oa.owner_id = r.owner_a_id
         JOIN owners ob ON ob.owner_id = r.owner_b_id
-        WHERE (r.owner_a_id = $1 AND r.owner_b_id = $2) OR (r.owner_a_id = $2 AND r.owner_b_id = $1)
+        WHERE ((r.owner_a_id = $1 AND r.owner_b_id = $2) OR (r.owner_a_id = $2 AND r.owner_b_id = $1))
+          AND r.league_id = $3
         """,
-        owner_a_id, owner_b_id,
+        owner_a_id, owner_b_id, league_id,
     )
 
 
@@ -656,7 +651,7 @@ async def get_head_to_head(conn, owner_a_id: int, owner_b_id: int, league_id: in
     }
 
 
-async def list_rivalries(conn):
+async def list_rivalries(conn, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """
         SELECT r.id, r.name, r.emoji, r.tagline, r.description, r.tier,
@@ -666,6 +661,8 @@ async def list_rivalries(conn):
         FROM rivalries r
         JOIN owners oa ON oa.owner_id = r.owner_a_id
         JOIN owners ob ON ob.owner_id = r.owner_b_id
+        WHERE r.league_id = $1
         ORDER BY r.tier, r.name
-        """
+        """,
+        league_id,
     )

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   awardsHrefFor,
+  getActiveLeagueName,
   getAllTimePowerRankings,
   getLatestPowerRankingsWeek,
   getMe,
@@ -45,7 +46,11 @@ export default async function PowerRankingsPage({
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const [me, myPreferences] = await Promise.all([getMe(sessionCookie), getMyPreferences(sessionCookie)]);
+  const [me, myPreferences, activeLeagueName] = await Promise.all([
+    getMe(sessionCookie),
+    getMyPreferences(sessionCookie),
+    getActiveLeagueName(sessionCookie),
+  ]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -67,7 +72,7 @@ export default async function PowerRankingsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="powerRankings" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="powerRankings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <div>
         <h1 className="text-2xl font-semibold">Power Rankings</h1>
         <p className="text-sm text-black/60 dark:text-white/60">

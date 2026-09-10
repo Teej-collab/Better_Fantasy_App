@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getMe, getMyPreferences, getMyTeamOwnershipServer, getMyTeamServer, getNflScoreboard, isNflGameLive } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "My Team — Weekend League" };
@@ -19,6 +20,14 @@ export default async function MyTeamPage() {
         <div className="flex justify-center py-6">
           <SignInCard />
         </div>
+      </div>
+    );
+  }
+  if (me.active_league_id === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <MyTeamSubNav active="team" />
+        <NeedsLeagueCard />
       </div>
     );
   }

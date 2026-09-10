@@ -116,7 +116,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.config import DEFAULT_LEAGUE_ID, _require
+from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, weekly_stats
 from app.domain.draft_exceptions import DraftError
@@ -510,6 +510,18 @@ async def _run_keeper_deadline_warning_job():
 
 
 async def _run_weekly_compute_job():
+    """Sweeps every league with real teams for this season (teams_by_
+    season, same table app/queries/league.py's own per-league season
+    list already reads) rather than just League #1 — previously the
+    single biggest multi-league gap in the app: the league-scoped read
+    routers (standings, power rankings, awards) were already fixed to
+    respect the caller's active league, but nothing ever computed that
+    data for any league except League #1, so a second league's pages
+    would render correctly but permanently empty. Same per-league loop
+    + per-iteration try/except pattern as _run_draft_grades_job above,
+    so one league's failure (compute or playoff resolution) can never
+    block another's — most importantly, never blocks League #1's own
+    real, live, real-money weekly compute."""
     games = await get_nfl_scoreboard()
     if not is_nfl_game_live(games):
         return
@@ -519,23 +531,42 @@ async def _run_weekly_compute_job():
     week = await get_real_current_week()
     if week is None:
         return
-    results = await weekly_stats.compute_and_store_week(await get_pool(), season, week)
-    logger.info("Weekly compute finished (season=%s week=%s): %s", season, week, results)
-    record_job_run("weekly_compute")
 
-    # Real scores for this week just landed — this is the natural place
-    # to check whether any playoff bracket node (app/domain/playoffs.py)
-    # is now fully scored and ready to resolve. A no-op most weeks (no
-    # bracket generated yet, or nothing ready); best-effort so a
-    # playoff-resolution failure never breaks the compute step above.
-    try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            resolved = await resolve_ready_playoff_matchups(conn, season, DEFAULT_LEAGUE_ID)
-        if resolved:
-            logger.info("Playoff bracket resolved (season=%s): %s", season, resolved)
-    except Exception:
-        logger.exception("Playoff bracket resolution failed (season=%s week=%s)", season, week)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_rows = await conn.fetch(
+            "SELECT DISTINCT league_id FROM teams_by_season WHERE season = $1 ORDER BY league_id",
+            season,
+        )
+    league_ids = [row["league_id"] for row in league_rows]
+
+    for league_id in league_ids:
+        try:
+            results = await weekly_stats.compute_and_store_week(pool, season, week, league_id=league_id)
+            logger.info(
+                "Weekly compute finished (season=%s week=%s league_id=%s): %s", season, week, league_id, results
+            )
+        except Exception:
+            logger.exception("Weekly compute failed: season=%s week=%s league_id=%s", season, week, league_id)
+            continue
+
+        # Real scores for this league's week just landed — this is the
+        # natural place to check whether any of its playoff bracket
+        # nodes (app/domain/playoffs.py) are now fully scored and ready
+        # to resolve. A no-op most weeks/leagues (no bracket generated
+        # yet, or nothing ready); best-effort so a playoff-resolution
+        # failure never breaks the compute step above.
+        try:
+            async with pool.acquire() as conn:
+                resolved = await resolve_ready_playoff_matchups(conn, season, league_id)
+            if resolved:
+                logger.info("Playoff bracket resolved (season=%s league_id=%s): %s", season, league_id, resolved)
+        except Exception:
+            logger.exception(
+                "Playoff bracket resolution failed (season=%s week=%s league_id=%s)", season, week, league_id
+            )
+
+    record_job_run("weekly_compute")
 
 
 async def _run_waiver_processing_job():

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { awardsHrefFor, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
@@ -42,7 +42,7 @@ export default async function HistoryPage() {
     return <NeedsLeagueCard />;
   }
 
-  const { seasons } = await listSeasons();
+  const [{ seasons }, activeLeagueName] = await Promise.all([listSeasons(), getActiveLeagueName(sessionCookie)]);
   const latestSeason = safeLatestSeason(seasons);
   const awardsHref = awardsHrefFor(latestSeason);
 
@@ -66,7 +66,7 @@ export default async function HistoryPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <LeagueSubNav active="history" awardsHref={awardsHref} />
+      <LeagueSubNav active="history" awardsHref={awardsHref} activeLeagueName={activeLeagueName} />
       <div>
         <h1 className="text-2xl font-semibold">History</h1>
         <p className="text-sm text-black/60 dark:text-white/60">The league&apos;s past — awards, trading cards, and Chug.</p>

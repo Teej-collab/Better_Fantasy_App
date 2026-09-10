@@ -67,7 +67,8 @@ def _require_session(request: Request) -> dict:
 async def list_conversations(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        conversations = await chat_domain.get_conversations_summary(conn, payload["owner_id"])
+        league_id = await require_active_league_id(conn, payload)
+        conversations = await chat_domain.get_conversations_summary(conn, payload["owner_id"], league_id)
     return {"conversations": conversations}
 
 

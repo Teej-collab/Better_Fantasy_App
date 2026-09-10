@@ -224,14 +224,6 @@ async def team_roster(
 
 @router.get("/rivalries")
 async def rivalries(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
-    """rivalries has no league_id column yet (see app/queries/league.py's
-    module docstring — missed by the Phase 3 season-scoped-table sweep
-    since it isn't season-scoped), so this can only enforce "the caller
-    belongs to SOME real league," not scope the specific rows to the
-    caller's league the way every other endpoint here does. Not a live
-    risk today (exactly one league has any rivalry data), but flagged
-    here as a real follow-up once a second league actually has rivalries
-    of its own — needs its own small migration."""
     async with pool.acquire() as conn:
-        rows = await queries.list_rivalries(conn)
+        rows = await queries.list_rivalries(conn, league_id)
     return {"rivalries": [dict(r) for r in rows]}

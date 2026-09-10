@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getMe, getMyPreferences, getSeasonDraft, listSeasons } from "@/lib/api";
+import { getActiveLeagueName, getMe, getMyPreferences, getSeasonDraft, listSeasons } from "@/lib/api";
 import type { DraftConfig, DraftPick } from "@/lib/draftApi";
 import { DraftGradesView } from "@/components/draft/DraftGradesView";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
@@ -39,17 +39,18 @@ export default async function SeasonDraftPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, draft, myPreferences] = await Promise.all([
+  const [{ seasons }, draft, myPreferences, activeLeagueName] = await Promise.all([
     listSeasons(),
     getSeasonDraft(Number(season), sessionCookie),
     getMyPreferences(sessionCookie),
+    getActiveLeagueName(sessionCookie),
   ]);
   if (!draft) notFound();
 
   return (
     <div className="flex flex-col gap-4">
       <BackButton fallbackHref="/history" label="History" />
-      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} />
+      <LeagueSubNav active="history" awardsHref={`/seasons/${season}/awards`} activeLeagueName={activeLeagueName} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Draft</h1>
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/seasons/${s}/draft`} />

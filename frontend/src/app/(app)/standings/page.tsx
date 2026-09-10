@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   awardsHrefFor,
+  getActiveLeagueName,
   getLatestPowerRankingsWeek,
   getMe,
   getMyPreferences,
@@ -50,9 +51,10 @@ export default async function StandingsPage({
   const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const [{ standings, playoff_team_count: playoffTeamCount }, myPreferences] = await Promise.all([
+  const [{ standings, playoff_team_count: playoffTeamCount }, myPreferences, activeLeagueName] = await Promise.all([
     season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
     getMyPreferences(sessionCookie),
+    getActiveLeagueName(sessionCookie),
   ]);
   const betaLayout = Boolean(myPreferences?.beta_layout);
 
@@ -104,7 +106,7 @@ export default async function StandingsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">Standings</h1>
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />

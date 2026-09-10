@@ -165,11 +165,17 @@ async def get_or_create_direct_conversation(conn, owner_a: int, owner_b: int) ->
     return conversation_id
 
 
-async def list_conversations_for_owner(conn, owner_id: int):
+async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
     """Everything the conversation list needs in one shot: type, the
     other participant's name for a direct conversation, member count
     for the league conversation, the last message preview, and an
-    unread count derived from last_read_message_id."""
+    unread count derived from last_read_message_id.
+
+    Scoped to the caller's active league for `league`/`commish_corner`
+    conversations (each league gets its own, per migration
+    e47b2a91c5d8) — but never for `direct` conversations, which are
+    DMs between two owners regardless of which league(s) they happen
+    to share, and must keep showing in every league they're active in."""
     rows = await conn.fetch(
         """
         WITH mine AS (
@@ -229,11 +235,13 @@ async def list_conversations_for_owner(conn, owner_id: int):
             ON other_cp.conversation_id = c.id AND other_cp.owner_id != $1 AND c.type = 'direct'
         LEFT JOIN owners other ON other.owner_id = other_cp.owner_id
         LEFT JOIN owner_preferences other_prefs ON other_prefs.owner_id = other_cp.owner_id
+        WHERE c.type = 'direct' OR c.league_id = $2
         ORDER BY
             CASE c.type WHEN 'commish_corner' THEN 0 WHEN 'league' THEN 1 ELSE 2 END,
             lm.created_at DESC NULLS LAST
         """,
         owner_id,
+        league_id,
     )
     return rows
 

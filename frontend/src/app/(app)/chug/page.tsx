@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { awardsHrefFor, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFineButton } from "@/components/ChugFineButton";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
@@ -34,16 +34,17 @@ export default async function ChugLeaderboardPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { leaderboard }, { seasons: allSeasons }] = await Promise.all([
+  const [{ seasons }, { leaderboard }, { seasons: allSeasons }, activeLeagueName] = await Promise.all([
     getChugSeasons(),
     getChugLeaderboard(sessionCookie, season),
     listSeasons(),
+    getActiveLeagueName(sessionCookie),
   ]);
   const latestSeason = safeLatestSeason(allSeasons);
 
   return (
     <div className="flex flex-col gap-4">
-      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} />
+      <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
       {me && <ChugUpload />}
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">

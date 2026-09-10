@@ -7,6 +7,7 @@ import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from
 import type { MatchupContextSide } from "@/lib/api";
 import { NarrativeSection } from "@/components/matchups/NarrativeSection";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
+import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
@@ -51,6 +52,9 @@ export default async function MatchupPage({
         <SignInCard />
       </div>
     );
+  }
+  if (me.active_league_id === null) {
+    return <NeedsLeagueCard />;
   }
 
   const [matchup, myPreferences] = await Promise.all([

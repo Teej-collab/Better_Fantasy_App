@@ -343,7 +343,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
 
-    rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"])
+    rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
 
     week_matchups = [dict(r) for r in await queries.list_week_matchups(conn, season, week, league_id)]
