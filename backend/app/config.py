@@ -70,3 +70,20 @@ def require_vapid_configured() -> tuple[str, str, str]:
             "and VAPID_SUBJECT (see .env.example)."
         )
     return VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+
+
+# Outbound email (app/notifications/email.py) — the app's first ever
+# email-sending capability, only for the password-reset flow so far.
+# Same optional-at-import, fail-loud-at-use pattern as VAPID above:
+# local dev and CI never need a real Resend account, only whichever
+# environment actually calls POST /auth/forgot-password for real.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
+
+
+def require_email_configured() -> tuple[str, str]:
+    if not (RESEND_API_KEY and RESEND_FROM_EMAIL):
+        raise RuntimeError(
+            "Email sending isn't configured — set RESEND_API_KEY and RESEND_FROM_EMAIL (see .env.example)."
+        )
+    return RESEND_API_KEY, RESEND_FROM_EMAIL

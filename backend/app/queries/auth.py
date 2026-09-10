@@ -162,6 +162,48 @@ async def delete_account(conn, user_id: int) -> None:
         await conn.execute("DELETE FROM users WHERE id = $1", user_id)
 
 
+async def set_password_reset_token(conn, user_id: int, token: str, expires_at) -> None:
+    """Overwrites any previous outstanding token for this account — a
+    newer forgot-password request simply supersedes an older one
+    rather than both staying valid (see the migration's own docstring
+    for why this is a single column pair, not a one-to-many table)."""
+    await conn.execute(
+        "UPDATE users SET password_reset_token = $1, password_reset_token_expires_at = $2 WHERE id = $3",
+        token, expires_at, user_id,
+    )
+
+
+async def get_user_by_valid_reset_token(conn, token: str):
+    """Only matches a token that hasn't expired yet — an expired one
+    should behave identically to a wrong/unknown token to the caller
+    (POST /auth/reset-password), not a different error that would leak
+    which case it was."""
+    return await conn.fetchrow(
+        "SELECT * FROM users WHERE password_reset_token = $1 AND password_reset_token_expires_at > now()",
+        token,
+    )
+
+
+async def reset_password(conn, user_id: int, password_hash: str) -> None:
+    """Sets the new password, clears the now-used token so it can't be
+    replayed, and bumps token_version — the same mechanism logout/
+    account-deletion already use to invalidate every other outstanding
+    session for this account (app/routers/auth.py), since a password
+    reset should always sign out anyone else currently holding a
+    session token for it."""
+    await conn.execute(
+        """
+        UPDATE users
+        SET password_hash = $1,
+            password_reset_token = NULL,
+            password_reset_token_expires_at = NULL,
+            token_version = token_version + 1
+        WHERE id = $2
+        """,
+        password_hash, user_id,
+    )
+
+
 async def create_user_with_password(conn, email: str, password_hash: str, display_name: str) -> int:
     """Phase 5 of the multi-league migration (see TODO.md's PHASE 9
     entry) — a self-serve account with no owners row at all: nothing

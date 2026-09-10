@@ -5,7 +5,9 @@ session — someone outside the league can complete Discord's OAuth
 consent screen, but won't get a session unless their Discord ID is
 already linked to an owner.
 """
+import os
 import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -15,7 +17,7 @@ from app.auth import discord_oauth, google_oauth
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
 from app.auth.league_context import is_site_admin
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
-from app.auth.rate_limit import check_login_or_signup_rate_limit
+from app.auth.rate_limit import check_forgot_password_rate_limit, check_login_or_signup_rate_limit
 from app.auth.session import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
@@ -25,6 +27,7 @@ from app.auth.session import (
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
+from app.notifications.email import send_password_reset_email
 from app.queries import auth as auth_queries
 from app.queries import leagues as league_queries
 
@@ -343,6 +346,66 @@ async def login(body: LoginRequest, request: Request, response: Response):
         samesite=config.cookie_samesite, secure=config.cookie_secure,
     )
     return {"token": token}
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+RESET_TOKEN_LIFETIME = timedelta(hours=1)
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, request: Request):
+    """Real account-recovery gap this app had zero coverage for until
+    now — no password-reset flow existed at all for the email/password
+    signup path (Discord/Google users don't need one). Deliberately
+    generic about whether an account exists at all, same posture
+    /auth/login already has — but a passwordless (Discord/Google-only)
+    account gets an honest, distinct message instead: that account
+    genuinely has nothing to reset, and telling the requester so isn't
+    a meaningfully bigger enumeration leak than /auth/signup's own
+    "an account with that email already exists" already is."""
+    email = _normalize_email(body.email)
+    check_forgot_password_rate_limit(email, request.client.host if request.client else None)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user = await auth_queries.get_user_by_email(conn, email)
+        if user is not None and user["password_hash"] is None:
+            return {"message": "This account signs in with Discord or Google — there's no password to reset."}
+        if user is not None:
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now(timezone.utc) + RESET_TOKEN_LIFETIME
+            await auth_queries.set_password_reset_token(conn, user["id"], token, expires_at)
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            await send_password_reset_email(email, f"{frontend_url}/reset-password?token={token}")
+
+    return {"message": "If an account with that email exists, we've sent a password reset link."}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    if len(body.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user = await auth_queries.get_user_by_valid_reset_token(conn, body.token)
+        if user is None:
+            raise HTTPException(status_code=400, detail="This reset link is invalid or has expired")
+        # Also bumps token_version (see reset_password's own docstring)
+        # — a password reset signs out every other session for this
+        # account, the same real security property logout/account-
+        # deletion already provide.
+        await auth_queries.reset_password(conn, user["id"], hash_password(body.new_password))
+
+    return {"message": "Password updated — sign in with your new password."}
 
 
 TICKET_PURPOSES = {"ws", "chug_upload"}

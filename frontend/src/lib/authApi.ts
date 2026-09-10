@@ -31,6 +31,14 @@ export async function login(email: string, password: string): Promise<{ token: s
   return post("/auth/login", { email, password });
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return post("/auth/forgot-password", { email });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  return post("/auth/reset-password", { token, new_password: newPassword });
+}
+
 // Same route the Discord flow's /auth/complete page posts to — sets
 // the frontend's own first-party cookie from a real session token.
 export async function completeSignIn(token: string): Promise<void> {

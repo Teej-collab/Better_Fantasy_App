@@ -56,6 +56,17 @@ def check_login_or_signup_rate_limit(action: str, email: str, client_ip: str | N
         _check(f"{action}:ip:{client_ip}", _IP_WINDOW_SECONDS, _IP_MAX_ATTEMPTS)
 
 
+def check_forgot_password_rate_limit(email: str, client_ip: str | None) -> None:
+    """Same two-tier shape as login/signup above, own namespace —
+    POST /auth/forgot-password is unauthenticated and now triggers a
+    real outbound email, so it needs the same abuse resistance
+    (someone spam-bombing a target's inbox by hammering this endpoint)
+    that login/signup already had closed."""
+    _check(f"forgot_password:email:{email}", _EMAIL_WINDOW_SECONDS, _EMAIL_MAX_ATTEMPTS)
+    if client_ip:
+        _check(f"forgot_password:ip:{client_ip}", _IP_WINDOW_SECONDS, _IP_MAX_ATTEMPTS)
+
+
 def reset_for_tests() -> None:
     """Test-only. httpx's ASGITransport reports the same fixed fake
     client IP for every request, so every /auth/signup or /auth/login

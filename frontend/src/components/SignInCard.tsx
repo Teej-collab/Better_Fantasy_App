@@ -220,6 +220,14 @@ export function SignInCard({
               style={FIELD_STYLE}
             />
           </div>
+          {mode === "signin" && (
+            <a
+              href="/forgot-password"
+              className="-mt-1.5 text-right text-xs text-[color:var(--wl-text-secondary)] transition-colors hover:text-[color:var(--wl-text)]"
+            >
+              Forgot password?
+            </a>
+          )}
           {mode === "signup" && (
             <div className="flex flex-col gap-1">
               <label htmlFor="signin-confirm-password" className="sr-only">
