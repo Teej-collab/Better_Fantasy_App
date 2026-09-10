@@ -124,6 +124,30 @@ class ESPNProvider(FantasyProvider):
                 return 0
         saved_count = 0
 
+        # 2026-09-09 fix, real incident (Week 1 2026 kickoff): a season
+        # with real current_rosters (this app's own in-app draft, not
+        # ESPN's) has its matchup *scores* computed by this app's own
+        # engine (app/domain/matchup_scoring.py, driven by the weekly-
+        # compute job) from those real rosters — ESPN's own shadow
+        # league for that season is frozen/disconnected as of the Aug
+        # 26 draft/roster pivot, but this function (driven by the
+        # separate, more-frequent live-sync job) was still overwriting
+        # home_score/away_score from it every ~60 seconds, racing the
+        # in-app engine's own ~120-second tick for control of the same
+        # columns. That's what was actually flickering standings/the
+        # live ticker between two different, uncoordinated scores.
+        # PAIRING (who plays whom) still legitimately comes from ESPN
+        # either way — matchup_scoring.py's own docstring already
+        # documented "this module only overwrites the score fields"
+        # as the intended split; this is what makes that split real.
+        # A season with no in-app rosters (2023-2025, synced before
+        # this app had its own draft/scoring) is unaffected — ESPN is
+        # still the only real source those seasons ever had.
+        has_in_app_scoring = await conn.fetchval(
+            "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 LIMIT 1",
+            season, league_id,
+        )
+
         for m in matchups:
             if m.away_team == 0:  # bye week, no real opponent
                 continue
@@ -133,6 +157,20 @@ class ESPNProvider(FantasyProvider):
 
             if home_db_id is None or away_db_id is None:
                 continue  # team not found, skip rather than crash
+
+            if has_in_app_scoring:
+                await conn.execute(
+                    """
+                    INSERT INTO matchups
+                        (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff, league_id)
+                    VALUES ($1, $2, $3, $4, 0, 0, $5, $6)
+                    ON CONFLICT (season, week, home_team_id, away_team_id)
+                    DO UPDATE SET is_playoff = EXCLUDED.is_playoff
+                    """,
+                    season, week, home_db_id, away_db_id, is_playoff, league_id,
+                )
+                saved_count += 1
+                continue
 
             await conn.execute(
                 """
