@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getMe, getWeekMatchupContext, getWeeklyAwards, getWeeklyRecap, type WeeklyAwards } from "@/lib/api";
+import { getMe, getMyPreferences, getWeekMatchupContext, getWeeklyAwards, getWeeklyRecap, type WeeklyAwards } from "@/lib/api";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { MatchupCard } from "@/components/MatchupCard";
+import { WeekScoreboardList } from "@/components/matchups/WeekScoreboardList";
 import { SignInCard } from "@/components/SignInCard";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 
@@ -40,10 +41,11 @@ export default async function WeekMatchupsPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ matchups }, awards, { narrative }] = await Promise.all([
+  const [{ matchups }, awards, { narrative }, myPreferences] = await Promise.all([
     getWeekMatchupContext(Number(season), Number(week), sessionCookie),
     getWeeklyAwards(Number(season), Number(week), sessionCookie),
     getWeeklyRecap(Number(season), Number(week), sessionCookie),
+    getMyPreferences(sessionCookie),
   ]);
   const isPlayoffWeek = matchups.some((m) => m.is_playoff);
   const played = matchups.some((m) => m.home.score !== null);
@@ -80,6 +82,8 @@ export default async function WeekMatchupsPage({
 
       {matchups.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">No matchups for this week.</p>
+      ) : myPreferences?.beta_layout ? (
+        <WeekScoreboardList matchups={matchups} />
       ) : (
         <div className="flex flex-col gap-2">
           {matchups.map((m) => (

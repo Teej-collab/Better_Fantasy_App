@@ -6,7 +6,7 @@ function initialsFor(name: string): string {
   return (parts[0]?.[0] ?? "").concat(parts[1]?.[0] ?? "").toUpperCase() || "?";
 }
 
-function TeamLogo({ side, size = 48 }: { side: MatchupContextSide; size?: number }) {
+export function TeamLogo({ side, size = 48 }: { side: MatchupContextSide; size?: number }) {
   if (side.logo_url) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded logo URL, not a static asset next/image can optimize.
