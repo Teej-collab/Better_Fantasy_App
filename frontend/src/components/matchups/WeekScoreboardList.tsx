@@ -17,6 +17,16 @@ const STREAK_ICON: Record<string, string> = { hot: "\u{1F525}", cold: "\u{1F976}
  * has a real home there, so a flat list reads far less busy without
  * actually losing anything.
  *
+ * 2026-09-10 fix, real report: the first version put every team row
+ * from every matchup in one continuous divided list — the divider
+ * between two teams IN a matchup and the divider between two different
+ * MATCHUPS looked identical, so the whole week read as one undifferen-
+ * tiated column of teams with no visible sense of who's actually
+ * playing whom. Each matchup is now its own bounded card with real
+ * gaps between cards — the card boundary itself is what says "these
+ * two teams play each other," not a shared divider line doing double
+ * duty.
+ *
  * Deliberately doesn't attempt ESPN's own "In Play / To Play / Mins"
  * line or a live trend arrow — both need real per-play, tick-over-tick
  * data (a stored previous score to compare against, live play-by-play
@@ -25,17 +35,24 @@ const STREAK_ICON: Record<string, string> = { hot: "\u{1F525}", cold: "\u{1F976}
  */
 export function WeekScoreboardList({ matchups }: { matchups: WeekMatchupContextItem[] }) {
   return (
-    <div className="wl-card flex flex-col divide-y divide-black/5 overflow-hidden rounded-lg dark:divide-white/5">
+    <div className="flex flex-col gap-3">
       {matchups.map((m) => (
-        <div key={m.matchup_id} className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+        <div key={m.matchup_id} className="wl-card overflow-hidden rounded-lg">
           {(m.is_game_of_the_week || m.is_rivalry || m.is_playoff) && (
-            <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-black/5 px-3 py-2 dark:border-white/5">
               {m.is_game_of_the_week && <GameOfWeekBadge />}
               {m.is_rivalry && m.rivalry && <RivalryBadge rivalry={m.rivalry} />}
               {m.is_playoff && <PlayoffBadge />}
             </div>
           )}
           <ScoreboardRow matchupId={m.matchup_id} side={m.home} opponent={m.away} />
+          <div className="flex items-center gap-3 px-3">
+            <div className="w-9 shrink-0" aria-hidden />
+            <div className="flex-1 border-t border-black/10 dark:border-white/10" />
+            <span className="shrink-0 text-[10px] font-semibold tracking-wide text-black/30 dark:text-white/30">VS</span>
+            <div className="flex-1 border-t border-black/10 dark:border-white/10" />
+            <div className="w-[3.5rem] shrink-0" aria-hidden />
+          </div>
           <ScoreboardRow matchupId={m.matchup_id} side={m.away} opponent={m.home} />
         </div>
       ))}
