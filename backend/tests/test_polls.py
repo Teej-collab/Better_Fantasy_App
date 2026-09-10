@@ -155,6 +155,37 @@ async def test_non_commissioner_cannot_close_a_poll(pool):
     assert resp.status_code == 403
 
 
+async def test_member_of_another_league_cannot_list_polls(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-polls-isolation-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Polls Isolation A"})
+        league_id = created.json()["id"]
+        await creator.post(f"/leagues/{league_id}/polls", json={"question": "Q?", "options": ["A", "B"]})
+
+    async with _client() as outsider:
+        await _sign_up(outsider, "test-polls-isolation-outsider@example.com")
+        await outsider.post("/leagues", json={"name": "Test League Polls Isolation B"})
+        resp = await outsider.get(f"/leagues/{league_id}/polls")
+    assert resp.status_code == 403
+
+
+async def test_member_of_another_league_cannot_vote(pool):
+    async with _client() as creator:
+        await _sign_up(creator, "test-polls-isolation-vote-creator@example.com")
+        created = await creator.post("/leagues", json={"name": "Test League Polls Isolation Vote A"})
+        league_id = created.json()["id"]
+        poll_resp = await creator.post(
+            f"/leagues/{league_id}/polls", json={"question": "Q?", "options": ["A", "B"]}
+        )
+        poll_id = poll_resp.json()["id"]
+
+    async with _client() as outsider:
+        await _sign_up(outsider, "test-polls-isolation-vote-outsider@example.com")
+        await outsider.post("/leagues", json={"name": "Test League Polls Isolation Vote B"})
+        resp = await outsider.post(f"/leagues/{league_id}/polls/{poll_id}/vote", json={"option_index": 0})
+    assert resp.status_code == 403
+
+
 async def test_list_polls_shows_newest_first(pool):
     async with _client() as client:
         await _sign_up(client, "test-polls-order@example.com")

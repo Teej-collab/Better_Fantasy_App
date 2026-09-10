@@ -49,6 +49,22 @@ async def require_commissioner_of(conn, payload: dict, league_id: int) -> None:
         raise HTTPException(status_code=403, detail="Commissioner only")
 
 
+async def require_member_of(conn, payload: dict, league_id: int) -> None:
+    """Verifies the caller is a real member (any role) of THIS specific
+    league_id — for routes whose URL already embeds a league_id (unlike
+    require_league_access/require_active_league_id, which deliberately
+    ignore any client-supplied league_id and resolve it from the
+    session instead). Use this whenever a route's path takes a
+    league_id and the action should be open to any member of THAT
+    league, not just its commissioner (require_commissioner_of) or
+    whichever league happens to be the caller's currently-active one
+    (require_active_league_id, which does not check the path's
+    league_id at all and must never be used as a stand-in for this)."""
+    membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
+    if membership is None:
+        raise HTTPException(status_code=403, detail="Not a member of this league")
+
+
 async def is_site_admin(conn, user_id: int) -> bool:
     """True for League #1's commissioner (the original, implicit
     grant — see is_site_owner's history on /auth/me) OR anyone with

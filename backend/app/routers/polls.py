@@ -4,8 +4,12 @@ See migration c31d8f5a92e7 for the schema and app/queries/polls.py for
 the plain CRUD/tally SQL this is a thin HTTP wrapper around.
 
 Create/close are commissioner-only; list/vote are open to any real
-member of the league (require_active_league_id) — a poll only matters
-if the people it's asking can actually see and answer it.
+member of THIS specific league (require_member_of, checked against the
+path's own league_id — never require_active_league_id, which only
+confirms the caller has *some* active league and would let a member of
+league A read/vote on league B's polls just by editing the URL) — a
+poll only matters if the people it's asking can actually see and
+answer it.
 """
 import json
 
@@ -13,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id, require_commissioner_of
+from app.auth.league_context import require_commissioner_of, require_member_of
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token
 from app.db import get_pool
 from app.queries import polls as poll_queries
@@ -73,7 +77,7 @@ async def list_polls(league_id: int, request: Request):
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_active_league_id(conn, payload)
+        await require_member_of(conn, payload, league_id)
         rows = await poll_queries.list_polls(conn, league_id)
         poll_ids = [r["id"] for r in rows]
         counts_by_poll = await poll_queries.get_vote_counts_for_polls(conn, poll_ids)
@@ -92,7 +96,7 @@ async def vote_on_poll(league_id: int, poll_id: int, body: VoteRequest, request:
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await require_active_league_id(conn, payload)
+        await require_member_of(conn, payload, league_id)
         poll = await poll_queries.get_poll(conn, league_id, poll_id)
         if poll is None:
             raise HTTPException(status_code=404, detail="Poll not found")
