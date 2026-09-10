@@ -40,6 +40,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Required for Open Graph/Twitter Card image tags to resolve to an
+  // absolute URL (app/(marketing)/welcome and .../commissioners are
+  // the first pages in the app to set them) — falls back to the real
+  // production domain (capacitor.config.ts's own server.url) when the
+  // env var isn't set, e.g. in local dev.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://weekend-league-web.vercel.app"),
   title: "Weekend League",
   description: "League standings, matchups, and rosters.",
   manifest: "/manifest.json",
