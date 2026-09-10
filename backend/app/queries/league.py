@@ -14,6 +14,7 @@ follow-up rather than solved here.
 """
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import roster_history as roster_history_queries
 
 
@@ -137,6 +138,27 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     # fantasy football (some player always scores something), so treat
     # "both scores exactly 0" as "not played yet" too.
     #
+    # 2026-09-09 fix: that 0-0 exclusion isn't enough once a game is
+    # actually under way — matchups.home_score/away_score now update
+    # live, in-progress, every sync tick (app/domain/matchup_scoring.py),
+    # so a single early point already makes `home_score > 0` true and a
+    # live, undecided game was being counted as a real win/loss (real
+    # incident, Week 1 2026 kickoff: standings showed 1-0/0-1 records
+    # before any game had finished). The currently-active week's real
+    # NFL slate has to actually be complete (nfl_scoreboard.is_week_final)
+    # before its matchups count toward a team's record — every other
+    # week is either already fully played (safe to trust) or still all
+    # 0-0 (already excluded above), so only that one week ever needs the
+    # live check.
+    current_week = await conn.fetchval(
+        "SELECT current_week FROM league_state WHERE season = $1", season,
+    )
+    exclude_week = None
+    if current_week is not None:
+        games = await get_week_scoreboard(week=current_week, year=season)
+        if not is_week_final(games):
+            exclude_week = current_week
+
     # Ordering: final_standings.final_rank (ESPN's own rankCalculatedFinal
     # — accounts for the full playoff bracket) when it exists for this
     # season, falling back to regular-season win/loss/points for a season
@@ -153,6 +175,7 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
             WHERE season = $1 AND league_id = $2 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
+              AND week IS DISTINCT FROM $3
             UNION ALL
             SELECT away_team_id, away_score, home_score,
                    (away_score > home_score)::int,
@@ -162,6 +185,7 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
             WHERE season = $1 AND league_id = $2 AND is_playoff = FALSE
               AND home_score IS NOT NULL AND away_score IS NOT NULL
               AND NOT (home_score = 0 AND away_score = 0)
+              AND week IS DISTINCT FROM $3
         )
         SELECT t.id AS team_id, t.team_name, o.display_name AS owner_name,
                COALESCE(SUM(r.win), 0)::int AS wins,
@@ -182,7 +206,7 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
             wins DESC,
             points_for DESC
         """,
-        season, league_id,
+        season, league_id, exclude_week,
     )
 
 

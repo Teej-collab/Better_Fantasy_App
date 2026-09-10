@@ -52,8 +52,14 @@ async def compute_matchup_scores_for_week(conn, season: int, week: int, league_i
         for row in matchup_rows:
             home_score = await compute_team_score(conn, season, week, row["home_team_id"])
             away_score = await compute_team_score(conn, season, week, row["away_team_id"])
+            # Explicit numeric(10,2) cast: matchups.home_score/away_score
+            # is an unconstrained `numeric` column, and asyncpg binds a
+            # Python float to it as that float's exact binary value, not
+            # its rounded decimal string — the round(..., 2) above (and
+            # weekly_team_stats.py's own copy of this bug, fixed
+            # 2026-09-09) doesn't survive the trip on its own.
             await conn.execute(
-                "UPDATE matchups SET home_score = $1, away_score = $2 WHERE id = $3",
+                "UPDATE matchups SET home_score = $1::numeric(10,2), away_score = $2::numeric(10,2) WHERE id = $3",
                 home_score, away_score, row["id"],
             )
             updated += 1

@@ -27,6 +27,7 @@ from that week's own roster rows.
 
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 
 
 def _normalize(values: list[float]) -> list[float]:
@@ -106,10 +107,22 @@ def compute_chaos_score(boom_count: int, bust_count: int, total_starters: int) -
 async def _upsert_stat(
     conn, season: int, week: int, team_id: int, column: str, value, league_id: int = DEFAULT_LEAGUE_ID
 ) -> None:
+    # 2026-09-09 fix: `value` is always already Python-`round()`-ed by
+    # its caller (see compute_chaos_score/compute_luck_score/
+    # compute_team_projected_for_week above), but asyncpg binds a raw
+    # Python float to this column's *unconstrained* `numeric` type as
+    # that float's exact binary value, not its rounded decimal string —
+    # round(x, 2) doesn't survive the trip (real incident, Week 1 2026:
+    # chaos_score stored as
+    # 77.780000000000001136868377216160297393798828125). Casting to a
+    # fixed-scale numeric here forces Postgres itself to round on
+    # write, regardless of what precision the driver hands it — the one
+    # shared write path for every one of these columns, so this fixes
+    # all of them at once rather than patching each caller's rounding.
     await conn.execute(
         f"""
         INSERT INTO weekly_team_stats (season, week, team_id, {column}, league_id)
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4::numeric(10,4), $5)
         ON CONFLICT (season, week, team_id) DO UPDATE SET {column} = EXCLUDED.{column}
         """,
         season, week, team_id, value, league_id,
@@ -296,13 +309,27 @@ async def compute_team_projected_for_week(conn, season: int, week: int, league_i
 
 async def compute_weekly_team_stats_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """All five columns for one week, in one call — the normal
-    sync-pipeline entry point (see app/providers/sync.py)."""
+    sync-pipeline entry point (see app/providers/sync.py).
+
+    2026-09-09 fix: power_rank/luck_score/chaos_score/sos all depend on
+    a week's matchup scores being *decided*, not just started — this
+    function is called every live-sync tick (every 60s) while a game is
+    live, and matchups.home_score now updates live mid-game (this app's
+    own ESPN-independent scoring engine), so the first real fantasy
+    point of the week used to be enough for these to compute a real
+    rank/luck/chaos value off a still-in-progress game (real incident,
+    Week 1 2026 kickoff). Gated on nfl_scoreboard.is_week_final instead
+    of each function's own `home_score > 0` check. team_points_projected
+    has no such dependency (it's a pre-game projection, not derived from
+    live scores) so it still computes every tick, live-game or not."""
+    games = await get_week_scoreboard(week=week, year=season)
+    final = is_week_final(games)
     counts = [
-        await compute_power_ranks_for_week(conn, season, week, league_id),
-        await compute_luck_scores_for_week(conn, season, week, league_id),
-        await compute_chaos_scores_for_week(conn, season, week, league_id),
+        await compute_power_ranks_for_week(conn, season, week, league_id) if final else 0,
+        await compute_luck_scores_for_week(conn, season, week, league_id) if final else 0,
+        await compute_chaos_scores_for_week(conn, season, week, league_id) if final else 0,
         await compute_team_projected_for_week(conn, season, week, league_id),
-        await compute_sos_for_week(conn, season, week, league_id),
+        await compute_sos_for_week(conn, season, week, league_id) if final else 0,
     ]
     return max(counts)
 

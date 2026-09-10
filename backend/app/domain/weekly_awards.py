@@ -22,9 +22,26 @@ callers use both modules together, see app/routers/awards.py.
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.roster_source import uses_in_app_rosters
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 
 
 async def _load_week_context(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
+    # 2026-09-09 fix: `home_score > 0` alone used to mean "this week has
+    # been scored" back when scores only ever arrived as an already-
+    # final box score. Matchup scores now update live, in-progress,
+    # every sync tick (app/domain/matchup_scoring.py), so that check
+    # started being satisfied mid-game — every weekly award (clutch/
+    # choke, boom/bust week, overachiever/meltdown, etc.) was computing
+    # and "awarding" off a still-in-progress week (real incident, Week 1
+    # 2026 kickoff). Real NFL games for this specific week have to have
+    # actually finished (nfl_scoreboard.is_week_final) before its
+    # matchups count as real award inputs — otherwise this returns the
+    # same empty context a genuinely not-yet-played week already does,
+    # so every award function downstream just reports "no award yet."
+    games = await get_week_scoreboard(week=week, year=season)
+    if not is_week_final(games):
+        return [], {}, [], (lambda team_id: 0.0), {}
+
     matchups = await conn.fetch(
         "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0",
         season, week, league_id,

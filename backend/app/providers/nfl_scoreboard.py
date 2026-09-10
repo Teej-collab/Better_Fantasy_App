@@ -39,6 +39,30 @@ def is_nfl_game_live(games: list[dict]) -> bool:
     return any(g.get("state") == "in" for g in games)
 
 
+def is_week_final(games: list[dict]) -> bool:
+    """True once every real NFL game in this week's slate has finished
+    (ESPN's own `completed` flag). True — not blocking — when there's
+    no real game data at all for this week/season (nothing to gate
+    against, e.g. a historical/test season or a week ESPN has no slate
+    for yet); False only when real games exist and at least one hasn't
+    finished, the actual "still live or upcoming" case.
+
+    2026-09-09 fix: several "has this week been scored" checks in this
+    app (get_standings, weekly_awards._load_week_context,
+    weekly_team_stats.py's power/luck/chaos/sos computations) used
+    `home_score > 0` as a proxy for "this result is decided." That was
+    true back when scores only ever arrived as ESPN's own already-final
+    box scores, but broke the instant matchups.home_score started being
+    recomputed live, in-progress, every sync tick (this app's own
+    ESPN-independent scoring engine, app/domain/matchup_scoring.py) —
+    a single point ahead mid-game satisfied `home_score > 0` and got
+    reported as a real win. This is the real "is it actually decided
+    yet" check those call sites need instead."""
+    if not games:
+        return True
+    return all(g.get("completed") for g in games)
+
+
 def _parse_scoreboard_events(data: dict) -> list[dict]:
     games = []
     for event in data.get("events", []):

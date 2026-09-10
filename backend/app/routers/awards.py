@@ -20,6 +20,7 @@ from app.db import get_pool
 from app.domain import awards_all_time, narrative_engine, team_profile, weekly_awards
 from app.domain.draft_grades import get_draft_grade, get_draft_grades_for_season
 from app.domain.draft_narratives import get_draft_narrative
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import awards as awards_queries
 from app.queries import draft as draft_queries
 from app.queries import league as league_queries
@@ -102,6 +103,30 @@ async def all_time_awards(league_id: int = Depends(require_league_access), pool=
 async def weekly_awards_endpoint(
     season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
 ):
+    # 2026-09-09 fix: biggest_bench_crime/clutch/choke/boom_bust/
+    # game_of_the_week each independently query their own underlying
+    # table (bench_crimes, roster_history, matchups) with no "is this
+    # week actually over" check of their own — every one of them was
+    # capable of "awarding" off a live, in-progress week the moment any
+    # stat existed (real incident, Week 1 2026 kickoff, minutes after
+    # real kickoff). Same real signal as get_standings/
+    # weekly_awards._load_week_context: this week's real NFL slate has
+    # to have actually finished. Short-circuits to the same empty shape
+    # a genuinely-not-yet-played future week already returns, rather
+    # than patching each of the five functions below individually.
+    games = await get_week_scoreboard(week=week, year=season)
+    if not is_week_final(games):
+        return {
+            "overachiever": None,
+            "meltdown": None,
+            "biggest_bench_crime": None,
+            "clutch": None,
+            "choke": None,
+            "boom_leaders": [],
+            "bust_leaders": [],
+            "game_of_the_week": None,
+        }
+
     async with pool.acquire() as conn:
         matchups = await league_queries.list_week_matchups(conn, season, week, league_id)
         matchups = [dict(m) for m in matchups]
