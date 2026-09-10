@@ -9,8 +9,11 @@ const STREAK_ICON: Record<string, string> = { hot: "\u{1F525}", cold: "\u{1F976}
 /**
  * Flat, compact scoreboard — reference: real ESPN "League Scores"
  * sheet, 2026-09 ask ("ours look chunky", comparing against the
- * per-matchup neon-panel accordion this replaces under the beta
- * layout). One row per TEAM (not one block per matchup), grouped in
+ * per-matchup neon-panel accordion this replaces). This app's default
+ * matchups-page render as of 2026-09-10 (previously Labs-gated; the
+ * old accordion had no remaining callers once this was promoted, see
+ * MatchupCard.tsx's own remaining usage on the homepage only). One row
+ * per TEAM (not one block per matchup), grouped in
  * pairs by a matchup, each row linking straight to the full matchup
  * page instead of expanding inline — the detail that used to live
  * inside the accordion (narrative, head-to-head, full rosters) already

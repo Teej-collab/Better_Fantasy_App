@@ -80,7 +80,7 @@ export function LabsSection() {
         </span>
         <ToggleRow
           label="Try the new look"
-          description="A redesigned nav (Home, League, Matchup, Chat, More), flatter cards, and a reordered Home & Matchup layout. You can switch back anytime."
+          description="A redesigned nav (Home, League, Chat, More) and flatter cards. Matchup pages already use the new look for everyone. You can switch back anytime."
           checked={prefs.beta_layout}
           onChange={setBetaLayout}
         />

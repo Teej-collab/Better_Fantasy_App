@@ -8,8 +8,10 @@ import { StarterComparisonTable } from "@/components/matchups/StarterComparisonT
 import { BackButton } from "@/components/BackButton";
 
 /**
- * Settings > Labs > "Try the new look" render of the matchup detail
- * page — Documentation/UX/00_UX_Audit.md's Matchups finding: the score
+ * The matchup detail page's default render (2026-09-10 — promoted out
+ * of Settings > Labs opt-in, per the owner's own call, since the old
+ * layout below it had no remaining callers). Documentation/UX/
+ * 00_UX_Audit.md's Matchups finding: the score
  * header and win-probability bar already answer "am I winning, by how
  * much" in under two seconds, but "why" (the starter-by-starter
  * comparison) sat at the very bottom of the page, under a narrative
