@@ -43,14 +43,32 @@ import type { ReactNode } from "react";
  * header/ticker chrome (`h-[calc(100dvh-3.5rem)]`) rather than relying
  * on container padding, so it gets the bottom nav's height subtracted
  * the same way instead of double-padding on top of that calculation.
+ *
+ * `wl-page-shell`/`wl-page-shell--chat` (below) are what actually let
+ * every page's content move up into the space MobileNavDrawer.tsx's
+ * Labs mode reclaims — NavBar.tsx drops its sticky header and bottom
+ * bar entirely on mobile under Labs > "Try the new look", so this
+ * shell needs a smaller top offset (just enough to clear the floating
+ * hamburger button) and no bottom offset at all (there's no bottom bar
+ * to clear) whenever that's active. That override lives in globals.css
+ * as a `[data-wl-layout="beta"]` attribute-selector rule, not computed
+ * here — this component is a plain client component with no per-
+ * request knowledge of owner_preferences.beta_layout, and reading
+ * document.documentElement's attribute during render would compute a
+ * different className on the client than the server actually rendered,
+ * which React reports as a hydration mismatch. Every other beta-only
+ * style in this app already avoids that the same way (see globals.css's
+ * own `[data-wl-layout="beta"] .neon-panel::before` rule).
  */
 export function PageShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   if (pathname === "/chat") {
-    return <main className="safe-px mx-auto w-full max-w-5xl flex-1 py-4">{children}</main>;
+    return <main className="wl-page-shell wl-page-shell--chat safe-px mx-auto w-full max-w-5xl flex-1 py-4">{children}</main>;
   }
   if (pathname === "/draft") {
-    return <main className="safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
+    return (
+      <main className="wl-page-shell safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6">{children}</main>
+    );
   }
-  return <main className="safe-px mx-auto w-full max-w-5xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
+  return <main className="wl-page-shell safe-px mx-auto w-full max-w-5xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
 }

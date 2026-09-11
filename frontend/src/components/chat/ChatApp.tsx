@@ -463,7 +463,17 @@ export function ChatApp({
       ref={panelRef}
       className={
         beta
-          ? "wl-card relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+          ? // Labs > "Try the new look" mobile chrome (MobileNavDrawer.tsx)
+            // removes the bottom tab bar entirely on mobile — no more
+            // 4.5rem to reserve above it, unlike the legacy branch below,
+            // which still has a real fixed bottom bar to clear. The
+            // fallback before --chat-top-offset (2rem plus the safe-area
+            // subtraction has its own fallback wired below) matches
+            // PageShell.tsx's `[data-wl-layout="beta"] .wl-page-shell`
+            // top-padding override, not this branch's own arbitrary
+            // guess — the real value always comes from the effect above
+            // measuring the panel's actual rendered position.
+            "wl-card relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,4rem)-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
           : "neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
       }
       style={beta ? undefined : panelGlowStyle(SECTION_COLORS.chat)}

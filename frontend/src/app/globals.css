@@ -249,6 +249,16 @@ body {
 .motion-reduced {
   animation: none;
 }
+/* MobileNavDrawer.tsx's slide/fade and hamburger-to-X morph — Settings
+   > Appearance > Animations = Reduced skips the transition entirely
+   (open/closed still work, just without the 250ms animation) rather
+   than the app's ambient decorative animations above, which is what
+   the rest of this class actually targets. */
+.motion-reduced .wl-drawer-panel,
+.motion-reduced .wl-drawer-scrim,
+.motion-reduced .wl-drawer-bar {
+  transition: none !important;
+}
 @media (prefers-reduced-motion: reduce) {
   :root {
     animation: none;
@@ -370,6 +380,33 @@ body {
    since Featured-tier glow stays opt-in and intentional either way. */
 [data-wl-layout="beta"] .neon-panel::before {
   display: none;
+}
+
+/* PageShell.tsx's content-area gain for MobileNavDrawer.tsx (Labs >
+   "Try the new look", mobile only — the max-width here matches
+   Tailwind's own `sm:` breakpoint exactly, so desktop's unrelated
+   header/footer padding is never touched). NavBar.tsx removes its
+   sticky header and bottom bar entirely on mobile in this mode, so the
+   large top/bottom offsets those reserved (originally sized for a full
+   header row plus a fixed bottom tab bar) would otherwise just be dead
+   space; this shrinks the top offset to only what's needed to clear
+   the floating hamburger button (MobileNavDrawer's own trigger sits at
+   safe-area-inset-top + 0.75rem, ~2.75rem tall) and drops the bottom
+   offset to a plain safe-area pad, since there's no bottom bar left to
+   clear at all. Chat's own panel measures its real top position at
+   runtime (ChatApp.tsx's --chat-top-offset) rather than assuming a
+   fixed number, so it picks up whatever this resolves to automatically
+   — but its height calc still hardcodes the *legacy* bottom bar's
+   height as a literal subtraction, which needed its own beta-mode fix
+   too (see ChatApp.tsx's own comment on the `beta` height branch). */
+@media (max-width: 639.98px) {
+  [data-wl-layout="beta"] .wl-page-shell {
+    padding-top: calc(env(safe-area-inset-top) + 4rem);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  }
+  [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--chat {
+    padding-bottom: 0;
+  }
 }
 
 /* Frosted "Liquid Glass"-inspired surface (CSS blur, not true SVG-

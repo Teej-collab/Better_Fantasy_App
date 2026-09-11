@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import {
+  getActiveLeagueName,
   getCurrentWeek,
   getMe,
   getMyPreferences,
@@ -15,7 +16,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { PrimaryNav } from "@/components/nav/PrimaryNav";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { PrimaryNavBeta } from "@/components/nav/PrimaryNavBeta";
-import { BottomNavBeta } from "@/components/nav/BottomNavBeta";
+import { MobileNavDrawer } from "@/components/nav/MobileNavDrawer";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 
@@ -46,12 +47,18 @@ export async function NavBar() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [{ seasons }, me, myWeek, nflGames, myPreferences] = await Promise.all([
+  const [{ seasons }, me, myWeek, nflGames, myPreferences, activeLeagueName] = await Promise.all([
     listSeasons(),
     getMe(sessionCookie),
     getMyWeek(sessionCookie),
     getNflScoreboard(),
     getMyPreferences(sessionCookie),
+    // Only actually rendered by MobileNavDrawer below (beta_layout +
+    // mobile) — fetched unconditionally anyway since it's the same
+    // /leagues/mine request LeagueSubNav's own chip already makes on
+    // League-family pages, and Next's per-request fetch memoization
+    // collapses the two into one network call rather than doubling it.
+    getActiveLeagueName(sessionCookie),
   ]);
   const signedIn = me !== null;
   const latestSeason = safeLatestSeason(seasons);
@@ -101,7 +108,15 @@ export async function NavBar() {
           permanently eat mobile vertical space. */}
       <header
         id="site-nav"
-        className="sticky top-0 z-40 border-b border-black/10 bg-[var(--background)]/95 backdrop-blur-sm dark:border-white/10"
+        className={`sticky top-0 z-40 border-b border-black/10 bg-[var(--background)]/95 backdrop-blur-sm dark:border-white/10${
+          // Labs > "Try the new look" mobile chrome (MobileNavDrawer.tsx,
+          // rendered below) replaces this header entirely on mobile —
+          // `hidden sm:block` here is what actually removes it there;
+          // desktop is untouched either way, same header at every
+          // breakpoint it always rendered at. Legacy (non-beta) visitors
+          // never get this class at all, on mobile or desktop.
+          betaLayout ? " hidden sm:block" : ""
+        }`}
       >
         {/* pt- accounts for the notch/Dynamic Island/status bar — this
             app runs with viewport-fit=cover and a translucent iOS status
@@ -129,16 +144,25 @@ export async function NavBar() {
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {/* Beta nav carries Chat as a real tab (PrimaryNavBeta/
-                BottomNavBeta) instead of this header-only icon — see
-                Documentation/UX/02_Information_Architecture.md. */}
+            {/* Beta nav carries Chat as a real tab (PrimaryNavBeta here,
+                MobileNavDrawer's own primary list on mobile) instead of
+                this header-only icon — see Documentation/UX/
+                02_Information_Architecture.md. */}
             {signedIn && !betaLayout && <ChatNavLink variant="header" />}
             <AuthStatus />
           </div>
         </nav>
       </header>
       {betaLayout ? (
-        <BottomNavBeta signedIn={signedIn} matchupsHref={matchupsHref} />
+        <MobileNavDrawer
+          signedIn={signedIn}
+          displayName={me?.display_name ?? null}
+          isCommissioner={Boolean(me?.is_commissioner)}
+          isSiteOwner={Boolean(me?.is_site_owner)}
+          activeLeagueName={activeLeagueName}
+          matchupsHref={matchupsHref}
+          isGameDay={isGameDay}
+        />
       ) : (
         <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
       )}

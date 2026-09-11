@@ -66,6 +66,7 @@ export function NavLink({
   inactiveClassName,
   color,
   cosmicColor,
+  onNavigate,
 }: {
   href: string;
   section: NavSection;
@@ -82,6 +83,11 @@ export function NavLink({
   // [data-wl-theme="cosmic"] .neon-navlink rule); Calm ignores this
   // entirely and always renders `color` above.
   cosmicColor?: string;
+  // Fires on click, in addition to the real navigation — every other
+  // caller (the persistent header/bottom bars) has nothing to do here,
+  // so this stays optional; MobileNavDrawer.tsx is the one caller that
+  // needs to close itself when one of its own links is tapped.
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const active = isSectionActive(section, pathname);
@@ -89,6 +95,7 @@ export function NavLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
+      onClick={onNavigate}
       className={`neon-navlink ${active ? activeClassName : inactiveClassName}`}
       style={{ ["--nav-color" as string]: color, ["--nav-color-cosmic" as string]: cosmicColor }}
     >
