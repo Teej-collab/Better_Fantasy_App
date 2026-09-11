@@ -186,17 +186,16 @@ _MADE_ATTEMPTED_MAP: dict[tuple[str, str], str] = {
 # team's own boxscore.players[] entry. Each of these counts toward
 # league_scoring_rules' matching category directly (no bucketing).
 #
-# def_fum_rec caveat: "fumblesRecovered" doesn't distinguish recovering
-# the OPPONENT's fumble (a real defensive play) from recovering your
-# OWN team's fumble (e.g. a QB falling on his own bad snap) — this
-# sums all of it, a known, documented small overcounting risk rather
-# than an unverified guess at how to tell them apart from this data.
+# def_fum_rec is deliberately NOT sourced from here — see
+# _parse_def_fum_rec_by_team below for why and how it's actually
+# computed (a real 2026-09-10 production incident: this aggregate
+# can't distinguish a team recovering the OPPONENT's fumble, a real
+# defensive play, from recovering its OWN fumble, which isn't).
 _TEAM_DST_STAT_MAP: dict[tuple[str, str], str] = {
     ("defensive", "sacks"): "def_sack",
     ("defensive", "defensiveTouchdowns"): "def_return_td",
     ("interceptions", "interceptions"): "def_int",
     ("interceptions", "interceptionTouchdowns"): "def_return_td",
-    ("fumbles", "fumblesRecovered"): "def_fum_rec",
     # A kick/punt return TD scores for BOTH the individual returner
     # (see _INDIVIDUAL_STAT_MAP's ret_td) AND the team D/ST unit — this
     # league's own scoring screenshots list "Kickoff/Punt Return TD"
@@ -206,6 +205,48 @@ _TEAM_DST_STAT_MAP: dict[tuple[str, str], str] = {
     ("kickReturns", "kickReturnTouchdowns"): "def_return_td",
     ("puntReturns", "puntReturnTouchdowns"): "def_return_td",
 }
+
+def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
+    """{team_abbreviation: count of genuine defensive fumble recoveries}
+    this game — i.e. recovering the OPPONENT's fumble (a real takeaway),
+    as distinct from a team recovering its own fumble (e.g. a kick
+    returner's own teammate falling on a muffed return, or a QB falling
+    on his own bad snap), which isn't a defensive stat at all.
+    boxscore.players[]'s "fumblesRecovered" total (what _TEAM_DST_STAT_MAP
+    used to source this from) can't tell the two apart. ESPN's own
+    play-by-play can: confirmed against a real 2026-09-10 incident (LAR's
+    kickoff-return fumble, recovered by LAR themselves, is tagged just
+    "Kickoff" with isTurnover=False; SF's real recovery of a Stafford
+    fumble later the same game is tagged
+    type.text == "Fumble Recovery (Opponent)" with isTurnover=True) —
+    that type text is the one reliable signal ESPN gives for "this team
+    recovered someone ELSE's fumble," so that's what this reads instead.
+    Credited to play.end.team.id, the team left in possession after the
+    play — i.e. the team that recovered it.
+
+    Same "safer to skip than guess" rule as _parse_fg_yards_by_player:
+    a live/in-progress game's summary can lack a `drives` key entirely,
+    same as it can lack per-kick data — this returns {} rather than
+    raising, exactly like that function already does."""
+    team_abbr_by_id: dict[str, str] = {}
+    for competitor in data.get("header", {}).get("competitions", [{}])[0].get("competitors", []):
+        team = competitor.get("team", {})
+        team_id, abbr = team.get("id"), team.get("abbreviation")
+        if team_id and abbr:
+            team_abbr_by_id[str(team_id)] = abbr
+
+    counts: dict[str, int] = {}
+    for drive in data.get("drives", {}).get("previous", []):
+        for play in drive.get("plays", []):
+            if play.get("type", {}).get("text") != "Fumble Recovery (Opponent)":
+                continue
+            recovering_team_id = play.get("end", {}).get("team", {}).get("id")
+            abbr = team_abbr_by_id.get(str(recovering_team_id)) if recovering_team_id else None
+            if abbr:
+                counts[abbr] = counts.get(abbr, 0) + 1
+
+    return counts
+
 
 _POINTS_ALLOWED_TIERS: list[tuple[int | None, str]] = [
     (0, "pts_allow_0"), (6, "pts_allow_1_6"), (13, "pts_allow_7_13"), (17, "pts_allow_14_17"),
@@ -366,6 +407,10 @@ def parse_team_dst_stats(data: dict) -> dict[str, dict]:
                         stat_lines[abbr][mapped] = stat_lines[abbr].get(mapped, 0) + float(raw_value)
                     except ValueError:
                         pass
+
+    for abbr, count in _parse_def_fum_rec_by_team(data).items():
+        stat_lines.setdefault(abbr, {})
+        stat_lines[abbr]["def_fum_rec"] = stat_lines[abbr].get("def_fum_rec", 0) + count
 
     return stat_lines
 

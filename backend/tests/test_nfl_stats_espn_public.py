@@ -145,8 +145,8 @@ _FAKE_DST_SUMMARY = {
         "competitions": [
             {
                 "competitors": [
-                    {"homeAway": "home", "team": {"abbreviation": "HOU"}, "score": "20"},
-                    {"homeAway": "away", "team": {"abbreviation": "LV"}, "score": "22"},
+                    {"homeAway": "home", "team": {"id": "10", "abbreviation": "HOU"}, "score": "20"},
+                    {"homeAway": "away", "team": {"id": "20", "abbreviation": "LV"}, "score": "22"},
                 ]
             }
         ]
@@ -166,6 +166,9 @@ _FAKE_DST_SUMMARY = {
                      "athletes": [{"athlete": {"id": "1"}, "stats": ["2", "0"]}]},
                     {"name": "interceptions", "keys": ["interceptions", "interceptionTouchdowns"],
                      "athletes": [{"athlete": {"id": "2"}, "stats": ["1", "0"]}]},
+                    # HOU's genuine opponent recovery also shows up in
+                    # this raw aggregate, same as LV's below — the old,
+                    # buggy code read def_fum_rec straight from here.
                     {"name": "fumbles", "keys": ["fumbles", "fumblesLost", "fumblesRecovered"],
                      "athletes": [{"athlete": {"id": "3"}, "stats": ["0", "0", "1"]}]},
                 ],
@@ -177,9 +180,42 @@ _FAKE_DST_SUMMARY = {
                      "athletes": [{"athlete": {"id": "4"}, "stats": ["1", "0"]}]},
                     {"name": "kickReturns", "keys": ["kickReturns", "kickReturnTouchdowns"],
                      "athletes": [{"athlete": {"id": "5"}, "stats": ["3", "1"]}]},
+                    # LV recovering its OWN kickoff-return fumble still
+                    # shows up in this same raw aggregate (ESPN doesn't
+                    # distinguish it there) — this is exactly what made
+                    # the old code wrongly credit LV with a defensive
+                    # fumble recovery it never made.
+                    {"name": "fumbles", "keys": ["fumbles", "fumblesLost", "fumblesRecovered"],
+                     "athletes": [{"athlete": {"id": "6"}, "stats": ["1", "0", "1"]}]},
                 ],
             },
         ],
+    },
+    # A real 2026-09-10 incident, reproduced: LV fumbles a kick return
+    # and recovers its OWN fumble (not a defensive play, no dedicated
+    # fumble-recovery type — ESPN just tags it "Kickoff"), then HOU
+    # later recovers a genuine LV fumble (a real takeaway, tagged
+    # "Fumble Recovery (Opponent)"). Only the second should count
+    # toward either team's def_fum_rec.
+    "drives": {
+        "previous": [
+            {
+                "plays": [
+                    {
+                        "type": {"text": "Kickoff"},
+                        "text": "Kickoff return, FUMBLES, and recovers.",
+                        "isTurnover": False,
+                        "end": {"team": {"id": "20"}},
+                    },
+                    {
+                        "type": {"text": "Fumble Recovery (Opponent)"},
+                        "text": "LV FUMBLES, RECOVERED by HOU at LV 43.",
+                        "isTurnover": True,
+                        "end": {"team": {"id": "10"}},
+                    },
+                ]
+            }
+        ]
     },
 }
 
@@ -202,6 +238,16 @@ def test_parse_team_dst_stats_aggregates_defensive_plays_per_team():
     assert stat_lines["HOU"]["def_int"] == 1
     assert stat_lines["HOU"]["def_fum_rec"] == 1
     assert stat_lines["LV"]["def_sack"] == 1
+
+
+def test_parse_team_dst_stats_fum_rec_only_counts_a_real_opponent_takeaway():
+    """The exact real bug, reproduced: LV recovering its OWN kick-return
+    fumble must NOT count as a defensive stat for anyone, even though a
+    naive read of "fumblesRecovered" would credit it to LV. Only HOU's
+    genuine recovery of LV's fumble later in the drive counts."""
+    stat_lines = espn_public.parse_team_dst_stats(_FAKE_DST_SUMMARY)
+    assert stat_lines["HOU"]["def_fum_rec"] == 1
+    assert stat_lines["LV"].get("def_fum_rec", 0) == 0
 
 
 def test_parse_team_dst_stats_return_td_credits_the_team_too():
