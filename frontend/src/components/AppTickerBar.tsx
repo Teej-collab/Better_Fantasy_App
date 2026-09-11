@@ -18,8 +18,11 @@ import { GameDayRefresher } from "@/components/GameDayRefresher";
 /**
  * The persistent site-wide ticker(s) — used only by app/(app)/layout.tsx,
  * i.e. every page except / (which renders its own richer, contextual
- * ticker — see app/(home)/page.tsx) and /weekend (outside both route
- * groups entirely, gets no ticker at all). Two strips: real NFL scores
+ * ticker — see app/(home)/page.tsx), /weekend (outside every route
+ * group entirely, gets no ticker at all), and /chat (its own route
+ * group, app/(chat)/layout.tsx — dropped on purpose so the
+ * conversation list/thread gets the most vertical room available).
+ * Two strips: real NFL scores
  * (not the homepage's awards/rivalries/standings mix, since that only
  * makes sense in the homepage's own context), and — when the league
  * has a current week with real matchups — a second strip of this

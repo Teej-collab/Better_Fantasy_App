@@ -8,8 +8,10 @@ import { PullToRefresh } from "@/components/PullToRefresh";
  * The standard app chrome (nav bar + persistent ticker + the padded
  * page column) for every route except / (its own sibling group,
  * app/(home)/, which keeps the nav but skips this ticker since the
- * homepage renders its own) and /weekend (outside both groups
- * entirely — no chrome at all).
+ * homepage renders its own), /weekend (outside every route group
+ * entirely — no chrome at all), and /chat (its own sibling group,
+ * app/(chat)/, which keeps the nav but drops the ticker — see that
+ * layout's own comment for why).
  *
  * That's a real fix, not just organization: a client-side pathname
  * check (what this used to be — a shared root layout with components

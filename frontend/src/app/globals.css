@@ -1804,10 +1804,13 @@ body {
 
 /* ============================================================
    Weekend League Chat (app/chat/page.tsx, components/chat/*).
-   "iPhone Messages meets Weekend League" — modern, clean bubbles, the
-   Weekend League accent used sparingly (the sender's own bubble, the
-   send button, unread badges), not a neon takeover. The retro-terminal
-   look belongs to the live ticker, not chat.
+   "COMMS" redesign (2026-09, per Figma) — the retro-terminal look
+   that used to belong only to the live ticker now extends into chat
+   on purpose: an outgoing bubble reads as a lit, green-outlined
+   readout (border + text in --wl-accent, no fill) rather than a
+   solid-color "iMessage blue" bubble. An incoming bubble stays a
+   quiet, neutral surface so the accent only ever marks "this one's
+   mine," never decorates every message.
    ============================================================ */
 
 .chat-bubble {
@@ -1821,14 +1824,17 @@ body {
      shape, the same as every other chat app's bubble. */
   display: inline-block;
   position: relative;
+  border: 1px solid transparent;
 }
 .chat-bubble--mine {
-  background: var(--wl-accent-dim);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--wl-accent) 8%, var(--wl-bg));
+  border-color: color-mix(in srgb, var(--wl-accent) 55%, transparent);
+  color: var(--wl-accent);
 }
 .chat-bubble--other {
-  background: rgba(255, 255, 255, 0.08);
-  color: inherit;
+  background: var(--wl-surface);
+  border-color: var(--wl-border);
+  color: var(--wl-text);
 }
 
 /* A literal comma-shaped iMessage tail used to live here as a 10x10px

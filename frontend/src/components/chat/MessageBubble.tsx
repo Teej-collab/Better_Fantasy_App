@@ -110,8 +110,8 @@ export function MessageBubble({
   const [showActions, setShowActions] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const mentionedNames = message.mentions.map((id) => memberNames[id]).filter(Boolean) as string[];
+  const hasReactions = message.reactions.length > 0;
   const lastInRun = !groupedWithNext;
-  const avatarColor = message.owner_chat_color ?? "#6b7280";
 
   return (
     <div
@@ -119,10 +119,13 @@ export function MessageBubble({
       className={`group flex flex-col ${mine ? "items-end" : "items-start"} ${grouped ? "mt-px" : "mt-3"}`}
       onClick={() => setShowActions((v) => !v)}
     >
-      {!grouped && (
-        <span className="mb-0.5 px-1 text-[11px] text-black/35 dark:text-white/35">
-          {mine ? "You" : message.owner_name} · {formatMessageTimestamp(message.created_at)}
-        </span>
+      {/* Sender label — incoming messages only, once per grouped run.
+          An outgoing bubble never labels itself "You" (Figma's own
+          reference: the sender name sits above every incoming message,
+          never above your own) — its color/outline are already the
+          "this one's mine" signal. */}
+      {!mine && !grouped && (
+        <span className="mb-1 px-1 text-xs text-[color:var(--wl-text-secondary)]">{message.owner_name}</span>
       )}
 
       <div className="flex max-w-[85%] items-end gap-1.5">
@@ -138,34 +141,7 @@ export function MessageBubble({
           />
         )}
 
-        {/* Avatar sits next to the last bubble of an incoming run only
-            (matching iMessage's own placement — not one per bubble); a
-            same-width invisible spacer keeps every other bubble in the
-            run left-aligned to the same edge instead of drifting. */}
-        {!mine &&
-          (lastInRun ? (
-            message.owner_logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
-              <img
-                src={message.owner_logo_url}
-                alt=""
-                aria-hidden
-                className="mb-0.5 h-6 w-6 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <span
-                className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                style={{ backgroundColor: avatarColor, color: readableTextColor(avatarColor) }}
-                aria-hidden
-              >
-                {initialsFor(message.owner_name)}
-              </span>
-            )
-          ) : (
-            <span className="w-6 shrink-0" aria-hidden />
-          ))}
-
-        <div className={`flex flex-col gap-1 ${message.reactions.length > 0 ? "mb-6" : ""}`}>
+        <div className={`flex flex-col gap-1 ${hasReactions ? "mb-6" : ""}`}>
           {message.reply_to && (
             <button
               onClick={(e) => {
@@ -242,14 +218,21 @@ export function MessageBubble({
             </div>
           )}
 
-          {/* Tap-to-reveal timestamp for a grouped bubble — its own
-              header is suppressed (only the burst's first bubble shows
-              one), so this is the only way to see exactly when a later
-              bubble in the run was sent, matching iMessage's own
-              tap-for-time behavior. Reuses the same tap that already
-              reveals the reply/react/copy/delete row. */}
-          {grouped && showActions && !message.deleted && (
-            <span className={`px-1 text-[10px] text-black/35 dark:text-white/35 ${mine ? "text-right" : "text-left"}`}>
+          {/* Always visible below every bubble now (Figma's own
+              reference shows a timestamp under each message, not just
+              the first in a grouped run) — except when a reaction
+              badge is already hanging in this exact spot
+              (ReactionBadge's `-bottom-5`, anchored to the bubble
+              above), where showing both would overlap; tap the bubble
+              to reveal it there instead (the same tap that already
+              opens reply/react/copy/delete). */}
+          {!message.deleted && !hasReactions && (
+            <span className={`px-1 text-[11px] text-[color:var(--wl-text-secondary)] ${mine ? "text-right" : "text-left"}`}>
+              {formatMessageTimestamp(message.created_at)}
+            </span>
+          )}
+          {!message.deleted && hasReactions && showActions && (
+            <span className={`px-1 text-[11px] text-[color:var(--wl-text-secondary)] ${mine ? "text-right" : "text-left"}`}>
               {formatMessageTimestamp(message.created_at)}
             </span>
           )}

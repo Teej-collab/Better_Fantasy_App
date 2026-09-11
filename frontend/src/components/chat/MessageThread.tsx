@@ -167,8 +167,16 @@ export function MessageThread({
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-black/10 px-4 py-3 dark:border-white/10">
-        <button onClick={onBack} className="mr-1 text-lg text-black/60 sm:hidden dark:text-white/60" aria-label="Back to Messages">
+      <div
+        className="flex items-center gap-2 border-b-2 px-4 py-3"
+        style={{ borderColor: "color-mix(in srgb, var(--wl-accent) 55%, transparent)" }}
+      >
+        <button
+          onClick={onBack}
+          className="mr-1 text-xl sm:hidden"
+          style={{ color: "var(--wl-accent)" }}
+          aria-label="Back to Messages"
+        >
           ‹
         </button>
         {isGroupConversation ? (
@@ -177,28 +185,30 @@ export function MessageThread({
             className="flex min-w-0 flex-col text-left"
             aria-label={`${title} info — see who's in this chat`}
           >
-            <span className="flex items-center gap-1.5 truncate font-semibold">
+            <span className="flex items-center gap-1.5 truncate font-display font-bold" style={{ color: "var(--wl-text)" }}>
               {conversation.type === "commish_corner" && <span aria-hidden>📢</span>}
               {title}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--wl-accent)" }} aria-hidden />
             </span>
-            <span className="truncate text-xs text-black/50 dark:text-white/50 underline decoration-black/20 dark:decoration-white/20">
+            <span className="truncate text-xs" style={{ color: "var(--wl-text-secondary)" }}>
               {subtitle}
             </span>
           </button>
         ) : (
           <div className="flex min-w-0 flex-col">
-            <span className="flex items-center gap-1.5 truncate font-semibold">
+            <span className="flex items-center gap-1.5 truncate font-display font-bold" style={{ color: "var(--wl-text)" }}>
               {title}
               {otherOnline && (
                 <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: "var(--wl-accent)" }}
                   role="img"
                   aria-label="Online now"
                   title="Online now"
                 />
               )}
             </span>
-            <span className="truncate text-xs text-black/50 dark:text-white/50">{subtitle}</span>
+            <span className="truncate text-xs" style={{ color: "var(--wl-text-secondary)" }}>{subtitle}</span>
           </div>
         )}
       </div>
@@ -223,7 +233,8 @@ export function MessageThread({
             <div className="mb-3 flex justify-center">
               <button
                 onClick={onLoadOlder}
-                className="rounded-full border border-black/10 px-3 py-1 text-xs text-black/60 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                className="rounded-full border px-3 py-1 text-xs transition-colors"
+                style={{ borderColor: "var(--wl-border)", color: "var(--wl-text-secondary)" }}
               >
                 Load earlier messages
               </button>
@@ -231,7 +242,7 @@ export function MessageThread({
           )}
 
           {messages.length === 0 ? (
-            <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">No messages yet — say something.</p>
+            <p className="mt-8 text-center text-sm" style={{ color: "var(--wl-text-secondary)" }}>No messages yet — say something.</p>
           ) : (
             messages.map((m, i) => (
               <MessageBubble
