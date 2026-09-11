@@ -14,12 +14,22 @@ import { BENCH_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rost
 // matchup screen, 2026-09) always shows first-initial + last name, not
 // because it's shorter on average but because it's the LAST name (the
 // one someone actually recognizes at a glance) that's guaranteed to
-// survive truncation on a narrow phone instead of the first. A D/ST
-// row's player_name is a real full team name ("Seattle Seahawks"), not
-// a person — initialing "Seattle" into "S. Seahawks" would be wrong,
-// not just ugly, so those pass through unchanged.
+// survive truncation on a narrow phone instead of the first.
+//
+// A D/ST row's player_name is a real full team name ("Los Angeles
+// Chargers"), not a person, so the same initial+lastname trick doesn't
+// apply — but a real 2026-09 phone screenshot showed these were the
+// worst truncation offenders of all (full city + mascot name is
+// consistently the longest string in the whole table), so the same
+// "keep only the recognizable last word" principle applies here too:
+// just the mascot ("Chargers", "Chiefs"), the same shorthand ESPN's
+// own reference layout and ordinary fantasy conversation both already
+// use for a team defense.
 function displayName(player: RosterPlayer): string {
-  if (player.position === "DEF") return player.player_name;
+  if (player.position === "DEF") {
+    const words = player.player_name.trim().split(/\s+/);
+    return words[words.length - 1];
+  }
   const parts = player.player_name.trim().split(/\s+/);
   if (parts.length < 2) return player.player_name;
   return `${parts[0].charAt(0)}. ${parts.slice(1).join(" ")}`;
@@ -288,12 +298,12 @@ function PlayerCell({
           {clickable ? (
             <button
               onClick={() => onOpen(player.player_id as string)}
-              className="min-w-0 flex-1 truncate text-left text-base font-semibold hover:underline"
+              className="min-w-0 flex-1 truncate text-left text-xs font-semibold hover:underline"
             >
               {nameSpan}
             </button>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-base font-semibold">{nameSpan}</span>
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{nameSpan}</span>
           )}
           {scoreClickable ? (
             <button onClick={() => onOpenBreakdown(player)} className="shrink-0 hover:underline">
