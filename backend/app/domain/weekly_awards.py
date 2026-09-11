@@ -199,6 +199,7 @@ async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, le
             JOIN teams_by_season tbs ON rh.team_id = tbs.id
             LEFT JOIN player_week_stats pws
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                AND pws.league_id = tbs.league_id
             WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4 AND rh.is_boom = TRUE
             ORDER BY pws.fantasy_points DESC LIMIT $3
             """,
@@ -212,6 +213,7 @@ async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, le
             JOIN teams_by_season tbs ON rh.team_id = tbs.id
             LEFT JOIN player_week_stats pws
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                AND pws.league_id = tbs.league_id
             WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4 AND rh.is_bust = TRUE
             ORDER BY pws.fantasy_points ASC LIMIT $3
             """,

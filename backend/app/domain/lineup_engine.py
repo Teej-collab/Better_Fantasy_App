@@ -47,6 +47,18 @@ _ROSTER_ENTRY_SQL = """
 # appear on the roster with points=NULL, not be silently dropped —
 # same reasoning as app/queries/league.py's get_current_rostered_
 # players_by_pro_team.
+#
+# 2026-09-10 real production bug, found live: player_week_stats is
+# uniquely keyed per (season, week, sleeper_player_id, league_id) — a
+# genuinely different row per league once more than one league has run
+# its weekly compute for the same real player — but this JOIN never
+# filtered on league_id, so once a second league existed, this fanned
+# out into TWO matching pws rows per roster entry, doubling every
+# player (and, since points get summed downstream in some callers, the
+# score) on affected teams' rosters. cr.league_id is exactly the right
+# scope: a roster entry's own league. See MIGRATION_MAP-era migration
+# 130f4acc3a50 for when player_week_stats actually got widened to
+# include league_id — this join was simply never updated to match.
 _ROSTER_ENTRY_WITH_SCORE_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
            p.full_name AS player_name, p.position, p.pro_team, p.injury_status,
@@ -56,6 +68,7 @@ _ROSTER_ENTRY_WITH_SCORE_SQL = """
     JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
     LEFT JOIN player_week_stats pws
         ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+        AND pws.league_id = cr.league_id
     LEFT JOIN player_weekly_projections pwp
         ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
     WHERE cr.season = $1 AND cr.team_id = $2

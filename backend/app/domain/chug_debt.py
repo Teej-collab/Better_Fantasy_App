@@ -67,9 +67,10 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
                 FROM roster_history rh
                 LEFT JOIN player_week_stats pws
                     ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                    AND pws.league_id = $4
                 WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
                 """,
-                season, week, t["team_id"],
+                season, week, t["team_id"], league_id,
             )
         else:
             rows = await conn.fetch(

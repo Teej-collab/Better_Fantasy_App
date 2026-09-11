@@ -52,11 +52,13 @@ async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: in
             SELECT rh.id, p.position, pws.fantasy_points AS points_scored, rh.points_projected
             FROM roster_history rh
             JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+            JOIN teams_by_season tbs ON tbs.id = rh.team_id
             LEFT JOIN player_week_stats pws
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
-            WHERE rh.season = $1 AND rh.week = $2 AND rh.lineup_slot NOT IN ('BE', 'IR')
+                AND pws.league_id = tbs.league_id
+            WHERE rh.season = $1 AND rh.week = $2 AND rh.lineup_slot NOT IN ('BE', 'IR') AND tbs.league_id = $3
             """,
-            season, week,
+            season, week, league_id,
         )
         by_position = defaultdict(list)
         for r in rows:

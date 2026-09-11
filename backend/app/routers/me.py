@@ -591,6 +591,7 @@ async def list_free_agents(request: Request, position: str | None = None, search
             FROM players p
             LEFT JOIN player_week_stats pws
                 ON pws.season = $1 AND pws.week = $3 AND pws.sleeper_player_id = p.sleeper_player_id
+                AND pws.league_id = $2
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
             WHERE p.is_draftable AND p.sleeper_player_id NOT IN (

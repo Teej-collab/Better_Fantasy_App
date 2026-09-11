@@ -66,8 +66,10 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
                rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status, rh.is_boom, rh.is_bust
         FROM roster_history rh
         JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
+        JOIN teams_by_season tbs ON tbs.id = rh.team_id
         LEFT JOIN player_week_stats pws
             ON pws.season = rh.season AND pws.week = $4 AND pws.sleeper_player_id = rh.sleeper_player_id
+            AND pws.league_id = tbs.league_id
         WHERE rh.season = $1 AND rh.team_id = $2 AND rh.week = $3
         """,
         season, team_id, snapshot_week, score_week,

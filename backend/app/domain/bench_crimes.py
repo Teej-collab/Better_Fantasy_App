@@ -79,9 +79,10 @@ async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id:
                 JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
                 LEFT JOIN player_week_stats pws
                     ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
+                    AND pws.league_id = $4
                 WHERE rh.season = $1 AND rh.week = $2 AND rh.team_id = $3
                 """,
-                season, week, team_id,
+                season, week, team_id, league_id,
             )
         else:
             rows = await conn.fetch(

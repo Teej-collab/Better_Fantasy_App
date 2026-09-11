@@ -386,6 +386,7 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+            AND pws.league_id = cr.league_id
         LEFT JOIN player_weekly_projections pwp
             ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = $2
@@ -410,6 +411,7 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $3 AND pws.sleeper_player_id = cr.sleeper_player_id
+            AND pws.league_id = cr.league_id
         LEFT JOIN player_weekly_projections pwp
             ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = ANY($2::int[])
@@ -475,6 +477,7 @@ async def get_touchdowns_for_teams(conn, season: int, week: int, team_ids: list[
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
+            AND pws.league_id = cr.league_id
         WHERE cr.season = $1 AND cr.team_id = ANY($3::int[]) AND cr.lineup_slot NOT IN ('BE', 'IR')
         """,
         season, week, team_ids,
@@ -548,6 +551,7 @@ async def get_current_rostered_players_by_pro_team(
         JOIN owners o ON o.owner_id = t.owner_id
         LEFT JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
+            AND pws.league_id = cr.league_id
         WHERE cr.season = $1 AND p.pro_team = ANY($3::text[]) AND cr.league_id = $4
         """,
         season, week, pro_teams, league_id,

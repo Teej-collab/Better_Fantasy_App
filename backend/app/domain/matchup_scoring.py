@@ -17,19 +17,26 @@ _NON_STARTER_SLOTS = ("BE", "IR")
 
 
 async def compute_team_score(conn, season: int, week: int, team_id: int) -> float:
-    # player_week_stats isn't uniquely keyed per league yet (see
-    # migration 454d8edda612's docstring) — this join picks up
-    # whichever single fantasy_points row exists for a player/week,
-    # not "this league's" value specifically. Not new here; a
-    # pre-existing gap only closed once that table is split or
-    # widened in a later phase. current_rosters IS filtered by
-    # team_id, which is already a specific, league-scoped row.
+    # 2026-09-10 real production bug, found live (real report: a
+    # player double-counted on My Team, points inflated): the stale
+    # comment this replaced said player_week_stats "isn't uniquely
+    # keyed per league yet" — that was true when migration 454d8edda612
+    # was written, but migration 130f4acc3a50 widened it to UNIQUE
+    # (season, week, sleeper_player_id, league_id) specifically so two
+    # leagues could each have their own fantasy_points for the same
+    # real player/week. This JOIN was never updated to match — without
+    # AND pws.league_id = cr.league_id, once a second league had also
+    # computed that player's week, this plain (non-LEFT) JOIN matched
+    # BOTH leagues' rows, and the sum() below silently added another
+    # league's points onto this team's real score. cr.league_id (a
+    # roster entry's own league) is exactly the right scope.
     rows = await conn.fetch(
         """
         SELECT pws.fantasy_points
         FROM current_rosters cr
         JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
+            AND pws.league_id = cr.league_id
         WHERE cr.season = $1 AND cr.team_id = $3 AND cr.lineup_slot != ALL($4::text[])
         """,
         season, week, team_id, list(_NON_STARTER_SLOTS),
