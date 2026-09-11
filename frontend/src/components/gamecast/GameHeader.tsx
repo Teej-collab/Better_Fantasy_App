@@ -112,8 +112,16 @@ function TeamBlock({
   );
 }
 
+// A football glyph, not .live-dot (a fixed red pulsing dot used
+// elsewhere for the "● LIVE" status badge) — reusing that here made
+// possession genuinely easy to miss/confuse with "this game is live"
+// rather than "this specific team has the ball" (2026-09 finding).
 function PossessionDot() {
-  return <span className="live-dot" aria-hidden title="Has possession" />;
+  return (
+    <span className="text-xs" aria-hidden title="Has possession">
+      🏈
+    </span>
+  );
 }
 
 function StatusBadge({ game, connected }: { game: LiveGame; connected: boolean }) {

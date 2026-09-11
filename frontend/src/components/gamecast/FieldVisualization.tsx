@@ -68,11 +68,19 @@ export function FieldVisualization({ game, beta = false }: { game: LiveGame; bet
 
           {hasLiveBall && (
             <div
-              className="gamecast-marker absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg"
+              className="gamecast-marker absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-0.5 text-lg"
               style={{ left: `${ballPercent}%`, color: possessionColor ?? "var(--wl-accent)" }}
               aria-hidden
             >
               🏈
+              {/* Drive direction — this field always draws the
+                  possessing team's drive rightward, toward yards_to_goal
+                  = 0 (see this component's own top comment), so the
+                  arrow is a fixed visual cue rather than something
+                  computed per play. */}
+              <span className="text-sm" title="Drive direction">
+                ➤
+              </span>
             </div>
           )}
         </div>

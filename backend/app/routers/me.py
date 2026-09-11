@@ -53,7 +53,7 @@ from app.domain.lineup_exceptions import (
     RosterFullError,
     SlotIneligibleError,
 )
-from app.domain.nfl_schedule import locked_pro_teams, schedule_lookup_by_pro_team
+from app.domain.nfl_schedule import live_status_by_pro_team, locked_pro_teams, schedule_lookup_by_pro_team
 from app.domain.waiver_exceptions import (
     ClaimNotCancellableError,
     ClaimNotFoundError,
@@ -63,7 +63,6 @@ from app.domain.waiver_exceptions import (
 )
 from app.domain.your_week import build_your_week
 from app.gamecast import service as gamecast_service
-from app.gamecast.models import GameStatus
 from app.providers.espn.player_info import get_bulk_ownership
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as league_queries
@@ -199,34 +198,14 @@ async def week(request: Request):
     return result
 
 
-# Moved to app/domain/nfl_schedule.py (2026-09) so
-# app/domain/matchup_context.py can share the exact same real-scoreboard
-# cross-reference for the matchup screen's roster rows instead of a
-# second copy of this join — kept as a local alias so every existing
-# call site here (_schedule_lookup(...)) didn't need touching.
+# Both moved to app/domain/nfl_schedule.py (2026-09) so
+# app/domain/matchup_context.py can share the exact same real-scoreboard/
+# live-status cross-references for the matchup screen's roster rows
+# instead of a second copy of either join — kept as local aliases so
+# every existing call site here (_schedule_lookup(...)/
+# _live_status_lookup(...)) didn't need touching.
 _schedule_lookup = schedule_lookup_by_pro_team
-
-
-def _live_status_lookup(games: list) -> dict[str, dict]:
-    """pro_team abbreviation -> {on_offense, is_redzone} for every team
-    currently playing a real, in-progress NFL game. Not a new data
-    source — app.gamecast.service already keeps a free, continuously-
-    refreshed in-memory cache of live game state
-    (all_cached_states()/LiveGame) for the Gamecast feature; this just
-    reads it and cross-references by team abbreviation, the same join
-    shape _schedule_lookup already uses. Deliberately excludes
-    halftime/scheduled/final — no one is "on offense" when play isn't
-    live."""
-    lookup: dict[str, dict] = {}
-    for game in games:
-        if game.status != GameStatus.IN_PROGRESS:
-            continue
-        for team in (game.home_team, game.away_team):
-            lookup[team.abbr] = {
-                "on_offense": game.possession_team_abbr == team.abbr,
-                "is_redzone": bool(game.is_redzone and game.possession_team_abbr == team.abbr),
-            }
-    return lookup
+_live_status_lookup = live_status_by_pro_team
 
 
 def _normalize_week_roster_row(row: dict) -> dict:

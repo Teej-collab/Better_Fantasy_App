@@ -38,7 +38,8 @@ import json
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
-from app.domain.nfl_schedule import locked_pro_teams, schedule_lookup_by_pro_team
+from app.domain.nfl_schedule import live_status_by_pro_team, locked_pro_teams, schedule_lookup_by_pro_team
+from app.gamecast import service as gamecast_service
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
@@ -86,10 +87,11 @@ def _expected_total(roster_rows, locked_teams: frozenset[str]) -> float:
     return round(total, 2)
 
 
-def _roster_list(roster_rows, schedule_by_pro_team):
+def _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map):
     result = []
     for r in roster_rows:
         info = schedule_by_pro_team.get(r["pro_team"], {})
+        live_info = live_status_by_pro_team_map.get(r["pro_team"], {})
         result.append(
             {
                 "player_name": r["player_name"],
@@ -114,6 +116,13 @@ def _roster_list(roster_rows, schedule_by_pro_team):
                 "game_time": info.get("game_time"),
                 "is_boom": bool(r["is_boom"]),
                 "is_bust": bool(r["is_bust"]),
+                # Same live-status cross-reference My Team's GET /team
+                # already applies (app/domain/nfl_schedule.py's
+                # live_status_by_pro_team) — only ever true during a
+                # real in-progress game for this player's own pro_team,
+                # for either roster (home or away), not just "my team."
+                "on_offense": live_info.get("on_offense", False),
+                "is_redzone": live_info.get("is_redzone", False),
             }
         )
     return result
@@ -121,7 +130,7 @@ def _roster_list(roster_rows, schedule_by_pro_team):
 
 def _side_dict(
     team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability,
-    schedule_by_pro_team, touchdowns,
+    schedule_by_pro_team, touchdowns, live_status_by_pro_team_map,
 ):
     return {
         "team_id": team_row["team_id"],
@@ -142,7 +151,7 @@ def _side_dict(
         ),
         "streak": streak,
         "projected_total": _projected_total(roster_rows),
-        "roster": _roster_list(roster_rows, schedule_by_pro_team),
+        "roster": _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map),
         # Real touchdowns scored by this team's active starters this
         # week (see queries.get_touchdowns_for_teams) — empty before
         # any games have been played, same honest-zero as everything
@@ -176,13 +185,14 @@ def _matchup_entry(
     rivalry, h2h, is_gow, score_stdev,
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
     narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
-    locked_teams=frozenset(),
+    locked_teams=frozenset(), live_status_by_pro_team_map=None,
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
     these fetches once for the whole week) and build_matchup_detail
     (which fetches them for just the one matchup), so the week-list
     card and the full detail page can never quietly drift apart."""
+    live_status_by_pro_team_map = live_status_by_pro_team_map or {}
     home_score, away_score = m["home_score"], m["away_score"]
     started = home_score is not None and away_score is not None and not (home_score == 0 and away_score == 0)
 
@@ -232,12 +242,12 @@ def _matchup_entry(
         "home": _side_dict(
             home_team, home_score, home_standing, home_streak, home_roster,
             home_bench_crimes, home_clutch_choke, home_win_probability,
-            schedule_by_pro_team, home_touchdowns,
+            schedule_by_pro_team, home_touchdowns, live_status_by_pro_team_map,
         ),
         "away": _side_dict(
             away_team, away_score, away_standing, away_streak, away_roster,
             away_bench_crimes, away_clutch_choke, away_win_probability,
-            schedule_by_pro_team, away_touchdowns,
+            schedule_by_pro_team, away_touchdowns, live_status_by_pro_team_map,
         ),
         "narrative": narrative,
     }
@@ -266,6 +276,11 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
+    # Cheap in-memory read (app.gamecast.service's own continuously-
+    # refreshed cache, not a network call) — safe to compute for every
+    # week, live or not; live_status_by_pro_team naturally returns
+    # nothing for any team without a real in-progress game right now.
+    live_status_map = live_status_by_pro_team(gamecast_service.all_cached_states())
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -319,7 +334,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
             None, schedule_by_pro_team,
             touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-            locked_teams,
+            locked_teams, live_status_map,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -376,6 +391,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
+    live_status_map = live_status_by_pro_team(gamecast_service.all_cached_states())
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -393,7 +409,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
         None, schedule_by_pro_team,
         touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-        locked_teams,
+        locked_teams, live_status_map,
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

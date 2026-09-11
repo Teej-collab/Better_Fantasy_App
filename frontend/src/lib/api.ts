@@ -151,6 +151,13 @@ export type RosterPlayer = {
   // exists for this player this week — see backend/app/domain/
   // scoring_engine.py for the full category list.
   raw_stats: Record<string, number> | null;
+  // Same live cross-reference MyTeamApp's own RosterEntry already has
+  // (app/domain/nfl_schedule.py's live_status_by_pro_team) — only ever
+  // true during a real in-progress game for this player's own real NFL
+  // team, for either side of the matchup, not just the signed-in
+  // user's own roster.
+  on_offense: boolean;
+  is_redzone: boolean;
 };
 
 export type TeamDetail = {

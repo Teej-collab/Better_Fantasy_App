@@ -9,6 +9,8 @@ two copies of this join drifting apart.
 """
 from datetime import datetime, timezone
 
+from app.gamecast.models import GameStatus
+
 
 def schedule_lookup_by_pro_team(games: list[dict]) -> dict[str, dict]:
     """pro_team abbreviation -> {next_opponent, game_time} for every
@@ -22,6 +24,31 @@ def schedule_lookup_by_pro_team(games: list[dict]) -> dict[str, dict]:
             continue
         lookup[home] = {"next_opponent": f"vs {away}", "game_time": game.get("date")}
         lookup[away] = {"next_opponent": f"@ {home}", "game_time": game.get("date")}
+    return lookup
+
+
+def live_status_by_pro_team(games: list) -> dict[str, dict]:
+    """pro_team abbreviation -> {on_offense, is_redzone} for every real
+    NFL team currently playing an in-progress game. Not a new data
+    source — app.gamecast.service already keeps a free, continuously-
+    refreshed in-memory cache of live game state (all_cached_states()/
+    LiveGame) for the Gamecast feature; this just reads it and cross-
+    references by team abbreviation, the same join shape
+    schedule_lookup_by_pro_team above uses. Deliberately excludes
+    halftime/scheduled/final games — no one is "on offense" when play
+    isn't live. Moved here from app/routers/me.py (2026-09) so
+    app/domain/matchup_context.py can share the exact same live-status
+    cross-reference for the matchup screen's roster rows instead of a
+    second copy of this join."""
+    lookup: dict[str, dict] = {}
+    for game in games:
+        if game.status != GameStatus.IN_PROGRESS:
+            continue
+        for team in (game.home_team, game.away_team):
+            lookup[team.abbr] = {
+                "on_offense": game.possession_team_abbr == team.abbr,
+                "is_redzone": bool(game.is_redzone and game.possession_team_abbr == team.abbr),
+            }
     return lookup
 
 

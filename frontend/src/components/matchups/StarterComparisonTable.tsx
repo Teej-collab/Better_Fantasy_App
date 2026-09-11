@@ -287,12 +287,28 @@ function PlayerCell({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2.5">
-      {logo ? (
-        // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
-        <img src={logo} alt="" width={24} height={24} className="h-6 w-6 shrink-0 object-contain" />
-      ) : (
-        <span className="h-6 w-6 shrink-0" aria-hidden />
-      )}
+      <span className="relative inline-flex h-6 w-6 shrink-0 items-center">
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
+          <img src={logo} alt="" width={24} height={24} className="h-6 w-6 object-contain" />
+        ) : null}
+        {/* Same live cross-reference/legend as MyTeamApp's own roster
+            row (RosterEntry.is_redzone/on_offense) — red for the red
+            zone, amber for on offense elsewhere on the field. Only
+            ever true during a real in-progress game for this player's
+            real NFL team, for either side of the matchup. */}
+        {player.is_redzone ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-[var(--background)]"
+            title="In the red zone"
+          />
+        ) : player.on_offense ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-[var(--background)]"
+            title="On offense"
+          />
+        ) : null}
+      </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline gap-1.5">
           {clickable ? (
