@@ -63,6 +63,18 @@ function LiveMark() {
  * ChatApp.tsx, on pages that need to know this bar's real height) to
  * measure it if they need to — this component itself no longer reads
  * or reacts to anything about its own size.
+ *
+ * Solid background, no backdrop-filter (2026-09 fix): `fixed` combined
+ * with `backdrop-filter`/`backdrop-blur-*` on the same element is a
+ * real, widely-reported WebKit bug — iOS Safari and WKWebView (this
+ * app's Capacitor shell) can promote the element into the wrong
+ * compositing layer mid-scroll, so it detaches from the viewport and
+ * appears to scroll up the page with the content instead of staying
+ * pinned to the bottom, then "sticks" wherever it ends up. Confirmed
+ * via a real screen recording (bar drifting up and freezing mid-page
+ * on League/Home). A fully opaque background reads identically at
+ * rest and costs nothing — it just gives up the frosted-glass
+ * translucency, which is the safe trade here.
  */
 export function BottomNav({
   signedIn,
@@ -81,7 +93,7 @@ export function BottomNav({
     <nav
       id="app-bottom-nav"
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)] pb-[env(safe-area-inset-bottom)] sm:hidden"
       style={{ borderTop: "1px solid var(--wl-border)" }}
     >
       {tabOrder.map((key) => {

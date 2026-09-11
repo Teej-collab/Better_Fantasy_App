@@ -24,6 +24,25 @@
 
 const DEFAULT_ICON = "/images/icon-192.png";
 const API_CACHE = "wl-api-cache-v1";
+// Unbounded before this (2026-09) — every distinct GET URL through the
+// proxy (draft pool, free agents, player search, chat history, ...)
+// stayed cached for the life of the service worker, potentially all
+// session long on a game day with heavy navigation. Cache Storage is
+// disk-backed, not JS heap, so this was never the direct cause of a
+// JS-side crash, but it's real unbounded growth with no reason to
+// allow it. cache.keys() returns entries oldest-first in every engine
+// this app ships to (not spec-guaranteed, but true in practice for
+// both Chromium and WebKit), so trimming from the front is a reasonable
+// best-effort LRU without tracking timestamps ourselves.
+const API_CACHE_MAX_ENTRIES = 60;
+
+async function trimCache(cache) {
+  const keys = await cache.keys();
+  const excess = keys.length - API_CACHE_MAX_ENTRIES;
+  if (excess > 0) {
+    await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+  }
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -39,7 +58,7 @@ self.addEventListener("fetch", (event) => {
         // overwrite a real previously-cached success.
         if (response.ok) {
           const copy = response.clone();
-          caches.open(API_CACHE).then((cache) => cache.put(request, copy));
+          caches.open(API_CACHE).then((cache) => cache.put(request, copy).then(() => trimCache(cache)));
         }
         return response;
       })

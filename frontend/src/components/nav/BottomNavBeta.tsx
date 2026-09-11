@@ -17,13 +17,18 @@ const INACTIVE_ITEM = "flex flex-1 flex-col items-center justify-center gap-0.5 
  * the new look" (owner_preferences.beta_layout). Deliberately not
  * reorderable yet (unlike the legacy bar's bottom_nav_order) — a fixed
  * 5-tab set for the beta window, per the roadmap's scoped-down v1.
+ *
+ * Solid background, no backdrop-filter — see BottomNav.tsx's own
+ * comment: `fixed` + `backdrop-filter` on the same element is a real
+ * WebKit bug that detaches the bar from the viewport mid-scroll on iOS
+ * Safari/WKWebView (confirmed via a real screen recording).
  */
 export function BottomNavBeta({ signedIn, matchupsHref }: { signedIn: boolean; matchupsHref: string }) {
   return (
     <nav
       id="app-bottom-nav"
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 flex bg-[var(--background)] pb-[env(safe-area-inset-bottom)] sm:hidden"
       style={{ borderTop: "1px solid var(--wl-border)" }}
     >
       <NavLink
