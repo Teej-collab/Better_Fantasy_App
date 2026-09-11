@@ -24,9 +24,23 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30  # 30 days
 # full reasoning). A visitor mints one via their own first-party
 # cookie (which ITP never touches), then hands it to the cross-site
 # request in the URL instead of relying on a cookie reaching it.
-# 60 seconds is only meant to survive the handshake/upload starting,
-# not the whole request — well short of anything replay-worthy.
+# 60 seconds is only meant to survive the handshake starting, not the
+# whole request — well short of anything replay-worthy.
 TICKET_MAX_AGE_SECONDS = 60
+
+# The chug upload ticket needs to survive the ENTIRE file transfer, not
+# just "starting" it, unlike the WS handshake above — FastAPI's
+# UploadFile = File(...) parameter means Starlette fully receives the
+# request body before upload_chug's own handler (and its ticket check)
+# ever runs, so a short-lived ticket here is judged against how long
+# the WHOLE upload took, not how long it took to begin. 2026-09-10 real
+# incident: a real upload 401'd with "Not signed in" 61 seconds after
+# minting its ticket — one second past the 60s meant for a quick
+# handshake, not a video transfer over a real phone connection.
+# 15 minutes matches Railway's own absolute request cap (see
+# app/routers/chug.py's upload_chug docstring) — no point outliving a
+# limit the platform itself enforces regardless.
+CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS = 15 * 60
 
 
 def create_session_token(
@@ -66,7 +80,8 @@ def decode_session_token(secret: str, token: str) -> dict | None:
 
 
 def create_ticket_token(
-    secret: str, *, purpose: str, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool
+    secret: str, *, purpose: str, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool,
+    max_age_seconds: int = TICKET_MAX_AGE_SECONDS,
 ) -> str:
     payload = {
         "user_id": user_id,
@@ -74,7 +89,7 @@ def create_ticket_token(
         "discord_user_id": discord_user_id,
         "is_commissioner": is_commissioner,
         "purpose": purpose,
-        "exp": int(time.time()) + TICKET_MAX_AGE_SECONDS,
+        "exp": int(time.time()) + max_age_seconds,
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 

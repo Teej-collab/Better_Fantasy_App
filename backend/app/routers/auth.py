@@ -19,8 +19,10 @@ from app.auth.league_context import is_site_admin, resolve_owner_id
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.rate_limit import check_forgot_password_rate_limit, check_login_or_signup_rate_limit
 from app.auth.session import (
+    CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
+    TICKET_MAX_AGE_SECONDS,
     create_session_token,
     create_ticket_token,
     decode_session_token,
@@ -453,6 +455,14 @@ async def issue_ticket(request: Request, purpose: str):
         owner_id=owner_id,
         discord_user_id=payload["discord_user_id"],
         is_commissioner=payload["is_commissioner"],
+        # A chug upload ticket has to outlive the entire file transfer
+        # (FastAPI/Starlette fully receives the upload before
+        # upload_chug's own handler, and its ticket check, ever run) —
+        # see CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS's own docstring for the
+        # real incident this fixes. The "ws" purpose keeps the short
+        # default; a WebSocket handshake really does complete in well
+        # under a second.
+        max_age_seconds=CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS if purpose == "chug_upload" else TICKET_MAX_AGE_SECONDS,
     )
     return {"ticket": ticket}
 

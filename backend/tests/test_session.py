@@ -1,4 +1,17 @@
-from app.auth.session import create_session_token, decode_session_token, get_session_token
+import time
+
+import jwt as pyjwt
+
+from app.auth.session import (
+    CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS,
+    TICKET_MAX_AGE_SECONDS,
+    create_session_token,
+    decode_session_token,
+    decode_ticket_token,
+    get_session_token,
+)
+
+_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
 
 class _FakeRequest:
@@ -51,3 +64,59 @@ def test_wrong_secret_rejected():
 
 def test_garbage_token_rejected():
     assert decode_session_token("test-secret-thats-at-least-32-bytes-long", "not-a-real-jwt") is None
+
+
+def _ticket_minted_seconds_ago(purpose: str, max_age_seconds: int, seconds_ago: float) -> str:
+    """Builds a ticket exactly as create_ticket_token would, but as if
+    it had been minted `seconds_ago` in the past — constructed directly
+    (not via create_ticket_token + mocking time.time()) since PyJWT's
+    own expiration check reads real wall-clock time internally, not
+    whatever the `time` module's `time.time` attribute currently points
+    to, so monkeypatching that doesn't reach it. Backdating the `exp`
+    claim itself exercises the real, unmocked PyJWT expiration check."""
+    payload = {
+        "user_id": 1, "owner_id": 2, "discord_user_id": 3, "is_commissioner": False,
+        "purpose": purpose,
+        "exp": int(time.time()) - seconds_ago + max_age_seconds,
+    }
+    return pyjwt.encode(payload, _SECRET, algorithm="HS256")
+
+
+def test_a_ticket_past_its_own_expiry_is_rejected():
+    """Sanity check on the expiry mechanism itself, before trusting the
+    "survives 61s" test below to mean anything."""
+    ticket = _ticket_minted_seconds_ago("chug_upload", CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS, seconds_ago=CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS + 5)
+    assert decode_ticket_token(_SECRET, ticket, expected_purpose="chug_upload") is None
+
+
+def test_ws_ticket_would_not_have_survived_61_seconds():
+    """The exact bug, reproduced: a ticket minted with the short
+    TICKET_MAX_AGE_SECONDS default (60s, meant for a quick WS
+    handshake) genuinely does not survive to the 61-second mark a real
+    production chug upload hit."""
+    ticket = _ticket_minted_seconds_ago("ws", TICKET_MAX_AGE_SECONDS, seconds_ago=61)
+    assert decode_ticket_token(_SECRET, ticket, expected_purpose="ws") is None
+
+
+def test_chug_upload_ticket_survives_a_slow_real_upload():
+    """The real bug, found live in production logs: a real chug upload
+    401'd with "Not signed in" 61 seconds after minting its ticket —
+    FastAPI/Starlette fully receives an UploadFile parameter's request
+    body BEFORE upload_chug's own handler (and its ticket check) ever
+    runs, so a ticket good for only TICKET_MAX_AGE_SECONDS (60s, meant
+    for a quick WS handshake) was being judged against how long the
+    WHOLE video transfer took, not how long it took to start. A ticket
+    minted for the chug_upload purpose specifically must survive well
+    past that same 61-second mark."""
+    ticket = _ticket_minted_seconds_ago("chug_upload", CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS, seconds_ago=61)
+    payload = decode_ticket_token(_SECRET, ticket, expected_purpose="chug_upload")
+    assert payload is not None
+    assert payload["user_id"] == 1
+
+
+def test_chug_upload_ticket_eventually_still_expires():
+    """Not infinite — still bounded, same as every other ticket."""
+    ticket = _ticket_minted_seconds_ago(
+        "chug_upload", CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS, seconds_ago=CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS + 5
+    )
+    assert decode_ticket_token(_SECRET, ticket, expected_purpose="chug_upload") is None
