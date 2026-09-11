@@ -43,20 +43,33 @@ export async function commissionerDropPlayer(
 
 export type CommissionerAddResult =
   | { status: "ok"; roster: RosterEntry[]; dropped_player: RosterEntry | null }
-  | { status: "roster_full" };
+  | { status: "roster_full" }
+  | { status: "on_waivers"; detail: string; clearsAt: string | null };
 
 export async function commissionerAddPlayer(
   leagueId: number,
   teamId: number,
   sleeperPlayerId: string,
-  dropSleeperPlayerId?: string
+  dropSleeperPlayerId?: string,
+  // Bypasses the normal 1-day waiver period — only ever sent as true
+  // when the commissioner explicitly confirms it after a first,
+  // non-override attempt already came back "on_waivers" below.
+  overrideWaivers?: boolean
 ): Promise<CommissionerAddResult> {
   const res = await fetch(`/api/backend/leagues/${leagueId}/teams/${teamId}/roster/add`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sleeper_player_id: sleeperPlayerId, drop_sleeper_player_id: dropSleeperPlayerId }),
+    body: JSON.stringify({
+      sleeper_player_id: sleeperPlayerId,
+      drop_sleeper_player_id: dropSleeperPlayerId,
+      override_waivers: overrideWaivers,
+    }),
   });
   if (res.status === 409) {
+    const data = await res.json().catch(() => null);
+    if (data?.error === "on_waivers") {
+      return { status: "on_waivers", detail: data.detail, clearsAt: data.clears_at ?? null };
+    }
     return { status: "roster_full" };
   }
   if (!res.ok) {

@@ -100,6 +100,28 @@ async def get_waiver_clears_at(conn, season: int, league_id: int, sleeper_player
     return {r["sleeper_player_id"]: r["clears_at"] for r in rows}
 
 
+async def force_clear_waiver(conn, season: int, league_id: int, sleeper_player_id: str, reason: str) -> None:
+    """Commissioner override (app/routers/commissioner_lineup.py) placed
+    this player directly onto a roster, bypassing the normal waiver
+    period entirely — called right after that write succeeds, in the
+    same transaction, to fail every pending claim on them and remove
+    the waiver_wire row itself. Without this, the daily scheduler job
+    (process_expired_waivers, below) would still try to award the SAME
+    player to whichever claim had the best priority once clears_at
+    passed, fighting the commissioner's own override and — since
+    current_rosters has no defense against a player ending up rostered
+    twice — actually able to duplicate them onto a second team."""
+    await conn.execute(
+        "UPDATE waiver_claims SET status = 'failed', failure_reason = $1, processed_at = now() "
+        "WHERE season = $2 AND league_id = $3 AND add_sleeper_player_id = $4 AND status = 'pending'",
+        reason, season, league_id, sleeper_player_id,
+    )
+    await conn.execute(
+        "DELETE FROM waiver_wire WHERE season = $1 AND league_id = $2 AND sleeper_player_id = $3",
+        season, league_id, sleeper_player_id,
+    )
+
+
 async def submit_claim(
     conn, season: int, league_id: int, team_id: int, add_sleeper_player_id: str,
     drop_sleeper_player_id: str | None = None,

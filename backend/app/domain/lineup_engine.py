@@ -215,7 +215,7 @@ async def drop_player(conn, season: int, team_id: int, sleeper_player_id: str) -
 
 async def add_free_agent(
     conn, season: int, team_id: int, sleeper_player_id: str, drop_sleeper_player_id: str | None = None,
-    league_id: int = DEFAULT_LEAGUE_ID,
+    league_id: int = DEFAULT_LEAGUE_ID, override_waivers: bool = False,
 ) -> dict:
     async with conn.transaction():
         player = await conn.fetchrow(
@@ -236,12 +236,20 @@ async def add_free_agent(
         # BENCH_SLOT_LABEL), so importing it back here would be circular.
         # See waivers.py's own docstring for the real "1-day waiver
         # period, resets weekly to inverse standings" rule this enforces.
-        on_waivers = await conn.fetchval(
-            "SELECT 1 FROM waiver_wire WHERE season = $1 AND league_id = $2 AND sleeper_player_id = $3 AND clears_at > now()",
-            season, league_id, sleeper_player_id,
-        )
-        if on_waivers:
-            raise PlayerOnWaiversError(f"{sleeper_player_id} is still on waivers — submit a waiver claim instead")
+        # override_waivers skips this check entirely — only
+        # commissioner_lineup.py's force-add ever passes True (and only
+        # when the commissioner explicitly confirms it, after a first
+        # attempt already came back blocked), for exactly the case a
+        # real incident surfaced: a bad sync/error forced a drop, and
+        # the affected owner had no way to get the player back before
+        # the normal 1-day waiver clock ran out.
+        if not override_waivers:
+            on_waivers = await conn.fetchval(
+                "SELECT 1 FROM waiver_wire WHERE season = $1 AND league_id = $2 AND sleeper_player_id = $3 AND clears_at > now()",
+                season, league_id, sleeper_player_id,
+            )
+            if on_waivers:
+                raise PlayerOnWaiversError(f"{sleeper_player_id} is still on waivers — submit a waiver claim instead")
 
         roster_slots = await _get_roster_slots(conn, season, league_id)
         capacity = total_draftable_slots(roster_slots)

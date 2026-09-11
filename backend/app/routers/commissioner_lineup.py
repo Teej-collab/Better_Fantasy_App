@@ -130,13 +130,23 @@ async def commissioner_drop_player(league_id: int, team_id: int, body: Commissio
 class CommissionerRosterAddRequest(BaseModel):
     sleeper_player_id: str
     drop_sleeper_player_id: str | None = None
+    # Bypasses the normal 1-day waiver period entirely (app/domain/
+    # waivers.py) — added for a real incident: an error forced a drop,
+    # and the affected owner had no way to get the player back before
+    # waivers cleared. False by default even for a commissioner: a
+    # first attempt on a genuinely-waived player should still surface
+    # that clearly (see the on_waivers response below) rather than
+    # silently overriding every time, so the commissioner sees what
+    # they're overriding before confirming it.
+    override_waivers: bool = False
 
 
 @router.post("/{league_id}/teams/{team_id}/roster/add")
 async def commissioner_add_player(league_id: int, team_id: int, body: CommissionerRosterAddRequest, request: Request):
     """Real write — adds a free agent to the target team's roster on
     their behalf, same roster_full/drop-target handling as the
-    self-serve /me/team/free-agents/add."""
+    self-serve /me/team/free-agents/add, plus an override_waivers
+    escape hatch that path doesn't have."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
@@ -144,13 +154,30 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
-            result = await lineup_engine.add_free_agent(
-                conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
-                league_id=league_id,
-            )
+            try:
+                result = await lineup_engine.add_free_agent(
+                    conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
+                    league_id=league_id, override_waivers=body.override_waivers,
+                )
+            except PlayerOnWaiversError as e:
+                clears_at_map = await waivers.get_waiver_clears_at(conn, active_season, league_id, [body.sleeper_player_id])
+                clears_at = clears_at_map.get(body.sleeper_player_id)
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "error": "on_waivers",
+                        "detail": str(e),
+                        "clears_at": clears_at.isoformat() if clears_at else None,
+                    },
+                )
             if result["dropped_player"] is not None:
                 await waivers.start_waiver_clock(
                     conn, active_season, league_id, result["dropped_player"]["sleeper_player_id"]
+                )
+            if body.override_waivers:
+                await waivers.force_clear_waiver(
+                    conn, active_season, league_id, body.sleeper_player_id,
+                    reason="Force-added by the commissioner before waivers processed",
                 )
     except RosterFullError as e:
         return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})

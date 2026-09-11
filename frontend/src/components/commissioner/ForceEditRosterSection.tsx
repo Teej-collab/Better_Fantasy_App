@@ -29,6 +29,9 @@ export function ForceEditRosterSection() {
   const [results, setResults] = useState<FreeAgentResult[]>([]);
   const [addBusyId, setAddBusyId] = useState<string | null>(null);
   const [rosterFullFor, setRosterFullFor] = useState<string | null>(null);
+  const [onWaiversFor, setOnWaiversFor] = useState<{ id: string; detail: string; clearsAt: string | null } | null>(
+    null
+  );
 
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +52,7 @@ export function ForceEditRosterSection() {
     if (leagueId === null) return;
     setRoster(null);
     setRosterFullFor(null);
+    setOnWaiversFor(null);
     try {
       setRoster(await getTeamCurrentRoster(leagueId, teamId));
     } catch (err) {
@@ -82,14 +86,23 @@ export function ForceEditRosterSection() {
     }
   }
 
-  async function add(sleeperPlayerId: string) {
+  async function add(sleeperPlayerId: string, overrideWaivers?: boolean) {
     if (leagueId === null || selectedTeamId === "") return;
     setAddBusyId(sleeperPlayerId);
     setRosterFullFor(null);
+    setOnWaiversFor(null);
     try {
-      const result = await commissionerAddPlayer(leagueId, selectedTeamId, sleeperPlayerId);
+      const result = await commissionerAddPlayer(
+        leagueId,
+        selectedTeamId,
+        sleeperPlayerId,
+        undefined,
+        overrideWaivers
+      );
       if (result.status === "roster_full") {
         setRosterFullFor(sleeperPlayerId);
+      } else if (result.status === "on_waivers") {
+        setOnWaiversFor({ id: sleeperPlayerId, detail: result.detail, clearsAt: result.clearsAt });
       } else {
         setRoster(result.roster);
       }
@@ -201,6 +214,22 @@ export function ForceEditRosterSection() {
                     </div>
                     {rosterFullFor === p.sleeper_player_id && (
                       <p className="text-xs text-red-500">Roster is full — drop a player above first.</p>
+                    )}
+                    {onWaiversFor?.id === p.sleeper_player_id && (
+                      <div className="flex flex-col gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          {onWaiversFor.clearsAt
+                            ? `Still on waivers until ${new Date(onWaiversFor.clearsAt).toLocaleString()}.`
+                            : onWaiversFor.detail}
+                        </p>
+                        <button
+                          onClick={() => add(p.sleeper_player_id, true)}
+                          disabled={addBusyId === p.sleeper_player_id}
+                          className="w-fit rounded-full border border-amber-500/40 px-2.5 py-1 text-xs font-medium text-amber-600 hover:bg-amber-500/10 disabled:opacity-40 dark:text-amber-400"
+                        >
+                          {addBusyId === p.sleeper_player_id ? "Adding…" : "Force add anyway (override waivers)"}
+                        </button>
+                      </div>
                     )}
                   </li>
                 ))}
