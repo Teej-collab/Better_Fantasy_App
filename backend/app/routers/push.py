@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
+from app.auth.league_context import resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import VAPID_PUBLIC_KEY
 from app.db import get_pool
@@ -62,14 +63,15 @@ async def subscribe(body: SubscribeBody, request: Request, pool=Depends(get_pool
         raise HTTPException(status_code=400, detail="endpoint and keys are required")
 
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
         row = await queries.upsert_subscription(
-            conn, payload["owner_id"], body.endpoint, body.keys.p256dh, body.keys.auth, body.device_label
+            conn, owner_id, body.endpoint, body.keys.p256dh, body.keys.auth, body.device_label
         )
         # update_preferences (not a raw UPDATE) — owner_preferences rows
         # are created lazily on first write, so a bare UPDATE would
         # silently affect zero rows for an owner who's never touched
         # any preference before now.
-        await preferences_queries.update_preferences(conn, payload["owner_id"], {"push_enabled": True})
+        await preferences_queries.update_preferences(conn, owner_id, {"push_enabled": True})
     return {"id": row["id"], "device_label": row["device_label"], "active": row["active"]}
 
 
@@ -81,15 +83,16 @@ class UnsubscribeBody(BaseModel):
 async def unsubscribe(body: UnsubscribeBody, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        found = await queries.deactivate_subscription(conn, payload["owner_id"], body.endpoint)
+        owner_id = await resolve_owner_id(conn, payload)
+        found = await queries.deactivate_subscription(conn, owner_id, body.endpoint)
         if not found:
             raise HTTPException(status_code=404, detail="No matching subscription for this account")
-        remaining = await queries.list_active_subscriptions_for_owner(conn, payload["owner_id"])
+        remaining = await queries.list_active_subscriptions_for_owner(conn, owner_id)
         if not remaining:
             # Only flip the master toggle off once literally every
             # device is gone — disabling on one device must never
             # disable notifications on the others still subscribed.
-            await preferences_queries.update_preferences(conn, payload["owner_id"], {"push_enabled": False})
+            await preferences_queries.update_preferences(conn, owner_id, {"push_enabled": False})
     return {"ok": True}
 
 
@@ -103,8 +106,9 @@ async def send_test_notification(request: Request, pool=Depends(get_pool)):
     this one is restricted to sending to yourself)."""
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        subs = await queries.list_active_subscriptions_for_owner(conn, payload["owner_id"])
+        owner_id = await resolve_owner_id(conn, payload)
+        subs = await queries.list_active_subscriptions_for_owner(conn, owner_id)
         if not subs:
             raise HTTPException(status_code=400, detail="No active push subscriptions on this account")
-        delivered = await dispatcher.send_to_owner(conn, payload["owner_id"], formatter.test_notification())
+        delivered = await dispatcher.send_to_owner(conn, owner_id, formatter.test_notification())
     return {"delivered": delivered, "attempted": len(subs)}

@@ -20,6 +20,7 @@ from app.auth.league_context import (
     require_active_league_id,
     require_league_access,
     require_league_commissioner,
+    resolve_owner_id,
 )
 from app.auth.session import decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
@@ -127,21 +128,41 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        # Real production bug, found live: payload["discord_user_id"] is
+        # the JWT's own claim, which is ONLY ever populated by the
+        # Discord OAuth login path (app/routers/auth.py's discord_
+        # callback) — password and Google login both mint a token with
+        # discord_user_id=None, even when that account's owners row has
+        # a real one linked from a past Discord login. chug_scores.
+        # discord_user_id is NOT NULL (the whole chug leaderboard is
+        # still keyed on it — a real, separate design debt, not fixed
+        # here), so any owner who happens to be signed in via password/
+        # Google when they upload got a raw, unexplained failure — "for
+        # funsies," reported directly. Resolved live from the owner's
+        # real row instead of trusting the token's claim, same fix
+        # already applied to owner_id/is_commissioner elsewhere.
+        discord_user_id = await conn.fetchval("SELECT discord_user_id FROM owners WHERE owner_id = $1", owner_id)
+        if discord_user_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This account needs to be linked to Discord before posting a chug — ask your commissioner.",
+            )
         week = await league_queries.get_cached_current_week(conn, active_season)
         row = await chug_queries.insert_chug_score(
-            conn, payload["discord_user_id"], active_season, week,
+            conn, discord_user_id, active_season, week,
             result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
             league_id,
         )
 
         owed_before = await conn.fetchval(
             "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, payload["owner_id"], league_id,
+            active_season, owner_id, league_id,
         ) or 0
-        await record_completed_chug(conn, active_season, payload["owner_id"], league_id)
+        await record_completed_chug(conn, active_season, owner_id, league_id)
         owed_after = await conn.fetchval(
             "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, payload["owner_id"], league_id,
+            active_season, owner_id, league_id,
         ) or 0
 
     return {

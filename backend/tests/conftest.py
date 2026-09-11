@@ -117,6 +117,30 @@ async def make_safe_session_user_id(pool) -> int:
         )
 
 
+async def make_safe_session_user_id_for_owner(pool, owner_id: int) -> int:
+    """Like make_safe_session_user_id, but also links the new user_id to
+    the given owner_id (UPDATE owners SET user_id = ...) — matching what
+    every real login path already does (app/queries/auth.py's
+    get_or_create_user_for_owner / get_or_create_user_for_google) before
+    minting a token with that owner_id in it.
+
+    2026-09 addition: app/auth/league_context.py's resolve_owner_id does
+    a LIVE lookup (SELECT owner_id FROM owners WHERE user_id = $1) now,
+    the same fix already applied to is_commissioner a month earlier —
+    the JWT's own owner_id claim is no longer trusted directly anywhere.
+    A test that hand-crafts a token via create_session_token(owner_id=X)
+    using a plain make_safe_session_user_id() (no real link) used to
+    work, since the old code trusted that claim outright; it now
+    resolves to None instead, and the request proceeds as if the caller
+    had no owner at all — a real, confusing failure mode (a 403/404 that
+    looks like an authorization bug, not a fixture gap) unless every
+    such helper is updated to use this instead."""
+    user_id = await make_safe_session_user_id(pool)
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE owners SET user_id = $1 WHERE owner_id = $2", user_id, owner_id)
+    return user_id
+
+
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
     """httpx's ASGITransport (every test client in this suite) reports

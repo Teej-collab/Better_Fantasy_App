@@ -22,7 +22,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id
+from app.auth.league_context import require_active_league_id, resolve_owner_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.chat.manager import manager
 from app.config import _require
@@ -68,7 +68,8 @@ async def list_conversations(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        conversations = await chat_domain.get_conversations_summary(conn, payload["owner_id"], league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        conversations = await chat_domain.get_conversations_summary(conn, owner_id, league_id)
     return {"conversations": conversations}
 
 
@@ -79,9 +80,10 @@ async def get_messages(
 ):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        if not await chat_queries.is_participant(conn, conversation_id, payload["owner_id"]):
+        owner_id = await resolve_owner_id(conn, payload)
+        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
             raise HTTPException(status_code=403, detail="Not a participant in this conversation")
-        messages = await chat_domain.get_conversation_messages(conn, conversation_id, before, limit, payload["owner_id"])
+        messages = await chat_domain.get_conversation_messages(conn, conversation_id, before, limit, owner_id)
     return {"messages": messages}
 
 
@@ -93,7 +95,8 @@ async def get_conversation_members(conversation_id: int, request: Request, pool=
     screen needed for that case)."""
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        if not await chat_queries.is_participant(conn, conversation_id, payload["owner_id"]):
+        owner_id = await resolve_owner_id(conn, payload)
+        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
             raise HTTPException(status_code=403, detail="Not a participant in this conversation")
         members = await chat_queries.list_all_conversation_participants(conn, conversation_id)
     return {"members": members}
@@ -106,19 +109,20 @@ async def start_direct_conversation(request: Request, pool=Depends(get_pool)):
     target_owner_id = body.get("owner_id")
     if not isinstance(target_owner_id, int):
         raise HTTPException(status_code=400, detail="owner_id is required")
-    if target_owner_id == payload["owner_id"]:
-        raise HTTPException(status_code=400, detail="Can't start a conversation with yourself")
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if target_owner_id == owner_id:
+            raise HTTPException(status_code=400, detail="Can't start a conversation with yourself")
         league_id = await require_active_league_id(conn, payload)
         eligible_ids = {
             m["owner_id"]
-            for m in await chat_queries.list_eligible_members(conn, active_season, league_id, payload["owner_id"])
+            for m in await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
         }
         if target_owner_id not in eligible_ids:
             raise HTTPException(status_code=404, detail="Not a current league member")
-        conversation_id = await chat_queries.get_or_create_direct_conversation(conn, payload["owner_id"], target_owner_id)
+        conversation_id = await chat_queries.get_or_create_direct_conversation(conn, owner_id, target_owner_id)
     return {"conversation_id": conversation_id}
 
 
@@ -128,7 +132,8 @@ async def list_members(request: Request, pool=Depends(get_pool)):
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        rows = await chat_queries.list_eligible_members(conn, active_season, league_id, payload["owner_id"])
+        owner_id = await resolve_owner_id(conn, payload)
+        rows = await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
     # online is the initial snapshot only (manager.is_connected, in-
     # process presence state, not a DB column) — the frontend's
     # PresenceHeartbeat applies live `presence` WebSocket events on top
@@ -158,7 +163,8 @@ async def search_gifs(request: Request, search: str = Query(..., min_length=1, m
 async def mark_conversation_read(conversation_id: int, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        if not await chat_queries.is_participant(conn, conversation_id, payload["owner_id"]):
+        owner_id = await resolve_owner_id(conn, payload)
+        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
             raise HTTPException(status_code=403, detail="Not a participant in this conversation")
         latest_id = await chat_queries.get_latest_message_id(conn, conversation_id)
         if latest_id is not None:
@@ -166,9 +172,9 @@ async def mark_conversation_read(conversation_id: int, request: Request, pool=De
             # the Read Receipts preference below — it's what this
             # owner's OWN unread count is computed from (get_messages
             # via chat_domain), not just a signal to other people.
-            await chat_queries.mark_read(conn, conversation_id, payload["owner_id"], latest_id)
+            await chat_queries.mark_read(conn, conversation_id, owner_id, latest_id)
             participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
-            read_receipts_enabled = (await preferences_queries.get_preferences(conn, payload["owner_id"]))[
+            read_receipts_enabled = (await preferences_queries.get_preferences(conn, owner_id))[
                 "read_receipts_enabled"
             ]
 
@@ -176,11 +182,11 @@ async def mark_conversation_read(conversation_id: int, request: Request, pool=De
     # owner read anything — the broadcast just doesn't go out.
     if latest_id is not None and read_receipts_enabled:
         await manager.broadcast_to_owners(
-            [p for p in participant_ids if p != payload["owner_id"]],
+            [p for p in participant_ids if p != owner_id],
             {
                 "type": "read",
                 "conversation_id": conversation_id,
-                "owner_id": payload["owner_id"],
+                "owner_id": owner_id,
                 "last_read_message_id": latest_id,
             },
         )
@@ -196,13 +202,14 @@ async def react_to_message(message_id: int, request: Request, pool=Depends(get_p
         raise HTTPException(status_code=400, detail=f"Unsupported reaction — expected one of {sorted(ALLOWED_REACTIONS)}")
 
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
         target = await chat_queries.get_message_owner_and_conversation(conn, message_id)
         if target is None:
             raise HTTPException(status_code=404, detail="Message not found")
-        if not await chat_queries.is_participant(conn, target["conversation_id"], payload["owner_id"]):
+        if not await chat_queries.is_participant(conn, target["conversation_id"], owner_id):
             raise HTTPException(status_code=403, detail="Not a participant in this conversation")
 
-        added = await chat_queries.toggle_reaction(conn, message_id, payload["owner_id"], emoji)
+        added = await chat_queries.toggle_reaction(conn, message_id, owner_id, emoji)
         participant_ids = await chat_queries.list_conversation_participant_ids(conn, target["conversation_id"])
 
     await manager.broadcast_to_owners(
@@ -212,7 +219,7 @@ async def react_to_message(message_id: int, request: Request, pool=Depends(get_p
             "message_id": message_id,
             "conversation_id": target["conversation_id"],
             "emoji": emoji,
-            "owner_id": payload["owner_id"],
+            "owner_id": owner_id,
             "added": added,
         },
     )
@@ -223,10 +230,11 @@ async def react_to_message(message_id: int, request: Request, pool=Depends(get_p
 async def delete_message(message_id: int, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
         target = await chat_queries.get_message_owner_and_conversation(conn, message_id)
         if target is None:
             raise HTTPException(status_code=404, detail="Message not found")
-        if target["owner_id"] != payload["owner_id"]:
+        if target["owner_id"] != owner_id:
             raise HTTPException(status_code=403, detail="Can only delete your own messages")
 
         await chat_queries.soft_delete_message(conn, message_id)
@@ -308,9 +316,26 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
         await websocket.close(code=4401)
         return
 
-    owner_id = payload["owner_id"]
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Live lookup rather than trusting payload["owner_id"] — a
+        # cookie-authenticated connection can carry the same stale
+        # claim a plain HTTP request would (see resolve_owner_id); a
+        # ticket-authenticated one is already fresh (POST /auth/ticket
+        # mints it live), so this is a no-op extra query in that case,
+        # not a behavior change.
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            # No real owner link yet (e.g. a fresh email/password signup
+            # that hasn't created/joined anything) — chat is inherently
+            # league-scoped, so there's nothing this connection could
+            # legitimately do. Close cleanly now rather than connecting
+            # a socket that would silently no-op on every message (no
+            # participant checks below can ever pass for a null owner),
+            # leaving a caller's client waiting on a response that will
+            # never come.
+            await websocket.close(code=4401)
+            return
         # Session JWT carries discord_user_id, not display_name — fetched
         # once per connection (not per keystroke) and reused for every
         # typing-indicator broadcast below.

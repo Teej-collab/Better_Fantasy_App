@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id
+from app.auth.league_context import require_active_league_id, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
@@ -83,7 +83,8 @@ async def get_my_settings(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        if payload["owner_id"] is None:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
             row = await settings_queries.get_account_settings(conn, payload["user_id"])
         else:
             # league_id scoped to the caller's own real active league
@@ -95,7 +96,7 @@ async def get_my_settings(request: Request, pool=Depends(get_pool)):
             # always session-bound — but a real cross-*league*
             # correctness bug for any owner in 2+ leagues).
             league_id = await require_active_league_id(conn, payload)
-            row = await settings_queries.get_settings(conn, payload["owner_id"], active_season, league_id)
+            row = await settings_queries.get_settings(conn, owner_id, active_season, league_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Owner not found")
     return dict(row)
@@ -118,7 +119,8 @@ async def update_display_name(body: DisplayNameBody, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail="Display name can't contain control characters")
 
     async with pool.acquire() as conn:
-        await settings_queries.set_display_name(conn, payload["owner_id"], name)
+        owner_id = await resolve_owner_id(conn, payload)
+        await settings_queries.set_display_name(conn, owner_id, name)
     return {"display_name": name}
 
 
@@ -127,8 +129,9 @@ async def reset_display_name(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        await settings_queries.reset_display_name(conn, payload["owner_id"])
-        row = await settings_queries.get_settings(conn, payload["owner_id"], active_season)
+        owner_id = await resolve_owner_id(conn, payload)
+        await settings_queries.reset_display_name(conn, owner_id)
+        row = await settings_queries.get_settings(conn, owner_id, active_season)
     return {"display_name": row["display_name"]}
 
 
@@ -145,7 +148,8 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
         raise HTTPException(status_code=400, detail="chat_color must be a 6-digit hex color like #39ff14, or null")
 
     async with pool.acquire() as conn:
-        await settings_queries.set_chat_color(conn, payload["owner_id"], color)
+        owner_id = await resolve_owner_id(conn, payload)
+        await settings_queries.set_chat_color(conn, owner_id, color)
     return {"chat_color": color}
 
 
@@ -171,7 +175,8 @@ async def update_logo(body: LogoBody, request: Request, pool=Depends(get_pool)):
         logo_url = validated
 
     async with pool.acquire() as conn:
-        await settings_queries.set_logo_url(conn, payload["owner_id"], logo_url)
+        owner_id = await resolve_owner_id(conn, payload)
+        await settings_queries.set_logo_url(conn, owner_id, logo_url)
     return {"logo_url": logo_url}
 
 
@@ -201,7 +206,8 @@ async def update_team_name(body: TeamNameBody, request: Request, pool=Depends(ge
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        updated = await settings_queries.set_team_name(conn, payload["owner_id"], active_season, name, league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        updated = await settings_queries.set_team_name(conn, owner_id, active_season, name, league_id)
     if not updated:
         raise HTTPException(status_code=404, detail=f"No team found for the {active_season} season")
     return {"team_name": name}
@@ -213,8 +219,9 @@ async def reset_team_name(request: Request, pool=Depends(get_pool)):
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        await settings_queries.reset_team_name(conn, payload["owner_id"], active_season, league_id)
-        team_name = await settings_queries.get_team_name(conn, payload["owner_id"], active_season, league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        await settings_queries.reset_team_name(conn, owner_id, active_season, league_id)
+        team_name = await settings_queries.get_team_name(conn, owner_id, active_season, league_id)
     return {"team_name": team_name}
 
 
@@ -222,7 +229,8 @@ async def reset_team_name(request: Request, pool=Depends(get_pool)):
 async def get_preferences(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        return await preferences_queries.get_preferences(conn, payload["owner_id"])
+        owner_id = await resolve_owner_id(conn, payload)
+        return await preferences_queries.get_preferences(conn, owner_id)
 
 
 class PreferencesPatch(BaseModel):
@@ -350,7 +358,8 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
             seen_keys.add(item["i"])
 
     async with pool.acquire() as conn:
-        return await preferences_queries.update_preferences(conn, payload["owner_id"], patch)
+        owner_id = await resolve_owner_id(conn, payload)
+        return await preferences_queries.update_preferences(conn, owner_id, patch)
 
 
 class SundayModeBody(BaseModel):
@@ -365,4 +374,5 @@ async def apply_sunday_mode(body: SundayModeBody, request: Request, pool=Depends
             status_code=400, detail=f"preset must be one of {sorted(preferences_queries.SUNDAY_MODE_PRESETS)}"
         )
     async with pool.acquire() as conn:
-        return await preferences_queries.apply_sunday_mode(conn, payload["owner_id"], body.preset)
+        owner_id = await resolve_owner_id(conn, payload)
+        return await preferences_queries.apply_sunday_mode(conn, owner_id, body.preset)

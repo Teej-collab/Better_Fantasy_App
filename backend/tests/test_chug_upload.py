@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token, create_ticket_token
 from app.main import app
-from tests.conftest import TEST_SEASON, make_safe_session_user_id
+from tests.conftest import TEST_SEASON, make_safe_session_user_id_for_owner
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _DISCORD_USER_ID = 424242
@@ -23,15 +23,30 @@ def _client():
 
 async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=_DISCORD_USER_ID, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id_for_owner(pool, owner_id), owner_id=owner_id,
+        discord_user_id=_DISCORD_USER_ID, is_commissioner=False,
+    )
+    return {"session": token}
+
+
+# The bug this file's new tests below cover: password/Google login never
+# populates discord_user_id in the token at all (see app/routers/auth.py
+# — only the Discord OAuth callback does), regardless of what the
+# account's owners row actually has. This mints exactly that kind of
+# session, to prove the upload endpoint resolves the real value live
+# from the database rather than trusting (or crashing on) this claim.
+async def _session_cookie_no_discord_claim(pool, owner_id: int):
+    token = create_session_token(
+        _SESSION_SECRET, user_id=await make_safe_session_user_id_for_owner(pool, owner_id), owner_id=owner_id,
+        is_commissioner=False,
     )
     return {"session": token}
 
 
 async def _upload_ticket(pool, owner_id: int):
     return create_ticket_token(
-        _SESSION_SECRET, purpose="chug_upload", user_id=await make_safe_session_user_id(pool), owner_id=owner_id,
-        discord_user_id=_DISCORD_USER_ID, is_commissioner=False,
+        _SESSION_SECRET, purpose="chug_upload", user_id=await make_safe_session_user_id_for_owner(pool, owner_id),
+        owner_id=owner_id, discord_user_id=_DISCORD_USER_ID, is_commissioner=False,
     )
 
 
@@ -40,6 +55,14 @@ async def _seed_owner(pool, suffix):
         return await conn.fetchval(
             "INSERT INTO owners (espn_member_id, display_name, discord_user_id) VALUES ($1, $2, $3) RETURNING owner_id",
             f"test-chugupload-owner-{suffix}", f"Uploader {suffix}", _DISCORD_USER_ID,
+        )
+
+
+async def _seed_owner_with_no_discord_link(pool, suffix):
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-chugupload-owner-{suffix}", f"Uploader {suffix}",
         )
 
 
@@ -304,3 +327,53 @@ async def test_upload_with_nothing_owed_is_for_funsies_and_does_not_bank(pool, m
     assert body["chugs_owed_before"] == 0
     assert body["chugs_owed_after"] == 0  # never goes negative / doesn't bank
     assert lifetime == 1  # but it's still a real, counted completion
+
+
+async def test_upload_resolves_discord_user_id_live_even_when_session_lacks_it(pool, monkeypatch):
+    """The real bug, found live: password/Google login never populates
+    discord_user_id in the session token at all (app/routers/auth.py —
+    only the Discord OAuth callback does), even when the account's
+    owners row has a real one linked from a past Discord login. Before
+    this fix, insert_chug_score got payload["discord_user_id"] (None
+    here) straight into chug_scores.discord_user_id, a NOT NULL column
+    — a real, unexplained failure for exactly this "for funsies"
+    report. Must succeed, using the real value from the owner's own row."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", _fake_analysis)
+    owner_id = await _seed_owner(pool, "no-discord-claim")  # owners row DOES have _DISCORD_USER_ID
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie_no_discord_claim(pool, owner_id))  # token doesn't
+        resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM chug_scores WHERE discord_user_id = $1", _DISCORD_USER_ID)
+    await _cleanup(pool)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["can_to_mouth"] is True
+    assert row is not None  # correctly saved under the owner's real, DB-resolved discord_user_id
+
+
+async def test_upload_rejects_clearly_when_owner_has_no_discord_link_at_all(pool, monkeypatch):
+    """A genuinely self-serve account (email/password or Google, never
+    linked to Discord at all) can't post a chug today — the whole
+    leaderboard is still keyed on discord_user_id (a real, separate
+    design debt, not fixed here). Must be a clear, honest error, not a
+    raw database failure."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    monkeypatch.setattr("app.routers.chug.run_chug_analysis", _fake_analysis)
+    owner_id = await _seed_owner_with_no_discord_link(pool, "genuinely-no-discord")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie_no_discord_claim(pool, owner_id))
+        resp = await client.post("/chug/upload", files={"video": ("clip.mp4", b"fake video bytes", "video/mp4")})
+
+    assert resp.status_code == 200  # streamed — see test_upload_rejects_unsupported_extension's own note
+    body = resp.json()
+    assert body["error"] is True
+    assert body["status"] == 409
+    assert "discord" in body["message"].lower()

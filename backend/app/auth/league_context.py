@@ -12,7 +12,28 @@ from app.auth.config import SessionConfig
 from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
+from app.queries import auth as auth_queries
 from app.queries import leagues as league_queries
+
+
+async def resolve_owner_id(conn, payload: dict) -> int | None:
+    """Live DB lookup for the caller's owner_id — the JWT's own
+    owner_id claim is fixed at token-issue time and goes stale the
+    moment an account's real owner link changes mid-session (e.g. a
+    self-serve email/password signup whose token was minted with
+    owner_id=None, that then creates its first league/team — both
+    create a real owners row, but neither reissues the token). Same
+    class of bug is_commissioner had before it was fixed (2026-09) to
+    do a live per-league check instead of trusting a token claim — see
+    require_commissioner_of above. auth_queries.get_owner_id_for_user
+    is the exact lookup /auth/login and /auth/google/callback already
+    use to put a fresh owner_id into a NEW token at login time; this
+    makes that same live lookup available mid-session, for every other
+    endpoint that used to trust payload["owner_id"]/payload.get(
+    "owner_id") instead. Returns None exactly when the account
+    genuinely has no owner link yet (not an error) — callers that
+    already branch on "no owner yet" keep that same behavior."""
+    return await auth_queries.get_owner_id_for_user(conn, payload["user_id"])
 
 
 async def resolve_active_league_id(conn, payload: dict | None) -> int:

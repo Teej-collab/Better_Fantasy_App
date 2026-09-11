@@ -71,7 +71,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id, require_league_commissioner
+from app.auth.league_context import require_active_league_id, require_league_commissioner, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
@@ -192,12 +192,12 @@ def _rules_dict(row, season: int, draft_scheduled_start=None) -> dict:
 @router.get("/me")
 async def get_my_keepers(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
-    owner_id = payload["owner_id"]
     active_season = int(_require("ACTIVE_SEASON"))
     prior_season = active_season - 1
 
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
         pool_rows = await _get_roster_pool(conn, owner_id, active_season, league_id)
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         current = await keeper_queries.get_selections(conn, active_season, owner_id, league_id)
@@ -247,7 +247,6 @@ class KeeperSelectionsBody(BaseModel):
 @router.put("/me")
 async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
-    owner_id = payload["owner_id"]
     active_season = int(_require("ACTIVE_SEASON"))
     prior_season = active_season - 1
 
@@ -257,6 +256,7 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
 
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         rules = _rules_dict(rules_row, active_season)
         if not rules["is_open"]:

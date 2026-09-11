@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id, require_league_commissioner
+from app.auth.league_context import require_active_league_id, require_league_commissioner, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
@@ -58,9 +58,10 @@ async def _require_my_team(conn, payload: dict, season: int) -> tuple[int, int]:
     """Returns (team_id, league_id) for the caller's own team in their
     active league."""
     league_id = await require_active_league_id(conn, payload)
+    owner_id = await resolve_owner_id(conn, payload)
     team = await conn.fetchrow(
         "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-        season, payload["owner_id"], league_id,
+        season, owner_id, league_id,
     )
     if team is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")

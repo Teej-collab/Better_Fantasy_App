@@ -24,7 +24,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id, require_league_commissioner
+from app.auth.league_context import require_active_league_id, require_league_commissioner, resolve_owner_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
@@ -117,8 +117,9 @@ async def draft_state(request: Request):
 @router.get("/queue")
 async def get_my_queue(request: Request):
     """The caller's own ranked player queue for this season's draft —
-    always their own (payload["owner_id"]), never a client-supplied
-    owner/team id, same discipline as every other mutating route below.
+    always their own (resolve_owner_id, live from the session), never a
+    client-supplied owner/team id, same discipline as every other
+    mutating route below.
     Works at any draft status, including before a draft_config row even
     exists yet (an owner_id/league_id pair is enough — a real draft
     isn't a prerequisite for building a queue ahead of one)."""
@@ -127,7 +128,8 @@ async def get_my_queue(request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        queue = await draft_queue_queries.get_queue(conn, season, owner_id, league_id)
     return {"queue": queue}
 
 
@@ -142,8 +144,9 @@ async def add_to_my_queue(body: QueueAddRequest, request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        await draft_queue_queries.add_to_queue(conn, season, payload["owner_id"], body.sleeper_player_id, league_id)
-        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        await draft_queue_queries.add_to_queue(conn, season, owner_id, body.sleeper_player_id, league_id)
+        queue = await draft_queue_queries.get_queue(conn, season, owner_id, league_id)
     return {"queue": queue}
 
 
@@ -154,8 +157,9 @@ async def remove_from_my_queue(sleeper_player_id: str, request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        await draft_queue_queries.remove_from_queue(conn, season, payload["owner_id"], sleeper_player_id, league_id)
-        queue = await draft_queue_queries.get_queue(conn, season, payload["owner_id"], league_id)
+        owner_id = await resolve_owner_id(conn, payload)
+        await draft_queue_queries.remove_from_queue(conn, season, owner_id, sleeper_player_id, league_id)
+        queue = await draft_queue_queries.get_queue(conn, season, owner_id, league_id)
     return {"queue": queue}
 
 
@@ -177,8 +181,9 @@ async def reorder_my_queue(body: QueueReorderRequest, request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
         queue = await draft_queue_queries.reorder_queue(
-            conn, season, payload["owner_id"], body.sleeper_player_ids, league_id
+            conn, season, owner_id, body.sleeper_player_ids, league_id
         )
     return {"queue": queue}
 
@@ -195,8 +200,9 @@ async def submit_pick(body: PickRequest, request: Request):
     try:
         async with pool.acquire() as conn:
             league_id = await require_active_league_id(conn, payload)
+            owner_id = await resolve_owner_id(conn, payload)
             result = await draft_engine.make_pick(
-                conn, season, payload["owner_id"], body.sleeper_player_id, league_id=league_id
+                conn, season, owner_id, body.sleeper_player_id, league_id=league_id
             )
     except DraftError as e:
         raise _map_draft_error(e) from e
@@ -597,10 +603,18 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
             # case above.
             await websocket.close(code=4401)
             return
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            # No real owner link yet — same dead-end as chat_ws's
+            # identical guard (see that one's docstring): nothing here
+            # (queue, picks) can ever legitimately act without one, so
+            # close now rather than connecting a socket that would
+            # silently fail every real action.
+            await websocket.close(code=4401)
+            return
         state = await draft_queries.get_draft_state(conn, season, league_id)
         chat_messages = await draft_room_chat_queries.get_recent_messages(conn, season, league_id)
 
-    owner_id = payload["owner_id"]
     room = (season, league_id)
     await manager.connect(room, owner_id, websocket)
     try:

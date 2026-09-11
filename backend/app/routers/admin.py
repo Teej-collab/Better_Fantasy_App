@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from app.analytics import taxonomy
 from app.analytics.rate_limit import is_rate_limited
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_commissioner_of, require_site_admin
+from app.auth.league_context import require_commissioner_of, require_site_admin, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID, _require
 from app.db import get_pool
@@ -340,19 +340,19 @@ async def track_event(body: TrackEventRequest, request: Request):
     is rejected outright, not silently accepted (see taxonomy.py's own
     docstring for why)."""
     payload = _require_session(request)
-    owner_id = payload.get("owner_id")
-    if owner_id is None:
-        return {"ok": True}
-    if is_rate_limited(owner_id):
-        raise HTTPException(status_code=429, detail="Too many events — try again shortly")
-
-    error = taxonomy.validate_event(body.event_name, body.event_type, body.metadata, body.device_type, body.platform)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-
-    route = body.route.strip()[: taxonomy.MAX_ROUTE_LENGTH] if body.route else None
     pool = await get_pool()
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            return {"ok": True}
+        if is_rate_limited(owner_id):
+            raise HTTPException(status_code=429, detail="Too many events — try again shortly")
+
+        error = taxonomy.validate_event(body.event_name, body.event_type, body.metadata, body.device_type, body.platform)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+
+        route = body.route.strip()[: taxonomy.MAX_ROUTE_LENGTH] if body.route else None
         await admin_analytics.record_event(
             conn, owner_id, body.session_id, body.event_name, body.event_type, route,
             body.league_id, body.metadata, body.device_type, body.platform,

@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app.auth import discord_oauth, google_oauth
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
-from app.auth.league_context import is_site_admin
+from app.auth.league_context import is_site_admin, resolve_owner_id
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.rate_limit import check_forgot_password_rate_limit, check_login_or_signup_rate_limit
 from app.auth.session import (
@@ -191,10 +191,11 @@ async def me(request: Request):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
         display_name = None
-        if payload.get("owner_id") is not None:
+        if owner_id is not None:
             owner = await conn.fetchrow(
-                "SELECT display_name FROM owners WHERE owner_id = $1", payload["owner_id"]
+                "SELECT display_name FROM owners WHERE owner_id = $1", owner_id
             )
             display_name = owner["display_name"] if owner else None
         if display_name is None:
@@ -246,7 +247,7 @@ async def me(request: Request):
 
     return {
         "user_id": payload["user_id"],
-        "owner_id": payload["owner_id"],
+        "owner_id": owner_id,
         "display_name": display_name,
         "is_commissioner": is_commissioner,
         "is_site_owner": is_site_owner,
@@ -441,11 +442,15 @@ async def issue_ticket(request: Request, purpose: str):
     if payload is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+
     ticket = create_ticket_token(
         config.session_secret,
         purpose=purpose,
         user_id=payload["user_id"],
-        owner_id=payload["owner_id"],
+        owner_id=owner_id,
         discord_user_id=payload["discord_user_id"],
         is_commissioner=payload["is_commissioner"],
     )

@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_league_commissioner
+from app.auth.league_context import require_league_commissioner, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
 from app.image_url import validate_blob_image_url
@@ -60,9 +60,10 @@ async def submit_feedback(body: FeedbackRequest, request: Request):
         # already uses (routers/auth.py) — a password account with no
         # owner link yet still gets a real name attached, not "Unknown".
         submitted_by = None
-        if payload.get("owner_id") is not None:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is not None:
             owner = await conn.fetchrow(
-                "SELECT display_name FROM owners WHERE owner_id = $1", payload["owner_id"]
+                "SELECT display_name FROM owners WHERE owner_id = $1", owner_id
             )
             submitted_by = owner["display_name"] if owner else None
         if submitted_by is None:
