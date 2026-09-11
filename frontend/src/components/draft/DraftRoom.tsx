@@ -223,7 +223,16 @@ export function DraftRoom({
       skipInitialPoolFetch.current = false;
       return;
     }
-    getDraftPool(positionFilter ?? undefined, search || undefined).then(setPool).catch(() => {});
+    // Debounced (2026-09 memory audit) — this used to re-fetch AND
+    // fully re-render the entire pool (hundreds of undrafted players,
+    // unfiltered — no pagination/virtualization on this list) on every
+    // single keystroke, with no cancellation of the previous request.
+    // Same 300ms debounce PlayerSearchInput.tsx already uses for the
+    // same reason on Free Agents/Player Research.
+    const id = setTimeout(() => {
+      getDraftPool(positionFilter ?? undefined, search || undefined).then(setPool).catch(() => {});
+    }, 300);
+    return () => clearTimeout(id);
   }, [positionFilter, search]);
 
   const season = draftState?.config.season;

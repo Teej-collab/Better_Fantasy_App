@@ -25,6 +25,25 @@ import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 const RECONNECT_DELAY_MS = 2000;
 const TYPING_CLEAR_MS = 3000;
 const PAGE_SIZE = 50;
+// A busy league chat left open all day (game day, especially) grew
+// messagesByConversation[id] with no ceiling — every live message ever
+// received stayed mounted in MessageThread.tsx (no virtualization
+// there), each one potentially carrying a full-resolution, still-
+// animated GIF that WebKit keeps decoded for as long as it's mounted
+// (2026-09 memory audit, following a real iOS reload/crash report).
+// Capped at the live-append site only, not loadOlder's prepend below —
+// that path is explicit, deliberate user action (clicking "load
+// earlier" dozens of times is self-limiting in practice), and capping
+// it too would make a "load older" click that crosses this ceiling
+// appear to silently do nothing, which is a worse bug than the memory
+// growth this fixes.
+const MAX_LIVE_MESSAGES_PER_CONVERSATION = 200;
+
+function capMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.length > MAX_LIVE_MESSAGES_PER_CONVERSATION
+    ? messages.slice(messages.length - MAX_LIVE_MESSAGES_PER_CONVERSATION)
+    : messages;
+}
 
 type TypingUser = { owner_id: number; owner_name: string };
 
@@ -218,7 +237,7 @@ export function ChatApp({
         setMessagesByConversation((prev) => {
           const existing = prev[message.conversation_id] ?? [];
           if (existing.some((m) => m.id === message.id)) return prev;
-          return { ...prev, [message.conversation_id]: [...existing, message] };
+          return { ...prev, [message.conversation_id]: capMessages([...existing, message]) };
         });
         setConversations((prev) => {
           const isOpen = message.conversation_id === selectedIdRef.current;
