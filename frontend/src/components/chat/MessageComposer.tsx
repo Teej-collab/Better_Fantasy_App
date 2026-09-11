@@ -10,6 +10,24 @@ const MAX_LENGTH = 2000;
 const TYPING_DEBOUNCE_MS = 2000;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
+// BottomNav.tsx/BottomNavBeta.tsx are `position: fixed` app-shell chrome
+// that lives outside this component entirely — the id is theirs
+// (documented on BottomNav.tsx as existing for exactly this kind of
+// cross-component reach-in). Focusing this composer's textarea makes
+// iOS scroll the real document to lift the caret above the keyboard,
+// and WebKit is well known to let `fixed` siblings get dragged along
+// and stick wherever that scroll lands instead of re-pinning to the
+// (now keyboard-covered) bottom — a real screen recording confirmed
+// the nav floating mid-page, stuck, whenever the message field was
+// focused. Hiding it for the duration of the focus removes the only
+// fixed element that bug can happen to, rather than trying to out-math
+// WebKit's compensation scroll with more JS (already tried and
+// reverted once for this exact bar — see BottomNav.tsx's own comment).
+function setBottomNavHidden(hidden: boolean) {
+  const nav = document.getElementById("app-bottom-nav");
+  if (nav) nav.style.display = hidden ? "none" : "";
+}
+
 type PendingImage =
   | { status: "uploading"; previewUrl: string }
   | { status: "done"; previewUrl: string; url: string }
@@ -55,6 +73,13 @@ export function MessageComposer({
   useEffect(() => {
     if (replyTo) inputRef.current?.focus();
   }, [replyTo]);
+
+  // Restore the fixed bottom nav if this composer unmounts (e.g. the
+  // owner navigates away) while still focused — blur normally fires
+  // first, but this is the safety net for whenever it doesn't.
+  useEffect(() => {
+    return () => setBottomNavHidden(false);
+  }, []);
 
   const filteredMembers =
     mentionQuery === null
@@ -330,6 +355,8 @@ export function MessageComposer({
             }
           }}
           onPaste={handlePaste}
+          onFocus={() => setBottomNavHidden(true)}
+          onBlur={() => setBottomNavHidden(false)}
           placeholder="Message..."
           maxLength={MAX_LENGTH}
           rows={1}
