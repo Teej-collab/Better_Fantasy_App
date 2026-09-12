@@ -59,16 +59,40 @@ import type { ReactNode } from "react";
  * which React reports as a hydration mismatch. Every other beta-only
  * style in this app already avoids that the same way (see globals.css's
  * own `[data-wl-layout="beta"] .neon-panel::before` rule).
+ *
+ * `tickerAbove` (app/(app)/layout.tsx passes this; app/(home)/ and
+ * app/(chat)/ don't) says AppTickerBar.tsx already renders directly
+ * above this shell as its own layout-level sibling — in Labs' drawer
+ * mode that ticker is the thing actually sitting right below the
+ * hidden header, so IT clears the floating hamburger button
+ * (AppTickerBar's own `wl-ticker-bar` class, same globals.css rule),
+ * and this shell must NOT also add its own top clearance underneath
+ * it, or the two stack into a large dead gap between the button and
+ * the ticker, then another between the ticker and the actual content
+ * (2026-09-12 report: the ticker itself rendered with no clearance at
+ * all and sat right on top of the button — this prop existing at all
+ * is that fix, not a pre-existing feature that just needed tuning).
  */
-export function PageShell({ children }: { children: ReactNode }) {
+export function PageShell({ children, tickerAbove = false }: { children: ReactNode; tickerAbove?: boolean }) {
   const pathname = usePathname();
+  const tickerAboveClass = tickerAbove ? " wl-page-shell--ticker-above" : "";
   if (pathname === "/chat") {
-    return <main className="wl-page-shell wl-page-shell--chat safe-px mx-auto w-full max-w-5xl flex-1 py-4">{children}</main>;
+    return (
+      <main className={`wl-page-shell wl-page-shell--chat${tickerAboveClass} safe-px mx-auto w-full max-w-5xl flex-1 py-4`}>
+        {children}
+      </main>
+    );
   }
   if (pathname === "/draft") {
     return (
-      <main className="wl-page-shell safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6">{children}</main>
+      <main className={`wl-page-shell${tickerAboveClass} safe-px mx-auto w-full max-w-[100rem] flex-1 py-6 pb-24 sm:pb-6`}>
+        {children}
+      </main>
     );
   }
-  return <main className="wl-page-shell safe-px mx-auto w-full max-w-5xl flex-1 py-6 pb-24 sm:pb-6">{children}</main>;
+  return (
+    <main className={`wl-page-shell${tickerAboveClass} safe-px mx-auto w-full max-w-5xl flex-1 py-6 pb-24 sm:pb-6`}>
+      {children}
+    </main>
+  );
 }

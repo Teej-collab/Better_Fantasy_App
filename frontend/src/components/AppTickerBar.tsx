@@ -74,7 +74,7 @@ export async function AppTickerBar() {
   }
 
   return (
-    <div className="safe-px mx-auto flex w-full max-w-4xl flex-col gap-1.5 pt-3">
+    <div className="wl-ticker-bar safe-px mx-auto flex w-full max-w-4xl flex-col gap-1.5 pt-3">
       {/* This ticker used to carry no label at all anywhere it's shown
           (every (app) page except Home, which has its own richer,
           labeled version) — confusing on its own, and a real, specific

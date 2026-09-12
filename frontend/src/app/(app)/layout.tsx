@@ -30,7 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <AppTickerBar />
       <PullToRefresh>
         <AppEntry>
-          <PageShell>{children}</PageShell>
+          <PageShell tickerAbove>{children}</PageShell>
         </AppEntry>
       </PullToRefresh>
     </>

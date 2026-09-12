@@ -391,21 +391,45 @@ body {
    header row plus a fixed bottom tab bar) would otherwise just be dead
    space; this shrinks the top offset to only what's needed to clear
    the floating hamburger button (MobileNavDrawer's own trigger sits at
-   safe-area-inset-top + 0.75rem, ~2.75rem tall) and drops the bottom
-   offset to a plain safe-area pad, since there's no bottom bar left to
-   clear at all. Chat's own panel measures its real top position at
-   runtime (ChatApp.tsx's --chat-top-offset) rather than assuming a
-   fixed number, so it picks up whatever this resolves to automatically
-   — but its height calc still hardcodes the *legacy* bottom bar's
-   height as a literal subtraction, which needed its own beta-mode fix
-   too (see ChatApp.tsx's own comment on the `beta` height branch). */
+   safe-area-inset-top + 0.75rem, ~2.75rem/44px tall — the 5rem below
+   isn't a round guess, it's that footprint plus a real ~1.25rem/20px
+   buffer, not the ~0.5rem gap an earlier pass here left, which read as
+   overlapping the button on a real device: 2026-09-12 report, two
+   screenshots) and drops the bottom offset to a plain safe-area pad,
+   since there's no bottom bar left to clear at all.
+
+   `wl-page-shell--ticker-above` (app/(app)/layout.tsx's `tickerAbove`
+   prop) is the other half of that same fix: that layout renders
+   AppTickerBar as this shell's own sibling, directly below the hidden
+   header, so IN DRAWER MODE THE TICKER — not this shell — is the thing
+   that actually needs to clear the button (`.wl-ticker-bar` below).
+   Giving both the same top clearance would double it into a dead gap;
+   the modifier here switches this shell's own top padding back to
+   `unset` (the ordinary py-6/py-4 Tailwind utility already on the
+   element takes back over) so only one of the two ever adds the
+   button-clearance amount. app/(home)/ and app/(chat)/ don't render a
+   preceding ticker at all, so they never pass this prop and this shell
+   keeps handling its own top clearance directly, as before.
+
+   Chat's own panel measures its real top position at runtime
+   (ChatApp.tsx's --chat-top-offset) rather than assuming a fixed
+   number, so it picks up whatever this resolves to automatically — but
+   its height calc still hardcodes the *legacy* bottom bar's height as
+   a literal subtraction, which needed its own beta-mode fix too (see
+   ChatApp.tsx's own comment on the `beta` height branch). */
 @media (max-width: 639.98px) {
   [data-wl-layout="beta"] .wl-page-shell {
-    padding-top: calc(env(safe-area-inset-top) + 4rem);
+    padding-top: calc(env(safe-area-inset-top) + 5rem);
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  }
+  [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--ticker-above {
+    padding-top: unset;
   }
   [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--chat {
     padding-bottom: 0;
+  }
+  [data-wl-layout="beta"] .wl-ticker-bar {
+    padding-top: calc(env(safe-area-inset-top) + 5rem);
   }
 }
 
