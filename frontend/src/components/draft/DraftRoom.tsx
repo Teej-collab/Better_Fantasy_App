@@ -23,6 +23,16 @@ import { positionColor } from "@/lib/positionColors";
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
 const POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"];
+// Same unbounded-growth issue ChatApp.tsx's own MAX_LIVE_MESSAGES_PER_
+// CONVERSATION fixed this session, just missed here at the time: a
+// draft room left open for a full multi-hour draft accumulates every
+// chat message from every manager with no ceiling, each one staying
+// mounted for the rest of the session (2026-09 memory audit, following
+// the same real iOS reload/crash report). Capped at the live-append
+// site only — the initial load from getDraftState()'s own
+// chat_messages is a real, already-bounded server response, not a
+// growth site.
+const MAX_LIVE_DRAFT_CHAT_MESSAGES = 200;
 // The room opens for queue-building 1 hour before the real draft — see
 // backend/app/scheduler.py's _run_draft_auto_start_job, which is the
 // actual server-authoritative thing that flips status to in_progress
@@ -288,7 +298,12 @@ export function DraftRoom({
         // pick_made elsewhere in this handler).
         if (msg?.type === "chat" && msg.message) {
           const message = msg.message;
-          setChatMessages((prev) => [...prev, message]);
+          setChatMessages((prev) => {
+            const next = [...prev, message];
+            return next.length > MAX_LIVE_DRAFT_CHAT_MESSAGES
+              ? next.slice(next.length - MAX_LIVE_DRAFT_CHAT_MESSAGES)
+              : next;
+          });
           return;
         }
         // Every other event type (pick_made/draft_status/pick_undone) just
