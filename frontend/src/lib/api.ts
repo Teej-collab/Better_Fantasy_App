@@ -1055,7 +1055,12 @@ export function getChugLeaderboard(sessionCookie: string | undefined, season?: n
 }
 
 export type ChugDeadline = {
-  deadline: string;
+  // Null until at least one real chug has actually been assigned this
+  // season (backend/app/routers/chug.py checks chug_debts directly) —
+  // Week 1 hasn't finished yet the first few days of every season, so
+  // there's nothing to count down to and nothing owed by anyone,
+  // regardless of what the calendar's next Monday happens to be.
+  deadline: string | null;
   is_past: boolean;
 };
 

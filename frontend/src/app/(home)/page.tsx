@@ -255,10 +255,14 @@ export default async function HomePage() {
     cards.draftCountdown = (
       <DraftCountdownCard teamName={myWeek.team_name} scheduledStart={myWeek.draft.scheduled_start} />
     );
-  } else if (chugDeadline) {
+  } else if (chugDeadline?.deadline) {
     // Takes over the same top slot once the draft's done — Jeffrey's
     // Rule is relevant every week of the season from here on, not just
-    // a one-time pre-draft moment. See ChugCountdownCard.tsx.
+    // a one-time pre-draft moment. See ChugCountdownCard.tsx. deadline
+    // is null (this card just doesn't render at all) until Week 1
+    // actually finishes and the season's first real chug debt exists —
+    // before that there's nothing owed by anyone yet, regardless of
+    // what the calendar's next Monday happens to be (2026-09-12 report).
     cards.draftCountdown = <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} />;
   }
 

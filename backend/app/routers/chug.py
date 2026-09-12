@@ -76,13 +76,34 @@ async def chug_leaderboard(
 
 
 @router.get("/deadline")
-async def chug_deadline(league_id: int = Depends(require_league_access)):
+async def chug_deadline(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
     """When this week's chugs are due by (Jeffrey's Rule — see
     app/domain/chug_deadline.py) — real ESPN Monday Night Football
-    kickoff, not a guessed fixed time. league_id is unused (the deadline
-    is the same NFL-wide fact for every league) but kept for the same
-    signed-in-with-real-membership gate every other /chug endpoint
-    already has, rather than exposing this to anyone unauthenticated."""
+    kickoff, not a guessed fixed time. league_id is otherwise unused
+    (the deadline itself is the same NFL-wide fact for every league)
+    but kept for the same signed-in-with-real-membership gate every
+    other /chug endpoint already has, rather than exposing this to
+    anyone unauthenticated — it's now also what scopes the has-any-debt
+    check below to this league.
+
+    2026-09-12 fix, real report: this used to compute and return a real
+    deadline every single week of the season, including before Week 1
+    has even finished — chug_debt.py's compute_chug_debts_for_week
+    doesn't create the season's first real chug_debts row until the
+    first week is_week_final, so a member could see a live countdown
+    days before anyone could possibly owe a chug yet. `deadline` is now
+    null until at least one row exists in chug_debts for this league/
+    season — the same table (and the same "nothing owed yet" concept)
+    every other /chug endpoint already reads from."""
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        any_debt_assigned = await conn.fetchval(
+            "SELECT 1 FROM chug_debts WHERE season = $1 AND league_id = $2 LIMIT 1",
+            active_season, league_id,
+        )
+    if not any_debt_assigned:
+        return {"deadline": None, "is_past": False}
+
     games = await get_nfl_scoreboard()
     return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games)}
 
