@@ -62,11 +62,19 @@ export default async function HomePage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
+  // getMe and listSeasons don't read each other's result — fetched
+  // together instead of one-then-the-other, the first of three merges
+  // in this function that cut its real sequential round-trips from
+  // ~7 down to 3 (2026-09 load-time pass — this page runs on every
+  // single fresh app open, so each hop removed here is felt everywhere).
+  // getMe still has to be the thing that decides the early return below;
+  // listSeasons's result just rides along for free.
+  const [me, { seasons }] = await Promise.all([getMe(sessionCookie), listSeasons()]);
+
   // Mandatory front door: a signed-out visitor sees the Weekend League
   // opening/auth experience instead of the dashboard below, and none of
-  // this page's data gets fetched for them at all. See
+  // this page's other data gets fetched for them at all. See
   // OpeningExperience.tsx.
-  const me = await getMe(sessionCookie);
   if (!me) {
     const [nflGames, gamecastGames] = await Promise.all([getNflScoreboard(), getLiveGames()]);
     return (
@@ -77,15 +85,23 @@ export default async function HomePage() {
     );
   }
 
-  const { seasons } = await listSeasons();
   const season = safeLatestSeason(seasons);
 
-  const [myWeek, nflGames, gamecastGames, activeLeagueName, myPreferences] = await Promise.all([
+  // Second merge: getCurrentWeek only ever needed `season` (known the
+  // instant the batch above resolves), never anything from myWeek/
+  // nflGames/etc — folded in here instead of its own later hop. Stays
+  // "no real current week" (current_week: null) for exactly the same
+  // no-season/no-active-league case resolveWeek's caller below already
+  // handled, just resolved a hop earlier.
+  const [myWeek, nflGames, gamecastGames, activeLeagueName, myPreferences, currentWeekRes] = await Promise.all([
     getMyWeek(sessionCookie),
     getNflScoreboard(),
     getLiveGames(),
     getActiveLeagueName(sessionCookie),
     getMyPreferences(sessionCookie),
+    season !== null && me.active_league_id !== null
+      ? getCurrentWeek(season)
+      : Promise.resolve({ current_week: null as number | null }),
   ]);
   const isGameDay = isNflGameLive(nflGames);
   // Settings > Labs > "Try the new look" — see LabsSection.tsx and
@@ -114,18 +130,44 @@ export default async function HomePage() {
   // same as the "no season synced yet" case below, rather than a
   // crashed page from an unhandled 409.
   if (season !== null && me.active_league_id !== null) {
-    const { current_week } = await getCurrentWeek(season);
-    week = resolveWeek(current_week);
-    const [standingsRes, awardsRes, matchupContextRes, rivalriesRes, leagueTicker, chugRes, powerRankingsRes] =
-      await Promise.all([
-        getStandings(season, sessionCookie),
-        getWeeklyAwards(season, week, sessionCookie),
-        getWeekMatchupContext(season, week, sessionCookie),
-        listRivalries(sessionCookie),
-        getWeekLeagueTicker(season, week, sessionCookie),
-        getChugLeaderboard(sessionCookie, season),
-        getWeekPowerRankings(season, week, sessionCookie),
-      ]);
+    week = resolveWeek(currentWeekRes.current_week);
+    // Third merge: chugDeadline/seasonDraft never depended on anything
+    // in THIS batch either (only on myWeek.draft.status, already known
+    // from the batch above) — they used to run as two more sequential
+    // hops after this whole batch finished; now they're just two more
+    // entries in it, gated the same "only once the draft's actually
+    // done" way as before (see cards.chugCountdown below — no reason to
+    // hit ESPN's live scoreboard, or look for grades/recaps that can't
+    // exist yet, for a league that hasn't drafted).
+    const wantsPostDraftData = myWeek?.draft?.status === "complete";
+    const [
+      standingsRes,
+      awardsRes,
+      matchupContextRes,
+      rivalriesRes,
+      leagueTicker,
+      chugRes,
+      powerRankingsRes,
+      chugDeadlineRes,
+      seasonDraftRes,
+    ] = await Promise.all([
+      getStandings(season, sessionCookie),
+      getWeeklyAwards(season, week, sessionCookie),
+      getWeekMatchupContext(season, week, sessionCookie),
+      listRivalries(sessionCookie),
+      getWeekLeagueTicker(season, week, sessionCookie),
+      getChugLeaderboard(sessionCookie, season),
+      getWeekPowerRankings(season, week, sessionCookie),
+      wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
+      // Real grades/recaps only exist once the post-draft scheduler job
+      // has run (app/scheduler.py's draft-grades job) — getSeasonDraft
+      // returns null (not an error) until then, same "quietly nothing
+      // yet" degrade as everything else on this page. 2026-09 fix: this
+      // used to only be reachable via a small badge buried in the
+      // dense draft board on a page nobody revisits after draft day —
+      // reported as "I don't see it at all anywhere."
+      wantsPostDraftData ? getSeasonDraft(season, sessionCookie) : Promise.resolve(null),
+    ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
     weekMatchups = matchupContextRes.matchups;
@@ -143,23 +185,8 @@ export default async function HomePage() {
       if (countdownItem) leagueTickerItems = [countdownItem];
     }
     myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
-
-    // Only fetched once the draft's actually done (see cards.chugCountdown
-    // below) — no reason to hit ESPN's live scoreboard for a league that
-    // hasn't drafted yet.
-    if (myWeek?.draft?.status === "complete") {
-      chugDeadline = await getChugDeadline(sessionCookie);
-      // Real grades/recaps only exist once the post-draft scheduler job
-      // has run (app/scheduler.py's draft-grades job) — getSeasonDraft
-      // returns null (not an error) until then, same "quietly nothing
-      // yet" degrade as everything else on this page. 2026-09 fix: this
-      // used to only be reachable via a small badge buried in the
-      // dense draft board on a page nobody revisits after draft day —
-      // reported as "I don't see it at all anywhere."
-      if (season !== null) {
-        seasonDraft = await getSeasonDraft(season, sessionCookie);
-      }
-    }
+    chugDeadline = chugDeadlineRes;
+    seasonDraft = seasonDraftRes;
   }
 
   // "Other" = every matchup except the logged-in owner's own (already

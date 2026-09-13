@@ -47,8 +47,25 @@ export async function NavBar() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [{ seasons }, me, myWeek, nflGames, myPreferences, activeLeagueName] = await Promise.all([
-    listSeasons(),
+  // getCurrentWeek only ever needed listSeasons's own result
+  // (latestSeason) — it used to run as a fully separate hop AFTER the
+  // whole Promise.all below finished, even though it has no real
+  // dependency on getMe/myWeek/nflGames/myPreferences/activeLeagueName
+  // at all. Chaining it directly off listSeasons (not the whole
+  // Promise.all) and running that chain alongside the other five
+  // independent calls means its latency only stacks on top of
+  // listSeasons's own, not everything else's too (2026-09 load-time
+  // pass — this header renders on every single page in the app, so
+  // every hop removed here is felt everywhere, not just on Home).
+  const seasonAndWeek = listSeasons().then(async ({ seasons }) => {
+    const latestSeason = safeLatestSeason(seasons);
+    const { current_week } =
+      latestSeason !== null ? await getCurrentWeek(latestSeason) : { current_week: null as number | null };
+    return { latestSeason, currentWeek: current_week };
+  });
+
+  const [{ latestSeason, currentWeek }, me, myWeek, nflGames, myPreferences, activeLeagueName] = await Promise.all([
+    seasonAndWeek,
     getMe(sessionCookie),
     getMyWeek(sessionCookie),
     getNflScoreboard(),
@@ -61,13 +78,7 @@ export async function NavBar() {
     getActiveLeagueName(sessionCookie),
   ]);
   const signedIn = me !== null;
-  const latestSeason = safeLatestSeason(seasons);
-
-  let week: number | null = null;
-  if (latestSeason !== null) {
-    const { current_week } = await getCurrentWeek(latestSeason);
-    week = resolveWeek(current_week);
-  }
+  const week = latestSeason !== null ? resolveWeek(currentWeek) : null;
   const matchupsHref = matchupsHrefFor(latestSeason, week);
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
