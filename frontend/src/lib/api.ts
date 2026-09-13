@@ -1600,6 +1600,14 @@ export type MyFreeAgent = {
   // will reject them with a 409 until this clears; submitWaiverClaim
   // is the only way to acquire them before then.
   waiver_clears_at: string | null;
+  // True iff this player's own NFL game for the current week has
+  // already kicked off but nobody's ever actually dropped them, so no
+  // real waiver_wire row (waiver_clears_at) exists yet — addFreeAgent
+  // still rejects them with a 409 the first time anyone tries (that
+  // attempt is what lazily starts their real clock server-side; see
+  // ensure_waiver_clock_if_game_locked). Treat the same as
+  // waiver_clears_at being set: only a claim can acquire them.
+  game_locked: boolean;
 };
 
 // Called server-side (free-agents/page.tsx) with the session cookie
@@ -1631,7 +1639,12 @@ export type AddFreeAgentResult =
   | { status: "ok"; roster: RosterEntry[]; dropped_player: RosterEntry | null }
   // Your roster is already full — call addFreeAgent again with
   // dropSleeperPlayerId set once the visitor picks who to drop.
-  | { status: "roster_full"; detail: string };
+  | { status: "roster_full"; detail: string }
+  // Either a real waiver_wire row already existed, or (2026-09-13) this
+  // player's game just kicked off and this very call lazily started
+  // their clock server-side (see ensure_waiver_clock_if_game_locked) —
+  // either way, submitWaiverClaim is the only way in now.
+  | { status: "on_waivers"; detail: string; clears_at: string | null };
 
 // Real write — a plain current_rosters INSERT (plus a DELETE if
 // dropping), no external call. Always the caller's own team, resolved
@@ -1655,6 +1668,9 @@ export async function addFreeAgent(sleeperPlayerId: string, dropSleeperPlayerId?
     const data = await res.json().catch(() => null);
     if (res.status === 409 && data?.error === "roster_full") {
       return { status: "roster_full", detail: data.detail as string };
+    }
+    if (res.status === 409 && data?.error === "on_waivers") {
+      return { status: "on_waivers", detail: data.detail as string, clears_at: (data.clears_at as string) ?? null };
     }
     throw new Error(data?.detail ?? `Add failed (${res.status})`);
   }

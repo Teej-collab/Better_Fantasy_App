@@ -34,8 +34,27 @@ from app.domain.lineup_exceptions import (
     RosterFullError,
     SlotIneligibleError,
 )
+from app.domain.nfl_schedule import locked_pro_teams
+from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.queries import league as league_queries
 
 router = APIRouter(prefix="/leagues", tags=["commissioner-roster"])
+
+
+async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozenset[str]:
+    """Same best-effort, fail-open lookup as app/routers/me.py's own
+    helper of the same name (kept as a separate copy rather than a
+    cross-router import, since these are two independently-evolving
+    routers) — every real NFL team whose game has already kicked off
+    in the league's current fantasy week."""
+    current_week = await league_queries.get_cached_current_week(conn, active_season)
+    if current_week is None:
+        return frozenset()
+    try:
+        games = await get_week_scoreboard(current_week, active_season)
+    except Exception:
+        return frozenset()
+    return locked_pro_teams(games)
 
 
 def _require_session(request: Request) -> dict:
@@ -163,6 +182,18 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
+            if not body.override_waivers:
+                # A player whose game just kicked off this week may
+                # never have actually been dropped by anyone — lazily
+                # start their real waiver clock now so add_free_agent's
+                # own waiver check below actually sees it. Skipped
+                # entirely under override_waivers, same as the check
+                # itself: that flag means "bypass waivers outright,"
+                # kickoff-based or not.
+                locked = await _locked_pro_teams_for_current_week(conn, active_season)
+                await waivers.ensure_waiver_clock_if_game_locked(
+                    conn, active_season, league_id, body.sleeper_player_id, locked
+                )
             try:
                 result = await lineup_engine.add_free_agent(
                     conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,

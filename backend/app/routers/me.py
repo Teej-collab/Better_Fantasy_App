@@ -527,10 +527,36 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            result = await lineup_engine.add_free_agent(
-                conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
-                league_id=league_id,
+            # Real ask, 2026-09-13: once a free agent's own game has
+            # kicked off this week, an instant add shouldn't be
+            # possible anymore — they need a waiver claim like anyone
+            # else on waivers, even though nobody ever actually dropped
+            # them. Lazily starts their real waiver clock right now if
+            # this is the first time anyone's touched them since
+            # kickoff; a no-op if they're already on waivers for a
+            # real reason (a genuine recent drop).
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
+            await waivers.ensure_waiver_clock_if_game_locked(
+                conn, active_season, league_id, body.sleeper_player_id, locked
             )
+            try:
+                result = await lineup_engine.add_free_agent(
+                    conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
+                    league_id=league_id,
+                )
+            except PlayerOnWaiversError as e:
+                clears_at_map = await waivers.get_waiver_clears_at(
+                    conn, active_season, league_id, [body.sleeper_player_id]
+                )
+                clears_at = clears_at_map.get(body.sleeper_player_id)
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "error": "on_waivers",
+                        "detail": str(e),
+                        "clears_at": clears_at.isoformat() if clears_at else None,
+                    },
+                )
             if result["dropped_player"] is not None:
                 await waivers.start_waiver_clock(
                     conn, active_season, league_id, result["dropped_player"]["sleeper_player_id"]
@@ -611,9 +637,23 @@ async def list_free_agents(request: Request, position: str | None = None, search
         clears_at_by_player = await waivers.get_waiver_clears_at(
             conn, active_season, league_id, [r["sleeper_player_id"] for r in rows]
         )
+        # Real ask, 2026-09-13: a free agent whose own game has already
+        # kicked off this week is effectively on waivers too, even
+        # though nobody has actually dropped them yet so no real
+        # waiver_wire row exists — GET requests must stay side-effect
+        # free (no lazily starting the real clock here, that only
+        # happens on an actual add/claim attempt in
+        # ensure_waiver_clock_if_game_locked), so this is a synthetic,
+        # display-only flag derived straight from locked_pro_teams.
+        locked_pro_teams = await _locked_pro_teams_for_current_week(conn, active_season)
         for row in rows:
             clears_at = clears_at_by_player.get(row["sleeper_player_id"])
             row["waiver_clears_at"] = clears_at.isoformat() if clears_at else None
+            # No real waiver_wire row yet (nobody's actually dropped
+            # them), but their game already started — an add attempt
+            # would still be rejected, so tell the browse UI that up
+            # front via a separate flag rather than faking a date here.
+            row["game_locked"] = clears_at is None and row["pro_team"] in locked_pro_teams
 
     if current_week is not None:
         try:
@@ -668,6 +708,16 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            # A player whose game just kicked off this week may never
+            # have actually been dropped by anyone — submit_claim
+            # requires a real waiver_wire row to exist first (that's
+            # how it tells "really on waivers" from "just a normal free
+            # agent"), so this has to run before it, same as the
+            # free-agent-add route above.
+            locked = await _locked_pro_teams_for_current_week(conn, active_season)
+            await waivers.ensure_waiver_clock_if_game_locked(
+                conn, active_season, league_id, body.add_sleeper_player_id, locked
+            )
             claim = await waivers.submit_claim(
                 conn, active_season, league_id, team_id, body.add_sleeper_player_id, body.drop_sleeper_player_id,
             )

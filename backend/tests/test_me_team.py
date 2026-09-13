@@ -888,6 +888,77 @@ async def test_add_free_agent_roster_full_with_drop_succeeds(pool, monkeypatch):
     assert not any(r["player_id"] == already_on_roster for r in body["roster"])
 
 
+async def test_add_free_agent_rejected_once_players_game_has_started(pool, monkeypatch):
+    # Real ask, 2026-09-13: a free agent nobody's ever dropped (no real
+    # waiver_wire row) must still be blocked from an instant add once
+    # their own game has kicked off — same as a genuinely-waived player.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "falock1", espn_team_id=121)
+    player = await _seed_player(pool, "falock1", position="WR", pro_team="KC")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
+
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "on_waivers"
+
+    # And a follow-up claim (no prior drop by anyone) now succeeds —
+    # the rejected add attempt above is what lazily started their real
+    # waiver clock.
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/waivers/claim", json={"add_sleeper_player_id": player})
+    assert resp.status_code == 200
+
+
+async def test_add_free_agent_allowed_before_players_game_has_started(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "falock2", espn_team_id=122)
+    player = await _seed_player(pool, "falock2", position="WR", pro_team="KC")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) + timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.post("/me/team/free-agents/add", json={"sleeper_player_id": player})
+
+    assert resp.status_code == 200
+
+
+async def test_free_agents_list_flags_a_locked_never_dropped_player(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "falist1", espn_team_id=123)
+    locked_player = await _seed_player(pool, "falist1_locked", position="WR", pro_team="KC")
+    open_player = await _seed_player(pool, "falist1_open", position="WR", pro_team="BUF")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team/free-agents")
+
+    assert resp.status_code == 200
+    by_id = {p["sleeper_player_id"]: p for p in resp.json()["players"]}
+    assert by_id[locked_player]["game_locked"] is True
+    assert by_id[locked_player]["waiver_clears_at"] is None
+    assert by_id[open_player]["game_locked"] is False
+
+
 async def test_my_team_current_week_is_editable(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))

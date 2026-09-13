@@ -6,6 +6,7 @@ commissioner gating and the explicit team_id/league_id resolution,
 not re-testing lineup_engine's own move/add/drop mechanics."""
 import json
 import itertools
+from datetime import datetime, timedelta, timezone
 
 from httpx import ASGITransport, AsyncClient
 
@@ -209,6 +210,59 @@ async def test_add_reports_roster_full_without_a_drop_target(pool, monkeypatch):
         )
     assert resp.status_code == 409
     assert resp.json()["error"] == "roster_full"
+
+
+def _scoreboard_with_kickoff(pro_team: str, kickoff: datetime):
+    async def _fake(week, year, season_type=None):
+        return [{"home_team": pro_team, "away_team": "OPP", "date": kickoff.isoformat().replace("+00:00", "Z")}]
+
+    return _fake
+
+
+async def test_commissioner_add_rejected_once_players_game_has_started(pool, monkeypatch):
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    commish = await _seed_owner_with_team(pool, "add_locked_commish", is_commissioner=True)
+    target = await _seed_owner_with_team(pool, "add_locked_target")
+    free_agent = await _seed_player(pool, "add_locked", position="WR")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.commissioner_lineup.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/add",
+            json={"sleeper_player_id": free_agent},
+        )
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "on_waivers"
+
+
+async def test_commissioner_add_override_waivers_bypasses_the_kickoff_lock(pool, monkeypatch):
+    # override_waivers is the commissioner's explicit "bypass waivers
+    # outright" escape hatch (see CommissionerRosterAddRequest's own
+    # docstring) — it must still work on a player who was never
+    # actually dropped, just whose game already started.
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    commish = await _seed_owner_with_team(pool, "add_override_commish", is_commissioner=True)
+    target = await _seed_owner_with_team(pool, "add_override_target")
+    free_agent = await _seed_player(pool, "add_override", position="WR")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.commissioner_lineup.get_week_scoreboard", _scoreboard_with_kickoff("KC", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/add",
+            json={"sleeper_player_id": free_agent, "override_waivers": True},
+        )
+    assert resp.status_code == 200
+    assert any(p["player_id"] == free_agent for p in resp.json()["roster"])
 
 
 async def test_move_requires_commissioner(pool, monkeypatch):

@@ -100,6 +100,20 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
         });
         return;
       }
+      if (result.status === "on_waivers") {
+        // Their game just kicked off (or they were already on waivers)
+        // — that add attempt is also what lazily started their real
+        // clock server-side, so reflect it locally and drop straight
+        // into the same claim flow the list already shows for a
+        // waiver_clears_at player, instead of a dead-end error.
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.sleeper_player_id === player.sleeper_player_id ? { ...p, waiver_clears_at: result.clears_at } : p
+          )
+        );
+        setPanel({ status: "claim-menu" });
+        return;
+      }
       // roster_full — need a drop pick.
       const team = await getMyTeam();
       setPanel({ status: "needs-drop", roster: team.roster });
@@ -180,12 +194,16 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                       {p.injury_status}
                     </span>
                   )}
-                  {p.waiver_clears_at && (
+                  {(p.waiver_clears_at || p.game_locked) && (
                     <span
                       className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
-                      title="Dropped recently — this league's real 1-day waiver period applies"
+                      title={
+                        p.waiver_clears_at
+                          ? "Dropped recently — this league's real 1-day waiver period applies"
+                          : "Their game has already kicked off this week — needs a waiver claim"
+                      }
                     >
-                      On waivers{mounted && ` · clears ${formatGameTime(p.waiver_clears_at)}`}
+                      On waivers{mounted && p.waiver_clears_at && ` · clears ${formatGameTime(p.waiver_clears_at)}`}
                     </span>
                   )}
                 </span>
@@ -200,7 +218,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                   >
                     Close
                   </button>
-                ) : p.waiver_clears_at ? (
+                ) : p.waiver_clears_at || p.game_locked ? (
                   <button
                     onClick={() => startClaim(p)}
                     className="w-[52px] rounded-full border border-[var(--wl-accent)] px-3 py-1.5 text-xs font-medium text-[var(--wl-accent)] hover:bg-[var(--wl-accent)]/10"

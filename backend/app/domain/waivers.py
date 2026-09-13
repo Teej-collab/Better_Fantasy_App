@@ -100,6 +100,44 @@ async def get_waiver_clears_at(conn, season: int, league_id: int, sleeper_player
     return {r["sleeper_player_id"]: r["clears_at"] for r in rows}
 
 
+async def ensure_waiver_clock_if_game_locked(
+    conn, season: int, league_id: int, sleeper_player_id: str, locked_pro_teams: frozenset[str],
+) -> None:
+    """Real ask, 2026-09-13: once a free agent's real NFL game for this
+    week has kicked off, they should require a waiver claim like anyone
+    else on waivers — not stay instantly addable just because they
+    were never actually dropped by a team. `locked_pro_teams` (see
+    app/domain/nfl_schedule.py — every real NFL team whose game has
+    already kicked off this week) is the same signal the lineup lock
+    already uses; this reuses it for a second purpose rather than
+    inventing a parallel "is this player's game locked" concept.
+
+    Lazily starts this player's REAL waiver clock (the exact same
+    mechanism a genuine drop uses) the first time anyone actually tries
+    to touch them — an add attempt (app/routers/me.py's free-agent-add
+    and app/routers/commissioner_lineup.py's force-add) or a direct
+    claim submission (waivers/claim) — rather than a separate scheduler
+    job proactively locking every newly-kicked-off team's whole free-
+    agent pool every tick. That keeps this entirely inside the existing
+    waiver_wire/waiver_claims/process_expired_waivers machinery with no
+    new concepts: once this call has run once for a player, `is_on_
+    waivers`/`submit_claim`/the daily sweep all already treat them
+    exactly like a normal drop, unmodified. A no-op once a row already
+    exists (checked via is_on_waivers, not blindly re-calling
+    start_waiver_clock — that upsert resets clears_at, which would
+    keep pushing this player's own waiver period further out every
+    time someone merely LOOKS at them, never actually letting it
+    clear)."""
+    if not locked_pro_teams:
+        return
+    pro_team = await conn.fetchval("SELECT pro_team FROM players WHERE sleeper_player_id = $1", sleeper_player_id)
+    if pro_team not in locked_pro_teams:
+        return
+    if await is_on_waivers(conn, season, league_id, sleeper_player_id):
+        return
+    await start_waiver_clock(conn, season, league_id, sleeper_player_id)
+
+
 async def force_clear_waiver(conn, season: int, league_id: int, sleeper_player_id: str, reason: str) -> None:
     """Commissioner override (app/routers/commissioner_lineup.py) placed
     this player directly onto a roster, bypassing the normal waiver

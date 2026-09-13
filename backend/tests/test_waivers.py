@@ -308,3 +308,68 @@ async def test_add_free_agent_allowed_once_waivers_have_cleared(pool):
     async with pool.acquire() as conn:
         result = await add_free_agent(conn, TEST_SEASON, team_id, player)
     assert any(r["sleeper_player_id"] == player for r in result["roster"])
+
+
+async def test_ensure_waiver_clock_if_game_locked_noop_when_team_not_locked(pool):
+    # _seed_player always seeds pro_team='KC' — an empty/non-matching
+    # locked set must never start a real clock just because someone
+    # looked at this player.
+    player = await _seed_player(pool, "locked-noop")
+    async with pool.acquire() as conn:
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset()
+        )
+        assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player) is False
+
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset({"BUF"})
+        )
+        assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player) is False
+
+
+async def test_ensure_waiver_clock_if_game_locked_starts_clock_for_locked_team(pool):
+    player = await _seed_player(pool, "locked-start")
+    async with pool.acquire() as conn:
+        assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player) is False
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset({"KC"})
+        )
+        assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player) is True
+
+
+async def test_ensure_waiver_clock_if_game_locked_does_not_reset_an_existing_clock(pool):
+    # start_waiver_clock's own upsert resets clears_at on every call
+    # (ON CONFLICT DO UPDATE) — this helper must guard against that by
+    # checking is_on_waivers first, or every repeated add/claim attempt
+    # on an already-waived, still-locked player would keep pushing
+    # their real clear time out indefinitely.
+    player = await _seed_player(pool, "locked-idempotent")
+    async with pool.acquire() as conn:
+        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        clears_at_map = await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player])
+        first_clears_at = clears_at_map[player]
+
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset({"KC"})
+        )
+        clears_at_map = await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player])
+        assert clears_at_map[player] == first_clears_at
+
+
+async def test_submit_claim_allowed_on_locked_never_dropped_player(pool):
+    # The whole point of this feature: a player who was never actually
+    # dropped by anyone (no real waiver_wire row) but whose game just
+    # kicked off must still be claimable, not rejected outright by
+    # submit_claim's own is_on_waivers gate — that's what the router
+    # calling ensure_waiver_clock_if_game_locked immediately beforehand
+    # is for.
+    await _seed_roster_config(pool)
+    _, team_id = await _seed_owner_with_team(pool, "locked-claim", espn_team_id=217)
+    player = await _seed_player(pool, "locked-claim")
+    async with pool.acquire() as conn:
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset({"KC"})
+        )
+        claim = await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id, player)
+    assert claim["status"] == "pending"
+    assert claim["add_sleeper_player_id"] == player
