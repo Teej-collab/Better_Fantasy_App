@@ -337,6 +337,49 @@ async def test_fg_yds_sums_real_made_kick_distances_from_scoring_plays(monkeypat
     assert by_id[3050478]["stat_line"]["fg_yds"] == 58
 
 
+# Real report, 2026-09-13: Tyler Loop's real 57-yard make (event
+# 401872659, BAL @ IND, week 1 2026) never scored at all, despite his
+# XPs syncing fine the same game. ESPN's own scoringPlays text for that
+# real make was "Tyler Loop 57 Yd Field Goal " — a genuine trailing
+# space, confirmed live — which _FG_MADE_TEXT_RE's old `$`-anchored
+# pattern (no whitespace tolerance) silently failed to match, dropping
+# the make with no error and no trace. Confirmed NOT specific to this
+# kicker or this distance: sampling scoringPlays from four other real
+# games the same week found the trailing space present on roughly 1 in
+# 4 made-FG entries, with no distance/team pattern to it — ESPN's own
+# feed is just inconsistent here.
+_FAKE_TRAILING_SPACE_FG_SUMMARY = {
+    "scoringPlays": [
+        {"type": {"abbreviation": "FG"}, "text": "Tyler Loop 57 Yd Field Goal ", "team": {"abbreviation": "BAL"}},
+    ],
+    "boxscore": {
+        "players": [
+            {
+                "team": {"abbreviation": "BAL"},
+                "statistics": [
+                    {
+                        "name": "kicking",
+                        "keys": ["fieldGoalsMade/fieldGoalAttempts", "extraPointsMade/extraPointAttempts"],
+                        "athletes": [
+                            {"athlete": {"id": "4429160", "displayName": "Tyler Loop"}, "stats": ["1/1", "4/4"]},
+                        ],
+                    },
+                ],
+            },
+        ]
+    },
+}
+
+
+async def test_fg_yds_matches_a_made_kick_with_a_trailing_space_in_its_scoring_play_text(monkeypatch):
+    monkeypatch.setattr(espn_public.httpx, "AsyncClient", _fake_client_for(_FAKE_TRAILING_SPACE_FG_SUMMARY))
+
+    players = await espn_public.get_game_player_stats("401872659")
+    by_id = {p["espn_player_id"]: p for p in players}
+
+    assert by_id[4429160]["stat_line"]["fg_yds"] == 57
+
+
 async def test_fg_misses_are_bucketed_by_real_distance(monkeypatch):
     """Distance-tiered (2026-09), replacing the old flat fg_miss_total —
     a miss's real distance IS available after all, just not where a

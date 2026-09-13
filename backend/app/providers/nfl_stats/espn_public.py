@@ -65,7 +65,16 @@ _INDIVIDUAL_STAT_MAP: dict[tuple[str, str], str] = {
     ("defensive", "totalTackles"): "def_tackle",
 }
 
-_FG_MADE_TEXT_RE = re.compile(r"(\d+) Yd Field Goal$")
+# 2026-09-13 fix, real report: anchored to end-of-string with zero
+# tolerance for trailing whitespace — ESPN's own scoringPlays text is
+# genuinely inconsistent about this ("Tyler Loop 57 Yd Field Goal " —
+# real text, trailing space — vs. "Chase McLaughlin 34 Yd Field Goal",
+# no trailing space, both confirmed live from real games the same
+# week). `$` alone rejected the trailing-space form outright, silently
+# dropping that made field goal from scoring entirely — not a distance-
+# specific or team-specific gap, roughly 1 in 4 sampled real makes
+# carried the trailing space. `\s*` before the anchor accepts either.
+_FG_MADE_TEXT_RE = re.compile(r"(\d+) Yd Field Goal\s*$")
 
 
 def _single_kicker_lookup(data: dict, team_key: str) -> dict[str, list[int]]:
