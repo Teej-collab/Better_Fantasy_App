@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { getMe, getMyPreferences } from "@/lib/api";
-import { getGameState } from "@/lib/gamecastApi";
+import { getMe, getMyPreferences, getNflScoreboard } from "@/lib/api";
+import { findGamecastId, getGameState, getLiveGames } from "@/lib/gamecastApi";
 import { GamecastShell } from "@/components/gamecast/GamecastShell";
 import { BackButton } from "@/components/BackButton";
+import { TrackedGamecastLink } from "@/components/gamecast/TrackedGamecastLink";
 
 // Real per-page title (mobile audit finding). getGameState() is
 // deduped against the identical call in the page component below.
@@ -23,11 +24,29 @@ export default async function GamecastPage({ params }: { params: Promise<{ gameI
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  const [game, me, myPreferences] = await Promise.all([
+  const [game, me, myPreferences, nflGames, gamecastGames] = await Promise.all([
     getGameState(gameId),
     getMe(sessionCookie),
     getMyPreferences(sessionCookie),
+    // Same two calls the Gamecast hub page already fetches for its own
+    // "Live now" group — reused here (not a new endpoint) so this page
+    // can offer a direct switcher to another live game, per a real
+    // report: switching games meant backing all the way out to the hub
+    // and finding the other game again from scratch.
+    getNflScoreboard(),
+    getLiveGames(),
   ]);
+
+  // Every OTHER currently-live game that has a real Gamecast (no point
+  // offering a link into a game with no play-by-play coverage) — same
+  // join the hub page's own GameRow already does, just filtered down
+  // to "live" and excluding the game already being viewed.
+  const otherLiveGames = nflGames
+    .filter((g) => g.state === "in" && g.home_team && g.away_team)
+    .map((g) => ({ ...g, gamecastId: findGamecastId(g.home_team, g.away_team, gamecastGames) }))
+    .filter(
+      (g): g is typeof g & { gamecastId: string } => g.gamecastId !== null && g.gamecastId !== gameId
+    );
 
   if (!game) {
     return (
@@ -47,6 +66,24 @@ export default async function GamecastPage({ params }: { params: Promise<{ gameI
       <h1 className="text-2xl font-semibold">
         {game.away_team.abbr} @ {game.home_team.abbr}
       </h1>
+      {otherLiveGames.length > 0 && (
+        <nav
+          aria-label="Switch to another live game"
+          className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+        >
+          {otherLiveGames.map((g) => (
+            <TrackedGamecastLink
+              key={g.id}
+              gamecastId={g.gamecastId}
+              href={`/gamecast/${g.gamecastId}`}
+              className="neon-navlink flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
+            >
+              <span className="live-dot" aria-hidden />
+              {g.away_team} @ {g.home_team}
+            </TrackedGamecastLink>
+          ))}
+        </nav>
+      )}
       <GamecastShell
         gameId={gameId}
         initialGame={game}
