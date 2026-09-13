@@ -5,11 +5,21 @@ import { getLeagueTeams, getMyLeagues, type Team } from "@/lib/leaguesApi";
 import {
   commissionerAddPlayer,
   commissionerDropPlayer,
+  commissionerMovePlayer,
   getTeamCurrentRoster,
 } from "@/lib/commissionerLineupApi";
 import type { RosterEntry } from "@/lib/api";
+import { BENCH_SLOT_LABEL, FLEX_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel } from "@/lib/rosterSlots";
 
 type FreeAgentResult = { sleeper_player_id: string; full_name: string; position: string; pro_team: string | null };
+
+// Every real lineup_slot value this league's roster can ever use — the
+// same set MyTeamApp's own self-serve move UI offers, just without
+// that UI's locked-player restriction (this tool's whole point is
+// fixing an already-live lineup, e.g. the real report that led to it:
+// a team with no FLEX starter set had every slot below FLEX rendering
+// the wrong player in the head-to-head table).
+const ALL_LINEUP_SLOTS = ["QB", "RB", "WR", "TE", FLEX_SLOT_LABEL, "D/ST", "K", BENCH_SLOT_LABEL, IR_SLOT_LABEL];
 
 /**
  * Force-add/drop a player on any member's roster (2026-09-03) — a
@@ -24,6 +34,7 @@ export function ForceEditRosterSection() {
   const [selectedTeamId, setSelectedTeamId] = useState<number | "">("");
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [dropBusyId, setDropBusyId] = useState<string | null>(null);
+  const [moveBusyId, setMoveBusyId] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<FreeAgentResult[]>([]);
@@ -73,6 +84,19 @@ export function ForceEditRosterSection() {
     }
   }
 
+  async function move(sleeperPlayerId: string, toSlot: string) {
+    if (leagueId === null || selectedTeamId === "") return;
+    setMoveBusyId(sleeperPlayerId);
+    try {
+      const { roster: updated } = await commissionerMovePlayer(leagueId, selectedTeamId, sleeperPlayerId, toSlot);
+      setRoster(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't move that player.");
+    } finally {
+      setMoveBusyId(null);
+    }
+  }
+
   async function runSearch() {
     if (leagueId === null) return;
     try {
@@ -118,7 +142,8 @@ export function ForceEditRosterSection() {
       <div>
         <h2 className="text-lg font-semibold">Force-Edit a Roster</h2>
         <p className="text-sm text-black/50 dark:text-white/50">
-          Add or drop a player on any member&apos;s behalf — for when they can&apos;t manage their own team.
+          Add, drop, or move a player into a different lineup slot on any member&apos;s behalf — for when they
+          can&apos;t manage their own team, or to fix an already-live lineup (moves here work even after kickoff).
         </p>
       </div>
 
@@ -155,20 +180,47 @@ export function ForceEditRosterSection() {
               <p className="text-sm text-black/50 dark:text-white/50">Empty roster.</p>
             ) : (
               <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
-                {roster.map((p) => (
-                  <li key={p.player_id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                    <span>
-                      {p.player_name} <span className="text-xs text-black/50 dark:text-white/50">({p.lineup_slot})</span>
-                    </span>
-                    <button
-                      onClick={() => drop(p.player_id)}
-                      disabled={dropBusyId === p.player_id}
-                      className="rounded-full border border-red-500/30 px-2.5 py-1 text-xs text-red-500 hover:bg-red-500/10 disabled:opacity-40"
-                    >
-                      {dropBusyId === p.player_id ? "Dropping…" : "Drop"}
-                    </button>
-                  </li>
-                ))}
+                {roster.map((p) => {
+                  const eligibleSlots = ALL_LINEUP_SLOTS.filter(
+                    (slot) => slot !== p.lineup_slot && isEligibleForSlot(p.position, slot, p.injury_status)
+                  );
+                  return (
+                    <li key={p.player_id} className="flex flex-col gap-1.5 px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>
+                          {p.player_name}{" "}
+                          <span className="text-xs text-black/50 dark:text-white/50">({p.lineup_slot})</span>
+                        </span>
+                        <button
+                          onClick={() => drop(p.player_id)}
+                          disabled={dropBusyId === p.player_id}
+                          className="shrink-0 rounded-full border border-red-500/30 px-2.5 py-1 text-xs text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                        >
+                          {dropBusyId === p.player_id ? "Dropping…" : "Drop"}
+                        </button>
+                      </div>
+                      {eligibleSlots.length > 0 && (
+                        <select
+                          value=""
+                          disabled={moveBusyId === p.player_id}
+                          onChange={(e) => {
+                            if (e.target.value) move(p.player_id, e.target.value);
+                          }}
+                          className="w-fit rounded-lg border border-black/10 bg-transparent px-2 py-1 text-xs disabled:opacity-40 dark:border-white/10"
+                        >
+                          <option value="">
+                            {moveBusyId === p.player_id ? "Moving…" : "Move to…"}
+                          </option>
+                          {eligibleSlots.map((slot) => (
+                            <option key={slot} value={slot}>
+                              {slotDisplayLabel(slot)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

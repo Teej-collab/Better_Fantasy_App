@@ -79,3 +79,35 @@ export async function commissionerAddPlayer(
   const data = await res.json();
   return { status: "ok", roster: data.roster, dropped_player: data.dropped_player };
 }
+
+// Moves a player into a different lineup slot on the target team's
+// behalf — same slot-eligibility/displacement rules as the self-serve
+// /me/team/lineup/move, but (unlike that route) works even after the
+// player's real game has kicked off. That's the point: fixing an
+// already-live, already-broken lineup (e.g. a missing FLEX starter),
+// not something to reach for on an ordinary week.
+export async function commissionerMovePlayer(
+  leagueId: number,
+  teamId: number,
+  sleeperPlayerId: string,
+  toSlot: string
+): Promise<{ roster: RosterEntry[] }> {
+  return post(`/leagues/${leagueId}/teams/${teamId}/roster/move`, {
+    sleeper_player_id: sleeperPlayerId,
+    to_slot: toSlot,
+  });
+}
+
+// Trades two of the target team's own players' lineup slots — same
+// lock-bypass reasoning as commissionerMovePlayer above.
+export async function commissionerSwapPlayers(
+  leagueId: number,
+  teamId: number,
+  sleeperPlayerIdA: string,
+  sleeperPlayerIdB: string
+): Promise<{ roster: RosterEntry[] }> {
+  return post(`/leagues/${leagueId}/teams/${teamId}/roster/swap`, {
+    sleeper_player_id_a: sleeperPlayerIdA,
+    sleeper_player_id_b: sleeperPlayerIdB,
+  });
+}

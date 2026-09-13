@@ -209,3 +209,82 @@ async def test_add_reports_roster_full_without_a_drop_target(pool, monkeypatch):
         )
     assert resp.status_code == 409
     assert resp.json()["error"] == "roster_full"
+
+
+async def test_move_requires_commissioner(pool, monkeypatch):
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    target = await _seed_owner_with_team(pool, "move_noncomm_target")
+    non_commish = await _seed_owner_with_team(pool, "move_noncomm_member")
+    player = await _seed_player(pool, "movereq")
+    await _seed_roster_entry(pool, target["team_id"], player, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(non_commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/move",
+            json={"sleeper_player_id": player, "to_slot": "RB"},
+        )
+    assert resp.status_code == 403
+
+
+async def test_commissioner_can_move_a_player_into_an_empty_flex(pool, monkeypatch):
+    # The real report this endpoint exists for: a team with no FLEX
+    # starter set — a commissioner needs to be able to put a real
+    # RB/WR/TE into that empty slot directly, without the self-serve
+    # lock (kickoff) blocking it.
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    commish = await _seed_owner_with_team(pool, "move_ok_commish", is_commissioner=True)
+    target = await _seed_owner_with_team(pool, "move_ok_target")
+    player = await _seed_player(pool, "moveok", position="RB")
+    await _seed_roster_entry(pool, target["team_id"], player, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/move",
+            json={"sleeper_player_id": player, "to_slot": "RB/WR/TE"},
+        )
+    assert resp.status_code == 200
+    moved = next(p for p in resp.json()["roster"] if p["player_id"] == player)
+    assert moved["lineup_slot"] == "RB/WR/TE"
+
+
+async def test_move_rejects_a_slot_the_player_isnt_eligible_for(pool, monkeypatch):
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    commish = await _seed_owner_with_team(pool, "move_bad_commish", is_commissioner=True)
+    target = await _seed_owner_with_team(pool, "move_bad_target")
+    kicker = await _seed_player(pool, "movebad", position="K")
+    await _seed_roster_entry(pool, target["team_id"], kicker, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/move",
+            json={"sleeper_player_id": kicker, "to_slot": "QB"},
+        )
+    assert resp.status_code == 400
+
+
+async def test_commissioner_can_swap_two_players_slots(pool, monkeypatch):
+    _set_env(monkeypatch)
+    await _ensure_roster_config(pool)
+    commish = await _seed_owner_with_team(pool, "swap_ok_commish", is_commissioner=True)
+    target = await _seed_owner_with_team(pool, "swap_ok_target")
+    starter = await _seed_player(pool, "swapok_starter", position="RB")
+    flex = await _seed_player(pool, "swapok_flex", position="RB")
+    await _seed_roster_entry(pool, target["team_id"], starter, lineup_slot="RB")
+    await _seed_roster_entry(pool, target["team_id"], flex, lineup_slot="RB/WR/TE")
+
+    async with _client() as client:
+        client.cookies.update(commish["cookies"])
+        resp = await client.post(
+            f"/leagues/{DEFAULT_LEAGUE_ID}/teams/{target['team_id']}/roster/swap",
+            json={"sleeper_player_id_a": starter, "sleeper_player_id_b": flex},
+        )
+    assert resp.status_code == 200
+    roster = {p["player_id"]: p["lineup_slot"] for p in resp.json()["roster"]}
+    assert roster[starter] == "RB/WR/TE"
+    assert roster[flex] == "RB"

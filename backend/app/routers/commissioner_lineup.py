@@ -25,6 +25,7 @@ from app.domain import waivers
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     LineupError,
+    LineupLockedError,
     PlayerAlreadyRosteredError,
     PlayerNotDraftableError,
     PlayerNotOnRosterError,
@@ -62,6 +63,14 @@ def _map_lineup_error(e: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(e))
     if isinstance(e, PlayerAlreadyRosteredError):
         return HTTPException(status_code=400, detail=str(e))
+    # Shouldn't actually fire — commissioner_move_player/commissioner_
+    # swap_players below deliberately never pass a locked_pro_teams set,
+    # which is the whole point of this tool (fixing an already-live
+    # lineup a game's kickoff would otherwise block). Mapped anyway
+    # rather than falling through to a generic 400, in case that ever
+    # changes.
+    if isinstance(e, LineupLockedError):
+        return HTTPException(status_code=409, detail=str(e))
     return HTTPException(status_code=400, detail=str(e))
 
 
@@ -188,3 +197,63 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
         "roster": [_roster_entry_dict(e) for e in result["roster"]],
         "dropped_player": _roster_entry_dict(result["dropped_player"]) if result["dropped_player"] else None,
     }
+
+
+class CommissionerRosterMoveRequest(BaseModel):
+    sleeper_player_id: str
+    to_slot: str
+
+
+@router.post("/{league_id}/teams/{team_id}/roster/move")
+async def commissioner_move_player(league_id: int, team_id: int, body: CommissionerRosterMoveRequest, request: Request):
+    """Real write — moves a player into a different lineup slot on the
+    target team's behalf, same slot-eligibility/displacement rules as
+    the self-serve /me/team/lineup/move. The one real difference:
+    lineup_engine.move_player's own locked_pro_teams check is never
+    populated here (it defaults to an empty set), so this — unlike the
+    self-serve path — works on a player whose real game has already
+    kicked off. That's the entire point of this endpoint: fixing an
+    already-broken, already-live lineup (a real incident — an error
+    left a team with no FLEX starter set, which cascaded into every
+    slot below it displaying the wrong player in the head-to-head
+    table), not something a commissioner should reach for on an
+    ordinary, not-yet-locked week."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await require_commissioner_of(conn, payload, league_id)
+            await _require_team_in_league(conn, league_id, team_id, active_season)
+            roster = await lineup_engine.move_player(
+                conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id,
+            )
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+    return {"roster": [_roster_entry_dict(e) for e in roster]}
+
+
+class CommissionerRosterSwapRequest(BaseModel):
+    sleeper_player_id_a: str
+    sleeper_player_id_b: str
+
+
+@router.post("/{league_id}/teams/{team_id}/roster/swap")
+async def commissioner_swap_players(league_id: int, team_id: int, body: CommissionerRosterSwapRequest, request: Request):
+    """Real write — trades two of the target team's own players' lineup
+    slots, same eligibility rules (each must be valid for the OTHER's
+    current slot) and the same intentional lock bypass as the move
+    endpoint above."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await require_commissioner_of(conn, payload, league_id)
+            await _require_team_in_league(conn, league_id, team_id, active_season)
+            roster = await lineup_engine.swap_players(
+                conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
+            )
+    except LineupError as e:
+        raise _map_lineup_error(e) from e
+    return {"roster": [_roster_entry_dict(e) for e in roster]}
