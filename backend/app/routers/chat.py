@@ -296,7 +296,7 @@ async def _push_notify_new_message(
                 # of the notify_league_chat category toggle.
                 category_allowed = conversation_type == "commish_corner" or prefs[category]
                 if prefs["push_enabled"] and category_allowed:
-                    await dispatcher.send_to_owner(conn, recipient_id, build(sender_name, body))
+                    await dispatcher.send_to_owner(conn, recipient_id, build(sender_name, body, conversation_id))
     except Exception:
         logger.exception("Push notification for chat message in conversation_id=%s failed", conversation_id)
 

@@ -62,14 +62,30 @@ function conversationTypeRank(type: ChatConversation["type"]): number {
 export function ChatApp({
   initialConversations,
   myOwnerId,
+  initialConversationId,
 }: {
   initialConversations: ChatConversation[];
   myOwnerId: number;
+  // Set from ?conversation=<id> on the URL (see (chat)/chat/page.tsx) —
+  // real report, 2026-09: every chat push notification opened bare
+  // /chat, which always lands on the most-recent conversation
+  // regardless of which thread the notification was actually about.
+  // Only trusted when it's actually one of this owner's own
+  // conversations (a stale/tampered/expired id falls back to the
+  // existing default below, same as if no id had been passed at all —
+  // never a broken or blank chat screen).
+  initialConversationId?: number | null;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
-  const [selectedId, setSelectedId] = useState<number | null>(
-    initialConversations.length > 0 ? initialConversations[0].id : null
-  );
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    if (
+      initialConversationId != null &&
+      initialConversations.some((c) => c.id === initialConversationId)
+    ) {
+      return initialConversationId;
+    }
+    return initialConversations.length > 0 ? initialConversations[0].id : null;
+  });
   const [messagesByConversation, setMessagesByConversation] = useState<Record<number, ChatMessage[]>>({});
   const [hasMoreByConversation, setHasMoreByConversation] = useState<Record<number, boolean>>({});
   const [typingByConversation, setTypingByConversation] = useState<Record<number, TypingUser[]>>({});
@@ -168,9 +184,11 @@ export function ChatApp({
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c)));
   }
 
-  // The conversation selected by default on first render (the league
-  // conversation) still needs its own messages loaded and read-marked —
-  // this is the one legitimate "run once on mount" case. Deferred a tick
+  // Whichever conversation ends up selected on first render — the
+  // league conversation by default, or a specific one from
+  // initialConversationId above — still needs its own messages loaded
+  // and read-marked; this is the one legitimate "run once on mount"
+  // case. Deferred a tick
   // (queueMicrotask) rather than calling the loader functions directly in
   // the effect body — both are locally-defined async functions whose
   // eventual setState calls happen after their own internal `await`, but

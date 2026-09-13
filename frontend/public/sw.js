@@ -110,17 +110,30 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";
+  const targetUrl = new URL(url, self.location.origin);
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((client) => {
         try {
-          return new URL(client.url).pathname === new URL(url, self.location.origin).pathname;
+          return new URL(client.url).pathname === targetUrl.pathname;
         } catch {
           return false;
         }
       });
-      if (existing) return existing.focus();
+      if (existing) {
+        // Matching by pathname alone isn't enough once a url can point
+        // at a specific resource WITHIN a page (e.g. /chat?conversation=
+        // 123, added for push-notification deep-linking, 2026-09) — an
+        // already-open tab on the same page but a different conversation
+        // used to just get focused as-is, silently never switching to
+        // the one the notification was actually for. Compare the full
+        // URL and navigate first whenever it actually differs.
+        if (existing.url !== targetUrl.href && "navigate" in existing) {
+          return existing.navigate(url).then((client) => (client || existing).focus());
+        }
+        return existing.focus();
+      }
 
       const anyClient = clients[0];
       if (anyClient && "navigate" in anyClient) {

@@ -7,9 +7,20 @@ import { SignInCard } from "@/components/SignInCard";
 
 export const metadata: Metadata = { title: "Chat — Weekend League" };
 
-export default async function ChatPage() {
+export default async function ChatPage({
+  searchParams,
+}: {
+  // ?conversation=<id> — set by a chat push notification's url (see
+  // backend/app/notifications/formatter.py's _chat_url), so tapping one
+  // opens the actual conversation it was about instead of always
+  // landing on ChatApp's own most-recent-conversation default.
+  searchParams: Promise<{ conversation?: string }>;
+}) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
+  const { conversation } = await searchParams;
+  const parsedConversationId = conversation !== undefined ? Number(conversation) : NaN;
+  const initialConversationId = Number.isInteger(parsedConversationId) ? parsedConversationId : null;
 
   const me = await getMe(sessionCookie);
   if (!me) {
@@ -36,5 +47,11 @@ export default async function ChatPage() {
     );
   }
 
-  return <ChatApp initialConversations={conversations} myOwnerId={me.owner_id} />;
+  return (
+    <ChatApp
+      initialConversations={conversations}
+      myOwnerId={me.owner_id}
+      initialConversationId={initialConversationId}
+    />
+  );
 }

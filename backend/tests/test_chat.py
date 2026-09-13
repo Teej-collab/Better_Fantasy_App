@@ -705,6 +705,12 @@ async def test_websocket_message_pushes_to_an_offline_recipient(pool, monkeypatc
     assert owner_id == a
     assert payload["data"]["type"] == "chat_direct_message"
     assert "you there?" in payload["body"]
+    # 2026-09 fix, real report: every chat push used to land on bare
+    # /chat regardless of which conversation it was for — ChatApp.tsx
+    # always opens the most-recent conversation by default, so tapping
+    # a notification for any OTHER thread silently opened the wrong
+    # one. The url now has to carry the real conversation_id.
+    assert payload["url"] == f"/chat?conversation={conversation_id}"
 
 
 async def test_websocket_message_skips_push_when_recipient_preference_is_off(pool, monkeypatch):
@@ -858,6 +864,7 @@ async def test_websocket_message_with_mention_uses_the_mention_category(pool, mo
     owner_id, payload = sent[0]
     assert owner_id == a
     assert payload["data"]["type"] == "chat_mention"
+    assert payload["url"] == f"/chat?conversation={conversation_id}"
 
 
 async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, monkeypatch):

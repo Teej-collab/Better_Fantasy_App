@@ -38,46 +38,57 @@ def _preview(body: str) -> str:
     return body[:_BODY_PREVIEW_LENGTH].rstrip() + "…"
 
 
-def chat_direct_message(sender_name: str, body: str) -> dict:
+def _chat_url(conversation_id: int) -> str:
+    # 2026-09 fix, real report: every chat push used to land on bare
+    # /chat regardless of which conversation the message was actually
+    # in — ChatApp.tsx always defaults to the first/most-recent
+    # conversation, so tapping a notification for an OLDER thread (or
+    # any thread that isn't already the most recent) silently opened
+    # the wrong one. frontend/src/app/(chat)/chat/page.tsx now reads
+    # this query param and pre-selects the matching conversation.
+    return f"/chat?conversation={conversation_id}"
+
+
+def chat_direct_message(sender_name: str, body: str, conversation_id: int) -> dict:
     return {
         "title": sender_name,
         "body": _preview(body) or "Sent an image",
         "icon": _DEFAULT_ICON,
         "badge": _DEFAULT_ICON,
-        "url": "/chat",
+        "url": _chat_url(conversation_id),
         "data": {"type": "chat_direct_message"},
     }
 
 
-def chat_league_message(sender_name: str, body: str) -> dict:
+def chat_league_message(sender_name: str, body: str, conversation_id: int) -> dict:
     return {
         "title": f"{sender_name} in League Chat",
         "body": _preview(body) or "Sent an image",
         "icon": _DEFAULT_ICON,
         "badge": _DEFAULT_ICON,
-        "url": "/chat",
+        "url": _chat_url(conversation_id),
         "data": {"type": "chat_league_message"},
     }
 
 
-def chat_mention(sender_name: str, body: str) -> dict:
+def chat_mention(sender_name: str, body: str, conversation_id: int) -> dict:
     return {
         "title": f"{sender_name} mentioned you",
         "body": _preview(body) or "Sent an image",
         "icon": _DEFAULT_ICON,
         "badge": _DEFAULT_ICON,
-        "url": "/chat",
+        "url": _chat_url(conversation_id),
         "data": {"type": "chat_mention"},
     }
 
 
-def chat_reply(sender_name: str, body: str) -> dict:
+def chat_reply(sender_name: str, body: str, conversation_id: int) -> dict:
     return {
         "title": f"{sender_name} replied to you",
         "body": _preview(body) or "Sent an image",
         "icon": _DEFAULT_ICON,
         "badge": _DEFAULT_ICON,
-        "url": "/chat",
+        "url": _chat_url(conversation_id),
         "data": {"type": "chat_reply"},
     }
 
