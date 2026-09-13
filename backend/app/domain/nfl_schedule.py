@@ -9,8 +9,6 @@ two copies of this join drifting apart.
 """
 from datetime import datetime, timezone
 
-from app.gamecast.models import GameStatus
-
 
 def schedule_lookup_by_pro_team(games: list[dict]) -> dict[str, dict]:
     """pro_team abbreviation -> {next_opponent, game_time} for every
@@ -27,27 +25,44 @@ def schedule_lookup_by_pro_team(games: list[dict]) -> dict[str, dict]:
     return lookup
 
 
-def live_status_by_pro_team(games: list) -> dict[str, dict]:
+def live_status_by_pro_team(games: list[dict]) -> dict[str, dict]:
     """pro_team abbreviation -> {on_offense, is_redzone} for every real
-    NFL team currently playing an in-progress game. Not a new data
-    source — app.gamecast.service already keeps a free, continuously-
-    refreshed in-memory cache of live game state (all_cached_states()/
-    LiveGame) for the Gamecast feature; this just reads it and cross-
-    references by team abbreviation, the same join shape
-    schedule_lookup_by_pro_team above uses. Deliberately excludes
-    halftime/scheduled/final games — no one is "on offense" when play
-    isn't live. Moved here from app/routers/me.py (2026-09) so
-    app/domain/matchup_context.py can share the exact same live-status
-    cross-reference for the matchup screen's roster rows instead of a
-    second copy of this join."""
+    NFL team currently playing an in-progress game. Takes the exact
+    same scoreboard dict list schedule_lookup_by_pro_team above already
+    reads (app/providers/nfl_scoreboard.py) — every real caller already
+    has that list in hand for the schedule lookup, so this costs no
+    extra fetch.
+
+    2026-09-13 fix, real report: this used to read app.gamecast.
+    service's own cache (all_cached_states()/LiveGame) instead, which
+    only ever tracks a game someone currently has THAT SPECIFIC game's
+    Gamecast screen open for — a deliberate cost-saving gate (see
+    scheduler.py's own docstring on gamecast_manager.live_game_ids()),
+    exactly right for Gamecast's own detailed drive-by-drive tracking,
+    but it meant this function silently returned nothing for any live
+    game nobody happened to be watching in Gamecast at that moment.
+    Confirmed live: CHI@CAR was genuinely in progress and simply never
+    showed up here. The public scoreboard poll runs continuously
+    regardless of who's looking at what, and already carries a real
+    possession/red-zone signal (ESPN's own situation.possession/
+    situation.isRedZone, parsed in nfl_scoreboard.py) for every live
+    game — reading that instead means this now actually works for
+    every real live game, not just a watched one.
+
+    Deliberately excludes halftime/scheduled/final games (state !=
+    "in") — no one is "on offense" when play isn't live."""
     lookup: dict[str, dict] = {}
     for game in games:
-        if game.status != GameStatus.IN_PROGRESS:
+        if game.get("state") != "in":
             continue
-        for team in (game.home_team, game.away_team):
-            lookup[team.abbr] = {
-                "on_offense": game.possession_team_abbr == team.abbr,
-                "is_redzone": bool(game.is_redzone and game.possession_team_abbr == team.abbr),
+        possession = game.get("possession_team_abbr")
+        is_redzone = bool(game.get("is_redzone"))
+        for team in (game.get("home_team"), game.get("away_team")):
+            if not team:
+                continue
+            lookup[team] = {
+                "on_offense": possession == team,
+                "is_redzone": bool(is_redzone and possession == team),
             }
     return lookup
 

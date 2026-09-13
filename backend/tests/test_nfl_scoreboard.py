@@ -83,6 +83,55 @@ async def test_parses_real_shaped_scoreboard_response(monkeypatch):
     assert game["state"] == "post"
     assert game["completed"] is True
     assert game["status_detail"] == "Final"
+    # This fixture's game is already final and never carried a
+    # "situation" object at all — both should read as "nothing live"
+    # rather than crash on a missing key.
+    assert game["possession_team_abbr"] is None
+    assert game["is_redzone"] is False
+
+
+_LIVE_FAKE_RESPONSE = {
+    "events": [
+        {
+            "id": "500",
+            "name": "Chicago Bears at Carolina Panthers",
+            "competitions": [
+                {
+                    "status": {"type": {"state": "in", "completed": False, "shortDetail": "11:33 - 1st"}},
+                    "competitors": [
+                        {"homeAway": "home", "score": "0", "team": {"id": "29", "abbreviation": "CAR"}},
+                        {"homeAway": "away", "score": "7", "team": {"id": "3", "abbreviation": "CHI"}},
+                    ],
+                    # Real shape from ESPN's own scoreboard endpoint —
+                    # possession is a team id, not an abbreviation.
+                    "situation": {"possession": "3", "isRedZone": False},
+                }
+            ],
+        }
+    ]
+}
+
+
+class _FakeLiveAsyncClient(_FakeAsyncClient):
+    async def get(self, url, params=None):
+        self.last_params = params
+        return _FakeResponse(_LIVE_FAKE_RESPONSE)
+
+
+async def test_parses_possession_and_redzone_from_a_real_live_game(monkeypatch):
+    # The exact real-world case this was added for, 2026-09-13: CHI@CAR
+    # genuinely in progress, CHI has the ball, resolved from a team id
+    # against these same two competitors' own team.id — not a separate
+    # id->abbreviation table.
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _FakeLiveAsyncClient)
+
+    games = await get_nfl_scoreboard()
+
+    assert len(games) == 1
+    game = games[0]
+    assert game["state"] == "in"
+    assert game["possession_team_abbr"] == "CHI"
+    assert game["is_redzone"] is False
 
 
 async def test_get_week_scoreboard_passes_week_params_and_parses_same_shape(monkeypatch):

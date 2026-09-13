@@ -150,34 +150,33 @@ async def test_my_team_includes_bye_week_when_synced(pool, monkeypatch):
 
 
 async def test_my_team_includes_live_offense_and_redzone_status(pool, monkeypatch):
-    from app.gamecast import service as gamecast_service
-    from app.gamecast.models import GameStatus, LiveGame, TeamRef
-    from datetime import datetime, timezone
-
+    # 2026-09-13 fix, real report: on_offense/is_redzone used to read
+    # app.gamecast.service's own cache, which only tracks a game
+    # someone currently has THAT game's own Gamecast screen open for —
+    # so a real live game nobody was watching in Gamecast (confirmed:
+    # CHI@CAR) never showed as live anywhere, including here. Now reads
+    # the same public scoreboard poll get_week_scoreboard already
+    # provides for next_opponent/game_time, so this test mocks THAT
+    # instead of the no-longer-consulted gamecast cache.
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
     owner_id, team_id = await _seed_owner_with_team(pool, "live1", espn_team_id=118)
     player = await _seed_player(pool, "live1", position="RB")  # pro_team always 'KC'
     await _seed_roster_entry(pool, team_id, player, lineup_slot="RB")
 
-    fake_game = LiveGame(
-        game_id="test-live-1",
-        provider="test",
-        status=GameStatus.IN_PROGRESS,
-        season=TEST_SEASON,
-        week=1,
-        scheduled_start=datetime.now(timezone.utc),
-        home_team=TeamRef(abbr="KC", name="Kansas City Chiefs"),
-        away_team=TeamRef(abbr="LV", name="Las Vegas Raiders"),
-        possession_team_abbr="KC",
-        is_redzone=True,
-        last_updated=datetime.now(timezone.utc),
-    )
+    async def fake_get_nfl_scoreboard(*args, **kwargs):
+        return [
+            {
+                "home_team": "KC",
+                "away_team": "LV",
+                "state": "in",
+                "possession_team_abbr": "KC",
+                "is_redzone": True,
+                "date": None,
+            }
+        ]
 
-    def fake_all_cached_states():
-        return [fake_game]
-
-    monkeypatch.setattr(gamecast_service, "all_cached_states", fake_all_cached_states)
+    monkeypatch.setattr("app.routers.me.get_nfl_scoreboard", fake_get_nfl_scoreboard)
 
     async with _client() as client:
         client.cookies.update(await _session_cookie(pool, owner_id))

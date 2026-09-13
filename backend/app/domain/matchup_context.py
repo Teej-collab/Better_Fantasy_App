@@ -39,7 +39,6 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
 from app.domain.nfl_schedule import live_status_by_pro_team, locked_pro_teams, schedule_lookup_by_pro_team
-from app.gamecast import service as gamecast_service
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
@@ -276,11 +275,13 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
-    # Cheap in-memory read (app.gamecast.service's own continuously-
-    # refreshed cache, not a network call) — safe to compute for every
-    # week, live or not; live_status_by_pro_team naturally returns
-    # nothing for any team without a real in-progress game right now.
-    live_status_map = live_status_by_pro_team(gamecast_service.all_cached_states())
+    # Reuses this same `games` scoreboard fetch — no extra network
+    # call. live_status_by_pro_team naturally returns nothing for any
+    # team without a real in-progress game right now, safe to compute
+    # for every week, live or not. Deliberately NOT
+    # app.gamecast.service's own cache (see that function's own
+    # docstring for why it was — 2026-09-13 fix).
+    live_status_map = live_status_by_pro_team(games)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -391,7 +392,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         games = []
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
-    live_status_map = live_status_by_pro_team(gamecast_service.all_cached_states())
+    live_status_map = live_status_by_pro_team(games)
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)

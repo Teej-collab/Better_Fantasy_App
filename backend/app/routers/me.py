@@ -62,9 +62,8 @@ from app.domain.waiver_exceptions import (
     WaiverError,
 )
 from app.domain.your_week import build_your_week
-from app.gamecast import service as gamecast_service
 from app.providers.espn.player_info import get_bulk_ownership
-from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard
 from app.queries import league as league_queries
 from app.routers.lineup_shared import map_lineup_error
 
@@ -311,9 +310,22 @@ async def my_team(request: Request, week: int | None = None):
 
     # on_offense/is_redzone only ever mean something for a live game
     # happening right now — never attach them when looking at a
-    # different (necessarily not-currently-live) week.
+    # different (necessarily not-currently-live) week. Deliberately a
+    # SEPARATE fetch from the requested_week-scoped `games` above (not
+    # a reuse of it): requested_week can be None even when is_editable
+    # is True (is_editable = current_week is None or ..., so a
+    # genuinely unresolved cached current_week satisfies it either
+    # way) — the week-scoped fetch above would then never run at all,
+    # silently leaving on_offense/is_redzone unpopulated even during a
+    # real live game. get_nfl_scoreboard() (no week param — "what's
+    # actually happening right now," the same call AppTickerBar/game-
+    # day detection already trust) has no such dependency.
     if is_editable:
-        live_status = _live_status_lookup(gamecast_service.all_cached_states())
+        try:
+            live_games = await get_nfl_scoreboard()
+        except Exception:
+            live_games = []
+        live_status = _live_status_lookup(live_games)
         for entry in roster:
             info = live_status.get(entry["pro_team"])
             if info:

@@ -77,6 +77,29 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
             continue
 
         status_type = competition.get("status", {}).get("type", {})
+
+        # Real-time possession/red-zone, present whenever the game is
+        # actually in progress — ESPN's own "situation" object on this
+        # same endpoint. situation.possession is a team ID (not an
+        # abbreviation), resolved against these same two competitors'
+        # own team.id rather than a separate global id->abbreviation
+        # table, since both are always right here. This is what lets
+        # app/domain/nfl_schedule.py's live_status_by_pro_team work for
+        # EVERY live game from this one already-continuous, un-gated
+        # poll, instead of only games someone happens to have a
+        # specific Gamecast screen open for — a real report, 2026-09-13:
+        # CHI@CAR was genuinely live and simply never showed up as live
+        # anywhere in the app, because Gamecast's own cache (deliberately
+        # viewer-gated, see scheduler.py) had never been asked to track it.
+        situation = competition.get("situation") or {}
+        possession_team_id = situation.get("possession")
+        possession_team_abbr = None
+        if possession_team_id:
+            for competitor in (home, away):
+                if competitor.get("team", {}).get("id") == possession_team_id:
+                    possession_team_abbr = competitor.get("team", {}).get("abbreviation")
+                    break
+
         games.append(
             {
                 "id": event.get("id"),
@@ -94,6 +117,8 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 # app/domain/chug_deadline.py to find the real Monday
                 # Night Football kickoff for Jeffrey's Rule's deadline.
                 "date": event.get("date"),
+                "possession_team_abbr": possession_team_abbr,
+                "is_redzone": bool(situation.get("isRedZone")),
             }
         )
     return games
