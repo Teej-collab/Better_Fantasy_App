@@ -388,28 +388,59 @@ export function StarterComparisonTable({
 
   const homeStarters = starters(home);
   const awayStarters = starters(away);
-  const rowCount = Math.max(homeStarters.length, awayStarters.length);
 
-  if (rowCount === 0) {
+  // Grouped by lineup_slot and zipped WITHIN each group, not by a flat
+  // index across every starter — a flat zip silently breaks the moment
+  // the two rosters have a different number of starters at any slot
+  // (most commonly: one team has no FLEX set this week). Home's real
+  // D/ST and K would end up lined up against whatever fell into those
+  // array positions on the short side — a real team defense rendered
+  // in the FLEX row, a kicker rendered in the D/ST row, labeled with
+  // the WRONG team's slot name, real screenshot report 2026-09-13.
+  // Grouping first means a slot either side is missing just renders
+  // that side's cell empty, instead of shifting every later slot up.
+  function groupBySlot(list: RosterPlayer[]): Map<string, RosterPlayer[]> {
+    const map = new Map<string, RosterPlayer[]>();
+    for (const p of list) {
+      const key = p.lineup_slot ?? "";
+      const group = map.get(key);
+      if (group) group.push(p);
+      else map.set(key, [p]);
+    }
+    return map;
+  }
+
+  const homeBySlot = groupBySlot(homeStarters);
+  const awayBySlot = groupBySlot(awayStarters);
+  const slotLabels = Array.from(new Set([...homeBySlot.keys(), ...awayBySlot.keys()])).sort(
+    (a, b) => starterSortIndex(a) - starterSortIndex(b)
+  );
+
+  const rows: { home: RosterPlayer | null; away: RosterPlayer | null; slot: string }[] = [];
+  for (const slotLabel of slotLabels) {
+    const homeGroup = homeBySlot.get(slotLabel) ?? [];
+    const awayGroup = awayBySlot.get(slotLabel) ?? [];
+    const count = Math.max(homeGroup.length, awayGroup.length);
+    for (let i = 0; i < count; i++) {
+      rows.push({ home: homeGroup[i] ?? null, away: awayGroup[i] ?? null, slot: slotDisplayLabel(slotLabel) });
+    }
+  }
+
+  if (rows.length === 0) {
     return <p className="text-sm text-black/50 dark:text-white/50">No starting lineup set for this week yet.</p>;
   }
 
   return (
     <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-      {Array.from({ length: rowCount }, (_, i) => {
-        const h = homeStarters[i] ?? null;
-        const a = awayStarters[i] ?? null;
-        const slot = slotDisplayLabel((h ?? a)?.lineup_slot ?? "");
-        return (
-          <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
-            <PlayerCell player={h} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
-            <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
-              {slot}
-            </span>
-            <PlayerCell player={a} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
-          </div>
-        );
-      })}
+      {rows.map((row, i) => (
+        <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
+          <PlayerCell player={row.home} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
+          <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+            {row.slot}
+          </span>
+          <PlayerCell player={row.away} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
+        </div>
+      ))}
       {breakdownPlayer && (
         <ScoreBreakdownModal
           player={breakdownPlayer}
