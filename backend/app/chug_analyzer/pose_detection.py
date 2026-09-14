@@ -9,11 +9,29 @@ Ported verbatim from Fantasy_Helper's
 bot/chug_analyzer/pose_detection.py.
 """
 import subprocess
+import sys
 import tempfile
 import os
 
 import cv2
 import mediapipe as mp
+
+
+def _log(msg: str) -> None:
+    """Writes to this subprocess's own stderr — cli.py's own docstring
+    is explicit that stdout is reserved for exactly one JSON line, so
+    this can never go there. chug_analyzer_bridge.py forwards this
+    process's stderr into the main backend's own logs unconditionally
+    (not just on a crash), which is what actually makes this visible
+    in Railway's log stream. Added 2026-09-14: a real report ("fixed
+    it, but the exact same video the member showed us as evidence
+    still comes back 'no chug detected' through the real app") could
+    not be diagnosed at all with the code as it stood — every failure
+    path below (ffmpeg missing/failing/timing out, or cv2 simply
+    failing to open whatever file we hand it) was 100% silent, with no
+    way to tell which one actually happened for a real production
+    upload."""
+    print(f"[chug_analyzer] {msg}", file=sys.stderr, flush=True)
 
 CONTACT_THRESHOLD = 0.18  # distance below this = can touching mouth, tuned from real test data
 
@@ -61,9 +79,14 @@ def _normalize_orientation(video_path: str) -> tuple[str, str | None]:
             timeout=60,
         )
         if result.returncode == 0 and os.path.getsize(normalized_path) > 0:
+            _log(f"normalize ok: {os.path.getsize(normalized_path)} bytes")
             return normalized_path, normalized_path
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+        _log(
+            f"normalize failed: ffmpeg rc={result.returncode}, "
+            f"stderr_tail={result.stderr[-500:].decode(errors='replace')!r}"
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _log(f"normalize failed: {type(e).__name__}: {e}")
     # ffmpeg missing, timed out, or failed — clean up any partial output
     # and fall back to analyzing the original file exactly as before.
     try:
@@ -92,6 +115,16 @@ def detect_can_to_mouth(video_path: str):
     analysis_path, temp_path = _normalize_orientation(video_path)
     try:
         cap = cv2.VideoCapture(analysis_path)
+        # A previously-silent failure mode identical in symptom to a
+        # real "no chug detected": if cv2 can't open the file at all
+        # (an unsupported codec, or a normalize step that "succeeded"
+        # by ffmpeg's own exit code but produced something cv2 still
+        # can't read), cap.read() below just returns ret=False
+        # immediately — the frame loop never runs even once, and this
+        # looks exactly like a genuine no-contact-detected result with
+        # zero trace of why.
+        if not cap.isOpened():
+            _log(f"cv2.VideoCapture failed to open {analysis_path!r} (source={video_path!r})")
         fps = cap.get(cv2.CAP_PROP_FPS)
 
         in_contact = False
@@ -128,6 +161,10 @@ def detect_can_to_mouth(video_path: str):
             frame_number += 1
 
         cap.release()
+        _log(
+            f"frames_read={frame_number}, contact={contact_start_frame is not None}, "
+            f"fps={fps}"
+        )
     finally:
         if temp_path is not None:
             try:
