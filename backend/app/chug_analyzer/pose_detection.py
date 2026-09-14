@@ -33,7 +33,17 @@ def _log(msg: str) -> None:
     upload."""
     print(f"[chug_analyzer] {msg}", file=sys.stderr, flush=True)
 
-CONTACT_THRESHOLD = 0.18  # distance below this = can touching mouth, tuned from real test data
+# 2026-09-14 fix, real report: the new diagnostic logging in
+# detect_can_to_mouth (below) caught a real member's genuine, visible
+# chug landing at min_distance_seen=0.2037 — hand and face were both
+# detected reliably (354 frames with both), it just never crossed the
+# old 0.18 line. Likely a real grip-style gap in the wrist-to-mouth
+# proxy this threshold was originally tuned against: the wrist
+# (landmark 0) sits farther from the mouth than the can/bottle rim
+# itself for some grips, even during genuine contact. Raised to 0.22 —
+# comfortably past that real 0.2037 data point with some margin, not
+# just barely clearing it.
+CONTACT_THRESHOLD = 0.22  # distance below this = can touching mouth, tuned from real test data
 
 # 2026-09-12 fix, real report: a member's own video (confirmed by them
 # to clearly show a chug) still came back "no chug detected" — every
