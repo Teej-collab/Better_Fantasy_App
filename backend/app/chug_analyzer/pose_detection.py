@@ -133,6 +133,19 @@ def detect_can_to_mouth(video_path: str):
         wrist_positions_during_contact = []
         frame_number = 0
 
+        # 2026-09-14: contact=False on a real member's video, even past
+        # the rotation fix above, still gave no way to tell WHICH of
+        # mediapipe's two independent detectors (hand, face) — or both —
+        # never fired, versus both firing but never close enough. These
+        # three counters plus the closest distance actually observed
+        # (None if hand+face were simply never detected in the same
+        # frame at all) turn the next "still doesn't work" report into
+        # something diagnosable instead of another silent miss.
+        frames_with_hand = 0
+        frames_with_face = 0
+        frames_with_both = 0
+        min_distance_seen = None
+
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -142,10 +155,18 @@ def detect_can_to_mouth(video_path: str):
             hand_results = hands.process(frame_rgb)
             face_results = face_mesh.process(frame_rgb)
 
+            if hand_results.multi_hand_landmarks:
+                frames_with_hand += 1
+            if face_results.multi_face_landmarks:
+                frames_with_face += 1
+
             if hand_results.multi_hand_landmarks and face_results.multi_face_landmarks:
+                frames_with_both += 1
                 wrist = hand_results.multi_hand_landmarks[0].landmark[0]
                 mouth = face_results.multi_face_landmarks[0].landmark[13]
                 distance = ((wrist.x - mouth.x) ** 2 + (wrist.y - mouth.y) ** 2) ** 0.5
+                if min_distance_seen is None or distance < min_distance_seen:
+                    min_distance_seen = distance
 
                 if distance < CONTACT_THRESHOLD:
                     if not in_contact:
@@ -162,8 +183,10 @@ def detect_can_to_mouth(video_path: str):
 
         cap.release()
         _log(
-            f"frames_read={frame_number}, contact={contact_start_frame is not None}, "
-            f"fps={fps}"
+            f"frames_read={frame_number}, contact={contact_start_frame is not None}, fps={fps}, "
+            f"frames_with_hand={frames_with_hand}, frames_with_face={frames_with_face}, "
+            f"frames_with_both={frames_with_both}, min_distance_seen={min_distance_seen}, "
+            f"contact_threshold={CONTACT_THRESHOLD}"
         )
     finally:
         if temp_path is not None:
