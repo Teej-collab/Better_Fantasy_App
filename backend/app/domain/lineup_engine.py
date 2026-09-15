@@ -27,6 +27,7 @@ from app.domain.lineup_exceptions import (
     SlotIneligibleError,
 )
 from app.domain.roster_slots import BENCH_SLOT_LABEL, is_eligible_for_slot, total_draftable_slots
+from app.queries.roster_transactions import log_transaction
 
 _ROSTER_ENTRY_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
@@ -198,24 +199,34 @@ async def swap_players(
         return await get_roster(conn, season, team_id)
 
 
-async def drop_player(conn, season: int, team_id: int, sleeper_player_id: str) -> list[dict]:
+async def drop_player(
+    conn, season: int, team_id: int, sleeper_player_id: str, league_id: int = DEFAULT_LEAGUE_ID,
+    source: str = "free_agent",
+) -> list[dict]:
     """Sends a player back to free agency — no drop target, unlike the
     drop-to-make-room path inside add_free_agent. Not gated behind a
     roster-capacity check the way an add is: a team can always have
     fewer players than its roster shape allows, it just can't have
-    more."""
+    more. `source` is only ever overridden to 'commissioner' by
+    commissioner_lineup.py's force-drop — this same function backs
+    both, and the activity feed (app/domain/league_activity.py) should
+    say who actually triggered it."""
     async with conn.transaction():
         await _get_roster_entry(conn, season, team_id, sleeper_player_id)  # raises PlayerNotOnRosterError if not
         await conn.execute(
             "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
             season, team_id, sleeper_player_id,
         )
+        await log_transaction(
+            conn, season, team_id, source=source, dropped_sleeper_player_id=sleeper_player_id,
+            league_id=league_id,
+        )
         return await get_roster(conn, season, team_id)
 
 
 async def add_free_agent(
     conn, season: int, team_id: int, sleeper_player_id: str, drop_sleeper_player_id: str | None = None,
-    league_id: int = DEFAULT_LEAGUE_ID, override_waivers: bool = False,
+    league_id: int = DEFAULT_LEAGUE_ID, override_waivers: bool = False, source: str = "free_agent",
 ) -> dict:
     async with conn.transaction():
         player = await conn.fetchrow(
@@ -272,5 +283,11 @@ async def add_free_agent(
             "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id) "
             "VALUES ($1, $2, $3, $4, 'free_agent', $5)",
             season, team_id, sleeper_player_id, BENCH_SLOT_LABEL, league_id,
+        )
+        await log_transaction(
+            conn, season, team_id, source=source,
+            added_sleeper_player_id=sleeper_player_id,
+            dropped_sleeper_player_id=drop_sleeper_player_id if dropped else None,
+            league_id=league_id,
         )
         return {"roster": await get_roster(conn, season, team_id), "dropped_player": dropped}

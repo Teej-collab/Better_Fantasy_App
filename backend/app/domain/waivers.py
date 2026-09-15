@@ -50,6 +50,7 @@ from app.domain.waiver_exceptions import (
     PlayerNotOnWaiversError,
 )
 from app.queries.league import get_standings
+from app.queries.roster_transactions import log_transaction
 
 # This league's real, current ESPN setting (screenshot, 2026-09) — not
 # yet commissioner-configurable in-app (see the competitive audit's
@@ -363,6 +364,12 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
         )
         await conn.execute(
             "UPDATE waiver_claims SET status = 'successful', processed_at = now() WHERE id = $1", claim["id"],
+        )
+        await log_transaction(
+            conn, season, claim["team_id"], source="waiver",
+            added_sleeper_player_id=sleeper_player_id,
+            dropped_sleeper_player_id=dropped_player_id,
+            league_id=league_id,
         )
         await _bump_to_back(conn, season, league_id, week, claim["team_id"])
         winner_claim_id = claim["id"]

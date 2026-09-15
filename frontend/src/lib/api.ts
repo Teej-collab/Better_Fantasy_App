@@ -1117,6 +1117,46 @@ export function getChugFeed(sessionCookie: string | undefined, season?: number) 
   );
 }
 
+// League Activity — trades, waiver pickups, and free-agent adds/drops,
+// merged server-side (app/domain/league_activity.py) into one
+// reverse-chronological feed. Two shapes share one union rather than a
+// generic "label + description" flattening: a roster move's real shape
+// (one team, an optional added player, an optional dropped player) is
+// different enough from a trade's (two teams, N assets moving between
+// them) that flattening both into the same fields either loses
+// information or forces awkward optionals everywhere they're rendered.
+export type LeagueActivityRosterItem = {
+  kind: "roster";
+  timestamp: string;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  source: "free_agent" | "waiver" | "commissioner";
+  added_player_name: string | null;
+  added_position: string | null;
+  dropped_player_name: string | null;
+  dropped_position: string | null;
+};
+
+export type LeagueActivityTradeItem = {
+  kind: "trade";
+  timestamp: string;
+  proposing_team_name: string;
+  proposing_owner_id: number;
+  proposing_owner_name: string;
+  receiving_team_name: string;
+  receiving_owner_id: number;
+  receiving_owner_name: string;
+  assets: { player_name: string; position: string; to_team_id: number }[];
+};
+
+export type LeagueActivityItem = LeagueActivityRosterItem | LeagueActivityTradeItem;
+
+export function getLeagueActivity(season: number, sessionCookie: string | undefined, limit?: number) {
+  const qs = limit !== undefined ? `?limit=${limit}` : "";
+  return getServer<{ items: LeagueActivityItem[] }>(`/seasons/${season}/activity${qs}`, sessionCookie);
+}
+
 // Fetched client-side, on demand (only once a viewer actually opens a
 // chug's video), through the /api/backend proxy so the browser's own
 // session cookie rides along — see ChugFeed.tsx. The URL this returns

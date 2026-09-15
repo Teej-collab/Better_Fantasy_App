@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   type ChugFeedEntry,
+  type LeagueActivityItem,
   type NflGame,
   type Rivalry,
   type StandingsRow,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api";
 import { AwardsPreview } from "@/app/(home)/page";
 import { ChugFeed } from "@/components/ChugFeed";
+import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
 import { MovementBadge } from "@/components/MovementBadge";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
@@ -61,6 +63,7 @@ export function HomePageBeta({
   weeklyRecapWeek,
   isCommissioner,
   chugFeed,
+  leagueActivity,
   liveNflGames,
   gamecastGames,
   draftCountdownOrChugCard,
@@ -83,6 +86,7 @@ export function HomePageBeta({
   weeklyRecapWeek: number | null;
   isCommissioner: boolean;
   chugFeed: ChugFeedEntry[];
+  leagueActivity: LeagueActivityItem[];
   liveNflGames: NflGame[];
   gamecastGames: GamecastLiveGameSummary[];
   draftCountdownOrChugCard: ReactNode;
@@ -271,6 +275,7 @@ export function HomePageBeta({
       )}
 
       {chugFeed.length > 0 && <ChugFeed chugs={chugFeed} />}
+      {leagueActivity.length > 0 && <LeagueActivityFeed items={leagueActivity} href="/activity" />}
     </div>
   );
 }

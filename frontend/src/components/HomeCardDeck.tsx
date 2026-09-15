@@ -25,6 +25,7 @@ export const DEFAULT_HOME_CARD_ORDER = [
   "matchups",
   "rivalries",
   "chugFeed",
+  "activity",
   "discover",
 ];
 

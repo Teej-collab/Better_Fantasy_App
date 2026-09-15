@@ -6,6 +6,7 @@ import {
   buildNflTickerItems,
   getChugFeed,
   getCurrentWeek,
+  getLeagueActivity,
   getMe,
   getMyPreferences,
   getMyWeek,
@@ -26,6 +27,7 @@ import {
   safeLatestSeason,
   type ChugDeadline,
   type ChugFeedEntry,
+  type LeagueActivityItem,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -35,6 +37,7 @@ import {
   type WeeklyNarrative,
   type YourWeek,
 } from "@/lib/api";
+import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
 import { MovementBadge } from "@/components/MovementBadge";
 import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugFeed } from "@/components/ChugFeed";
@@ -154,6 +157,7 @@ export default async function HomePage() {
   let weeklyRecapWeek: number | null = null;
   let weeklyAwardsWeek: number | null = null;
   let chugFeed: ChugFeedEntry[] = [];
+  let leagueActivity: LeagueActivityItem[] = [];
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -183,6 +187,7 @@ export default async function HomePage() {
       weekRecapRes,
       prevWeekRecapRes,
       chugFeedRes,
+      leagueActivityRes,
     ] = await Promise.all([
       getStandings(season, sessionCookie),
       getWeeklyAwards(season, week, sessionCookie),
@@ -216,6 +221,7 @@ export default async function HomePage() {
       week !== null ? getWeeklyRecap(season, week, sessionCookie) : Promise.resolve({ narrative: null }),
       week !== null && week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
       getChugFeed(sessionCookie, season),
+      getLeagueActivity(season, sessionCookie, 5),
     ]);
     standings = standingsRes.standings;
     // Prefer the active week's own awards once it has any real data;
@@ -255,6 +261,7 @@ export default async function HomePage() {
     }
     chugDeadline = chugDeadlineRes;
     chugFeed = chugFeedRes.chugs;
+    leagueActivity = leagueActivityRes.items;
   }
 
   // "Other" = every matchup except the logged-in owner's own (already
@@ -552,6 +559,10 @@ export default async function HomePage() {
     cards.chugFeed = <ChugFeed chugs={chugFeed} />;
   }
 
+  if (leagueActivity.length > 0) {
+    cards.activity = <LeagueActivityFeed items={leagueActivity} href="/activity" />;
+  }
+
   cards.discover = <DiscoveryGrid />;
 
   if (betaLayout) {
@@ -576,6 +587,7 @@ export default async function HomePage() {
           weeklyRecapWeek={weeklyRecapWeek}
           isCommissioner={me.is_commissioner}
           chugFeed={chugFeed}
+          leagueActivity={leagueActivity}
           liveNflGames={liveNflGames}
           gamecastGames={gamecastGames}
           draftCountdownOrChugCard={cards.draftCountdown ?? null}
@@ -647,6 +659,7 @@ export default async function HomePage() {
             rivalries: cards.rivalries,
             awards: cards.awards,
             chugFeed: cards.chugFeed,
+            activity: cards.activity,
             discover: cards.discover,
           }}
         />

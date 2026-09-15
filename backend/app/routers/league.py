@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.league_context import require_league_access
 from app.db import get_pool
+from app.domain import league_activity as league_activity_domain
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_matchup_detail, build_week_matchup_context
 from app.domain.records import get_record_book
@@ -59,6 +60,19 @@ async def standings(season: int, league_id: int = Depends(require_league_access)
         rows = await queries.get_standings(conn, season, league_id)
         playoff_team_count = await queries.get_playoff_team_count(conn, season, league_id)
     return {"standings": [dict(r) for r in rows], "playoff_team_count": playoff_team_count}
+
+
+@router.get("/seasons/{season}/activity")
+async def league_activity(
+    season: int, limit: int = 30, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Trades, waiver pickups, and free-agent adds/drops — see
+    app/domain/league_activity.py's own docstring for the two real
+    sources this merges and why drops/adds only go back to whenever
+    this feature deployed (trades go back further)."""
+    async with pool.acquire() as conn:
+        items = await league_activity_domain.get_league_activity(conn, season, league_id, limit)
+    return {"items": items}
 
 
 @router.get("/seasons/{season}/playoffs/bracket")

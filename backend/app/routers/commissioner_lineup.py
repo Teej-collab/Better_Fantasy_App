@@ -148,7 +148,9 @@ async def commissioner_drop_player(league_id: int, team_id: int, body: Commissio
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
-            roster = await lineup_engine.drop_player(conn, active_season, team_id, body.sleeper_player_id)
+            roster = await lineup_engine.drop_player(
+                conn, active_season, team_id, body.sleeper_player_id, league_id=league_id, source="commissioner"
+            )
             await waivers.start_waiver_clock(conn, active_season, league_id, body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e
@@ -197,7 +199,7 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
             try:
                 result = await lineup_engine.add_free_agent(
                     conn, active_season, team_id, body.sleeper_player_id, body.drop_sleeper_player_id,
-                    league_id=league_id, override_waivers=body.override_waivers,
+                    league_id=league_id, override_waivers=body.override_waivers, source="commissioner",
                 )
             except PlayerOnWaiversError as e:
                 clears_at_map = await waivers.get_waiver_clears_at(conn, active_season, league_id, [body.sleeper_player_id])

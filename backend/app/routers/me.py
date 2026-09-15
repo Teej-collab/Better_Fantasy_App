@@ -500,7 +500,9 @@ async def drop_player(body: DropPlayerRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
-            roster = await lineup_engine.drop_player(conn, active_season, team_id, body.sleeper_player_id)
+            roster = await lineup_engine.drop_player(
+                conn, active_season, team_id, body.sleeper_player_id, league_id=league_id
+            )
             await waivers.start_waiver_clock(conn, active_season, league_id, body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e

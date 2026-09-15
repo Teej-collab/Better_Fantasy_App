@@ -36,7 +36,8 @@ export type DestinationKey =
   | "gamecast"
   | "awardsAllTime"
   | "history"
-  | "trades";
+  | "trades"
+  | "activity";
 
 export type Destination = {
   key: DestinationKey;
@@ -118,6 +119,12 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // (gold)/Keepers (emerald)/Free Agents (teal), distinct from all
   // three plus everything else in that row's line of sight.
   trades: { key: "trades", label: "Trades", color: "#d946ef" },
+  // 2026-09-15 addition (League Activity: trades, waiver pickups,
+  // free-agent adds/drops). A neutral slate rather than borrowing from
+  // any one of the events it surfaces (a trade, a waiver claim, and a
+  // plain add/drop each already have their own color story elsewhere)
+  // — this destination is the ledger, not a topic of its own.
+  activity: { key: "activity", label: "Activity", color: "#64748b" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -147,6 +154,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   gamecast: "/gamecast",
   history: "/history",
   trades: "/trades",
+  activity: "/activity",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -224,6 +232,10 @@ export function isValidNavOrder(order: string[]): order is DestinationKey[] {
 // difference was including already-rostered players with no way to
 // act on them, versus Free Agents' fuller "here's who you can actually
 // add" view.
+// 2026-09-15: "activity" (League Activity — trades, waiver pickups,
+// free-agent adds/drops) makes this 7 rather than the previous even 6
+// — LeagueSubNav.tsx's secondary row grid goes to 4 columns to match
+// (its own comment has the details); the primary row (3) is untouched.
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
@@ -231,6 +243,7 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "rivalries",
   "rules",
   "history",
+  "activity",
 ];
 
 // Primary/secondary split for LeagueSubNav.tsx's own two-tier layout —

@@ -29,16 +29,17 @@ const LABEL_OVERRIDE: Partial<Record<LeagueTab, string>> = {
  * "League" one click away in the primary header, this is purely the
  * mobile "how do I get back" affordance from spec §23.
  *
- * Two fixed rows of 3 since 2026-09-02 (row split rebalanced 2026-09-03
- * from 4+2 to 3+3): LEAGUE_SUBNAV_PRIMARY (lib/navDestinations.ts) is
- * row 1, everything else in LEAGUE_SUBNAV_ORDER is row 2 — both always
- * visible, no collapse/toggle. (A "More" toggle briefly stood in for
- * row 2 the same day it was introduced; replaced with a second static
- * row per the owner's own follow-up call — a fixed row you can always
- * see beats a hidden one you have to tap open.) Each row renders as a
- * fixed grid-cols-3, not flex-wrap, so it's always exactly one line
- * regardless of device — see the grid comment below for why flex-wrap
- * couldn't guarantee that.
+ * Two fixed rows since 2026-09-02 (row split rebalanced 2026-09-03
+ * from 4+2 to 3+3, then 2026-09-15 to 3+4 once "activity" was added):
+ * LEAGUE_SUBNAV_PRIMARY (lib/navDestinations.ts) is row 1, everything
+ * else in LEAGUE_SUBNAV_ORDER is row 2 — both always visible, no
+ * collapse/toggle. (A "More" toggle briefly stood in for row 2 the
+ * same day it was introduced; replaced with a second static row per
+ * the owner's own follow-up call — a fixed row you can always see
+ * beats a hidden one you have to tap open.) Each row renders as a
+ * fixed grid-cols-N matching its own tab count, not flex-wrap, so it's
+ * always exactly one line regardless of device — see the grid comment
+ * below for why flex-wrap couldn't guarantee that.
  */
 export function LeagueSubNav({
   active,
@@ -103,19 +104,21 @@ export function LeagueSubNav({
         )}
       </div>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
-        {/* Fixed 3-column grid, not flex-wrap — flex-wrap's row-break
-            point depends on each pill's rendered text width, which
-            doesn't scale monotonically with viewport width (iOS font
-            metrics/text-size-adjust can make a *wider* phone wrap
-            *more* than a narrower one — confirmed 2026-09-03 from two
-            real devices showing 3 rows vs. 2 rows for identical
-            markup). A 3-item grid-cols-3 row is structurally always
-            exactly one row regardless of device, since grid doesn't
-            add rows until item count exceeds column count. Each pill
-            fills its cell (w-full) and truncates as a safety net
-            rather than sizing to its own content. */}
+        {/* Fixed grid, not flex-wrap — flex-wrap's row-break point
+            depends on each pill's rendered text width, which doesn't
+            scale monotonically with viewport width (iOS font metrics/
+            text-size-adjust can make a *wider* phone wrap *more* than a
+            narrower one — confirmed 2026-09-03 from two real devices
+            showing 3 rows vs. 2 rows for identical markup). A grid row
+            sized to its own tab count is structurally always exactly
+            one row regardless of device, since grid doesn't add rows
+            until item count exceeds column count. Each pill fills its
+            cell (w-full) and truncates as a safety net rather than
+            sizing to its own content. */}
         <div className="grid grid-cols-3 gap-1">{primaryTabs.map(tabLink)}</div>
-        <div className="grid grid-cols-3 gap-1">{secondaryTabs.map(tabLink)}</div>
+        <div className={`grid gap-1 ${secondaryTabs.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>
+          {secondaryTabs.map(tabLink)}
+        </div>
       </nav>
     </div>
   );
