@@ -54,24 +54,28 @@ export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPa
 
   return (
     <section className="neon-panel flex flex-col gap-3 rounded-xl bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white">
-      <span className="text-xs font-semibold tracking-wide text-white/50 uppercase">Chug Countdown</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold tracking-wide text-white/50 uppercase">Chug Countdown</span>
+        {reached && (
+          // 2026-09-15 ask: "the Chug Time button should be in the top
+          // right of the chug countdown" — moved out of the tile grid's
+          // spot into the header row here, next to the section label.
+          // /chug renders ChugUpload right at the top of the page for a
+          // signed-in member, so this lands directly on the upload flow.
+          <Link
+            href="/chug"
+            className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black transition-colors hover:bg-amber-300 active:bg-amber-500"
+          >
+            Chug Time! 🍺
+          </Link>
+        )}
+      </div>
       <div className="flex flex-col gap-0.5">
         <span className="font-medium">🍺 Jeffrey&apos;s Rule</span>
         <span className="text-sm text-white/50">Chugs due by Monday Night Football kickoff</span>
       </div>
 
-      {reached ? (
-        // 2026-09-15 ask: "love the chug time button, make it smaller
-        // and have it link to uploading your video" — /chug renders
-        // ChugUpload right at the top of the page for a signed-in
-        // member, so this lands directly on the upload flow.
-        <Link
-          href="/chug"
-          className="rounded-lg bg-white/5 py-2 text-center text-sm font-bold transition-colors hover:bg-white/10 active:bg-white/15"
-        >
-          Chug time! 🍺 Upload your video →
-        </Link>
-      ) : (
+      {!reached && (
         <div className="grid grid-cols-4 gap-2">
           {(
             [
