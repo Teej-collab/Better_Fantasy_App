@@ -19,11 +19,11 @@ import { getPreferences, updateHomeCardOrder } from "@/lib/api";
 // anyone whose saved home_card_order doesn't parse) sees.
 export const DEFAULT_HOME_CARD_ORDER = [
   "yourWeek",
+  "awards",
   "standings",
   "powerRankings",
   "matchups",
   "rivalries",
-  "awards",
   "discover",
 ];
 

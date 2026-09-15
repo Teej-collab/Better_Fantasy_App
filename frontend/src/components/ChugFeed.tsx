@@ -5,53 +5,89 @@ import Link from "next/link";
 import { getChugVideoUrl, type ChugFeedEntry } from "@/lib/api";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-// One chug's card: a play button that only fetches (and only pays the
-// presigned-URL round-trip for) the actual video once someone opens
-// it, rather than pre-loading a URL per card for a whole feed most
-// viewers will just scroll past.
+// One chug's row: collapsed to a single compact line by default (owner,
+// week, grade) — tapping it expands a capped-height video player below,
+// and tapping again collapses it back down. Keeps a whole feed of
+// videos from turning into an ever-growing stack of large open players;
+// only one row's worth of video space is ever "spent" per open row, and
+// the presigned URL is fetched once (cached in state) rather than
+// re-fetched every time a row is reopened.
 function ChugCard({ chug }: { chug: ChugFeedEntry }) {
+  const [open, setOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
 
-  async function play() {
-    setStatus("loading");
-    try {
-      const { url } = await getChugVideoUrl(chug.id);
-      setVideoUrl(url);
-      setStatus("idle");
-    } catch {
-      setStatus("error");
+  async function toggle() {
+    if (!chug.has_video) return;
+    const next = !open;
+    setOpen(next);
+    if (next && !videoUrl && status !== "loading") {
+      setStatus("loading");
+      try {
+        const { url } = await getChugVideoUrl(chug.id);
+        setVideoUrl(url);
+        setStatus("idle");
+      } catch {
+        setStatus("error");
+      }
     }
   }
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3 text-sm">
-      <div className="flex items-center justify-between gap-3">
+    <li className="text-sm">
+      <div
+        onClick={toggle}
+        role={chug.has_video ? "button" : undefined}
+        tabIndex={chug.has_video ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (chug.has_video && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        className={`flex items-center justify-between gap-3 px-4 py-3 ${
+          chug.has_video ? "cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" : ""
+        }`}
+      >
         <span className="flex min-w-0 items-center gap-2">
-          <Link href={`/owners/${chug.owner_id}`} className="truncate font-medium hover:underline">
+          {chug.has_video && (
+            <span
+              className={`shrink-0 text-black/40 transition-transform dark:text-white/40 ${open ? "rotate-90" : ""}`}
+              aria-hidden
+            >
+              ▶
+            </span>
+          )}
+          <Link
+            href={`/owners/${chug.owner_id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate font-medium hover:underline"
+          >
             {chug.owner_name}
           </Link>
           {chug.week !== null && <span className="text-xs text-black/50 dark:text-white/50">Wk {chug.week}</span>}
+          {!chug.has_video && <span className="text-xs text-black/30 dark:text-white/30">no video</span>}
         </span>
         <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">{chug.final_score}/10</span>
       </div>
 
-      {chug.has_video ? (
-        videoUrl ? (
-          <video src={videoUrl} controls playsInline className="w-full rounded-lg bg-black" />
-        ) : (
-          <button
-            onClick={play}
-            disabled={status === "loading"}
-            className="w-fit rounded-full bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-          >
-            {status === "loading" ? "Loading…" : "▶ Watch"}
-          </button>
-        )
-      ) : (
-        <span className="text-xs text-black/40 dark:text-white/40">No video for this one.</span>
+      {open && (
+        <div className="px-4 pb-3">
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              controls
+              playsInline
+              autoPlay
+              className="max-h-80 w-full rounded-lg bg-black"
+            />
+          ) : status === "error" ? (
+            <span className="text-xs text-red-500">Couldn&apos;t load the video — try again.</span>
+          ) : (
+            <span className="text-xs text-black/50 dark:text-white/50">Loading…</span>
+          )}
+        </div>
       )}
-      {status === "error" && <span className="text-xs text-red-500">Couldn&apos;t load the video — try again.</span>}
     </li>
   );
 }

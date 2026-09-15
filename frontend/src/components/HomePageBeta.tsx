@@ -3,7 +3,6 @@ import Link from "next/link";
 import {
   type NflGame,
   type Rivalry,
-  type SeasonDraftResponse,
   type StandingsRow,
   type TickerItem,
   type WeekMatchupContextItem,
@@ -53,7 +52,6 @@ export function HomePageBeta({
   rivalryGamesThisWeek,
   topRivalries,
   weeklyAwards,
-  seasonDraft,
   liveNflGames,
   gamecastGames,
   draftCountdownOrChugCard,
@@ -72,7 +70,6 @@ export function HomePageBeta({
   rivalryGamesThisWeek: WeekMatchupContextItem[];
   topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
-  seasonDraft: SeasonDraftResponse | null;
   liveNflGames: NflGame[];
   gamecastGames: GamecastLiveGameSummary[];
   draftCountdownOrChugCard: ReactNode;
@@ -147,6 +144,17 @@ export function HomePageBeta({
             );
           })}
         </FlatSectionCard>
+      )}
+
+      {/* Above Standings — real, but only shows up once a week's games
+          are actually in the books, so it's a highlight worth surfacing
+          right after the live/hero content rather than buried below the
+          full-season standings that are always there (2026-09 request). */}
+      {weekPlayed && weeklyAwards && season !== null && currentWeek !== null && (
+        <section className="flex flex-col gap-2">
+          <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
+          <AwardsPreview awards={weeklyAwards} />
+        </section>
       )}
 
       {standings.length > 0 && (
@@ -241,21 +249,6 @@ export function HomePageBeta({
         </FlatSectionCard>
       )}
 
-      {weekPlayed && weeklyAwards && season !== null && currentWeek !== null && (
-        <section className="flex flex-col gap-2">
-          <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
-          <AwardsPreview awards={weeklyAwards} />
-        </section>
-      )}
-
-      {/* Draft Grades — real, but a one-time post-draft artifact, not a
-          perpetually-relevant fact like the hero above. Demoted to the
-          bottom instead of hard-pinned above Your Week (the legacy
-          render's ordering, and one of the audit's named P0 findings)
-          — still one tap from the top of the page, just not first. */}
-      {seasonDraft && seasonDraft.grades.length > 0 && season !== null && (
-        <DraftGradesBeta seasonDraft={seasonDraft} season={season} />
-      )}
     </div>
   );
 }
@@ -371,30 +364,6 @@ function EmptyHeroBeta({
         </Link>
       )}
     </section>
-  );
-}
-
-function DraftGradesBeta({ seasonDraft, season }: { seasonDraft: SeasonDraftResponse; season: number }) {
-  const teamNameByOwner = new Map<number, string>();
-  for (const p of seasonDraft.picks as { owner_id: number; owner_name: string }[]) {
-    teamNameByOwner.set(p.owner_id, p.owner_name);
-  }
-  const topGrades = [...seasonDraft.grades].sort((a, b) => b.percentile - a.percentile).slice(0, 5);
-
-  return (
-    <FlatSectionCard title="Draft Grades" href={`/seasons/${season}/draft`}>
-      {topGrades.map((g) => (
-        <FlatRow key={g.owner_id}>
-          <span className="flex items-center gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/10 text-sm font-bold dark:bg-white/10">
-              {g.letter_grade}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{teamNameByOwner.get(g.owner_id) ?? g.owner_name}</span>
-          </span>
-          <span className="shrink-0 text-xs text-black/50 dark:text-white/50">{Math.round(g.percentile)}th pct</span>
-        </FlatRow>
-      ))}
-    </FlatSectionCard>
   );
 }
 
