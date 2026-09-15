@@ -5,7 +5,6 @@ import {
   buildKickoffCountdownItem,
   buildNflTickerItems,
   getChugFeed,
-  getChugLeaderboard,
   getCurrentWeek,
   getMe,
   getMyPreferences,
@@ -27,7 +26,6 @@ import {
   safeLatestSeason,
   type ChugDeadline,
   type ChugFeedEntry,
-  type ChugLeaderboardRow,
   type Rivalry,
   type StandingsRow,
   type TickerItem,
@@ -39,7 +37,6 @@ import {
 } from "@/lib/api";
 import { MovementBadge } from "@/components/MovementBadge";
 import { ChugCountdownCard } from "@/components/ChugCountdownCard";
-import { ChugDueCard } from "@/components/ChugDueCard";
 import { ChugFeed } from "@/components/ChugFeed";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
@@ -151,7 +148,6 @@ export default async function HomePage() {
   let weekMatchups: WeekMatchupContextItem[] = [];
   let topRivalries: Rivalry[] = [];
   let leagueTickerItems: TickerItem[] = [];
-  let myChug: ChugLeaderboardRow | null = null;
   let chugDeadline: ChugDeadline | null = null;
   let powerRankings: WeekPowerRanking[] = [];
   let weeklyRecap: WeeklyNarrative | null = null;
@@ -182,7 +178,6 @@ export default async function HomePage() {
       matchupContextRes,
       rivalriesRes,
       leagueTicker,
-      chugRes,
       powerRankingsRes,
       chugDeadlineRes,
       weekRecapRes,
@@ -204,7 +199,6 @@ export default async function HomePage() {
       getWeekMatchupContext(season, week, sessionCookie),
       listRivalries(sessionCookie),
       getWeekLeagueTicker(season, week, sessionCookie),
-      getChugLeaderboard(sessionCookie, season),
       getWeekPowerRankings(season, week, sessionCookie),
       wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
       // Checks the active `week` itself, IN ADDITION to week-1 below —
@@ -259,7 +253,6 @@ export default async function HomePage() {
       const countdownItem = buildKickoffCountdownItem(nflGames, week);
       if (countdownItem) leagueTickerItems = [countdownItem];
     }
-    myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
     chugDeadline = chugDeadlineRes;
     chugFeed = chugFeedRes.chugs;
   }
@@ -474,10 +467,6 @@ export default async function HomePage() {
     );
   }
 
-  if (myChug) {
-    cards.chug = <ChugDueCard summary={myChug} />;
-  }
-
   if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
@@ -643,7 +632,6 @@ export default async function HomePage() {
             the fold underneath cards that are still there every week. */}
         {cards.draftCountdown}
         {cards.gamecast}
-        {cards.chug}
 
         {/* Owner-reorderable: Your Week, Standings, Power Rankings,
             Matchups, Rivalries, Awards, Discover — same full-width

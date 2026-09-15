@@ -104,7 +104,23 @@ export async function NavBar() {
           permanently eat mobile vertical space. */}
       <header
         id="site-nav"
-        className={`sticky top-0 z-40 border-b border-black/10 bg-[var(--background)]/95 backdrop-blur-sm dark:border-white/10${
+        // Solid background, no backdrop-blur (2026-09-15 fix, real
+        // report: the fixed bottom nav bar detaching from the viewport
+        // mid-scroll on iOS — see BottomNav.tsx's own comment for the
+        // original diagnosis of this exact WebKit bug: `position: fixed`
+        // + `backdrop-filter` ANYWHERE on the page can get promoted into
+        // the wrong compositing layer during scroll. That fix only
+        // touched the bottom bar itself; this header's own backdrop-
+        // blur-sm was still sitting on a `sticky` element the whole
+        // time, and AccountMenu.tsx's own docstring already had to work
+        // around backdrop-filter's containing-block side effects for
+        // exactly this header — a real, previously-documented source of
+        // position:fixed quirks, not a new guess. A taller homepage
+        // (the new weekly recap card) made a previously-rare recurrence
+        // common enough to reproduce.) Same trade as that fix: no
+        // visible difference at rest, just gives up the frosted-glass
+        // translucency for correct positioning.
+        className={`sticky top-0 z-40 border-b border-black/10 bg-[var(--background)] dark:border-white/10${
           // Labs > "Try the new look" mobile chrome (MobileNavDrawer.tsx,
           // rendered below) replaces this header entirely on mobile —
           // `hidden sm:block` here is what actually removes it there;
