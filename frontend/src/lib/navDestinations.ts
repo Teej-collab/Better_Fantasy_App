@@ -57,7 +57,7 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // panel glow — indigo wins since it never collided with anything else.
   league: { key: "league", label: "League", color: "#6366f1" },
   standings: { key: "standings", label: "Standings", color: "#0ea5e9" },
-  matchups: { key: "matchups", label: "Matchups", color: "#ec4899" },
+  matchups: { key: "matchups", label: "Matchup", color: "#ec4899" },
   playerCards: { key: "playerCards", label: "Player Cards", color: "#22d3ee" },
   // The primary nav's "Players" tab (-> /free-agents) and LeagueSubNav's
   // "Player Cards" tab (-> /players) are different destinations that

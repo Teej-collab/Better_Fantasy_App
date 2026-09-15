@@ -157,7 +157,7 @@ export function BottomNav({
                 cosmicColor={DESTINATIONS.matchups.color}
               >
                 <MatchupsIcon className="h-6 w-6" />
-                Matchups
+                Matchup
               </NavLink>
             );
           case "gamecast":

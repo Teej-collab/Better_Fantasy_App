@@ -60,10 +60,18 @@ export default async function MatchupPage({
 
   return (
     <div className="flex flex-col gap-3">
-      <BackButton fallbackHref={`/seasons/${matchup.season}/weeks/${matchup.week}`} label="Matchups" />
-      <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
-        {matchup.season} — Week {matchup.week}
-      </h1>
+      {/* MatchupCarousel scrolls straight to this id — on first load
+          (landing here via bottom-nav "Matchup" should feel like
+          arriving at your game, not the top of the site chrome/ticker)
+          and again on every matchup switch (matching the real ESPN
+          reference: swiping to another game resets to this same spot,
+          never wherever you'd scrolled to). */}
+      <div id="matchup-top">
+        <BackButton fallbackHref={`/seasons/${matchup.season}/weeks/${matchup.week}`} label="Matchups" />
+        <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
+          {matchup.season} — Week {matchup.week}
+        </h1>
+      </div>
       <MatchupCarousel matchups={weekMatchups} initialMatchupId={matchup.matchup_id} />
     </div>
   );

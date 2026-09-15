@@ -79,7 +79,13 @@ export async function NavBar() {
   ]);
   const signedIn = me !== null;
   const week = latestSeason !== null ? resolveWeek(currentWeek) : null;
-  const matchupsHref = matchupsHrefFor(latestSeason, week);
+  // Straight to the signed-in owner's own matchup (myWeek is already
+  // fetched above for the LIVE mark below) rather than the week's whole
+  // scoreboard list — "Matchup," singular, should mean exactly that.
+  // Falls back to the scoreboard list for every case with no single
+  // matchup to land on: signed out, not on a team, a bye week, or the
+  // season/draft hasn't produced a real matchup yet.
+  const matchupsHref = myWeek?.matchup ? `/matchups/${myWeek.matchup.matchup_id}` : matchupsHrefFor(latestSeason, week);
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
   const isGameDay = isNflGameLive(nflGames);

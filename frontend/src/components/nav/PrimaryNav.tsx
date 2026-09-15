@@ -116,7 +116,7 @@ export function PrimaryNav({
                 cosmicColor={DESTINATIONS.matchups.color}
               >
                 <span className="flex flex-col items-start leading-none">
-                  Matchups
+                  Matchup
                   {myMatchupLive && <LiveMark />}
                 </span>
               </NavLink>

@@ -176,7 +176,7 @@ export function MobileNavDrawer({
     { key: "home" as const, href: "/", label: "Home", Icon: HomeIcon, show: true },
     { key: "team" as const, href: "/team", label: "My Team", Icon: TeamIcon, show: signedIn },
     { key: "league" as const, href: "/league", label: "League", Icon: LeagueIcon, show: true },
-    { key: "matchups" as const, href: matchupsHref, label: "Matchups", Icon: MatchupsIcon, show: true },
+    { key: "matchups" as const, href: matchupsHref, label: "Matchup", Icon: MatchupsIcon, show: true },
     { key: "gamecast" as const, href: "/gamecast", label: "Gamecast", Icon: GamecastIcon, show: true, live: isGameDay },
     { key: "chat" as const, href: "/chat", label: "Chat", Icon: ChatIcon, show: signedIn, badge: unread },
   ].filter((item) => item.show);
