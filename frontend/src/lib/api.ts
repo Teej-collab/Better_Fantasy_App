@@ -1078,6 +1078,41 @@ export function getChugDeadline(sessionCookie: string | undefined) {
   return getServer<ChugDeadline>("/chug/deadline", sessionCookie);
 }
 
+export type ChugFeedEntry = {
+  id: number;
+  owner_id: number;
+  owner_name: string;
+  week: number | null;
+  final_score: number;
+  created_at: string;
+  has_video: boolean;
+};
+
+// Individual graded chugs, newest first — distinct from
+// getChugLeaderboard's per-owner season totals. season omitted -> every
+// season (matches getChugLeaderboard's own all-time default).
+export function getChugFeed(sessionCookie: string | undefined, season?: number) {
+  return getServer<{ chugs: ChugFeedEntry[] }>(
+    season !== undefined ? `/chug/feed?season=${season}` : "/chug/feed",
+    sessionCookie
+  );
+}
+
+// Fetched client-side, on demand (only once a viewer actually opens a
+// chug's video), through the /api/backend proxy so the browser's own
+// session cookie rides along — see ChugFeed.tsx. The URL this returns
+// points straight at the bucket (not this app), is short-lived, and is
+// itself gated server-side on real league membership; the frontend
+// only needs to fetch it once per playback, not on every page load.
+export async function getChugVideoUrl(chugId: number): Promise<{ url: string; expires_in: number }> {
+  const res = await fetch(`/api/backend/chug/${chugId}/video`, { cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't load video (${res.status})`);
+  }
+  return res.json();
+}
+
 // Commissioner-only — marks a real-life chug fine as paid, clearing it
 // off the owed total. amount omitted clears the entire fine.
 export async function clearChugFine(ownerId: number, amount?: number): Promise<{ cleared: number }> {

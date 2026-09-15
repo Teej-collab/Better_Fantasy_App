@@ -33,20 +33,69 @@ async def get_chug_owed_by_owner(conn, season: int | None, league_id: int = DEFA
 async def insert_chug_score(
     conn, discord_user_id: int, season: int, week: int | None,
     duration_seconds: float, smoothness_score: float, hype_score: float, final_score: float,
-    league_id: int = DEFAULT_LEAGUE_ID,
+    league_id: int = DEFAULT_LEAGUE_ID, video_url: str | None = None,
 ):
-    """Video URL is deliberately never set — same as the original Discord
-    bot's chug_watcher.py, which discards the uploaded file after scoring
-    rather than persisting it anywhere. See app/routers/chug.py's upload
-    endpoint."""
+    """video_url, when given, is the chug video's object key in the
+    chug-videos bucket (app/providers/chug_storage.py) — not a public
+    URL. It's null whenever storage isn't configured or the upload
+    itself failed (see app/routers/chug.py's upload endpoint), same as
+    the original Discord bot which never persisted the video at all;
+    the grade/debt effect of a chug never depends on whether its video
+    made it to storage."""
     return await conn.fetchrow(
         """
         INSERT INTO chug_scores
-            (discord_user_id, chug_time_seconds, smoothness_score, hype_score, final_score, season, week, league_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (discord_user_id, chug_time_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id, created_at
         """,
-        discord_user_id, duration_seconds, smoothness_score, hype_score, final_score, season, week, league_id,
+        discord_user_id, duration_seconds, smoothness_score, hype_score, final_score, season, week, league_id, video_url,
+    )
+
+
+async def list_recent_chugs(conn, league_id: int, season: int | None = None, limit: int = 25):
+    """Individual graded chugs (not the aggregate leaderboard totals in
+    get_chug_completions) for the "Recent Chugs" feed — newest first,
+    each with whatever's needed to render a card and, if video_url is
+    set, a play button. video_url is the bucket's own object key, never
+    handed to the frontend directly — app/routers/chug.py's GET
+    /chug/{id}/video exchanges it for a short-lived presigned URL after
+    checking real league membership, since these videos are exactly as
+    private as the rest of this league's chug data."""
+    if season is not None:
+        return await conn.fetch(
+            """
+            SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
+                   cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video
+            FROM chug_scores cs
+            JOIN owners ON owners.discord_user_id = cs.discord_user_id
+            WHERE cs.league_id = $1 AND cs.season = $2
+            ORDER BY cs.created_at DESC
+            LIMIT $3
+            """,
+            league_id, season, limit,
+        )
+    return await conn.fetch(
+        """
+        SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
+               cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video
+        FROM chug_scores cs
+        JOIN owners ON owners.discord_user_id = cs.discord_user_id
+        WHERE cs.league_id = $1
+        ORDER BY cs.created_at DESC
+        LIMIT $2
+        """,
+        league_id, limit,
+    )
+
+
+async def get_chug_video_key(conn, chug_id: int, league_id: int) -> str | None:
+    """Scoped to league_id so a member of one league can never be handed
+    a presigned URL for another league's chug video, even by guessing an
+    id — same membership boundary every other /chug endpoint enforces."""
+    return await conn.fetchval(
+        "SELECT video_url FROM chug_scores WHERE id = $1 AND league_id = $2",
+        chug_id, league_id,
     )
 
 

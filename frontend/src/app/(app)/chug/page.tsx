@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { awardsHrefFor, getActiveLeagueName, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getChugFeed, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
 import { ChugUpload } from "@/components/ChugUpload";
+import { ChugFeed } from "@/components/ChugFeed";
 import { ChugFineButton } from "@/components/ChugFineButton";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
@@ -34,9 +35,10 @@ export default async function ChugLeaderboardPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { leaderboard }, { seasons: allSeasons }, activeLeagueName] = await Promise.all([
+  const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName] = await Promise.all([
     getChugSeasons(),
     getChugLeaderboard(sessionCookie, season),
+    getChugFeed(sessionCookie, season),
     listSeasons(),
     getActiveLeagueName(sessionCookie),
   ]);
@@ -107,6 +109,8 @@ export default async function ChugLeaderboardPage({
           ))}
         </ol>
       )}
+
+      <ChugFeed chugs={chugs} />
     </div>
   );
 }

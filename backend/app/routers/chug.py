@@ -9,8 +9,10 @@ owed still counts toward lifetime_completed, just with no debt effect
 """
 import asyncio
 import json
+import logging
 import os
 import tempfile
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -28,10 +30,13 @@ from app.db import get_pool
 from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug, undo_week
+from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chug", tags=["chug"])
 
@@ -73,6 +78,53 @@ async def chug_leaderboard(
     async with pool.acquire() as conn:
         leaderboard = await build_chug_leaderboard(conn, active_season, season, league_id)
     return {"season": season, "leaderboard": leaderboard}
+
+
+@router.get("/feed")
+async def chug_feed(
+    season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Individual graded chugs, newest first — the "Recent Chugs" list,
+    distinct from /chug/leaderboard's per-owner season totals. Videos
+    aren't included directly (has_video just says whether one exists);
+    a viewer fetches a playable URL per-chug from GET /chug/{id}/video
+    only once they actually open it, so this stays cheap regardless of
+    how many chugs have video."""
+    async with pool.acquire() as conn:
+        rows = await chug_queries.list_recent_chugs(conn, league_id, season)
+    return {
+        "chugs": [
+            {
+                "id": r["id"],
+                "owner_id": r["owner_id"],
+                "owner_name": r["owner_name"],
+                "week": r["week"],
+                "final_score": r["final_score"],
+                "created_at": r["created_at"].isoformat(),
+                "has_video": r["has_video"],
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/{chug_id}/video")
+async def chug_video(chug_id: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """Exchanges a chug's stored object key for a short-lived presigned
+    URL, after proving the requester is a real member of the league
+    this chug belongs to — chug_queries.get_chug_video_key scopes the
+    lookup by league_id so guessing another league's chug id never
+    works. The presigned URL itself (not this endpoint) is what the
+    frontend's <video> tag actually plays from — see
+    app/providers/chug_storage.py for why: it supports byte-range
+    requests (seeking/scrubbing) natively, which proxying bytes through
+    this backend would not."""
+    async with pool.acquire() as conn:
+        video_key = await chug_queries.get_chug_video_key(conn, chug_id, league_id)
+    if video_key is None:
+        raise HTTPException(status_code=404, detail="No video for this chug")
+    url = await asyncio.to_thread(chug_storage.presigned_video_url, video_key)
+    return {"url": url, "expires_in": chug_storage.PRESIGNED_URL_TTL_SECONDS}
 
 
 @router.get("/deadline")
@@ -134,73 +186,93 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
             result = await run_chug_analysis(temp_path)
         except RuntimeError as e:
             raise HTTPException(status_code=502, detail=f"Analysis failed: {e}")
-    finally:
-        # Never persisted — same as the original Discord bot, which
-        # deletes the temp file right after scoring rather than hosting
-        # it anywhere.
-        os.remove(temp_path)
 
-    if not result.get("can_to_mouth"):
-        return {
-            "can_to_mouth": False,
-            "message": "Couldn't detect a clear chug in that video — try again with a clearer angle.",
-        }
+        if not result.get("can_to_mouth"):
+            return {
+                "can_to_mouth": False,
+                "message": "Couldn't detect a clear chug in that video — try again with a clearer angle.",
+            }
 
-    active_season = int(_require("ACTIVE_SEASON"))
-    async with pool.acquire() as conn:
-        league_id = await require_active_league_id(conn, payload)
-        owner_id = await resolve_owner_id(conn, payload)
-        # Real production bug, found live: payload["discord_user_id"] is
-        # the JWT's own claim, which is ONLY ever populated by the
-        # Discord OAuth login path (app/routers/auth.py's discord_
-        # callback) — password and Google login both mint a token with
-        # discord_user_id=None, even when that account's owners row has
-        # a real one linked from a past Discord login. chug_scores.
-        # discord_user_id is NOT NULL (the whole chug leaderboard is
-        # still keyed on it — a real, separate design debt, not fixed
-        # here), so any owner who happens to be signed in via password/
-        # Google when they upload got a raw, unexplained failure — "for
-        # funsies," reported directly. Resolved live from the owner's
-        # real row instead of trusting the token's claim, same fix
-        # already applied to owner_id/is_commissioner elsewhere.
-        discord_user_id = await conn.fetchval("SELECT discord_user_id FROM owners WHERE owner_id = $1", owner_id)
-        if discord_user_id is None:
-            raise HTTPException(
-                status_code=409,
-                detail="This account needs to be linked to Discord before posting a chug — ask your commissioner.",
+        active_season = int(_require("ACTIVE_SEASON"))
+        async with pool.acquire() as conn:
+            league_id = await require_active_league_id(conn, payload)
+            owner_id = await resolve_owner_id(conn, payload)
+            # Real production bug, found live: payload["discord_user_id"] is
+            # the JWT's own claim, which is ONLY ever populated by the
+            # Discord OAuth login path (app/routers/auth.py's discord_
+            # callback) — password and Google login both mint a token with
+            # discord_user_id=None, even when that account's owners row has
+            # a real one linked from a past Discord login. chug_scores.
+            # discord_user_id is NOT NULL (the whole chug leaderboard is
+            # still keyed on it — a real, separate design debt, not fixed
+            # here), so any owner who happens to be signed in via password/
+            # Google when they upload got a raw, unexplained failure — "for
+            # funsies," reported directly. Resolved live from the owner's
+            # real row instead of trusting the token's claim, same fix
+            # already applied to owner_id/is_commissioner elsewhere.
+            discord_user_id = await conn.fetchval("SELECT discord_user_id FROM owners WHERE owner_id = $1", owner_id)
+            if discord_user_id is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This account needs to be linked to Discord before posting a chug — ask your commissioner.",
+                )
+            week = await league_queries.get_cached_current_week(conn, active_season)
+
+            # Uploaded (if storage is configured) before the DB insert so
+            # the row's video_url is set in the same write, rather than a
+            # second UPDATE after the fact. A storage failure here never
+            # blocks the chug from being scored/recorded — the grade and
+            # debt payoff are the part that actually matters; the video is
+            # a bonus that degrades to "no video" the same way it always
+            # has when storage isn't configured at all (see
+            # app/providers/chug_storage.py's chug_storage_configured()).
+            video_key = None
+            if chug_storage.chug_storage_configured():
+                video_key = chug_storage.object_key(league_id, active_season, week, uuid.uuid4().hex, ext)
+                try:
+                    await asyncio.to_thread(chug_storage.upload_video, temp_path, video_key, ext)
+                except Exception:
+                    logger.exception("Failed to upload chug video to storage (key=%s)", video_key)
+                    video_key = None
+
+            row = await chug_queries.insert_chug_score(
+                conn, discord_user_id, active_season, week,
+                result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
+                league_id, video_key,
             )
-        week = await league_queries.get_cached_current_week(conn, active_season)
-        row = await chug_queries.insert_chug_score(
-            conn, discord_user_id, active_season, week,
-            result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
-            league_id,
-        )
 
-        owed_before = await conn.fetchval(
-            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, owner_id, league_id,
-        ) or 0
-        await record_completed_chug(conn, active_season, owner_id, league_id)
-        owed_after = await conn.fetchval(
-            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-            active_season, owner_id, league_id,
-        ) or 0
+            owed_before = await conn.fetchval(
+                "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+                active_season, owner_id, league_id,
+            ) or 0
+            await record_completed_chug(conn, active_season, owner_id, league_id)
+            owed_after = await conn.fetchval(
+                "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+                active_season, owner_id, league_id,
+            ) or 0
 
-    return {
-        "can_to_mouth": True,
-        "id": row["id"],
-        "duration_seconds": result["duration_seconds"],
-        "time_score": result["time_score"],
-        "smoothness_score": result["smoothness_score"],
-        "hype_score": result["hype_score"],
-        "final_score": result["final"],
-        "created_at": row["created_at"].isoformat(),
-        # Did this chug actually pay down a real debt, or was it "for
-        # funsies" (nothing owed)? owed_before/after let the frontend
-        # say which, instead of guessing.
-        "chugs_owed_before": owed_before,
-        "chugs_owed_after": owed_after,
-    }
+        return {
+            "can_to_mouth": True,
+            "id": row["id"],
+            "duration_seconds": result["duration_seconds"],
+            "time_score": result["time_score"],
+            "smoothness_score": result["smoothness_score"],
+            "hype_score": result["hype_score"],
+            "final_score": result["final"],
+            "created_at": row["created_at"].isoformat(),
+            "has_video": video_key is not None,
+            # Did this chug actually pay down a real debt, or was it "for
+            # funsies" (nothing owed)? owed_before/after let the frontend
+            # say which, instead of guessing.
+            "chugs_owed_before": owed_before,
+            "chugs_owed_after": owed_after,
+        }
+    finally:
+        # The upload above reads temp_path via a subprocess call and
+        # boto3's own upload_file — both finish before this runs, so
+        # it's always safe to clean up here regardless of which path
+        # through the try block was taken.
+        os.remove(temp_path)
 
 
 @router.post("/upload")
