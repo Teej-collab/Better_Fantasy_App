@@ -56,19 +56,20 @@ export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPa
     <section className="neon-panel flex flex-col gap-3 rounded-xl bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold tracking-wide text-white/50 uppercase">Chug Countdown</span>
-        {reached && (
-          // 2026-09-15 ask: "the Chug Time button should be in the top
-          // right of the chug countdown" — moved out of the tile grid's
-          // spot into the header row here, next to the section label.
-          // /chug renders ChugUpload right at the top of the page for a
-          // signed-in member, so this lands directly on the upload flow.
-          <Link
-            href="/chug"
-            className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black transition-colors hover:bg-amber-300 active:bg-amber-500"
-          >
-            Chug Time! 🍺
-          </Link>
-        )}
+        {/* 2026-09-15 ask: "the Chug Time button should be in the top
+            right of the chug countdown" — always here now, not only
+            once the deadline actually passes (a real chug can be
+            posted any time, "for funsies" even with nothing owed —
+            see record_completed_chug's own docstring), just relabeled
+            once it's genuinely chug time. /chug renders ChugUpload
+            right at the top of the page for a signed-in member, so
+            this lands directly on the upload flow either way. */}
+        <Link
+          href="/chug"
+          className="shrink-0 rounded-full bg-amber-400 px-3 py-1 text-xs font-bold text-black transition-colors hover:bg-amber-300 active:bg-amber-500"
+        >
+          {reached ? "Chug Time! 🍺" : "Upload 🍺"}
+        </Link>
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="font-medium">🍺 Jeffrey&apos;s Rule</span>

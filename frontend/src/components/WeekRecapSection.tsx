@@ -31,7 +31,12 @@ export function WeekRecapSection({
     setBusy(true);
     setError(null);
     try {
-      const result = await generateWeeklyRecap(season, week);
+      // Regenerating an already-cached week has to force past the
+      // cache read (see the backend's own generate_weekly_recap
+      // docstring) or this button just re-shows the exact same cached
+      // text — including one that shipped truncated by hitting
+      // WEEKLY_MAX_TOKENS, the real incident this fixed (2026-09-15).
+      const result = await generateWeeklyRecap(season, week, narrative !== null);
       // Re-fetches this whole-week narrative AND every matchup's own
       // narrative (MatchupCard already renders matchup.narrative) in
       // one server round-trip, rather than prop-drilling the

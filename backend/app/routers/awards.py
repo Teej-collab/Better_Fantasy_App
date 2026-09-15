@@ -169,15 +169,23 @@ async def weekly_recap(
 
 
 @router.post("/seasons/{season}/weeks/{week}/recap/generate")
-async def generate_weekly_recap(season: int, week: int, request: Request, pool=Depends(get_pool)):
+async def generate_weekly_recap(
+    season: int, week: int, request: Request, force: bool = False, pool=Depends(get_pool)
+):
     """Commissioner-only, deliberate bulk action: fills in every real
     matchup's own narrative for the week plus the new whole-week
     narrative in one request, instead of relying on lazy one-at-a-time
     generation as visitors happen to click into matchups. See
     narrative_engine.generate_weekly_recap's own docstring for why this
-    has to be an explicit action rather than automatic."""
+    has to be an explicit action rather than automatic.
+
+    `force` (query param, default false): skips the whole-week cache
+    read so a real regeneration happens even when one's already cached
+    — WeekRecapSection.tsx's "Regenerate" button (as opposed to its
+    first-time "Generate" label) passes this, since without it the
+    button was a no-op on an already-cached week (2026-09-15 fix)."""
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
-        result = await narrative_engine.generate_weekly_recap(conn, season, week, league_id)
+        result = await narrative_engine.generate_weekly_recap(conn, season, week, league_id, force=force)
     return result

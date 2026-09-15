@@ -124,7 +124,17 @@ off-limits, everybody's real numbers are fair game. Tone: brutal, sharp, genuine
 writer with zero patience for anyone's excuses. Three to five short paragraphs. No hedging, no \
 disclaimers, no "great week everyone" softening."""
 
-WEEKLY_MAX_TOKENS = 900
+# 2026-09-15 fix, real report: a full week's recap for a real
+# 12-team league (every matchup's result, every award, standings, AND
+# Jeffrey's Rule chug debts, all as one continuous story) genuinely
+# needs more room than 900 tokens gives it — confirmed live, a real
+# generated recap cut off mid-sentence partway through the standings/
+# chug-debt closing paragraph. Anthropic's response is returned as-is
+# whatever it managed to generate before hitting the cap, with nothing
+# to signal the cutoff, so this silently shipped a broken-looking recap
+# rather than an error. Raised with real headroom rather than nudged
+# just past this one observed case.
+WEEKLY_MAX_TOKENS = 1600
 
 
 def _fmt_boom_bust(roster: list[dict]) -> tuple[list[str], list[str]]:
@@ -471,7 +481,9 @@ async def get_cached_weekly_narrative(conn, season: int, week: int, league_id: i
     return {"text": text, "kind": kind}
 
 
-async def generate_weekly_recap(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+async def generate_weekly_recap(
+    conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID, force: bool = False
+) -> dict:
     """The bulk, commissioner-triggered action described in this
     module's own plan: fills in every real matchup's own narrative for
     the week (skipping whatever's already cached, via the existing
@@ -481,7 +493,17 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
     to re-fetch. Degrades the same way get_or_generate_narrative does —
     no ANTHROPIC_API_KEY means the per-matchup fills still happen if
     already cached, but nothing new is generated, and weekly_narrative
-    comes back None rather than erroring."""
+    comes back None rather than erroring.
+
+    2026-09-15 fix, real report: the "Regenerate" button (WeekRecapSection.
+    tsx relabels itself once a narrative already exists) was always a
+    no-op regardless of what it said — this read the cache first and
+    only ever called the LLM on a genuine cache miss, so re-clicking it
+    on an already-cached recap (including one that shipped truncated by
+    hitting WEEKLY_MAX_TOKENS, the actual incident that surfaced this)
+    could never do anything. `force=True` skips the cache read entirely
+    so a real regeneration actually happens, still writing over the
+    same cache row via save_weekly_narrative's own upsert."""
     from app.domain.matchup_context import build_week_matchup_context
 
     week_context = await build_week_matchup_context(conn, season, week, league_id)
@@ -508,7 +530,7 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
     kind = await _resolve_weekly_kind(season, week)
     if kind is not None:
         status = "not_configured"
-        text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
+        text = None if force else await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
         if text is None and ANTHROPIC_API_KEY:
             system_prompt = WEEKLY_RECAP_PROMPT if kind == "recap" else WEEKLY_PREVIEW_PROMPT
             facts = await _build_weekly_facts(conn, week_context, league_id, kind)

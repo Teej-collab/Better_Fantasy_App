@@ -645,8 +645,13 @@ export type GenerateWeeklyRecapResult = {
 // in every real matchup's own narrative for the week plus the new
 // whole-week narrative in one request. Client-callable through
 // /api/backend so the browser's own session cookie is forwarded.
-export async function generateWeeklyRecap(season: number, week: number): Promise<GenerateWeeklyRecapResult> {
-  const res = await fetch(`/api/backend/seasons/${season}/weeks/${week}/recap/generate`, { method: "POST" });
+export async function generateWeeklyRecap(
+  season: number,
+  week: number,
+  force = false
+): Promise<GenerateWeeklyRecapResult> {
+  const qs = force ? "?force=true" : "";
+  const res = await fetch(`/api/backend/seasons/${season}/weeks/${week}/recap/generate${qs}`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Generate failed (${res.status})`);

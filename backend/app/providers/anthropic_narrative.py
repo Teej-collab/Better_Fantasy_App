@@ -13,9 +13,13 @@ silently misconfigured. app/domain/narrative_engine.py checks the key
 is present *before* ever calling this, so in practice this error only
 fires if that check is ever bypassed.
 """
+import logging
+
 from anthropic import Anthropic
 
 from app import config
+
+logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-5"
 
@@ -47,6 +51,19 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
         system=system_prompt,
         messages=[{"role": "user", "content": facts}],
     )
+    # 2026-09-15 fix, real report: a real weekly recap shipped cut off
+    # mid-sentence because it hit max_tokens — the API returns whatever
+    # it managed to generate with no error, so that failure was
+    # completely silent until a real user saw the broken text. Logging
+    # it here (rather than only raising max_tokens further, see
+    # narrative_engine.WEEKLY_MAX_TOKENS's own comment) means the NEXT
+    # time this happens it's a log line to investigate, not another
+    # user-reported broken recap.
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        logger.warning(
+            "Anthropic narrative hit max_tokens (%d) and was truncated — consider raising it", max_tokens
+        )
+
     # response.content[0] isn't reliably the text block — the model can
     # emit a ThinkingBlock (no .text attribute) ahead of the real
     # TextBlock, and did in production (2026-09, AttributeError on a
