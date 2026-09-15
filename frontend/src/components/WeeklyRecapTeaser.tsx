@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { WeeklyNarrative } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { generateWeeklyRecap, type WeeklyNarrative } from "@/lib/api";
 import { DESTINATIONS } from "@/lib/navDestinations";
 import { panelGlowStyle } from "@/lib/sectionColors";
 
@@ -35,45 +36,99 @@ import { panelGlowStyle } from "@/lib/sectionColors";
 // WeekRecapSection.tsx already uses for this same text elsewhere. Only
 // the collapsed PREVIEW snippet still flattens whitespace, since a
 // one-line teaser has nowhere to put a paragraph break anyway.
+//
+// 2026-09-15 second follow-up, real report: deleting the old week-list
+// route (WeekRecapSection.tsx's own "Regenerate" button lived there)
+// left NO way at all to fix a bad already-cached recap — like the
+// truncated one that surfaced the WEEKLY_MAX_TOKENS bug in the first
+// place — once one existed, since this component only ever rendered
+// read-only. A small commissioner-only Regenerate control here closes
+// that gap, using the real `force` flag (see generateWeeklyRecap /
+// backend generate_weekly_recap's own docstrings) so it actually
+// re-generates instead of just re-showing the same cached text.
 const RECAP_TEASER_MAX_CHARS = 220;
 
-export function WeeklyRecapTeaser({ recap, week }: { recap: WeeklyNarrative; week: number }) {
+export function WeeklyRecapTeaser({
+  recap,
+  season,
+  week,
+  isCommissioner,
+}: {
+  recap: WeeklyNarrative;
+  season: number;
+  week: number;
+  isCommissioner: boolean;
+}) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fullText = recap.text.trim();
   const flatPreview = fullText.replace(/\s+/g, " ");
   const truncatable = flatPreview.length > RECAP_TEASER_MAX_CHARS;
   const snippet = truncatable ? flatPreview.slice(0, RECAP_TEASER_MAX_CHARS).replace(/\s+\S*$/, "") : flatPreview;
 
+  async function handleRegenerate() {
+    setRegenerating(true);
+    setError(null);
+    try {
+      await generateWeeklyRecap(season, week, true);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't regenerate the recap");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => setExpanded((v) => !v)}
-      aria-expanded={expanded}
-      className="neon-panel flex flex-col gap-2 rounded-xl border border-black/10 bg-gradient-to-br from-black/[0.03] to-transparent p-4 text-left shadow-sm transition-transform active:scale-[0.99] dark:border-white/10 dark:from-white/[0.06] dark:shadow-none"
+    <div
+      className="neon-panel flex flex-col gap-2 rounded-xl border border-black/10 bg-gradient-to-br from-black/[0.03] to-transparent p-4 dark:border-white/10 dark:from-white/[0.06]"
       style={panelGlowStyle(DESTINATIONS.awards.color)}
     >
-      <span
-        className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase"
-        style={{ color: DESTINATIONS.awards.color }}
-      >
-        📰 Week {week} Recap
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase"
+          style={{ color: DESTINATIONS.awards.color }}
+        >
+          📰 Week {week} Recap
+        </span>
+        {isCommissioner && (
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            className="shrink-0 rounded-full border border-black/10 px-2.5 py-1 text-xs font-medium text-black/60 transition-colors hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
+          >
+            {regenerating ? "Regenerating…" : "Regenerate"}
+          </button>
+        )}
+      </div>
 
-      {expanded ? (
-        <p className="text-base leading-relaxed whitespace-pre-line text-black/80 dark:text-white/80">{fullText}</p>
-      ) : (
-        <p className="text-base leading-relaxed text-black/80 dark:text-white/80">
-          {snippet}
-          {truncatable && "…"}
-        </p>
-      )}
+      {error && <p className="text-xs text-red-500">{error}</p>}
 
-      <span
-        className="mt-1 inline-flex w-fit items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold text-black dark:text-white"
-        style={{ backgroundColor: `color-mix(in srgb, ${DESTINATIONS.awards.color} 18%, transparent)` }}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex flex-col gap-2 text-left transition-transform active:scale-[0.99]"
       >
-        {expanded ? "Show less ↑" : "Read the full recap →"}
-      </span>
-    </button>
+        {expanded ? (
+          <p className="text-base leading-relaxed whitespace-pre-line text-black/80 dark:text-white/80">{fullText}</p>
+        ) : (
+          <p className="text-base leading-relaxed text-black/80 dark:text-white/80">
+            {snippet}
+            {truncatable && "…"}
+          </p>
+        )}
+
+        <span
+          className="mt-1 inline-flex w-fit items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold text-black dark:text-white"
+          style={{ backgroundColor: `color-mix(in srgb, ${DESTINATIONS.awards.color} 18%, transparent)` }}
+        >
+          {expanded ? "Show less ↑" : "Read the full recap →"}
+        </span>
+      </button>
+    </div>
   );
 }

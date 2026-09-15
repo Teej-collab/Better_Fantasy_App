@@ -536,7 +536,12 @@ export default async function HomePage() {
         <AwardsPreview awards={weeklyAwards} />
         {season !== null && week !== null && (
           weeklyRecap && weeklyRecapWeek !== null ? (
-            <WeeklyRecapTeaser recap={weeklyRecap} week={weeklyRecapWeek} />
+            <WeeklyRecapTeaser
+              recap={weeklyRecap}
+              season={season}
+              week={weeklyRecapWeek}
+              isCommissioner={me.is_commissioner}
+            />
           ) : (
             // Nothing generated yet (the scheduler's own week-settlement
             // job auto-generates this once the week is over — see

@@ -65,6 +65,35 @@ def test_generate_narrative_logs_a_warning_when_truncated_by_max_tokens(monkeypa
     assert any("max_tokens" in record.message for record in caplog.records)
 
 
+def test_generate_narrative_strips_a_leading_markdown_heading(monkeypatch):
+    # Real report, 2026-09-15: a real recap opened with a literal
+    # "# Week 1 Recap: ..." line, which showed up as a stray "#" since
+    # nothing renders markdown — this is the defensive backstop (the
+    # primary fix is the prompts themselves asking for plain prose).
+    monkeypatch.setattr(anthropic_narrative, "config", SimpleNamespace(ANTHROPIC_API_KEY="fake-key"))
+    blocks = [
+        SimpleNamespace(
+            type="text",
+            text="# Week 1 Recap: Somebody Should Check on Amishtown\n\nWeek 1 is in the books...",
+        )
+    ]
+    fake_client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kwargs: _fake_response(blocks)))
+    monkeypatch.setattr(anthropic_narrative, "_client", fake_client)
+
+    result = anthropic_narrative.generate_narrative("system prompt", "facts")
+    assert result == "Week 1 is in the books..."
+
+
+def test_generate_narrative_leaves_text_without_a_heading_untouched(monkeypatch):
+    monkeypatch.setattr(anthropic_narrative, "config", SimpleNamespace(ANTHROPIC_API_KEY="fake-key"))
+    blocks = [SimpleNamespace(type="text", text="Week 1 is in the books, and #1 overall pick busted.")]
+    fake_client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kwargs: _fake_response(blocks)))
+    monkeypatch.setattr(anthropic_narrative, "_client", fake_client)
+
+    result = anthropic_narrative.generate_narrative("system prompt", "facts")
+    assert result == "Week 1 is in the books, and #1 overall pick busted."
+
+
 def test_generate_narrative_does_not_warn_on_a_normal_completion(monkeypatch, caplog):
     monkeypatch.setattr(anthropic_narrative, "config", SimpleNamespace(ANTHROPIC_API_KEY="fake-key"))
     blocks = [SimpleNamespace(type="text", text="A complete recap.")]

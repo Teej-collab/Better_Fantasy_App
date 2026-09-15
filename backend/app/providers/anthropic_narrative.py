@@ -14,6 +14,7 @@ is present *before* ever calling this, so in practice this error only
 fires if that check is ever bypassed.
 """
 import logging
+import re
 
 from anthropic import Anthropic
 
@@ -22,6 +23,17 @@ from app import config
 logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-5"
+
+# Real report, 2026-09-15: a generated recap opened with a literal
+# "# Week 1 Recap: ..." line — every caller's own UI already renders
+# its own heading above this text (see WeeklyRecapTeaser.tsx,
+# WeekRecapSection.tsx), so a model-authored markdown title is always
+# redundant, and since nothing here renders markdown, it shows up as a
+# stray "#" instead of a real heading. Every prompt now explicitly asks
+# for plain prose with no title (see narrative_engine.py's four
+# prompts), but this strips one anyway if the model adds it regardless
+# — a defensive backstop, not the primary fix.
+_LEADING_MARKDOWN_HEADING = re.compile(r"\A#{1,6}[ \t]+.*(?:\r?\n)+")
 
 _client: Anthropic | None = None
 
@@ -71,5 +83,6 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
     # type instead of assuming position 0.
     for block in response.content:
         if getattr(block, "type", None) == "text":
-            return block.text.strip()
+            text = block.text.strip()
+            return _LEADING_MARKDOWN_HEADING.sub("", text).strip()
     raise RuntimeError("Anthropic response contained no text block")

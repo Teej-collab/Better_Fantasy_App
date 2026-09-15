@@ -171,7 +171,7 @@ export function HomePageBeta({
           />
           <AwardsPreview awards={weeklyAwards} />
           {weeklyRecap && weeklyRecapWeek !== null ? (
-            <WeeklyRecapTeaser recap={weeklyRecap} week={weeklyRecapWeek} />
+            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} isCommissioner={isCommissioner} />
           ) : (
             // Targets the active week itself — eligible the instant its
             // games are all final, regardless of whether current_week
