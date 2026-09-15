@@ -57,6 +57,7 @@ export function HomePageBeta({
   topRivalries,
   weeklyAwards,
   weeklyRecap,
+  weeklyRecapWeek,
   isCommissioner,
   chugFeed,
   liveNflGames,
@@ -78,6 +79,7 @@ export function HomePageBeta({
   topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
   weeklyRecap: WeeklyNarrative | null;
+  weeklyRecapWeek: number | null;
   isCommissioner: boolean;
   chugFeed: ChugFeedEntry[];
   liveNflGames: NflGame[];
@@ -164,14 +166,13 @@ export function HomePageBeta({
         <section className="flex flex-col gap-2">
           <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
           <AwardsPreview awards={weeklyAwards} />
-          {currentWeek > 1 && (
-            weeklyRecap ? (
-              <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={currentWeek - 1} />
-            ) : (
-              isCommissioner && (
-                <WeekRecapSection season={season} week={currentWeek - 1} narrative={null} canGenerate />
-              )
-            )
+          {weeklyRecap && weeklyRecapWeek !== null ? (
+            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} />
+          ) : (
+            // Targets the active week itself — eligible the instant its
+            // games are all final, regardless of whether current_week
+            // has rolled over yet.
+            isCommissioner && <WeekRecapSection season={season} week={currentWeek} narrative={null} canGenerate />
           )}
         </section>
       )}

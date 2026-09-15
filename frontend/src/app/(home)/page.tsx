@@ -126,6 +126,7 @@ export default async function HomePage() {
   let chugDeadline: ChugDeadline | null = null;
   let powerRankings: WeekPowerRanking[] = [];
   let weeklyRecap: WeeklyNarrative | null = null;
+  let weeklyRecapWeek: number | null = null;
   let chugFeed: ChugFeedEntry[] = [];
 
   // Every one of these now requires real active-league membership
@@ -153,7 +154,8 @@ export default async function HomePage() {
       chugRes,
       powerRankingsRes,
       chugDeadlineRes,
-      weeklyRecapRes,
+      weekRecapRes,
+      prevWeekRecapRes,
       chugFeedRes,
     ] = await Promise.all([
       getStandings(season, sessionCookie),
@@ -164,13 +166,19 @@ export default async function HomePage() {
       getChugLeaderboard(sessionCookie, season),
       getWeekPowerRankings(season, week, sessionCookie),
       wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
-      // The week that just wrapped, not the active `week` itself (which
-      // getWeeklyRecap would only ever resolve to "recap" for once the
-      // league has moved past it, i.e. one week later than this) — null
-      // (rendered nowhere) until the scheduler's own week-settlement job
-      // has actually generated it (app/scheduler.py's
-      // _run_week_settlement_job, real NFL week rollover ->
-      // auto-generate).
+      // Checks the active `week` itself, IN ADDITION to week-1 below —
+      // not instead of it. Once a week's own real games are all final,
+      // its recap becomes eligible immediately
+      // (app/domain/narrative_engine.py's _resolve_weekly_kind), fully
+      // independent of whether league_state.current_week (a separate,
+      // sometimes-lagging counter — see that module's own docstring)
+      // has rolled over past it yet. Real report, 2026-09-15: checking
+      // only week-1 left the homepage showing nothing at all for the
+      // entire stretch between "this week's games all went final" and
+      // "the app's own current-week counter finally rolled over" —
+      // querying `week` too covers exactly that gap, including week 1
+      // itself (week - 1 would be 0, never valid).
+      week !== null ? getWeeklyRecap(season, week, sessionCookie) : Promise.resolve({ narrative: null }),
       week !== null && week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
       getChugFeed(sessionCookie, season),
     ]);
@@ -178,7 +186,17 @@ export default async function HomePage() {
     weeklyAwards = awardsRes;
     weekMatchups = matchupContextRes.matchups;
     powerRankings = powerRankingsRes.rankings;
-    weeklyRecap = weeklyRecapRes.narrative;
+    // Prefer the active week's own recap once eligible (see the
+    // getWeeklyRecap comment above); fall back to the prior week's
+    // once league_state.current_week has actually rolled over, and
+    // `week` itself is a fresh, not-yet-recap-eligible week.
+    if (weekRecapRes.narrative?.kind === "recap") {
+      weeklyRecap = weekRecapRes.narrative;
+      weeklyRecapWeek = week;
+    } else if (prevWeekRecapRes.narrative?.kind === "recap") {
+      weeklyRecap = prevWeekRecapRes.narrative;
+      weeklyRecapWeek = week !== null ? week - 1 : null;
+    }
     weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
     topRivalries = [...rivalriesRes.rivalries]
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
@@ -462,9 +480,9 @@ export default async function HomePage() {
       <section className="flex flex-col gap-2">
         <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
         <AwardsPreview awards={weeklyAwards} />
-        {season !== null && week !== null && week > 1 && (
-          weeklyRecap ? (
-            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={week - 1} />
+        {season !== null && week !== null && (
+          weeklyRecap && weeklyRecapWeek !== null ? (
+            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} />
           ) : (
             // Nothing generated yet (the scheduler's own week-settlement
             // job auto-generates this once the week is over — see
@@ -472,8 +490,10 @@ export default async function HomePage() {
             // brand-new week's write-up can still be worth a manual
             // nudge/regenerate). Same component the week's own page
             // already uses for this — commissioner-only, exactly like
-            // there.
-            me.is_commissioner && <WeekRecapSection season={season} week={week - 1} narrative={null} canGenerate />
+            // there. Targets the active week itself — that's exactly
+            // eligible the instant its games are all final, regardless
+            // of whether current_week has rolled over yet.
+            me.is_commissioner && <WeekRecapSection season={season} week={week} narrative={null} canGenerate />
           )
         )}
       </section>
@@ -505,6 +525,7 @@ export default async function HomePage() {
           topRivalries={topRivalries}
           weeklyAwards={weeklyAwards}
           weeklyRecap={weeklyRecap}
+          weeklyRecapWeek={weeklyRecapWeek}
           isCommissioner={me.is_commissioner}
           chugFeed={chugFeed}
           liveNflGames={liveNflGames}

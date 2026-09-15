@@ -59,45 +59,24 @@ export function MatchupCarousel({
     }, 500);
   }, []);
 
-  // Scrolls the page's own vertical scroll (not this carousel's
-  // horizontal one) so #matchup-top — the BackButton/heading just above
-  // this component, see page.tsx — sits right below the sticky site
-  // header, instead of the page starting above the site-wide ticker.
-  // Measures the header's real rendered height rather than a hardcoded
-  // pixel guess (it's hidden entirely on the beta mobile layout, where
-  // this correctly resolves to 0).
-  const scrollAnchorIntoView = useCallback((behavior: ScrollBehavior) => {
-    const anchor = document.getElementById("matchup-top");
-    if (!anchor) return;
-    const headerHeight = document.getElementById("site-nav")?.getBoundingClientRect().height ?? 0;
-    const anchorTop = anchor.getBoundingClientRect().top + window.scrollY;
-    window.scrollTo({ top: Math.max(0, anchorTop - headerHeight), behavior });
-  }, []);
-
+  // 2026-09-15 revert: this used to also force the PAGE's own vertical
+  // scroll down past the site ticker on mount, and back to that same
+  // spot on every matchup switch (real report: this fought the page's
+  // own layout while it was still settling — team logos/webfonts
+  // loading, the ticker's own content arriving — producing a visible
+  // overshoot-then-correct jump instead of a clean load, and a real,
+  // explicit ask to just load "like normal pages... seeing the tickers
+  // and everything"). Gone entirely now: this component only ever
+  // touches the carousel's own horizontal scroll (scrollToIndex above,
+  // container.scrollTo({left}) — never window.scrollTo), so the page
+  // loads and swipes without moving the user's vertical scroll at all.
   useEffect(() => {
     // Jump (no animation) to whichever matchup the user actually
-    // clicked into, and past the site ticker down to the matchup
-    // content itself — everything after this (swiping, tapping another
-    // pill) animates instead, via the activeIndex effect below.
+    // clicked into — everything after this (swiping, tapping another
+    // pill) animates instead.
     scrollToIndex(initialIndex, "auto");
-    scrollAnchorIntoView("auto");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Every SUBSEQUENT matchup switch (tap or swipe) resets the vertical
-  // scroll back to the same anchor — the real ESPN reference does this
-  // too (swiping to another game always lands back at the top of its
-  // score header, never wherever you'd scrolled down to on the last
-  // one). Skips its very first run since the mount effect above already
-  // placed it, instantly, before this would otherwise animate it again.
-  const skippedFirstRun = useRef(false);
-  useEffect(() => {
-    if (!skippedFirstRun.current) {
-      skippedFirstRun.current = true;
-      return;
-    }
-    scrollAnchorIntoView("smooth");
-  }, [activeIndex, scrollAnchorIntoView]);
 
   useEffect(() => {
     const el = scrollRef.current;
