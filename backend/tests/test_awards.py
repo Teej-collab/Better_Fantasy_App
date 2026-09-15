@@ -44,13 +44,20 @@ async def _commissioner_cookies(pool, suffix: str) -> dict:
     return _session_cookie(user_id)
 
 
-async def _seed_league_state(pool, week, season=TEST_SEASON):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO league_state (season, current_week) VALUES ($1, $2) "
-            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
-            season, week,
-        )
+def _mock_week_final(monkeypatch, target_week):
+    """Weekly recap eligibility (narrative_engine._resolve_weekly_kind)
+    now checks the target week's own real game data directly instead of
+    league_state.current_week's own rollover (2026-09-15 fix — see that
+    module's docstring) — this fakes ESPN's public scoreboard call to
+    say the given week is fully done. Real ESPN call signature is
+    get_week_scoreboard(week=..., year=...) — the fake's first param
+    must be named `week` to match, not something else, or the real
+    keyword call raises TypeError."""
+
+    async def fake(week, year, season_type=2):
+        return [{"completed": True, "state": "post"}] if week == target_week else []
+
+    monkeypatch.setattr("app.domain.narrative_engine.get_week_scoreboard", fake)
 
 
 async def _get(path, cookies=None):
@@ -201,7 +208,7 @@ async def test_weekly_recap_get_requires_session(monkeypatch):
 
 async def test_weekly_recap_get_is_null_when_nothing_generated_yet(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    await _seed_league_state(pool, week=6)
+    _mock_week_final(monkeypatch, 5)
     cookies = await _member_cookies(pool, "recap-get-null")
 
     resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/recap", cookies)
@@ -211,7 +218,7 @@ async def test_weekly_recap_get_is_null_when_nothing_generated_yet(pool, monkeyp
 
 async def test_weekly_recap_get_returns_cached_narrative(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    await _seed_league_state(pool, week=6)
+    _mock_week_final(monkeypatch, 5)
     cookies = await _member_cookies(pool, "recap-get-cached")
 
     async with pool.acquire() as conn:
@@ -249,6 +256,7 @@ async def test_weekly_recap_generate_as_commissioner_fills_and_returns_narrative
     monkeypatch.setattr("app.domain.narrative_engine.ANTHROPIC_API_KEY", "fake-key-for-tests")
 
     week = 5
+    _mock_week_final(monkeypatch, week)
     owner_a, team_a = await _seed_owner_and_team(pool, 900, "Jerry", "Jerry's Team")
     owner_b, team_b = await _seed_owner_and_team(pool, 901, "Kelly", "Kelly's Team")
     async with pool.acquire() as conn:
@@ -257,7 +265,6 @@ async def test_weekly_recap_generate_as_commissioner_fills_and_returns_narrative
             "VALUES ($1, $2, $3, $4, 110, 95, FALSE)",
             TEST_SEASON, week, team_a, team_b,
         )
-    await _seed_league_state(pool, week=week + 1)
     cookies = await _commissioner_cookies(pool, "recap-generate-commish")
 
     resp = await _post(f"/seasons/{TEST_SEASON}/weeks/{week}/recap/generate", cookies)

@@ -14,16 +14,25 @@ Two states:
   - "preview" — before the matchup has any real data (both scores
     still 0-0). Built from records, streaks, rivalry, and projections.
     Hype tone.
-  - "recap" — only once the league has moved past this matchup's week
-    entirely (get_or_generate_narrative checks queries.
-    get_cached_current_week against the matchup's own week), NOT
-    simply "scores are non-zero." Scores update live mid-slate on a
+  - "recap" — only once every real NFL game in the matchup's own week
+    has actually finished (_week_completion, below — the same
+    is_week_final signal app/domain/chug_debt.py already relies on),
+    NOT simply "scores are non-zero." Scores update live mid-slate on a
     real Sunday, and since a generated result is cached forever (see
     below), generating a "recap" while a game is still in progress
     would freeze an incomplete, wrong result into the cache
-    permanently. The trade-off: a recap doesn't appear until the
-    following week starts, not the instant Sunday Night Football ends
-    — deliberate, not an oversight.
+    permanently.
+
+    2026-09-15 fix, real report: this used to key off league_state.
+    current_week (the real NFL week rolling over) instead of checking
+    real per-week completion directly — the assumption being that
+    current_week reliably rolls over once a week is genuinely done.
+    It doesn't: ESPN's own public scoreboard's week.number field kept
+    reading Week 1 for a long stretch after every single Week 1 game
+    had already gone Final, so the whole-week recap's eligibility gate
+    never flipped and the button/schedule job both silently had
+    nothing to generate. Checking the target week's own real game data
+    directly sidesteps that other counter's own timing entirely.
 
 Results are cached in matchup_narratives (migration 7a2c9e4b6f1d) —
 Claude is called once per matchup per state, never once per page view.
@@ -36,6 +45,7 @@ from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
 from app.domain import weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
+from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
 from app.queries import narrative as narrative_queries
@@ -246,8 +256,30 @@ async def _build_facts(conn, matchup: dict, kind: str) -> str:
     return "; ".join(facts)
 
 
-def _resolve_kind(matchup: dict, current_week: int | None) -> str | None:
-    if current_week is not None and matchup["week"] < current_week:
+async def _week_completion(season: int, week: int) -> str:
+    """The real "has this NFL week even started / is it over" signal —
+    same is_week_final games check app/domain/chug_debt.py's own
+    compute_chug_debts_for_week already relies on, hitting ESPN's free,
+    public, keyless scoreboard endpoint directly rather than reading
+    league_state.current_week's own separately-cached rollover (see
+    this module's own docstring for why that rollover isn't a reliable
+    proxy for real completion). Returns "final" (every real game for
+    the week is done), "not_started" (every real game is still
+    pre-kickoff, or there's no real schedule data at all yet), or
+    "in_progress" (anything else — a real mid-slate)."""
+    games = await get_week_scoreboard(week=week, year=season)
+    if not games:
+        return "not_started"
+    if all(g.get("completed") for g in games):
+        return "final"
+    if all(g.get("state") == "pre" for g in games):
+        return "not_started"
+    return "in_progress"
+
+
+async def _resolve_kind(matchup: dict) -> str | None:
+    completion = await _week_completion(matchup["season"], matchup["week"])
+    if completion == "final":
         return "recap"
     home_score = matchup["home"]["score"]
     away_score = matchup["away"]["score"]
@@ -264,8 +296,7 @@ async def get_cached_narrative(conn, matchup: dict) -> str | None:
     the very first visit to a week's page, which is real, bad latency.
     Once get_or_generate_narrative (below) has been called for a given
     matchup via the detail page, this starts picking it up for free."""
-    current_week = await league_queries.get_cached_current_week(conn, matchup["season"])
-    kind = _resolve_kind(matchup, current_week)
+    kind = await _resolve_kind(matchup)
     if kind is None:
         return None
     return await narrative_queries.get_cached_narrative(conn, matchup["matchup_id"], kind)
@@ -279,8 +310,7 @@ async def get_or_generate_narrative(conn, matchup: dict) -> str | None:
     already built — reused directly, nothing is re-fetched here.
     Returns None (never raises) whenever there's nothing eligible to
     generate yet, or no real API key is configured."""
-    current_week = await league_queries.get_cached_current_week(conn, matchup["season"])
-    kind = _resolve_kind(matchup, current_week)
+    kind = await _resolve_kind(matchup)
     if kind is None:
         return None
 
@@ -298,22 +328,16 @@ async def get_or_generate_narrative(conn, matchup: dict) -> str | None:
     return text
 
 
-def _resolve_weekly_kind(week: int, current_week: int | None) -> str | None:
-    """Week-scoped counterpart to _resolve_kind above. There's no
-    per-week "score" pair to check the way a single matchup has, so
-    "started" is read off current_week instead: a week strictly before
-    current_week is fully in the books (recap-eligible), a week
-    strictly after it hasn't happened yet (preview-eligible), and the
-    week matching current_week itself is still live — same as a
-    matchup with a game in progress, that's None, not a stale
-    generate-now target."""
-    if current_week is None:
-        return None
-    if week < current_week:
+async def _resolve_weekly_kind(season: int, week: int) -> str | None:
+    """Week-scoped counterpart to _resolve_kind above — real completion
+    of THIS week's own games decides recap/preview/still-live, same as
+    _resolve_kind, just without a per-matchup score pair to lean on."""
+    completion = await _week_completion(season, week)
+    if completion == "final":
         return "recap"
-    if week > current_week:
+    if completion == "not_started":
         return "preview"
-    return None
+    return None  # in progress
 
 
 def _standings_record_str(row) -> str:
@@ -438,8 +462,7 @@ async def get_cached_weekly_narrative(conn, season: int, week: int, league_id: i
     plain page view). Returns {"text", "kind"} (kind is "preview" or
     "recap", so the page can label it "Week N Recap" vs "Week N
     Preview") or None if nothing's eligible/cached yet."""
-    current_week = await league_queries.get_cached_current_week(conn, season)
-    kind = _resolve_weekly_kind(week, current_week)
+    kind = await _resolve_weekly_kind(season, week)
     if kind is None:
         return None
     text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
@@ -477,11 +500,12 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
     # sees *why* nothing came back instead of the button silently
     # no-opping (2026-09-15: exactly this — commissioner hit the button
     # on a week whose games had already gone final, but the real NFL
-    # week hadn't rolled over yet, and got zero feedback).
+    # week hadn't rolled over yet, and got zero feedback; the eligibility
+    # check itself no longer depends on that rollover at all — see
+    # _resolve_weekly_kind's own docstring).
     weekly_narrative = None
     status = "not_eligible"
-    current_week = await league_queries.get_cached_current_week(conn, season)
-    kind = _resolve_weekly_kind(week, current_week)
+    kind = await _resolve_weekly_kind(season, week)
     if kind is not None:
         status = "not_configured"
         text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)

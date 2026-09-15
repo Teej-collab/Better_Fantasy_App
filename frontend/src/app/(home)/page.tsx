@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   buildKickoffCountdownItem,
   buildNflTickerItems,
+  getChugFeed,
   getChugLeaderboard,
   getCurrentWeek,
   getMe,
@@ -25,6 +26,7 @@ import {
   resolveWeek,
   safeLatestSeason,
   type ChugDeadline,
+  type ChugFeedEntry,
   type ChugLeaderboardRow,
   type Rivalry,
   type StandingsRow,
@@ -38,6 +40,7 @@ import {
 import { MovementBadge } from "@/components/MovementBadge";
 import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugDueCard } from "@/components/ChugDueCard";
+import { ChugFeed } from "@/components/ChugFeed";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { HomeCardDeck } from "@/components/HomeCardDeck";
@@ -45,6 +48,7 @@ import { HomePageBeta } from "@/components/HomePageBeta";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
+import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { findGamecastId, getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import {
@@ -122,6 +126,7 @@ export default async function HomePage() {
   let chugDeadline: ChugDeadline | null = null;
   let powerRankings: WeekPowerRanking[] = [];
   let weeklyRecap: WeeklyNarrative | null = null;
+  let chugFeed: ChugFeedEntry[] = [];
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -149,6 +154,7 @@ export default async function HomePage() {
       powerRankingsRes,
       chugDeadlineRes,
       weeklyRecapRes,
+      chugFeedRes,
     ] = await Promise.all([
       getStandings(season, sessionCookie),
       getWeeklyAwards(season, week, sessionCookie),
@@ -166,6 +172,7 @@ export default async function HomePage() {
       // _run_week_settlement_job, real NFL week rollover ->
       // auto-generate).
       week !== null && week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
+      getChugFeed(sessionCookie, season),
     ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
@@ -186,6 +193,7 @@ export default async function HomePage() {
     }
     myChug = chugRes.leaderboard.find((row) => row.owner_id === me.owner_id) ?? null;
     chugDeadline = chugDeadlineRes;
+    chugFeed = chugFeedRes.chugs;
   }
 
   // "Other" = every matchup except the logged-in owner's own (already
@@ -454,11 +462,26 @@ export default async function HomePage() {
       <section className="flex flex-col gap-2">
         <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
         <AwardsPreview awards={weeklyAwards} />
-        {weeklyRecap && season !== null && week !== null && (
-          <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={week - 1} />
+        {season !== null && week !== null && week > 1 && (
+          weeklyRecap ? (
+            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={week - 1} />
+          ) : (
+            // Nothing generated yet (the scheduler's own week-settlement
+            // job auto-generates this once the week is over — see
+            // app/scheduler.py's _run_week_settlement_job — but a
+            // brand-new week's write-up can still be worth a manual
+            // nudge/regenerate). Same component the week's own page
+            // already uses for this — commissioner-only, exactly like
+            // there.
+            me.is_commissioner && <WeekRecapSection season={season} week={week - 1} narrative={null} canGenerate />
+          )
         )}
       </section>
     );
+  }
+
+  if (chugFeed.length > 0) {
+    cards.chugFeed = <ChugFeed chugs={chugFeed} />;
   }
 
   cards.discover = <DiscoveryGrid />;
@@ -482,6 +505,8 @@ export default async function HomePage() {
           topRivalries={topRivalries}
           weeklyAwards={weeklyAwards}
           weeklyRecap={weeklyRecap}
+          isCommissioner={me.is_commissioner}
+          chugFeed={chugFeed}
           liveNflGames={liveNflGames}
           gamecastGames={gamecastGames}
           draftCountdownOrChugCard={cards.draftCountdown ?? null}
@@ -553,6 +578,7 @@ export default async function HomePage() {
             matchups: cards.matchups,
             rivalries: cards.rivalries,
             awards: cards.awards,
+            chugFeed: cards.chugFeed,
             discover: cards.discover,
           }}
         />

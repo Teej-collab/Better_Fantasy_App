@@ -487,31 +487,42 @@ async def test_keeper_deadline_warning_job_is_idempotent(pool, monkeypatch):
     assert first == second  # second run is a no-op, doesn't re-notify
 
 
-async def test_week_settlement_job_settles_once_per_real_rollover(pool, monkeypatch):
+async def test_week_settlement_job_settles_once_a_cached_week_is_actually_final(pool, monkeypatch):
     """Real 2026-09 bug this job exists to fix: chug debts, the chug
     countdown, and the weekly recap's own eligibility all only finalize
     once a week is genuinely over, but every OTHER job that would
     refresh/settle that state is gated to run only while a real NFL
     game is live — so they all go dark for the ~36+ hour stretch between
     Monday Night Football's last final whistle and Thursday's next
-    kickoff. This test doesn't re-exercise chug_debt.py/chug_standing.py's
-    own internals (covered elsewhere) — it verifies scheduler.py's own
-    orchestration: current_week gets cached, the settlement steps and
-    the auto-recap-generation call each fire exactly once for a real
-    rollover, and a second tick with nothing new does nothing again."""
+    kickoff. Also covers the real follow-up bug found the same day:
+    get_real_current_week() (ESPN's own public week.number) can keep
+    reading the OLD week long after that week's games are actually
+    Final, so this job must decide "is this week over" from the cached
+    week's own real game data directly, never from that other counter —
+    this test's fake get_week_scoreboard would make a rollover-based
+    check fail forever, while the real completion-based check still
+    succeeds. Doesn't re-exercise chug_debt.py/chug_standing.py's own
+    internals (covered elsewhere) — verifies scheduler.py's own
+    orchestration: settlement fires exactly once once the cached week
+    is really final, current_week advances by exactly one, and a second
+    tick (that new week not final yet) does nothing further."""
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
 
     async with pool.acquire() as conn:
         league_id = await _make_league(conn, "week-settlement")
         await _seed_owner_and_team(conn, league_id, "week-settlement")
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 5) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
 
     calls = {"chug_debts": 0, "accrue": 0, "deadline": 0, "recap": 0}
 
-    async def fake_current_week():
-        return 6
-
-    async def fake_scoreboard():
-        return []
+    async def fake_week_scoreboard(week, year, season_type=2):
+        if week == 5:
+            return [{"completed": True, "state": "post"}]
+        return [{"completed": False, "state": "pre"}]  # week 6 hasn't happened yet
 
     async def fake_chug_debts(pool_, season, week, league_id_):
         calls["chug_debts"] += 1
@@ -529,8 +540,7 @@ async def test_week_settlement_job_settles_once_per_real_rollover(pool, monkeypa
         calls["recap"] += 1
         return {"weekly_narrative": None, "matchup_narratives": {}, "status": "generated"}
 
-    monkeypatch.setattr("app.scheduler.get_real_current_week", fake_current_week)
-    monkeypatch.setattr("app.scheduler.get_nfl_scoreboard", fake_scoreboard)
+    monkeypatch.setattr("app.scheduler.get_week_scoreboard", fake_week_scoreboard)
     monkeypatch.setattr("app.scheduler.compute_chug_debts_for_single_week", fake_chug_debts)
     monkeypatch.setattr("app.scheduler.accrue_weekly_debt_for_single_week", fake_accrue)
     monkeypatch.setattr("app.scheduler.ensure_chug_deadline_settled", fake_deadline)
@@ -543,7 +553,9 @@ async def test_week_settlement_job_settles_once_per_real_rollover(pool, monkeypa
         cached = await league_state_queries.get_cached_current_week(conn, TEST_SEASON)
     assert cached == 6
 
-    # Second tick, nothing changed since (still real_week=6) — the real
-    # settlement work must not run again.
+    # Second tick — week 6 (now cached) isn't final yet, so nothing more happens.
     await _run_week_settlement_job()
     assert calls == {"chug_debts": 1, "accrue": 1, "deadline": 1, "recap": 1}
+    async with pool.acquire() as conn:
+        cached_again = await league_state_queries.get_cached_current_week(conn, TEST_SEASON)
+    assert cached_again == 6

@@ -39,12 +39,14 @@ _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _DISPLAY_NAME_MAX_LENGTH = 40
 _TEAM_NAME_MAX_LENGTH = 40
 
-# The homepage's six reorderable dashboard cards (see (home)/page.tsx's
+# The homepage's reorderable dashboard cards (see (home)/page.tsx's
 # HomeCardDeck) — home_card_order stores a JSON array drawn from this
 # set. Validated here, not just trusted from the client, since a
 # malformed value would otherwise silently break the homepage for
 # whoever's account it landed on.
-_VALID_HOME_CARD_KEYS = {"yourWeek", "standings", "powerRankings", "matchups", "rivalries", "awards", "discover"}
+_VALID_HOME_CARD_KEYS = {
+    "yourWeek", "standings", "powerRankings", "matchups", "rivalries", "awards", "chugFeed", "discover",
+}
 
 # The nav's fixed 6 slots (lib/navDestinations.ts's MOBILE_NAV_ORDER on
 # the frontend, now driving both the mobile bottom bar and the desktop

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
+  type ChugFeedEntry,
   type NflGame,
   type Rivalry,
   type StandingsRow,
@@ -12,9 +13,11 @@ import {
   type YourWeek,
 } from "@/lib/api";
 import { AwardsPreview, WeeklyRecapTeaser } from "@/app/(home)/page";
+import { ChugFeed } from "@/components/ChugFeed";
 import { MovementBadge } from "@/components/MovementBadge";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { findGamecastId } from "@/lib/gamecastApi";
 import type { GamecastLiveGameSummary } from "@/lib/gamecastApi";
 
@@ -54,6 +57,8 @@ export function HomePageBeta({
   topRivalries,
   weeklyAwards,
   weeklyRecap,
+  isCommissioner,
+  chugFeed,
   liveNflGames,
   gamecastGames,
   draftCountdownOrChugCard,
@@ -73,6 +78,8 @@ export function HomePageBeta({
   topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
   weeklyRecap: WeeklyNarrative | null;
+  isCommissioner: boolean;
+  chugFeed: ChugFeedEntry[];
   liveNflGames: NflGame[];
   gamecastGames: GamecastLiveGameSummary[];
   draftCountdownOrChugCard: ReactNode;
@@ -157,8 +164,14 @@ export function HomePageBeta({
         <section className="flex flex-col gap-2">
           <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
           <AwardsPreview awards={weeklyAwards} />
-          {weeklyRecap && (
-            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={currentWeek - 1} />
+          {currentWeek > 1 && (
+            weeklyRecap ? (
+              <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={currentWeek - 1} />
+            ) : (
+              isCommissioner && (
+                <WeekRecapSection season={season} week={currentWeek - 1} narrative={null} canGenerate />
+              )
+            )
           )}
         </section>
       )}
@@ -255,6 +268,7 @@ export function HomePageBeta({
         </FlatSectionCard>
       )}
 
+      {chugFeed.length > 0 && <ChugFeed chugs={chugFeed} />}
     </div>
   );
 }

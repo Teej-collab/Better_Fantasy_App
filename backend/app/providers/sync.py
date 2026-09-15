@@ -58,13 +58,29 @@ async def update_league_state(pool, season: int, current_week: int) -> None:
     below (not after, where this used to sit), specifically so
     boom_bust's is_boom/is_bust writes onto this week's roster_history
     rows later in the same run aren't immediately wiped by a
-    delete+reinsert snapshot running after them."""
+    delete+reinsert snapshot running after them.
+
+    GREATEST(...), not a bare overwrite (2026-09-15): app/scheduler.py's
+    _run_week_settlement_job now also calls this, advancing current_week
+    on its own real-game-completion signal rather than waiting on this
+    same value (real report: ESPN's own public scoreboard's week.number
+    field, what current_week is fed from everywhere else, can keep
+    reading the prior week for a long stretch after that week's games
+    are actually done). Without GREATEST, run_full_sync's once-a-day
+    tick or a live-sync tick calling this with that same stale value
+    would silently regress current_week back down, undoing the
+    settlement job's own advancement — every downstream reader would
+    flip back and forth depending on which job last ran. GREATEST means
+    whichever caller has seen the more-advanced week always wins,
+    permanently, regardless of call order."""
     async with pool.acquire() as conn:
         await conn.execute(
             """
             INSERT INTO league_state (season, current_week, updated_at)
             VALUES ($1, $2, now())
-            ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week, updated_at = now()
+            ON CONFLICT (season) DO UPDATE SET
+                current_week = GREATEST(EXCLUDED.current_week, league_state.current_week),
+                updated_at = now()
             """,
             season, current_week,
         )

@@ -38,14 +38,17 @@ const MESSAGE_TOGGLES: { key: keyof OwnerPreferences; label: string; description
 // Team/League) removed 2026-09-01 for claiming a capability the
 // product didn't have yet (see that commit — f78d6ee — for the full
 // reasoning: a toggle for a category nothing ever pushes is worse
-// than no toggle at all). Only the two with a real backend trigger as
-// of 2026-09-04 (app/notifications/fantasy_events.py, diffing each
-// live-sync tick's touchdown counts and matchup scores) are back;
-// Game Alerts and League still have no real event source and stay out
-// until they do.
+// than no toggle at all). notify_my_players/notify_fantasy_team came
+// back 2026-09-04 once app/notifications/fantasy_events.py gave them a
+// real trigger (diffing each live-sync tick's touchdown counts and
+// matchup scores); notify_league came back 2026-09-15 for the same
+// reason, once a real chug post started triggering it
+// (app/notifications/chug_events.py). Game Alerts still has no real
+// event source and stays out until it does.
 const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
   { key: "notify_my_players", label: "My Players", description: "One of your rostered players scores a touchdown." },
   { key: "notify_fantasy_team", label: "My Fantasy Team", description: "Your matchup lead changes, for better or worse." },
+  { key: "notify_league", label: "League Activity", description: "Someone in your league posts a graded chug." },
 ];
 
 type PushUiState = {

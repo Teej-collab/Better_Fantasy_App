@@ -30,6 +30,7 @@ from app.db import get_pool
 from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug, undo_week
+from app.notifications.chug_events import notify_chug_posted
 from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
@@ -210,7 +211,10 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
             # funsies," reported directly. Resolved live from the owner's
             # real row instead of trusting the token's claim, same fix
             # already applied to owner_id/is_commissioner elsewhere.
-            discord_user_id = await conn.fetchval("SELECT discord_user_id FROM owners WHERE owner_id = $1", owner_id)
+            owner_row = await conn.fetchrow(
+                "SELECT discord_user_id, display_name FROM owners WHERE owner_id = $1", owner_id
+            )
+            discord_user_id = owner_row["discord_user_id"] if owner_row else None
             if discord_user_id is None:
                 raise HTTPException(
                     status_code=409,
@@ -250,6 +254,15 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
                 "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
                 active_season, owner_id, league_id,
             ) or 0
+
+            # Best-effort, after the chug is fully recorded — a push
+            # failure here must never affect the grade/debt result
+            # already returned to the uploader (see chug_events.py's
+            # own docstring).
+            await notify_chug_posted(
+                conn, active_season, league_id, owner_id, owner_row["display_name"], result["final"],
+                video_key is not None,
+            )
 
         return {
             "can_to_mouth": True,

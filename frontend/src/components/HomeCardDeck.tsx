@@ -24,6 +24,7 @@ export const DEFAULT_HOME_CARD_ORDER = [
   "powerRankings",
   "matchups",
   "rivalries",
+  "chugFeed",
   "discover",
 ];
 

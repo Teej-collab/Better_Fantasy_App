@@ -159,6 +159,26 @@ def fantasy_player_touchdown(player_name: str, team_name: str) -> dict:
     }
 
 
+def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
+    """League-wide (notify_league — see app/queries/owner_preferences.py),
+    sent to every other owner in the league once a real graded chug is
+    recorded (app/routers/chug.py's upload endpoint). has_video controls
+    whether the body invites people to go watch it (Recent Chugs, the
+    homepage/`/chug` feed) or just reports the grade — a chug graded
+    before video storage existed, or one whose upload failed, has
+    nothing to watch."""
+    body = f"{owner_name} just posted a {final_score:g}/10 chug"
+    body += " — go watch it." if has_video else "."
+    return {
+        "title": "🍺 New Chug Posted",
+        "body": body,
+        "icon": _DEFAULT_ICON,
+        "badge": _DEFAULT_ICON,
+        "url": "/chug",
+        "data": {"type": "chug_posted"},
+    }
+
+
 def fantasy_matchup_lead_change(now_leading: bool, opponent_name: str) -> dict:
     if now_leading:
         return {

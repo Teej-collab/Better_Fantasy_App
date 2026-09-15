@@ -4,13 +4,29 @@ from app.domain.narrative_engine import _resolve_kind, _resolve_weekly_kind
 from tests.conftest import TEST_SEASON
 
 
-async def _seed_league_state(pool, week, season=TEST_SEASON):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO league_state (season, current_week) VALUES ($1, $2) "
-            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
-            season, week,
-        )
+def _mock_week_scoreboard(monkeypatch, status_by_week):
+    """status_by_week: {week: "final" | "in_progress" | "not_started"}
+    (a plain dict, not **kwargs — week numbers are ints, and keyword
+    argument names have to be strings). Patches narrative_engine.
+    get_week_scoreboard — the real ESPN public scoreboard call
+    _week_completion now uses directly instead of league_state.
+    current_week's own rollover (2026-09-15 fix: that rollover isn't a
+    reliable "is this week actually over" signal — see narrative_
+    engine's own module docstring) — with fake per-week game data
+    matching each status. A week with no entry here returns no games at
+    all, which _week_completion treats as "not_started"."""
+
+    async def fake(week, year, season_type=2):
+        status = status_by_week.get(week)
+        if status == "final":
+            return [{"completed": True, "state": "post"}]
+        if status == "in_progress":
+            return [{"completed": False, "state": "in"}]
+        if status == "not_started":
+            return [{"completed": False, "state": "pre"}]
+        return []
+
+    monkeypatch.setattr(narrative_engine, "get_week_scoreboard", fake)
 
 
 async def _seed_two_teams_with_matchup(pool, suffix, week, home_score, away_score, season=TEST_SEASON):
@@ -51,30 +67,35 @@ def _matchup(week=5, home_score=0.0, away_score=0.0):
     }
 
 
-def test_resolve_kind_recap_once_league_has_moved_past_the_week():
-    assert _resolve_kind(_matchup(week=5, home_score=110.0, away_score=90.0), current_week=6) == "recap"
+async def test_resolve_kind_recap_once_the_week_is_actually_final(monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "final"})
+    assert await _resolve_kind(_matchup(week=5, home_score=110.0, away_score=90.0)) == "recap"
 
 
-def test_resolve_kind_preview_before_kickoff():
-    assert _resolve_kind(_matchup(week=5), current_week=5) == "preview"
+async def test_resolve_kind_preview_before_kickoff(monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "not_started"})
+    assert await _resolve_kind(_matchup(week=5)) == "preview"
 
 
-def test_resolve_kind_none_while_a_game_is_mid_week():
-    # Real, non-zero scores, but the league hasn't moved past this week
-    # yet — deliberately not "recap" (see narrative_engine's module
-    # docstring: generating one here would freeze an incomplete result
-    # into the cache forever).
-    assert _resolve_kind(_matchup(week=5, home_score=55.0, away_score=40.0), current_week=5) is None
+async def test_resolve_kind_none_while_a_game_is_mid_week(monkeypatch):
+    # Real, non-zero scores, but the week's own real games aren't all
+    # final yet — deliberately not "recap" (see narrative_engine's
+    # module docstring: generating one here would freeze an incomplete
+    # result into the cache forever).
+    _mock_week_scoreboard(monkeypatch, {5: "in_progress"})
+    assert await _resolve_kind(_matchup(week=5, home_score=55.0, away_score=40.0)) is None
 
 
-def test_resolve_kind_none_when_current_week_unknown_and_already_started():
-    # Real scores, but no cached current-week signal to confirm the
-    # league has actually moved past this matchup yet — can't safely
-    # call it a recap, and it's not 0-0 either, so nothing is eligible.
-    assert _resolve_kind(_matchup(week=5, home_score=55.0, away_score=40.0), current_week=None) is None
+async def test_resolve_kind_none_when_no_real_schedule_data_and_already_started(monkeypatch):
+    # Real scores, but no real game data at all to confirm the week is
+    # actually over — can't safely call it a recap, and it's not 0-0
+    # either, so nothing is eligible.
+    _mock_week_scoreboard(monkeypatch, {})  # no entries -> no games -> "not_started"
+    assert await _resolve_kind(_matchup(week=5, home_score=55.0, away_score=40.0)) is None
 
 
 async def test_get_or_generate_narrative_caches_after_first_generation(pool, monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "not_started"})
     calls = []
 
     def fake_generate_narrative(system_prompt, facts, max_tokens=300):
@@ -112,7 +133,7 @@ async def test_get_or_generate_narrative_caches_after_first_generation(pool, mon
         # first-call-generates behavior, not a stale row from last time.
         await conn.execute("DELETE FROM matchup_narratives WHERE matchup_id = $1", matchup["matchup_id"])
 
-        # current_week == matchup week and scores are 0-0 → "preview".
+        # Week hasn't started (scores 0-0) -> "preview".
         first = await narrative_engine.get_or_generate_narrative(conn, matchup)
         second = await narrative_engine.get_or_generate_narrative(conn, matchup)
 
@@ -123,6 +144,7 @@ async def test_get_or_generate_narrative_caches_after_first_generation(pool, mon
 
 
 async def test_get_or_generate_narrative_returns_none_without_a_real_api_key(pool, monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "not_started"})
     monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", None)
 
     matchup = {
@@ -157,6 +179,7 @@ async def test_get_or_generate_narrative_includes_career_and_live_league_context
     # absence) and real live context (a current Jeffrey's Rule chug
     # debt, a current league standings rank), not just this season's
     # record for the two teams in this one matchup.
+    _mock_week_scoreboard(monkeypatch, {5: "not_started"})
     calls = []
 
     def fake_generate_narrative(system_prompt, facts, max_tokens=300):
@@ -236,34 +259,38 @@ async def test_get_or_generate_narrative_includes_career_and_live_league_context
     assert "is currently ranked" in facts
 
 
-def test_resolve_weekly_kind_recap_once_league_has_moved_past_the_week():
-    assert _resolve_weekly_kind(week=5, current_week=6) == "recap"
+async def test_resolve_weekly_kind_recap_once_the_week_is_actually_final(monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "final"})
+    assert await _resolve_weekly_kind(TEST_SEASON, 5) == "recap"
 
 
-def test_resolve_weekly_kind_preview_for_a_week_that_has_not_started():
-    assert _resolve_weekly_kind(week=6, current_week=5) == "preview"
+async def test_resolve_weekly_kind_preview_for_a_week_that_has_not_started(monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {6: "not_started"})
+    assert await _resolve_weekly_kind(TEST_SEASON, 6) == "preview"
 
 
-def test_resolve_weekly_kind_none_for_the_week_in_progress():
+async def test_resolve_weekly_kind_none_for_the_week_in_progress(monkeypatch):
     # Same "don't freeze an incomplete result into the cache" reasoning
     # as _resolve_kind's own mid-week case — a whole-week narrative for
     # the live week is doubly premature.
-    assert _resolve_weekly_kind(week=5, current_week=5) is None
+    _mock_week_scoreboard(monkeypatch, {5: "in_progress"})
+    assert await _resolve_weekly_kind(TEST_SEASON, 5) is None
 
 
-def test_resolve_weekly_kind_none_when_current_week_unknown():
-    assert _resolve_weekly_kind(week=5, current_week=None) is None
+async def test_resolve_weekly_kind_preview_when_no_real_schedule_data_yet(monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {})  # no entries -> no games -> "not_started"
+    assert await _resolve_weekly_kind(TEST_SEASON, 5) == "preview"
 
 
-async def test_get_cached_weekly_narrative_returns_none_when_nothing_cached(pool):
-    await _seed_league_state(pool, week=6)
+async def test_get_cached_weekly_narrative_returns_none_when_nothing_cached(pool, monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "final"})
     async with pool.acquire() as conn:
         result = await narrative_engine.get_cached_weekly_narrative(conn, TEST_SEASON, 5, DEFAULT_LEAGUE_ID)
     assert result is None
 
 
-async def test_get_cached_weekly_narrative_returns_text_and_kind_once_cached(pool):
-    await _seed_league_state(pool, week=6)
+async def test_get_cached_weekly_narrative_returns_text_and_kind_once_cached(pool, monkeypatch):
+    _mock_week_scoreboard(monkeypatch, {5: "final"})
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO weekly_narratives (season, week, league_id, kind, text, model) "
@@ -275,13 +302,14 @@ async def test_get_cached_weekly_narrative_returns_text_and_kind_once_cached(poo
 
 
 async def test_generate_weekly_recap_returns_empty_for_a_week_with_no_matchups(pool):
-    await _seed_league_state(pool, week=6)
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, 16, DEFAULT_LEAGUE_ID)
     assert result == {"weekly_narrative": None, "matchup_narratives": {}, "status": "no_matchups"}
 
 
 async def test_generate_weekly_recap_fills_matchup_and_weekly_narratives_then_caches(pool, monkeypatch):
+    week = 5
+    _mock_week_scoreboard(monkeypatch, {week: "final"})  # week 5 is genuinely over — recap-eligible
     calls = []
 
     def fake_generate_narrative(system_prompt, facts, max_tokens=300):
@@ -291,11 +319,9 @@ async def test_generate_weekly_recap_fills_matchup_and_weekly_narratives_then_ca
     monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
     monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
 
-    week = 5
     team_a, team_b = await _seed_two_teams_with_matchup(
         pool, "fill", week, home_score=120.0, away_score=90.0
     )
-    await _seed_league_state(pool, week=week + 1)  # league has moved past week 5 — recap-eligible
 
     async with pool.acquire() as conn:
         matchup_id = await conn.fetchval(
@@ -324,6 +350,8 @@ async def test_generate_weekly_recap_fills_matchup_and_weekly_narratives_then_ca
 
 
 async def test_generate_weekly_recap_preview_for_an_upcoming_week_includes_standings_context(pool, monkeypatch):
+    week = 7
+    _mock_week_scoreboard(monkeypatch, {week: "not_started"})  # week 7 hasn't started yet — preview-eligible
     calls = []
 
     def fake_generate_narrative(system_prompt, facts, max_tokens=300):
@@ -333,9 +361,7 @@ async def test_generate_weekly_recap_preview_for_an_upcoming_week_includes_stand
     monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
     monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
 
-    week = 7
     await _seed_two_teams_with_matchup(pool, "preview", week, home_score=0.0, away_score=0.0)
-    await _seed_league_state(pool, week=week - 1)  # week 7 hasn't started yet — preview-eligible
 
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
@@ -346,11 +372,11 @@ async def test_generate_weekly_recap_preview_for_an_upcoming_week_includes_stand
 
 
 async def test_generate_weekly_recap_without_api_key_fills_nothing_new(pool, monkeypatch):
+    week = 9
+    _mock_week_scoreboard(monkeypatch, {week: "final"})
     monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", None)
 
-    week = 9
     await _seed_two_teams_with_matchup(pool, "nokey", week, home_score=100.0, away_score=80.0)
-    await _seed_league_state(pool, week=week + 1)
 
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
@@ -361,21 +387,41 @@ async def test_generate_weekly_recap_without_api_key_fills_nothing_new(pool, mon
 async def test_generate_weekly_recap_reports_not_eligible_while_the_week_is_still_live(pool, monkeypatch):
     """2026-09-15 real production bug: a commissioner hit "Generate This
     Week's Recap" for a week whose real NFL games had already gone
-    final, but the scoreboard's own week.number (get_real_current_week)
-    hadn't rolled over to the next week yet — league_state.current_week
-    still equals this week, so _resolve_weekly_kind returns None and
-    nothing is generated. The button gave zero feedback; this asserts
-    the response now says why, so the frontend can show it instead of
-    silently doing nothing."""
+    final, but league_state.current_week (fed by ESPN's own public
+    scoreboard week.number field) hadn't rolled over yet — so the old
+    current_week-based eligibility check refused to generate anything
+    and gave zero feedback. Fixed by checking the target week's own
+    real game data directly (_week_completion) instead of that other,
+    unreliable counter — this test now covers the genuinely-still-live
+    case that check still correctly refuses."""
+    _mock_week_scoreboard(monkeypatch, {11: "in_progress"})
     monkeypatch.setattr(narrative_engine, "generate_narrative", lambda *a, **k: "should never be called")
     monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
 
     week = 11
     await _seed_two_teams_with_matchup(pool, "live", week, home_score=120.0, away_score=95.0)
-    await _seed_league_state(pool, week=week)  # league hasn't moved past this week yet
 
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
 
     assert result["weekly_narrative"] is None
     assert result["status"] == "not_eligible"
+
+
+async def test_generate_weekly_recap_becomes_eligible_from_real_completion_even_without_current_week(pool, monkeypatch):
+    """The actual regression this whole fix is for: a week whose real
+    games are all Final must be recap-eligible even when
+    league_state.current_week (never touched in this test at all) has
+    not rolled over past it."""
+    week = 13
+    _mock_week_scoreboard(monkeypatch, {week: "final"})
+    monkeypatch.setattr(narrative_engine, "generate_narrative", lambda *a, **k: "Real recap text.")
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    await _seed_two_teams_with_matchup(pool, "no-current-week", week, home_score=88.0, away_score=77.0)
+
+    async with pool.acquire() as conn:
+        result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    assert result["status"] == "generated"
+    assert result["weekly_narrative"] == {"text": "Real recap text.", "kind": "recap"}
