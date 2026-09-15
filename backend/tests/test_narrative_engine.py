@@ -278,7 +278,7 @@ async def test_generate_weekly_recap_returns_empty_for_a_week_with_no_matchups(p
     await _seed_league_state(pool, week=6)
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, 16, DEFAULT_LEAGUE_ID)
-    assert result == {"weekly_narrative": None, "matchup_narratives": {}}
+    assert result == {"weekly_narrative": None, "matchup_narratives": {}, "status": "no_matchups"}
 
 
 async def test_generate_weekly_recap_fills_matchup_and_weekly_narratives_then_caches(pool, monkeypatch):
@@ -355,4 +355,27 @@ async def test_generate_weekly_recap_without_api_key_fills_nothing_new(pool, mon
     async with pool.acquire() as conn:
         result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
 
-    assert result == {"weekly_narrative": None, "matchup_narratives": {}}
+    assert result == {"weekly_narrative": None, "matchup_narratives": {}, "status": "not_configured"}
+
+
+async def test_generate_weekly_recap_reports_not_eligible_while_the_week_is_still_live(pool, monkeypatch):
+    """2026-09-15 real production bug: a commissioner hit "Generate This
+    Week's Recap" for a week whose real NFL games had already gone
+    final, but the scoreboard's own week.number (get_real_current_week)
+    hadn't rolled over to the next week yet — league_state.current_week
+    still equals this week, so _resolve_weekly_kind returns None and
+    nothing is generated. The button gave zero feedback; this asserts
+    the response now says why, so the frontend can show it instead of
+    silently doing nothing."""
+    monkeypatch.setattr(narrative_engine, "generate_narrative", lambda *a, **k: "should never be called")
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+
+    week = 11
+    await _seed_two_teams_with_matchup(pool, "live", week, home_score=120.0, away_score=95.0)
+    await _seed_league_state(pool, week=week)  # league hasn't moved past this week yet
+
+    async with pool.acquire() as conn:
+        result = await narrative_engine.generate_weekly_recap(conn, TEST_SEASON, week, DEFAULT_LEAGUE_ID)
+
+    assert result["weekly_narrative"] is None
+    assert result["status"] == "not_eligible"

@@ -31,12 +31,21 @@ export function WeekRecapSection({
     setBusy(true);
     setError(null);
     try {
-      await generateWeeklyRecap(season, week);
+      const result = await generateWeeklyRecap(season, week);
       // Re-fetches this whole-week narrative AND every matchup's own
       // narrative (MatchupCard already renders matchup.narrative) in
       // one server round-trip, rather than prop-drilling the
-      // generate-endpoint's result into two different components.
+      // generate-endpoint's result into two different components. Do
+      // this even when nothing new was generated below — matchup
+      // narratives can still have been filled from cache.
       router.refresh();
+      if (result.status === "not_eligible") {
+        setError("This week isn't over yet — the recap unlocks once the NFL rolls over to next week.");
+      } else if (result.status === "not_configured") {
+        setError("The AI recap feature isn't set up yet (missing API key).");
+      } else if (result.status === "no_matchups") {
+        setError("Nothing scheduled this week — there's no recap to generate.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't generate the recap");
     } finally {

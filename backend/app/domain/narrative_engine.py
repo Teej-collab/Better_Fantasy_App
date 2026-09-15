@@ -464,7 +464,7 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
     week_context = await build_week_matchup_context(conn, season, week, league_id)
     matchups = week_context["matchups"]
     if not matchups:
-        return {"weekly_narrative": None, "matchup_narratives": {}}
+        return {"weekly_narrative": None, "matchup_narratives": {}, "status": "no_matchups"}
 
     matchup_narratives: dict[int, str] = {}
     for m in matchups:
@@ -472,10 +472,18 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
         if text is not None:
             matchup_narratives[m["matchup_id"]] = text
 
+    # Reported back to the caller so a commissioner clicking "Generate"
+    # on a week that's still live (kind is None — see _resolve_weekly_kind)
+    # sees *why* nothing came back instead of the button silently
+    # no-opping (2026-09-15: exactly this — commissioner hit the button
+    # on a week whose games had already gone final, but the real NFL
+    # week hadn't rolled over yet, and got zero feedback).
     weekly_narrative = None
+    status = "not_eligible"
     current_week = await league_queries.get_cached_current_week(conn, season)
     kind = _resolve_weekly_kind(week, current_week)
     if kind is not None:
+        status = "not_configured"
         text = await narrative_queries.get_cached_weekly_narrative(conn, season, week, league_id, kind)
         if text is None and ANTHROPIC_API_KEY:
             system_prompt = WEEKLY_RECAP_PROMPT if kind == "recap" else WEEKLY_PREVIEW_PROMPT
@@ -484,5 +492,6 @@ async def generate_weekly_recap(conn, season: int, week: int, league_id: int = D
             await narrative_queries.save_weekly_narrative(conn, season, week, league_id, kind, text, MODEL)
         if text is not None:
             weekly_narrative = {"text": text, "kind": kind}
+            status = "generated"
 
-    return {"weekly_narrative": weekly_narrative, "matchup_narratives": matchup_narratives}
+    return {"weekly_narrative": weekly_narrative, "matchup_narratives": matchup_narratives, "status": status}

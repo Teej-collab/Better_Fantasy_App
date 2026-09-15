@@ -619,6 +619,12 @@ export function getWeeklyRecap(season: number, week: number, sessionCookie: stri
 export type GenerateWeeklyRecapResult = {
   weekly_narrative: WeeklyNarrative | null;
   matchup_narratives: Record<number, string>;
+  // Why weekly_narrative came back null, so the button can explain
+  // itself instead of silently doing nothing: "generated" means it (or
+  // a cached copy) is ready; "not_eligible" means the league hasn't
+  // moved past this week yet; "not_configured" means no ANTHROPIC_API_KEY;
+  // "no_matchups" means there's nothing scheduled this week at all.
+  status: "generated" | "not_eligible" | "not_configured" | "no_matchups";
 };
 
 // Commissioner-only bulk action (WeekRecapGenerateButton.tsx) — fills
