@@ -141,19 +141,17 @@ export function MatchupCarousel({
       <MatchupSwitcher matchups={matchups} activeIndex={activeIndex} onSelect={(i) => scrollToIndex(i)} />
       <div
         ref={scrollRef}
-        // touch-pan-x (2026-09 fix, real report: swiping between
-        // matchups visibly "dropped" the page down slightly mid-swipe):
-        // the browser's default touch-action ("auto") tries to guess
-        // horizontal-swipe-this vs. vertical-scroll-the-page from the
-        // gesture's initial movement, and that guess isn't clean — a
-        // mostly-horizontal drag still let a little vertical scroll
-        // bleed through. pan-x tells it up front that THIS element only
-        // ever claims horizontal drags; a vertical drag starting on it
-        // is handed straight to the page's own vertical scroll, never
-        // partially both. overscroll-x-contain separately stops a
-        // swipe that hits either edge from chaining into the browser's
-        // own edge-swipe navigation.
-        className="-mx-4 flex touch-pan-x snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // 2026-09-15 revert: touch-pan-x was meant to stop a little
+        // vertical bleed during a horizontal swipe (see git history),
+        // but in real use it blocked vertical scrolling on this element
+        // ENTIRELY on mobile — this panel is effectively the whole page
+        // (score header, lineups, bench), so that made the whole page
+        // unscrollable, a far worse regression than the cosmetic jank
+        // it was fixing. Back to the browser's default gesture
+        // disambiguation. overscroll-x-contain alone (harmless, x-axis
+        // only) still stops a swipe that hits either edge from chaining
+        // into the browser's own edge-swipe navigation.
+        className="-mx-4 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {matchups.map((m, i) => (
           <div
