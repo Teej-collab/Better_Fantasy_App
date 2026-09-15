@@ -25,6 +25,18 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   regardless of day/time; it's a lightweight, unauthenticated, already
   widely-used-elsewhere endpoint, unlike the fantasy API this gate
   protects.
+- Week settlement (ENABLE_WEEK_SETTLEMENT_SCHEDULER, 2026-09): the one
+  job in this file that runs regardless of is_nfl_game_live — every
+  other week-scoped job here goes completely dark the instant the last
+  live game of the week ends, leaving chug debts, the chug countdown,
+  and the weekly recap's own eligibility all depending on the once-
+  daily full sync to eventually catch up (previously up to 24h, at an
+  unpredictable time). Polls the same free, public NFL scoreboard call
+  every few minutes all week; the real settlement work (re-checking
+  chug debts/the Monday-deadline doubling for the week that just ended,
+  and auto-generating its now-eligible weekly recap) only actually
+  fires once per real week rollover — see _run_week_settlement_job's
+  own docstring.
 - Gamecast (ENABLE_GAMECAST_SCHEDULER): polls the configured live-NFL-
   game provider (Sportradar, or the mock simulation — see app/gamecast/
   providers/__init__.py) for every currently-subscribed game, updates
@@ -118,7 +130,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import _require
 from app.db import get_pool
-from app.domain import draft_engine, weekly_stats
+from app.domain import draft_engine, narrative_engine, weekly_stats
+from app.domain.chug_debt import compute_chug_debts_for_single_week
+from app.domain.chug_standing import accrue_weekly_debt_for_single_week, ensure_chug_deadline_settled
 from app.domain.draft_exceptions import DraftError
 from app.domain.draft_grades import compute_draft_grades
 from app.domain.draft_narratives import generate_draft_narratives
@@ -138,7 +152,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
-from app.providers.sync import run_full_sync, run_live_sync
+from app.providers.sync import run_full_sync, run_live_sync, update_league_state
 from app.domain import waivers
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
@@ -189,6 +203,85 @@ async def _run_live_sync_job():
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
     record_job_run("live_sync")
+
+
+async def _run_week_settlement_job():
+    """Catches the real NFL week rollover the moment it happens,
+    independent of is_nfl_game_live — real report (2026-09): chug debts,
+    the chug countdown, and the weekly recap's own eligibility gate
+    (narrative_engine._resolve_weekly_kind, keyed off this same cached
+    current_week) all only finalize once a week is genuinely over, but
+    every OTHER job that would refresh/settle that state (live sync
+    above, weekly compute below) is gated to run only while a real NFL
+    game is live somewhere. The instant Monday Night Football's last
+    game ends, those jobs go dark until Thursday's next kickoff — the
+    only thing left to catch up was the once-a-day full sync
+    (SYNC_INTERVAL_HOURS, default 24h, at whatever time of day the
+    scheduler happened to start), not the "by Tuesday morning" this
+    league's own Jeffrey's Rule copy already promises.
+
+    Cheap enough to run often regardless of day/time: get_real_current_
+    week() is the same lightweight, public, keyless NFL scoreboard call
+    every other gate here already treats as free. The real (ESPN-
+    hitting, DB-writing) settlement work below only actually runs once
+    per rollover — a cached league_state.current_week that already
+    matches the freshly-fetched real one means nothing has changed
+    since the last successful tick, so this returns immediately rather
+    than redoing full-league settlement every few minutes for the rest
+    of the week's dead window.
+    """
+    espn_config = ESPNConfig()
+    season = espn_config.active_season
+    real_week = await get_real_current_week()
+    if real_week is None:
+        return
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        cached_week = await league_queries.get_cached_current_week(conn, season)
+
+    if cached_week == real_week:
+        return
+
+    await update_league_state(pool, season, real_week)
+
+    # The week that JUST wrapped — is_week_final-gated internally by
+    # every one of the settlement steps below, so calling this even a
+    # little early (before real_week has actually finished rolling over
+    # everywhere) is always safe, just a no-op.
+    settle_week = real_week - 1
+    if settle_week < 1:
+        return
+
+    async with pool.acquire() as conn:
+        league_rows = await conn.fetch(
+            "SELECT DISTINCT league_id FROM teams_by_season WHERE season = $1 ORDER BY league_id",
+            season,
+        )
+
+    games = await get_nfl_scoreboard()
+    for row in league_rows:
+        league_id = row["league_id"]
+        try:
+            await compute_chug_debts_for_single_week(pool, season, settle_week, league_id)
+            await accrue_weekly_debt_for_single_week(pool, season, settle_week, league_id)
+            await ensure_chug_deadline_settled(pool, season, settle_week, games, league_id=league_id)
+            # Idempotent — checks the cache before ever calling the real
+            # Anthropic API (see narrative_engine.py), so this is a fast
+            # no-op on every tick after the first successful generation,
+            # never a second real LLM call or cost.
+            async with pool.acquire() as conn:
+                await narrative_engine.generate_weekly_recap(conn, season, settle_week, league_id)
+            logger.info(
+                "Week settlement finished (season=%s week=%s league_id=%s)", season, settle_week, league_id
+            )
+        except Exception:
+            logger.exception(
+                "Week settlement failed (season=%s week=%s league_id=%s)", season, settle_week, league_id
+            )
+            continue
+
+    record_job_run("week_settlement")
 
 
 async def _run_gamecast_poll_job():
@@ -625,6 +718,19 @@ def start_scheduler():
             "Live ESPN sync scheduler started (every %d seconds, only during NFL game windows)",
             interval_seconds,
         )
+        started_any = True
+
+    if os.getenv("ENABLE_WEEK_SETTLEMENT_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        # See _run_week_settlement_job's own docstring for why this is
+        # a separate job from live sync above rather than just widening
+        # that one's is_nfl_game_live gate: this needs to keep checking
+        # all week long (not just during a live game window), but the
+        # real settlement work it does only actually runs once per real
+        # rollover, so a several-minute interval both catches up
+        # promptly and stays cheap the rest of the time.
+        interval_seconds = int(os.getenv("WEEK_SETTLEMENT_INTERVAL_SECONDS", "300"))
+        _scheduler.add_job(_run_week_settlement_job, "interval", seconds=interval_seconds, id="week_settlement")
+        logger.info("Week settlement scheduler started (every %d seconds, all week)", interval_seconds)
         started_any = True
 
     if os.getenv("ENABLE_GAMECAST_SCHEDULER", "").lower() in ("1", "true", "yes"):

@@ -13,6 +13,7 @@ import {
   getStandings,
   getWeekMatchupContext,
   getWeeklyAwards,
+  getWeeklyRecap,
   isNflGameLive,
   buildLeagueTickerItems,
   getActiveLeagueName,
@@ -31,6 +32,7 @@ import {
   type WeekMatchupContextItem,
   type WeekPowerRanking,
   type WeeklyAwards,
+  type WeeklyNarrative,
   type YourWeek,
 } from "@/lib/api";
 import { MovementBadge } from "@/components/MovementBadge";
@@ -119,6 +121,7 @@ export default async function HomePage() {
   let myChug: ChugLeaderboardRow | null = null;
   let chugDeadline: ChugDeadline | null = null;
   let powerRankings: WeekPowerRanking[] = [];
+  let weeklyRecap: WeeklyNarrative | null = null;
 
   // Every one of these now requires real active-league membership
   // (require_league_access, 2026-09 audit) — a signed-in account with
@@ -145,6 +148,7 @@ export default async function HomePage() {
       chugRes,
       powerRankingsRes,
       chugDeadlineRes,
+      weeklyRecapRes,
     ] = await Promise.all([
       getStandings(season, sessionCookie),
       getWeeklyAwards(season, week, sessionCookie),
@@ -154,11 +158,20 @@ export default async function HomePage() {
       getChugLeaderboard(sessionCookie, season),
       getWeekPowerRankings(season, week, sessionCookie),
       wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
+      // The week that just wrapped, not the active `week` itself (which
+      // getWeeklyRecap would only ever resolve to "recap" for once the
+      // league has moved past it, i.e. one week later than this) — null
+      // (rendered nowhere) until the scheduler's own week-settlement job
+      // has actually generated it (app/scheduler.py's
+      // _run_week_settlement_job, real NFL week rollover ->
+      // auto-generate).
+      week !== null && week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
     ]);
     standings = standingsRes.standings;
     weeklyAwards = awardsRes;
     weekMatchups = matchupContextRes.matchups;
     powerRankings = powerRankingsRes.rankings;
+    weeklyRecap = weeklyRecapRes.narrative;
     weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
     topRivalries = [...rivalriesRes.rivalries]
       .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
@@ -441,6 +454,9 @@ export default async function HomePage() {
       <section className="flex flex-col gap-2">
         <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
         <AwardsPreview awards={weeklyAwards} />
+        {weeklyRecap && season !== null && week !== null && (
+          <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={week - 1} />
+        )}
       </section>
     );
   }
@@ -465,6 +481,7 @@ export default async function HomePage() {
           rivalryGamesThisWeek={rivalryGamesThisWeek}
           topRivalries={topRivalries}
           weeklyAwards={weeklyAwards}
+          weeklyRecap={weeklyRecap}
           liveNflGames={liveNflGames}
           gamecastGames={gamecastGames}
           draftCountdownOrChugCard={cards.draftCountdown ?? null}
@@ -819,6 +836,47 @@ export function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// A short teaser for the week that just wrapped's whole-week recap
+// (app/domain/narrative_engine.py's WEEKLY_RECAP_PROMPT), right under
+// This Week's Awards — the owner's own call on where it belongs, once
+// there's actually one to show (null until the scheduler's week-
+// settlement job has auto-generated it; see getWeeklyRecap's own
+// comment above). Truncated at a word boundary rather than the full
+// three-to-five-paragraph write-up — the full text already has a
+// permanent home on the week's own page (WeekRecapSection.tsx), this is
+// just enough to make someone tap through.
+const RECAP_TEASER_MAX_CHARS = 220;
+
+export function WeeklyRecapTeaser({
+  recap,
+  season,
+  week,
+}: {
+  recap: WeeklyNarrative;
+  season: number;
+  week: number;
+}) {
+  const flat = recap.text.replace(/\s+/g, " ").trim();
+  const truncated = flat.length > RECAP_TEASER_MAX_CHARS;
+  const snippet = truncated ? flat.slice(0, RECAP_TEASER_MAX_CHARS).replace(/\s+\S*$/, "") : flat;
+
+  return (
+    <Link
+      href={`/seasons/${season}/weeks/${week}`}
+      className="flex flex-col gap-1 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-transform active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none"
+    >
+      <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+        Week {week} Recap
+      </span>
+      <span className="text-sm text-black/70 dark:text-white/70">
+        {snippet}
+        {truncated && "… "}
+        {truncated && <span className="font-medium text-black dark:text-white">Read the full recap →</span>}
+      </span>
+    </Link>
   );
 }
 

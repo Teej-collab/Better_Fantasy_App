@@ -4,7 +4,7 @@ roster) into a real per-week table — see migration e8bedf1ab4b9 for the
 full reasoning. snapshot_week is a full replace (delete + reinsert) for
 one (season, week), not an additive upsert: called on every full/live
 sync tick for whatever week is currently the season's actual current
-week (app/providers/sync.py's _update_league_state), it keeps that
+week (app/providers/sync.py's update_league_state), it keeps that
 week's rows exactly mirroring current_rosters — additions AND
 removals — right up until the season rolls over to the next week, at
 which point nothing calls snapshot_week for that week number again and

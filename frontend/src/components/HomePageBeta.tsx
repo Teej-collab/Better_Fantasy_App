@@ -8,9 +8,10 @@ import {
   type WeekMatchupContextItem,
   type WeekPowerRanking,
   type WeeklyAwards,
+  type WeeklyNarrative,
   type YourWeek,
 } from "@/lib/api";
-import { AwardsPreview } from "@/app/(home)/page";
+import { AwardsPreview, WeeklyRecapTeaser } from "@/app/(home)/page";
 import { MovementBadge } from "@/components/MovementBadge";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
@@ -52,6 +53,7 @@ export function HomePageBeta({
   rivalryGamesThisWeek,
   topRivalries,
   weeklyAwards,
+  weeklyRecap,
   liveNflGames,
   gamecastGames,
   draftCountdownOrChugCard,
@@ -70,6 +72,7 @@ export function HomePageBeta({
   rivalryGamesThisWeek: WeekMatchupContextItem[];
   topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
+  weeklyRecap: WeeklyNarrative | null;
   liveNflGames: NflGame[];
   gamecastGames: GamecastLiveGameSummary[];
   draftCountdownOrChugCard: ReactNode;
@@ -154,6 +157,9 @@ export function HomePageBeta({
         <section className="flex flex-col gap-2">
           <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
           <AwardsPreview awards={weeklyAwards} />
+          {weeklyRecap && (
+            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={currentWeek - 1} />
+          )}
         </section>
       )}
 

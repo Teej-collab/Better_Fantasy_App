@@ -49,7 +49,7 @@ from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_we
 from app.queries import roster_history as roster_history_queries
 
 
-async def _update_league_state(pool, season: int, current_week: int) -> None:
+async def update_league_state(pool, season: int, current_week: int) -> None:
     """Caches current_week so pages can read it without hitting ESPN live
     on every request — see league_state migration for the reasoning.
     Also mirrors current_rosters into roster_history for this week (see
@@ -78,7 +78,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
     # Fetched and cached up front now (not after the per-season loop,
     # like before) so end_season's roster_history snapshot already
     # exists by the time that season's boom_bust/bench_crimes steps run
-    # in the loop below — see _update_league_state's own docstring.
+    # in the loop below — see update_league_state's own docstring.
     # end_season is always the active season in every real caller
     # (admin endpoint, scheduler) — historical backfill seasons don't
     # have a meaningful "current week" to cache. Best-effort: one sync
@@ -86,7 +86,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
     try:
         current_week = await get_real_current_week()
         if current_week is not None:
-            await _update_league_state(pool, end_season, current_week)
+            await update_league_state(pool, end_season, current_week)
     except Exception as e:
         results.setdefault(end_season, {})["league_state"] = {"status": "failed", "detail": str(e)}
         current_week = None
@@ -139,9 +139,9 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
     # what to live-sync — reuse it, no extra ESPN call. Done before the
     # step loop below (not after, like before) so this week's
     # roster_history snapshot exists before boom_bust/bench_crimes run
-    # against it — see _update_league_state's own docstring.
+    # against it — see update_league_state's own docstring.
     try:
-        await _update_league_state(pool, season, week)
+        await update_league_state(pool, season, week)
         results["league_state"] = {"status": "success", "count": week}
     except Exception as e:
         results["league_state"] = {"status": "failed", "detail": str(e)}
