@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type Remaining = { days: number; hours: number; minutes: number; seconds: number };
@@ -60,7 +61,16 @@ export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPa
       </div>
 
       {reached ? (
-        <div className="rounded-lg bg-white/5 py-3 text-center text-lg font-bold">Chug time! 🍺</div>
+        // 2026-09-15 ask: "love the chug time button, make it smaller
+        // and have it link to uploading your video" — /chug renders
+        // ChugUpload right at the top of the page for a signed-in
+        // member, so this lands directly on the upload flow.
+        <Link
+          href="/chug"
+          className="rounded-lg bg-white/5 py-2 text-center text-sm font-bold transition-colors hover:bg-white/10 active:bg-white/15"
+        >
+          Chug time! 🍺 Upload your video →
+        </Link>
       ) : (
         <div className="grid grid-cols-4 gap-2">
           {(

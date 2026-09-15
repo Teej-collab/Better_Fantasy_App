@@ -49,6 +49,7 @@ import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { LiveTicker } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
+import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
 import { findGamecastId, getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import {
@@ -61,6 +62,34 @@ import {
 // Lower = shown first — same escalating hierarchy as the /weekend signs'
 // tier-colored badges (MatchupCard.tsx's TIER_BADGE_CLASS).
 const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
+
+// A week with nothing to award yet still comes back as a real
+// WeeklyAwards object, every field null/empty rather than the request
+// itself failing — this is what "no real data" looks like, used to
+// decide whether to fall back to the previous week's awards below.
+const EMPTY_WEEKLY_AWARDS: WeeklyAwards = {
+  overachiever: null,
+  meltdown: null,
+  biggest_bench_crime: null,
+  clutch: null,
+  choke: null,
+  boom_leaders: [],
+  bust_leaders: [],
+  game_of_the_week: null,
+};
+
+function hasAwardsData(awards: WeeklyAwards): boolean {
+  return (
+    awards.game_of_the_week !== null ||
+    awards.overachiever !== null ||
+    awards.meltdown !== null ||
+    awards.biggest_bench_crime !== null ||
+    awards.clutch !== null ||
+    awards.choke !== null ||
+    awards.boom_leaders.length > 0 ||
+    awards.bust_leaders.length > 0
+  );
+}
 
 export default async function HomePage() {
   const cookieStore = await cookies();
@@ -127,6 +156,7 @@ export default async function HomePage() {
   let powerRankings: WeekPowerRanking[] = [];
   let weeklyRecap: WeeklyNarrative | null = null;
   let weeklyRecapWeek: number | null = null;
+  let weeklyAwardsWeek: number | null = null;
   let chugFeed: ChugFeedEntry[] = [];
 
   // Every one of these now requires real active-league membership
@@ -148,6 +178,7 @@ export default async function HomePage() {
     const [
       standingsRes,
       awardsRes,
+      prevWeekAwardsRes,
       matchupContextRes,
       rivalriesRes,
       leagueTicker,
@@ -160,6 +191,16 @@ export default async function HomePage() {
     ] = await Promise.all([
       getStandings(season, sessionCookie),
       getWeeklyAwards(season, week, sessionCookie),
+      // Same idea as the recap's own week/week-1 pair below: a fresh
+      // week (Tue/Wed after rollover, before its own Thursday games)
+      // has nothing real to award yet — falling back to the week that
+      // just wrapped keeps real awards on screen right up until the new
+      // week has its own (2026-09-15 ask: "weekly awards from the
+      // previous week should be displayed until Thursday" — this is
+      // data-driven rather than a hardcoded day, so it naturally holds
+      // exactly until the new week's first real games start producing
+      // award-worthy data, whenever that happens to land).
+      week > 1 ? getWeeklyAwards(season, week - 1, sessionCookie) : Promise.resolve(EMPTY_WEEKLY_AWARDS),
       getWeekMatchupContext(season, week, sessionCookie),
       listRivalries(sessionCookie),
       getWeekLeagueTicker(season, week, sessionCookie),
@@ -183,7 +224,16 @@ export default async function HomePage() {
       getChugFeed(sessionCookie, season),
     ]);
     standings = standingsRes.standings;
-    weeklyAwards = awardsRes;
+    // Prefer the active week's own awards once it has any real data;
+    // fall back to the week that just wrapped otherwise (see the
+    // prevWeekAwardsRes fetch above).
+    if (hasAwardsData(awardsRes)) {
+      weeklyAwards = awardsRes;
+      weeklyAwardsWeek = week;
+    } else if (hasAwardsData(prevWeekAwardsRes)) {
+      weeklyAwards = prevWeekAwardsRes;
+      weeklyAwardsWeek = week - 1;
+    }
     weekMatchups = matchupContextRes.matchups;
     powerRankings = powerRankingsRes.rankings;
     // Prefer the active week's own recap once eligible (see the
@@ -367,10 +417,11 @@ export default async function HomePage() {
   if (otherMatchups.length > 0) {
     cards.matchups = (
       <section className="flex flex-col gap-2">
-        <SectionHeader
-          title="Other Matchups"
-          href={season !== null && week !== null ? `/seasons/${season}/weeks/${week}` : "/standings"}
-        />
+        {/* Lands on the carousel already positioned on another matchup
+            (see MatchupCarousel.tsx) — swiping from there reaches every
+            other matchup this week instantly, replacing the old
+            dedicated week-list page this used to link to. */}
+        <SectionHeader title="Other Matchups" href={`/matchups/${otherMatchups[0].matchup_id}`} />
         <ul
           className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
           style={panelGlowStyle(SECTION_COLORS.matchups)}
@@ -475,14 +526,17 @@ export default async function HomePage() {
     );
   }
 
-  if (weekPlayed && weeklyAwards && season !== null && week !== null) {
+  if (weeklyAwards && season !== null && week !== null) {
     cards.awards = (
       <section className="flex flex-col gap-2">
-        <SectionHeader title="This Week's Awards" href={`/seasons/${season}/awards`} />
+        <SectionHeader
+          title={weeklyAwardsWeek === week ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
+          href={`/seasons/${season}/awards`}
+        />
         <AwardsPreview awards={weeklyAwards} />
         {season !== null && week !== null && (
           weeklyRecap && weeklyRecapWeek !== null ? (
-            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} />
+            <WeeklyRecapTeaser recap={weeklyRecap} week={weeklyRecapWeek} />
           ) : (
             // Nothing generated yet (the scheduler's own week-settlement
             // job auto-generates this once the week is over — see
@@ -517,13 +571,13 @@ export default async function HomePage() {
           activeLeagueName={activeLeagueName}
           standings={standings}
           powerRankings={powerRankings}
-          weekPlayed={weekPlayed}
           season={season}
           otherMatchups={otherMatchups}
           currentWeek={week}
           rivalryGamesThisWeek={rivalryGamesThisWeek}
           topRivalries={topRivalries}
           weeklyAwards={weeklyAwards}
+          weeklyAwardsWeek={weeklyAwardsWeek}
           weeklyRecap={weeklyRecap}
           weeklyRecapWeek={weeklyRecapWeek}
           isCommissioner={me.is_commissioner}
@@ -883,47 +937,6 @@ export function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
         </div>
       ))}
     </div>
-  );
-}
-
-// A short teaser for the week that just wrapped's whole-week recap
-// (app/domain/narrative_engine.py's WEEKLY_RECAP_PROMPT), right under
-// This Week's Awards — the owner's own call on where it belongs, once
-// there's actually one to show (null until the scheduler's week-
-// settlement job has auto-generated it; see getWeeklyRecap's own
-// comment above). Truncated at a word boundary rather than the full
-// three-to-five-paragraph write-up — the full text already has a
-// permanent home on the week's own page (WeekRecapSection.tsx), this is
-// just enough to make someone tap through.
-const RECAP_TEASER_MAX_CHARS = 220;
-
-export function WeeklyRecapTeaser({
-  recap,
-  season,
-  week,
-}: {
-  recap: WeeklyNarrative;
-  season: number;
-  week: number;
-}) {
-  const flat = recap.text.replace(/\s+/g, " ").trim();
-  const truncated = flat.length > RECAP_TEASER_MAX_CHARS;
-  const snippet = truncated ? flat.slice(0, RECAP_TEASER_MAX_CHARS).replace(/\s+\S*$/, "") : flat;
-
-  return (
-    <Link
-      href={`/seasons/${season}/weeks/${week}`}
-      className="flex flex-col gap-1 rounded-lg border border-black/10 bg-black/[0.015] p-3 shadow-sm transition-transform active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none"
-    >
-      <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-        Week {week} Recap
-      </span>
-      <span className="text-sm text-black/70 dark:text-white/70">
-        {snippet}
-        {truncated && "… "}
-        {truncated && <span className="font-medium text-black dark:text-white">Read the full recap →</span>}
-      </span>
-    </Link>
   );
 }
 

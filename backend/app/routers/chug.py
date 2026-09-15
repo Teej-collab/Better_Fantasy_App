@@ -13,6 +13,8 @@ import logging
 import os
 import tempfile
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -27,17 +29,18 @@ from app.auth.league_context import (
 from app.auth.session import decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
-from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
+from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import clear_fine, record_completed_chug, undo_week
 from app.notifications.chug_events import notify_chug_posted
 from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
-from app.providers.nfl_scoreboard import get_nfl_scoreboard
+from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
 
 logger = logging.getLogger(__name__)
+_ET = ZoneInfo("America/New_York")
 
 router = APIRouter(prefix="/chug", tags=["chug"])
 
@@ -147,15 +150,37 @@ async def chug_deadline(league_id: int = Depends(require_league_access), pool=De
     days before anyone could possibly owe a chug yet. `deadline` is now
     null until at least one row exists in chug_debts for this league/
     season — the same table (and the same "nothing owed yet" concept)
-    every other /chug endpoint already reads from."""
+    every other /chug endpoint already reads from.
+
+    2026-09-15 fix, real report: once a week's deadline was actually
+    settled, this kept reading get_nfl_scoreboard() — ESPN's own public
+    "current week" endpoint, which is stuck on the just-finished week
+    until ESPN itself flips it (the same unreliable signal fixed
+    elsewhere for narrative/settlement) — and computed a "now"-anchored
+    deadline off it, which on a Tue/Wed always resolves to the Monday
+    that JUST passed. That showed "chug time" the entire week even
+    though the next real deadline was days away. Now prefers this
+    league's own cached current_week (already advanced past settlement
+    by the week-settlement job) and reads the Monday kickoff straight
+    out of THAT week's real schedule."""
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         any_debt_assigned = await conn.fetchval(
             "SELECT 1 FROM chug_debts WHERE season = $1 AND league_id = $2 LIMIT 1",
             active_season, league_id,
         )
-    if not any_debt_assigned:
-        return {"deadline": None, "is_past": False}
+        if not any_debt_assigned:
+            return {"deadline": None, "is_past": False}
+        cached_week = await league_queries.get_cached_current_week(conn, active_season)
+
+    deadline = None
+    if cached_week is not None:
+        week_games = await get_week_scoreboard(week=cached_week, year=active_season)
+        deadline = deadline_from_week_games(week_games)
+
+    if deadline is not None:
+        now_et = datetime.now(_ET)
+        return {"deadline": deadline.isoformat(), "is_past": now_et > deadline}
 
     games = await get_nfl_scoreboard()
     return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games)}

@@ -58,3 +58,34 @@ def get_mnf_deadline(games: list[dict], now: datetime | None = None) -> datetime
 def is_past_mnf_deadline(games: list[dict], now: datetime | None = None) -> bool:
     now_et = (now or datetime.now(_ET)).astimezone(_ET)
     return now_et > get_mnf_deadline(games, now_et)
+
+
+def deadline_from_week_games(games: list[dict]) -> datetime | None:
+    """The Monday-dated kickoff found directly inside a SPECIFIC week's
+    own game list — no guessing from `now`'s weekday at all. get_mnf_
+    deadline's `_relevant_monday` is deliberately calendar-anchored
+    (needed by chug_standing.ensure_chug_deadline_settled, which asks
+    "has THIS week's deadline passed as of right now") — but that same
+    calendar guess breaks the /chug/deadline endpoint's forward-looking
+    countdown: on a Tue/Wed after a week is already settled, it always
+    resolves to the Monday that JUST passed, never the upcoming one a
+    week away (real report, 2026-09-15: countdown showed "chug time"
+    the morning after MNF, even though the next real deadline was six
+    days out). Once the caller already knows which week to show (the
+    league's cached current_week, already advanced past settlement),
+    it can hand that week's own scoreboard here and get the right
+    Monday back regardless of what day it is today. Returns None if
+    this week's games don't include a Monday kickoff at all (rare
+    holiday-shaped schedule) so the caller can fall back."""
+    mondays: list[datetime] = []
+    for g in games:
+        raw_date = g.get("date")
+        if not raw_date:
+            continue
+        try:
+            kickoff = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).astimezone(_ET)
+        except ValueError:
+            continue
+        if kickoff.weekday() == 0:
+            mondays.append(kickoff)
+    return max(mondays) if mondays else None

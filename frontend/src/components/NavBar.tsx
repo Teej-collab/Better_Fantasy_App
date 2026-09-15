@@ -1,16 +1,12 @@
 import { cookies } from "next/headers";
 import {
   getActiveLeagueName,
-  getCurrentWeek,
   getMe,
   getMyPreferences,
   getMyWeek,
   getNflScoreboard,
   isNflGameLive,
-  listSeasons,
   matchupsHrefFor,
-  resolveWeek,
-  safeLatestSeason,
 } from "@/lib/api";
 import { BrandMark } from "@/components/BrandMark";
 import { PrimaryNav } from "@/components/nav/PrimaryNav";
@@ -47,25 +43,7 @@ export async function NavBar() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
 
-  // getCurrentWeek only ever needed listSeasons's own result
-  // (latestSeason) — it used to run as a fully separate hop AFTER the
-  // whole Promise.all below finished, even though it has no real
-  // dependency on getMe/myWeek/nflGames/myPreferences/activeLeagueName
-  // at all. Chaining it directly off listSeasons (not the whole
-  // Promise.all) and running that chain alongside the other five
-  // independent calls means its latency only stacks on top of
-  // listSeasons's own, not everything else's too (2026-09 load-time
-  // pass — this header renders on every single page in the app, so
-  // every hop removed here is felt everywhere, not just on Home).
-  const seasonAndWeek = listSeasons().then(async ({ seasons }) => {
-    const latestSeason = safeLatestSeason(seasons);
-    const { current_week } =
-      latestSeason !== null ? await getCurrentWeek(latestSeason) : { current_week: null as number | null };
-    return { latestSeason, currentWeek: current_week };
-  });
-
-  const [{ latestSeason, currentWeek }, me, myWeek, nflGames, myPreferences, activeLeagueName] = await Promise.all([
-    seasonAndWeek,
+  const [me, myWeek, nflGames, myPreferences, activeLeagueName] = await Promise.all([
     getMe(sessionCookie),
     getMyWeek(sessionCookie),
     getNflScoreboard(),
@@ -78,14 +56,15 @@ export async function NavBar() {
     getActiveLeagueName(sessionCookie),
   ]);
   const signedIn = me !== null;
-  const week = latestSeason !== null ? resolveWeek(currentWeek) : null;
   // Straight to the signed-in owner's own matchup (myWeek is already
-  // fetched above for the LIVE mark below) rather than the week's whole
-  // scoreboard list — "Matchup," singular, should mean exactly that.
-  // Falls back to the scoreboard list for every case with no single
-  // matchup to land on: signed out, not on a team, a bye week, or the
-  // season/draft hasn't produced a real matchup yet.
-  const matchupsHref = myWeek?.matchup ? `/matchups/${myWeek.matchup.matchup_id}` : matchupsHrefFor(latestSeason, week);
+  // fetched above for the LIVE mark below) rather than any week-
+  // agnostic scoreboard list — "Matchup," singular, should mean exactly
+  // that. Falls back to Standings (matchupsHrefFor) for every case with
+  // no single matchup to land on: signed out, not on a team, a bye
+  // week, or the season/draft hasn't produced a real matchup yet —
+  // 2026-09-15: no longer needs a season/week fetch of its own at all,
+  // now that fallback is a fixed destination (see that function).
+  const matchupsHref = myWeek?.matchup ? `/matchups/${myWeek.matchup.matchup_id}` : matchupsHrefFor();
 
   const myMatchupLive = Boolean(myWeek?.matchup?.started) && isNflGameLive(nflGames);
   const isGameDay = isNflGameLive(nflGames);

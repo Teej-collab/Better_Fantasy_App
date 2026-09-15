@@ -213,10 +213,15 @@ export function awardsHrefFor(latestSeason: number | null): string {
   return latestSeason !== null ? `/seasons/${latestSeason}/awards` : NO_SEASON_FALLBACK_HREF;
 }
 
-export function matchupsHrefFor(latestSeason: number | null, week: number | null): string {
-  return latestSeason !== null && week !== null
-    ? `/seasons/${latestSeason}/weeks/${week}`
-    : NO_SEASON_FALLBACK_HREF;
+// 2026-09-15: used to point at the dedicated /seasons/[season]/weeks/
+// [week] list page — that route is gone (Standings' own Scoreboard tab,
+// WeekScoreboardBrowser.tsx, replaces it), and there's no other single
+// week-agnostic "browse matchups" destination to send someone with no
+// matchup of their own to view. Standings is the closest thing (its
+// Scoreboard tab is one click away) and already every other "nothing
+// more specific to link to" fallback in this app.
+export function matchupsHrefFor(): string {
+  return NO_SEASON_FALLBACK_HREF;
 }
 
 // Client-callable (DraftRoom.tsx's fallback fetch) — routed through
@@ -418,6 +423,15 @@ export type WeekMatchupContext = {
 
 export function getWeekMatchupContext(season: number, week: number, sessionCookie: string | undefined) {
   return getServer<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`, sessionCookie);
+}
+
+// Client-callable twin of the above (authedGet -> /api/backend proxy,
+// browser cookie forwarded) — StandingsScoreboard.tsx's prev/next week
+// arrows page through matchups without a full route navigation, the
+// same "swipe/tap and it's just there" instant feel MatchupCarousel.tsx
+// already gives switching between a single week's matchups.
+export function getWeekMatchupContextClient(season: number, week: number) {
+  return authedGet<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`);
 }
 
 // Same shape as one WeekMatchupContextItem — GET /matchups/{id} and

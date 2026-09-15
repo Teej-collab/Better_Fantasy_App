@@ -60,7 +60,13 @@ export default async function MatchupPage({
 
   return (
     <div className="flex flex-col gap-3">
-      <BackButton fallbackHref={`/seasons/${matchup.season}/weeks/${matchup.week}`} label="Matchups" />
+      {/* The dedicated /seasons/[season]/weeks/[week] list page this used
+          to fall back to is gone (2026-09-15) — Standings' own
+          Scoreboard tab (WeekScoreboardBrowser.tsx) is the real "browse
+          any week's matchups" destination now, and it isn't scoped to
+          one specific week the way that route was, so this just goes
+          home instead when there's no real back-history to use. */}
+      <BackButton fallbackHref="/" label="Home" />
       <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
         {matchup.season} — Week {matchup.week}
       </h1>

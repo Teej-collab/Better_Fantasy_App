@@ -12,12 +12,13 @@ import {
   type WeeklyNarrative,
   type YourWeek,
 } from "@/lib/api";
-import { AwardsPreview, WeeklyRecapTeaser } from "@/app/(home)/page";
+import { AwardsPreview } from "@/app/(home)/page";
 import { ChugFeed } from "@/components/ChugFeed";
 import { MovementBadge } from "@/components/MovementBadge";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
+import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
 import { findGamecastId } from "@/lib/gamecastApi";
 import type { GamecastLiveGameSummary } from "@/lib/gamecastApi";
 
@@ -49,13 +50,13 @@ export function HomePageBeta({
   activeLeagueName,
   standings,
   powerRankings,
-  weekPlayed,
   season,
   otherMatchups,
   currentWeek,
   rivalryGamesThisWeek,
   topRivalries,
   weeklyAwards,
+  weeklyAwardsWeek,
   weeklyRecap,
   weeklyRecapWeek,
   isCommissioner,
@@ -71,13 +72,13 @@ export function HomePageBeta({
   activeLeagueName: string | null;
   standings: StandingsRow[];
   powerRankings: WeekPowerRanking[];
-  weekPlayed: boolean;
   season: number | null;
   otherMatchups: WeekMatchupContextItem[];
   currentWeek: number | null;
   rivalryGamesThisWeek: WeekMatchupContextItem[];
   topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
+  weeklyAwardsWeek: number | null;
   weeklyRecap: WeeklyNarrative | null;
   weeklyRecapWeek: number | null;
   isCommissioner: boolean;
@@ -162,12 +163,15 @@ export function HomePageBeta({
           are actually in the books, so it's a highlight worth surfacing
           right after the live/hero content rather than buried below the
           full-season standings that are always there (2026-09 request). */}
-      {weekPlayed && weeklyAwards && season !== null && currentWeek !== null && (
+      {weeklyAwards && season !== null && currentWeek !== null && (
         <section className="flex flex-col gap-2">
-          <SectionHeaderBeta title="This Week's Awards" href={`/seasons/${season}/awards`} />
+          <SectionHeaderBeta
+            title={weeklyAwardsWeek === currentWeek ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
+            href={`/seasons/${season}/awards`}
+          />
           <AwardsPreview awards={weeklyAwards} />
           {weeklyRecap && weeklyRecapWeek !== null ? (
-            <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} />
+            <WeeklyRecapTeaser recap={weeklyRecap} week={weeklyRecapWeek} />
           ) : (
             // Targets the active week itself — eligible the instant its
             // games are all final, regardless of whether current_week
@@ -213,10 +217,7 @@ export function HomePageBeta({
       )}
 
       {otherMatchups.length > 0 && (
-        <FlatSectionCard
-          title="Other Matchups"
-          href={season !== null && currentWeek !== null ? `/seasons/${season}/weeks/${currentWeek}` : "/standings"}
-        >
+        <FlatSectionCard title="Other Matchups" href={`/matchups/${otherMatchups[0].matchup_id}`}>
           {otherMatchups.map((m) => {
             const started =
               m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);

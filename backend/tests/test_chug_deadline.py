@@ -5,7 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
 from app.config import DEFAULT_LEAGUE_ID
-from app.domain.chug_deadline import get_mnf_deadline, is_past_mnf_deadline
+from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
 from app.main import app
 from app.queries import leagues as league_queries
 from tests.conftest import TEST_SEASON
@@ -56,6 +56,17 @@ def test_deadline_anchors_to_the_monday_of_the_current_week_regardless_of_weekda
     now = datetime(2026, 8, 22, 10, 0, tzinfo=ET)  # Saturday
     deadline = get_mnf_deadline([_MONDAY_GAME], now)
     assert deadline.date().isoformat() == "2026-08-24"
+
+
+def test_deadline_from_week_games_finds_the_monday_kickoff_with_no_now_guess():
+    # No `now` involved at all — just reads the Monday game straight out
+    # of this specific week's own schedule.
+    deadline = deadline_from_week_games([_THURSDAY_GAME, _MONDAY_GAME])
+    assert deadline == datetime(2026, 8, 24, 20, 15, tzinfo=ET)
+
+
+def test_deadline_from_week_games_returns_none_without_a_monday_game():
+    assert deadline_from_week_games([_THURSDAY_GAME]) is None
 
 
 async def _member_cookies(pool, suffix: str) -> dict:
@@ -144,6 +155,58 @@ async def test_deadline_endpoint_returns_null_before_any_chug_is_owed(pool, monk
     assert resp.status_code == 200
     body = resp.json()
     assert body["deadline"] is None
+    assert body["is_past"] is False
+
+
+async def test_deadline_endpoint_uses_cached_current_week_not_the_stuck_espn_week(pool, monkeypatch):
+    # 2026-09-15 fix, real report: once a week was settled, the endpoint
+    # kept reading ESPN's public "current week" scoreboard — which is
+    # stuck on the just-finished week until ESPN itself flips it — and
+    # anchored the deadline to "now", which on a Tue/Wed always resolves
+    # to the Monday that JUST passed. That showed "chug time" even
+    # though the league's own cached current_week had already advanced
+    # to the NEXT week, whose real Monday game is days away. This seeds
+    # league_state at week 2 and makes get_nfl_scoreboard() (the stuck
+    # ESPN signal) return only the already-past week-1 Monday game, to
+    # prove the endpoint ignores it in favor of week 2's real schedule.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+
+    async def fake_current_scoreboard():
+        return [_MONDAY_GAME]  # week 1's Monday — already in the past
+
+    future_monday_game = {
+        "name": "Dallas Cowboys at New York Giants",
+        "date": "2026-09-22T00:15Z",  # a later, still-upcoming Monday
+    }
+
+    async def fake_week_scoreboard(week, year, season_type=2):
+        assert week == 2
+        return [future_monday_game]
+
+    monkeypatch.setattr("app.routers.chug.get_nfl_scoreboard", fake_current_scoreboard)
+    monkeypatch.setattr("app.routers.chug.get_week_scoreboard", fake_week_scoreboard)
+
+    owner_id = await _make_test_owner(pool, "cached-week")
+    cookies = await _member_cookies(pool, "cached-week")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed, league_id) VALUES ($1, 1, $2, 1, $3)",
+            TEST_SEASON, owner_id, DEFAULT_LEAGUE_ID,
+        )
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        client.cookies.update(cookies)
+        resp = await client.get("/chug/deadline")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deadline"] == "2026-09-21T20:15:00-04:00"
     assert body["is_past"] is False
 
 

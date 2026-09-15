@@ -5,14 +5,17 @@ import { cookies } from "next/headers";
 import {
   awardsHrefFor,
   getActiveLeagueName,
+  getCurrentWeek,
   getLatestPowerRankingsWeek,
   getMe,
   getMyPreferences,
   getPlayoffBracket,
   getProjectedPlayoffPicture,
   getStandings,
+  getWeekMatchupContext,
   getWeekPowerRankings,
   listSeasons,
+  resolveWeek,
   safeLatestSeason,
   type StandingsRow,
 } from "@/lib/api";
@@ -21,6 +24,8 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayoffBracket, ProjectedPlayoffPicture } from "@/components/PlayoffBracket";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
+import { StandingsViewTabs } from "@/components/standings/StandingsViewTabs";
+import { WeekScoreboardBrowser } from "@/components/standings/WeekScoreboardBrowser";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { MovementBadge } from "@/components/MovementBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -104,6 +109,22 @@ export default async function StandingsPage({
       ? await getProjectedPlayoffPicture(season, sessionCookie)
       : { matchups: null };
 
+  // Scoreboard tab (real ESPN League > Scoreboard, reference video
+  // 2026-09-15: prev/next arrows through every week's matchups, right
+  // alongside Standings and Playoffs as sibling tabs of the same
+  // screen) — replaces the old standalone /seasons/[season]/weeks/
+  // [week] route entirely; this fetches only the CURRENT week's
+  // matchups up front (WeekScoreboardBrowser's own arrows page through
+  // every other week client-side from here, see that component).
+  const currentWeek =
+    season !== null ? resolveWeek((await getCurrentWeek(season)).current_week) : null;
+  const { matchups: currentWeekMatchups } =
+    season !== null && currentWeek !== null
+      ? await getWeekMatchupContext(season, currentWeek, sessionCookie)
+      : { matchups: [] };
+
+  const hasPlayoffsContent = bracketNodes.length > 0 || (projectedMatchups?.length ?? 0) > 0;
+
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="standings" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
@@ -112,48 +133,66 @@ export default async function StandingsPage({
         <SeasonTabs seasons={seasons} activeSeason={season} hrefFor={(s) => `/standings?season=${s}`} />
       </div>
 
-      <p className="text-xs text-black/50 dark:text-white/50">
-        {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
-        {showPlayoffLine &&
-          ` The line below the top ${playoffTeamCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
-      </p>
+      <StandingsViewTabs
+        standings={
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-black/50 dark:text-white/50">
+              {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
+              {showPlayoffLine &&
+                ` The line below the top ${playoffTeamCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
+            </p>
 
-      <div
-        className={
-          betaLayout
-            ? "wl-card flex flex-col rounded-lg px-4"
-            : "neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
+            <div
+              className={
+                betaLayout
+                  ? "wl-card flex flex-col rounded-lg px-4"
+                  : "neon-panel flex flex-col rounded-lg bg-black/[0.015] px-4 dark:bg-white/[0.03]"
+              }
+              style={betaLayout ? undefined : panelGlowStyle(SECTION_COLORS.standings)}
+            >
+              {/* Column headers only from sm up — on mobile each row labels itself */}
+              <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
+                <span className="w-6 shrink-0" />
+                <span className="flex-1">Team</span>
+                {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
+                <span className="w-20 shrink-0 text-right">W-L-T</span>
+                <span className="w-16 shrink-0 text-right">PF</span>
+                <span className="w-16 shrink-0 text-right">PA</span>
+              </div>
+
+              <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+                {standings.map((row, i) => (
+                  <Fragment key={row.team_id}>
+                    <StandingsListRow
+                      row={row}
+                      rank={i + 1}
+                      teamCount={standings.length}
+                      powerRank={powerRankByTeam.get(row.team_id)}
+                      movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
+                    />
+                    {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
+                  </Fragment>
+                ))}
+              </ul>
+            </div>
+          </div>
         }
-        style={betaLayout ? undefined : panelGlowStyle(SECTION_COLORS.standings)}
-      >
-        {/* Column headers only from sm up — on mobile each row labels itself */}
-        <div className="hidden border-b border-black/10 px-1 pb-2 text-xs text-black/50 sm:flex dark:border-white/10 dark:text-white/50">
-          <span className="w-6 shrink-0" />
-          <span className="flex-1">Team</span>
-          {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
-          <span className="w-20 shrink-0 text-right">W-L-T</span>
-          <span className="w-16 shrink-0 text-right">PF</span>
-          <span className="w-16 shrink-0 text-right">PA</span>
-        </div>
-
-        <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-          {standings.map((row, i) => (
-            <Fragment key={row.team_id}>
-              <StandingsListRow
-                row={row}
-                rank={i + 1}
-                teamCount={standings.length}
-                powerRank={powerRankByTeam.get(row.team_id)}
-                movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
-              />
-              {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
-            </Fragment>
-          ))}
-        </ul>
-      </div>
-
-      <PlayoffBracket nodes={bracketNodes} />
-      <ProjectedPlayoffPicture matchups={projectedMatchups} />
+        scoreboard={
+          season !== null && currentWeek !== null ? (
+            <WeekScoreboardBrowser season={season} initialWeek={currentWeek} initialMatchups={currentWeekMatchups} />
+          ) : (
+            <p className="text-sm text-black/50 dark:text-white/50">No schedule yet.</p>
+          )
+        }
+        playoffs={
+          hasPlayoffsContent ? (
+            <div className="flex flex-col gap-4">
+              <PlayoffBracket nodes={bracketNodes} />
+              <ProjectedPlayoffPicture matchups={projectedMatchups} />
+            </div>
+          ) : null
+        }
+      />
     </div>
   );
 }
