@@ -8,7 +8,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { formatGameTime } from "@/lib/gameTime";
 import { humanizeStatCategory } from "@/lib/scoringLabels";
 import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
-import { BENCH_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
 
 // "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
 // matchup screen, 2026-09) always shows first-initial + last name, not
@@ -44,12 +44,34 @@ function displayName(player: RosterPlayer): string {
 // vs starter 2" identity anywhere.
 function starters(roster: RosterPlayer[]): RosterPlayer[] {
   return [...roster]
-    .filter((p) => p.lineup_slot !== BENCH_SLOT_LABEL && p.lineup_slot !== "IR")
+    .filter((p) => p.lineup_slot !== BENCH_SLOT_LABEL && p.lineup_slot !== IR_SLOT_LABEL)
     .sort((a, b) => {
       const ai = starterSortIndex(a.lineup_slot ?? "");
       const bi = starterSortIndex(b.lineup_slot ?? "");
       return ai !== bi ? ai - bi : a.player_name.localeCompare(b.player_name);
     });
+}
+
+// Everyone NOT in the starting lineup — bench first, then IR, same real
+// per-row slot label (BE/IR) ESPN's own reference layout uses instead
+// of a real position, so a glance at the middle column alone already
+// says "this isn't a starter" without needing a separate section
+// per group. Order within each group is whatever the roster already
+// came back in (no independent "bench order" concept exists in this
+// app), which keeps the two sides' Nth bench player lined up on the
+// same row exactly the same zip-by-slot-group approach starters() above
+// already relies on.
+const BENCH_SLOT_ORDER = [BENCH_SLOT_LABEL, IR_SLOT_LABEL];
+
+function benchSortIndex(slotLabel: string): number {
+  const i = BENCH_SLOT_ORDER.indexOf(slotLabel);
+  return i === -1 ? BENCH_SLOT_ORDER.length : i;
+}
+
+function bench(roster: RosterPlayer[]): RosterPlayer[] {
+  return [...roster]
+    .filter((p) => p.lineup_slot === BENCH_SLOT_LABEL || p.lineup_slot === IR_SLOT_LABEL)
+    .sort((a, b) => benchSortIndex(a.lineup_slot ?? "") - benchSortIndex(b.lineup_slot ?? ""));
 }
 
 // "QUESTIONABLE" -> "Q" — the reference layout (real ESPN matchup
@@ -343,14 +365,93 @@ function PlayerCell({
   );
 }
 
+type ComparisonRow = { home: RosterPlayer | null; away: RosterPlayer | null; slot: string };
+
+// Grouped by lineup_slot and zipped WITHIN each group, not by a flat
+// index across either list — a flat zip silently breaks the moment the
+// two rosters have a different number of players at any slot (most
+// commonly: one team has no FLEX set this week, or a different bench
+// size). Home's real D/ST and K would end up lined up against whatever
+// fell into those array positions on the short side — a real team
+// defense rendered in the FLEX row, a kicker rendered in the D/ST row,
+// labeled with the WRONG team's slot name, real screenshot report
+// 2026-09-13. Grouping first means a slot either side is missing just
+// renders that side's cell empty, instead of shifting every later slot
+// up. `sortIndex` picks the group order — starters() callers pass
+// starterSortIndex (QB/RB/WR/TE/FLEX/D-ST/K), bench() callers pass
+// benchSortIndex (BE, then IR).
+function buildComparisonRows(
+  homeList: RosterPlayer[],
+  awayList: RosterPlayer[],
+  sortIndex: (slotLabel: string) => number
+): ComparisonRow[] {
+  function groupBySlot(list: RosterPlayer[]): Map<string, RosterPlayer[]> {
+    const map = new Map<string, RosterPlayer[]>();
+    for (const p of list) {
+      const key = p.lineup_slot ?? "";
+      const group = map.get(key);
+      if (group) group.push(p);
+      else map.set(key, [p]);
+    }
+    return map;
+  }
+
+  const homeBySlot = groupBySlot(homeList);
+  const awayBySlot = groupBySlot(awayList);
+  const slotLabels = Array.from(new Set([...homeBySlot.keys(), ...awayBySlot.keys()])).sort(
+    (a, b) => sortIndex(a) - sortIndex(b)
+  );
+
+  const rows: ComparisonRow[] = [];
+  for (const slotLabel of slotLabels) {
+    const homeGroup = homeBySlot.get(slotLabel) ?? [];
+    const awayGroup = awayBySlot.get(slotLabel) ?? [];
+    const count = Math.max(homeGroup.length, awayGroup.length);
+    for (let i = 0; i < count; i++) {
+      rows.push({ home: homeGroup[i] ?? null, away: awayGroup[i] ?? null, slot: slotDisplayLabel(slotLabel) });
+    }
+  }
+  return rows;
+}
+
+function ComparisonRows({
+  rows,
+  mounted,
+  onOpen,
+  onOpenBreakdown,
+}: {
+  rows: ComparisonRow[];
+  mounted: boolean;
+  onOpen: (sleeperPlayerId: string) => void;
+  onOpenBreakdown: (player: RosterPlayer) => void;
+}) {
+  return (
+    <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
+      {rows.map((row, i) => (
+        <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
+          <PlayerCell player={row.home} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
+          <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+            {row.slot}
+          </span>
+          <PlayerCell player={row.away} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
- * The two-column starter breakdown — one row per starter slot
- * (QB/RB/RB/WR/WR/TE/FLEX/D-ST/K), home's player on the left, away's
- * on the right, each with their real projected points, next real
+ * The two-column lineup breakdown — starters first (one row per starter
+ * slot: QB/RB/RB/WR/WR/TE/FLEX/D-ST/K), home's player on the left,
+ * away's on the right, each with their real projected points, next real
  * opponent/game time, and an inline injury flag when they have one.
- * Bench/IR players never appear here. A CSS grid (not nested flex)
- * sizes the slot label column exactly and gives both sides identical,
- * bounded space.
+ * Bench and IR players render below, under their own "Bench" heading,
+ * same row treatment but labeled BE/IR in the middle column instead of
+ * a real position — same reference (real ESPN matchup screen, 2026-09)
+ * this whole table already matches, which shows one continuous box
+ * score rather than hiding the bench entirely. A CSS grid (not nested
+ * flex) sizes the slot label column exactly and gives both sides
+ * identical, bounded space.
  */
 export function StarterComparisonTable({
   home,
@@ -386,61 +487,24 @@ export function StarterComparisonTable({
       });
   }, [season]);
 
-  const homeStarters = starters(home);
-  const awayStarters = starters(away);
+  const starterRows = buildComparisonRows(starters(home), starters(away), starterSortIndex);
+  const benchRows = buildComparisonRows(bench(home), bench(away), benchSortIndex);
 
-  // Grouped by lineup_slot and zipped WITHIN each group, not by a flat
-  // index across every starter — a flat zip silently breaks the moment
-  // the two rosters have a different number of starters at any slot
-  // (most commonly: one team has no FLEX set this week). Home's real
-  // D/ST and K would end up lined up against whatever fell into those
-  // array positions on the short side — a real team defense rendered
-  // in the FLEX row, a kicker rendered in the D/ST row, labeled with
-  // the WRONG team's slot name, real screenshot report 2026-09-13.
-  // Grouping first means a slot either side is missing just renders
-  // that side's cell empty, instead of shifting every later slot up.
-  function groupBySlot(list: RosterPlayer[]): Map<string, RosterPlayer[]> {
-    const map = new Map<string, RosterPlayer[]>();
-    for (const p of list) {
-      const key = p.lineup_slot ?? "";
-      const group = map.get(key);
-      if (group) group.push(p);
-      else map.set(key, [p]);
-    }
-    return map;
-  }
-
-  const homeBySlot = groupBySlot(homeStarters);
-  const awayBySlot = groupBySlot(awayStarters);
-  const slotLabels = Array.from(new Set([...homeBySlot.keys(), ...awayBySlot.keys()])).sort(
-    (a, b) => starterSortIndex(a) - starterSortIndex(b)
-  );
-
-  const rows: { home: RosterPlayer | null; away: RosterPlayer | null; slot: string }[] = [];
-  for (const slotLabel of slotLabels) {
-    const homeGroup = homeBySlot.get(slotLabel) ?? [];
-    const awayGroup = awayBySlot.get(slotLabel) ?? [];
-    const count = Math.max(homeGroup.length, awayGroup.length);
-    for (let i = 0; i < count; i++) {
-      rows.push({ home: homeGroup[i] ?? null, away: awayGroup[i] ?? null, slot: slotDisplayLabel(slotLabel) });
-    }
-  }
-
-  if (rows.length === 0) {
+  if (starterRows.length === 0) {
     return <p className="text-sm text-black/50 dark:text-white/50">No starting lineup set for this week yet.</p>;
   }
 
   return (
-    <div className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
-      {rows.map((row, i) => (
-        <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
-          <PlayerCell player={row.home} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
-          <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
-            {row.slot}
-          </span>
-          <PlayerCell player={row.away} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
+    <div className="flex flex-col gap-1">
+      <ComparisonRows rows={starterRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
+
+      {benchRows.length > 0 && (
+        <div className="mt-3 flex flex-col gap-1 border-t border-black/10 pt-3 dark:border-white/10">
+          <h3 className="text-xs font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">Bench</h3>
+          <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
         </div>
-      ))}
+      )}
+
       {breakdownPlayer && (
         <ScoreBreakdownModal
           player={breakdownPlayer}

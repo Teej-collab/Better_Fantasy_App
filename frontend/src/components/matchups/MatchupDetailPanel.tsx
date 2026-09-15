@@ -5,25 +5,19 @@ import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
 import { StarterComparisonTable } from "@/components/matchups/StarterComparisonTable";
-import { BackButton } from "@/components/BackButton";
 
 /**
- * The matchup detail page's default render (2026-09-10 — promoted out
- * of Settings > Labs opt-in, per the owner's own call, since the old
- * layout below it had no remaining callers). Documentation/UX/
- * 00_UX_Audit.md's Matchups finding: the score
- * header and win-probability bar already answer "am I winning, by how
- * much" in under two seconds, but "why" (the starter-by-starter
- * comparison) sat at the very bottom of the page, under a narrative
- * section that rendered a permanent "coming later" placeholder even
- * with nothing to say. This reorders the page so the lineup comparison
- * comes right after the score, and the narrative simply doesn't render
- * at all when there's no real write-up yet (Documentation/UX/
- * 01_Design_System.md section 16's EmptyState rule) instead of taking
- * prime real estate for a dead placeholder. Everything else keeps its
- * exact existing data/logic — only order and card treatment change.
+ * One matchup's full detail — score header, win probability, lineup
+ * comparison (starters + bench), touchdowns, and head-to-head history.
+ * Extracted out of what used to be the whole matchup page (MatchupPageBeta)
+ * so MatchupCarousel.tsx can render one of these per matchup in the
+ * week, swiped between instead of navigated between — the page-level
+ * chrome (BackButton, the "{season} — Week {week}" heading) stays at
+ * the page level since it's identical for every matchup in the same
+ * week, not repeated per panel. Everything else here is exactly what
+ * MatchupPageBeta rendered before, unchanged.
  */
-export function MatchupPageBeta({ matchup }: { matchup: WeekMatchupContextItem }) {
+export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextItem }) {
   const { home, away } = matchup;
   const hasWinProbability = home.win_probability !== null && away.win_probability !== null;
   const hasDetail = Boolean(home.clutch_choke || home.bench_crime || away.clutch_choke || away.bench_crime);
@@ -32,8 +26,6 @@ export function MatchupPageBeta({ matchup }: { matchup: WeekMatchupContextItem }
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <BackButton fallbackHref={`/seasons/${matchup.season}/weeks/${matchup.week}`} label="Matchups" />
-
         {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
             {matchup.is_game_of_the_week && <GameOfWeekBadge />}
@@ -42,13 +34,7 @@ export function MatchupPageBeta({ matchup }: { matchup: WeekMatchupContextItem }
           </div>
         )}
 
-        <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
-          {matchup.season} — Week {matchup.week}
-        </h1>
-
-        <div className="mt-3">
-          <MatchupScoreHeader home={home} away={away} />
-        </div>
+        <MatchupScoreHeader home={home} away={away} />
 
         {hasWinProbability && (
           <div className="mt-3">
@@ -57,9 +43,6 @@ export function MatchupPageBeta({ matchup }: { matchup: WeekMatchupContextItem }
         )}
       </div>
 
-      {/* The "why" — moved from the bottom of the page to right after
-          the score. This is the single biggest ordering fix from the
-          audit. */}
       <div className="wl-card rounded-lg p-4">
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           Starting Lineups
