@@ -7,6 +7,7 @@ import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { formatGameTime } from "@/lib/gameTime";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 
 function formatStat(value: number | null): string {
   return value !== null ? value.toFixed(1) : "—";
@@ -196,6 +197,14 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                     <span className="text-xs text-black/50 dark:text-white/50">
                       {p.next_opponent}
                       {p.game_time && mounted && ` · ${formatGameTime(p.game_time)}`}
+                      {formatPositionRank(p.opponent_position_rank, p.position) && (
+                        <>
+                          {" · "}
+                          <span style={{ color: rankColorVar(p.opponent_position_rank!.rank) }}>
+                            {formatPositionRank(p.opponent_position_rank, p.position)}
+                          </span>
+                        </>
+                      )}
                     </span>
                   )}
                   {(p.waiver_clears_at || p.game_locked) && (

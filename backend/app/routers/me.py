@@ -65,9 +65,14 @@ from app.domain.your_week import build_your_week
 from app.providers.espn.player_info import get_bulk_ownership
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard
 from app.queries import league as league_queries
+from app.queries import team_position_rankings as position_rankings_queries
 from app.routers.lineup_shared import map_lineup_error
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+# Defense-vs-position matchup rank only applies to these positions — see
+# migration 465f0b1ffe3f for why D/ST is deliberately excluded.
+_POSITION_RANK_ELIGIBLE = {"QB", "RB", "WR", "TE", "K"}
 
 
 def _require_session(request: Request) -> dict:
@@ -171,6 +176,7 @@ def _roster_entry_dict(entry: dict) -> dict:
         ),
         "next_opponent": entry.get("next_opponent"),
         "game_time": entry.get("game_time"),
+        "opponent_position_rank": entry.get("opponent_position_rank"),
         "bye_week": entry.get("bye_week"),
         "on_offense": entry.get("on_offense", False),
         "is_redzone": entry.get("is_redzone", False),
@@ -281,6 +287,16 @@ async def my_team(request: Request, week: int | None = None):
             json.loads(raw_roster_slots) if isinstance(raw_roster_slots, str) else raw_roster_slots
         )
 
+        # Defense-vs-position matchup rank ("17th vs QB") — one bulk
+        # fetch, joined per-entry below by (opponent pro_team, position)
+        # once next_opponent is resolved. None pre-draft (requested_week
+        # unresolved yet), same guard as the scoreboard fetch below.
+        rankings = (
+            await position_rankings_queries.get_rankings(conn, active_season, requested_week)
+            if requested_week is not None
+            else {}
+        )
+
     for entry in roster:
         bye_week = bye_weeks.get(entry["pro_team"])
         if bye_week is not None:
@@ -299,6 +315,9 @@ async def my_team(request: Request, week: int | None = None):
             info = schedule.get(entry["pro_team"])
             if info:
                 entry.update(info)
+            opponent_pro_team = entry.get("opponent_pro_team")
+            if opponent_pro_team and entry["position"] in _POSITION_RANK_ELIGIBLE:
+                entry["opponent_position_rank"] = rankings.get((opponent_pro_team, entry["position"]))
         # Surfaced only so the edit-lineup UI can show a lock affordance
         # up front rather than a surprise 409 after the tap — the real
         # enforcement lives server-side in lineup_engine's move/swap
@@ -657,6 +676,15 @@ async def list_free_agents(request: Request, position: str | None = None, search
             # front via a separate flag rather than faking a date here.
             row["game_locked"] = clears_at is None and row["pro_team"] in locked_pro_teams
 
+        # Same "defense vs. position" matchup rank GET /team and the
+        # matchup screen already surface — one bulk fetch, joined below
+        # once next_opponent is resolved.
+        rankings = (
+            await position_rankings_queries.get_rankings(conn, active_season, current_week)
+            if current_week is not None
+            else {}
+        )
+
     if current_week is not None:
         try:
             games = await get_week_scoreboard(current_week, active_season)
@@ -667,6 +695,9 @@ async def list_free_agents(request: Request, position: str | None = None, search
             info = schedule.get(row["pro_team"])
             if info:
                 row.update(info)
+            opponent_pro_team = row.get("opponent_pro_team")
+            if opponent_pro_team and row["position"] in _POSITION_RANK_ELIGIBLE:
+                row["opponent_position_rank"] = rankings.get((opponent_pro_team, row["position"]))
 
     return {"players": rows}
 

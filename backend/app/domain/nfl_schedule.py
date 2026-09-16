@@ -11,17 +11,24 @@ from datetime import datetime, timezone
 
 
 def schedule_lookup_by_pro_team(games: list[dict]) -> dict[str, dict]:
-    """pro_team abbreviation -> {next_opponent, game_time} for every
-    real NFL team playing in the given week. Works identically for a
-    D/ST roster entry as for an individual player — a D/ST's own
-    pro_team already equals its team abbreviation."""
+    """pro_team abbreviation -> {next_opponent, game_time, opponent_pro_team}
+    for every real NFL team playing in the given week. Works identically
+    for a D/ST roster entry as for an individual player — a D/ST's own
+    pro_team already equals its team abbreviation.
+
+    opponent_pro_team is the same team next_opponent already names, just
+    as a bare abbreviation ("IND") instead of the "vs "/"@ "-prefixed
+    display string — added so a caller can join it against something
+    keyed by plain abbreviation (team_position_rankings.get_rankings)
+    without having to re-parse next_opponent's display formatting back
+    apart."""
     lookup: dict[str, dict] = {}
     for game in games:
         home, away = game.get("home_team"), game.get("away_team")
         if not home or not away:
             continue
-        lookup[home] = {"next_opponent": f"vs {away}", "game_time": game.get("date")}
-        lookup[away] = {"next_opponent": f"@ {home}", "game_time": game.get("date")}
+        lookup[home] = {"next_opponent": f"vs {away}", "game_time": game.get("date"), "opponent_pro_team": away}
+        lookup[away] = {"next_opponent": f"@ {home}", "game_time": game.get("date"), "opponent_pro_team": home}
     return lookup
 
 

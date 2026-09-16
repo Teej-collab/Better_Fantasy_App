@@ -121,6 +121,15 @@ export type WeekMatchup = {
   away_score: string | null;
 };
 
+// Defense-vs-position matchup rank ("17th vs QB") — rank 1 = fewest
+// fantasy points allowed to this position this season (toughest
+// matchup), rank 32 = most allowed (easiest). Confirmed against real
+// live ESPN data, not assumed — see backend's migration 465f0b1ffe3f.
+// null whenever there's no rank to show (no game this week, D/ST, or
+// this week's sync hasn't run yet) — same "just omit it" convention
+// next_opponent already uses.
+export type PositionRank = { rank: number; average_allowed: number } | null;
+
 export type RosterPlayer = {
   player_name: string;
   position: string | null;
@@ -144,6 +153,7 @@ export type RosterPlayer = {
   injury_status: string | null;
   next_opponent: string | null;
   game_time: string | null;
+  opponent_position_rank: PositionRank;
   is_boom: boolean;
   is_bust: boolean;
   // Raw per-category stat counts behind points_scored (rec/rec_yd/
@@ -1471,6 +1481,7 @@ export type RosterEntry = {
   points_projected: number | null;
   next_opponent: string | null;
   game_time: string | null;
+  opponent_position_rank: PositionRank;
   // bye_week: this player's real NFL team's bye week this season, from
   // the cached team_bye_weeks table — null until a commissioner runs
   // the bye-week sync. on_offense/is_redzone: only ever true during an
@@ -1701,6 +1712,7 @@ export type MyFreeAgent = {
   // next_opponent/game_time (backend/app/routers/me.py's _schedule_lookup).
   next_opponent: string | null;
   game_time: string | null;
+  opponent_position_rank: PositionRank;
   // Non-null iff this player is still within this league's real 1-day
   // waiver period (backend/app/domain/waivers.py) — addFreeAgent below
   // will reject them with a 409 until this clears; submitWaiverClaim

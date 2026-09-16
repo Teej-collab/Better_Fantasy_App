@@ -10,6 +10,7 @@ import { humanizeStatCategory } from "@/lib/scoringLabels";
 import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 
 // "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
 // matchup screen, 2026-09) always shows first-initial + last name, not
@@ -339,6 +340,14 @@ function PlayerCell({
               {player.pro_team ?? "—"}
               {player.next_opponent && ` ${player.next_opponent}`}
               {player.game_time && mounted && ` · ${formatGameTime(player.game_time)}`}
+              {formatPositionRank(player.opponent_position_rank, player.position ?? "") && (
+                <>
+                  {" · "}
+                  <span style={{ color: rankColorVar(player.opponent_position_rank!.rank) }}>
+                    {formatPositionRank(player.opponent_position_rank, player.position ?? "")}
+                  </span>
+                </>
+              )}
             </>
           )}
         </span>

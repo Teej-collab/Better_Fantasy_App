@@ -16,12 +16,24 @@ frequently during live games without re-scanning full history.
 from decimal import Decimal
 
 from espn_api.football import League
+from espn_api.football.constant import PRO_TEAM_MAP
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
 from app.providers.espn.config import ESPNConfig
+from app.queries import team_position_rankings as position_rankings_queries
 
 MAX_WEEKS_TO_TRY = 17  # covers regular season + playoffs; we stop early if a week has no data
+
+# ESPN's own position keys for the mPositionalRatings view (defense-vs-
+# position matchup ranks) — NOT the same numbering as espn_api's own
+# POSITION_MAP constant (which models lineup-slot IDs, a different ESPN
+# enum). Confirmed live against this league's real rostered players
+# during planning: Jared Goff (QB) -> key "1", Brian Robinson Jr. (RB)
+# -> "2", CeeDee Lamb (WR) -> "3", Dalton Schultz (TE) -> "4", Eddy
+# Pineiro (K) -> "5". Key "16" (D/ST) also exists in the raw response
+# but is deliberately excluded — see migration 465f0b1ffe3f.
+_POSITION_KEY_MAP = {"1": "QB", "2": "RB", "3": "WR", "4": "TE", "5": "K"}
 
 
 async def _get_team_db_id(conn, season: int, espn_team_id: int, league_id: int = DEFAULT_LEAGUE_ID):
@@ -266,6 +278,7 @@ class ESPNProvider(FantasyProvider):
                     break
 
                 await self._save_roster_week(conn, box_scores, season, week, league_id)
+                await self._save_position_rankings(conn, league, season, week)
                 saved_weeks += 1
 
         return saved_weeks
@@ -275,7 +288,47 @@ class ESPNProvider(FantasyProvider):
         box_scores = league.box_scores(week)
         async with pool.acquire() as conn:
             saved = await self._save_roster_week(conn, box_scores, season, week, league_id)
+            await self._save_position_rankings(conn, league, season, week)
         return 1 if saved else 0
+
+    @staticmethod
+    async def _save_position_rankings(conn, league: League, season: int, week: int) -> None:
+        """Defense-vs-position matchup ranks ("MIN (22nd) vs RB") — ESPN's
+        own mPositionalRatings view. espn_api's own League._get_
+        positional_ratings already hits this same view internally every
+        time box_scores()/free_agents() run, but its wrapper only keeps
+        `rank`, discarding `average` — requesting it directly here keeps
+        both (see team_position_rankings.py for why average_allowed is
+        worth keeping). Best-effort: this is a real, already-verified
+        addition, but never worth failing the roster sync it rides
+        along with over — same "one unmatched thing never blocks the
+        rest" discipline as _save_lineup's player_weekly_projections
+        harvest above.
+        """
+        try:
+            data = league.espn_request.league_get(params={"view": "mPositionalRatings", "scoringPeriodId": week})
+            ratings = data.get("positionAgainstOpponent", {}).get("positionalRatings", {})
+
+            rows = []
+            for pos_key, position in _POSITION_KEY_MAP.items():
+                entry = ratings.get(pos_key)
+                if not entry:
+                    continue
+                for team_id_str, rating in entry.get("ratingsByOpponent", {}).items():
+                    pro_team = PRO_TEAM_MAP.get(int(team_id_str))
+                    if not pro_team:
+                        continue
+                    rows.append(
+                        {
+                            "pro_team": pro_team,
+                            "position": position,
+                            "rank": rating["rank"],
+                            "average_allowed": rating["average"],
+                        }
+                    )
+            await position_rankings_queries.upsert_rankings(conn, season, week, rows)
+        except Exception:
+            pass
 
     async def sync_final_standings(self, pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)

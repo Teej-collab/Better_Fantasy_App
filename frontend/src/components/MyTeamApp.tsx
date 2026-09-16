@@ -19,6 +19,7 @@ import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotD
 import { formatGameTime } from "@/lib/gameTime";
 import { positionColor } from "@/lib/positionColors";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 
 // Which starter slots this position is eligible for at all (e.g. an RB
 // can go RB or FLEX) — the set of destinations editLineupOptions below
@@ -97,6 +98,7 @@ function RosterRow({
       metaParts.push(`${ownership.percent_owned.toFixed(0)}% owned`);
     }
     const hasInjury = hasInjuryBadge(entry.injury_status);
+    const positionRankText = formatPositionRank(entry.opponent_position_rank, entry.position);
 
     return (
       <li className="flex items-stretch gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
@@ -154,8 +156,14 @@ function RosterRow({
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
           </span>
-          {metaParts.length > 0 && (
-            <span className="truncate text-xs text-black/50 dark:text-white/50">{metaParts.join(" · ")}</span>
+          {(metaParts.length > 0 || positionRankText) && (
+            <span className="truncate text-xs text-black/50 dark:text-white/50">
+              {metaParts.join(" · ")}
+              {metaParts.length > 0 && positionRankText && " · "}
+              {positionRankText && (
+                <span style={{ color: rankColorVar(entry.opponent_position_rank!.rank) }}>{positionRankText}</span>
+              )}
+            </span>
           )}
           {entry.is_locked && (
             <span className="mt-0.5 flex flex-wrap items-center gap-1">
@@ -259,6 +267,14 @@ function RosterRow({
                 client paint both render nothing here instead, so
                 there's nothing to mismatch; it fills in right after. */}
             {entry.game_time && mounted && ` · ${formatGameTime(entry.game_time)}`}
+            {formatPositionRank(entry.opponent_position_rank, entry.position) && (
+              <>
+                {" · "}
+                <span style={{ color: rankColorVar(entry.opponent_position_rank!.rank) }}>
+                  {formatPositionRank(entry.opponent_position_rank, entry.position)}
+                </span>
+              </>
+            )}
           </span>
         )}
         {entry.bye_week !== null && (
