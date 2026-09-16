@@ -9,6 +9,7 @@ import { formatGameTime } from "@/lib/gameTime";
 import { humanizeStatCategory } from "@/lib/scoringLabels";
 import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex } from "@/lib/rosterSlots";
+import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 
 // "Jason Myers" -> "J. Myers" — the reference layout (real ESPN
 // matchup screen, 2026-09) always shows first-initial + last name, not
@@ -72,25 +73,6 @@ function bench(roster: RosterPlayer[]): RosterPlayer[] {
   return [...roster]
     .filter((p) => p.lineup_slot === BENCH_SLOT_LABEL || p.lineup_slot === IR_SLOT_LABEL)
     .sort((a, b) => benchSortIndex(a.lineup_slot ?? "") - benchSortIndex(b.lineup_slot ?? ""));
-}
-
-// "QUESTIONABLE" -> "Q" — the reference layout (real ESPN matchup
-// screen, 2026-09) shows a single-letter flag right next to the name
-// instead of a separate pill on its own line, which is a big part of
-// why it reads as spacious instead of cluttered at the same
-// information density. Falls back to the first letter for a status
-// this map doesn't know about, rather than silently dropping it.
-const INJURY_SHORT_CODE: Record<string, string> = {
-  QUESTIONABLE: "Q",
-  DOUBTFUL: "D",
-  OUT: "O",
-  IR: "IR",
-  PUP: "PUP",
-  SUSPENDED: "S",
-};
-
-function injuryShortCode(status: string): string {
-  return INJURY_SHORT_CODE[status] ?? status.slice(0, 1);
 }
 
 // Compact live box-score line ("5 REC, 53 YDS, 1 TD") from the same
@@ -258,7 +240,7 @@ function PlayerCell({
   if (!player) return <div className="min-w-0 flex-1" />;
   const clickable = typeof player.player_id === "string";
   const logo = teamLogoUrl(player.pro_team);
-  const showInjury = player.injury_status && player.injury_status !== "ACTIVE";
+  const showInjury = hasInjuryBadge(player.injury_status);
   const statLine = formatStatLine(player.raw_stats);
   // The score is only worth a click once there's a real breakdown to
   // show — a still-just-projected number has no raw_stats behind it.

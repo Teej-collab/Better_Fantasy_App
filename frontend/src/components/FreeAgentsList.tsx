@@ -6,6 +6,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { formatGameTime } from "@/lib/gameTime";
+import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 
 function formatStat(value: number | null): string {
   return value !== null ? value.toFixed(1) : "—";
@@ -177,6 +178,14 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                     className="truncate text-left font-medium hover:underline"
                   >
                     {p.full_name}
+                    {hasInjuryBadge(p.injury_status) && (
+                      <span
+                        className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+                        title={p.injury_status ?? undefined}
+                      >
+                        {injuryShortCode(p.injury_status as string)}
+                      </span>
+                    )}
                   </button>
                   <span className="text-xs text-black/50 dark:text-white/50">
                     {/* players.position stores defenses as the raw "DEF" (Sleeper's own value) — shown as "D/ST" everywhere else in the app. */}
@@ -187,11 +196,6 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                     <span className="text-xs text-black/50 dark:text-white/50">
                       {p.next_opponent}
                       {p.game_time && mounted && ` · ${formatGameTime(p.game_time)}`}
-                    </span>
-                  )}
-                  {p.injury_status && p.injury_status !== "ACTIVE" && (
-                    <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                      {p.injury_status}
                     </span>
                   )}
                   {(p.waiver_clears_at || p.game_locked) && (

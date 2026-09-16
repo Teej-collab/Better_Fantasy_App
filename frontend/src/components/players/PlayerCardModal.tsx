@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
+import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 
 // Click a player's name anywhere it's rendered inside a
 // PlayerCardModal.Provider-less caller — this modal is self-contained
@@ -90,16 +91,21 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                 )}
               </span>
               <div className="flex min-w-0 flex-col">
-                <h2 className="truncate text-lg font-semibold">{card.full_name}</h2>
+                <h2 className="truncate text-lg font-semibold">
+                  {card.full_name}
+                  {hasInjuryBadge(card.injury_status) && (
+                    <span
+                      className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+                      title={card.injury_status ?? undefined}
+                    >
+                      {injuryShortCode(card.injury_status as string)}
+                    </span>
+                  )}
+                </h2>
                 <p className="text-xs text-black/50 dark:text-white/50">
                   {card.position} · {nflTeamName(card.pro_team) ?? card.pro_team ?? "Free agent"}
                   {card.jersey_number && ` · #${card.jersey_number}`}
                 </p>
-                {card.injury_status && (
-                  <span className="mt-1 w-fit rounded-full bg-red-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-red-500">
-                    {card.injury_status}
-                  </span>
-                )}
               </div>
             </div>
 

@@ -18,6 +18,7 @@ import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
 import { positionColor } from "@/lib/positionColors";
+import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 
 // Which starter slots this position is eligible for at all (e.g. an RB
 // can go RB or FLEX) — the set of destinations editLineupOptions below
@@ -95,7 +96,7 @@ function RosterRow({
     if (ownership?.percent_owned !== null && ownership?.percent_owned !== undefined) {
       metaParts.push(`${ownership.percent_owned.toFixed(0)}% owned`);
     }
-    const hasInjury = Boolean(entry.injury_status && entry.injury_status !== "ACTIVE");
+    const hasInjury = hasInjuryBadge(entry.injury_status);
 
     return (
       <li className="flex items-stretch gap-2.5 border-b border-black/5 py-3 last:border-0 dark:border-white/5">
@@ -137,6 +138,18 @@ function RosterRow({
             className="truncate text-left text-sm font-medium hover:underline"
           >
             {entry.player_name}
+            {/* Name-adjacent single-letter flag, not a full-width pill
+                on its own line — see lib/injuryStatus.ts's comment.
+                Frees the row's vertical space for information instead
+                of status chrome. */}
+            {hasInjury && (
+              <span
+                className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+                title={entry.injury_status ?? undefined}
+              >
+                {injuryShortCode(entry.injury_status as string)}
+              </span>
+            )}
           </button>
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
@@ -144,15 +157,8 @@ function RosterRow({
           {metaParts.length > 0 && (
             <span className="truncate text-xs text-black/50 dark:text-white/50">{metaParts.join(" · ")}</span>
           )}
-          {/* Capped at 2 status pills, shown inline together, per
-              Documentation/UX/01_Design_System.md section 6. */}
-          {(hasInjury || entry.is_locked) && (
+          {entry.is_locked && (
             <span className="mt-0.5 flex flex-wrap items-center gap-1">
-              {hasInjury && (
-                <span className="w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-                  {entry.injury_status}
-                </span>
-              )}
               {entry.is_locked && (
                 <span
                   className="w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
@@ -226,6 +232,14 @@ function RosterRow({
           className="truncate text-left text-sm font-medium hover:underline"
         >
           {entry.player_name}
+          {hasInjuryBadge(entry.injury_status) && (
+            <span
+              className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
+              title={entry.injury_status ?? undefined}
+            >
+              {injuryShortCode(entry.injury_status as string)}
+            </span>
+          )}
         </button>
         <span className="text-xs text-black/50 dark:text-white/50">
           {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
@@ -252,11 +266,6 @@ function RosterRow({
         )}
         {ownership?.percent_owned !== null && ownership?.percent_owned !== undefined && (
           <span className="text-xs text-black/50 dark:text-white/50">{ownership.percent_owned.toFixed(0)}% owned</span>
-        )}
-        {entry.injury_status && entry.injury_status !== "ACTIVE" && (
-          <span className="mt-0.5 w-fit rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 uppercase dark:text-red-400">
-            {entry.injury_status}
-          </span>
         )}
         {entry.is_locked && (
           <span
