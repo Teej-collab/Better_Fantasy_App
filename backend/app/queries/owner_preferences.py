@@ -43,16 +43,20 @@ _DEFAULT_PREFERENCES = {
     # data-wl-theme on <html> (app/layout.tsx), the same before-first-
     # paint cookie mechanism neon_intensity already uses.
     "theme": "calm",
-    # Settings > Labs > "Try the new look" — an opt-in beta for the
-    # redesigned nav (Home/League/Matchup/Chat/More) and page layouts
-    # proposed in Documentation/UX/. Orthogonal to theme above: this
+    # Settings > Labs > "Try the new look" — the redesigned nav
+    # (hamburger drawer, no bottom tab bar; Home/League/Matchup/Chat/
+    # More) and flatter card styling. Orthogonal to theme above: this
     # gates structure (which nav/components render), theme gates
-    # palette only. See Documentation/UX/06_Implementation_Roadmap.md
-    # section 0 for the rollout plan — opt-in during the beta window,
-    # then becomes the only layout and this column (and the legacy nav
-    # it replaces) gets deleted rather than living on as a permanent
-    # third theme option.
-    "beta_layout": False,
+    # palette only. Defaulted to True 2026-09-16 (commissioner call,
+    # per Documentation/UX/06_Implementation_Roadmap.md section 0's own
+    # "opt-in beta -> default -> retire old UI" plan — this is the
+    # middle step, not yet the final one). Kept as a real, working
+    # opt-out rather than deleted outright: an owner who prefers the
+    # old bottom bar can still switch back in Settings > Labs. Existing
+    # rows that had this explicitly set to False were backfilled to
+    # True in the same rollout (a one-time UPDATE, not a migration —
+    # see migration 9d2f2fea3c3e's docstring).
+    "beta_layout": True,
     # Settings > Labs > "Design Direction" — an opt-in full palette +
     # typography swap ("broadcast" = "Broadcast Desk", "stadium" =
     # "Stadium Lights", both from the /design-exploration mockups),
