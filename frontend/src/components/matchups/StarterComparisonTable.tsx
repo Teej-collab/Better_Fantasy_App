@@ -340,17 +340,17 @@ function PlayerCell({
               {player.pro_team ?? "—"}
               {player.next_opponent && ` ${player.next_opponent}`}
               {player.game_time && mounted && ` · ${formatGameTime(player.game_time)}`}
-              {formatPositionRank(player.opponent_position_rank, player.position ?? "") && (
-                <>
-                  {" · "}
-                  <span style={{ color: rankColorVar(player.opponent_position_rank!.rank) }}>
-                    {formatPositionRank(player.opponent_position_rank, player.position ?? "")}
-                  </span>
-                </>
-              )}
             </>
           )}
         </span>
+        {/* Own line, never truncated — appending this to the line above
+            (which already truncates when a name/opponent is long) was
+            silently hiding it on real rows. */}
+        {!statLine && formatPositionRank(player.opponent_position_rank, player.position ?? "") && (
+          <span className="text-xs" style={{ color: rankColorVar(player.opponent_position_rank!.rank) }}>
+            {formatPositionRank(player.opponent_position_rank, player.position ?? "")}
+          </span>
+        )}
       </span>
     </div>
   );

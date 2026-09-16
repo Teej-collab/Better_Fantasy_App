@@ -89,13 +89,22 @@ function RosterRow({
   onDrop: (entry: RosterEntry) => void;
 }) {
   if (beta) {
-    const metaParts: string[] = [];
-    if (entry.next_opponent) {
-      metaParts.push(entry.game_time && mounted ? `${entry.next_opponent} · ${formatGameTime(entry.game_time)}` : entry.next_opponent);
-    }
-    if (entry.bye_week !== null) metaParts.push(`Bye Wk ${entry.bye_week}`);
+    // Three secondary lines (position/team, opponent/time, bye+
+    // ownership+matchup-rank), never truncated — a single combined
+    // line here used to overflow and hide whatever didn't fit (real
+    // report: bye week, ownership%, and the matchup rank were all
+    // getting cut off behind a "…" on real rosters). Splitting by
+    // logical grouping instead of cramming everything onto one line
+    // is what actually fixes that, not a smaller font or tighter
+    // truncation.
+    const opponentLine =
+      entry.next_opponent && entry.game_time && mounted
+        ? `${entry.next_opponent} · ${formatGameTime(entry.game_time)}`
+        : entry.next_opponent;
+    const detailParts: string[] = [];
+    if (entry.bye_week !== null) detailParts.push(`Bye Wk ${entry.bye_week}`);
     if (ownership?.percent_owned !== null && ownership?.percent_owned !== undefined) {
-      metaParts.push(`${ownership.percent_owned.toFixed(0)}% owned`);
+      detailParts.push(`${ownership.percent_owned.toFixed(0)}% owned`);
     }
     const hasInjury = hasInjuryBadge(entry.injury_status);
     const positionRankText = formatPositionRank(entry.opponent_position_rank, entry.position);
@@ -156,10 +165,11 @@ function RosterRow({
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
           </span>
-          {(metaParts.length > 0 || positionRankText) && (
-            <span className="truncate text-xs text-black/50 dark:text-white/50">
-              {metaParts.join(" · ")}
-              {metaParts.length > 0 && positionRankText && " · "}
+          {opponentLine && <span className="text-xs text-black/50 dark:text-white/50">{opponentLine}</span>}
+          {(detailParts.length > 0 || positionRankText) && (
+            <span className="text-xs text-black/50 dark:text-white/50">
+              {detailParts.join(" · ")}
+              {detailParts.length > 0 && positionRankText && " · "}
               {positionRankText && (
                 <span style={{ color: rankColorVar(entry.opponent_position_rank!.rank) }}>{positionRankText}</span>
               )}
