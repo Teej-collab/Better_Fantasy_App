@@ -1367,6 +1367,12 @@ export type OwnerPreferences = {
   // to theme above (palette vs. structure) — see
   // Documentation/UX/06_Implementation_Roadmap.md section 0.
   beta_layout: boolean;
+  // Settings > Labs > "Design Direction" — an opt-in full palette +
+  // typography swap, independent of beta_layout above (that gates
+  // structure/nav; this gates color+type only). "default" is today's
+  // shipped look; "broadcast"/"stadium" are the two directions from
+  // the /design-exploration mockups.
+  design_direction: "default" | "broadcast" | "stadium";
   // JSON-encoded array of the 5 mobile bottom-nav destination keys
   // (BottomNav.tsx), in the owner's chosen order — null means "use
   // MOBILE_NAV_ORDER" (lib/navDestinations.ts).

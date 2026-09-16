@@ -13,6 +13,7 @@ import { PrimaryNav } from "@/components/nav/PrimaryNav";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { PrimaryNavBeta } from "@/components/nav/PrimaryNavBeta";
 import { MobileNavDrawer } from "@/components/nav/MobileNavDrawer";
+import { StadiumDock } from "@/components/nav/StadiumDock";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 
@@ -88,6 +89,12 @@ export async function NavBar() {
   // visitors always get the legacy nav (the preference is per-owner and
   // there's no session to read it from).
   const betaLayout = Boolean(myPreferences?.beta_layout);
+
+  // Settings > Labs > Design Direction — see StadiumDock.tsx's own
+  // comment. Purely additive on top of whichever nav above already
+  // rendered; never replaces it, so this reads independently of
+  // betaLayout rather than branching together with it.
+  const stadiumDock = signedIn && myPreferences?.design_direction === "stadium";
 
   return (
     <>
@@ -178,6 +185,7 @@ export async function NavBar() {
       ) : (
         <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
       )}
+      {stadiumDock && <StadiumDock matchupsHref={matchupsHref} />}
     </>
   );
 }

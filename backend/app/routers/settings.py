@@ -262,6 +262,7 @@ class PreferencesPatch(BaseModel):
     reduced_motion: bool | None = None
     theme: str | None = None
     beta_layout: bool | None = None
+    design_direction: str | None = None
     notify_game_alerts: bool | None = None
     notify_my_players: bool | None = None
     notify_fantasy_team: bool | None = None
@@ -279,6 +280,7 @@ class PreferencesPatch(BaseModel):
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
 _VALID_THEMES = {"calm", "cosmic"}
+_VALID_DESIGN_DIRECTIONS = {"default", "broadcast", "stadium"}
 
 
 @router.put("/preferences")
@@ -290,6 +292,10 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"neon_intensity must be one of {sorted(_VALID_NEON_INTENSITIES)}")
     if "theme" in patch and patch["theme"] not in _VALID_THEMES:
         raise HTTPException(status_code=400, detail=f"theme must be one of {sorted(_VALID_THEMES)}")
+    if "design_direction" in patch and patch["design_direction"] not in _VALID_DESIGN_DIRECTIONS:
+        raise HTTPException(
+            status_code=400, detail=f"design_direction must be one of {sorted(_VALID_DESIGN_DIRECTIONS)}"
+        )
     if patch.get("accent_color") is not None and not _HEX_COLOR_RE.match(patch["accent_color"]):
         raise HTTPException(status_code=400, detail="accent_color must be a 6-digit hex color like #39ff14, or null")
     if patch.get("your_week_color") is not None and not _HEX_COLOR_RE.match(patch["your_week_color"]):

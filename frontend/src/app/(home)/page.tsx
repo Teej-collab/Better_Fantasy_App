@@ -719,7 +719,7 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
 
   return (
     <section
-      className={`flex flex-col gap-3 rounded-xl bg-gradient-to-br from-neutral-900 via-black to-black p-4 text-white ${
+      className={`flex flex-col gap-3 rounded-xl bg-gradient-to-br from-[var(--wl-surface)] via-[var(--wl-bg)] to-[var(--wl-bg)] p-4 text-white ${
         isLive ? "hero-live-glow border border-red-500/50" : "neon-panel"
       }`}
     >
@@ -758,12 +758,12 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
             <span>{m.win_probability}%</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-sky-400" style={{ width: `${m.win_probability}%` }} />
+            <div className="h-full rounded-full bg-[var(--wl-accent)]" style={{ width: `${m.win_probability}%` }} />
           </div>
         </div>
       )}
 
-      <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-sky-300 hover:underline">
+      <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-[var(--wl-accent)] hover:underline">
         View full matchup →
       </Link>
     </section>

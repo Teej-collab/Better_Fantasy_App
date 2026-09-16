@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, IBM_Plex_Sans, Oswald } from "next/font/google";
+import {
+  Bebas_Neue,
+  Geist_Mono,
+  IBM_Plex_Sans,
+  JetBrains_Mono,
+  Oswald,
+  Source_Sans_3,
+  Space_Grotesk,
+  Space_Mono,
+} from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -37,6 +46,41 @@ const oswald = Oswald({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Settings > Labs > Design Direction — "Broadcast Desk" and "Stadium
+// Lights" (see /design-exploration for the source mockups this pass
+// implements). Each font is loaded unconditionally, same as the three
+// above, but only actually *used* once its direction's globals.css
+// block overrides --font-display/--font-body/--font-geist-mono to
+// point at these variables (see that file's [data-wl-direction="..."]
+// rules) — a visitor who hasn't opted in never triggers a real font
+// file download, since browsers only fetch a @font-face once something
+// on the page actually renders with it.
+const bebasNeue = Bebas_Neue({
+  variable: "--font-broadcast-display",
+  subsets: ["latin"],
+  weight: "400",
+});
+const sourceSans3 = Source_Sans_3({
+  variable: "--font-broadcast-body",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-broadcast-mono",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+});
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-stadium-display",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+const spaceMono = Space_Mono({
+  variable: "--font-stadium-mono",
+  subsets: ["latin"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
@@ -142,6 +186,16 @@ const APPEARANCE_SCRIPT = `
     if (/(?:^|; )wl_beta_layout=1(?:;|$)/.test(document.cookie)) {
       document.documentElement.setAttribute("data-wl-layout", "beta");
     }
+    // Settings > Labs > Design Direction (wl_direction, mirrored by
+    // LabsSection.tsx same as every other cookie above) — a strict
+    // allowlist, not a passthrough, same discipline as data-wl-theme
+    // above: a malformed/hand-edited cookie just falls back to
+    // "default" rather than reaching an unstyled data-wl-direction
+    // value with no matching globals.css block.
+    var dir = document.cookie.match(/(?:^|; )wl_direction=([^;]+)/);
+    if (dir && (dir[1] === "broadcast" || dir[1] === "stadium")) {
+      document.documentElement.setAttribute("data-wl-direction", dir[1]);
+    }
   } catch (e) {}
 })();
 `;
@@ -150,7 +204,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${ibmPlexSans.variable} ${oswald.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${ibmPlexSans.variable} ${oswald.variable} ${geistMono.variable} ${bebasNeue.variable} ${sourceSans3.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${spaceMono.variable} h-full antialiased dark`}
       // APPEARANCE_SCRIPT below sets data-neon, data-wl-theme, and
       // (sometimes) motion-reduced/--user-accent on this element before
       // React hydrates, on purpose (that's what avoids a flash of the

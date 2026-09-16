@@ -322,13 +322,13 @@ function YourWeekHeroBeta({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: 
             <span>{m.win_probability}%</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-sky-400" style={{ width: `${m.win_probability}%` }} />
+            <div className="h-full rounded-full bg-[var(--wl-accent)]" style={{ width: `${m.win_probability}%` }} />
           </div>
         </div>
       )}
 
       <div className="flex items-center gap-4">
-        <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-sky-300 hover:underline">
+        <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-[var(--wl-accent)] hover:underline">
           View full matchup →
         </Link>
         <Link href="/team" className="text-sm text-white/50 hover:underline">

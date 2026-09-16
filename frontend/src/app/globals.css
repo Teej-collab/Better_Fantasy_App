@@ -69,6 +69,137 @@
   --wl-accent-dim: #1b8f6c;
 }
 
+/* Settings > Labs > Design Direction — two full opt-in palette +
+   typography swaps, independent of [data-wl-theme] above (an owner
+   picks a Direction OR Calm/Cosmic, not both — AppearanceSection.tsx
+   disables the theme picker whenever a Direction is active, so these
+   two attributes are never meant to combine in practice). Sourced
+   directly from the approved /design-exploration mockups
+   (direction-a/theme.css, direction-c/theme.css) — every rule
+   elsewhere that reads a --wl- token, --background, --foreground, or
+   a --font- variable repaints automatically from these token
+   overrides alone; see the
+   utility-class override block further down for the (larger) set of
+   hardcoded-opacity Tailwind classes that don't read these tokens and
+   need their own explicit override. */
+[data-wl-direction="broadcast"] {
+  --wl-bg: #0b0d10;
+  --wl-surface: #15181d;
+  --wl-border: #262a31;
+  --wl-accent: #dc2626;
+  --wl-accent-dim: #a91d1d;
+  --wl-text: #f5f4f1;
+  --wl-text-secondary: #8b8f97;
+  --wl-live: #ef4444;
+  --wl-success: #22c55e;
+  --wl-warning: #eab308;
+  --background: #0b0d10;
+  --foreground: #f5f4f1;
+  --font-display: var(--font-broadcast-display);
+  --font-body: var(--font-broadcast-body);
+  --font-geist-mono: var(--font-broadcast-mono);
+}
+[data-wl-direction="stadium"] {
+  --wl-bg: #050507;
+  --wl-surface: #101018;
+  --wl-border: rgba(255, 255, 255, 0.09);
+  --wl-accent: #22d3ee;
+  --wl-accent-dim: #0e7490;
+  --wl-text: #eef0ff;
+  --wl-text-secondary: #9393ad;
+  --wl-live: #ff3864;
+  --wl-success: #39ff14;
+  --wl-warning: #facc15;
+  --background: #050507;
+  --foreground: #eef0ff;
+  --font-display: var(--font-stadium-display);
+  --font-body: var(--font-stadium-display);
+  --font-geist-mono: var(--font-stadium-mono);
+}
+
+/* The app's single most common color pattern (2026-09 investigation) —
+   secondary/muted text, hairline borders, and card-surface tints —
+   is written as raw dark:text-white/NN-family Tailwind utilities,
+   completely decoupled from the --wl-* tokens above (only the dark:
+   variant ever renders; @custom-variant dark above forces it
+   permanently on). Without this block, the two token overrides above
+   would correctly repaint .neon-panel/.wl-card shells, chat bubbles,
+   nav, and live indicators, but leave this dominant text/border layer
+   frozen in the default palette. No !important needed and none of the
+   existing app-wide utility overrides in this file use it either —
+   plain, unlayered rules here already beat Tailwind's own
+   `@layer utilities` classes regardless of source order or specificity
+   (see .neon-navlink's comment above for the same mechanism already in
+   use). Grouped by which single token each opacity family maps to;
+   the exact opacity value is intentionally not preserved; only the
+   semantic role (muted text / hairline border / subtle surface) is. */
+[data-wl-direction="broadcast"] .dark\:text-white\/25,
+[data-wl-direction="broadcast"] .dark\:text-white\/30,
+[data-wl-direction="broadcast"] .dark\:text-white\/35,
+[data-wl-direction="broadcast"] .dark\:text-white\/40,
+[data-wl-direction="broadcast"] .dark\:text-white\/45,
+[data-wl-direction="broadcast"] .dark\:text-white\/50,
+[data-wl-direction="broadcast"] .dark\:text-white\/60,
+[data-wl-direction="broadcast"] .dark\:text-white\/70,
+[data-wl-direction="broadcast"] .dark\:text-white\/75,
+[data-wl-direction="broadcast"] .dark\:text-white\/80,
+[data-wl-direction="stadium"] .dark\:text-white\/25,
+[data-wl-direction="stadium"] .dark\:text-white\/30,
+[data-wl-direction="stadium"] .dark\:text-white\/35,
+[data-wl-direction="stadium"] .dark\:text-white\/40,
+[data-wl-direction="stadium"] .dark\:text-white\/45,
+[data-wl-direction="stadium"] .dark\:text-white\/50,
+[data-wl-direction="stadium"] .dark\:text-white\/60,
+[data-wl-direction="stadium"] .dark\:text-white\/70,
+[data-wl-direction="stadium"] .dark\:text-white\/75,
+[data-wl-direction="stadium"] .dark\:text-white\/80 {
+  color: var(--wl-text-secondary);
+}
+[data-wl-direction="broadcast"] .dark\:border-white\/5,
+[data-wl-direction="broadcast"] .dark\:border-white\/10,
+[data-wl-direction="broadcast"] .dark\:border-white\/15,
+[data-wl-direction="broadcast"] .dark\:border-white\/20,
+[data-wl-direction="broadcast"] .dark\:border-white\/40,
+[data-wl-direction="stadium"] .dark\:border-white\/5,
+[data-wl-direction="stadium"] .dark\:border-white\/10,
+[data-wl-direction="stadium"] .dark\:border-white\/15,
+[data-wl-direction="stadium"] .dark\:border-white\/20,
+[data-wl-direction="stadium"] .dark\:border-white\/40 {
+  border-color: var(--wl-border);
+}
+/* Tailwind v4's divide-* utilities are themselves emitted inside a
+   :where(...) selector (zero specificity, by Tailwind's own design, so
+   a caller's real border-color utility can win) — matching that same
+   compound selector shape here rather than just the bare class, since
+   a plain class-only override here wouldn't reach the child-combinator
+   rule divide-* actually applies to. */
+[data-wl-direction="broadcast"] .dark\:divide-white\/5:is(.dark *) > :not(:last-child),
+[data-wl-direction="stadium"] .dark\:divide-white\/5:is(.dark *) > :not(:last-child) {
+  border-color: var(--wl-border);
+}
+[data-wl-direction="broadcast"] .dark\:bg-white\/5,
+[data-wl-direction="broadcast"] .dark\:bg-white\/10,
+[data-wl-direction="broadcast"] .dark\:bg-white\/15,
+[data-wl-direction="broadcast"] .dark\:bg-white\/20,
+[data-wl-direction="broadcast"] .dark\:bg-white\/25,
+[data-wl-direction="broadcast"] .dark\:bg-white\/\[0\.02\],
+[data-wl-direction="broadcast"] .dark\:bg-white\/\[0\.03\],
+[data-wl-direction="broadcast"] .dark\:bg-white\/\[0\.04\],
+[data-wl-direction="broadcast"] .dark\:bg-white\/\[0\.05\],
+[data-wl-direction="broadcast"] .dark\:bg-white\/\[0\.06\],
+[data-wl-direction="stadium"] .dark\:bg-white\/5,
+[data-wl-direction="stadium"] .dark\:bg-white\/10,
+[data-wl-direction="stadium"] .dark\:bg-white\/15,
+[data-wl-direction="stadium"] .dark\:bg-white\/20,
+[data-wl-direction="stadium"] .dark\:bg-white\/25,
+[data-wl-direction="stadium"] .dark\:bg-white\/\[0\.02\],
+[data-wl-direction="stadium"] .dark\:bg-white\/\[0\.03\],
+[data-wl-direction="stadium"] .dark\:bg-white\/\[0\.04\],
+[data-wl-direction="stadium"] .dark\:bg-white\/\[0\.05\],
+[data-wl-direction="stadium"] .dark\:bg-white\/\[0\.06\] {
+  background-color: var(--wl-surface);
+}
+
 /* App-wide keyboard-focus baseline — most interactive elements had no
    visible focus indicator at all, relying on whatever the browser
    default happened to be (thin coverage found across the app,

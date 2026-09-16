@@ -53,6 +53,15 @@ _DEFAULT_PREFERENCES = {
     # it replaces) gets deleted rather than living on as a permanent
     # third theme option.
     "beta_layout": False,
+    # Settings > Labs > "Design Direction" — an opt-in full palette +
+    # typography swap ("broadcast" = "Broadcast Desk", "stadium" =
+    # "Stadium Lights", both from the /design-exploration mockups),
+    # independent of beta_layout above (that gates structure/nav; this
+    # gates color+type only, same relationship theme already has to
+    # beta_layout). "default" is today's shipped look. Drives
+    # data-wl-direction on <html> (app/layout.tsx), same before-first-
+    # paint cookie mechanism theme/neon_intensity already use.
+    "design_direction": "default",
     "home_card_order": None,
     # None on all three below means "use the app's hardcoded default" —
     # same convention as home_card_order. home_hidden_cards is

@@ -297,7 +297,7 @@ export function MessageComposer({
       {showGifPicker && <GifPicker onSelect={pickGif} onClose={() => setShowGifPicker(false)} />}
 
       {filteredMembers.length > 0 && (
-        <div className="absolute bottom-full left-3 z-40 mb-1 flex w-56 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-neutral-900">
+        <div className="absolute bottom-full left-3 z-40 mb-1 flex w-56 flex-col overflow-hidden rounded-lg border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-[var(--wl-surface)]">
           {filteredMembers.map((m) => (
             <button
               key={m.owner_id}

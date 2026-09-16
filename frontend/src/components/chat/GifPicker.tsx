@@ -53,7 +53,7 @@ export function GifPicker({ onSelect, onClose }: { onSelect: (gif: ChatGif) => v
     // by the nav rendering on top of it. max-h-[60vh] keeps it from ever
     // demanding more vertical space than a keyboard-shrunk viewport
     // actually has.
-    <div className="absolute bottom-full left-3 z-40 mb-1 flex h-80 max-h-[60vh] w-72 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-neutral-900">
+    <div className="absolute bottom-full left-3 z-40 mb-1 flex h-80 max-h-[60vh] w-72 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-[var(--wl-surface)]">
       <div className="flex items-center gap-2 border-b border-black/10 p-2 dark:border-white/10">
         <input
           ref={inputRef}

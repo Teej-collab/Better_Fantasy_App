@@ -209,15 +209,30 @@ export function AppearanceSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Look</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Calm is Weekend League&apos;s current look. Cosmic brings back the starfield background and a
-            brighter accent — everything else (layout, pages, features) stays exactly the same either way.
+            {prefs.design_direction !== "default" ? (
+              <>
+                Controlled by your Design Direction in Labs right now — a Direction sets its own palette. Switch
+                back to Default there to choose Calm or Cosmic again.
+              </>
+            ) : (
+              <>
+                Calm is Weekend League&apos;s current look. Cosmic brings back the starfield background and a
+                brighter accent — everything else (layout, pages, features) stays exactly the same either way.
+              </>
+            )}
           </p>
         </div>
-        <div className="flex gap-2" role="radiogroup" aria-label="Look">
+        <div
+          className={`flex gap-2 ${prefs.design_direction !== "default" ? "pointer-events-none opacity-40" : ""}`}
+          role="radiogroup"
+          aria-label="Look"
+          aria-disabled={prefs.design_direction !== "default"}
+        >
           <button
             type="button"
             role="radio"
             aria-checked={prefs.theme === "calm"}
+            disabled={prefs.design_direction !== "default"}
             onClick={() => setTheme("calm")}
             className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
               prefs.theme === "calm"
@@ -231,6 +246,7 @@ export function AppearanceSection() {
             type="button"
             role="radio"
             aria-checked={prefs.theme === "cosmic"}
+            disabled={prefs.design_direction !== "default"}
             onClick={() => setTheme("cosmic")}
             className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
               prefs.theme === "cosmic"
@@ -319,7 +335,7 @@ export function AppearanceSection() {
               prefs.accent_color === null ? "border-black dark:border-white" : "border-transparent"
             }`}
           >
-            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: "#39ff14" }} aria-hidden />
+            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: "var(--wl-accent)" }} aria-hidden />
             <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
           </button>
           {NEON_PALETTE.filter((p) => p.name !== "Neon Green").map((preset) => (
@@ -384,7 +400,7 @@ export function AppearanceSection() {
                     prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
                   }`}
                 >
-                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "var(--wl-accent)" }} aria-hidden />
                   <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
                 </button>
                 {NEON_PALETTE.map((preset) => (
@@ -422,7 +438,7 @@ export function AppearanceSection() {
                     prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
                   }`}
                 >
-                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                  <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "var(--wl-accent)" }} aria-hidden />
                   <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
                 </button>
                 {NEON_PALETTE.map((preset) => (
@@ -463,7 +479,7 @@ export function AppearanceSection() {
                   prefs.your_week_color === null ? "border-black dark:border-white" : "border-transparent"
                 }`}
               >
-                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "var(--wl-accent)" }} aria-hidden />
                 <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
               </button>
               {NEON_PALETTE.map((preset) => (
@@ -502,7 +518,7 @@ export function AppearanceSection() {
                   prefs.border_glow_color === null ? "border-black dark:border-white" : "border-transparent"
                 }`}
               >
-                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "#39ff14" }} aria-hidden />
+                <span className="h-8 w-8 rounded-full" style={{ backgroundColor: prefs.accent_color ?? "var(--wl-accent)" }} aria-hidden />
                 <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
               </button>
               {NEON_PALETTE.map((preset) => (
