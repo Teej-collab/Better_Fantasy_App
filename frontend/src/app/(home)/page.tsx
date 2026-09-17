@@ -39,6 +39,7 @@ import {
 } from "@/lib/api";
 import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
 import { MovementBadge } from "@/components/MovementBadge";
+import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugFeed } from "@/components/ChugFeed";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
@@ -441,8 +442,12 @@ export default async function HomePage() {
                       {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
                       {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
                       <span className="truncate">{m.home.team_name}</span>
+                      <TeamRankBadge rank={m.home.power_rank} />
                     </span>
-                    <span className="truncate text-black/50 dark:text-white/50">{m.away.team_name}</span>
+                    <span className="truncate text-black/50 dark:text-white/50">
+                      {m.away.team_name}
+                      <TeamRankBadge rank={m.away.power_rank} />
+                    </span>
                   </span>
                   <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
                     <span className="block">{m.home.score !== null ? m.home.score.toFixed(1) : "—"}</span>
@@ -740,10 +745,17 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <TeamScoreBlock name={myWeek.team_name} score={m.my_score} projected={m.my_projected_total} lead={winning} />
+        <TeamScoreBlock
+          name={myWeek.team_name}
+          powerRank={myWeek.power_rank}
+          score={m.my_score}
+          projected={m.my_projected_total}
+          lead={winning}
+        />
         <span className="shrink-0 text-white/30">vs</span>
         <TeamScoreBlock
           name={m.opponent_team_name}
+          powerRank={m.opponent_power_rank}
           score={m.opponent_score}
           projected={m.opponent_projected_total}
           lead={!winning}
@@ -772,12 +784,14 @@ function YourWeekHero({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: bool
 
 function TeamScoreBlock({
   name,
+  powerRank,
   score,
   projected,
   lead,
   align = "left",
 }: {
   name: string;
+  powerRank: number | null;
   score: number | null;
   projected: number;
   lead: boolean;
@@ -785,7 +799,10 @@ function TeamScoreBlock({
 }) {
   return (
     <div className={`flex min-w-0 flex-col ${align === "right" ? "items-end text-right" : "items-start"}`}>
-      <span className="max-w-[10rem] truncate text-sm text-white/70 sm:max-w-[14rem]">{name}</span>
+      <span className="line-clamp-2 max-w-[10rem] text-sm leading-tight break-words text-white/70 sm:max-w-[14rem]">
+        {name}
+        <TeamRankBadge rank={powerRank} variant="dark" />
+      </span>
       <span
         className={`score-pop text-2xl font-bold tabular-nums sm:text-3xl ${lead ? "text-white" : "text-white/60"}`}
       >

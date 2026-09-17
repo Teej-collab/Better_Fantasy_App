@@ -3,6 +3,7 @@ import type { MatchupContextSide, WeekMatchupContextItem } from "@/lib/api";
 import { TeamLogo } from "@/components/matchups/MatchupScoreHeader";
 import { GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
+import { TeamRankBadge } from "@/components/TeamRankBadge";
 
 const STREAK_ICON: Record<string, string> = { hot: "\u{1F525}", cold: "\u{1F976}", neutral: "" };
 
@@ -87,6 +88,7 @@ function ScoreboardRow({
         <span className={`truncate text-sm ${leading ? "font-semibold" : "font-medium text-black/70 dark:text-white/70"}`}>
           {side.team_name}
           {STREAK_ICON[side.streak] && <span className="ml-1">{STREAK_ICON[side.streak]}</span>}
+          <TeamRankBadge rank={side.power_rank} />
         </span>
         <span className="truncate text-xs text-black/50 dark:text-white/50">
           {side.owner_name}

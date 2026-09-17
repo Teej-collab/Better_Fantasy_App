@@ -553,10 +553,24 @@ body {
    number, so it picks up whatever this resolves to automatically — but
    its height calc still hardcodes the *legacy* bottom bar's height as
    a literal subtraction, which needed its own beta-mode fix too (see
-   ChatApp.tsx's own comment on the `beta` height branch). */
+   ChatApp.tsx's own comment on the `beta` height branch).
+
+   2026-09-17 fix, real report: the fixed 6rem guess above (already
+   bumped once, 2026-09-16) still overlapped Chat's own header on a
+   real iPhone 16 Pro — no fixed number can actually account for every
+   device's own status-bar/Dynamic-Island/safe-area height, only
+   measuring the real button can. `--hamburger-clear-bottom`
+   (MobileNavDrawer.tsx's own effect, same mount+resize pattern
+   ChatApp.tsx's --chat-top-offset already uses) is that real
+   measurement — the trigger button's own actual bottom edge plus a
+   small real buffer, correct on any iPhone or Android device by
+   construction rather than by guessing a number and widening it each
+   time a new device proves it wrong. `calc(env(safe-area-inset-top) +
+   6rem)` only remains as the pre-hydration fallback for the one frame
+   before that effect has run. */
 @media (max-width: 639.98px) {
   [data-wl-layout="beta"] .wl-page-shell {
-    padding-top: calc(env(safe-area-inset-top) + 6rem);
+    padding-top: var(--hamburger-clear-bottom, calc(env(safe-area-inset-top) + 6rem));
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
   [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--ticker-above {
@@ -566,7 +580,7 @@ body {
     padding-bottom: 0;
   }
   [data-wl-layout="beta"] .wl-ticker-bar {
-    padding-top: calc(env(safe-area-inset-top) + 6rem);
+    padding-top: var(--hamburger-clear-bottom, calc(env(safe-area-inset-top) + 6rem));
   }
 }
 

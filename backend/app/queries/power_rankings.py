@@ -43,6 +43,34 @@ async def get_latest_ranked_week(conn, season: int, league_id: int = DEFAULT_LEA
     )
 
 
+async def get_latest_power_rank_by_team(
+    conn, season: int, team_ids: list[int], league_id: int = DEFAULT_LEAGUE_ID
+) -> dict[int, int]:
+    """Each team's own most recent recorded power_rank this season (by
+    week number, no upper bound at any particular week) — the same
+    concept app/domain/team_profile.py's find_game_of_the_week already
+    uses to pick the week's best matchup, exposed here as a plain
+    per-team map for anywhere else that wants to show a team's own
+    current rank next to its name (2026-09-17: the Standings-style #N
+    badge, now also the matchup header, Your Week hero, and the Other
+    Matchups list). A team with no ranked week yet (e.g. week 1 still
+    in progress) is simply absent from the returned dict — every caller
+    already treats a missing key as "no badge to show," the same
+    convention Standings' own powerRankByTeam map already uses."""
+    if not team_ids:
+        return {}
+    rows = await conn.fetch(
+        """
+        SELECT DISTINCT ON (team_id) team_id, power_rank
+        FROM weekly_team_stats
+        WHERE season = $1 AND team_id = ANY($2::int[]) AND league_id = $3 AND power_rank IS NOT NULL
+        ORDER BY team_id, week DESC
+        """,
+        season, team_ids, league_id,
+    )
+    return {r["team_id"]: r["power_rank"] for r in rows}
+
+
 async def get_season_power_rank_trend(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """

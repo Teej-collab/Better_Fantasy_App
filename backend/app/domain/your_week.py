@@ -21,6 +21,7 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.domain.win_probability import estimate_win_probability
 from app.queries import draft as draft_queries
 from app.queries import league as queries
+from app.queries.power_rankings import get_latest_power_rank_by_team
 
 _STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
 
@@ -56,9 +57,16 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
         pre_set = await draft_queries.get_schedule_only(conn, season, league_id)
         draft = {"scheduled_start": pre_set, "status": "not_started"} if pre_set is not None else None
 
+    # This team's own current power rank (Standings-style #N badge —
+    # 2026-09-17: now also the Your Week hero, matchup header, and
+    # Other Matchups list, everywhere a team name already shows). Null
+    # until this team has at least one ranked week.
+    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, [team["team_id"]], league_id)
+
     week = await queries.get_cached_current_week(conn, season)
     base = {
         "season": season, "week": week, "team_id": team["team_id"], "team_name": team["team_name"],
+        "power_rank": power_rank_by_team.get(team["team_id"]),
         "matchup": None, "draft": draft,
     }
     if not week or week < 1:
@@ -73,6 +81,9 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     opp_score = matchup["away_score"] if is_home else matchup["home_score"]
     opp_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
     opp_team_name = matchup["away_team_name"] if is_home else matchup["home_team_name"]
+
+    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, [team["team_id"], opp_team_id], league_id)
+    base["power_rank"] = power_rank_by_team.get(team["team_id"])
 
     started = my_score is not None and opp_score is not None and not (my_score == 0 and opp_score == 0)
 
@@ -105,6 +116,7 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
         "my_projected_total": my_projected,
         "opponent_team_id": opp_team_id,
         "opponent_team_name": opp_team_name,
+        "opponent_power_rank": power_rank_by_team.get(opp_team_id),
         "opponent_score": float(opp_score) if opp_score is not None else None,
         "opponent_projected_total": opp_projected,
         "win_probability": win_probability,

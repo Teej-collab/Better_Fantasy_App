@@ -46,6 +46,7 @@ from app.domain.win_probability import estimate_win_probability
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as queries
 from app.queries import team_position_rankings as position_rankings_queries
+from app.queries.power_rankings import get_latest_power_rank_by_team
 
 # Defense-vs-position matchup rank only applies to these positions — see
 # migration 465f0b1ffe3f for why D/ST is deliberately excluded.
@@ -140,7 +141,7 @@ def _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map,
 
 def _side_dict(
     team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability,
-    schedule_by_pro_team, touchdowns, live_status_by_pro_team_map, rankings=None,
+    schedule_by_pro_team, touchdowns, live_status_by_pro_team_map, rankings=None, power_rank=None,
 ):
     return {
         "team_id": team_row["team_id"],
@@ -148,6 +149,11 @@ def _side_dict(
         "owner_id": team_row["owner_id"],
         "owner_name": team_row["owner_name"],
         "logo_url": team_row["logo_url"],
+        # This team's own current power rank (app/domain/
+        # weekly_team_stats.py's compute_power_ranks_for_week) — the
+        # same Standings-style #N badge, now everywhere a team name
+        # shows. Null until that team has at least one ranked week.
+        "power_rank": power_rank,
         "score": float(score) if score is not None else None,
         # Real season-to-date total (standings' own points_for) — the
         # "season total" beneath the live score, distinct from
@@ -196,6 +202,7 @@ def _matchup_entry(
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
     narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
     locked_teams=frozenset(), live_status_by_pro_team_map=None, rankings=None,
+    power_rank_by_team=None,
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
@@ -203,6 +210,7 @@ def _matchup_entry(
     (which fetches them for just the one matchup), so the week-list
     card and the full detail page can never quietly drift apart."""
     live_status_by_pro_team_map = live_status_by_pro_team_map or {}
+    power_rank_by_team = power_rank_by_team or {}
     home_score, away_score = m["home_score"], m["away_score"]
     started = home_score is not None and away_score is not None and not (home_score == 0 and away_score == 0)
 
@@ -253,11 +261,13 @@ def _matchup_entry(
             home_team, home_score, home_standing, home_streak, home_roster,
             home_bench_crimes, home_clutch_choke, home_win_probability,
             schedule_by_pro_team, home_touchdowns, live_status_by_pro_team_map, rankings,
+            power_rank_by_team.get(home_team["team_id"]),
         ),
         "away": _side_dict(
             away_team, away_score, away_standing, away_streak, away_roster,
             away_bench_crimes, away_clutch_choke, away_win_probability,
             schedule_by_pro_team, away_touchdowns, live_status_by_pro_team_map, rankings,
+            power_rank_by_team.get(away_team["team_id"]),
         ),
         "narrative": narrative,
     }
@@ -270,6 +280,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
 
     team_ids = list({m["home_team_id"] for m in matchups} | {m["away_team_id"] for m in matchups})
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
+    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, team_ids, league_id)
     streaks_by_team = await get_team_streaks(conn, season, team_ids)
     score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
     bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
@@ -351,7 +362,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
             None, schedule_by_pro_team,
             touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-            locked_teams, live_status_map, rankings,
+            locked_teams, live_status_map, rankings, power_rank_by_team,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -396,6 +407,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
 
     team_ids = [m["home_team_id"], m["away_team_id"]]
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
+    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, team_ids, league_id)
     streaks_by_team = await get_team_streaks(conn, season, team_ids)
     score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
     bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
@@ -427,7 +439,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
         None, schedule_by_pro_team,
         touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-        locked_teams, live_status_map, rankings,
+        locked_teams, live_status_map, rankings, power_rank_by_team,
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

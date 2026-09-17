@@ -173,6 +173,56 @@ async def test_in_progress_matchup_computes_win_probability(pool):
     assert m["win_probability"] > 50  # ahead on score and projection
 
 
+async def test_power_rank_is_null_with_no_ranked_week_yet(pool):
+    owner_id, _ = await _seed_owner_and_team(pool)
+    async with pool.acquire() as conn:
+        result = await build_your_week(conn, owner_id, season=TEST_SEASON)
+    assert result["power_rank"] is None
+
+
+async def test_power_rank_reflects_each_team_s_own_latest_ranked_week(pool):
+    # 2026-09-17 addition: the Standings-style #N badge now also shows
+    # on the Your Week hero, for both my own team and my opponent.
+    owner_id, team_id = await _seed_owner_and_team(pool)
+    async with pool.acquire() as conn:
+        opp_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ('test-yourweek-rank-opp', 'Carol') RETURNING owner_id"
+        )
+        opp_team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, 3, $2, 'Team Gamma') RETURNING id",
+            TEST_SEASON, opp_id,
+        )
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 1) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 1, $2, $3, 0, 0, FALSE)",
+            TEST_SEASON, team_id, opp_team_id,
+        )
+        await conn.execute(
+            "INSERT INTO weekly_team_stats (season, week, team_id, power_rank) VALUES ($1, 1, $2, 3)",
+            TEST_SEASON, team_id,
+        )
+        await conn.execute(
+            "INSERT INTO weekly_team_stats (season, week, team_id, power_rank) VALUES ($1, 1, $2, 7)",
+            TEST_SEASON, opp_team_id,
+        )
+
+        result = await build_your_week(conn, owner_id, season=TEST_SEASON)
+
+        await conn.execute("DELETE FROM weekly_team_stats WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM matchups WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM teams_by_season WHERE id = $1", opp_team_id)
+        await conn.execute("DELETE FROM owners WHERE owner_id = $1", opp_id)
+
+    assert result["power_rank"] == 3
+    assert result["matchup"]["opponent_power_rank"] == 7
+
+
 async def test_week_endpoint_requires_session(pool):
     async with _client() as client:
         resp = await client.get("/me/week")

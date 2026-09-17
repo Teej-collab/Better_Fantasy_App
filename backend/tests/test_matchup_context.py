@@ -229,6 +229,32 @@ async def test_matchup_context_endpoint_shape_without_rivalry(pool, monkeypatch)
     assert m["home"]["roster"][1]["player_id"] == "test-mc-bench-guy"
 
 
+async def test_matchup_context_includes_each_side_s_own_power_rank(pool, monkeypatch):
+    # 2026-09-17 addition: the Standings-style #N badge now also shows
+    # in the matchup header — null for a team with no ranked week yet,
+    # a real number once one exists, per side independently.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool, season=TEST_SEASON)
+    cookies = await _member_cookies(pool, "power-rank")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, 6, $2, $3, 0, 0, FALSE)",
+            TEST_SEASON, team_a, team_b,
+        )
+        await conn.execute(
+            "INSERT INTO weekly_team_stats (season, week, team_id, power_rank) VALUES ($1, 6, $2, 2)",
+            TEST_SEASON, team_a,
+        )
+        # team_b deliberately has no weekly_team_stats row at all.
+
+    resp = await _get(f"/seasons/{TEST_SEASON}/weeks/6/matchup-context", cookies)
+    assert resp.status_code == 200
+    m = resp.json()["matchups"][0]
+    assert m["home"]["power_rank"] == 2
+    assert m["away"]["power_rank"] is None
+
+
 async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_a, owner_b, team_a, team_b = await _seed_two_teams(pool)

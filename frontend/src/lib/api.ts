@@ -357,6 +357,9 @@ export type MatchupContextSide = {
   team_name: string;
   owner_id: number;
   owner_name: string;
+  // This team's own current power rank (the Standings-style #N badge)
+  // — null until it has at least one ranked week.
+  power_rank: number | null;
   // The fantasy team's own custom logo (owners.logo_url, set in
   // Settings) — null until an owner uploads one, same fallback-to-
   // initials convention every other avatar in this app already uses.
@@ -809,6 +812,10 @@ export type YourWeekMatchup = {
   my_projected_total: number;
   opponent_team_id: number;
   opponent_team_name: string;
+  // This week's Standings-style #N power-rank badge for the opponent —
+  // null until that team has at least one ranked week (see
+  // app/domain/weekly_team_stats.py).
+  opponent_power_rank: number | null;
   opponent_score: number | null;
   opponent_projected_total: number;
   // Our own estimate from real inputs (current score + season
@@ -831,6 +838,9 @@ export type YourWeek = {
   week: number | null;
   team_id: number;
   team_name: string;
+  // This team's own current power rank — null until it has at least
+  // one ranked week.
+  power_rank: number | null;
   matchup: YourWeekMatchup | null;
   // Null only when no draft_config exists yet at all for the season
   // (setup hasn't happened) — once it does, draft is always present,

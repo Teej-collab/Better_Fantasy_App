@@ -118,6 +118,32 @@ export function MobileNavDrawer({
     }
   }
 
+  // Publishes exactly how far down the real, rendered trigger button
+  // reaches — every page's own top clearance (globals.css's
+  // `--hamburger-clear-bottom`, read by `.wl-page-shell`/`.wl-ticker-
+  // bar`) reads this instead of a hardcoded buffer guess. Real report,
+  // 2026-09-17: the fixed 6rem guess (already bumped once, 2026-09-16,
+  // from a smaller number) still overlapped Chat's own header on a
+  // real iPhone 16 Pro — a hardcoded number can never actually account
+  // for every device's own status-bar/Dynamic-Island/safe-area height,
+  // only measuring the real element can. Same mount+resize pattern
+  // ChatApp.tsx's own `--chat-top-offset` already uses for the same
+  // reason. The env(safe-area-inset-top) fallback CSS still uses is
+  // only for the brief pre-hydration paint before this effect runs.
+  useEffect(() => {
+    function measure() {
+      if (!triggerRef.current) return;
+      const bottom = triggerRef.current.getBoundingClientRect().bottom;
+      // A little real breathing room below the button itself, not
+      // another blind buffer guess — the button's own bottom edge is
+      // now a real, per-device-correct number.
+      document.documentElement.style.setProperty("--hamburger-clear-bottom", `${Math.ceil(bottom) + 20}px`);
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   useEffect(() => {
     if (!mounted) return;
 
