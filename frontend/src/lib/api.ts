@@ -2052,6 +2052,53 @@ export async function getChatWsTicket(): Promise<string | null> {
   return ticket ?? null;
 }
 
+// --- Watch Party (backend/app/routers/watch_party.py) ---
+
+export type WatchPartyRoom = {
+  id: number;
+  name: string;
+  kind: "open" | "private";
+  created_by_owner_id: number;
+  member_count: number;
+};
+
+export type WatchPartyRoomsResponse = {
+  open_room: WatchPartyRoom;
+  private_rooms: WatchPartyRoom[];
+};
+
+export async function getWatchPartyRooms(): Promise<WatchPartyRoomsResponse> {
+  return authedGet<WatchPartyRoomsResponse>("/watch-party/rooms");
+}
+
+export async function createWatchPartyRoom(name: string, invitedOwnerIds: number[]): Promise<number> {
+  const res = await fetch(`/api/backend/watch-party/rooms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, invited_owner_ids: invitedOwnerIds }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to create party: ${res.status}`);
+  }
+  const { id } = await res.json();
+  return id;
+}
+
+export type WatchPartyToken = { token: string; url: string; room_name: string };
+
+// A fresh token per join (not cached/reused across sessions) — see
+// watch_party.py's TOKEN_TTL_SECONDS comment on why this is minted
+// per-join rather than once and stored.
+export async function getWatchPartyToken(roomId: number): Promise<WatchPartyToken> {
+  const res = await fetch(`/api/backend/watch-party/rooms/${roomId}/token`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to get a room token: ${res.status}`);
+  }
+  return res.json();
+}
+
 // Same idea, for the chug video upload (ChugUpload.tsx) — see
 // getChatWsTicket just above.
 export async function getChugUploadTicket(): Promise<string | null> {

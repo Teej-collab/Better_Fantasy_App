@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  createWatchPartyRoom,
   deleteChatMessage,
   getChatConversationMessages,
   getChatMembers,
   getChatWebSocketUrl,
   getChatWsTicket,
   getPreferences,
+  getWatchPartyRooms,
   markConversationRead,
   reactToMessage,
   startDirectConversation,
@@ -16,10 +18,15 @@ import {
   type ChatMember,
   type ChatMessage,
   type OwnerPreferences,
+  type WatchPartyRoom as WatchPartyRoomInfo,
+  type WatchPartyRoomsResponse,
 } from "@/lib/api";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { NewMessageModal } from "@/components/chat/NewMessageModal";
+import { NewPartyModal } from "@/components/watchparty/NewPartyModal";
+import { WatchPartyBar } from "@/components/watchparty/WatchPartyBar";
+import { WatchPartyRoom } from "@/components/watchparty/WatchPartyRoom";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const RECONNECT_DELAY_MS = 2000;
@@ -166,6 +173,23 @@ export function ChatApp({
   useEffect(() => {
     getChatMembers().then(setMembers);
   }, []);
+
+  const [watchPartyRooms, setWatchPartyRooms] = useState<WatchPartyRoomsResponse | null>(null);
+  const [activeWatchPartyRoom, setActiveWatchPartyRoom] = useState<WatchPartyRoomInfo | null>(null);
+  const [showNewParty, setShowNewParty] = useState(false);
+
+  useEffect(() => {
+    getWatchPartyRooms().then(setWatchPartyRooms).catch(() => {});
+  }, []);
+
+  async function createParty(name: string, invitedOwnerIds: number[]) {
+    const id = await createWatchPartyRoom(name, invitedOwnerIds);
+    const rooms = await getWatchPartyRooms().catch(() => null);
+    if (rooms) setWatchPartyRooms(rooms);
+    setShowNewParty(false);
+    const created = rooms?.private_rooms.find((r) => r.id === id);
+    if (created) setActiveWatchPartyRoom(created);
+  }
 
   useEffect(() => {
     getPreferences().then(setPreferences).catch(() => {});
@@ -514,6 +538,13 @@ export function ChatApp({
           messagePreviewsEnabled={preferences?.message_previews_enabled ?? true}
           onSelect={selectConversation}
           onNewMessage={() => setShowNewMessage(true)}
+          topSlot={
+            <WatchPartyBar
+              rooms={watchPartyRooms}
+              onJoin={setActiveWatchPartyRoom}
+              onStartParty={() => setShowNewParty(true)}
+            />
+          }
         />
       </div>
 
@@ -549,6 +580,12 @@ export function ChatApp({
 
       {showNewMessage && (
         <NewMessageModal members={members} onClose={() => setShowNewMessage(false)} onSelect={startNewConversation} />
+      )}
+
+      {showNewParty && <NewPartyModal members={members} onClose={() => setShowNewParty(false)} onCreate={createParty} />}
+
+      {activeWatchPartyRoom && (
+        <WatchPartyRoom room={activeWatchPartyRoom} onClose={() => setActiveWatchPartyRoom(null)} />
       )}
     </div>
   );

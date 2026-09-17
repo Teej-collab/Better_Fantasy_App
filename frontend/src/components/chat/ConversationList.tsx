@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { ChatAvatar, ChatConversation } from "@/lib/api";
 import { formatConversationListTimestamp } from "@/lib/chatFormat";
 import { initialsFor } from "@/components/chat/MessageBubble";
@@ -180,6 +180,7 @@ export function ConversationList({
   messagePreviewsEnabled,
   onSelect,
   onNewMessage,
+  topSlot,
 }: {
   conversations: ChatConversation[];
   selectedId: number | null;
@@ -188,6 +189,11 @@ export function ConversationList({
   messagePreviewsEnabled: boolean;
   onSelect: (id: number) => void;
   onNewMessage: () => void;
+  // Watch Party's join/create bar (ChatApp.tsx owns the actual data
+  // and handlers — this list only renders whatever it's handed, same
+  // reasoning as any other slot prop) — optional so nothing changes
+  // for a caller that doesn't pass one.
+  topSlot?: ReactNode;
 }) {
   return (
     <div className="flex h-full w-full flex-col sm:w-80 sm:shrink-0 sm:border-r" style={{ borderColor: "var(--wl-border)" }}>
@@ -210,6 +216,8 @@ export function ConversationList({
           +
         </button>
       </div>
+
+      {topSlot}
 
       {conversations.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">

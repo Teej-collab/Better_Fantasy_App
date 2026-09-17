@@ -87,3 +87,27 @@ def require_email_configured() -> tuple[str, str]:
             "Email sending isn't configured — set RESEND_API_KEY and RESEND_FROM_EMAIL (see .env.example)."
         )
     return RESEND_API_KEY, RESEND_FROM_EMAIL
+
+
+# Watch Party (app/routers/watch_party.py) — LiveKit Cloud is a
+# separate account the commissioner sets up themselves (not something
+# this app can provision), so this follows the same optional-at-import,
+# fail-loud-at-use pattern as email/push above rather than crashing
+# every environment that hasn't set it up yet. Tokens are minted by
+# hand with PyJWT (already a dependency, used for session/ticket tokens
+# elsewhere in this app) rather than pulling in LiveKit's own server
+# SDK — a LiveKit access token is just an HS256 JWT with a documented
+# claim shape, confirmed against LiveKit's own python-sdks source
+# (livekit-api/livekit/api/access_token.py) rather than assumed.
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
+LIVEKIT_URL = os.getenv("LIVEKIT_URL")
+
+
+def require_livekit_configured() -> tuple[str, str, str]:
+    if not (LIVEKIT_API_KEY and LIVEKIT_API_SECRET and LIVEKIT_URL):
+        raise RuntimeError(
+            "Watch Party video isn't configured — set LIVEKIT_API_KEY, LIVEKIT_API_SECRET, "
+            "and LIVEKIT_URL (see .env.example)."
+        )
+    return LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL

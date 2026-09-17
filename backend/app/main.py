@@ -33,6 +33,7 @@ from app.routers import (
     push,
     settings,
     trades,
+    watch_party,
 )
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -164,6 +165,7 @@ app.include_router(profile.router)
 app.include_router(push.router)
 app.include_router(settings.router)
 app.include_router(trades.router)
+app.include_router(watch_party.router)
 
 
 @app.get("/health")
