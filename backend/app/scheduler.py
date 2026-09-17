@@ -29,17 +29,20 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   job in this file that runs regardless of is_nfl_game_live — every
   other week-scoped job here goes completely dark the instant the last
   live game of the week ends, leaving chug debts, the chug countdown,
-  and the weekly recap's own eligibility all depending on the once-
-  daily full sync to eventually catch up (previously up to 24h, at an
-  unpredictable time). Polls the same free, public NFL scoreboard call
-  every few minutes all week, checking the CACHED current week's own
-  real game data directly rather than waiting on ESPN's own separate
-  week.number counter to roll over (real report, same day: that
-  counter can lag real completion by a long stretch) — the real
-  settlement work (chug debts, the Monday-deadline doubling, and
-  auto-generating the now-eligible weekly recap) only actually fires
-  once per real week rollover, and this job then advances
-  league_state.current_week itself — see _run_week_settlement_job's
+  the weekly recap's own eligibility, AND weekly_team_stats (power_
+  rank/luck_score/chaos_score/sos — added 2026-09-17, real report:
+  Standings' #N badge and Game of the Week never appeared for a real,
+  fully-final week 1) all depending on the once-daily full sync to
+  eventually catch up (previously up to 24h, at an unpredictable
+  time). Polls the same free, public NFL scoreboard call every few
+  minutes all week, checking the CACHED current week's own real game
+  data directly rather than waiting on ESPN's own separate week.number
+  counter to roll over (real report, same day: that counter can lag
+  real completion by a long stretch) — the real settlement work (chug
+  debts, the Monday-deadline doubling, weekly_team_stats, and auto-
+  generating the now-eligible weekly recap) only actually fires once
+  per real week rollover, and this job then advances league_state.
+  current_week itself — see _run_week_settlement_job's
   own docstring.
 - Gamecast (ENABLE_GAMECAST_SCHEDULER): polls the configured live-NFL-
   game provider (Sportradar, or the mock simulation — see app/gamecast/
@@ -144,6 +147,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, weekly_stats
+from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
 from app.domain.chug_standing import accrue_weekly_debt_for_single_week, ensure_chug_deadline_settled
@@ -231,6 +235,21 @@ async def _run_week_settlement_job():
     somewhere. The instant Monday Night Football's last game ends,
     those jobs go dark until Thursday's next kickoff.
 
+    2026-09-17 fix, real report ("power ranking badges never showed
+    up"): weekly_team_stats.compute_weekly_team_stats_for_week (power_
+    rank/luck_score/chaos_score/sos — the Standings page's #N badge and
+    Game of the Week) has the exact same is_nfl_game_live-gated blind
+    spot, one level deeper: it's normally reached via run_live_sync,
+    which only ever fires while a game is live, but the stats it
+    computes internally require is_week_final — genuinely mutually
+    exclusive with "a game from this week is still live." A real
+    week 1 confirmed this: team_points_projected (no such gate) filled
+    in fine during live ticks, but power_rank/luck_score/chaos_score/
+    sos stayed NULL forever once the week actually finished, since no
+    live-sync tick ever landed in the gap where the week was both over
+    AND a tick happened to fire. Computed here instead, same as chug/
+    recap above — no live-game gate, just "is settle_week over."
+
     Deliberately does NOT decide "is this week over" from
     get_real_current_week() (ESPN's public scoreboard's own week.number
     field) the way this job originally did — real report, same day:
@@ -286,6 +305,8 @@ async def _run_week_settlement_job():
     for row in league_rows:
         league_id = row["league_id"]
         try:
+            async with pool.acquire() as conn:
+                await compute_weekly_team_stats_for_week(conn, season, settle_week, league_id)
             await compute_chug_debts_for_single_week(pool, season, settle_week, league_id)
             await accrue_weekly_debt_for_single_week(pool, season, settle_week, league_id)
             await ensure_chug_deadline_settled(pool, season, settle_week, week_games, league_id=league_id)
