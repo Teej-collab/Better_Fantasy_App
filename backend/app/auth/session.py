@@ -42,6 +42,14 @@ TICKET_MAX_AGE_SECONDS = 60
 # limit the platform itself enforces regardless.
 CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS = 15 * 60
 
+# A Watch Party WS connection is meant to stay open for an entire real
+# sitting (a game slate), not a handshake or a bounded upload — same
+# reasoning already applied to that room's LiveKit video token (see
+# app/routers/watch_party.py's TOKEN_TTL_SECONDS comment). The frontend
+# re-mints a fresh ticket well before this expires rather than this
+# trying to outlive an entire Sunday in one token.
+WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS = 6 * 60 * 60
+
 
 def create_session_token(
     secret: str, *, user_id: int, owner_id: int | None = None, discord_user_id: int | None = None,

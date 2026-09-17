@@ -2099,6 +2099,34 @@ export async function getWatchPartyToken(roomId: number): Promise<WatchPartyToke
   return res.json();
 }
 
+// Same "long-lived ticket" purpose as the video token above, minted
+// the same short-lived-ticket way as chat/gamecast's own WS — see
+// backend/app/auth/session.py's WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS.
+export async function getWatchPartyWsTicket(): Promise<string | null> {
+  const res = await fetch("/auth/ticket?purpose=watch_party_ws", { method: "POST" });
+  if (!res.ok) return null;
+  const { ticket } = await res.json();
+  return ticket ?? null;
+}
+
+export function getWatchPartyWebSocketUrl(ticket: string, roomId: number): string {
+  return `${API_BASE_URL.replace(/^http/, "ws")}/watch-party/ws?ticket=${encodeURIComponent(ticket)}&room_id=${roomId}`;
+}
+
+export type FantasyDigestMatchup = {
+  matchup_id: number;
+  home: { team_name: string; owner_name: string; score: number | null };
+  away: { team_name: string; owner_name: string; score: number | null };
+  sweat: { score: number; label: string | null };
+};
+
+export type FantasyDigest = {
+  type: "fantasy_digest";
+  season: number;
+  week: number;
+  matchups: FantasyDigestMatchup[];
+};
+
 // Same idea, for the chug video upload (ChugUpload.tsx) — see
 // getChatWsTicket just above.
 export async function getChugUploadTicket(): Promise<string | null> {

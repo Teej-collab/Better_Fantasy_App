@@ -23,6 +23,7 @@ from app.auth.session import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
     TICKET_MAX_AGE_SECONDS,
+    WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS,
     create_session_token,
     create_ticket_token,
     decode_session_token,
@@ -412,7 +413,7 @@ async def reset_password(body: ResetPasswordRequest):
     return {"message": "Password updated — sign in with your new password."}
 
 
-TICKET_PURPOSES = {"ws", "chug_upload"}
+TICKET_PURPOSES = {"ws", "chug_upload", "watch_party_ws"}
 
 
 @router.post("/ticket")
@@ -459,10 +460,16 @@ async def issue_ticket(request: Request, purpose: str):
         # (FastAPI/Starlette fully receives the upload before
         # upload_chug's own handler, and its ticket check, ever run) —
         # see CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS's own docstring for the
-        # real incident this fixes. The "ws" purpose keeps the short
-        # default; a WebSocket handshake really does complete in well
-        # under a second.
-        max_age_seconds=CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS if purpose == "chug_upload" else TICKET_MAX_AGE_SECONDS,
+        # real incident this fixes. A watch_party_ws ticket similarly
+        # has to outlive an entire real sitting, not just a handshake —
+        # see WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS's own docstring. The
+        # plain "ws" purpose (chat, gamecast) keeps the short default; a
+        # WebSocket handshake really does complete in well under a second.
+        max_age_seconds=(
+            CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS if purpose == "chug_upload"
+            else WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS if purpose == "watch_party_ws"
+            else TICKET_MAX_AGE_SECONDS
+        ),
     )
     return {"ticket": ticket}
 

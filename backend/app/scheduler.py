@@ -51,6 +51,15 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   provider's entire live slate, so an idle Gamecast feature with zero
   viewers costs nothing beyond the one lightweight scoreboard check
   every tick.
+- Watch Party (ENABLE_WATCH_PARTY_SCHEDULER): a sibling of Gamecast
+  above, not a shared job — pushes the "fantasy digest" (close/live
+  league matchups, see app/domain/watch_party.py) to everyone connected
+  to a Watch Party room's WebSocket. Same is_nfl_game_live gate plus its
+  own "only rooms someone's actually in" check
+  (WatchPartyConnectionManager.live_room_ids()). Runs on its own, more
+  relaxed default interval than Gamecast's 4s — real fantasy scores only
+  change as fast as live sync itself runs (60s default), so polling
+  faster than that would just recompute identical numbers.
 - Sleeper player sync (ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER): refreshes
   the `players` table from Sleeper's free player API once a day —
   Sleeper's own docs require at most one pull a day, so this interval
@@ -135,6 +144,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, weekly_stats
+from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
 from app.domain.chug_standing import accrue_weekly_debt_for_single_week, ensure_chug_deadline_settled
 from app.domain.draft_exceptions import DraftError
@@ -161,7 +171,9 @@ from app.domain import waivers
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
+from app.queries import watch_party as watch_party_queries
 from app.scheduler_status import record_job_run
+from app.watch_party.manager import manager as watch_party_manager
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +334,40 @@ async def _run_gamecast_poll_job():
         for event in fantasy_events:
             await gamecast_manager.broadcast_to_game(game_id, event)
     logger.info("Gamecast poll finished for %d live game(s)", len(game_ids))
+
+
+async def _run_watch_party_poll_job():
+    """A sibling of _run_gamecast_poll_job above, not a shared loop
+    body — this iterates room_ids (watch_party_manager), not game_ids
+    (gamecast_manager), and its data source is the fantasy digest built
+    from matchup_context (app/domain/watch_party.py), not a per-NFL-
+    game refresh. Real fantasy scores only ever change as fast as the
+    live ESPN sync job itself runs (LIVE_SYNC_INTERVAL_SECONDS, default
+    60s) — polling this faster than that would just recompute the same
+    numbers, so this has its own, more relaxed default interval rather
+    than reusing Gamecast's 4s one."""
+    games = await get_nfl_scoreboard()
+    if not is_nfl_game_live(games):
+        return
+
+    room_ids = watch_party_manager.live_room_ids()
+    if not room_ids:
+        return  # nobody's actually in a Watch Party room right now
+
+    pool = await get_pool()
+    for room_id in room_ids:
+        async with pool.acquire() as conn:
+            try:
+                room = await watch_party_queries.get_room(conn, room_id)
+                if room is None:
+                    continue
+                digest = await watch_party_domain.build_fantasy_digest(conn, room["league_id"])
+            except Exception:
+                logger.exception("Watch Party poll failed for room_id=%s", room_id)
+                continue
+        if digest is not None:
+            await watch_party_manager.broadcast_to_room(room_id, digest)
+    logger.info("Watch Party poll finished for %d room(s)", len(room_ids))
 
 
 async def _run_sleeper_player_sync_job():
@@ -755,6 +801,15 @@ def start_scheduler():
         _scheduler.add_job(_run_gamecast_poll_job, "interval", seconds=interval_seconds, id="gamecast_poll")
         logger.info(
             "Gamecast poll scheduler started (every %d seconds, only during NFL game windows with active viewers)",
+            interval_seconds,
+        )
+        started_any = True
+
+    if os.getenv("ENABLE_WATCH_PARTY_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        interval_seconds = int(os.getenv("WATCH_PARTY_POLL_INTERVAL_SECONDS", "30"))
+        _scheduler.add_job(_run_watch_party_poll_job, "interval", seconds=interval_seconds, id="watch_party_poll")
+        logger.info(
+            "Watch Party poll scheduler started (every %d seconds, only during NFL game windows with active rooms)",
             interval_seconds,
         )
         started_any = True

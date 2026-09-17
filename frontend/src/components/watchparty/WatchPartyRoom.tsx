@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import { LiveKitRoom, VideoConference } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { getWatchPartyToken, type WatchPartyRoom as WatchPartyRoomInfo } from "@/lib/api";
+import { FantasyTicker } from "@/components/watchparty/FantasyTicker";
 
-// Phase 1 of the approved Watch Party plan: prove real audio/video
-// works reliably on real devices before investing in the fully custom
-// video-tile grid + fantasy overlay (Phase 2+). LiveKit's own
-// prebuilt <VideoConference/> — mic/camera controls, tile grid, screen
-// share — is deliberately used as-is here rather than rebuilt from
-// useTracks/useParticipants primitives, since a battle-tested call UI
-// is the right thing to validate the actual media path against, not a
-// hand-rolled one. The custom grid + FantasyTicker mockup already
-// designed for this gets built once this proves out.
+// Phase 1 of the approved Watch Party plan (confirmed working on real
+// devices): LiveKit's own prebuilt <VideoConference/> — mic/camera
+// controls, tile grid, screen share — is deliberately used as-is here
+// rather than rebuilt from useTracks/useParticipants primitives, since
+// a battle-tested call UI was the right thing to validate the actual
+// media path against first. Phase 2 (this pass) layers the live
+// fantasy digest (FantasyTicker) on top via its own WebSocket — the
+// fully custom tile grid from the original mockup is still a later
+// phase, once there's a real reason to move off the prebuilt one.
 export function WatchPartyRoom({ room, onClose }: { room: WatchPartyRoomInfo; onClose: () => void }) {
   const [tokenData, setTokenData] = useState<{ token: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,17 +61,20 @@ export function WatchPartyRoom({ room, onClose }: { room: WatchPartyRoomInfo; on
       )}
 
       {tokenData && (
-        <LiveKitRoom
-          token={tokenData.token}
-          serverUrl={tokenData.url}
-          video
-          audio
-          data-lk-theme="default"
-          style={{ flex: 1, minHeight: 0 }}
-          onDisconnected={onClose}
-        >
-          <VideoConference />
-        </LiveKitRoom>
+        <>
+          <FantasyTicker roomId={room.id} />
+          <LiveKitRoom
+            token={tokenData.token}
+            serverUrl={tokenData.url}
+            video
+            audio
+            data-lk-theme="default"
+            style={{ flex: 1, minHeight: 0 }}
+            onDisconnected={onClose}
+          >
+            <VideoConference />
+          </LiveKitRoom>
+        </>
       )}
     </div>
   );

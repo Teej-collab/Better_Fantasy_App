@@ -1,10 +1,10 @@
 """
 Watch Party rooms — group video/voice reached from Chat (2026-09-16
-plan). Phase 1: room list/create and LiveKit token minting only. Live
-room presence and the fantasy overlay ("sweat index", live scores)
-ride their own WebSocket in a later phase — see the approved plan file
-for the full picture; this is deliberately just the REST surface a
-room needs to exist and be joinable.
+plan). Phase 1: room list/create and LiveKit token minting. Phase 2
+(this pass): a WebSocket per room broadcasting the live "fantasy
+digest" (close/live league matchups) — see app/domain/watch_party.py
+and app/watch_party/manager.py, and the scheduler job in
+app/scheduler.py that actually pushes updates on a poll cadence.
 
 Auth pattern copied from app/routers/chat.py (_require_session is a
 local per-router helper there too, not shared). League/membership
@@ -14,15 +14,17 @@ whole app's league-scoped routers already depend on.
 import time
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, resolve_owner_id
-from app.auth.session import decode_session_token, get_session_token
+from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_ticket_token, get_session_token
 from app.config import _require, require_livekit_configured
 from app.db import get_pool
+from app.domain import watch_party as watch_party_domain
 from app.queries import chat as chat_queries
 from app.queries import watch_party as watch_party_queries
+from app.watch_party.manager import manager as watch_party_manager
 
 router = APIRouter(prefix="/watch-party", tags=["watch_party"])
 
@@ -112,6 +114,23 @@ async def create_room(request: Request, pool=Depends(get_pool)):
     return {"id": room_id}
 
 
+async def _room_if_accessible(conn, room_id: int, league_id: int, owner_id: int):
+    """None if the room doesn't exist, belongs to another league, is
+    closed, or (for a 'private' room) this owner was never invited.
+    'open' room membership is implicit — require_active_league_id and
+    resolve_owner_id having already succeeded for this league IS the
+    whole definition of eligibility for it; only 'private' rooms need
+    an actual membership-row check. Shared by the token endpoint and
+    the /ws route below so the two never drift out of sync on who's
+    actually allowed into a room."""
+    room = await watch_party_queries.get_room(conn, room_id)
+    if room is None or room["league_id"] != league_id or room["closed_at"] is not None:
+        return None
+    if room["kind"] == "private" and not await watch_party_queries.is_private_room_member(conn, room_id, owner_id):
+        return None
+    return room
+
+
 @router.post("/rooms/{room_id}/token")
 async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
@@ -121,17 +140,9 @@ async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool))
         league_id = await require_active_league_id(conn, payload)
         owner_id = await resolve_owner_id(conn, payload)
 
-        room = await watch_party_queries.get_room(conn, room_id)
-        if room is None or room["league_id"] != league_id or room["closed_at"] is not None:
+        room = await _room_if_accessible(conn, room_id, league_id, owner_id)
+        if room is None:
             raise HTTPException(status_code=404, detail="Room not found")
-
-        # 'open' room membership is implicit — require_active_league_id
-        # and resolve_owner_id above already proved this owner belongs
-        # to this room's league, which is the whole definition of
-        # eligibility for it. Only a 'private' room needs an actual
-        # membership-row check.
-        if room["kind"] == "private" and not await watch_party_queries.is_private_room_member(conn, room_id, owner_id):
-            raise HTTPException(status_code=403, detail="You weren't invited to this party")
 
         display_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
 
@@ -161,3 +172,52 @@ async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool))
     token = jwt.encode(claims, api_secret, algorithm="HS256")
 
     return {"token": token, "url": livekit_url, "room_name": livekit_room_name}
+
+
+@router.websocket("/ws")
+async def watch_party_ws(websocket: WebSocket, room_id: int, ticket: str | None = None):
+    """Push-only, same shape as Gamecast's own /nfl/gamecast/ws — sends
+    one fantasy_digest snapshot immediately on connect (if one's
+    computable right now), then the scheduler job's poll results get
+    broadcast to every connected socket for this room_id (see
+    _run_watch_party_poll_job in app/scheduler.py). This socket never
+    reads anything meaningful from the client; any inbound payload is
+    ignored, same as Gamecast's."""
+    payload = _decode_session(websocket.cookies.get(SESSION_COOKIE_NAME))
+    if payload is None and ticket:
+        config = SessionConfig()
+        payload = decode_ticket_token(config.session_secret, ticket, expected_purpose="watch_party_ws")
+    if payload is None:
+        await websocket.close(code=4401)
+        return
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            # require_active_league_id raises HTTPException (409) for a
+            # signed-in-but-no-active-league visitor — meaningless in a
+            # WS context, so it's translated into a close code here
+            # rather than left to propagate as an unhandled exception.
+            league_id = await require_active_league_id(conn, payload)
+            owner_id = await resolve_owner_id(conn, payload)
+            room = await _room_if_accessible(conn, room_id, league_id, owner_id)
+    except HTTPException:
+        await websocket.close(code=4409)
+        return
+    if room is None:
+        await websocket.close(code=4404)
+        return
+
+    await watch_party_manager.connect(room_id, websocket)
+    try:
+        async with pool.acquire() as conn:
+            digest = await watch_party_domain.build_fantasy_digest(conn, league_id)
+        if digest is not None:
+            await websocket.send_json(digest)
+
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        watch_party_manager.disconnect(room_id, websocket)
