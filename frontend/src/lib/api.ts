@@ -1867,7 +1867,7 @@ export function getWaiverPriority(season: number, week: number, sessionCookie: s
   );
 }
 
-export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean };
+export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean; reactor_names: string[] };
 
 export type ChatReplyPreview = { id: number; owner_name: string; body: string };
 
@@ -1889,6 +1889,12 @@ export type ChatMessage = {
   reply_to: ChatReplyPreview | null;
   mentions: number[];
   reactions: ChatReaction[];
+  // Other participants (with Read Receipts on) whose last_read_message_id
+  // has reached this message — see backend/app/domain/chat.py's
+  // _build_seen_by_message. Meaningful mainly for group threads
+  // (Commish's Corner, League); empty for a 1:1 DM's own messages,
+  // which already has other_last_read_message_id for that purpose.
+  seen_by: string[];
 };
 
 export type ChatAvatar = { owner_id: number; display_name: string; chat_color: string | null; logo_url: string | null };

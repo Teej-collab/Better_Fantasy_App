@@ -211,6 +211,10 @@ async def react_to_message(message_id: int, request: Request, pool=Depends(get_p
 
         added = await chat_queries.toggle_reaction(conn, message_id, owner_id, emoji)
         participant_ids = await chat_queries.list_conversation_participant_ids(conn, target["conversation_id"])
+        # Included so every connected client can keep its own reactor_names
+        # list in sync without a round-trip refetch — see ChatApp.tsx's
+        # "reaction" WS handler.
+        owner_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
 
     await manager.broadcast_to_owners(
         participant_ids,
@@ -220,6 +224,7 @@ async def react_to_message(message_id: int, request: Request, pool=Depends(get_p
             "conversation_id": target["conversation_id"],
             "emoji": emoji,
             "owner_id": owner_id,
+            "owner_name": owner_name or "Someone",
             "added": added,
         },
     )

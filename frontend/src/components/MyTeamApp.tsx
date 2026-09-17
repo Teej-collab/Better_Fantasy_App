@@ -165,15 +165,17 @@ function RosterRow({
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
           </span>
-          {opponentLine && <span className="text-xs text-black/50 dark:text-white/50">{opponentLine}</span>}
-          {(detailParts.length > 0 || positionRankText) && (
+          {(opponentLine || positionRankText) && (
             <span className="text-xs text-black/50 dark:text-white/50">
-              {detailParts.join(" · ")}
-              {detailParts.length > 0 && positionRankText && " · "}
+              {opponentLine}
+              {opponentLine && positionRankText && " · "}
               {positionRankText && (
                 <span style={{ color: rankColorVar(entry.opponent_position_rank!.rank) }}>{positionRankText}</span>
               )}
             </span>
+          )}
+          {detailParts.length > 0 && (
+            <span className="text-xs text-black/50 dark:text-white/50">{detailParts.join(" · ")}</span>
           )}
           {entry.is_locked && (
             <span className="mt-0.5 flex flex-wrap items-center gap-1">

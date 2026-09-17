@@ -77,6 +77,14 @@ export function ChatApp({
   initialConversationId?: number | null;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
+  // Opens to the conversation list, like iMessage does, rather than
+  // always auto-selecting the first conversation — which (per
+  // conversationTypeRank above) is always Commish's Corner, so every
+  // single chat visit used to jump straight into it regardless of what
+  // the person actually wanted to look at. A ?conversation=<id> deep
+  // link (push notification, see initialConversationId's own comment)
+  // is the one case that still lands directly on a thread, since that's
+  // an explicit destination, not a default.
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     if (
       initialConversationId != null &&
@@ -84,7 +92,7 @@ export function ChatApp({
     ) {
       return initialConversationId;
     }
-    return initialConversations.length > 0 ? initialConversations[0].id : null;
+    return null;
   });
   const [messagesByConversation, setMessagesByConversation] = useState<Record<number, ChatMessage[]>>({});
   const [hasMoreByConversation, setHasMoreByConversation] = useState<Record<number, boolean>>({});
@@ -294,11 +302,12 @@ export function ChatApp({
           }));
         }, TYPING_CLEAR_MS);
       } else if (event.type === "reaction") {
-        const { message_id, conversation_id, emoji, owner_id, added } = event as {
+        const { message_id, conversation_id, emoji, owner_id, owner_name, added } = event as {
           message_id: number;
           conversation_id: number;
           emoji: string;
           owner_id: number;
+          owner_name: string;
           added: boolean;
         };
         setMessagesByConversation((prev) => {
@@ -316,9 +325,10 @@ export function ChatApp({
                     ...reactions[idx],
                     count: reactions[idx].count + 1,
                     reacted_by_me: reactions[idx].reacted_by_me || owner_id === myOwnerId,
+                    reactor_names: [...reactions[idx].reactor_names, owner_name].sort(),
                   };
                 } else {
-                  reactions.push({ emoji, count: 1, reacted_by_me: owner_id === myOwnerId });
+                  reactions.push({ emoji, count: 1, reacted_by_me: owner_id === myOwnerId, reactor_names: [owner_name] });
                 }
               } else if (idx >= 0) {
                 const nextCount = reactions[idx].count - 1;
@@ -329,6 +339,7 @@ export function ChatApp({
                     ...reactions[idx],
                     count: nextCount,
                     reacted_by_me: owner_id === myOwnerId ? false : reactions[idx].reacted_by_me,
+                    reactor_names: reactions[idx].reactor_names.filter((n) => n !== owner_name),
                   };
                 }
               }
@@ -491,7 +502,7 @@ export function ChatApp({
             // top-padding override, not this branch's own arbitrary
             // guess — the real value always comes from the effect above
             // measuring the panel's actual rendered position.
-            "wl-card relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,5rem)-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
+            "wl-card relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,6rem)-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
           : "neon-panel relative flex overflow-hidden rounded-none h-[calc(100dvh-var(--chat-top-offset,7rem)-4.5rem-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-6rem)] sm:rounded-xl"
       }
       style={beta ? undefined : panelGlowStyle(SECTION_COLORS.chat)}

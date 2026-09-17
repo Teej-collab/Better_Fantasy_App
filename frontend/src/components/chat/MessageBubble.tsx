@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatReaction } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 
@@ -177,7 +177,7 @@ export function MessageBubble({
                 />
               </a>
               {!message.body && message.reactions.length > 0 && (
-                <ReactionBadge mine={mine} reactions={message.reactions} messageId={message.id} onReact={onReact} />
+                <ReactionBadge mine={mine} reactions={message.reactions} />
               )}
             </div>
           )}
@@ -213,7 +213,7 @@ export function MessageBubble({
                 {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}
               </div>
               {message.reactions.length > 0 && (
-                <ReactionBadge mine={mine} reactions={message.reactions} messageId={message.id} onReact={onReact} />
+                <ReactionBadge mine={mine} reactions={message.reactions} />
               )}
             </div>
           )}
@@ -287,34 +287,51 @@ export function MessageBubble({
 // nearly half its own text). The wrapping flex column above reserves
 // mb-6 (24px) whenever a message has reactions, so this hang has room
 // without colliding with the next message below.
-function ReactionBadge({
-  mine,
-  reactions,
-  messageId,
-  onReact,
-}: {
-  mine: boolean;
-  reactions: ChatReaction[];
-  messageId: number;
-  onReact: (messageId: number, emoji: string) => void;
-}) {
+// Tapping a pill used to toggle your own reaction directly — moved to
+// showing who left it instead (real request: "click on the reaction
+// and see which user left it"). Adding/removing your own reaction
+// still works via the emoji picker (REACTION_CHOICES below), which
+// already toggles the same way on a repeat tap of the same emoji.
+function ReactionBadge({ mine, reactions }: { mine: boolean; reactions: ChatReaction[] }) {
+  const [openEmoji, setOpenEmoji] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openEmoji) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpenEmoji(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openEmoji]);
+
   return (
-    <div className={`absolute -bottom-5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
+    <div ref={containerRef} className={`absolute -bottom-5 z-10 flex gap-0.5 ${mine ? "right-0" : "left-0"}`}>
       {reactions.map((r) => (
-        <button
-          key={r.emoji}
-          onClick={(e) => {
-            e.stopPropagation();
-            onReact(messageId, r.emoji);
-          }}
-          className={`rounded-full border px-1.5 py-0.5 text-xs shadow-sm ${
-            r.reacted_by_me
-              ? "border-sky-500/50 bg-sky-500/10"
-              : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
-          }`}
-        >
-          {r.emoji} {r.count}
-        </button>
+        <span key={r.emoji} className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenEmoji((cur) => (cur === r.emoji ? null : r.emoji));
+            }}
+            className={`rounded-full border px-1.5 py-0.5 text-xs shadow-sm ${
+              r.reacted_by_me
+                ? "border-sky-500/50 bg-sky-500/10"
+                : "border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900"
+            }`}
+          >
+            {r.emoji} {r.count}
+          </button>
+          {openEmoji === r.emoji && (
+            <div
+              className={`absolute top-full z-20 mt-1 w-max max-w-[200px] rounded-lg border border-black/10 bg-white px-2 py-1 text-xs whitespace-normal text-black/70 shadow-lg dark:border-white/10 dark:bg-neutral-900 dark:text-white/70 ${
+                mine ? "right-0" : "left-0"
+              }`}
+            >
+              {r.reactor_names.join(", ")}
+            </div>
+          )}
+        </span>
       ))}
     </div>
   );

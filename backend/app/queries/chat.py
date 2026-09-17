@@ -309,11 +309,13 @@ async def get_reactions_for_messages(conn, message_ids: list[int], requesting_ow
         return []
     return await conn.fetch(
         """
-        SELECT message_id, emoji, COUNT(*) AS count,
-               bool_or(owner_id = $2) AS reacted_by_me
-        FROM message_reactions
-        WHERE message_id = ANY($1::int[])
-        GROUP BY message_id, emoji
+        SELECT r.message_id, r.emoji, COUNT(*) AS count,
+               bool_or(r.owner_id = $2) AS reacted_by_me,
+               array_agg(o.display_name ORDER BY o.display_name) AS reactor_names
+        FROM message_reactions r
+        JOIN owners o ON o.owner_id = r.owner_id
+        WHERE r.message_id = ANY($1::int[])
+        GROUP BY r.message_id, r.emoji
         """,
         message_ids, requesting_owner_id,
     )
@@ -357,6 +359,29 @@ async def insert_mentions(conn, message_id: int, owner_ids: list[int]):
     await conn.executemany(
         "INSERT INTO message_mentions (message_id, owner_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         [(message_id, oid) for oid in owner_ids],
+    )
+
+
+async def get_participants_read_state(conn, conversation_id: int, exclude_owner_id: int):
+    """One row per other participant with read receipts on, their
+    display name, and how far they've read (conversation_participants'
+    last_read_message_id) — the same per-owner data 1:1 DMs already
+    expose (see other_last_read_message_id above), just fetched for
+    every participant instead of only "the other" one, so a group
+    conversation (Commish's Corner) can show "seen by" per message
+    without a new read-tracking table: comparing this against each
+    message's own id is enough (see get_conversation_messages)."""
+    return await conn.fetch(
+        """
+        SELECT cp.owner_id, o.display_name, cp.last_read_message_id
+        FROM conversation_participants cp
+        JOIN owners o ON o.owner_id = cp.owner_id
+        LEFT JOIN owner_preferences op ON op.owner_id = cp.owner_id
+        WHERE cp.conversation_id = $1
+          AND cp.owner_id != $2
+          AND COALESCE(op.read_receipts_enabled, true)
+        """,
+        conversation_id, exclude_owner_id,
     )
 
 

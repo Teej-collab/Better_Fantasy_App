@@ -519,12 +519,21 @@ body {
    header row plus a fixed bottom tab bar) would otherwise just be dead
    space; this shrinks the top offset to only what's needed to clear
    the floating hamburger button (MobileNavDrawer's own trigger sits at
-   safe-area-inset-top + 0.75rem, ~2.75rem/44px tall — the 5rem below
-   isn't a round guess, it's that footprint plus a real ~1.25rem/20px
-   buffer, not the ~0.5rem gap an earlier pass here left, which read as
-   overlapping the button on a real device: 2026-09-12 report, two
-   screenshots) and drops the bottom offset to a plain safe-area pad,
-   since there's no bottom bar left to clear at all.
+   safe-area-inset-top + 0.75rem, ~2.75rem/44px tall — the 6rem below
+   isn't a round guess, it's that footprint plus a real ~2.25rem/36px
+   buffer) and drops the bottom offset to a plain safe-area pad, since
+   there's no bottom bar left to clear at all.
+
+   Widened from 5rem/20px buffer to 6rem/36px (2026-09-16 report, real
+   device screenshot): `env(safe-area-inset-top)` is a static
+   per-device value that does NOT grow when a system Live Activity from
+   a different app (the reported case: a baseball score widget) is
+   showing in the Dynamic Island — iOS doesn't expose that as a safe-
+   area change to web/PWA content at all, so no CSS value can detect or
+   fully compensate for it. A bigger fixed buffer is a real mitigation
+   (headroom for that and for any future device's status-bar height
+   varying slightly from what this was tuned against) but not a
+   guarantee for every possible Live Activity height.
 
    `wl-page-shell--ticker-above` (app/(app)/layout.tsx's `tickerAbove`
    prop) is the other half of that same fix: that layout renders
@@ -547,7 +556,7 @@ body {
    ChatApp.tsx's own comment on the `beta` height branch). */
 @media (max-width: 639.98px) {
   [data-wl-layout="beta"] .wl-page-shell {
-    padding-top: calc(env(safe-area-inset-top) + 5rem);
+    padding-top: calc(env(safe-area-inset-top) + 6rem);
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
   [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--ticker-above {
@@ -557,7 +566,7 @@ body {
     padding-bottom: 0;
   }
   [data-wl-layout="beta"] .wl-ticker-bar {
-    padding-top: calc(env(safe-area-inset-top) + 5rem);
+    padding-top: calc(env(safe-area-inset-top) + 6rem);
   }
 }
 

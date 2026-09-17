@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/api";
 import { REACTION_CHOICES } from "@/components/chat/MessageBubble";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
@@ -35,7 +35,18 @@ export function AnnouncementCard({
   onDelete: (messageId: number) => void;
 }) {
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [openEmoji, setOpenEmoji] = useState<string | null>(null);
+  const reactionsRef = useRef<HTMLDivElement>(null);
   const accent = message.owner_chat_color ?? SECTION_COLORS.chat;
+
+  useEffect(() => {
+    if (!openEmoji) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (!reactionsRef.current?.contains(e.target as Node)) setOpenEmoji(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openEmoji]);
   const previewBody = message.deleted
     ? "This announcement was deleted."
     : message.body || (message.image_url ? "📷 Photo" : "");
@@ -68,20 +79,20 @@ export function AnnouncementCard({
         </span>
       </button>
 
-      {expanded && !message.deleted && (
-        <div className="mt-1 flex flex-col gap-2">
-          {message.image_url && (
-            // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
-            <img src={message.image_url} alt="" className="h-auto max-h-72 w-auto max-w-full rounded-xl" />
-          )}
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {message.reactions.map((r) => (
+      {!message.deleted && message.reactions.length > 0 && (
+        // Visible whether or not the card is expanded — real request:
+        // see reactions "at the bottom of the messages... without
+        // opening them". Tapping a pill shows who left it rather than
+        // toggling your own (that still works via the 🙂 picker below,
+        // only reachable once expanded — same as MessageBubble.tsx's
+        // identical reaction-badge pattern in ordinary chat threads).
+        <div ref={reactionsRef} className="mt-0.5 flex flex-wrap items-center gap-1.5">
+          {message.reactions.map((r) => (
+            <span key={r.emoji} className="relative">
               <button
-                key={r.emoji}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onReact(message.id, r.emoji);
+                  setOpenEmoji((cur) => (cur === r.emoji ? null : r.emoji));
                 }}
                 className={`rounded-full border px-1.5 py-0.5 text-xs ${
                   r.reacted_by_me
@@ -91,7 +102,27 @@ export function AnnouncementCard({
               >
                 {r.emoji} {r.count}
               </button>
-            ))}
+              {openEmoji === r.emoji && (
+                <div
+                  className="absolute top-full left-0 z-20 mt-1 w-max max-w-[200px] rounded-lg border border-black/10 bg-white px-2 py-1 text-xs whitespace-normal text-black/70 shadow-lg dark:border-white/10 dark:bg-neutral-900 dark:text-white/70"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {r.reactor_names.join(", ")}
+                </div>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {expanded && !message.deleted && (
+        <div className="mt-1 flex flex-col gap-2">
+          {message.image_url && (
+            // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
+            <img src={message.image_url} alt="" className="h-auto max-h-72 w-auto max-w-full rounded-xl" />
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -132,6 +163,10 @@ export function AnnouncementCard({
                 </button>
               ))}
             </div>
+          )}
+
+          {message.seen_by.length > 0 && (
+            <p className="text-xs text-black/40 dark:text-white/40">Seen by {message.seen_by.join(", ")}</p>
           )}
         </div>
       )}

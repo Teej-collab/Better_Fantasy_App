@@ -8,7 +8,7 @@ underlying reads.
 from app.queries import chat as chat_queries
 
 
-def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict, mentions_by_message: dict):
+def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict, mentions_by_message: dict, seen_by_message: dict | None = None):
     deleted = row["deleted_at"] is not None
     reply_to = reply_previews.get(row["reply_to_id"]) if row["reply_to_id"] else None
     return {
@@ -26,7 +26,22 @@ def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict
         "reply_to": reply_to,
         "mentions": mentions_by_message.get(row["id"], []),
         "reactions": reactions_by_message.get(row["id"], []),
+        "seen_by": (seen_by_message or {}).get(row["id"], []),
     }
+
+
+def _build_seen_by_message(message_ids: list[int], participants) -> dict[int, list[str]]:
+    """O(messages x participants) — fine at this app's real scale (a
+    handful of participants, a page of messages at a time), not worth
+    a fancier data structure for it."""
+    seen_by: dict[int, list[str]] = {mid: [] for mid in message_ids}
+    for p in participants:
+        if p["last_read_message_id"] is None:
+            continue
+        for mid in message_ids:
+            if mid <= p["last_read_message_id"]:
+                seen_by[mid].append(p["display_name"])
+    return seen_by
 
 
 async def get_conversation_messages(conn, conversation_id: int, before_id: int | None, limit: int, requesting_owner_id: int):
@@ -53,7 +68,7 @@ async def get_conversation_messages(conn, conversation_id: int, before_id: int |
     reactions_by_message: dict[int, list] = {}
     for r in reaction_rows:
         reactions_by_message.setdefault(r["message_id"], []).append(
-            {"emoji": r["emoji"], "count": r["count"], "reacted_by_me": r["reacted_by_me"]}
+            {"emoji": r["emoji"], "count": r["count"], "reacted_by_me": r["reacted_by_me"], "reactor_names": r["reactor_names"]}
         )
 
     mention_rows = await chat_queries.get_mentions_for_messages(conn, message_ids)
@@ -61,7 +76,13 @@ async def get_conversation_messages(conn, conversation_id: int, before_id: int |
     for r in mention_rows:
         mentions_by_message.setdefault(r["message_id"], []).append(r["owner_id"])
 
-    return [_serialize_message_row(r, reply_previews, reactions_by_message, mentions_by_message) for r in rows]
+    participants = await chat_queries.get_participants_read_state(conn, conversation_id, requesting_owner_id)
+    seen_by_message = _build_seen_by_message(message_ids, participants)
+
+    return [
+        _serialize_message_row(r, reply_previews, reactions_by_message, mentions_by_message, seen_by_message)
+        for r in rows
+    ]
 
 
 async def get_single_message(conn, message_id: int, requesting_owner_id: int):
@@ -102,14 +123,23 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
     reactions_by_message: dict[int, list] = {}
     for r in reaction_rows:
         reactions_by_message.setdefault(r["message_id"], []).append(
-            {"emoji": r["emoji"], "count": r["count"], "reacted_by_me": r["reacted_by_me"]}
+            {"emoji": r["emoji"], "count": r["count"], "reacted_by_me": r["reacted_by_me"], "reactor_names": r["reactor_names"]}
         )
     mention_rows = await chat_queries.get_mentions_for_messages(conn, message_ids)
     mentions_by_message: dict[int, list] = {}
     for r in mention_rows:
         mentions_by_message.setdefault(r["message_id"], []).append(r["owner_id"])
 
-    return [_serialize_message_row(r, reply_previews, reactions_by_message, mentions_by_message) for r in rows]
+    # All of these ids belong to one conversation in practice (this is
+    # only ever called for a single just-sent message, or a small batch
+    # from the same thread) — the first row's conversation_id is enough.
+    participants = await chat_queries.get_participants_read_state(conn, rows[0]["conversation_id"], requesting_owner_id)
+    seen_by_message = _build_seen_by_message(message_ids, participants)
+
+    return [
+        _serialize_message_row(r, reply_previews, reactions_by_message, mentions_by_message, seen_by_message)
+        for r in rows
+    ]
 
 
 async def get_conversations_summary(conn, owner_id: int, league_id: int):
