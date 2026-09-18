@@ -319,12 +319,12 @@ function PlayerCell({
           {clickable ? (
             <button
               onClick={() => onOpen(player.player_id as string)}
-              className="min-w-0 flex-1 truncate text-left text-xs font-semibold hover:underline"
+              className="min-w-0 flex-1 text-left text-xs font-semibold break-words hover:underline"
             >
               {nameSpan}
             </button>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold">{nameSpan}</span>
+            <span className="min-w-0 flex-1 text-xs font-semibold break-words">{nameSpan}</span>
           )}
           {scoreClickable ? (
             <button onClick={() => onOpenBreakdown(player)} className="shrink-0 hover:underline">
@@ -334,7 +334,7 @@ function PlayerCell({
             scoreSpan
           )}
         </span>
-        <span className="truncate text-xs text-black/50 dark:text-white/50">
+        <span className="text-xs break-words text-black/50 dark:text-white/50">
           {statLine ?? (
             <>
               {player.pro_team ?? "—"}
@@ -344,8 +344,10 @@ function PlayerCell({
           )}
         </span>
         {/* Own line, never truncated — appending this to the line above
-            (which already truncates when a name/opponent is long) was
-            silently hiding it on real rows. */}
+            (which already wraps instead of truncating when a name/
+            opponent is long, 2026-09-18 fix — it used to hard-truncate
+            with "…" here, real report) was silently hiding it on real
+            rows. */}
         {!statLine && formatPositionRank(player.opponent_position_rank, player.position ?? "") && (
           <span className="text-xs" style={{ color: rankColorVar(player.opponent_position_rank!.rank) }}>
             {formatPositionRank(player.opponent_position_rank, player.position ?? "")}

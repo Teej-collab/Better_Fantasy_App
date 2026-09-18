@@ -7,6 +7,23 @@ import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const MAX_PLAYERS = 6;
 
+// The three real Gamecast providers each name a play's players
+// differently — ESPN's own play-by-play text only ever gives "F.
+// Lastname" shorthand (2026-09-18 fix: this used to come back empty
+// for every real ESPN-sourced game, see app/gamecast/providers/
+// espn.py's own docstring on why), the mock provider uses a bare
+// surname, and Sportradar returns a real full name. A roster's own
+// player_name is always the real full name, so an exact string match
+// against it only ever worked for Sportradar — comparing just the
+// surname (case-insensitive) is the one thing all four shapes agree
+// on, and the false-positive risk (two of the SAME signed-in owner's
+// own ~15 rostered players sharing a surname) is low enough to accept
+// for a highlight, not a scoring feature.
+function surname(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return (parts[parts.length - 1] ?? "").toLowerCase();
+}
+
 /**
  * "Who from this game is on my team" — the one section that's
  * genuinely The Weekend's own, not an ESPN Gamecast clone. Deliberately
@@ -79,7 +96,7 @@ export function FantasyImpact({
       <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Fantasy Impact</h2>
       <ul className="flex flex-col gap-2">
         {[...involved.values()].map((p) => {
-          const mine = roster?.find((r) => r.player_name.toLowerCase() === p.name.toLowerCase()) ?? null;
+          const mine = roster?.find((r) => surname(r.player_name) === surname(p.name)) ?? null;
           return (
             <li
               key={p.name}

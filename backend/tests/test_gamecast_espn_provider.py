@@ -8,7 +8,7 @@ network calls: httpx.AsyncClient.get is monkeypatched per test.
 import httpx
 
 from app.gamecast.models import GameStatus
-from app.gamecast.providers.espn import ESPNNFLDataProvider
+from app.gamecast.providers.espn import ESPNNFLDataProvider, _players_mentioned
 
 SCOREBOARD_FIXTURE = {
     "season": {"year": 2026, "type": 1},
@@ -174,11 +174,43 @@ async def test_get_game_state_parses_drives_plays_and_scoring_plays(monkeypatch)
     assert game.plays[0].play_type == "rush"
     assert game.plays[1].down == 1 and game.plays[1].distance == 10
 
+    # 2026-09-18 fix, real report: Fantasy Impact showed nothing for any
+    # real ESPN-sourced game because this was hardcoded to [] — ESPN's
+    # public summary API has no structured per-play participant field,
+    # only its own "F.Lastname" shorthand inside the play's free-text
+    # description (see espn.py's own docstring on this).
+    assert game.plays[0].players_involved[0].name == "W. Marks"
+    assert game.plays[0].players_involved[0].team_abbr == "HOU"
+    assert game.plays[1].players_involved[0].name == "W. Marks"
+
     assert len(game.scoring_plays) == 1
     sp = game.scoring_plays[0]
     assert sp.team_abbr == "HOU"
     assert sp.score_type == "TD"
     assert sp.home_score_after == 7 and sp.away_score_after == 0
+
+
+def test_players_mentioned_extracts_espn_shorthand_names():
+    refs = _players_mentioned(
+        "P.Mahomes pass complete to T.Kelce for 12 yards (D.White).", "KC"
+    )
+    assert [r.name for r in refs] == ["P. Mahomes", "T. Kelce", "D. White"]
+    assert all(r.team_abbr == "KC" for r in refs)
+
+
+def test_players_mentioned_handles_apostrophes_and_hyphens():
+    refs = _players_mentioned("E.O'Neill and J.St-Juste combine on the tackle.", "BUF")
+    assert [r.name for r in refs] == ["E. O'Neill", "J. St-Juste"]
+
+
+def test_players_mentioned_dedupes_within_one_play():
+    refs = _players_mentioned("P.Mahomes pass complete to T.Kelce. P.Mahomes celebrates.", "KC")
+    assert [r.name for r in refs] == ["P. Mahomes", "T. Kelce"]
+
+
+def test_players_mentioned_empty_for_no_matches():
+    assert _players_mentioned("Timeout called by KC.", "KC") == []
+    assert _players_mentioned("", "KC") == []
 
 
 async def test_get_game_state_raises_key_error_for_an_unknown_game(monkeypatch):

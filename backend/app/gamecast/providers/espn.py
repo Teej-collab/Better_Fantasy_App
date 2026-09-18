@@ -16,6 +16,7 @@ and app/scheduler.py's gamecast poll job (ENABLE_GAMECAST_SCHEDULER)
 already rate-limits how often this runs in practice; the cost of an
 unauthenticated public GET is negligible either way.
 """
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -27,6 +28,7 @@ from app.gamecast.models import (
     LiveGame,
     LiveGameSummary,
     Play,
+    PlayerRef,
     ScoringPlay,
     TeamRef,
 )
@@ -53,6 +55,41 @@ def _drive_result(result: str | None) -> str | None:
     if not result:
         return None
     return _DRIVE_RESULT_MAP.get(result.upper())
+
+
+# ESPN's public summary endpoint has no structured per-play participant
+# field (confirmed against a real live payload, 2026-09-18: `teamParticipants`
+# is team-level offense/defense only, no player names or IDs) — the only
+# place a play's real players are named at all is its own free-text
+# `text` description, always in ESPN's own "F.Lastname" shorthand
+# ("J.Bates kicks 66 yards...", "P.Mahomes pass complete to T.Kelce...").
+# This is the real root cause behind Fantasy Impact showing nothing for
+# any real game: players_involved was hardcoded to [] here, so the
+# frontend (FantasyImpact.tsx) had nothing to ever cross-reference
+# against a roster. `\b[A-Z]\.[A-Z][a-zA-Z'-]+\b` matches that exact
+# shorthand (initial, period, surname — apostrophes/hyphens allowed for
+# names like O'Neill) wherever it appears in the description, deduped
+# per play. Deliberately kept in this shorthand rather than resolved
+# to a guessed real full name (a bare-surname guess risks matching the
+# wrong real player who happens to share it) — the frontend
+# (FantasyImpact.tsx) already has to compare three different providers'
+# three different name shapes (this shorthand, Sportradar's real full
+# name, the mock provider's bare surname) against a roster's own real
+# full name, and does it by comparing just the surname, the one thing
+# all four shapes agree on.
+_PLAYER_MENTION_RE = re.compile(r"\b([A-Z])\.([A-Z][a-zA-Z'-]+)\b")
+
+
+def _players_mentioned(text: str, team_abbr: str) -> list[PlayerRef]:
+    seen: set[str] = set()
+    refs: list[PlayerRef] = []
+    for initial, surname in _PLAYER_MENTION_RE.findall(text or ""):
+        name = f"{initial}. {surname}"
+        if name in seen:
+            continue
+        seen.add(name)
+        refs.append(PlayerRef(name=name, team_abbr=team_abbr, role="mentioned"))
+    return refs
 
 
 def _play_type(type_text: str) -> str:
@@ -247,7 +284,7 @@ class ESPNNFLDataProvider(NFLDataProvider):
                     is_turnover=is_turnover,
                     is_first_down=is_first_down,
                     event_type=_event_type(play_type, is_scoring, is_turnover, is_first_down),
-                    players_involved=[],
+                    players_involved=_players_mentioned(p.get("text") or "", drive_team_abbr or ""),
                     timestamp=now,
                 )
                 drive.plays.append(play)
