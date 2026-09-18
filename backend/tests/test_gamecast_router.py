@@ -149,6 +149,27 @@ async def test_websocket_authenticates_via_ticket_when_no_session_cookie(pool, m
     assert received["type"] == "game_state"
 
 
+async def test_fantasy_impact_works_signed_out_with_game_leaders_only():
+    async with _client() as client:
+        resp = await client.get("/nfl/games/mock-kc-buf/fantasy-impact")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["your_team"] is None
+    assert body["your_players"] == []
+    assert body["opponent_team"] is None
+    assert body["opponent_players"] == []
+    assert body["game_leaders"]["home"]["abbr"] == "KC"
+    assert body["game_leaders"]["away"]["abbr"] == "BUF"
+
+
+async def test_fantasy_impact_404s_for_an_unknown_game_id():
+    async with _client() as client:
+        resp = await client.get("/nfl/games/does-not-exist/fantasy-impact")
+
+    assert resp.status_code == 404
+
+
 async def test_websocket_closes_with_4404_for_an_unknown_game_id(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
 

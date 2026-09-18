@@ -146,6 +146,70 @@ async def test_diff_fantasy_impact_ignores_players_on_pro_teams_not_in_this_game
     service._last_points.pop(game.game_id, None)
 
 
+async def _seed_matchup(pool, home_team_id, away_team_id, week=1, season=TEST_SEASON, home_score=0, away_score=0):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score, is_playoff) "
+            "VALUES ($1, $2, $3, $4, $5, $6, FALSE)",
+            season, week, home_team_id, away_team_id, home_score, away_score,
+        )
+
+
+async def test_build_fantasy_impact_splits_your_players_and_opponent_players(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    my_owner_id = await _seed_owner(pool, 10)
+    my_team_id = await _seed_team(pool, my_owner_id, 10)
+    opp_owner_id = await _seed_owner(pool, 11)
+    opp_team_id = await _seed_team(pool, opp_owner_id, 11)
+    await _seed_matchup(pool, my_team_id, opp_team_id)
+
+    await _seed_rostered_player(pool, my_team_id, "test-gc-my-wr", "My WR", "KC", points_scored=14.0)
+    await _seed_rostered_player(pool, opp_team_id, "test-gc-opp-wr", "Opp WR", "BUF", points_scored=9.0)
+
+    game = _fake_game(game_id="test-gamecast-impact-1")
+    payload = {"user_id": 1}
+
+    async def _fake_resolve_owner_id(conn, p):
+        return my_owner_id
+
+    monkeypatch.setattr("app.gamecast.service.resolve_owner_id", _fake_resolve_owner_id)
+
+    async with pool.acquire() as conn:
+        result = await service.build_fantasy_impact(conn, game, payload)
+
+    assert result["your_team"]["team_id"] == my_team_id
+    assert [p["player_name"] for p in result["your_players"]] == ["My WR"]
+    assert result["opponent_team"]["team_id"] == opp_team_id
+    assert [p["player_name"] for p in result["opponent_players"]] == ["Opp WR"]
+
+
+async def test_build_fantasy_impact_game_leaders_are_league_independent(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable)
+            VALUES ($1, $2, 'WR', ARRAY['WR'], $3, 'Active', TRUE)
+            """,
+            "test-gc-leader-1", "Unrostered Star", "KC",
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, $2, '{}', 30.0)",
+            TEST_SEASON, "test-gc-leader-1",
+        )
+
+    game = _fake_game(game_id="test-gamecast-impact-2")
+
+    async with pool.acquire() as conn:
+        result = await service.build_fantasy_impact(conn, game, None)
+
+    assert result["your_team"] is None
+    assert result["your_players"] == []
+    home_leaders = result["game_leaders"]["home"]["leaders"]
+    assert any(p["player_name"] == "Unrostered Star" for p in home_leaders)
+
+
 async def test_diff_fantasy_impact_returns_empty_when_no_sync_has_cached_a_current_week(pool, monkeypatch):
     monkeypatch.setenv("ESPN_LEAGUE_ID", "12345")
     monkeypatch.setenv("ESPN_S2", "fake")

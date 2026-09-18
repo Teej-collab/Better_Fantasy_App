@@ -96,6 +96,56 @@ export type LiveGame = {
   last_updated: string;
 };
 
+// Real fantasy_points, not just "mentioned in a play" — see
+// FantasyImpact.tsx's own history for why this replaced the old
+// text-scraped players_involved approach. your_team/your_players and
+// opponent_team/opponent_players are only ever populated for a signed-
+// in owner with a real team in this week's matchup; game_leaders is
+// always populated (league-independent, real top scorers on each real
+// NFL team in the game).
+export type GamecastImpactPlayer = {
+  player_id?: string;
+  player_name: string;
+  position: string;
+  pro_team?: string;
+  points_scored: number;
+};
+
+export type GamecastImpactTeam = {
+  team_id: number;
+  team_name: string;
+};
+
+export type GamecastGameLeaders = {
+  abbr: string;
+  name: string;
+  leaders: GamecastImpactPlayer[];
+};
+
+export type GamecastFantasyImpact = {
+  your_team: GamecastImpactTeam | null;
+  your_players: GamecastImpactPlayer[];
+  opponent_team: GamecastImpactTeam | null;
+  opponent_players: GamecastImpactPlayer[];
+  game_leaders: { home: GamecastGameLeaders; away: GamecastGameLeaders };
+};
+
+// Same-origin proxy (not the direct get<T> helper above) since this is
+// a signed-in-aware read — the backend reads the session cookie itself
+// to decide whether to include your_players/opponent_players, same
+// ITP reasoning as every other signed-in call in lib/api.ts.
+export async function getFantasyImpact(gameId: string): Promise<GamecastFantasyImpact | null> {
+  try {
+    const res = await fetch(`/api/backend/nfl/games/${encodeURIComponent(gameId)}/fantasy-impact`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export type GamecastLiveGameSummary = {
   game_id: string;
   status: GamecastStatus;

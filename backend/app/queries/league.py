@@ -558,6 +558,35 @@ async def get_current_rostered_players_by_pro_team(
     )
 
 
+async def get_top_scorers_by_pro_team(
+    conn, season: int, week: int, pro_teams: list[str], league_id: int = DEFAULT_LEAGUE_ID, limit: int = 3
+):
+    """Gamecast's "Game Leaders" — the real top fantasy scorers on each
+    of the two real NFL teams in a game, regardless of whether anyone
+    in this league actually rosters them (unlike
+    get_current_rostered_players_by_pro_team above, which is scoped to
+    this league's own rosters on purpose). Matches ESPN's own Gamecast
+    "Game Leaders" panel, which is a real-world-performance list, not a
+    fantasy-ownership one."""
+    if not pro_teams:
+        return []
+    return await conn.fetch(
+        """
+        SELECT player_id, player_name, position, pro_team, points_scored FROM (
+            SELECT p.sleeper_player_id AS player_id, p.full_name AS player_name, p.position, p.pro_team,
+                   pws.fantasy_points AS points_scored,
+                   ROW_NUMBER() OVER (PARTITION BY p.pro_team ORDER BY pws.fantasy_points DESC) AS rn
+            FROM player_week_stats pws
+            JOIN players p ON p.sleeper_player_id = pws.sleeper_player_id
+            WHERE pws.season = $1 AND pws.week = $2 AND p.pro_team = ANY($3::text[]) AND pws.league_id = $4
+        ) ranked
+        WHERE rn <= $5
+        ORDER BY pro_team, rn
+        """,
+        season, week, pro_teams, league_id, limit,
+    )
+
+
 async def get_bench_crimes_by_team(conn, season: int, week: int, team_ids: list[int], league_id: int = DEFAULT_LEAGUE_ID):
     """Every bench_crimes row for a specific set of teams in a week —
     scoped version of what weekly_awards.get_biggest_bench_crime

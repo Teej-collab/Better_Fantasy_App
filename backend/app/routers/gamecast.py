@@ -13,7 +13,7 @@ handshake," nothing about its purpose string is chat-specific.
 """
 import json
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
@@ -56,6 +56,31 @@ async def game_state(game_id: str):
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown game_id")
     return game.model_dump(mode="json")
+
+
+@router.get("/games/{game_id}/fantasy-impact")
+async def game_fantasy_impact(game_id: str, request: Request):
+    """Real fantasy-point data for the "Fantasy Impact" panel — see
+    service.build_fantasy_impact's own docstring. Polled on an interval
+    by the frontend (real fantasy_points only ever change on the
+    scheduler's own poll cadence, not play-by-play, so a WS push here
+    would be over-engineering for how often this actually moves)
+    rather than pushed over the existing gamecast WS, which carries
+    play-by-play/score state, not this. Never requires sign-in — an
+    anonymous visitor still gets game_leaders (real, league-independent
+    top scorers), just no your_players/opponent_players section."""
+    game = service.get_cached_state(game_id)
+    pool = await get_pool()
+    if game is None:
+        try:
+            async with pool.acquire() as conn:
+                game, _events = await service.refresh_game(conn, game_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown game_id")
+
+    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    async with pool.acquire() as conn:
+        return await service.build_fantasy_impact(conn, game, payload)
 
 
 @router.websocket("/gamecast/ws")
