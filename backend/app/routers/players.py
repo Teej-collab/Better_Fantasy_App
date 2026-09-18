@@ -10,7 +10,7 @@ in owner, so no owner_id is resolved here the way me.py/keepers.py do.
 from fastapi import APIRouter, HTTPException, Request
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id
+from app.auth.league_context import require_active_league_id, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
@@ -87,10 +87,12 @@ async def player_card(sleeper_player_id: str, request: Request):
     # for this player (2026-09 audit; same bug class list_players above
     # was already fixed for, just missed on this sibling route).
     payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        card = await get_player_card(conn, sleeper_player_id, league_id)
+        my_owner_id = await resolve_owner_id(conn, payload)
+        card = await get_player_card(conn, sleeper_player_id, league_id, active_season, my_owner_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Player not found")
     return card

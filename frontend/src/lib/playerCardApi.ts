@@ -67,6 +67,15 @@ export type PlayerCard = {
   projection: PlayerCardProjection | null;
   overview: PlayerCardOverview | null;
   latest_week: PlayerCardLatestWeek | null;
+  // 2026-09-18 addition: who currently rosters this player this
+  // season, if anyone — real ESPN reference puts Drop/Trade Offers
+  // right on the player card (tap a name, act on it from there), and
+  // both only make sense with this context. Null/false for a free
+  // agent (every existing caller — draft pool, free agents, player
+  // research — that has no real season/league context yet).
+  rostered_team_id: number | null;
+  rostered_team_name: string | null;
+  is_on_my_team: boolean;
 };
 
 export async function getPlayerCard(sleeperPlayerId: string): Promise<PlayerCard> {

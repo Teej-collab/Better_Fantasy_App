@@ -38,7 +38,10 @@ logger = logging.getLogger(__name__)
 SLEEPER_HEADSHOT_URL = "https://sleepercdn.com/content/nfl/players/{player_id}.jpg"
 
 
-async def get_player_card(conn, sleeper_player_id: str, league_id: int = DEFAULT_LEAGUE_ID) -> dict | None:
+async def get_player_card(
+    conn, sleeper_player_id: str, league_id: int = DEFAULT_LEAGUE_ID,
+    season: int | None = None, my_owner_id: int | None = None,
+) -> dict | None:
     row = await conn.fetchrow(
         """
         SELECT sleeper_player_id, espn_player_id, full_name, position, pro_team,
@@ -56,6 +59,34 @@ async def get_player_card(conn, sleeper_player_id: str, league_id: int = DEFAULT
     )
     card["projection"] = None
     card["overview"] = None
+
+    # Who currently rosters this player this season, if anyone —
+    # 2026-09-18 addition: the player card is the one place ESPN's own
+    # reference puts "Drop"/"Trade Offers" (reachable straight from
+    # tapping a player, not a separate roster-row action), and both
+    # only make sense with real ownership context: Drop only for a
+    # player on the CALLER's own team, Trade Offers for any rostered
+    # player (yours or an opponent's you might want). `season`/
+    # `my_owner_id` are optional so every existing caller (draft pool,
+    # free agents, player research) that doesn't have real league/
+    # season context yet keeps working unchanged, just without this.
+    card["rostered_team_id"] = None
+    card["rostered_team_name"] = None
+    card["is_on_my_team"] = False
+    if season is not None:
+        roster_row = await conn.fetchrow(
+            """
+            SELECT t.id AS team_id, t.team_name, t.owner_id
+            FROM current_rosters cr
+            JOIN teams_by_season t ON t.id = cr.team_id
+            WHERE cr.season = $1 AND cr.league_id = $2 AND cr.sleeper_player_id = $3
+            """,
+            season, league_id, sleeper_player_id,
+        )
+        if roster_row is not None:
+            card["rostered_team_id"] = roster_row["team_id"]
+            card["rostered_team_name"] = roster_row["team_name"]
+            card["is_on_my_team"] = my_owner_id is not None and roster_row["owner_id"] == my_owner_id
 
     if card["position"] != "DEF":
         try:

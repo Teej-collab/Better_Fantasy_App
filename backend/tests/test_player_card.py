@@ -1,3 +1,4 @@
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain import player_card
 from tests.conftest import TEST_SEASON
 
@@ -164,3 +165,76 @@ async def test_get_player_card_includes_latest_computed_week(pool, monkeypatch):
 
     assert card["latest_week"]["week"] == 2
     assert float(card["latest_week"]["fantasy_points"]) == 18.0
+
+
+async def _seed_owner_with_team(pool, suffix, season=TEST_SEASON):
+    async with pool.acquire() as conn:
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-playercard-owner-{suffix}", f"Owner {suffix}",
+        )
+        team_id = await conn.fetchval(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            season, 500 + suffix, owner_id, f"Team {suffix}",
+        )
+    return owner_id, team_id
+
+
+async def test_get_player_card_omits_ownership_without_a_real_season(pool, monkeypatch):
+    # Every existing caller (draft pool, free agents, player research)
+    # that doesn't pass season/my_owner_id keeps working unchanged.
+    await _seed_player(pool, "test-playercard-no-season", espn_id=None)
+    _no_espn(monkeypatch)
+    async with pool.acquire() as conn:
+        card = await player_card.get_player_card(conn, "test-playercard-no-season")
+    assert card["rostered_team_id"] is None
+    assert card["rostered_team_name"] is None
+    assert card["is_on_my_team"] is False
+
+
+async def test_get_player_card_reflects_ownership_by_someone_else(pool, monkeypatch):
+    await _seed_player(pool, "test-playercard-owned", espn_id=None)
+    _no_espn(monkeypatch)
+    owner_id, team_id = await _seed_owner_with_team(pool, 1)
+    my_owner_id, _ = await _seed_owner_with_team(pool, 2)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, 'BE', 'draft')",
+            TEST_SEASON, team_id, "test-playercard-owned",
+        )
+        card = await player_card.get_player_card(
+            conn, "test-playercard-owned", DEFAULT_LEAGUE_ID, TEST_SEASON, my_owner_id
+        )
+    assert card["rostered_team_id"] == team_id
+    assert card["rostered_team_name"] == "Team 1"
+    assert card["is_on_my_team"] is False
+
+
+async def test_get_player_card_flags_a_player_on_my_own_team(pool, monkeypatch):
+    await _seed_player(pool, "test-playercard-mine", espn_id=None)
+    _no_espn(monkeypatch)
+    my_owner_id, my_team_id = await _seed_owner_with_team(pool, 3)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, 'BE', 'draft')",
+            TEST_SEASON, my_team_id, "test-playercard-mine",
+        )
+        card = await player_card.get_player_card(
+            conn, "test-playercard-mine", DEFAULT_LEAGUE_ID, TEST_SEASON, my_owner_id
+        )
+    assert card["rostered_team_id"] == my_team_id
+    assert card["is_on_my_team"] is True
+
+
+async def test_get_player_card_free_agent_has_no_ownership(pool, monkeypatch):
+    await _seed_player(pool, "test-playercard-fa", espn_id=None)
+    _no_espn(monkeypatch)
+    my_owner_id, _ = await _seed_owner_with_team(pool, 4)
+    async with pool.acquire() as conn:
+        card = await player_card.get_player_card(
+            conn, "test-playercard-fa", DEFAULT_LEAGUE_ID, TEST_SEASON, my_owner_id
+        )
+    assert card["rostered_team_id"] is None
+    assert card["is_on_my_team"] is False

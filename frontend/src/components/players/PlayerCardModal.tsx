@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { dropPlayer } from "@/lib/api";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
@@ -15,6 +17,8 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   const [card, setCard] = useState<PlayerCard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [headshotFailed, setHeadshotFailed] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +33,31 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
       cancelled = true;
     };
   }, [sleeperPlayerId]);
+
+  // 2026-09-18 addition: moved here from a per-row "Drop" button on
+  // MyTeamApp's own roster list (real ask, reference: real ESPN player
+  // card) — a plain window.confirm rather than a styled in-page dialog
+  // since this modal is mounted once at the app root with no local
+  // page state to render one into (draft pool, roster, free agents,
+  // matchup screen all share this one instance). A hard reload after
+  // success, not router.refresh(), is deliberate: this modal has no
+  // idea which page is open behind it, and most of them (MyTeamApp
+  // included) manage their own roster state via a client-side fetch on
+  // mount rather than server props a soft refresh would actually
+  // re-render.
+  async function handleDrop() {
+    if (!card) return;
+    if (!confirm(`Drop ${card.full_name} back to free agency? Anyone else can pick them up.`)) return;
+    setDropping(true);
+    setDropError(null);
+    try {
+      await dropPlayer(card.sleeper_player_id);
+      window.location.reload();
+    } catch (e) {
+      setDropError(e instanceof Error ? e.message : "Drop failed");
+      setDropping(false);
+    }
+  }
 
   const accent = card ? nflTeamColor(card.pro_team) : null;
   const logo = card ? teamLogoUrl(card.pro_team) : null;
@@ -106,8 +135,32 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                   {card.position} · {nflTeamName(card.pro_team) ?? card.pro_team ?? "Free agent"}
                   {card.jersey_number && ` · #${card.jersey_number}`}
                 </p>
+                {card.rostered_team_name && (
+                  <p className="truncate text-xs text-black/50 dark:text-white/50">{card.rostered_team_name}</p>
+                )}
               </div>
             </div>
+
+            {(card.is_on_my_team || card.rostered_team_id !== null) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {card.is_on_my_team && (
+                  <button
+                    onClick={handleDrop}
+                    disabled={dropping}
+                    className="rounded-full bg-red-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {dropping ? "Dropping…" : "↓ Drop"}
+                  </button>
+                )}
+                <Link
+                  href="/trades"
+                  className="rounded-full bg-black/10 px-3 py-1.5 text-xs font-semibold hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15"
+                >
+                  Trade Offers
+                </Link>
+              </div>
+            )}
+            {dropError && <p className="text-xs text-red-500">{dropError}</p>}
 
             {(card.age || card.height || card.weight || card.years_exp !== null) && (
               <div className="grid grid-cols-4 gap-2 rounded-xl bg-black/5 p-3 text-center dark:bg-white/5">

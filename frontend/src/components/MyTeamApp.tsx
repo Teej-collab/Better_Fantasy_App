@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  dropPlayer,
   getMyTeam,
   getMyTeamOwnership,
   submitLineupMove,
@@ -69,7 +68,6 @@ function RosterRow({
   beta = false,
   onOpenEdit,
   onViewPlayer,
-  onDrop,
 }: {
   entry: RosterEntry;
   ownership: OwnershipInfo | undefined;
@@ -77,16 +75,15 @@ function RosterRow({
   editable: boolean;
   // Settings > Labs > "Try the new look" — see MyTeamApp's own comment
   // on why this is a prop on the existing component rather than a
-  // forked one: the edit/swap/drop logic below must never have two
-  // copies to drift apart on a page that moves real roster state.
-  // Only presentation/density changes under this flag (Documentation/
+  // forked one: the edit/swap logic below must never have two copies
+  // to drift apart on a page that moves real roster state. Only
+  // presentation/density changes under this flag (Documentation/
   // UX/04_Mobile_Strategy.md section 7 — cap status pills, combine
   // secondary lines) plus position-color-coding (01_Design_System.md
   // section 2, already built for Draft but never wired in here).
   beta?: boolean;
   onOpenEdit: (entry: RosterEntry) => void;
   onViewPlayer: (sleeperPlayerId: string) => void;
-  onDrop: (entry: RosterEntry) => void;
 }) {
   if (beta) {
     // Three secondary lines (position/team, opponent/time, bye+
@@ -199,14 +196,6 @@ function RosterRow({
               Proj {entry.points_projected.toFixed(1)}
             </span>
           )}
-          {editable && (
-            <button
-              onClick={() => onDrop(entry)}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-red-500/20 px-3 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
-            >
-              Drop
-            </button>
-          )}
         </div>
       </li>
     );
@@ -313,14 +302,6 @@ function RosterRow({
             Proj {entry.points_projected.toFixed(1)}
           </span>
         )}
-        {editable && (
-          <button
-            onClick={() => onDrop(entry)}
-            className="rounded-full border border-red-500/20 px-2 py-1 text-[11px] font-medium text-red-500/70 hover:bg-red-500/10 hover:text-red-500"
-          >
-            Drop
-          </button>
-        )}
       </div>
     </li>
   );
@@ -373,8 +354,6 @@ export function MyTeamApp({
   const [actioning, setActioning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<RosterEntry | null>(null);
-  const [dropping, setDropping] = useState(false);
   const [weekLoading, setWeekLoading] = useState(false);
   const { openPlayerCard } = usePlayerCard();
 
@@ -491,27 +470,6 @@ export function MyTeamApp({
       .finally(() => setActioning(false));
   }
 
-  function startDrop(entry: RosterEntry) {
-    setEditingEntry(null);
-    setActionError(null);
-    setSubmitted(null);
-    setDropTarget(entry);
-  }
-
-  function confirmDrop() {
-    if (!dropTarget) return;
-    setDropping(true);
-    setActionError(null);
-    dropPlayer(dropTarget.player_id)
-      .then((result) => {
-        setSubmitted(`Dropped ${dropTarget.player_name} — back to free agency.`);
-        setDropTarget(null);
-        setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
-      })
-      .catch((e) => setActionError(e instanceof Error ? e.message : "Drop failed"))
-      .finally(() => setDropping(false));
-  }
-
   if (error) {
     return <p className="text-sm text-red-500">{error}</p>;
   }
@@ -598,31 +556,6 @@ export function MyTeamApp({
       {actioning && <p className="text-xs text-black/50 dark:text-white/50">Saving…</p>}
       {submitted && <p className="text-xs text-emerald-600 dark:text-emerald-400">{submitted}</p>}
 
-      {dropTarget && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-3 text-sm">
-          <p>
-            Drop <strong>{dropTarget.player_name}</strong> back to free agency? Anyone else can pick them up.
-          </p>
-          {actionError && <p className="mt-1 text-xs text-red-500">{actionError}</p>}
-          <div className="mt-2 flex gap-2">
-            <button
-              onClick={confirmDrop}
-              disabled={dropping}
-              className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {dropping ? "Dropping…" : "Confirm drop"}
-            </button>
-            <button
-              onClick={() => setDropTarget(null)}
-              disabled={dropping}
-              className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium text-black/60 disabled:opacity-50 dark:border-white/10 dark:text-white/60"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       <section className="flex flex-col gap-1">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
         <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
@@ -636,7 +569,6 @@ export function MyTeamApp({
               beta={beta}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
-              onDrop={startDrop}
             />
           ))}
         </ul>
@@ -655,7 +587,6 @@ export function MyTeamApp({
               beta={beta}
               onOpenEdit={openEdit}
               onViewPlayer={openPlayerCard}
-              onDrop={startDrop}
             />
           ))}
         </ul>
