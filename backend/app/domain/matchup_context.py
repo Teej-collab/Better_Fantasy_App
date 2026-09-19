@@ -38,7 +38,12 @@ import json
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
-from app.domain.nfl_schedule import live_status_by_pro_team, locked_pro_teams, schedule_lookup_by_pro_team
+from app.domain.nfl_schedule import (
+    game_status_by_pro_team,
+    live_status_by_pro_team,
+    locked_pro_teams,
+    schedule_lookup_by_pro_team,
+)
 from app.domain.streaks import get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
@@ -92,8 +97,11 @@ def _expected_total(roster_rows, locked_teams: frozenset[str]) -> float:
     return round(total, 2)
 
 
-def _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings=None):
+def _roster_list(
+    roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings=None, game_status_by_pro_team_map=None
+):
     rankings = rankings or {}
+    game_status_by_pro_team_map = game_status_by_pro_team_map or {}
     result = []
     for r in roster_rows:
         info = schedule_by_pro_team.get(r["pro_team"], {})
@@ -134,6 +142,12 @@ def _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map,
                 # for either roster (home or away), not just "my team."
                 "on_offense": live_info.get("on_offense", False),
                 "is_redzone": live_info.get("is_redzone", False),
+                # "scheduled" | "in_progress" | "final" | null (no real
+                # scoreboard data this week) — the matchup screen's own
+                # grey/white/grey-with-white-score text treatment reads
+                # off this directly (see game_status_by_pro_team's own
+                # docstring).
+                "game_status": game_status_by_pro_team_map.get(r["pro_team"]),
             }
         )
     return result
@@ -142,6 +156,7 @@ def _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map,
 def _side_dict(
     team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability,
     schedule_by_pro_team, touchdowns, live_status_by_pro_team_map, rankings=None, power_rank=None,
+    game_status_by_pro_team_map=None,
 ):
     return {
         "team_id": team_row["team_id"],
@@ -167,7 +182,9 @@ def _side_dict(
         ),
         "streak": streak,
         "projected_total": _projected_total(roster_rows),
-        "roster": _roster_list(roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings),
+        "roster": _roster_list(
+            roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings, game_status_by_pro_team_map
+        ),
         # Real touchdowns scored by this team's active starters this
         # week (see queries.get_touchdowns_for_teams) — empty before
         # any games have been played, same honest-zero as everything
@@ -202,7 +219,7 @@ def _matchup_entry(
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
     narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
     locked_teams=frozenset(), live_status_by_pro_team_map=None, rankings=None,
-    power_rank_by_team=None,
+    power_rank_by_team=None, game_status_by_pro_team_map=None,
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
@@ -261,13 +278,13 @@ def _matchup_entry(
             home_team, home_score, home_standing, home_streak, home_roster,
             home_bench_crimes, home_clutch_choke, home_win_probability,
             schedule_by_pro_team, home_touchdowns, live_status_by_pro_team_map, rankings,
-            power_rank_by_team.get(home_team["team_id"]),
+            power_rank_by_team.get(home_team["team_id"]), game_status_by_pro_team_map,
         ),
         "away": _side_dict(
             away_team, away_score, away_standing, away_streak, away_roster,
             away_bench_crimes, away_clutch_choke, away_win_probability,
             schedule_by_pro_team, away_touchdowns, live_status_by_pro_team_map, rankings,
-            power_rank_by_team.get(away_team["team_id"]),
+            power_rank_by_team.get(away_team["team_id"]), game_status_by_pro_team_map,
         ),
         "narrative": narrative,
     }
@@ -309,6 +326,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     # app.gamecast.service's own cache (see that function's own
     # docstring for why it was — 2026-09-13 fix).
     live_status_map = live_status_by_pro_team(games)
+    game_status_map = game_status_by_pro_team(games)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -362,7 +380,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
             None, schedule_by_pro_team,
             touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-            locked_teams, live_status_map, rankings, power_rank_by_team,
+            locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -421,6 +439,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
     live_status_map = live_status_by_pro_team(games)
+    game_status_map = game_status_by_pro_team(games)
     rankings = await position_rankings_queries.get_rankings(conn, season, week)
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -439,7 +458,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         clutch_choke_by_team.get(m["home_team_id"]), clutch_choke_by_team.get(m["away_team_id"]),
         None, schedule_by_pro_team,
         touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
-        locked_teams, live_status_map, rankings, power_rank_by_team,
+        locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

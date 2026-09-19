@@ -168,6 +168,13 @@ export type RosterPlayer = {
   // user's own roster.
   on_offense: boolean;
   is_redzone: boolean;
+  // "scheduled" | "in_progress" | "final" | null (no real scoreboard
+  // data this week, e.g. a bye) — the matchup screen's own grey/white/
+  // grey-with-score-still-white text treatment (2026-09-19, reference:
+  // a real ESPN matchup screenshot) reads off this directly instead of
+  // re-deriving it from game_time/points_scored, which can't tell
+  // "hasn't played" apart from "playing right now."
+  game_status: "scheduled" | "in_progress" | "final" | null;
 };
 
 export type TeamDetail = {

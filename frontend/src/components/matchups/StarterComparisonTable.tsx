@@ -220,13 +220,12 @@ function ScoreBreakdownModal({
 // whole row) — nested <button>s aren't valid HTML, and they open two
 // different things (the player card vs. this week's score breakdown).
 //
-// Uses the real NFL team's badge (small, 24px) instead of a player
-// headshot photo — matched to the reference screenshot's own choice,
-// which is most of why it reads as roomy at a glance: no headshot
-// means more width for the name to run at a bigger size before
-// truncating, and no headshot column means less to visually parse
-// per row. My Team's own roster view keeps real headshots — this is
-// specific to the matchup screen's side-by-side density.
+// The real NFL team's badge renders tiny and inline right after the
+// name (2026-09-19 redesign, reference: a real ESPN matchup
+// screenshot) — a real user report called the previous version
+// ("cluttered", a full 24px badge in its own column to the left of the
+// name) out directly, next to the same screenshot showing ESPN's own
+// badge sized more like a superscript than a second column.
 function PlayerCell({
   player,
   mounted,
@@ -247,9 +246,23 @@ function PlayerCell({
   // show — a still-just-projected number has no raw_stats behind it.
   const scoreClickable = clickable && player.points_scored != null;
 
+  // Grey pre-kickoff and grey again once final, full brightness only
+  // while this player's own real NFL game is actually live — reference:
+  // a real ESPN matchup screenshot (2026-09-19 report) showing a
+  // player's name go white exactly while their game is in progress and
+  // back to grey once it ends, with only their scored point total
+  // (scoreSpan below, driven by points_scored != null, not by this)
+  // staying white either way. No real scoreboard data this week (bye,
+  // fetch failure) reads the same as "hasn't started yet."
+  const isLive = player.game_status === "in_progress";
+
   const nameSpan = (
     <>
-      {displayName(player)}
+      <span className={isLive ? undefined : "text-black/50 dark:text-white/50"}>{displayName(player)}</span>
+      {logo && (
+        // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
+        <img src={logo} alt="" className="mb-1.5 ml-1 inline-block h-3 w-3 shrink-0 self-end object-contain" />
+      )}
       {showInjury && (
         <span
           className="ml-1.5 text-xs font-bold text-red-500 dark:text-red-400"
@@ -290,30 +303,20 @@ function PlayerCell({
     </span>
   );
 
+  // Same live cross-reference MyTeamApp's own roster row uses
+  // (is_redzone/on_offense), now shown as a whole-cell highlight
+  // instead of a small dot on the (now much smaller) team badge —
+  // reference: a real ESPN screenshot highlighting a live player's
+  // entire row amber while their team has the ball. Red zone wins over
+  // plain "on offense" since it's the more specific, more urgent state.
+  const highlightClass = player.is_redzone
+    ? "bg-red-500/10 ring-1 ring-red-500/30"
+    : player.on_offense
+      ? "bg-amber-400/10 ring-1 ring-amber-400/30"
+      : "";
+
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-      <span className="relative inline-flex h-6 w-6 shrink-0 items-center">
-        {logo ? (
-          // eslint-disable-next-line @next/next/no-img-element -- ESPN's CDN, not a static asset next/image can optimize.
-          <img src={logo} alt="" width={24} height={24} className="h-6 w-6 object-contain" />
-        ) : null}
-        {/* Same live cross-reference/legend as MyTeamApp's own roster
-            row (RosterEntry.is_redzone/on_offense) — red for the red
-            zone, amber for on offense elsewhere on the field. Only
-            ever true during a real in-progress game for this player's
-            real NFL team, for either side of the matchup. */}
-        {player.is_redzone ? (
-          <span
-            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-[var(--background)]"
-            title="In the red zone"
-          />
-        ) : player.on_offense ? (
-          <span
-            className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-[var(--background)]"
-            title="On offense"
-          />
-        ) : null}
-      </span>
+    <div className={`-mx-1.5 -my-1 flex min-w-0 flex-1 items-center rounded-lg px-1.5 py-1 ${highlightClass}`}>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline gap-1.5">
           {clickable ? (

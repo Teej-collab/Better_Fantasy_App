@@ -3,7 +3,7 @@ no DB/network involved. Added 2026-09-13 alongside the fix that made
 this read the public scoreboard poll (app/providers/nfl_scoreboard.py)
 instead of app.gamecast.service's own viewer-gated cache, which had no
 test coverage of its own at all before this."""
-from app.domain.nfl_schedule import live_status_by_pro_team
+from app.domain.nfl_schedule import game_status_by_pro_team, live_status_by_pro_team
 
 
 def _game(home, away, state="in", possession=None, is_redzone=False):
@@ -41,3 +41,26 @@ def test_a_team_not_playing_this_week_has_no_entry():
 
 def test_empty_scoreboard_returns_empty_lookup():
     assert live_status_by_pro_team([]) == {}
+
+
+def test_game_status_maps_espn_states_to_the_three_matchup_screen_states():
+    lookup = game_status_by_pro_team([
+        _game("KC", "DEN", state="pre"),
+        _game("CHI", "CAR", state="in"),
+        _game("SF", "SEA", state="post"),
+    ])
+    assert lookup["KC"] == "scheduled"
+    assert lookup["DEN"] == "scheduled"
+    assert lookup["CHI"] == "in_progress"
+    assert lookup["CAR"] == "in_progress"
+    assert lookup["SF"] == "final"
+    assert lookup["SEA"] == "final"
+
+
+def test_game_status_has_no_entry_for_a_team_not_playing_this_week():
+    lookup = game_status_by_pro_team([_game("CHI", "CAR", state="in")])
+    assert "GB" not in lookup
+
+
+def test_game_status_empty_scoreboard_returns_empty_lookup():
+    assert game_status_by_pro_team([]) == {}

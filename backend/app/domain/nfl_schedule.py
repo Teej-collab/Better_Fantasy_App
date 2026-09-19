@@ -74,6 +74,31 @@ def live_status_by_pro_team(games: list[dict]) -> dict[str, dict]:
     return lookup
 
 
+def game_status_by_pro_team(games: list[dict]) -> dict[str, str]:
+    """pro_team abbreviation -> "scheduled" | "in_progress" | "final"
+    for every real NFL team in this week's scoreboard — the matchup
+    screen's own per-player text/score color state (2026-09-19,
+    reference: a real ESPN matchup screenshot showing a player's name
+    go grey pre-kickoff, white while their game is live, then back to
+    grey post-game with only their scored point total staying white).
+    Reuses the same scoreboard fetch schedule_lookup_by_pro_team/
+    live_status_by_pro_team above already read — ESPN's own
+    status.type.state ("pre"/"in"/"post", parsed in
+    app/providers/nfl_scoreboard.py) is exactly this three-way split
+    already, just needs renaming into words a frontend caller doesn't
+    have to know ESPN's own vocabulary to branch on."""
+    mapping = {"pre": "scheduled", "in": "in_progress", "post": "final"}
+    lookup: dict[str, str] = {}
+    for game in games:
+        status = mapping.get(game.get("state"))
+        if status is None:
+            continue
+        for team in (game.get("home_team"), game.get("away_team")):
+            if team:
+                lookup[team] = status
+    return lookup
+
+
 def locked_pro_teams(games: list[dict], now: datetime | None = None) -> frozenset[str]:
     """Every real NFL team (pro_team abbreviation) whose game for this
     week has already kicked off — the server-side half of the
