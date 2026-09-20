@@ -238,15 +238,31 @@ _MADE_ATTEMPTED_MAP: dict[tuple[str, str], str] = {
 # defensive play, from recovering its OWN fumble, which isn't).
 _TEAM_DST_STAT_MAP: dict[tuple[str, str], str] = {
     ("defensive", "sacks"): "def_sack",
+    # "defensive"/defensiveTouchdowns is ESPN's own umbrella for ANY
+    # touchdown scored by a defensive player — a pick-six AND a
+    # fumble-return TD both land here. Deliberately NOT also summing
+    # ("interceptions", "interceptionTouchdowns") on top of this: real
+    # bug report, 2026-09-20 — Devin Lloyd's real interception-return
+    # TD (CAR @ ATL, event 401872933) showed up as
+    # defensiveTouchdowns=1 in the "defensive" category AND
+    # interceptionTouchdowns=1 in the "interceptions" category, the
+    # SAME single play tagged in both, and summing both doubled
+    # Carolina's real 1 return TD into a credited 2. interceptionTouchdowns
+    # is always a subset of defensiveTouchdowns (every pick-six is a
+    # defensive TD), so dropping it here loses no real signal.
     ("defensive", "defensiveTouchdowns"): "def_return_td",
     ("interceptions", "interceptions"): "def_int",
-    ("interceptions", "interceptionTouchdowns"): "def_return_td",
     # A kick/punt return TD scores for BOTH the individual returner
     # (see _INDIVIDUAL_STAT_MAP's ret_td) AND the team D/ST unit — this
     # league's own scoring screenshots list "Kickoff/Punt Return TD"
     # under both the Team Defense/Special Teams AND Miscellaneous
     # sections at the same point value, confirming the double-credit
-    # is intentional, not a mapping bug.
+    # is intentional, not a mapping bug. Genuinely additive with
+    # defensiveTouchdowns above, unlike interceptionTouchdowns — a
+    # returner isn't a "defensive" position player, so ESPN's own
+    # "defensive" category never carries their return TD too (confirmed
+    # against the same real CAR @ ATL boxscore: CAR's kickReturns/
+    # puntReturns categories carry zero touchdowns this game).
     ("kickReturns", "kickReturnTouchdowns"): "def_return_td",
     ("puntReturns", "puntReturnTouchdowns"): "def_return_td",
 }
