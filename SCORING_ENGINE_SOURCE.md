@@ -51,7 +51,7 @@ captured at attempt-level granularity), and defensive
 sacks/tackles/INTs/fumble recoveries are all directly present with
 real per-player identity.
 
-## Field-goal-by-yardage, missed FGs by distance, and tackles — CLOSED (2026-09)
+## Field-goal-by-yardage, missed/blocked FGs by distance, def_block, and tackles — CLOSED (2026-09)
 
 All of these used to be in the "known gap" list below; they're real,
 scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
@@ -87,6 +87,30 @@ scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
   landed in `fg_miss_40_49`. Supersedes the old flat `fg_miss_total`
   (attempts minus makes, no distance) — removed in the same migration
   that added these.
+- **Blocked field goals** (real bug report, 2026-09-20): ESPN tags a
+  blocked FG as its own distinct play type, `type.abbreviation ==
+  "BFG"`, structurally different from an ordinary miss's `"FGM"` — the
+  parser only ever matched `"FGM"`, so a real blocked attempt (Tyler
+  Loop's 49-yarder, event `401872938`) was silently dropped before ever
+  becoming a stat at all, never scoring its `fg_miss_40_49` penalty.
+  Fixed in `_parse_fg_misses_by_player` by also matching `"BFG"` — but
+  a block's own `statYardage` field is always `0`, not the real
+  distance, so the real distance is regex-extracted from the play's
+  free text instead (`"T.Loop 49 yard field goal is BLOCKED..."`),
+  mirroring the text-parsing already used for made-FG distance above.
+  Verified live against the real triggering play.
+- **`def_block`** (+2, the other side of the same play above): this
+  league's rules also credit the blocking team's D/ST for a blocked
+  kick — confirmed via the same real event that New Orleans blocked
+  Tyler Loop's kick and got zero credit for it, because nothing sourced
+  `def_block` from anywhere at all. `_parse_def_block_by_team` credits
+  whichever team's `teamParticipants` entry has `type == "defense"` on
+  a `"BFG"`-type play. Deliberately covers ONLY blocked field goals —
+  this league's own scoring-rules comment describes `def_block` as
+  "blocked punt/PAT/FG", but no real blocked punt/PAT was available
+  this season to confirm ESPN's play-type tag for either against, so
+  those two are left as an undercount rather than guessed at, same
+  policy as everything else in this file.
 - **`def_tackle`** (non-QB) / **`qb_tackle`** (QB, a much higher point
   value in this league — 15 by default): the `defensive` category's
   `totalTackles`/`soloTackles` fields were already being fetched for
@@ -99,11 +123,13 @@ scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
   access to a player's position — splits `def_tackle` into `qb_tackle`
   for QB-position players right before scoring, per player/per game.
 
-**Still NOT captured** (unchanged, no new spike done on these): 2-point
-conversions, blocked kicks, safeties. All are real but rare events,
-likely also derivable from the same `drives.previous[].plays[]` source
-that closed the missed-FG gap above — a real follow-up, not attempted
-here.
+**Still NOT captured**: 2-point conversions, and safeties (`def_safety`
+[team, +2] / `safety_1pt` [individual, +1]). Both are real but rare
+events, likely also derivable from the same `drives.previous[].plays[]`
+source that closed the missed/blocked-FG gaps above — but unlike those,
+no real occurrence of either has come up this season to confirm ESPN's
+own play-type tag against, so — same policy as `def_block` above —
+deliberately left unimplemented rather than guessed at.
 
 ## Team D/ST — verified and built (2026-08-26)
 
@@ -136,8 +162,6 @@ around:
   own scoring screenshots list it under both the Team Defense/Special
   Teams and Miscellaneous sections at the same point value.
 
-Still not built: the rare-event gaps above (2pt conversions, blocked
-kicks/blocks, safeties) apply to team D/ST scoring too (blocks and
-safeties are specifically D/ST categories in this league's rules) —
-same "ship v1 without them, validate the real gap size against
-historical data" decision.
+Still not built: 2pt conversions and safeties (`def_safety`) — see the
+"Still NOT captured" note above; `def_block` (also a D/ST-specific
+category in this league's rules) is no longer in this gap, see above.

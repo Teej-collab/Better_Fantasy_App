@@ -16,18 +16,23 @@ round-trip would be wasteful.
 
 Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
-NOT here (2pt conversions, safeties — neither is in ESPN's boxscore
-stat tables at all, only in play-by-play, which isn't parsed here).
+NOT here (2pt conversions, safeties — def_safety [team, 2pts] and
+safety_1pt [individual, 1pt] — neither is in ESPN's boxscore stat
+tables at all, only in play-by-play, and unlike the blocked-FG fix
+below, no real safety has occurred this season to confirm ESPN's own
+play-type tag for one against, so it's deliberately left unimplemented
+rather than guessed at).
 Field-goal-by-yardage (fg_yds), missed AND blocked field goals by
-distance (fg_miss_0_29/30_39/40_49/50_plus), and QB tackles were all
-in that gap list and no longer are (2026-09) — see
-_parse_fg_yards_by_player and _parse_fg_misses_by_player below for how
-makes/misses/blocks are actually captured, from genuinely different
-parts of the same summary response than the rest of this file reads
-(QB tackles are scored as a separate stat_category from general
-tackles — app/domain/weekly_stats.py, not this file, does that split,
-since it needs the player's position, which this file's per-game stat
-parsing never looks at).
+distance (fg_miss_0_29/30_39/40_49/50_plus), a blocked kick's own
+def_block (+2) credit to the blocking team's D/ST, and QB tackles were
+all in that gap list and no longer are (2026-09) — see
+_parse_fg_yards_by_player, _parse_fg_misses_by_player, and
+_parse_def_block_by_team below for how makes/misses/blocks are
+actually captured, from genuinely different parts of the same summary
+response than the rest of this file reads (QB tackles are scored as a
+separate stat_category from general tackles — app/domain/weekly_stats.py,
+not this file, does that split, since it needs the player's position,
+which this file's per-game stat parsing never looks at).
 """
 import re
 
@@ -246,6 +251,64 @@ _TEAM_DST_STAT_MAP: dict[tuple[str, str], str] = {
     ("puntReturns", "puntReturnTouchdowns"): "def_return_td",
 }
 
+def _team_abbr_by_id(data: dict) -> dict[str, str]:
+    """{team_id: team_abbreviation} from the game header's own
+    competitors list — shared by every play-by-play parser below that
+    needs to turn a numeric team id (all play-by-play ever carries)
+    into the abbreviation the rest of this module keys D/ST stat lines
+    by."""
+    team_abbr_by_id: dict[str, str] = {}
+    for competitor in data.get("header", {}).get("competitions", [{}])[0].get("competitors", []):
+        team = competitor.get("team", {})
+        team_id, abbr = team.get("id"), team.get("abbreviation")
+        if team_id and abbr:
+            team_abbr_by_id[str(team_id)] = abbr
+    return team_abbr_by_id
+
+
+def _parse_def_block_by_team(data: dict) -> dict[str, int]:
+    """{team_abbreviation: count of kicks this team's defense blocked}
+    this game — the OTHER side of the same play
+    _parse_fg_misses_by_player reads for the kicker's own fg_miss_*
+    penalty: this league's def_block (+2) rewards the team that DID
+    the blocking, not the team that got blocked. Real report/fix,
+    2026-09-20: New Orleans blocked Tyler Loop's real 49-yard attempt
+    (event 401872938) and got no credit for it, because nothing sourced
+    def_block from anywhere at all.
+
+    Confirmed against that same real play: a blocked-FG play's own
+    `teamParticipants` carries one entry with `type == "defense"` (id
+    "18", New Orleans — the blocking team) and one with
+    `type == "offense"` (id "33", Baltimore — the team that got
+    blocked); the defense entry is what this credits.
+
+    Only covers a blocked FIELD GOAL (type.abbreviation == "BFG") —
+    this league's own scoring-rules comment describes def_block as
+    "blocked punt/PAT/FG", but a blocked punt or blocked PAT wasn't
+    available in any real game to confirm ESPN's play-type tag for
+    either against (unlike BFG, verified live) — deliberately not
+    guessed at, same "safer to undercount than guess wrong" rule the
+    rest of this file already follows. A real blocked punt/PAT should
+    surface as an undercount here, not a miscredit, until whoever hits
+    one confirms the real type tag and this gets extended the same way."""
+    team_abbr_by_id = _team_abbr_by_id(data)
+
+    counts: dict[str, int] = {}
+    for drive in data.get("drives", {}).get("previous", []):
+        for play in drive.get("plays", []):
+            if play.get("type", {}).get("abbreviation") != "BFG":
+                continue
+            defense_team_id = next(
+                (p.get("id") for p in play.get("teamParticipants", []) if p.get("type") == "defense"),
+                None,
+            )
+            abbr = team_abbr_by_id.get(str(defense_team_id)) if defense_team_id else None
+            if abbr:
+                counts[abbr] = counts.get(abbr, 0) + 1
+
+    return counts
+
+
 def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     """{team_abbreviation: count of genuine defensive fumble recoveries}
     this game — i.e. recovering the OPPONENT's fumble (a real takeaway),
@@ -268,12 +331,7 @@ def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     a live/in-progress game's summary can lack a `drives` key entirely,
     same as it can lack per-kick data — this returns {} rather than
     raising, exactly like that function already does."""
-    team_abbr_by_id: dict[str, str] = {}
-    for competitor in data.get("header", {}).get("competitions", [{}])[0].get("competitors", []):
-        team = competitor.get("team", {})
-        team_id, abbr = team.get("id"), team.get("abbreviation")
-        if team_id and abbr:
-            team_abbr_by_id[str(team_id)] = abbr
+    team_abbr_by_id = _team_abbr_by_id(data)
 
     counts: dict[str, int] = {}
     for drive in data.get("drives", {}).get("previous", []):
@@ -451,6 +509,10 @@ def parse_team_dst_stats(data: dict) -> dict[str, dict]:
     for abbr, count in _parse_def_fum_rec_by_team(data).items():
         stat_lines.setdefault(abbr, {})
         stat_lines[abbr]["def_fum_rec"] = stat_lines[abbr].get("def_fum_rec", 0) + count
+
+    for abbr, count in _parse_def_block_by_team(data).items():
+        stat_lines.setdefault(abbr, {})
+        stat_lines[abbr]["def_block"] = stat_lines[abbr].get("def_block", 0) + count
 
     return stat_lines
 
