@@ -232,7 +232,7 @@ export function ConversationList({
           </button>
         </div>
       ) : (
-        <ul className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+        <ul className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
           {conversations.map((c) => (
             <ConversationRow
               key={c.id}

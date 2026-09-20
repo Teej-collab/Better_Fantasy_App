@@ -141,17 +141,17 @@ export function MessageBubble({
           />
         )}
 
-        <div className={`flex flex-col gap-1 ${hasReactions ? "mb-6" : ""}`}>
+        <div className={`flex min-w-0 flex-col gap-1 ${hasReactions ? "mb-6" : ""}`}>
           {message.reply_to && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onScrollToMessage(message.reply_to!.id);
               }}
-              className="flex flex-col rounded-lg border-l-2 border-black/15 bg-black/[0.03] px-2 py-1 text-left text-xs text-black/50 hover:bg-black/5 dark:border-white/15 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/10"
+              className="flex min-w-0 flex-col rounded-lg border-l-2 border-black/15 bg-black/[0.03] px-2 py-1 text-left text-xs text-black/50 hover:bg-black/5 dark:border-white/15 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/10"
             >
               <span className="font-medium">{message.reply_to.owner_name}</span>
-              <span className="truncate">{message.reply_to.body}</span>
+              <span className="min-w-0 truncate">{message.reply_to.body}</span>
             </button>
           )}
 

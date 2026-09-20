@@ -227,7 +227,19 @@ export function MessageThread({
           // size, not 0, so without this a long real thread can't
           // shrink to fit the panel's fixed height and pushes the
           // composer below it instead of scrolling internally).
-          className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3"
+          //
+          // overflow-x-hidden is a real fix, not defensive boilerplate
+          // (real report, 2026-09-20: the whole thread panned left-right
+          // on mobile instead of scrolling like iMessage). Setting only
+          // overflow-y here made the browser compute overflow-x to
+          // `auto` too (a genuine CSS rule: an element with one axis set
+          // to auto/scroll and the other left at its visible default
+          // gets that other axis promoted to auto as well) — so any
+          // child that refused to shrink below its content width (a
+          // long reply-preview snippet, fixed by min-w-0 in
+          // MessageBubble.tsx) turned this into a real horizontal
+          // scroll/pan area instead of being clipped.
+          className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-3"
         >
           {hasMoreOlder && (
             <div className="mb-3 flex justify-center">

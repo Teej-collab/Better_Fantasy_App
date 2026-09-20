@@ -46,7 +46,7 @@ export function AnnouncementFeed({
     // bottom nav" in Commish's Corner specifically (its 2-field
     // composer plus a feed of substantial cards is exactly the
     // combination that exposes this; a short DM thread rarely does).
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3">
+    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-4 py-3">
       {newestFirst.length === 0 ? (
         <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">
           No announcements yet.
