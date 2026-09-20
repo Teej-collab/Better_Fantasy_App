@@ -1,19 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import type { RemoteParticipant } from "livekit-client";
-import { useRemoteParticipants } from "@livekit/components-react";
+import { Track, type RemoteParticipant } from "livekit-client";
+import { useRemoteParticipants, useTracks } from "@livekit/components-react";
 
 // Per-participant playback volume — real mics vary a lot more than
 // people expect (a phone mic three feet away vs. a headset an inch
 // from someone's mouth), so "everyone comes in at the same level" is
-// often wrong. This only ever affects what YOU hear locally
-// (RemoteParticipant.setVolume — a client-side gain on the incoming
-// audio element, confirmed against livekit-client's own type
-// definitions), never anyone else's actual mic or what they hear —
-// there's no server-side concept of "muted for the room" here.
+// often wrong. A screen share's own audio (someone sharing the actual
+// game broadcast, with its own volume) is a genuinely SEPARATE track
+// from that person's mic — LiveKit tracks them as two different
+// sources (real report: the mic slider had no effect on the shared
+// video's sound) — so each participant gets one slider per source
+// they're actually publishing, not one slider assumed to cover both.
+// Confirmed against livekit-client's own RemoteParticipant.setVolume
+// signature, which explicitly takes a Track.Source.Microphone |
+// Track.Source.ScreenShareAudio argument for exactly this reason.
+// Everything here only ever affects what YOU hear locally, never
+// anyone else's actual mic/share or what they hear.
 export function ParticipantVolumePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const participants = useRemoteParticipants();
+  // Reactive — updates the moment someone starts/stops sharing their
+  // screen with audio, unlike a one-time getTrackPublication() check
+  // that would go stale the instant a share starts after this panel
+  // first renders.
+  const screenShareAudioTracks = useTracks([Track.Source.ScreenShareAudio]);
 
   if (!open) return null;
 
@@ -39,9 +50,28 @@ export function ParticipantVolumePanel({ open, onClose }: { open: boolean; onClo
           <p className="mt-8 text-center text-sm text-black/50 dark:text-white/50">No one else is in the room yet.</p>
         ) : (
           <ul className="flex flex-col gap-4">
-            {participants.map((p) => (
-              <ParticipantVolumeRow key={p.sid} participant={p} />
-            ))}
+            {participants.map((p) => {
+              const isSharingAudio = screenShareAudioTracks.some((t) => t.participant.sid === p.sid);
+              const label = p.name || p.identity;
+              return (
+                <li key={p.sid} className="flex flex-col gap-2 border-b border-black/5 pb-4 last:border-0 dark:border-white/5">
+                  <ParticipantVolumeRow
+                    participant={p}
+                    source={Track.Source.Microphone}
+                    label={label}
+                    icon="🎤"
+                  />
+                  {isSharingAudio && (
+                    <ParticipantVolumeRow
+                      participant={p}
+                      source={Track.Source.ScreenShareAudio}
+                      label={`${label}'s shared video`}
+                      icon="🖥️"
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -49,24 +79,33 @@ export function ParticipantVolumePanel({ open, onClose }: { open: boolean; onClo
   );
 }
 
-function ParticipantVolumeRow({ participant }: { participant: RemoteParticipant }) {
-  // getVolume() returns undefined until a mic track has actually
-  // arrived for this participant — 1 (100%, unchanged) is the right
-  // default to show for that gap, matching setVolume's own documented
-  // "applied once the track shows up" behavior.
-  const [volume, setVolume] = useState(() => participant.getVolume() ?? 1);
+function ParticipantVolumeRow({
+  participant,
+  source,
+  label,
+  icon,
+}: {
+  participant: RemoteParticipant;
+  source: Track.Source.Microphone | Track.Source.ScreenShareAudio;
+  label: string;
+  icon: string;
+}) {
+  // getVolume(source) returns undefined until that source's track has
+  // actually arrived — 1 (100%, unchanged) is the right default to
+  // show for that gap, matching setVolume's own documented "applied
+  // once the track shows up" behavior.
+  const [volume, setVolume] = useState(() => participant.getVolume(source) ?? 1);
 
   function handleChange(next: number) {
     setVolume(next);
-    participant.setVolume(next);
+    participant.setVolume(next, source);
   }
 
-  const label = participant.name || participant.identity;
-
   return (
-    <li className="flex items-center gap-3">
-      <span className="w-24 shrink-0 truncate text-sm" style={{ color: "var(--wl-text)" }}>
-        {label}
+    <div className="flex items-center gap-3">
+      <span className="flex w-24 shrink-0 items-center gap-1 truncate text-sm" style={{ color: "var(--wl-text)" }}>
+        <span aria-hidden>{icon}</span>
+        <span className="truncate">{label}</span>
       </span>
       <button
         onClick={() => handleChange(volume > 0 ? 0 : 1)}
@@ -88,6 +127,6 @@ function ParticipantVolumeRow({ participant }: { participant: RemoteParticipant 
       <span className="w-10 shrink-0 text-right text-xs tabular-nums" style={{ color: "var(--wl-text-secondary)" }}>
         {Math.round(volume * 100)}%
       </span>
-    </li>
+    </div>
   );
 }
