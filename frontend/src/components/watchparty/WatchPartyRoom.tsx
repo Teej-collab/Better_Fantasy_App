@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { LiveKitRoom, VideoConference } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { getWatchPartyToken, type ChatMember, type ChatMessage, type WatchPartyRoom as WatchPartyRoomInfo } from "@/lib/api";
-import { FantasyTicker } from "@/components/watchparty/FantasyTicker";
 import { WatchPartyChat } from "@/components/watchparty/WatchPartyChat";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
 
@@ -13,14 +12,20 @@ import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolum
 // controls, tile grid, screen share — is deliberately used as-is here
 // rather than rebuilt from useTracks/useParticipants primitives, since
 // a battle-tested call UI was the right thing to validate the actual
-// media path against first. Phase 2 layered the live fantasy digest
-// (FantasyTicker) on top via its own WebSocket. Phase 3 (this pass)
-// adds the room's own chat panel and per-participant volume — both as
-// custom overlays alongside <VideoConference>, not inside it, since
-// the prebuilt component doesn't expose slots for extra per-tile UI
-// (true click-a-tile-to-adjust-their-volume needs the fully custom
-// tile grid still on the roadmap; a dedicated panel gets to the same
-// outcome sooner).
+// media path against first. Phase 3 adds the room's own chat panel and
+// per-participant volume — both as custom overlays alongside
+// <VideoConference>, not inside it, since the prebuilt component
+// doesn't expose slots for extra per-tile UI (true
+// click-a-tile-to-adjust-their-volume needs the fully custom tile grid
+// still on the roadmap; a dedicated panel gets to the same outcome
+// sooner). Both get their own clearly-labeled toolbar row (not small
+// unlabeled icons in the top corner, which real usage found too easy
+// to miss next to LiveKit's own controls).
+//
+// FantasyTicker (Phase 2's fantasy digest overlay) is deliberately not
+// rendered right now — real usage found it landing dead center over
+// faces on a real call. Pulled out rather than left half-broken;
+// bringing it back needs a real repositioning pass, not a quick patch.
 export function WatchPartyRoom({
   room,
   onClose,
@@ -77,30 +82,27 @@ export function WatchPartyRoom({
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
       >
         <span className="font-display truncate text-sm font-bold">{room.name}</span>
-        <div className="flex shrink-0 items-center gap-2">
-          {tokenData && (
-            <>
-              <button
-                onClick={() => setPanel((p) => (p === "volume" ? "none" : "volume"))}
-                aria-label="Volume controls"
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${panel === "volume" ? "bg-white text-black" : "bg-white/10"}`}
-              >
-                🔊
-              </button>
-              <button
-                onClick={() => setPanel((p) => (p === "chat" ? "none" : "chat"))}
-                aria-label="Room chat"
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${panel === "chat" ? "bg-white text-black" : "bg-white/10"}`}
-              >
-                💬
-              </button>
-            </>
-          )}
-          <button onClick={onClose} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold">
-            Leave
+        <button onClick={onClose} className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold">
+          Leave
+        </button>
+      </div>
+
+      {tokenData && (
+        <div className="flex items-center gap-2 px-4 pb-2">
+          <button
+            onClick={() => setPanel((p) => (p === "volume" ? "none" : "volume"))}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold ${panel === "volume" ? "bg-white text-black" : "bg-white/15"}`}
+          >
+            🔊 Volume
+          </button>
+          <button
+            onClick={() => setPanel((p) => (p === "chat" ? "none" : "chat"))}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold ${panel === "chat" ? "bg-white text-black" : "bg-white/15"}`}
+          >
+            💬 Chat
           </button>
         </div>
-      </div>
+      )}
 
       {error && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
@@ -118,36 +120,33 @@ export function WatchPartyRoom({
       )}
 
       {tokenData && (
-        <>
-          <FantasyTicker roomId={room.id} />
-          <LiveKitRoom
-            token={tokenData.token}
-            serverUrl={tokenData.url}
-            video
-            audio
-            data-lk-theme="default"
-            style={{ flex: 1, minHeight: 0, position: "relative" }}
-            onDisconnected={onClose}
-          >
-            <VideoConference />
-            <WatchPartyChat
-              open={panel === "chat"}
-              onClose={() => setPanel("none")}
-              messages={messages}
-              members={members}
-              myOwnerId={myOwnerId}
-              typingUsers={typingUsers}
-              connected={connected}
-              aiNoticeSeen={aiNoticeSeen}
-              onAiNoticeResolved={onAiNoticeResolved}
-              onSend={onSend}
-              onReact={onReact}
-              onDelete={onDelete}
-              onTyping={onTyping}
-            />
-            <ParticipantVolumePanel open={panel === "volume"} onClose={() => setPanel("none")} />
-          </LiveKitRoom>
-        </>
+        <LiveKitRoom
+          token={tokenData.token}
+          serverUrl={tokenData.url}
+          video
+          audio
+          data-lk-theme="default"
+          style={{ flex: 1, minHeight: 0, position: "relative" }}
+          onDisconnected={onClose}
+        >
+          <VideoConference />
+          <WatchPartyChat
+            open={panel === "chat"}
+            onClose={() => setPanel("none")}
+            messages={messages}
+            members={members}
+            myOwnerId={myOwnerId}
+            typingUsers={typingUsers}
+            connected={connected}
+            aiNoticeSeen={aiNoticeSeen}
+            onAiNoticeResolved={onAiNoticeResolved}
+            onSend={onSend}
+            onReact={onReact}
+            onDelete={onDelete}
+            onTyping={onTyping}
+          />
+          <ParticipantVolumePanel open={panel === "volume"} onClose={() => setPanel("none")} />
+        </LiveKitRoom>
       )}
     </div>
   );
