@@ -55,7 +55,7 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
-def _room_dict(row, member_count: int) -> dict:
+def _room_dict(row, member_count: int, is_live: bool) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -63,6 +63,11 @@ def _room_dict(row, member_count: int) -> dict:
         "created_by_owner_id": row["created_by_owner_id"],
         "member_count": member_count,
         "conversation_id": row["conversation_id"],
+        # Real occupancy (is anyone's FantasyTicker socket currently
+        # open for this room — see watch_party_manager), not the same
+        # thing as member_count, which is "how many COULD join," a
+        # static number. Phase 4's "someone's in League Lounge" signal.
+        "is_live": is_live,
     }
 
 
@@ -81,9 +86,11 @@ async def list_rooms(request: Request, pool=Depends(get_pool)):
         eligible = await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
         private_rooms = await watch_party_queries.list_private_rooms_for_owner(conn, league_id, owner_id)
 
+    live_room_ids = set(watch_party_manager.live_room_ids())
+
     return {
-        "open_room": _room_dict(open_room, len(eligible) + 1),
-        "private_rooms": [_room_dict(r, r["member_count"]) for r in private_rooms],
+        "open_room": _room_dict(open_room, len(eligible) + 1, open_room["id"] in live_room_ids),
+        "private_rooms": [_room_dict(r, r["member_count"], r["id"] in live_room_ids) for r in private_rooms],
     }
 
 
@@ -116,6 +123,58 @@ async def create_room(request: Request, pool=Depends(get_pool)):
         room_id = await watch_party_queries.create_private_room(conn, league_id, name, owner_id, invited_owner_ids)
 
     return {"id": room_id}
+
+
+@router.get("/rooms/{room_id}/members")
+async def list_room_members(room_id: int, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+
+        room = await watch_party_queries.get_room(conn, room_id)
+        if room is None or room["league_id"] != league_id or room["kind"] != "private":
+            raise HTTPException(status_code=404, detail="Room not found")
+        if not await watch_party_queries.is_private_room_member(conn, room_id, owner_id):
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        members = await watch_party_queries.list_room_members(conn, room_id)
+
+    return {
+        "members": [{"owner_id": m["owner_id"], "display_name": m["display_name"]} for m in members],
+        "created_by_owner_id": room["created_by_owner_id"],
+    }
+
+
+@router.delete("/rooms/{room_id}/members/{target_owner_id}")
+async def remove_room_member(room_id: int, target_owner_id: int, request: Request, pool=Depends(get_pool)):
+    """Room creator or the league commissioner only — "commissioner-
+    level controls," per the approved plan, deliberately means both:
+    the person who actually started this private party is its natural
+    day-to-day manager, with the commissioner able to step in too
+    (same override relationship Commish's Corner posting already has).
+    Revokes future room/chat access; does not forcibly disconnect an
+    already-live LiveKit session — see remove_private_room_member's
+    own docstring on why that's a separate, not-yet-built piece."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+
+        room = await watch_party_queries.get_room(conn, room_id)
+        if room is None or room["league_id"] != league_id or room["kind"] != "private":
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        is_creator = room["created_by_owner_id"] == owner_id
+        is_commissioner = await chat_queries.is_owner_commissioner_of_league(conn, owner_id, league_id)
+        if not (is_creator or is_commissioner):
+            raise HTTPException(status_code=403, detail="Only this party's host or your commissioner can remove someone")
+        if target_owner_id == room["created_by_owner_id"]:
+            raise HTTPException(status_code=400, detail="Can't remove the party's host")
+
+        await watch_party_queries.remove_private_room_member(conn, room_id, room["conversation_id"], target_owner_id)
+
+    return {"status": "removed"}
 
 
 async def _room_if_accessible(conn, room_id: int, league_id: int, owner_id: int):

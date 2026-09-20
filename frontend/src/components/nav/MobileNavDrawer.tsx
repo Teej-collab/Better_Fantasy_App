@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { clearSession } from "@/lib/logout";
 import { useUnreadChatCount } from "@/lib/useUnreadChatCount";
+import { useWatchPartyLive } from "@/lib/useWatchPartyLive";
 import { NavLink, isSectionActive, type NavSection } from "@/components/nav/NavLink";
 import { BrandMark } from "@/components/BrandMark";
 import { ChatIcon, GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
@@ -75,6 +76,7 @@ export function MobileNavDrawer({
   const panelRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
   const unread = useUnreadChatCount();
+  const watchPartyLive = useWatchPartyLive();
 
   function open() {
     setMounted(true);
@@ -197,6 +199,10 @@ export function MobileNavDrawer({
     Icon: typeof HomeIcon;
     show: boolean;
     live?: boolean;
+    // "Live" reads correctly for Gamecast (a real NFL game is live);
+    // reused as-is for Chat would wrongly imply the chat itself is
+    // live, so that one overrides it to name what's actually live.
+    liveLabel?: string;
     badge?: number;
   }[] = [
     { key: "home" as const, href: "/", label: "Home", Icon: HomeIcon, show: true },
@@ -204,7 +210,16 @@ export function MobileNavDrawer({
     { key: "league" as const, href: "/league", label: "League", Icon: LeagueIcon, show: true },
     { key: "matchups" as const, href: matchupsHref, label: "Matchup", Icon: MatchupsIcon, show: true },
     { key: "gamecast" as const, href: "/gamecast", label: "Gamecast", Icon: GamecastIcon, show: true, live: isGameDay },
-    { key: "chat" as const, href: "/chat", label: "Chat", Icon: ChatIcon, show: signedIn, badge: unread },
+    {
+      key: "chat" as const,
+      href: "/chat",
+      label: "Chat",
+      Icon: ChatIcon,
+      show: signedIn,
+      badge: unread,
+      live: watchPartyLive,
+      liveLabel: "In Room",
+    },
   ].filter((item) => item.show);
 
   const secondaryItems = signedIn
@@ -341,7 +356,7 @@ export function MobileNavDrawer({
                           className="ml-auto text-[10px] font-semibold tracking-wide uppercase"
                           style={{ color: "var(--wl-live)" }}
                         >
-                          Live
+                          {item.liveLabel ?? "Live"}
                         </span>
                       )}
                       {!!item.badge && (

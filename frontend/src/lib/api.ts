@@ -2080,6 +2080,9 @@ export type WatchPartyRoom = {
   // The real chat conversation this room's text chat reuses (Phase 3)
   // — see backend/app/queries/watch_party.py's own docstring.
   conversation_id: number;
+  // Real occupancy (Phase 4) — is anyone actually connected right now,
+  // not the same thing as member_count (who COULD join).
+  is_live: boolean;
 };
 
 export type WatchPartyRoomsResponse = {
@@ -2103,6 +2106,24 @@ export async function createWatchPartyRoom(name: string, invitedOwnerIds: number
   }
   const { id } = await res.json();
   return id;
+}
+
+// A private room's members, for the "Manage" panel (Phase 4) — the
+// creator or league commissioner only; see backend's remove_room_member.
+export type WatchPartyRoomMember = { owner_id: number; display_name: string };
+
+export async function getWatchPartyRoomMembers(
+  roomId: number
+): Promise<{ members: WatchPartyRoomMember[]; created_by_owner_id: number }> {
+  return authedGet(`/watch-party/rooms/${roomId}/members`);
+}
+
+export async function removeWatchPartyRoomMember(roomId: number, targetOwnerId: number): Promise<void> {
+  const res = await fetch(`/api/backend/watch-party/rooms/${roomId}/members/${targetOwnerId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to remove member: ${res.status}`);
+  }
 }
 
 export type WatchPartyToken = { token: string; url: string; room_name: string };

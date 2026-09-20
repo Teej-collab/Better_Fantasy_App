@@ -154,3 +154,32 @@ async def ensure_conversation_participant(conn, conversation_id: int, owner_id: 
         "INSERT INTO conversation_participants (conversation_id, owner_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         conversation_id, owner_id,
     )
+
+
+async def list_room_members(conn, room_id: int):
+    """Private-room-only — the open room has no membership rows to
+    list (see this module's own docstring)."""
+    return await conn.fetch(
+        """
+        SELECT m.owner_id, o.display_name
+        FROM watch_party_room_members m
+        JOIN owners o ON o.owner_id = m.owner_id
+        WHERE m.room_id = $1
+        ORDER BY o.display_name
+        """,
+        room_id,
+    )
+
+
+async def remove_private_room_member(conn, room_id: int, conversation_id: int, owner_id: int) -> None:
+    """Revokes both the room membership row (blocks any future token/WS
+    join — see _room_if_accessible) and the matching chat access (so a
+    removed member can't keep posting in the room's conversation
+    either). Doesn't forcibly disconnect an already-live LiveKit
+    session — that would need a real call to LiveKit's own server API
+    (RoomServiceClient.remove_participant), not just this app's own
+    data; flagged as a known gap, not silently pretended away."""
+    await conn.execute("DELETE FROM watch_party_room_members WHERE room_id = $1 AND owner_id = $2", room_id, owner_id)
+    await conn.execute(
+        "DELETE FROM conversation_participants WHERE conversation_id = $1 AND owner_id = $2", conversation_id, owner_id
+    )

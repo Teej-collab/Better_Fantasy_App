@@ -24,6 +24,7 @@ import {
 import { ConversationList } from "@/components/chat/ConversationList";
 import { MessageThread } from "@/components/chat/MessageThread";
 import { NewMessageModal } from "@/components/chat/NewMessageModal";
+import { ManagePartyModal } from "@/components/watchparty/ManagePartyModal";
 import { NewPartyModal } from "@/components/watchparty/NewPartyModal";
 import { WatchPartyBar } from "@/components/watchparty/WatchPartyBar";
 import { WatchPartyRoom } from "@/components/watchparty/WatchPartyRoom";
@@ -177,6 +178,7 @@ export function ChatApp({
   const [watchPartyRooms, setWatchPartyRooms] = useState<WatchPartyRoomsResponse | null>(null);
   const [activeWatchPartyRoom, setActiveWatchPartyRoom] = useState<WatchPartyRoomInfo | null>(null);
   const [showNewParty, setShowNewParty] = useState(false);
+  const [managingRoom, setManagingRoom] = useState<WatchPartyRoomInfo | null>(null);
 
   useEffect(() => {
     getWatchPartyRooms().then(setWatchPartyRooms).catch(() => {});
@@ -565,8 +567,10 @@ export function ChatApp({
           topSlot={
             <WatchPartyBar
               rooms={watchPartyRooms}
+              myOwnerId={myOwnerId}
               onJoin={setActiveWatchPartyRoom}
               onStartParty={() => setShowNewParty(true)}
+              onManage={setManagingRoom}
             />
           }
         />
@@ -609,6 +613,10 @@ export function ChatApp({
       )}
 
       {showNewParty && <NewPartyModal members={members} onClose={() => setShowNewParty(false)} onCreate={createParty} />}
+
+      {managingRoom && (
+        <ManagePartyModal room={managingRoom} myOwnerId={myOwnerId} onClose={() => setManagingRoom(null)} />
+      )}
 
       {activeWatchPartyRoom && (
         <WatchPartyRoom
