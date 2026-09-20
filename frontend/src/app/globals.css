@@ -2155,3 +2155,21 @@ body {
   animation: gamecast-play-enter 0.4s ease-out both;
 }
 
+/* Watch Party — LiveKit's own prebuilt <VideoConference/> control bar
+   includes a screen-share toggle that never requests audio (confirmed
+   against livekit-client's own createLocalScreenTracks: it only
+   creates an audio track when explicitly called with {audio: true},
+   which LiveKit's own <ControlBar/> never passes — see
+   ControlBarProps, no screen-share capture-options field exists).
+   Real report: someone shared their screen to watch the game and no
+   one could hear it as its own controllable track — the sound was
+   only reaching others by bleeding into the sharer's own microphone.
+   WatchPartyRoom.tsx adds its own "Share w/ Audio" button that
+   explicitly requests audio; this hides LiveKit's own broken one
+   (targeted by the same data-lk-source attribute LiveKit itself sets
+   on every TrackToggle button) so there's only one working way to
+   share, not two where one silently doesn't carry sound. */
+button[data-lk-source="screen_share"] {
+  display: none;
+}
+
