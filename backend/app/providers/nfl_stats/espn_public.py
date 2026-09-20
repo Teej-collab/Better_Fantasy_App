@@ -16,18 +16,18 @@ round-trip would be wasteful.
 
 Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
-NOT here (2pt conversions, blocked kicks, safeties — none of these are
-in ESPN's boxscore stat tables at all, only in play-by-play, which
-isn't parsed here). Field-goal-by-yardage (fg_yds), missed field goals
-by distance (fg_miss_0_29/30_39/40_49/50_plus), and QB tackles were all
+NOT here (2pt conversions, safeties — neither is in ESPN's boxscore
+stat tables at all, only in play-by-play, which isn't parsed here).
+Field-goal-by-yardage (fg_yds), missed AND blocked field goals by
+distance (fg_miss_0_29/30_39/40_49/50_plus), and QB tackles were all
 in that gap list and no longer are (2026-09) — see
 _parse_fg_yards_by_player and _parse_fg_misses_by_player below for how
-makes/misses are actually captured, from genuinely different parts of
-the same summary response than the rest of this file reads (QB tackles
-are scored as a separate stat_category from general tackles —
-app/domain/weekly_stats.py, not this file, does that split, since it
-needs the player's position, which this file's per-game stat parsing
-never looks at).
+makes/misses/blocks are actually captured, from genuinely different
+parts of the same summary response than the rest of this file reads
+(QB tackles are scored as a separate stat_category from general
+tackles — app/domain/weekly_stats.py, not this file, does that split,
+since it needs the player's position, which this file's per-game stat
+parsing never looks at).
 """
 import re
 
@@ -145,33 +145,64 @@ _FG_MISS_TIERS: list[tuple[int | None, str]] = [
     (29, "fg_miss_0_29"), (39, "fg_miss_30_39"), (49, "fg_miss_40_49"), (None, "fg_miss_50_plus"),
 ]
 
+# 2026-09-20 fix, real report: a BLOCKED field goal (type.abbreviation
+# == "BFG") was silently worth 0 points instead of this league's real
+# fg_miss_* penalty (-1 to -5 depending on distance), because the loop
+# below only ever matched "FGM" (an ordinary miss — wide/short) —
+# "BFG" != "FGM" so every blocked attempt was skipped outright, never
+# even reaching the scoring engine as a stat_category at all. Confirmed
+# against the real play that prompted this (event 401872938, week 2
+# 2026): Tyler Loop's real 49-yard blocked attempt. Unlike an ordinary
+# miss, a blocked kick's own `statYardage` is always 0 (confirmed on
+# that same real play) — the real attempt distance only exists in the
+# play's free-text `text` field, e.g. "T.Loop 49 yard field goal is
+# BLOCKED (C.Granderson), Center-N.Moore, Holder-R.Eckley." — the same
+# "distance is only in text" situation _parse_fg_yards_by_player
+# already handles for makes (_FG_MADE_TEXT_RE), just a different play
+# type and phrasing ("49 yard field goal is BLOCKED", not "49 Yd Field
+# Goal"). This league's fg_miss_* rules make no distinction between an
+# ordinary miss and a block — both are scored as the same fg_miss_*
+# tier by real distance.
+_FG_BLOCKED_TEXT_RE = re.compile(r"(\d+)\s+yard\s+field\s+goal\s+is\s+blocked", re.IGNORECASE)
+
 
 def _parse_fg_misses_by_player(data: dict) -> dict[int, dict[str, float]]:
-    """{espn_player_id: {fg_miss_<tier>: count}} for missed field goals
-    this game, tiered by distance (2026-09, replacing the old flat
-    fg_miss_total). A miss never appears in `scoringPlays` (nothing
-    scored), but it DOES appear in the full play-by-play at
-    `drives.previous[].plays[]`, tagged `type.abbreviation == "FGM"`
-    with a clean structured `statYardage` field (e.g. 44) — no text
-    parsing needed, unlike makes.
+    """{espn_player_id: {fg_miss_<tier>: count}} for missed OR blocked
+    field goals this game, tiered by real distance (2026-09, replacing
+    the old flat fg_miss_total). Neither ever appears in `scoringPlays`
+    (nothing scored), but both DO appear in the full play-by-play at
+    `drives.previous[].plays[]` — an ordinary miss tagged
+    `type.abbreviation == "FGM"` with a clean structured `statYardage`
+    field (e.g. 44, no text parsing needed); a block tagged
+    `type.abbreviation == "BFG"` needing the real distance parsed out
+    of `text` instead — see _FG_BLOCKED_TEXT_RE's own comment on why.
 
     Player attribution reuses the same single-kicker-per-team
     heuristic as _parse_fg_yards_by_player, just keyed by numeric team
-    id instead of abbreviation — a missed-FG play's own
+    id instead of abbreviation — a missed/blocked-FG play's own
     `teamParticipants` only carries team ids per offense/defense role,
     never an individual athlete id (confirmed against two real misses,
     event 401772830: Chase McLaughlin's 44-yard "Wide Left", Younghoe
-    Koo's 44-yard "Wide Right" — both real, both correctly bucketed
-    into fg_miss_40_49 during development)."""
+    Koo's 44-yard "Wide Right"; and against the real block, event
+    401872938: Tyler Loop's 49-yard BLOCKED attempt — all three
+    correctly bucketed/attributed)."""
     kicker_by_team_id = _single_kicker_lookup(data, "id")
 
     misses_by_player: dict[int, dict[str, float]] = {}
     for drive in data.get("drives", {}).get("previous", []):
         for play in drive.get("plays", []):
-            if play.get("type", {}).get("abbreviation") != "FGM":
-                continue
-            yardage = play.get("statYardage")
-            if yardage is None:
+            type_abbr = play.get("type", {}).get("abbreviation")
+            if type_abbr == "FGM":
+                yardage = play.get("statYardage")
+                if yardage is None:
+                    continue
+                yardage = int(yardage)
+            elif type_abbr == "BFG":
+                match = _FG_BLOCKED_TEXT_RE.search(play.get("text", ""))
+                if not match:
+                    continue
+                yardage = int(match.group(1))
+            else:
                 continue
             offense_team_id = next(
                 (p.get("id") for p in play.get("teamParticipants", []) if p.get("type") == "offense"),
@@ -180,7 +211,7 @@ def _parse_fg_misses_by_player(data: dict) -> dict[int, dict[str, float]]:
             kickers = kicker_by_team_id.get(offense_team_id, [])
             if len(kickers) != 1:
                 continue  # ambiguous (0 or 2+ kickers credited) — skip rather than guess
-            bucket = _tier_category(int(yardage), _FG_MISS_TIERS)
+            bucket = _tier_category(yardage, _FG_MISS_TIERS)
             player_buckets = misses_by_player.setdefault(kickers[0], {})
             player_buckets[bucket] = player_buckets.get(bucket, 0) + 1
 
