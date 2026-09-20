@@ -2077,6 +2077,9 @@ export type WatchPartyRoom = {
   kind: "open" | "private";
   created_by_owner_id: number;
   member_count: number;
+  // The real chat conversation this room's text chat reuses (Phase 3)
+  // — see backend/app/queries/watch_party.py's own docstring.
+  conversation_id: number;
 };
 
 export type WatchPartyRoomsResponse = {

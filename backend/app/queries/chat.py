@@ -235,7 +235,11 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
             ON other_cp.conversation_id = c.id AND other_cp.owner_id != $1 AND c.type = 'direct'
         LEFT JOIN owners other ON other.owner_id = other_cp.owner_id
         LEFT JOIN owner_preferences other_prefs ON other_prefs.owner_id = other_cp.owner_id
-        WHERE c.type = 'direct' OR c.league_id = $2
+        -- watch_party-typed conversations are reached through their room
+        -- (Chat tab's own Watch Party bar, and the chat panel inside the
+        -- room itself), not surfaced a second time as an ordinary thread
+        -- in this list — see app/queries/watch_party.py's own docstring.
+        WHERE (c.type = 'direct' OR c.league_id = $2) AND c.type != 'watch_party'
         ORDER BY
             CASE c.type WHEN 'commish_corner' THEN 0 WHEN 'league' THEN 1 ELSE 2 END,
             lm.created_at DESC NULLS LAST

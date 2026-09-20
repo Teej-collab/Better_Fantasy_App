@@ -1,10 +1,13 @@
 """
 Watch Party rooms — group video/voice reached from Chat (2026-09-16
-plan). Phase 1: room list/create and LiveKit token minting. Phase 2
-(this pass): a WebSocket per room broadcasting the live "fantasy
-digest" (close/live league matchups) — see app/domain/watch_party.py
-and app/watch_party/manager.py, and the scheduler job in
-app/scheduler.py that actually pushes updates on a poll cadence.
+plan). Phase 1: room list/create and LiveKit token minting. Phase 2: a
+WebSocket per room broadcasting the live "fantasy digest" (close/live
+league matchups) — see app/domain/watch_party.py and
+app/watch_party/manager.py, and the scheduler job in app/scheduler.py
+that actually pushes updates on a poll cadence. Phase 3: each room's
+text chat reuses the existing chat stack rather than a second one —
+see app/queries/watch_party.py's own docstring on how a room links to
+a real conversations row.
 
 Auth pattern copied from app/routers/chat.py (_require_session is a
 local per-router helper there too, not shared). League/membership
@@ -59,6 +62,7 @@ def _room_dict(row, member_count: int) -> dict:
         "kind": row["kind"],
         "created_by_owner_id": row["created_by_owner_id"],
         "member_count": member_count,
+        "conversation_id": row["conversation_id"],
     }
 
 
@@ -144,6 +148,11 @@ async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool))
         if room is None:
             raise HTTPException(status_code=404, detail="Room not found")
 
+        # First real "joining" moment for the open room (a private
+        # room's invitees are already participants from creation) — see
+        # ensure_conversation_participant's own docstring.
+        await watch_party_queries.ensure_conversation_participant(conn, room["conversation_id"], owner_id)
+
         display_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
 
     now = int(time.time())
@@ -201,6 +210,11 @@ async def watch_party_ws(websocket: WebSocket, room_id: int, ticket: str | None 
             league_id = await require_active_league_id(conn, payload)
             owner_id = await resolve_owner_id(conn, payload)
             room = await _room_if_accessible(conn, room_id, league_id, owner_id)
+            if room is not None:
+                # Idempotent, and cheap insurance against this socket
+                # ever connecting before the token endpoint's own call —
+                # see ensure_conversation_participant's docstring.
+                await watch_party_queries.ensure_conversation_participant(conn, room["conversation_id"], owner_id)
     except HTTPException:
         await websocket.close(code=4409)
         return

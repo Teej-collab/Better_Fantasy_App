@@ -8,7 +8,20 @@ No membership row ever exists for an 'open' room — every active
 league member is implicitly eligible for it, checked at request time
 the same way chat's own list_eligible_members already is. This module
 only ever writes watch_party_room_members for a 'private' room.
+
+Phase 3: every room is linked 1:1 to a real chat conversation
+(conversations.type = 'watch_party') so its text chat reuses the
+existing chat stack — same tables, same WebSocket, same
+MessageBubble/MessageComposer — instead of a second one. A private
+room's invitees become conversation_participants immediately (they
+were explicitly invited); the open room's implicit, computed-at-
+request-time eligibility has no matching upfront participant list, so
+those rows are added lazily, the moment someone actually joins (see
+ensure_conversation_participant, called from the router once room
+access is confirmed) rather than preemptively for every eligible
+league member who may never open it.
 """
+from app.queries import chat as chat_queries
 
 
 async def get_open_room(conn, league_id: int):
@@ -16,6 +29,21 @@ async def get_open_room(conn, league_id: int):
         "SELECT * FROM watch_party_rooms WHERE league_id = $1 AND kind = 'open'",
         league_id,
     )
+
+
+async def _link_conversation(conn, room, owner_id: int):
+    """Creates a watch_party conversation for a room row that doesn't
+    have one yet and points the room at it. `owner_id` becomes that
+    conversation's first participant — reasonable for the backfill case
+    this exists for (get_or_create_open_room's self-heal): whoever
+    happens to trigger it is a real, currently-active league member,
+    same as anyone else who'd become a participant by actually opening
+    the room (see ensure_conversation_participant)."""
+    conversation_id = await chat_queries.create_conversation_for_league(
+        conn, room["league_id"], "watch_party", [owner_id]
+    )
+    await conn.execute("UPDATE watch_party_rooms SET conversation_id = $1 WHERE id = $2", conversation_id, room["id"])
+    return await conn.fetchrow("SELECT * FROM watch_party_rooms WHERE id = $1", room["id"])
 
 
 async def get_or_create_open_room(conn, league_id: int, created_by_owner_id: int):
@@ -28,14 +56,33 @@ async def get_or_create_open_room(conn, league_id: int, created_by_owner_id: int
     way."""
     room = await get_open_room(conn, league_id)
     if room is not None:
+        if room["conversation_id"] is None:
+            # Self-healing backfill for a room created before Phase 3's
+            # conversation_id column existed (confirmed against real
+            # production data, not a hypothetical: this league's real
+            # League Lounge row predates it) — every OTHER path into
+            # this table (new leagues, private rooms) always sets it at
+            # creation time going forward, so this branch only ever
+            # matters for that one pre-existing row per league.
+            room = await _link_conversation(conn, room, created_by_owner_id)
         return room
+    # A genuinely simultaneous first-request race can create two
+    # conversations here, one per racer, even though only one room row
+    # survives the ON CONFLICT below — the losing conversation is
+    # orphaned (never referenced by anything, harmless) rather than
+    # reused. Not worth a transaction/advisory-lock for how rare "two
+    # owners open League Lounge for the very first time in the same
+    # instant" actually is.
+    conversation_id = await chat_queries.create_conversation_for_league(
+        conn, league_id, "watch_party", [created_by_owner_id]
+    )
     await conn.execute(
         """
-        INSERT INTO watch_party_rooms (league_id, name, kind, created_by_owner_id)
-        VALUES ($1, 'League Lounge', 'open', $2)
+        INSERT INTO watch_party_rooms (league_id, name, kind, created_by_owner_id, conversation_id)
+        VALUES ($1, 'League Lounge', 'open', $2, $3)
         ON CONFLICT (league_id) WHERE kind = 'open' DO NOTHING
         """,
-        league_id, created_by_owner_id,
+        league_id, created_by_owner_id, conversation_id,
     )
     return await get_open_room(conn, league_id)
 
@@ -58,17 +105,23 @@ async def list_private_rooms_for_owner(conn, league_id: int, owner_id: int):
 
 
 async def create_private_room(conn, league_id: int, name: str, created_by_owner_id: int, invited_owner_ids: list[int]) -> int:
-    room_id = await conn.fetchval(
-        """
-        INSERT INTO watch_party_rooms (league_id, name, kind, created_by_owner_id)
-        VALUES ($1, $2, 'private', $3)
-        RETURNING id
-        """,
-        league_id, name, created_by_owner_id,
-    )
     # The creator is always a member of their own room even if they
     # didn't separately list themselves as an invite.
     all_owner_ids = {created_by_owner_id, *invited_owner_ids}
+    # A private room's invite list IS its participant list — unlike the
+    # open room, there's no separate "join later" moment to defer this
+    # to, so every invitee becomes chat-authorized immediately.
+    conversation_id = await chat_queries.create_conversation_for_league(
+        conn, league_id, "watch_party", list(all_owner_ids)
+    )
+    room_id = await conn.fetchval(
+        """
+        INSERT INTO watch_party_rooms (league_id, name, kind, created_by_owner_id, conversation_id)
+        VALUES ($1, $2, 'private', $3, $4)
+        RETURNING id
+        """,
+        league_id, name, created_by_owner_id, conversation_id,
+    )
     await conn.executemany(
         """
         INSERT INTO watch_party_room_members (room_id, owner_id, invited_by_owner_id)
@@ -90,3 +143,14 @@ async def is_private_room_member(conn, room_id: int, owner_id: int) -> bool:
         room_id, owner_id,
     )
     return row is not None
+
+
+async def ensure_conversation_participant(conn, conversation_id: int, owner_id: int) -> None:
+    """Lazily grants chat access to a room's linked conversation the
+    moment someone actually joins that room — see this module's own
+    docstring for why the open room can't do this upfront the way a
+    private room's invite list already does."""
+    await conn.execute(
+        "INSERT INTO conversation_participants (conversation_id, owner_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        conversation_id, owner_id,
+    )

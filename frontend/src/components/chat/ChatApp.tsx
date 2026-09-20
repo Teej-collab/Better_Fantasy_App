@@ -235,6 +235,21 @@ export function ChatApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A Watch Party room's chat panel isn't reached through
+  // selectConversation (it's not in the `conversations` list at all —
+  // see backend's list_conversations_for_owner) so it needs this same
+  // "load once, mark read" treatment triggered independently, the
+  // moment a room is actually opened.
+  useEffect(() => {
+    const conversationId = activeWatchPartyRoom?.conversation_id;
+    if (conversationId == null) return;
+    if (!loadedConversations.current.has(conversationId)) {
+      loadConversationMessages(conversationId);
+    }
+    markConversationRead(conversationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWatchPartyRoom?.conversation_id]);
+
   // ---- WebSocket lifecycle -------------------------------------------------
 
   useEffect(() => {
@@ -416,18 +431,27 @@ export function ChatApp({
 
   // ---- actions --------------------------------------------------------------
 
+  // Takes an explicit conversationId (not always `selectedId`) so the
+  // Watch Party room's own chat panel — a separate part of this same
+  // tree, not the selected Messages thread — can send over this exact
+  // socket/connection too, rather than opening a second one. The
+  // server-side gate is participant-row membership for whatever
+  // conversation_id arrives, not "was this in the conversations list
+  // this component happened to fetch" (confirmed in Phase 3 research),
+  // so any conversation this owner is really a participant of works.
   function sendMessage(
+    conversationId: number,
     body: string,
     mentions: number[],
     replyToId: number | null,
     imageUrl: string | null,
     title?: string
   ) {
-    if (selectedId === null || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
     socketRef.current.send(
       JSON.stringify({
         type: "message",
-        conversation_id: selectedId,
+        conversation_id: conversationId,
         body,
         mentions,
         reply_to_id: replyToId,
@@ -441,9 +465,9 @@ export function ChatApp({
     );
   }
 
-  function sendTyping() {
-    if (selectedId === null || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
-    socketRef.current.send(JSON.stringify({ type: "typing", conversation_id: selectedId }));
+  function sendTyping(conversationId: number) {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(JSON.stringify({ type: "typing", conversation_id: conversationId }));
   }
 
   async function react(messageId: number, emoji: string) {
@@ -565,10 +589,12 @@ export function ChatApp({
             beta={beta}
             hasMoreOlder={hasMoreByConversation[selectedConversation.id] ?? false}
             onLoadOlder={loadOlder}
-            onSend={sendMessage}
+            onSend={(body, mentions, replyToId, imageUrl, title) =>
+              sendMessage(selectedConversation.id, body, mentions, replyToId, imageUrl, title)
+            }
             onReact={react}
             onDelete={remove}
-            onTyping={sendTyping}
+            onTyping={() => sendTyping(selectedConversation.id)}
             onBack={() => setSelectedId(null)}
           />
         </div>
@@ -585,7 +611,23 @@ export function ChatApp({
       {showNewParty && <NewPartyModal members={members} onClose={() => setShowNewParty(false)} onCreate={createParty} />}
 
       {activeWatchPartyRoom && (
-        <WatchPartyRoom room={activeWatchPartyRoom} onClose={() => setActiveWatchPartyRoom(null)} />
+        <WatchPartyRoom
+          room={activeWatchPartyRoom}
+          onClose={() => setActiveWatchPartyRoom(null)}
+          messages={messagesByConversation[activeWatchPartyRoom.conversation_id] ?? []}
+          members={members}
+          myOwnerId={myOwnerId}
+          connected={connected}
+          typingUsers={typingByConversation[activeWatchPartyRoom.conversation_id] ?? []}
+          aiNoticeSeen={preferences?.ai_training_notice_seen ?? false}
+          onAiNoticeResolved={resolveAiTrainingNotice}
+          onSend={(body, mentions, replyToId, imageUrl) =>
+            sendMessage(activeWatchPartyRoom.conversation_id, body, mentions, replyToId, imageUrl)
+          }
+          onReact={react}
+          onDelete={remove}
+          onTyping={() => sendTyping(activeWatchPartyRoom.conversation_id)}
+        />
       )}
     </div>
   );
