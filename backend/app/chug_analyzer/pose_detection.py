@@ -33,17 +33,27 @@ def _log(msg: str) -> None:
     upload."""
     print(f"[chug_analyzer] {msg}", file=sys.stderr, flush=True)
 
-# 2026-09-14 fix, real report: the new diagnostic logging in
-# detect_can_to_mouth (below) caught a real member's genuine, visible
-# chug landing at min_distance_seen=0.2037 — hand and face were both
-# detected reliably (354 frames with both), it just never crossed the
-# old 0.18 line. Likely a real grip-style gap in the wrist-to-mouth
-# proxy this threshold was originally tuned against: the wrist
-# (landmark 0) sits farther from the mouth than the can/bottle rim
-# itself for some grips, even during genuine contact. Raised to 0.22 —
-# comfortably past that real 0.2037 data point with some margin, not
-# just barely clearing it.
-CONTACT_THRESHOLD = 0.22  # distance below this = can touching mouth, tuned from real test data
+# 2026-09-21 fix, real report: the SAME failure mode recurred one week
+# after the 0.22 fix below — a real member's upload (Railway logs,
+# 2026-09-21 22:56 UTC) again showed the pipeline working correctly
+# (955/1292 frames with hand, 1049/1292 with face, 720/1292 with both —
+# detection itself is healthy) but min_distance_seen=0.24517, narrowly
+# missing the 0.22 line, same as the 0.2037 miss that motivated 0.22 in
+# the first place. Two real misses climbing upward (0.2037, then
+# 0.24517) confirms this isn't one-off noise: the wrist-to-mouth
+# distance in mediapipe's normalized (0-1 of image width/height) space
+# scales with how tightly a video is framed/zoomed, not just grip
+# style, so no single fixed absolute threshold generalizes across
+# videos shot at different distances from the camera. A real
+# scale-invariant fix (normalizing by a face-size reference like
+# interocular distance) would need actual landmark data to calibrate,
+# which isn't available from these aggregate log lines — so this is
+# still a threshold bump, not that fix. Raised to 0.27, comfortably
+# past the new 0.24517 data point, with a proportionally larger margin
+# than last time since the failure has now recurred. If this recurs
+# again, the normalized-distance approach is the real fix, not another
+# bump.
+CONTACT_THRESHOLD = 0.27  # distance below this = can touching mouth, tuned from real test data
 
 # 2026-09-12 fix, real report: a member's own video (confirmed by them
 # to clearly show a chug) still came back "no chug detected" — every
