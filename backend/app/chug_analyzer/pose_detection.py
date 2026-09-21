@@ -79,7 +79,7 @@ CONTACT_THRESHOLD = 0.27  # distance below this = can touching mouth, tuned from
 # correctly and bakes the corrected orientation into the output pixels
 # themselves — cv2.VideoCapture then reads an already-upright video and
 # needs no rotation awareness of its own. ffmpeg is already a hard
-# dependency here (audio_analysis.py's moviepy import needs it too), so
+# dependency here (audio_analysis.py shells out to it directly too), so
 # this adds no new external dependency. Best-effort: if ffmpeg isn't on
 # PATH or the re-encode fails for any reason, falls back to the
 # original file — this can only ever improve detection, never make an

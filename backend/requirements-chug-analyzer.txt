@@ -20,4 +20,7 @@
 mediapipe==0.10.21
 opencv-contrib-python==4.11.0.86
 numpy==1.26.4
-moviepy==2.2.1
+# moviepy removed 2026-09-21: audio_analysis.py now shells out to
+# ffmpeg/ffprobe directly (already a hard dependency here) instead,
+# after moviepy's ffmpeg-output text parser crashed on a real HEVC
+# Dolby Vision iPhone video. See audio_analysis.py's module docstring.
