@@ -226,6 +226,34 @@ async def record_completed_chug(conn, season: int, owner_id: int, league_id: int
     )
 
 
+async def record_manual_payment(conn, season: int, owner_id: int, amount: int = 1, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Commissioner-only correction for a real chug debt settled outside
+    the app -- paid in cash, or done in person with no video kept (see
+    app/routers/chug.py's /standing/{owner_id}/record-payment). The
+    other way (besides record_completed_chug's real video upload) that
+    outstanding_owed can go down; deliberately separate from clear_fine,
+    which only ever touches fined_owed. Clamped so it can never go
+    negative or pay down more than was actually owed, mirroring
+    clear_fine's own clamping. Returns the amount actually applied,
+    which may be less than requested (e.g. 0 if nothing was owed) so
+    the caller can show what really happened rather than assuming the
+    full amount landed."""
+    row = await conn.fetchrow(
+        "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
+    )
+    if not row or row["outstanding_owed"] <= 0 or amount <= 0:
+        return 0
+
+    to_apply = min(amount, row["outstanding_owed"])
+    await conn.execute(
+        "UPDATE chug_standing SET outstanding_owed = outstanding_owed - $3, updated_at = now() "
+        "WHERE season = $1 AND owner_id = $2 AND league_id = $4",
+        season, owner_id, to_apply, league_id,
+    )
+    return to_apply
+
+
 async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Commissioner-only (enforced at the router level) — marks a real-
     life fine payment by reducing fined_owed. amount=None clears it

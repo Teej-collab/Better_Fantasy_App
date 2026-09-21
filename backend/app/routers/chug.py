@@ -31,7 +31,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
-from app.domain.chug_standing import clear_fine, record_completed_chug, undo_week
+from app.domain.chug_standing import clear_fine, record_completed_chug, record_manual_payment, undo_week
 from app.notifications.chug_events import notify_chug_posted
 from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
@@ -380,6 +380,29 @@ async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = 
         cleared = await clear_fine(conn, active_season, owner_id, amount, league_id)
 
     return {"owner_id": owner_id, "cleared": cleared}
+
+
+@router.post("/standing/{owner_id}/record-payment")
+async def record_chug_payment(owner_id: int, request: Request, amount: int = 1, pool=Depends(get_pool)):
+    """Commissioner-only: marks a real chug debt as settled outside the
+    app -- paid in cash, or done in person with no video kept. The only
+    other path (besides a real video clearing /chug/upload) that can
+    reduce outstanding_owed; deliberately separate from clear-fine,
+    which only ever touches fined_owed. Before the MNF deadline, this
+    matters beyond bookkeeping: settle_deadline_for_week doubles
+    whatever's still outstanding at kickoff, so an off-app payment that
+    never gets recorded here looks identical to a missed week and gets
+    doubled regardless of whether it was actually paid."""
+    payload = _decode_session(get_session_token(request))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        applied = await record_manual_payment(conn, active_season, owner_id, amount, league_id)
+
+    return {"owner_id": owner_id, "applied": applied}
 
 
 @router.post("/standing/undo-week")
