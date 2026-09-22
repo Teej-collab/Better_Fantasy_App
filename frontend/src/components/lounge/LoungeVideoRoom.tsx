@@ -9,7 +9,7 @@ import {
   VideoTrack,
   ParticipantTile,
   Chat,
-  MediaDeviceSelect,
+  useMediaDeviceSelect,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import "@livekit/components-styles";
@@ -114,14 +114,43 @@ function NflTickerStrip() {
   );
 }
 
+// Built on the raw hook rather than LiveKit's own <MediaDeviceSelect/>
+// for two reasons: that component's onActiveDeviceChange fires once
+// immediately on mount to report the CURRENT device (not only on a
+// real selection), which was closing this menu the instant it opened;
+// and it has no empty-state message, just a blank list when
+// enumerateDevices() finds nothing.
+function DeviceList({ kind, onSelect }: { kind: MediaDeviceKind; onSelect: () => void }) {
+  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind });
+  if (devices.length === 0) {
+    return <p className="px-1 py-1 text-white/40">No devices found</p>;
+  }
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {devices.map((d) => (
+        <li key={d.deviceId}>
+          <button
+            onClick={() => {
+              setActiveMediaDevice(d.deviceId);
+              onSelect();
+            }}
+            className={`w-full truncate rounded px-1.5 py-1 text-left ${d.deviceId === activeDeviceId ? "bg-white/15 font-semibold" : ""}`}
+          >
+            {d.deviceId === activeDeviceId ? "✓ " : ""}
+            {d.label || kind}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ControlsBar({
   shareUrl,
-  onLeave,
   onToggleVolume,
   volumeOpen,
 }: {
   shareUrl?: string;
-  onLeave: () => void;
   onToggleVolume: () => void;
   volumeOpen: boolean;
 }) {
@@ -193,17 +222,11 @@ function ControlsBar({
             🎚 Devices
           </button>
           {deviceMenuOpen && (
-            <div className="absolute bottom-full left-0 z-40 mb-2 w-56 rounded-lg bg-[#0f1420] p-2 text-xs shadow-lg">
-              {/* No onActiveDeviceChange-triggered auto-close here — that
-                  prop fires once immediately on mount to report the
-                  CURRENT device, not only on a real user selection, which
-                  closed this menu the instant it opened before anyone
-                  could click anything (2026-09 reported). An explicit
-                  Done button is the only reliable way to close it. */}
+            <div className="absolute bottom-full left-0 z-40 mb-2 max-h-[60vh] w-64 overflow-y-auto rounded-lg bg-[#0f1420] p-2 text-xs shadow-lg">
               <p className="px-1 pb-1 text-white/50">Microphone</p>
-              <MediaDeviceSelect kind="audioinput" />
+              <DeviceList kind="audioinput" onSelect={() => setDeviceMenuOpen(false)} />
               <p className="px-1 pt-2 pb-1 text-white/50">Camera</p>
-              <MediaDeviceSelect kind="videoinput" />
+              <DeviceList kind="videoinput" onSelect={() => setDeviceMenuOpen(false)} />
               <button
                 onClick={() => setDeviceMenuOpen(false)}
                 className="mt-2 w-full rounded-full bg-white/10 py-1.5 text-center font-semibold"
@@ -218,25 +241,8 @@ function ControlsBar({
             {copied ? "Link copied!" : "🔗 Copy invite link"}
           </button>
         )}
-        <button onClick={onLeave} className="ml-auto rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold">
-          Leave
-        </button>
       </div>
       {shareError && <p className="text-xs text-red-400">{shareError}</p>}
-    </div>
-  );
-}
-
-function LoungeChatPanel() {
-  return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden">
-      <div className="shrink-0 px-3 py-2.5 text-xs font-bold tracking-wide text-white/70 uppercase">Live Chat</div>
-      {/* LiveKit's own .lk-chat sets a hardcoded width: clamp(200px, 55ch,
-          60ch) — comfortably wider than this sidebar, which pushed the
-          whole panel past the right edge of the screen (2026-09
-          reported). The inline width/maxWidth here wins over that rule
-          regardless of stylesheet load order, unlike a className would. */}
-      <Chat style={{ flex: 1, width: "100%", maxWidth: "100%", minWidth: 0 }} />
     </div>
   );
 }
@@ -318,13 +324,24 @@ export function LoungeVideoRoom({
           className="flex shrink-0 items-center justify-between gap-2 px-4 py-3"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
         >
-          <span className="font-display truncate text-sm font-bold">{roomName}</span>
-          <button
-            onClick={() => setMobilePanel((p) => (p === "chat" ? "none" : "chat"))}
-            className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold lg:hidden"
-          >
-            💬 Chat
-          </button>
+          <span className="min-w-0 flex-1 truncate font-display text-sm font-bold">{roomName}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setMobilePanel((p) => (p === "chat" ? "none" : "chat"))}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold lg:hidden"
+            >
+              💬 Chat
+            </button>
+            {/* Leave lives in the header, not the wrapping controls row
+                below — that row already crowds several buttons onto a
+                narrow phone screen, and Leave landing alone on its own
+                wrapped line (via a now-removed ml-auto) looked broken
+                (2026-09 reported alongside the controls-disappearing
+                bug). The header never wraps or competes for that space. */}
+            <button onClick={handleLeaveClick} className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold">
+              Leave
+            </button>
+          </div>
         </div>
 
         <NflTickerStrip />
@@ -342,14 +359,23 @@ export function LoungeVideoRoom({
             <ParticipantStrip />
             <ControlsBar
               shareUrl={shareUrl}
-              onLeave={handleLeaveClick}
               onToggleVolume={() => setVolumeOpen((v) => !v)}
               volumeOpen={volumeOpen}
             />
           </div>
 
+          {/* Direct <Chat/>, not wrapped in a custom flex column with our
+              own header label — a prior version put a "Live Chat" label
+              and a Close button as siblings before <Chat/>, and BOTH
+              silently failed to render at all (confirmed via clipped
+              screenshots, not just visual inspection), most likely
+              LiveKit's own .lk-chat internal CSS grid (display:grid,
+              align-items:end, its own fixed-height header/input rows)
+              conflicting with the extra flex nesting around it. A plain
+              <Chat/> sized to 100% avoids that fight entirely — see the
+              mobile panel below for how Close is added without it. */}
           <aside className="hidden w-72 shrink-0 overflow-hidden border-l border-white/10 lg:flex">
-            <LoungeChatPanel />
+            <Chat style={{ height: "100%", width: "100%", maxWidth: "100%" }} />
           </aside>
         </div>
 
@@ -364,16 +390,20 @@ export function LoungeVideoRoom({
         <ParticipantVolumePanel open={volumeOpen} onClose={() => setVolumeOpen(false)} />
 
         {mobilePanel === "chat" && (
-          <div className="fixed inset-x-0 bottom-0 top-1/3 z-40 flex flex-col overflow-hidden rounded-t-2xl bg-[#0f1420] shadow-2xl lg:hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-bold text-white/70 uppercase">Live Chat</span>
-              <button onClick={() => setMobilePanel("none")} className="rounded-full bg-white/10 px-2.5 py-1 text-xs">
-                Close
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <LoungeChatPanel />
-            </div>
+          <div className="fixed inset-x-0 bottom-0 top-1/3 z-40 overflow-hidden rounded-t-2xl bg-[#0f1420] shadow-2xl lg:hidden">
+            {/* Close as an absolutely-positioned overlay on top of <Chat/>,
+                not a sibling row before it — a sibling header row here is
+                exactly what silently failed to render at all (see the
+                comment on the desktop aside above). This can't be pushed
+                out by anything inside <Chat/>'s own layout since it isn't
+                part of that flow. */}
+            <button
+              onClick={() => setMobilePanel("none")}
+              className="absolute top-2 right-2 z-50 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold backdrop-blur"
+            >
+              Close
+            </button>
+            <Chat style={{ height: "100%", width: "100%", maxWidth: "100%" }} />
           </div>
         )}
       </LiveKitRoom>
