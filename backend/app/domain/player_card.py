@@ -10,8 +10,16 @@ prose season outlook (app/providers/espn/player_overview.py) — plus
 this app's own real computed scores for every week the scoring engine
 has run for this player (app/domain/weekly_stats.py), an empty list
 until Phase D/F's weekly compute has actually run for a real week
-(nothing to show pre-season). latest_week mirrors weekly_scores[0] for
-any caller that only ever wanted the most recent week.
+(nothing to show pre-season), oldest week first (a game log reads
+top-to-bottom through the season, not most-recent-first). latest_week
+mirrors weekly_scores[-1] for any caller that only ever wanted the most
+recent week. Each weekly row's `opponent` is resolved the same way
+app/domain/nfl_schedule.py's schedule_lookup_by_pro_team already
+resolves "next opponent" elsewhere in this app, just re-run for that
+historical week's real scoreboard instead of the current one — there's
+no persisted schedule table, but app/domain/bye_weeks.py already proves
+this same public scoreboard endpoint answers correctly for any past
+week, not just "right now".
 
 Three independently-sourced pieces, deliberately kept that way:
 Sleeper's half is always real DB data the caller already paid for (no
@@ -23,11 +31,14 @@ itself. A DEF entry gets neither: ESPN's player_map (see
 player_info.py) is a name->id map of individual NFL athletes, not team
 D/ST units, so there's no id to resolve either lookup with anyway.
 """
+import asyncio
 import logging
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.nfl_schedule import schedule_lookup_by_pro_team
 from app.providers.espn.player_info import get_player_info
 from app.providers.espn.player_overview import get_player_overview
+from app.providers.nfl_scoreboard import get_week_scoreboard
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +135,37 @@ async def get_player_card(
 
     weekly_rows = await conn.fetch(
         "SELECT week, fantasy_points FROM player_week_stats "
-        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week DESC",
+        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week ASC",
         sleeper_player_id, league_id,
     )
-    card["weekly_scores"] = [dict(r) for r in weekly_rows]
-    card["latest_week"] = dict(weekly_rows[0]) if weekly_rows else None
+    weekly_scores = [dict(r) for r in weekly_rows]
+
+    opponent_by_week: dict[int, str | None] = {}
+    if season is not None and weekly_scores:
+        weeks = sorted({r["week"] for r in weekly_scores})
+
+        async def _opponent_for_week(week: int) -> tuple[int, str | None]:
+            try:
+                games = await get_week_scoreboard(week, season)
+                lookup = schedule_lookup_by_pro_team(games)
+                return week, lookup.get(card["pro_team"], {}).get("next_opponent")
+            except Exception:
+                logger.exception(
+                    "get_week_scoreboard failed for season=%s week=%s (player card opponent lookup)",
+                    season, week,
+                )
+                return week, None
+
+        for week, opponent in await asyncio.gather(*(_opponent_for_week(w) for w in weeks)):
+            opponent_by_week[week] = opponent
+
+    for r in weekly_scores:
+        r["opponent"] = opponent_by_week.get(r["week"])
+
+    card["weekly_scores"] = weekly_scores
+    card["latest_week"] = (
+        {"week": weekly_scores[-1]["week"], "fantasy_points": weekly_scores[-1]["fantasy_points"]}
+        if weekly_scores else None
+    )
 
     return card

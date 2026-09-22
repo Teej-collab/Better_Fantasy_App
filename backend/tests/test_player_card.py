@@ -165,8 +165,57 @@ async def test_get_player_card_includes_latest_computed_week(pool, monkeypatch):
 
     assert card["latest_week"]["week"] == 2
     assert float(card["latest_week"]["fantasy_points"]) == 18.0
-    assert [w["week"] for w in card["weekly_scores"]] == [2, 1]
-    assert [float(w["fantasy_points"]) for w in card["weekly_scores"]] == [18.0, 12.5]
+    # Oldest week first — a game log reads top-to-bottom through the season.
+    assert [w["week"] for w in card["weekly_scores"]] == [1, 2]
+    assert [float(w["fantasy_points"]) for w in card["weekly_scores"]] == [12.5, 18.0]
+
+
+async def test_get_player_card_weekly_scores_include_that_weeks_real_opponent(pool, monkeypatch):
+    await _seed_player(pool, "test-playercard-6", espn_id=None, pro_team="KC")
+    _no_espn(monkeypatch)
+
+    async def _fake_week_scoreboard(week, year, season_type=2):
+        # Week 1: KC hosted DEN. Week 2: KC played away at CIN.
+        if week == 1:
+            return [{"home_team": "KC", "away_team": "DEN", "date": "2026-09-07T17:00:00Z", "state": "post"}]
+        if week == 2:
+            return [{"home_team": "CIN", "away_team": "KC", "date": "2026-09-14T17:00:00Z", "state": "post"}]
+        return []
+
+    monkeypatch.setattr(player_card, "get_week_scoreboard", _fake_week_scoreboard)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, $2, '{}', 10.0), ($1, 2, $2, '{}', 20.0)",
+            TEST_SEASON, "test-playercard-6",
+        )
+        card = await player_card.get_player_card(conn, "test-playercard-6", season=TEST_SEASON)
+
+    by_week = {w["week"]: w["opponent"] for w in card["weekly_scores"]}
+    assert by_week[1] == "vs DEN"
+    assert by_week[2] == "@ CIN"
+
+
+async def test_get_player_card_opponent_is_none_when_scoreboard_lookup_fails(pool, monkeypatch):
+    await _seed_player(pool, "test-playercard-7", espn_id=None)
+    _no_espn(monkeypatch)
+
+    async def _broken_scoreboard(week, year, season_type=2):
+        raise RuntimeError("ESPN unreachable")
+
+    monkeypatch.setattr(player_card, "get_week_scoreboard", _broken_scoreboard)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, $2, '{}', 9.0)",
+            TEST_SEASON, "test-playercard-7",
+        )
+        card = await player_card.get_player_card(conn, "test-playercard-7", season=TEST_SEASON)
+
+    assert card["weekly_scores"][0]["opponent"] is None
+    assert float(card["weekly_scores"][0]["fantasy_points"]) == 9.0
 
 
 async def _seed_owner_with_team(pool, suffix, season=TEST_SEASON):

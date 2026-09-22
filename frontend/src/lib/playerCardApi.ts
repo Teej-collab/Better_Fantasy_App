@@ -25,6 +25,18 @@ export type PlayerCardLatestWeek = {
   fantasy_points: number;
 };
 
+// One row of the player card's Game Log tab — same real computed
+// score as PlayerCardLatestWeek, plus that week's real NFL opponent
+// (resolved server-side from that week's own scoreboard, not a
+// persisted schedule — see backend/app/domain/player_card.py). null
+// opponent means the scoreboard lookup failed or found nothing for
+// that pro_team that week, not that the game didn't happen.
+export type PlayerCardWeeklyScore = {
+  week: number;
+  fantasy_points: number;
+  opponent: string | null;
+};
+
 export type PlayerCardNewsItem = {
   headline: string | null;
   description: string | null;
@@ -68,9 +80,10 @@ export type PlayerCard = {
   overview: PlayerCardOverview | null;
   latest_week: PlayerCardLatestWeek | null;
   // Every week the scoring engine has run for this player this
-  // season, most recent first — weekly_scores[0] is the same week as
-  // latest_week above.
-  weekly_scores: PlayerCardLatestWeek[];
+  // season, oldest first (a game log reads top-to-bottom through the
+  // season) — weekly_scores[weekly_scores.length - 1] is the same week
+  // as latest_week above.
+  weekly_scores: PlayerCardWeeklyScore[];
   // 2026-09-18 addition: who currently rosters this player this
   // season, if anyone — real ESPN reference puts Drop/Trade Offers
   // right on the player card (tap a name, act on it from there), and
