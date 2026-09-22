@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LiveKitRoom,
+  RoomAudioRenderer,
   useTracks,
   useLocalParticipant,
   VideoTrack,
@@ -55,7 +56,7 @@ function TvScreen() {
   }
 
   return (
-    <div className="relative flex-1 bg-black">
+    <div className="relative min-h-0 flex-1 bg-black">
       <VideoTrack trackRef={track} className="h-full w-full object-contain" />
     </div>
   );
@@ -193,10 +194,22 @@ function ControlsBar({
           </button>
           {deviceMenuOpen && (
             <div className="absolute bottom-full left-0 z-40 mb-2 w-56 rounded-lg bg-[#0f1420] p-2 text-xs shadow-lg">
+              {/* No onActiveDeviceChange-triggered auto-close here — that
+                  prop fires once immediately on mount to report the
+                  CURRENT device, not only on a real user selection, which
+                  closed this menu the instant it opened before anyone
+                  could click anything (2026-09 reported). An explicit
+                  Done button is the only reliable way to close it. */}
               <p className="px-1 pb-1 text-white/50">Microphone</p>
-              <MediaDeviceSelect kind="audioinput" onActiveDeviceChange={() => setDeviceMenuOpen(false)} />
+              <MediaDeviceSelect kind="audioinput" />
               <p className="px-1 pt-2 pb-1 text-white/50">Camera</p>
-              <MediaDeviceSelect kind="videoinput" onActiveDeviceChange={() => setDeviceMenuOpen(false)} />
+              <MediaDeviceSelect kind="videoinput" />
+              <button
+                onClick={() => setDeviceMenuOpen(false)}
+                className="mt-2 w-full rounded-full bg-white/10 py-1.5 text-center font-semibold"
+              >
+                Done
+              </button>
             </div>
           )}
         </div>
@@ -317,7 +330,14 @@ export function LoungeVideoRoom({
         <NflTickerStrip />
 
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
+          {/* min-h-0, not just min-w-0 — without it this flex column's
+              content (specifically TvScreen's video, which can carry a
+              large intrinsic size) can grow past its allotted height and
+              push ControlsBar below the visible viewport once a screen
+              share starts, reading as "the controls disappeared"
+              (2026-09 reported, reproduced: happened to whoever was
+              looking at the newly-large shared screen). */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <TvScreen />
             <ParticipantStrip />
             <ControlsBar
@@ -333,6 +353,14 @@ export function LoungeVideoRoom({
           </aside>
         </div>
 
+        {/* Required when building a custom layout from LiveKit's own
+            primitives instead of <VideoConference/> (which includes this
+            internally) — without it, remote microphones AND screen-share
+            audio are never actually played back at all, which is also
+            why per-participant volume had no real effect (2026-09
+            reported "no control over video volume" — there was nothing
+            for that control to adjust). */}
+        <RoomAudioRenderer />
         <ParticipantVolumePanel open={volumeOpen} onClose={() => setVolumeOpen(false)} />
 
         {mobilePanel === "chat" && (
