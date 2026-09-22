@@ -91,11 +91,12 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   const seasonAvg = card && card.weekly_scores.length > 0 ? seasonTotal / card.weekly_scores.length : null;
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex flex-col overflow-y-auto bg-[var(--background)]"
-      style={accent ? ({ "--user-accent": accent } as React.CSSProperties) : undefined}
-    >
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4 sm:p-6">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-6" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="neon-panel flex max-h-[90vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-2xl p-5"
+        style={accent ? ({ "--user-accent": accent } as React.CSSProperties) : undefined}
+      >
         <button
           onClick={onClose}
           aria-label="Close"
