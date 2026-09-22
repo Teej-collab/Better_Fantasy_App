@@ -68,6 +68,7 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
         roomName={roomName}
         token={result.token}
         url={result.url}
+        shareUrl={typeof window !== "undefined" ? `${window.location.origin}/lounge/${slug}` : undefined}
         onLeave={() => {
           setResult(null);
           setStage("form");
