@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { WatchPartyRoom, WatchPartyRoomsResponse } from "@/lib/api";
 
 // A small pulsing dot — real occupancy (Phase 4's is_live), not the
@@ -105,6 +106,19 @@ export function WatchPartyBar({
       >
         + Start a Party
       </button>
+
+      {/* Lounge is a separate, standalone feature (no league required,
+          password-protected, shareable with anyone) from the private
+          rooms above — surfaced here anyway since this is exactly
+          where a visitor already thinks to look for "video room"
+          functionality (2026-09, reported hard to find otherwise). */}
+      <Link
+        href="/lounge"
+        className="rounded-lg px-2 py-1.5 text-left text-xs font-semibold"
+        style={{ color: "var(--wl-text-secondary)" }}
+      >
+        + Start a Lounge (no league needed)
+      </Link>
     </div>
   );
 }

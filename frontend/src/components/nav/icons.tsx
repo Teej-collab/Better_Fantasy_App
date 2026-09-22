@@ -96,6 +96,18 @@ export function GamecastIcon(props: IconProps) {
 // "More" here is a real catch-all destination (My Team, Draft,
 // Keepers, Free Agents, Trades, Gamecast, Settings, League
 // Management), not a menu of secondary actions.
+// A TV screen — Lounge is a shared-screen watch party, not a generic
+// video-call icon (which would read as indistinguishable from Chat's
+// own icon here).
+export function LoungeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="5" width="18" height="12" rx="2" />
+      <path d="M9 20.5h6M12 17v3.5" />
+    </svg>
+  );
+}
+
 export function MoreIcon(props: IconProps) {
   const p = base(props);
   return (

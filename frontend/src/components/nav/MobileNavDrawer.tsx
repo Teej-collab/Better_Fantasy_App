@@ -9,7 +9,7 @@ import { useUnreadChatCount } from "@/lib/useUnreadChatCount";
 import { useWatchPartyLive } from "@/lib/useWatchPartyLive";
 import { NavLink, isSectionActive, type NavSection } from "@/components/nav/NavLink";
 import { BrandMark } from "@/components/BrandMark";
-import { ChatIcon, GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
+import { ChatIcon, GamecastIcon, HomeIcon, LeagueIcon, LoungeIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 
 // How long the slide/fade takes both ways — kept in one place since the
@@ -220,11 +220,16 @@ export function MobileNavDrawer({
       live: watchPartyLive,
       liveLabel: "In Room",
     },
+    // Right after Chat, not buried in secondaryItems below — a
+    // password-protected watch-party room a visitor creates and shares
+    // is exactly the kind of thing that needs to be found in one tap,
+    // not discovered by scrolling past Settings/Notifications/Feedback
+    // (2026-09, reported hard to navigate to from the drawer).
+    { key: "lounge" as const, href: "/lounge", label: "Lounge", Icon: LoungeIcon, show: signedIn },
   ].filter((item) => item.show);
 
   const secondaryItems = signedIn
     ? [
-        { key: "lounge", href: "/lounge", label: "Lounge" },
         { key: "settings", href: "/settings", label: "Settings" },
         { key: "notifications", href: "/settings?section=notifications", label: "Notifications" },
         { key: "feedback", href: "/settings?section=feedback", label: "Feedback" },

@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveKitRoom, VideoConference, useLocalParticipant } from "@livekit/components-react";
 import type { LocalParticipant } from "livekit-client";
 import "@livekit/components-styles";
 import { getWatchPartyToken, type ChatMember, type ChatMessage, type WatchPartyRoom as WatchPartyRoomInfo } from "@/lib/api";
 import { WatchPartyChat } from "@/components/watchparty/WatchPartyChat";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
+import { LoungeNflSidebar } from "@/components/lounge/LoungeNflSidebar";
 
 // Bridges the local participant out of <LiveKitRoom>'s context (where
 // the room-share button needs to live, since only useLocalParticipant
@@ -89,17 +90,60 @@ export function WatchPartyRoom({
 }) {
   const [tokenData, setTokenData] = useState<{ token: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Mutually exclusive — both are bottom sheets over the same call, so
+  // Separate from `error` above — that one only ever covers the
+  // initial token fetch (shown with a plain "Close"). This covers a
+  // real LiveKit connection failure or an unexpected drop *after*
+  // already being connected, which gets an offer to Rejoin instead —
+  // added after the same silent-failure problem Lounge's own room hit
+  // (2026-09), where a bad/rejected token just bounced back to the
+  // call list with no visible reason why.
+  const [connectError, setConnectError] = useState<string | null>(null);
+  // Mutually exclusive — all are bottom sheets over the same call, so
   // only one ever makes sense open at a time, especially on a phone.
-  const [panel, setPanel] = useState<"none" | "chat" | "volume">("none");
+  const [panel, setPanel] = useState<"none" | "chat" | "volume" | "scores">("none");
   const [localInfo, setLocalInfo] = useState<{ localParticipant: LocalParticipant; isScreenShareEnabled: boolean } | null>(
     null
   );
   const [shareError, setShareError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
   const onLocalUpdate = useCallback(
     (info: { localParticipant: LocalParticipant; isScreenShareEnabled: boolean }) => setLocalInfo(info),
     []
   );
+  // Distinguishes "the visitor clicked Leave" (call onClose right away)
+  // from "LiveKit dropped the connection on its own" (show connectError
+  // with a Rejoin option instead) — onDisconnected alone can't tell the
+  // two apart.
+  const leavingRef = useRef(false);
+
+  function handleLeaveClick() {
+    leavingRef.current = true;
+    onClose();
+  }
+
+  function handleDisconnected() {
+    if (leavingRef.current) {
+      onClose();
+      return;
+    }
+    setConnectError((current) => current ?? "Disconnected from the call unexpectedly.");
+  }
+
+  async function submitRename() {
+    if (!localInfo || !nameDraft.trim()) {
+      setRenaming(false);
+      return;
+    }
+    // A live rename, not a token re-mint/reconnect — LiveKit lets a
+    // participant's own display name change in place
+    // (LocalParticipant.setName), so choosing a name for this session
+    // doesn't need a new backend call at all, just like Lounge's own
+    // display-name choice serves the same real need (plenty of Watch
+    // Party's own visitors have never set a real owners.display_name).
+    await localInfo.localParticipant.setName(nameDraft.trim());
+    setRenaming(false);
+  }
 
   async function toggleShare() {
     if (!localInfo) return;
@@ -121,8 +165,9 @@ export function WatchPartyRoom({
     }
   }
 
-  useEffect(() => {
+  const fetchToken = useCallback(() => {
     let cancelled = false;
+    setError(null);
     getWatchPartyToken(room.id)
       .then((data) => {
         if (!cancelled) setTokenData(data);
@@ -135,21 +180,80 @@ export function WatchPartyRoom({
     };
   }, [room.id]);
 
+  useEffect(() => fetchToken(), [fetchToken]);
+
+  function handleRejoin() {
+    setConnectError(null);
+    setTokenData(null);
+    leavingRef.current = false;
+    fetchToken();
+  }
+
+  if (connectError) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black px-6 text-center text-white">
+        <p className="text-sm text-red-400">{connectError}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRejoin}
+            className="rounded-full px-4 py-2 text-sm font-semibold text-white"
+            style={{ background: "var(--user-accent, var(--wl-accent))" }}
+          >
+            Rejoin
+          </button>
+          <button onClick={onClose} className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold">
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
       <div
         className="flex items-center justify-between gap-2 px-4 py-3"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
       >
-        <span className="font-display truncate text-sm font-bold">{room.name}</span>
-        <button onClick={onClose} className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold">
+        {renaming ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitRename();
+            }}
+            className="flex min-w-0 flex-1 items-center gap-1.5"
+          >
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={submitRename}
+              maxLength={40}
+              placeholder="Your display name"
+              className="min-w-0 flex-1 rounded-lg border border-white/20 bg-white/10 px-2 py-1 text-sm text-white placeholder:text-white/40"
+            />
+          </form>
+        ) : (
+          <button
+            onClick={() => {
+              setNameDraft(localInfo?.localParticipant.name ?? "");
+              setRenaming(true);
+            }}
+            className="min-w-0 flex-1 truncate text-left"
+            title="Choose a display name for this room"
+          >
+            <span className="font-display truncate text-sm font-bold">{room.name}</span>
+            {localInfo && <span className="ml-2 text-xs text-white/40">✎ {localInfo.localParticipant.name || "Set your name"}</span>}
+          </button>
+        )}
+        <button onClick={handleLeaveClick} className="shrink-0 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold">
           Leave
         </button>
       </div>
 
       {tokenData && (
         <div className="flex flex-col gap-1.5 px-4 pb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setPanel((p) => (p === "volume" ? "none" : "volume"))}
               className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold ${panel === "volume" ? "bg-white text-black" : "bg-white/15"}`}
@@ -161,6 +265,12 @@ export function WatchPartyRoom({
               className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold ${panel === "chat" ? "bg-white text-black" : "bg-white/15"}`}
             >
               💬 Chat
+            </button>
+            <button
+              onClick={() => setPanel((p) => (p === "scores" ? "none" : "scores"))}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold ${panel === "scores" ? "bg-white text-black" : "bg-white/15"}`}
+            >
+              🏈 Scores
             </button>
             {localInfo && (
               <button
@@ -198,7 +308,8 @@ export function WatchPartyRoom({
           audio
           data-lk-theme="default"
           style={{ flex: 1, minHeight: 0, position: "relative" }}
-          onDisconnected={onClose}
+          onDisconnected={handleDisconnected}
+          onError={(err) => setConnectError(err.message || "Couldn't connect to the video call.")}
         >
           <LocalParticipantBridge onUpdate={onLocalUpdate} />
           <VideoConference />
@@ -218,6 +329,23 @@ export function WatchPartyRoom({
             onTyping={onTyping}
           />
           <ParticipantVolumePanel open={panel === "volume"} onClose={() => setPanel("none")} />
+          {panel === "scores" && (
+            <div className="absolute inset-x-0 bottom-0 z-30 flex max-h-[65%] flex-col rounded-t-2xl bg-[var(--background)] shadow-2xl">
+              <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 dark:border-white/10">
+                <span className="text-sm font-bold" style={{ color: "var(--wl-text)" }}>
+                  NFL Scores
+                </span>
+                <button
+                  onClick={() => setPanel("none")}
+                  aria-label="Close scores"
+                  className="rounded-full p-1 text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
+                >
+                  ✕
+                </button>
+              </div>
+              <LoungeNflSidebar />
+            </div>
+          )}
         </LiveKitRoom>
       )}
     </div>
