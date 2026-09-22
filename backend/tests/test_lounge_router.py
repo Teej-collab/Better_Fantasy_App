@@ -124,6 +124,46 @@ async def test_logged_in_joiner_uses_their_own_identity(pool, monkeypatch):
     assert resp.status_code == 200, resp.text
 
 
+async def test_creator_can_rejoin_without_the_password(pool, monkeypatch):
+    _configure_livekit(monkeypatch)
+    async with _client() as client:
+        _, cookie = await _session_cookie(pool)
+        client.cookies.update(cookie)
+        room = await _create_room(client, password="hunter22")
+
+        resp = await client.post(f"/lounge/rooms/{room['slug']}/join", json={})
+    assert resp.status_code == 200, resp.text
+
+
+async def test_creator_rejoin_ignores_a_wrong_password(pool, monkeypatch):
+    _configure_livekit(monkeypatch)
+    async with _client() as client:
+        _, cookie = await _session_cookie(pool)
+        client.cookies.update(cookie)
+        room = await _create_room(client, password="hunter22")
+
+        resp = await client.post(f"/lounge/rooms/{room['slug']}/join", json={"password": "totally-wrong"})
+    assert resp.status_code == 200, resp.text
+
+
+async def test_signed_in_joiner_can_override_their_display_name(pool, monkeypatch):
+    _configure_livekit(monkeypatch)
+    async with _client() as client:
+        _, cookie = await _session_cookie(pool)
+        client.cookies.update(cookie)
+        room = await _create_room(client, password="hunter22")
+
+    async with _client() as joiner_client:
+        _, joiner_cookie = await _session_cookie(pool)
+        joiner_client.cookies.update(joiner_cookie)
+        resp = await joiner_client.post(
+            f"/lounge/rooms/{room['slug']}/join",
+            json={"password": "hunter22", "display_name": "Game Night Sam"},
+        )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["display_name"] == "Game Night Sam"
+
+
 async def test_guest_join_requires_display_name(pool, monkeypatch):
     _configure_livekit(monkeypatch)
     async with _client() as client:

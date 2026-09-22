@@ -153,31 +153,46 @@ async def join_room(slug: str, request: Request, pool=Depends(get_pool)):
         if room is None or room["closed_at"] is not None:
             raise HTTPException(status_code=404, detail="Room not found")
 
-        if _is_locked(room):
-            raise HTTPException(
-                status_code=429, detail="Too many incorrect attempts — try again later"
-            )
-
-        password = body.get("password") or ""
-        if not verify_password(password, room["password_hash"]):
-            await lounge_queries.record_failed_join_attempt(
-                conn, room["id"], max_attempts=MAX_FAILED_ATTEMPTS, lockout_minutes=LOCKOUT_MINUTES
-            )
-            raise HTTPException(status_code=401, detail="Incorrect password")
-
-        await lounge_queries.reset_failed_attempts(conn, room["id"])
-
         session_payload = _decode_session(get_session_token(request))
+        # The creator can always get back into their own room without
+        # the password — they're the one who set it, so re-typing it
+        # every time they want to rejoin (after a dropped connection, a
+        # closed tab, revisiting from "Your lounges") is pure friction
+        # with no real security benefit; nobody but them can ever match
+        # created_by_user_id. Guests still always need the password.
+        is_host = session_payload is not None and session_payload["user_id"] == room["created_by_user_id"]
+
+        if not is_host:
+            if _is_locked(room):
+                raise HTTPException(
+                    status_code=429, detail="Too many incorrect attempts — try again later"
+                )
+
+            password = body.get("password") or ""
+            if not verify_password(password, room["password_hash"]):
+                await lounge_queries.record_failed_join_attempt(
+                    conn, room["id"], max_attempts=MAX_FAILED_ATTEMPTS, lockout_minutes=LOCKOUT_MINUTES
+                )
+                raise HTTPException(status_code=401, detail="Incorrect password")
+
+            await lounge_queries.reset_failed_attempts(conn, room["id"])
+
+        # A display name is always the joiner's own choice, not silently
+        # whatever their account happens to have on file — plenty of
+        # Lounge visitors (including the host) have never joined a
+        # league and have no meaningful display_name set. A signed-in
+        # joiner who leaves it blank falls back to their account name;
+        # a guest must supply one.
+        raw_name = _clean_display_name(body.get("display_name") or "")
         if session_payload is not None:
             identity = f"user-{session_payload['user_id']}"
-            display_name = (
+            display_name = raw_name or (
                 await conn.fetchval(
                     "SELECT display_name FROM users WHERE id = $1", session_payload["user_id"]
                 )
                 or "Fan"
             )
         else:
-            raw_name = _clean_display_name(body.get("display_name") or "")
             if not raw_name:
                 raise HTTPException(status_code=400, detail="Display name is required")
             display_name = raw_name

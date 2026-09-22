@@ -2217,7 +2217,11 @@ export type LoungeJoinResult = { token: string; url: string; room_name: string; 
 // no cookie to forward, which the proxy already tolerates.
 export async function joinLoungeRoom(
   slug: string,
-  body: { password: string; display_name?: string }
+  // password is optional client-side because the room's own creator
+  // never needs one (see backend/app/routers/lounge.py's join route) —
+  // every other joiner still gets a 401 from the backend if they omit
+  // or get it wrong.
+  body: { password?: string; display_name?: string }
 ): Promise<LoungeJoinResult> {
   const res = await fetch(`/api/backend/lounge/rooms/${encodeURIComponent(slug)}/join`, {
     method: "POST",
