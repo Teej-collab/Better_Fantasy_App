@@ -67,6 +67,10 @@ export type PlayerCard = {
   projection: PlayerCardProjection | null;
   overview: PlayerCardOverview | null;
   latest_week: PlayerCardLatestWeek | null;
+  // Every week the scoring engine has run for this player this
+  // season, most recent first — weekly_scores[0] is the same week as
+  // latest_week above.
+  weekly_scores: PlayerCardLatestWeek[];
   // 2026-09-18 addition: who currently rosters this player this
   // season, if anyone — real ESPN reference puts Drop/Trade Offers
   // right on the player card (tap a name, act on it from there), and

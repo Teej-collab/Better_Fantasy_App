@@ -480,7 +480,8 @@ export function MyTeamApp({
   const starters = team.roster
     .filter((e) => !BENCH_SLOTS.has(e.lineup_slot))
     .sort((a, b) => STARTER_SLOT_ORDER.indexOf(a.lineup_slot) - STARTER_SLOT_ORDER.indexOf(b.lineup_slot));
-  const bench = team.roster.filter((e) => BENCH_SLOTS.has(e.lineup_slot));
+  const bench = team.roster.filter((e) => e.lineup_slot === BENCH_SLOT_LABEL);
+  const ir = team.roster.filter((e) => e.lineup_slot === IR_SLOT_LABEL);
 
   // Real state right now, not a hypothetical edge case: the actual
   // draft hasn't happened yet, so current_rosters is genuinely empty
@@ -591,6 +592,28 @@ export function MyTeamApp({
           ))}
         </ul>
       </section>
+
+      {ir.length > 0 && (
+        <section className="flex flex-col gap-1">
+          <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+            Injured Reserve
+          </h2>
+          <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
+            {ir.map((e) => (
+              <RosterRow
+                key={e.player_id}
+                entry={e}
+                ownership={ownership[e.player_id]}
+                mounted={mounted}
+                editable={team.is_editable}
+                beta={beta}
+                onOpenEdit={openEdit}
+                onViewPlayer={openPlayerCard}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {editingEntry && (
         <div

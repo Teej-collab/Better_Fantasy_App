@@ -800,6 +800,41 @@ async def test_free_agents_list_includes_projected_points_and_this_weeks_score(p
     assert ids_in_order == [high, low]
 
 
+async def test_free_agents_list_includes_last_completed_week_score(pool, monkeypatch):
+    from app.routers import me as me_router
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async def _fake_scoreboard(week, year):
+        return []
+
+    monkeypatch.setattr(me_router, "get_week_scoreboard", _fake_scoreboard)
+    owner_id, _ = await _seed_owner_with_team(pool, "fa-lastwk", espn_team_id=112)
+    player = await _seed_player(pool, "fa-lastwk-player", position="WR")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, 2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 1, $2, '{}', 27.4)",
+            TEST_SEASON, player,
+        )
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.get("/me/team/free-agents", params={"position": "WR"})
+        await pool.execute("DELETE FROM league_state WHERE season = $1", TEST_SEASON)
+
+    assert resp.status_code == 200
+    by_id = {p["sleeper_player_id"]: p for p in resp.json()["players"]}
+    assert float(by_id[player]["last_week_score"]) == 27.4
+    # This week (2) has no stats yet — "score" stays null, distinct from last_week_score.
+    assert by_id[player]["score"] is None
+
+
 async def test_add_free_agent_real_write_with_open_spot(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))

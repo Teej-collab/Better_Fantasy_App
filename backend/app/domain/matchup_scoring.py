@@ -1,9 +1,11 @@
 """
 Computes weekly matchup scores from this app's own scoring engine
 output (Phase F of the ESPN-independence pivot) — sums each team's
-STARTING current_rosters slots' player_week_stats.fantasy_points and
-writes matchups.home_score/away_score directly, instead of ESPN's
-fantasy scoreboard sync.
+STARTING slots (via league_queries.get_roster_for_week, so a past
+week's score always reflects that week's actual frozen lineup, not
+today's live roster) player_week_stats.fantasy_points and writes
+matchups.home_score/away_score directly, instead of ESPN's fantasy
+scoreboard sync.
 
 Decision (see the project plan): matchup PAIRING (who plays whom) still
 comes from provider.sync_matchups — it's a read, never had the
@@ -12,36 +14,30 @@ module only overwrites the score fields once Phase D's scoring engine
 has computed the week's points, immediately after.
 """
 from app.config import DEFAULT_LEAGUE_ID
+from app.queries import league as league_queries
 
 _NON_STARTER_SLOTS = ("BE", "IR")
 
 
 async def compute_team_score(conn, season: int, week: int, team_id: int) -> float:
-    # 2026-09-10 real production bug, found live (real report: a
-    # player double-counted on My Team, points inflated): the stale
-    # comment this replaced said player_week_stats "isn't uniquely
-    # keyed per league yet" — that was true when migration 454d8edda612
-    # was written, but migration 130f4acc3a50 widened it to UNIQUE
-    # (season, week, sleeper_player_id, league_id) specifically so two
-    # leagues could each have their own fantasy_points for the same
-    # real player/week. This JOIN was never updated to match — without
-    # AND pws.league_id = cr.league_id, once a second league had also
-    # computed that player's week, this plain (non-LEFT) JOIN matched
-    # BOTH leagues' rows, and the sum() below silently added another
-    # league's points onto this team's real score. cr.league_id (a
-    # roster entry's own league) is exactly the right scope.
-    rows = await conn.fetch(
-        """
-        SELECT pws.fantasy_points
-        FROM current_rosters cr
-        JOIN player_week_stats pws
-            ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
-            AND pws.league_id = cr.league_id
-        WHERE cr.season = $1 AND cr.team_id = $3 AND cr.lineup_slot != ALL($4::text[])
-        """,
-        season, week, team_id, list(_NON_STARTER_SLOTS),
-    )
-    return round(sum(float(r["fantasy_points"]) for r in rows), 2)
+    # 2026-09-22 real production bug, confirmed live (real report: a
+    # decided week 1 win recorded as a loss, points_for reading wrong —
+    # traced to this exact team/week in the DB): this used to join
+    # current_rosters straight — the team's LIVE roster right now, not
+    # the lineup that actually played in `week`. Any lineup/waiver move
+    # made after week N locks silently rewrote week N's already-decided
+    # score the next time this function ran for that week (e.g. via
+    # the admin recompute endpoint), using players who never started
+    # that week. league_queries.get_roster_for_week already solves this
+    # exact problem for the roster-display endpoints (live current_rosters
+    # only for the season's actual current week, roster_history's real
+    # per-week snapshot otherwise, falling back to the nearest earlier
+    # snapshot and finally to current_rosters only if none exists yet) —
+    # reusing it here instead of duplicating a second, divergent version
+    # of that same fallback chain.
+    roster = await league_queries.get_roster_for_week(conn, season, team_id, week)
+    starters = [r for r in roster if r["lineup_slot"] not in _NON_STARTER_SLOTS]
+    return round(sum(float(r["points_scored"]) for r in starters if r["points_scored"] is not None), 2)
 
 
 async def compute_matchup_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:

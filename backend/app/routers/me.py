@@ -633,8 +633,12 @@ async def list_free_agents(request: Request, position: str | None = None, search
     the reference free-agent browse UI this was modeled on. score is
     this week's already-computed real result (app/domain/
     weekly_stats.py), null pre-kickoff same as My Team's own roster
-    view. next_opponent/game_time reuse _schedule_lookup below, the
-    same real-scoreboard cross-reference GET /team already does."""
+    view. last_week_score is the prior week's already-final result
+    (real ask, 2026-09-22: ESPN's own free-agent browse shows this and
+    ours didn't) — always a completed week once current_week > 1, so
+    no is_week_final gating needed the way the live current week's
+    score would. next_opponent/game_time reuse _schedule_lookup below,
+    the same real-scoreboard cross-reference GET /team already does."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
 
@@ -642,22 +646,27 @@ async def list_free_agents(request: Request, position: str | None = None, search
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
         current_week = await league_queries.get_cached_current_week(conn, active_season)
+        last_week = current_week - 1 if current_week and current_week > 1 else None
 
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
                    COALESCE(pwp.projected_points, p.projected_avg_points) AS projected_points,
-                   pws.fantasy_points AS score
+                   pws.fantasy_points AS score,
+                   pws_prev.fantasy_points AS last_week_score
             FROM players p
             LEFT JOIN player_week_stats pws
                 ON pws.season = $1 AND pws.week = $3 AND pws.sleeper_player_id = p.sleeper_player_id
                 AND pws.league_id = $2
+            LEFT JOIN player_week_stats pws_prev
+                ON pws_prev.season = $1 AND pws_prev.week = $4 AND pws_prev.sleeper_player_id = p.sleeper_player_id
+                AND pws_prev.league_id = $2
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
             WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
                 SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
             )
         """
-        params: list = [active_season, league_id, current_week]
+        params: list = [active_season, league_id, current_week, last_week]
         if position:
             query += f" AND p.position = ${len(params) + 1}"
             params.append(position)

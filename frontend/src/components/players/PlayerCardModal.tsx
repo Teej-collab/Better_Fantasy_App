@@ -202,10 +202,19 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
               </p>
             )}
 
-            {card.latest_week && (
-              <div className="flex items-center justify-between rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
-                <span className="text-black/50 dark:text-white/50">Week {card.latest_week.week} score</span>
-                <span className="text-base font-semibold">{card.latest_week.fantasy_points.toFixed(1)} pts</span>
+            {card.weekly_scores.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
+                <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                  Weekly Scores
+                </h3>
+                <ul className="flex max-h-40 flex-col divide-y divide-black/5 overflow-y-auto dark:divide-white/5">
+                  {card.weekly_scores.map((w) => (
+                    <li key={w.week} className="flex items-center justify-between py-1">
+                      <span className="text-black/50 dark:text-white/50">Week {w.week}</span>
+                      <span className="font-semibold">{w.fantasy_points.toFixed(1)} pts</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

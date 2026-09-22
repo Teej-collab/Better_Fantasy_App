@@ -1724,6 +1724,9 @@ export type MyFreeAgent = {
   // — null pre-kickoff, same "-" the reference free-agent browse UI
   // shows before real scores exist.
   score: number | null;
+  // Prior week's already-final result — null for week 1 (no prior
+  // week) or if that player had no stats that week (e.g. on a bye).
+  last_week_score: number | null;
   // Both only present once a season has a cached current week and the
   // real NFL scoreboard fetch succeeds — same as RosterEntry's own
   // next_opponent/game_time (backend/app/routers/me.py's _schedule_lookup).

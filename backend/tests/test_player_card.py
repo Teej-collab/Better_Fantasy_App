@@ -165,6 +165,8 @@ async def test_get_player_card_includes_latest_computed_week(pool, monkeypatch):
 
     assert card["latest_week"]["week"] == 2
     assert float(card["latest_week"]["fantasy_points"]) == 18.0
+    assert [w["week"] for w in card["weekly_scores"]] == [2, 1]
+    assert [float(w["fantasy_points"]) for w in card["weekly_scores"]] == [18.0, 12.5]
 
 
 async def _seed_owner_with_team(pool, suffix, season=TEST_SEASON):

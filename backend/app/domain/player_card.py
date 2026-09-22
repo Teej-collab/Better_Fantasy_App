@@ -7,10 +7,11 @@ ownership%, and bye week/next opponent (app/providers/espn/
 player_info.py), plus ESPN's public athlete-overview data — recent
 news, a RotoWire beat-writer note, real draft/position rank, and a
 prose season outlook (app/providers/espn/player_overview.py) — plus
-this app's own real computed score for the most recent week the
-scoring engine has run (app/domain/weekly_stats.py), null until Phase
-D/F's weekly compute has actually run for a real week (nothing to show
-pre-season).
+this app's own real computed scores for every week the scoring engine
+has run for this player (app/domain/weekly_stats.py), an empty list
+until Phase D/F's weekly compute has actually run for a real week
+(nothing to show pre-season). latest_week mirrors weekly_scores[0] for
+any caller that only ever wanted the most recent week.
 
 Three independently-sourced pieces, deliberately kept that way:
 Sleeper's half is always real DB data the caller already paid for (no
@@ -121,11 +122,12 @@ async def get_player_card(
                     sleeper_player_id, card["espn_player_id"],
                 )
 
-    latest_week = await conn.fetchrow(
+    weekly_rows = await conn.fetch(
         "SELECT week, fantasy_points FROM player_week_stats "
-        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week DESC LIMIT 1",
+        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week DESC",
         sleeper_player_id, league_id,
     )
-    card["latest_week"] = dict(latest_week) if latest_week else None
+    card["weekly_scores"] = [dict(r) for r in weekly_rows]
+    card["latest_week"] = dict(weekly_rows[0]) if weekly_rows else None
 
     return card
