@@ -1819,13 +1819,14 @@ export function getWaiverSettings(): Promise<WaiverSettings> {
   return get<WaiverSettings>("/free-agents/waiver-settings");
 }
 
-// ---- Waivers (real, in-app — backend/app/domain/waivers.py). This
-// league's actual ESPN rule (the commissioner's own settings
-// screenshot): priority-order waivers, not FAAB; a 1-day waiver
-// period per dropped player; priority resets each week to the inverse
-// of standings. A free agent with waiver_clears_at in the future needs
-// a claim (below), not the instant addFreeAgent above — that endpoint
-// now rejects those with a 409. ---------------------------------------
+// ---- Waivers (real, in-app — backend/app/domain/waivers.py). ESPN's
+// own "Standard Waivers" rule: priority-order, not FAAB; every
+// dropped/locked player clears at the same fixed weekly instant —
+// 3:00 AM ET every Wednesday, ESPN's own "main weekly run" — not a
+// rolling period from their own drop time; priority resets each week
+// to the inverse of standings. A free agent with waiver_clears_at in
+// the future needs a claim (below), not the instant addFreeAgent
+// above — that endpoint now rejects those with a 409. -------------------
 
 export type WaiverClaimStatus = "pending" | "successful" | "failed" | "cancelled";
 

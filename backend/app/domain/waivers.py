@@ -1,10 +1,28 @@
 """
-Real waiver-wire system — this league's actual ESPN settings (the
-commissioner's own screenshot, 2026-09): priority-order waivers (not
-FAAB), a 1-day waiver period per dropped player, and waiver order that
-resets each week to the inverse of standings. Closes the competitive
-audit's #1 confirmed functional gap: free-agent pickups were instant/
-first-come-first-served with zero waiver enforcement.
+Real waiver-wire system — ESPN's own documented "Standard Waivers"
+rules: priority-order waivers (not FAAB, worst record picks first),
+and waiver order that resets each week to the inverse of standings.
+Closes the competitive audit's #1 confirmed functional gap: free-agent
+pickups were instant/first-come-first-served with zero waiver
+enforcement.
+
+2026-09-22 correction (real report, quoting ESPN's own rules text):
+"Waivers process daily between 3 a.m. and 5 a.m. ET, with the main
+weekly run happening Tuesday night into Wednesday morning" — every
+player locked/dropped at any point during the week (Thursday's game
+through Monday Night Football) clears at that SAME Wednesday-morning
+instant, not some rolling offset from when they individually hit the
+wire (a prior version of this file modeled it as a flat `timedelta(
+days=1)` from the drop, which let a player dropped early in the week
+clear mid-week — well before the real Wednesday run, letting them be
+scooped up with no claim required). Modeled here as next Wednesday
+3:00 AM ET, the start of ESPN's own stated processing window — see
+`_next_wednesday_clear_et` below. Also per that same source: "Game
+Lock: individual players lock at the start of their team's scheduled
+game and move to waiver status" — exactly what waivers.ensure_waiver_
+clock_if_game_locked (below) already does, and "Same-Day Add/Drop: ...
+does not go back on waivers" — not yet implemented, since this app has
+no same-day add+drop path today.
 
 Three tables (migrations/versions/8b295d67654f_*):
 
@@ -39,7 +57,8 @@ has no playoff-elimination concept yet anyway, see the competitive
 audit's schedule/playoff finding).
 """
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
@@ -52,10 +71,27 @@ from app.domain.waiver_exceptions import (
 from app.queries.league import get_standings
 from app.queries.roster_transactions import log_transaction
 
-# This league's real, current ESPN setting (screenshot, 2026-09) — not
-# yet commissioner-configurable in-app (see the competitive audit's
-# Section 33 P2 list for "settings become real, not just displayed").
-WAIVER_PERIOD = timedelta(days=1)
+# ESPN's own real "Standard Waivers" setting — not yet commissioner-
+# configurable in-app (see the competitive audit's Section 33 P2 list
+# for "settings become real, not just displayed").
+_ET = ZoneInfo("America/New_York")
+_WAIVER_CLEAR_TIME_ET = time(3, 0)  # 3:00 AM ET — start of ESPN's stated 3-5am processing window
+_WAIVER_CLEAR_WEEKDAY = 2  # Mon=0 ... Wed=2
+
+
+def _next_wednesday_clear_et(now: datetime) -> datetime:
+    """The next real waiver-clear instant strictly after `now` — 3:00
+    AM ET on the nearest upcoming Wednesday (ESPN's own "main weekly
+    run"), or a full 7 days out if `now` is already sitting at (or
+    past) this week's own Wednesday-3am mark. Every player waived at
+    any point during the week clears at this SAME instant, not some
+    fixed offset from when they individually hit the wire."""
+    now_et = now.astimezone(_ET)
+    days_until = (_WAIVER_CLEAR_WEEKDAY - now_et.weekday()) % 7
+    candidate = datetime.combine(now_et.date(), _WAIVER_CLEAR_TIME_ET, tzinfo=_ET) + timedelta(days=days_until)
+    if candidate <= now_et:
+        candidate += timedelta(days=7)
+    return candidate.astimezone(timezone.utc)
 
 
 async def start_waiver_clock(conn, season: int, league_id: int, sleeper_player_id: str) -> None:
@@ -64,7 +100,7 @@ async def start_waiver_clock(conn, season: int, league_id: int, sleeper_player_i
     in add_free_agent's own drop-to-make-room branch) — upsert rather
     than insert, since the same player can cycle on/off waivers
     multiple times in a season."""
-    clears_at = datetime.now(timezone.utc) + WAIVER_PERIOD
+    clears_at = _next_wednesday_clear_et(datetime.now(timezone.utc))
     await conn.execute(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)

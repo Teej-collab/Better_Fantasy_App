@@ -130,13 +130,27 @@ def _map_waiver_error(e: Exception) -> HTTPException:
 
 
 async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozenset[str]:
-    """The server-side half of the per-player lineup lock: every real
-    NFL team whose game has already kicked off in the league's current
-    fantasy week. Best-effort, same disclosed trade-off as my_team's
-    own scoreboard fetch above — a flaky/unreachable ESPN scoreboard
-    fails OPEN (no lock enforced) rather than blocking every lineup
-    edit in the app, since this is a fairness safeguard, not the
-    primary gate on roster integrity."""
+    """The server-side half of the per-player lineup lock AND the
+    free-agent waiver-lock trigger (waivers.ensure_waiver_clock_if_
+    game_locked): every real NFL team whose game has already kicked
+    off in the league's current fantasy week. Best-effort, same
+    disclosed trade-off as my_team's own scoreboard fetch above — a
+    flaky/unreachable ESPN scoreboard fails OPEN (no lock enforced)
+    rather than blocking every lineup edit in the app, since this is a
+    fairness safeguard, not the primary gate on roster integrity.
+
+    2026-09-22 fix, real report: league_state.current_week is advanced
+    by scheduler.py's week-settlement job the INSTANT a week's games
+    all go Final — deliberately ahead of real time, so awards/recap
+    can post right after Monday Night Football. But that same cached
+    week was also this function's only input, so the moment it rolled
+    over, this started reading the NEW week's schedule (nothing
+    kicked off yet) and returned an empty locked set — silently
+    letting anyone instant-add a player from the week that JUST
+    finished, with zero waiver clock, right through the rollover. If
+    the current week's own games haven't started yet, fall back to the
+    week that just ended so those players stay waiver-gated until this
+    new week's real games actually kick off."""
     current_week = await league_queries.get_cached_current_week(conn, active_season)
     if current_week is None:
         return frozenset()
@@ -144,7 +158,14 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
         games = await get_week_scoreboard(current_week, active_season)
     except Exception:
         return frozenset()
-    return locked_pro_teams(games)
+    locked = locked_pro_teams(games)
+    if locked or current_week <= 1:
+        return locked
+    try:
+        prior_games = await get_week_scoreboard(current_week - 1, active_season)
+    except Exception:
+        return locked
+    return locked_pro_teams(prior_games)
 
 
 def _roster_entry_dict(entry: dict) -> dict:

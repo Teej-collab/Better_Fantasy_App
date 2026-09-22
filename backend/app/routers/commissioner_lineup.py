@@ -46,7 +46,14 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
     helper of the same name (kept as a separate copy rather than a
     cross-router import, since these are two independently-evolving
     routers) — every real NFL team whose game has already kicked off
-    in the league's current fantasy week."""
+    in the league's current fantasy week.
+
+    2026-09-22 fix (mirrors app/routers/me.py's own copy): falls back
+    to the week that just ended when the newly-rolled-over current
+    week's own games haven't kicked off yet, so a player from the
+    week that just finished doesn't become instantly, waiver-free
+    addable the moment scheduler.py's week-settlement job advances
+    league_state.current_week right after Monday Night Football."""
     current_week = await league_queries.get_cached_current_week(conn, active_season)
     if current_week is None:
         return frozenset()
@@ -54,7 +61,14 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
         games = await get_week_scoreboard(current_week, active_season)
     except Exception:
         return frozenset()
-    return locked_pro_teams(games)
+    locked = locked_pro_teams(games)
+    if locked or current_week <= 1:
+        return locked
+    try:
+        prior_games = await get_week_scoreboard(current_week - 1, active_season)
+    except Exception:
+        return locked
+    return locked_pro_teams(prior_games)
 
 
 def _require_session(request: Request) -> dict:
