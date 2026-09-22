@@ -224,6 +224,7 @@ export function MobileNavDrawer({
 
   const secondaryItems = signedIn
     ? [
+        { key: "lounge", href: "/lounge", label: "Lounge" },
         { key: "settings", href: "/settings", label: "Settings" },
         { key: "notifications", href: "/settings?section=notifications", label: "Notifications" },
         { key: "feedback", href: "/settings?section=feedback", label: "Feedback" },

@@ -25,6 +25,7 @@ from app.routers import (
     league,
     league_settings,
     leagues,
+    lounge,
     me,
     nfl,
     players,
@@ -157,6 +158,7 @@ app.include_router(keepers.router)
 app.include_router(league.router)
 app.include_router(league_settings.router)
 app.include_router(leagues.router)
+app.include_router(lounge.router)
 app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(players.router)

@@ -2154,6 +2154,83 @@ export function getWatchPartyWebSocketUrl(ticket: string, roomId: number): strin
   return `${API_BASE_URL.replace(/^http/, "ws")}/watch-party/ws?ticket=${encodeURIComponent(ticket)}&room_id=${roomId}`;
 }
 
+// --- Lounge (backend/app/routers/lounge.py) — standalone password-
+// protected video rooms, unrelated to Watch Party's own "League
+// Lounge" open room. Creating/listing/closing a room requires a
+// signed-in session (no league membership required); getting a room's
+// public metadata and joining it need no account at all — see
+// backend/app/routers/lounge.py's own docstring.
+
+export type LoungeRoom = {
+  id: number;
+  slug: string;
+  name: string;
+  closed: boolean;
+  created_at: string;
+};
+
+export async function listMyLoungeRooms(): Promise<LoungeRoom[]> {
+  const { rooms } = await authedGet<{ rooms: LoungeRoom[] }>("/lounge/rooms");
+  return rooms;
+}
+
+export async function createLoungeRoom(name: string, password: string): Promise<{ id: number; slug: string; name: string }> {
+  const res = await fetch(`/api/backend/lounge/rooms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, password }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to create lounge: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function closeLoungeRoom(roomId: number): Promise<void> {
+  const res = await fetch(`/api/backend/lounge/rooms/${roomId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Failed to close lounge: ${res.status}`);
+  }
+}
+
+// Public — no cookie needed, so this goes straight to the backend
+// (same reasoning as getNflScoreboard's own direct API_BASE_URL call
+// for the logged-out homepage ticker) rather than through the authed
+// /api/backend proxy. Returns null on a 404 (unknown slug) instead of
+// throwing, so a server component can render a "not found" state.
+export async function getLoungeRoomMeta(slug: string): Promise<{ name: string; closed: boolean } | null> {
+  try {
+    return await get<{ name: string; closed: boolean }>(`/lounge/rooms/${encodeURIComponent(slug)}`);
+  } catch {
+    return null;
+  }
+}
+
+export type LoungeJoinResult = { token: string; url: string; room_name: string; display_name: string };
+
+// Public join — still routed through /api/backend even though it
+// needs no cookie, so an already-logged-in joiner's session cookie (if
+// any) is still forwarded the same ITP-safe way every other same-
+// origin-proxied call already is; a fully logged-out guest simply has
+// no cookie to forward, which the proxy already tolerates.
+export async function joinLoungeRoom(
+  slug: string,
+  body: { password: string; display_name?: string }
+): Promise<LoungeJoinResult> {
+  const res = await fetch(`/api/backend/lounge/rooms/${encodeURIComponent(slug)}/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't join: ${res.status}`);
+  }
+  return res.json();
+}
+
 export type FantasyDigestMatchup = {
   matchup_id: number;
   home: { team_name: string; owner_name: string; score: number | null };

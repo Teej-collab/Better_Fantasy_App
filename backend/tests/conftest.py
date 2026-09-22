@@ -528,6 +528,15 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM feedback WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"
         )
+        # lounge_rooms.created_by_user_id -> users.id (migration
+        # 73b78b034f05) — Lounge rooms are created directly against a
+        # plain make_safe_session_user_id() row (no owner/league
+        # involved at all, by design), so this has to be swept by email
+        # convention here, before the users DELETE below, or it
+        # FK-violates.
+        await conn.execute(
+            "DELETE FROM lounge_rooms WHERE created_by_user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"
+        )
         # Phase 5 password-signup test users have no owners row at all
         # (see app/queries/auth.py's create_user_with_password) — not
         # covered by the owner-linked cleanup above, so cleaned up
