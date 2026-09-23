@@ -139,3 +139,20 @@ async def get_chug_standing_by_owner(conn, season: int, league_id: int = DEFAULT
         season, league_id,
     )
     return {r["owner_id"]: dict(r) for r in rows}
+
+
+async def get_doubled_weeks_by_owner(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """Settlements that doubled an owner's balance and haven't been
+    waived — what a commissioner can still reverse (see
+    app/domain/chug_standing.py's waive_deadline_doubling)."""
+    rows = await conn.fetch(
+        "SELECT owner_id, week, owed_before, owed_after FROM chug_deadline_settlements "
+        "WHERE season = $1 AND league_id = $2 AND action = 'doubled' ORDER BY week",
+        season, league_id,
+    )
+    by_owner: dict[int, list[dict]] = {}
+    for r in rows:
+        by_owner.setdefault(r["owner_id"], []).append(
+            {"week": r["week"], "owed_before": r["owed_before"], "owed_after": r["owed_after"]}
+        )
+    return by_owner

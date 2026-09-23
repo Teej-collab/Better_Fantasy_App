@@ -47,7 +47,17 @@ async function parseStreamedResult(res: Response): Promise<UploadResult> {
   if (data.error) throw new Error(data.message ?? `Upload failed (${data.status})`);
   return data as UploadResult;
 }
-export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }) {
+export function ChugUpload({
+  variant = "panel",
+  creditableOwners,
+}: {
+  variant?: "panel" | "bare";
+  // Commissioner-only: owners a chug can be credited to instead of the
+  // uploader (e.g. a video someone sent over because their own upload
+  // failed). The backend re-checks commissioner status.
+  creditableOwners?: { owner_id: number; owner_name: string }[];
+}) {
+  const [creditTo, setCreditTo] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +75,8 @@ export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }
       const ticket = await getChugUploadTicket();
       if (!ticket) throw new Error("Not signed in");
 
-      const res = await fetch(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}`, {
+      const onBehalf = creditTo ? `&owner_id=${encodeURIComponent(creditTo)}` : "";
+      const res = await fetch(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, {
         method: "POST",
         body: form,
       });
@@ -97,6 +108,25 @@ export function ChugUpload({ variant = "panel" }: { variant?: "panel" | "bare" }
       <p className="text-sm text-black/60 dark:text-white/60">
         Upload a video (.mp4, .mov, .m4v) and it&apos;ll be graded automatically — time, smoothness, and hype.
       </p>
+
+      {creditableOwners && creditableOwners.length > 0 && (
+        <label className="flex w-fit items-center gap-2 text-sm text-black/60 dark:text-white/60">
+          Credit to
+          <select
+            value={creditTo}
+            onChange={(e) => setCreditTo(e.target.value)}
+            disabled={status === "uploading"}
+            className="rounded-md border border-black/10 bg-transparent px-2 py-1 text-sm dark:border-white/15"
+          >
+            <option value="">Me</option>
+            {creditableOwners.map((o) => (
+              <option key={o.owner_id} value={o.owner_id}>
+                {o.owner_name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <input
         ref={inputRef}

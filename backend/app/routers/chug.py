@@ -31,7 +31,13 @@ from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
 from app.domain.chug_leaderboard import build_chug_leaderboard
-from app.domain.chug_standing import clear_fine, record_completed_chug, record_manual_payment, undo_week
+from app.domain.chug_standing import (
+    clear_fine,
+    record_completed_chug,
+    record_manual_payment,
+    undo_week,
+    waive_deadline_doubling,
+)
 from app.notifications.chug_events import notify_chug_posted
 from app.providers import chug_storage
 from app.providers.chug_analyzer_bridge import run_chug_analysis
@@ -186,14 +192,29 @@ async def chug_deadline(league_id: int = Depends(require_league_access), pool=De
     return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games)}
 
 
-async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
+async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf_of: int | None = None) -> dict:
     """The real upload+analyze+record work, unchanged from before this
     endpoint became a streaming response — split out so upload_chug's
     heartbeat generator (below) can run it as a background task and
     poll it, rather than blocking on it directly. Raises HTTPException
     on a real failure; the generator catches that and re-encodes it as
     a JSON error line, since an HTTP status code can no longer change
-    once a StreamingResponse has already started sending bytes."""
+    once a StreamingResponse has already started sending bytes.
+
+    on_behalf_of: a commissioner posting a chug for another owner (e.g.
+    one sent to them directly because the owner's own upload failed) —
+    checked before the slow analysis runs, and the chug is credited to
+    that owner, not the uploader."""
+    if on_behalf_of is not None:
+        async with pool.acquire() as conn:
+            league_id = await require_league_commissioner(conn, payload)
+            on_team = await conn.fetchval(
+                "SELECT 1 FROM teams_by_season WHERE owner_id = $1 AND league_id = $2 LIMIT 1",
+                on_behalf_of, league_id,
+            )
+        if not on_team:
+            raise HTTPException(status_code=404, detail="That owner isn't in this league")
+
     ext = os.path.splitext(video.filename or "")[1].lower()
     if ext not in VIDEO_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type — expected one of {VIDEO_EXTENSIONS}")
@@ -222,7 +243,7 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
         active_season = int(_require("ACTIVE_SEASON"))
         async with pool.acquire() as conn:
             league_id = await require_active_league_id(conn, payload)
-            owner_id = await resolve_owner_id(conn, payload)
+            owner_id = on_behalf_of if on_behalf_of is not None else await resolve_owner_id(conn, payload)
             # Real production bug, found live: payload["discord_user_id"] is
             # the JWT's own claim, which is ONLY ever populated by the
             # Discord OAuth login path (app/routers/auth.py's discord_
@@ -315,7 +336,11 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool) -> dict:
 
 @router.post("/upload")
 async def upload_chug(
-    request: Request, video: UploadFile = File(...), ticket: str | None = None, pool=Depends(get_pool)
+    request: Request,
+    video: UploadFile = File(...),
+    ticket: str | None = None,
+    owner_id: int | None = None,
+    pool=Depends(get_pool),
 ):
     """A real 2026-09 incident: a chug upload+analysis can run long
     enough — a slow mobile upload, or a longer video's analysis — to
@@ -337,6 +362,9 @@ async def upload_chug(
     JSON result, exactly the same shape this endpoint always returned —
     once it's done. ChugUpload.tsx reads the whole body as text and
     parses just the last non-blank line.
+
+    owner_id (optional, commissioner-only): credit the chug to that
+    owner instead of the uploader — see _process_chug_upload.
     """
     payload = _decode_session(get_session_token(request))
     if payload is None and ticket:
@@ -350,7 +378,7 @@ async def upload_chug(
         raise HTTPException(status_code=401, detail="Not signed in")
 
     async def stream():
-        task = asyncio.ensure_future(_process_chug_upload(video, payload, pool))
+        task = asyncio.ensure_future(_process_chug_upload(video, payload, pool, owner_id))
         while not task.done():
             _, pending = await asyncio.wait({task}, timeout=UPLOAD_HEARTBEAT_SECONDS)
             if pending:
@@ -403,6 +431,23 @@ async def record_chug_payment(owner_id: int, request: Request, amount: int = 1, 
         applied = await record_manual_payment(conn, active_season, owner_id, amount, league_id)
 
     return {"owner_id": owner_id, "applied": applied}
+
+
+@router.post("/standing/{owner_id}/waive-doubling")
+async def waive_chug_doubling(owner_id: int, week: int, request: Request, pool=Depends(get_pool)):
+    """Commissioner-only: reverses one week's MNF doubling for one owner
+    whose chug really was done in time but didn't get credited (see
+    app/domain/chug_standing.py's waive_deadline_doubling)."""
+    payload = _decode_session(get_session_token(request))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        waived = await waive_deadline_doubling(conn, active_season, week, owner_id, league_id)
+
+    return {"owner_id": owner_id, "week": week, "waived": waived}
 
 
 @router.post("/standing/undo-week")

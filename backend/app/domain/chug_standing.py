@@ -254,6 +254,45 @@ async def record_manual_payment(conn, season: int, owner_id: int, amount: int = 
     return to_apply
 
 
+async def waive_deadline_doubling(conn, season: int, week: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Commissioner-only correction (see app/routers/chug.py) — reverses
+    one week's MNF doubling for one owner, for a chug that really was
+    done before the deadline but didn't get credited in time (real
+    2026-09 case: a member's upload landed right at kickoff and the
+    analyzer wrongly failed it, so settlement doubled a debt that was
+    actually paid). Subtracts exactly what that settlement added
+    (owed_after - owed_before), rolls back its consecutive-miss count,
+    and marks the settlement 'waived' so it can't be waived twice. Only
+    'doubled' settlements can be waived; a 'fined' one is a different
+    kind of correction (clear_fine). Returns the chugs removed (0 if
+    there was nothing to waive)."""
+    row = await conn.fetchrow(
+        "SELECT owed_before, owed_after FROM chug_deadline_settlements "
+        "WHERE season = $1 AND week = $2 AND owner_id = $3 AND league_id = $4 AND action = 'doubled'",
+        season, week, owner_id, league_id,
+    )
+    if not row:
+        return 0
+
+    added = row["owed_after"] - row["owed_before"]
+    await conn.execute(
+        """
+        UPDATE chug_standing SET
+            outstanding_owed = GREATEST(outstanding_owed - $3, 0),
+            consecutive_missed_weeks = GREATEST(consecutive_missed_weeks - 1, 0),
+            updated_at = now()
+        WHERE season = $1 AND owner_id = $2 AND league_id = $4
+        """,
+        season, owner_id, added, league_id,
+    )
+    await conn.execute(
+        "UPDATE chug_deadline_settlements SET action = 'waived', owed_after = owed_before "
+        "WHERE season = $1 AND week = $2 AND owner_id = $3 AND league_id = $4",
+        season, week, owner_id, league_id,
+    )
+    return added
+
+
 async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Commissioner-only (enforced at the router level) — marks a real-
     life fine payment by reducing fined_owed. amount=None clears it

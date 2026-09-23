@@ -5,6 +5,7 @@ import { awardsHrefFor, getActiveLeagueName, getChugFeed, getChugLeaderboard, ge
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFeed } from "@/components/ChugFeed";
 import { ChugFineButton } from "@/components/ChugFineButton";
+import { ChugCommishActions } from "@/components/ChugCommishActions";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
@@ -47,7 +48,13 @@ export default async function ChugLeaderboardPage({
   return (
     <div className="flex flex-col gap-4">
       <LeagueSubNav active="history" awardsHref={awardsHrefFor(latestSeason)} activeLeagueName={activeLeagueName} />
-      {me && <ChugUpload />}
+      <ChugUpload
+        creditableOwners={
+          me.is_commissioner
+            ? leaderboard.map((r) => ({ owner_id: r.owner_id, owner_name: r.owner_name }))
+            : undefined
+        }
+      />
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold">🍺 Chug Leaderboard</h1>
@@ -106,6 +113,14 @@ export default async function ChugLeaderboardPage({
                       ${row.fine_amount} fine ({row.fined_owed} chugs)
                       {me?.is_commissioner && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
                     </span>
+                  )}
+                  {me.is_commissioner && (
+                    <ChugCommishActions
+                      ownerId={row.owner_id}
+                      ownerName={row.owner_name}
+                      outstandingOwed={row.outstanding_owed}
+                      doubledWeeks={row.doubled_weeks ?? []}
+                    />
                   )}
                   <span className="text-black/50 dark:text-white/50">Lifetime: {row.lifetime_completed}</span>
                 </div>

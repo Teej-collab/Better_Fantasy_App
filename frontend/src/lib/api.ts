@@ -1083,6 +1083,9 @@ export type ChugLeaderboardRow = {
   outstanding_owed: number;
   fined_owed: number;
   fine_amount: number;
+  // Active-season MNF settlements that doubled this owner's balance and
+  // haven't been waived — what a commissioner can still reverse.
+  doubled_weeks: { week: number; owed_before: number; owed_after: number }[];
 };
 
 export type ChugLeaderboard = {
@@ -1207,6 +1210,26 @@ export async function clearChugFine(ownerId: number, amount?: number): Promise<{
     method: "POST",
   });
   if (!res.ok) throw new Error(`Failed to clear fine: ${res.status}`);
+  return res.json();
+}
+
+// Commissioner-only — marks owed chugs as done off-app (in person, no
+// video kept). Returns how many were actually applied (never more than owed).
+export async function recordChugPayment(ownerId: number, amount = 1): Promise<{ applied: number }> {
+  const res = await fetch(`/api/backend/chug/standing/${ownerId}/record-payment?amount=${amount}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to record payment: ${res.status}`);
+  return res.json();
+}
+
+// Commissioner-only — reverses one week's MNF doubling for an owner whose
+// chug really was done in time but didn't get credited.
+export async function waiveChugDoubling(ownerId: number, week: number): Promise<{ waived: number }> {
+  const res = await fetch(`/api/backend/chug/standing/${ownerId}/waive-doubling?week=${week}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Failed to waive doubling: ${res.status}`);
   return res.json();
 }
 

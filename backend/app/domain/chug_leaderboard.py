@@ -17,9 +17,10 @@ real chug an owner has ever posted, uncapped by what was ever owed —
 see app/domain/chug_standing.py's module docstring on why a chug posted
 with nothing owed still counts here even though it has no debt effect.
 
-outstanding_owed/fined_owed/fine_amount only ever apply to the active
-season (chug_standing has no meaning for a season that's already over)
-— they're 0 on every row when a specific past season is selected.
+outstanding_owed/fined_owed/fine_amount/doubled_weeks only ever apply
+to the active season (chug_standing has no meaning for a season that's
+already over) — they're 0 (or empty) on every row when a specific past
+season is selected.
 """
 from app.config import DEFAULT_LEAGUE_ID
 from app.queries import chug as chug_queries
@@ -33,10 +34,12 @@ async def build_chug_leaderboard(conn, active_season: int, season: int | None, l
     completions_by_key = {(r["owner_id"], r["season"]): r for r in completions}
     owed_rows = await chug_queries.get_chug_owed_by_owner(conn, season, league_id)
     lifetime_by_owner = await chug_queries.get_lifetime_completed_by_owner(conn, league_id)
+    is_active_scope = season is None or season == active_season
     standing_by_owner = (
-        await chug_queries.get_chug_standing_by_owner(conn, active_season, league_id)
-        if season is None or season == active_season
-        else {}
+        await chug_queries.get_chug_standing_by_owner(conn, active_season, league_id) if is_active_scope else {}
+    )
+    doubled_by_owner = (
+        await chug_queries.get_doubled_weeks_by_owner(conn, active_season, league_id) if is_active_scope else {}
     )
 
     totals: dict[int, dict] = {}
@@ -60,6 +63,7 @@ async def build_chug_leaderboard(conn, active_season: int, season: int | None, l
                 "outstanding_owed": standing["outstanding_owed"] if standing else 0,
                 "fined_owed": standing["fined_owed"] if standing else 0,
                 "fine_amount": (standing["fined_owed"] * 10) if standing else 0,
+                "doubled_weeks": doubled_by_owner.get(owner_id, []),
             }
         totals[owner_id]["owed"] += owed
         totals[owner_id]["completed"] += completed
