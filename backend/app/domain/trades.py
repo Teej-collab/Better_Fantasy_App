@@ -21,10 +21,12 @@ app — review_trade below assumes the caller is already verified.
 import datetime
 import json
 
+from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
 from app.domain.trade_exceptions import (
     AssetNotOwnedError,
     EmptyTradeError,
+    IRSlotViolationTradeError,
     NotYourTradeError,
     RosterWouldExceedCapacityError,
     SameTeamTradeError,
@@ -94,9 +96,7 @@ async def _assert_capacity_ok(
 ) -> None:
     roster_slots = await _get_roster_slots(conn, season, league_id)
     capacity = total_draftable_slots(roster_slots)
-    current_count = await conn.fetchval(
-        "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2", season, team_id
-    )
+    current_count = await count_roster_toward_limit(conn, season, team_id)
     new_count = current_count + incoming_count - outgoing_count
     if new_count > capacity:
         raise RosterWouldExceedCapacityError(
@@ -109,6 +109,10 @@ async def _validate_assets(
 ) -> None:
     await _assert_owns_all(conn, season, proposing_team_id, give)
     await _assert_owns_all(conn, season, receiving_team_id, receive)
+    for team_id, outgoing in ((proposing_team_id, give), (receiving_team_id, receive)):
+        ir_violations = await ineligible_ir_player_names(conn, season, team_id, outgoing)
+        if ir_violations:
+            raise IRSlotViolationTradeError(ir_violation_message(ir_violations))
     await _assert_capacity_ok(conn, season, league_id, proposing_team_id, len(receive), len(give))
     await _assert_capacity_ok(conn, season, league_id, receiving_team_id, len(give), len(receive))
 

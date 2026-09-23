@@ -39,6 +39,19 @@ type EditLineupOption = { slot: string; occupant: RosterEntry | null };
 // the real submit. Includes entry's own current slot (so the modal can
 // show "already here") — callers filter that one out of what's
 // actually clickable.
+// A move/swap response's roster entries leave every GET /me/team-only
+// field (matchup, kickoff, bye, projection, points) null — replacing
+// the roster with them wholesale blanked all of that out after every
+// lineup edit (real report, 2026-09-23). A move/swap only ever changes
+// lineup_slot, so keep each player's full entry and take just that.
+function applyLineupSlots(prev: RosterEntry[], next: RosterEntry[]): RosterEntry[] {
+  const prevById = new Map(prev.map((e) => [e.player_id, e]));
+  return next.map((e) => {
+    const full = prevById.get(e.player_id);
+    return full ? { ...full, lineup_slot: e.lineup_slot } : e;
+  });
+}
+
 function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlots: Record<string, number>): EditLineupOption[] {
   const options: EditLineupOption[] = [];
   for (const slot of eligibleStarterSlotsFor(entry.position)) {
@@ -451,7 +464,7 @@ export function MyTeamApp({
       .then((result) => {
         setSubmitted(`Moved ${entry.player_name} to ${slotDisplayLabel(toSlot)}.`);
         setEditingEntry(null);
-        setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
+        setTeam((prev) => (prev ? { ...prev, roster: applyLineupSlots(prev.roster, result.roster) } : prev));
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Move failed"))
       .finally(() => setActioning(false));
@@ -464,7 +477,7 @@ export function MyTeamApp({
       .then((result) => {
         setSubmitted(`Swapped ${entry.player_name} and ${other.player_name}.`);
         setEditingEntry(null);
-        setTeam((prev) => (prev ? { ...prev, roster: result.roster } : prev));
+        setTeam((prev) => (prev ? { ...prev, roster: applyLineupSlots(prev.roster, result.roster) } : prev));
       })
       .catch((e) => setActionError(e instanceof Error ? e.message : "Swap failed"))
       .finally(() => setActioning(false));

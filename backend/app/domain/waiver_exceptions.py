@@ -36,3 +36,10 @@ class ClaimNotCancellableError(WaiverError):
     nothing left to cancel."""
 
     pass
+
+
+class IRSlotViolationClaimError(WaiverError):
+    """A player in this team's IR slot is no longer IR-eligible — no
+    claims until they're moved off IR (see app/domain/ir_rules.py)."""
+
+    pass

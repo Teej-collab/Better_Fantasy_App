@@ -59,3 +59,10 @@ class LineupLockedError(LineupError):
     ended, with zero backend enforcement)."""
 
     pass
+
+
+class IRSlotViolationError(LineupError):
+    """A player in this team's IR slot is no longer IR-eligible — no
+    adds until they're moved off IR (see app/domain/ir_rules.py)."""
+
+    pass

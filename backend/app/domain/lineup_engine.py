@@ -15,8 +15,10 @@ drift from what they actually drafted against.
 import json
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
+    IRSlotViolationError,
     LineupLockedError,
     PlayerAlreadyRosteredError,
     PlayerNotDraftableError,
@@ -264,9 +266,16 @@ async def add_free_agent(
 
         roster_slots = await _get_roster_slots(conn, season, league_id)
         capacity = total_draftable_slots(roster_slots)
-        current_count = await conn.fetchval(
-            "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2", season, team_id
+        current_count = await count_roster_toward_limit(conn, season, team_id)
+        will_drop = current_count >= capacity and drop_sleeper_player_id is not None
+
+        # Dropping the no-longer-eligible IR player in this same add
+        # resolves the violation, so it doesn't block (app/domain/ir_rules.py).
+        ir_violations = await ineligible_ir_player_names(
+            conn, season, team_id, [drop_sleeper_player_id] if will_drop else []
         )
+        if ir_violations:
+            raise IRSlotViolationError(ir_violation_message(ir_violations))
 
         if current_count >= capacity:
             if not drop_sleeper_player_id:

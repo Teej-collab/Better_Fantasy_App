@@ -64,7 +64,8 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   change as fast as live sync itself runs (60s default), so polling
   faster than that would just recompute identical numbers.
 - Sleeper player sync (ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER): refreshes
-  the `players` table from Sleeper's free player API once a day —
+  the `players` table from Sleeper's free player API once a day, at a
+  fixed 4:00 AM Pacific (a cron time, so deploys don't reset it) —
   Sleeper's own docs require at most one pull a day, so this interval
   is a hard ceiling, not a tuning knob (see app/providers/sleeper/
   client.py). There's also a manual POST /admin/players/sync trigger
@@ -836,8 +837,16 @@ def start_scheduler():
         started_any = True
 
     if os.getenv("ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER", "").lower() in ("1", "true", "yes"):
-        _scheduler.add_job(_run_sleeper_player_sync_job, "interval", hours=24, id="sleeper_player_sync")
-        logger.info("Sleeper player sync scheduler started (every 24 hours)")
+        # A fixed daily time, not interval(hours=24): an interval's first
+        # run is 24h after process start, so every deploy/restart pushed
+        # it back another day — with several deploys a day it almost
+        # never ran, leaving injury statuses days stale (real report,
+        # 2026-09-23: a player upgraded Out -> Doubtful still read Out).
+        _scheduler.add_job(
+            _run_sleeper_player_sync_job, "cron", hour=4, minute=0,
+            timezone="America/Los_Angeles", id="sleeper_player_sync",
+        )
+        logger.info("Sleeper player sync scheduler started (daily at 4:00 AM Pacific)")
         started_any = True
 
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):

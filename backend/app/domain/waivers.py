@@ -62,6 +62,7 @@ import json
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
 from app.domain.nfl_schedule import locked_pro_teams
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
@@ -69,6 +70,7 @@ from app.domain.waiver_exceptions import (
     ClaimNotCancellableError,
     ClaimNotFoundError,
     DuplicateClaimError,
+    IRSlotViolationClaimError,
     PlayerNotOnWaiversError,
 )
 from app.queries.league import get_standings
@@ -266,6 +268,11 @@ async def submit_claim(
     )
     if existing:
         raise DuplicateClaimError(f"You already have a pending claim on {add_sleeper_player_id}")
+    ir_violations = await ineligible_ir_player_names(
+        conn, season, team_id, [drop_sleeper_player_id] if drop_sleeper_player_id else []
+    )
+    if ir_violations:
+        raise IRSlotViolationClaimError(ir_violation_message(ir_violations))
     if drop_sleeper_player_id is not None:
         on_roster = await conn.fetchval(
             "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 AND team_id = $3 AND sleeper_player_id = $4",
@@ -376,10 +383,7 @@ async def _roster_has_room(conn, season: int, league_id: int, team_id: int) -> b
         return False
     roster_slots = json.loads(roster_slots_raw) if isinstance(roster_slots_raw, str) else roster_slots_raw
     capacity = total_draftable_slots(roster_slots)
-    current_count = await conn.fetchval(
-        "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2", season, team_id
-    )
-    return current_count < capacity
+    return await count_roster_toward_limit(conn, season, team_id) < capacity
 
 
 async def _resolve_one_player(conn, season: int, league_id: int, week: int, sleeper_player_id: str) -> dict:
@@ -417,6 +421,16 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
             continue
 
         dropped_player_id = claim["drop_sleeper_player_id"]
+        ir_violations = await ineligible_ir_player_names(
+            conn, season, claim["team_id"], [dropped_player_id] if dropped_player_id else []
+        )
+        if ir_violations:
+            await conn.execute(
+                "UPDATE waiver_claims SET status = 'failed', failure_reason = $1, processed_at = now() WHERE id = $2",
+                ir_violation_message(ir_violations), claim["id"],
+            )
+            outcomes.append({"claim_id": claim["id"], "status": "failed"})
+            continue
         if dropped_player_id is not None:
             still_on_roster = await conn.fetchval(
                 "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 AND team_id = $3 AND sleeper_player_id = $4",

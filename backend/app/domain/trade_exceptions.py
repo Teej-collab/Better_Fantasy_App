@@ -41,3 +41,10 @@ class TradeNotPendingError(TradeError):
 
 class TradeNotAwaitingReviewError(TradeError):
     pass
+
+
+class IRSlotViolationTradeError(TradeError):
+    """A player in one side's IR slot is no longer IR-eligible — no
+    trades until they're moved off IR (see app/domain/ir_rules.py)."""
+
+    pass
