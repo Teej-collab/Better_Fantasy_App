@@ -34,9 +34,10 @@ async def _seed_owner_with_team(pool, suffix, is_commissioner=False, league_id=D
     user_id = await make_safe_session_user_id(pool)
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-commlineup-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-commlineup-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         team_id = await conn.fetchval(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
             "VALUES ($1, $2, $3, $4, $5) RETURNING id",

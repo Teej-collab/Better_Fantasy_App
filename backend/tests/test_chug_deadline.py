@@ -95,10 +95,12 @@ async def _make_test_owner(pool, suffix: str) -> int:
             "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
             f"test-chug-deadline-owner-{suffix}@example.com", f"Test ChugOwner {suffix}",
         )
-        return await conn.fetchval(
-            "INSERT INTO owners (user_id, display_name, espn_member_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            user_id, f"Test ChugOwner {suffix}", f"test-chug-deadline-owner-{suffix}",
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (display_name, espn_member_id) VALUES ($1, $2) RETURNING owner_id",
+            f"Test ChugOwner {suffix}", f"test-chug-deadline-owner-{suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
+        return owner_id
 
 
 async def test_deadline_endpoint_returns_real_kickoff_once_a_chug_is_owed(pool, monkeypatch):

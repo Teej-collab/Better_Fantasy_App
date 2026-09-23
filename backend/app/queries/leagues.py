@@ -5,6 +5,8 @@ they are); this module only tracks who belongs to which league,
 starting with the one real league every existing member already plays
 in."""
 
+import secrets
+
 from app.config import DEFAULT_LEAGUE_ID
 
 
@@ -111,7 +113,7 @@ async def list_unclaimed_owners(conn, league_id: int):
         SELECT DISTINCT o.owner_id, o.display_name
         FROM owners o
         JOIN teams_by_season t ON t.owner_id = o.owner_id
-        WHERE t.league_id = $1 AND o.user_id IS NULL
+        WHERE t.league_id = $1 AND NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.owner_id = o.owner_id)
         ORDER BY o.display_name
         """,
         league_id,
@@ -128,22 +130,86 @@ async def claim_owner(conn, league_id: int, owner_id: int, user_id: int) -> bool
     already has today — see app/queries/auth.py). Returns False
     (never raises) if the owner doesn't belong to this league, is
     already claimed, or the caller already has a different owner
-    linked to their account — owners.user_id is unique (one real
+    linked to their account — owner_users.user_id is unique (one real
     person = one owner identity, across every league), so without that
-    last check the UPDATE below would still match the target row and
+    last check the INSERT below would still match the target row and
     then blow up with a raw UniqueViolationError instead of a clean
     404/409 the router can return (hit for real in production, 2026-09:
-    a signed-up user tried to self-claim a second historical owner)."""
+    a signed-up user tried to self-claim a second historical owner).
+
+    This is deliberately still single-claim (an unclaimed owner, not
+    an already-claimed one) — inviting a SECOND real person onto an
+    already-claimed owner is create_co_owner_invite/redeem_co_owner_invite
+    below, a separate, explicit action rather than something claim_owner
+    itself falls through to, since a co-owner invite additionally grants
+    league membership and reissues the redeemer's own session."""
     result = await conn.execute(
         """
-        UPDATE owners SET user_id = $1
-        WHERE owner_id = $2 AND user_id IS NULL
-          AND EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = owners.owner_id AND t.league_id = $3)
-          AND NOT EXISTS (SELECT 1 FROM owners o2 WHERE o2.user_id = $1)
+        INSERT INTO owner_users (owner_id, user_id)
+        SELECT $2, $1
+        WHERE EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = $2 AND t.league_id = $3)
+          AND NOT EXISTS (SELECT 1 FROM owner_users WHERE owner_id = $2)
+          AND NOT EXISTS (SELECT 1 FROM owner_users WHERE user_id = $1)
         """,
         user_id, owner_id, league_id,
     )
-    return result != "UPDATE 0"
+    return result != "INSERT 0 0"
+
+
+async def create_co_owner_invite(conn, owner_id: int, created_by_user_id: int) -> str:
+    """Generates a single-use, unguessable invite code (same
+    secrets.token_urlsafe(8) idiom as leagues.invite_code) that lets a
+    SECOND real person link to an already-claimed owner_id — the
+    "invite a friend as co-owner" feature (2026-09-22): both people
+    then act as the exact same owner_id everywhere (chat, trades,
+    lineup, push — all already owner_id-keyed), a deliberate choice to
+    keep this small rather than modeling two distinct people sharing
+    one team. Callers can generate more than one of these (e.g. a
+    second friend, or a fresh link after one expires by being
+    redeemed) — there's no cap here on purpose."""
+    invite_code = secrets.token_urlsafe(8)
+    await conn.execute(
+        "INSERT INTO co_owner_invites (owner_id, invite_code, created_by_user_id) VALUES ($1, $2, $3)",
+        owner_id, invite_code, created_by_user_id,
+    )
+    return invite_code
+
+
+async def redeem_co_owner_invite(conn, invite_code: str, user_id: int) -> tuple[int, list[int]] | None:
+    """Redeems a co-owner invite for the calling user: links them to
+    the invite's owner_id via owner_users, marks the invite used, and
+    enrolls them in every league that owner already has a team in
+    (add_member) — collapsing "join the league, then get access to the
+    team" into the one redemption, since a targeted co-owner invite
+    has no reason to force the separate manual join step the general
+    league invite_code flow needs. Returns None (never raises) if the
+    code doesn't exist, was already redeemed, or the user already has
+    a different owner linked to their account (owner_users.user_id is
+    unique) — same invariant claim_owner already enforces. Otherwise
+    returns (owner_id, league_ids) — the router still needs league_ids
+    itself, to add the new co-owner into each league's chat the same
+    way claim_owner's own router already does for its one league."""
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            """
+            UPDATE co_owner_invites SET redeemed_by_user_id = $2, redeemed_at = now()
+            WHERE invite_code = $1 AND redeemed_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM owner_users WHERE user_id = $2)
+            RETURNING owner_id
+            """,
+            invite_code, user_id,
+        )
+        if row is None:
+            return None
+        owner_id = row["owner_id"]
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
+        league_rows = await conn.fetch(
+            "SELECT DISTINCT league_id FROM teams_by_season WHERE owner_id = $1", owner_id
+        )
+        league_ids = [r["league_id"] for r in league_rows]
+        for league_id in league_ids:
+            await add_member(conn, league_id, user_id, "member")
+    return owner_id, league_ids
 
 
 async def list_members(conn, league_id: int):
@@ -159,7 +225,8 @@ async def list_members(conn, league_id: int):
                COALESCE(o.display_name, u.display_name) AS display_name
         FROM league_members lm
         JOIN users u ON u.id = lm.user_id
-        LEFT JOIN owners o ON o.user_id = lm.user_id
+        LEFT JOIN owner_users ou ON ou.user_id = lm.user_id
+        LEFT JOIN owners o ON o.owner_id = ou.owner_id
         WHERE lm.league_id = $1
         ORDER BY (lm.role = 'commissioner') DESC, lm.joined_at ASC
         """,

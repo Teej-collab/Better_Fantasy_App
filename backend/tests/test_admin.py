@@ -420,9 +420,10 @@ async def test_track_records_a_real_row_tagged_with_the_callers_own_owner_id(poo
     async with pool.acquire() as conn:
         user_id = await _make_user(conn, "track")
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-admin-track-owner", "Track Owner", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-track-owner", "Track Owner",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     cookies = _session_cookie(user_id, owner_id)
 
     response = await _post_sync(
@@ -474,9 +475,10 @@ async def test_track_rejects_an_unknown_event_name(pool, monkeypatch):
     async with pool.acquire() as conn:
         user_id = await _make_user(conn, "track-badname")
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-admin-track-badname-owner", "Bad Name Owner", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-track-badname-owner", "Bad Name Owner",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     response = await _post_sync(
         cookies=_session_cookie(user_id, owner_id),
         path="/admin/track",
@@ -494,9 +496,10 @@ async def test_track_rejects_a_feature_event_with_a_disallowed_metadata_key(pool
     async with pool.acquire() as conn:
         user_id = await _make_user(conn, "track-badmeta")
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-admin-track-badmeta-owner", "Bad Meta Owner", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-track-badmeta-owner", "Bad Meta Owner",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     response = await _post_sync(
         cookies=_session_cookie(user_id, owner_id),
         path="/admin/track",
@@ -515,9 +518,10 @@ async def test_track_rejects_a_page_view_event_name_that_is_actually_a_feature_n
     async with pool.acquire() as conn:
         user_id = await _make_user(conn, "track-typemismatch")
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-admin-track-typemismatch-owner", "Type Mismatch Owner", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-track-typemismatch-owner", "Type Mismatch Owner",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     response = await _post_sync(
         cookies=_session_cookie(user_id, owner_id),
         path="/admin/track",
@@ -820,9 +824,12 @@ async def test_delete_user_refuses_an_account_with_a_linked_owner(pool, monkeypa
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     async with pool.acquire() as conn:
         target_user_id = await _make_user(conn, "delete-has-owner")
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-admin-delete-owner", "Delete Test Owner",
+        )
         await conn.execute(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3)",
-            "test-admin-delete-owner", "Delete Test Owner", target_user_id,
+            "INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, target_user_id,
         )
     response = await _delete(
         cookies=await _commissioner_of_league_one_cookies(pool, "delete-has-owner-admin"),

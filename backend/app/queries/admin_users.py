@@ -24,7 +24,8 @@ _BASE_SELECT = """
            ) AS is_commissioner_anywhere,
            (SELECT max(ae.created_at) FROM analytics_events ae WHERE ae.owner_id = o.owner_id) AS last_active
     FROM users u
-    LEFT JOIN owners o ON o.user_id = u.id
+    LEFT JOIN owner_users ou ON ou.user_id = u.id
+    LEFT JOIN owners o ON o.owner_id = ou.owner_id
 """
 
 
@@ -70,7 +71,12 @@ async def list_users(conn, search: str | None, status: str, limit: int, offset: 
         where.append("(SELECT count(*) FROM league_members lm WHERE lm.user_id = u.id) = 0")
 
     where_sql = " AND ".join(where)
-    total = await conn.fetchval(f"SELECT count(*) FROM users u LEFT JOIN owners o ON o.user_id = u.id WHERE {where_sql}", *params)
+    total = await conn.fetchval(
+        f"SELECT count(*) FROM users u "
+        f"LEFT JOIN owner_users ou ON ou.user_id = u.id LEFT JOIN owners o ON o.owner_id = ou.owner_id "
+        f"WHERE {where_sql}",
+        *params,
+    )
 
     params.append(limit)
     params.append(offset)
@@ -118,7 +124,7 @@ async def get_deletion_blockers(conn, user_id: int) -> list[str]:
     """Every reason this account can't be safely hard-deleted — an
     empty list means DELETE /admin/users/{user_id} is safe to call.
     Checked directly against every real FK to users(id) in this schema
-    (owners.user_id, league_members.user_id, leagues.created_by_user_id,
+    (owner_users.user_id, league_members.user_id, leagues.created_by_user_id,
     league_polls.created_by_user_id, poll_votes.user_id,
     feedback.user_id — audited by grepping every migration for
     "REFERENCES users") rather than trusting a cascade: an owner link
@@ -130,7 +136,7 @@ async def get_deletion_blockers(conn, user_id: int) -> list[str]:
     endpoint; it exists for abandoned/duplicate signups (a stray OAuth
     retry, a mistyped-email account) that never became anything real."""
     blockers = []
-    if await conn.fetchval("SELECT 1 FROM owners WHERE user_id = $1", user_id):
+    if await conn.fetchval("SELECT 1 FROM owner_users WHERE user_id = $1", user_id):
         blockers.append("Has a linked owner (real historical data)")
     if await conn.fetchval("SELECT 1 FROM league_members WHERE user_id = $1", user_id):
         blockers.append("Is a member of at least one league")

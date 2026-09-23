@@ -27,13 +27,16 @@ async def get_conversation_type_and_league(conn, conversation_id: int):
 
 async def is_owner_commissioner_of_league(conn, owner_id: int, league_id: int) -> bool:
     """Chat is owner_id-keyed; league membership/role is user_id-keyed
-    (league_members) — same owners.user_id join leagues.py's own
-    membership queries already use to reconcile the two identities."""
+    (league_members) — same owner_users join leagues.py's own
+    membership queries already use to reconcile the two identities.
+    An EXISTS over owner_users (not a single-row join) so this stays
+    correct if a co-owned team's commissioner role happens to be held
+    by whichever of the two linked users actually has it."""
     row = await conn.fetchrow(
         """
-        SELECT 1 FROM owners o
-        JOIN league_members lm ON lm.user_id = o.user_id
-        WHERE o.owner_id = $1 AND lm.league_id = $2 AND lm.role = 'commissioner'
+        SELECT 1 FROM owner_users ou
+        JOIN league_members lm ON lm.user_id = ou.user_id
+        WHERE ou.owner_id = $1 AND lm.league_id = $2 AND lm.role = 'commissioner'
         """,
         owner_id, league_id,
     )

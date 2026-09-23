@@ -11,13 +11,16 @@ league."""
 
 
 async def get_or_create_owner_for_user(conn, user_id: int, display_name: str) -> int:
-    existing = await conn.fetchval("SELECT owner_id FROM owners WHERE user_id = $1", user_id)
+    existing = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
     if existing is not None:
         return existing
-    return await conn.fetchval(
-        "INSERT INTO owners (user_id, display_name) VALUES ($1, $2) RETURNING owner_id",
-        user_id, display_name,
-    )
+    async with conn.transaction():
+        owner_id = await conn.fetchval(
+            "INSERT INTO owners (display_name) VALUES ($1) RETURNING owner_id",
+            display_name,
+        )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
+    return owner_id
 
 
 async def create_team(conn, league_id: int, season: int, owner_id: int, team_name: str) -> dict:

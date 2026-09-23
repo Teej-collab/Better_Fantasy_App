@@ -89,9 +89,10 @@ async def _seed_member(pool, league_id: int, suffix: str, role: str = "member") 
             f"test-draftrouter-{suffix}@example.com", f"User {suffix}",
         )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await league_queries.add_member(conn, league_id, user_id, role)
         await conn.execute(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
@@ -109,9 +110,10 @@ async def _seed_commissioner_and_team(pool, suffix: str) -> tuple[int, int, int]
     async with pool.acquire() as conn:
         league_id, user_id = await _make_league(conn, suffix)
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-draftrouter-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await conn.execute(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
             "VALUES ($1, $2, $3, $4, $5)",

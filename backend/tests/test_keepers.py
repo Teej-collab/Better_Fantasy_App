@@ -43,9 +43,10 @@ async def _seed_member_with_team(pool, suffix, espn_team_id, role="member"):
             f"test-keepers-{suffix}@example.com", f"Test User {suffix}",
         )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-keepers-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-keepers-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, role)
         await conn.executemany(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) VALUES ($1, $2, $3, $4)",
@@ -213,8 +214,11 @@ async def test_ownership_handoff_keeper_pool_follows_the_espn_team_id(pool, monk
             "test-keepers-replacement@example.com", "Replacement Owner",
         )
         new_owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-keepers-owner-replacement", "Replacement Owner", new_user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-keepers-owner-replacement", "Replacement Owner",
+        )
+        await conn.execute(
+            "INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", new_owner_id, new_user_id
         )
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, new_user_id, "member")
         await conn.execute(
@@ -252,9 +256,10 @@ async def test_roster_pool_is_empty_with_no_prior_season_team(pool, monkeypatch)
             "test-keepers-newfranchise@example.com", "New Franchise Owner",
         )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            "test-keepers-owner-newfranchise", "New Franchise Owner", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-keepers-owner-newfranchise", "New Franchise Owner",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
         # No teams_by_season row for this owner in ANY season.
 

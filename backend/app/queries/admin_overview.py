@@ -24,8 +24,8 @@ async def get_overview(conn, days: int) -> dict:
     active_leagues = await conn.fetchval(
         f"""
         SELECT count(DISTINCT lm.league_id) FROM league_members lm
-        JOIN owners o ON o.user_id = lm.user_id
-        JOIN analytics_events ae ON ae.owner_id = o.owner_id
+        JOIN owner_users ou ON ou.user_id = lm.user_id
+        JOIN analytics_events ae ON ae.owner_id = ou.owner_id
         WHERE ae.created_at >= now() - interval '{int(days)} days'
         """
     )
@@ -35,7 +35,9 @@ async def get_overview(conn, days: int) -> dict:
     # total_users: someone can sign up and never claim/link at all
     # (see the recent "No team found for this owner" bug this exact
     # gap caused).
-    total_owners_claimed = await conn.fetchval("SELECT count(*) FROM owners WHERE user_id IS NOT NULL")
+    total_owners_claimed = await conn.fetchval(
+        "SELECT count(DISTINCT owner_id) FROM owner_users"
+    )
     tracking_started_at = await conn.fetchval("SELECT min(created_at) FROM analytics_events")
     return {
         "window_days": days,
@@ -120,7 +122,7 @@ async def get_alerts(conn) -> list[dict]:
         """
         SELECT count(DISTINCT o.owner_id) FROM owners o
         JOIN teams_by_season t ON t.owner_id = o.owner_id
-        WHERE o.user_id IS NULL
+        WHERE NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.owner_id = o.owner_id)
         """
     )
     if unclaimed:
@@ -132,7 +134,7 @@ async def get_alerts(conn) -> list[dict]:
         )
 
     no_league = await conn.fetchval(
-        "SELECT count(*) FROM users u LEFT JOIN owners o ON o.user_id = u.id WHERE o.owner_id IS NULL"
+        "SELECT count(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.user_id = u.id)"
     )
     if no_league:
         alerts.append(

@@ -61,10 +61,24 @@ async def upsert_trade_settings(
     return await get_trade_settings(conn, league_id, season)
 
 
-async def _get_team_owner_user_id(conn, team_id: int) -> int | None:
+async def _team_is_controlled_by_user(conn, team_id: int, user_id: int) -> bool:
+    """Is `user_id` one of the (possibly several, since a co-owner
+    invite — 2026-09-22 — links a second real login to the same
+    owner_id) real accounts allowed to act for this team's owner. Was
+    a single-value equality check against owners.user_id — that broke
+    the moment a co-owner existed, since only ONE of the two linked
+    accounts could ever match. An EXISTS over owner_users fixes this
+    for both accounts at once, with no change needed at either call
+    site below."""
     return await conn.fetchval(
-        "SELECT o.user_id FROM teams_by_season t JOIN owners o ON o.owner_id = t.owner_id WHERE t.id = $1",
-        team_id,
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM teams_by_season t
+            JOIN owner_users ou ON ou.owner_id = t.owner_id
+            WHERE t.id = $1 AND ou.user_id = $2
+        )
+        """,
+        team_id, user_id,
     )
 
 
@@ -241,8 +255,7 @@ async def respond_to_trade(conn, trade_id: int, responding_user_id: int, accept:
         raise TradeNotFoundError(f"Trade {trade_id} not found")
     if trade["status"] != "pending":
         raise TradeNotPendingError(f"This trade is no longer pending (status: {trade['status']})")
-    receiving_owner_user_id = await _get_team_owner_user_id(conn, trade["receiving_team_id"])
-    if receiving_owner_user_id != responding_user_id:
+    if not await _team_is_controlled_by_user(conn, trade["receiving_team_id"], responding_user_id):
         raise NotYourTradeError("Only the receiving team's owner can respond to this trade")
 
     if not accept:
@@ -265,8 +278,7 @@ async def cancel_trade(conn, trade_id: int, user_id: int) -> dict:
         raise TradeNotFoundError(f"Trade {trade_id} not found")
     if trade["status"] != "pending":
         raise TradeNotPendingError("Only a still-pending trade can be cancelled")
-    proposing_owner_user_id = await _get_team_owner_user_id(conn, trade["proposing_team_id"])
-    if proposing_owner_user_id != user_id:
+    if not await _team_is_controlled_by_user(conn, trade["proposing_team_id"], user_id):
         raise NotYourTradeError("Only the proposing team's owner can cancel this trade")
     await conn.execute("UPDATE trades SET status = 'cancelled', resolved_at = now() WHERE id = $1", trade_id)
     return await get_trade(conn, trade_id)

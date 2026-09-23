@@ -22,8 +22,8 @@ async def list_leagues(conn, days: int) -> list[dict]:
                (SELECT count(*) FROM league_members lm WHERE lm.league_id = l.id) AS member_count,
                (
                    SELECT count(*) FROM analytics_events ae
-                   JOIN owners o ON o.owner_id = ae.owner_id
-                   JOIN league_members lm ON lm.user_id = o.user_id AND lm.league_id = l.id
+                   JOIN owner_users ou ON ou.owner_id = ae.owner_id
+                   JOIN league_members lm ON lm.user_id = ou.user_id AND lm.league_id = l.id
                    WHERE ae.created_at >= now() - interval '{int(days)} days'
                ) AS recent_events
         FROM leagues l
@@ -52,7 +52,8 @@ async def get_league_detail(conn, league_id: int, days: int) -> dict | None:
                ) AS recent_events
         FROM league_members lm
         JOIN users u ON u.id = lm.user_id
-        LEFT JOIN owners o ON o.user_id = lm.user_id
+        LEFT JOIN owner_users ou ON ou.user_id = lm.user_id
+        LEFT JOIN owners o ON o.owner_id = ou.owner_id
         LEFT JOIN teams_by_season t ON t.owner_id = o.owner_id AND t.league_id = lm.league_id
             AND t.season = (SELECT max(season) FROM teams_by_season WHERE league_id = lm.league_id)
         WHERE lm.league_id = $1

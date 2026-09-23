@@ -98,7 +98,7 @@ async def get_my_settings(request: Request, pool=Depends(get_pool)):
             # always session-bound — but a real cross-*league*
             # correctness bug for any owner in 2+ leagues).
             league_id = await require_active_league_id(conn, payload)
-            row = await settings_queries.get_settings(conn, owner_id, active_season, league_id)
+            row = await settings_queries.get_settings(conn, owner_id, payload["user_id"], active_season, league_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Owner not found")
     return dict(row)
@@ -133,7 +133,7 @@ async def reset_display_name(request: Request, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
         await settings_queries.reset_display_name(conn, owner_id)
-        row = await settings_queries.get_settings(conn, owner_id, active_season)
+        row = await settings_queries.get_settings(conn, owner_id, payload["user_id"], active_season)
     return {"display_name": row["display_name"]}
 
 

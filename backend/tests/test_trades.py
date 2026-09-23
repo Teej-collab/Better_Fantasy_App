@@ -25,16 +25,17 @@ def _set_env(monkeypatch):
 
 async def _seed_owner_with_team(pool, suffix, is_commissioner=False):
     """A real user<->owner<->team linkage — trades authorization checks
-    (app/domain/trades.py's _get_team_owner_user_id) resolve identity
-    through owners.user_id, unlike /me/team's own owner_id-JWT-claim
-    shortcut, so this has to be a real link, not the decoupled
+    (app/domain/trades.py's _team_is_controlled_by_user) resolve
+    identity through owner_users, unlike /me/team's own owner_id-JWT-
+    claim shortcut, so this has to be a real link, not the decoupled
     convenience test_me_team.py's helpers use."""
     user_id = await make_safe_session_user_id(pool)
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-trades-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-trades-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         team_id = await conn.fetchval(
             "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name) "
             "VALUES ($1, $2, $3, $4) RETURNING id",
@@ -218,6 +219,35 @@ async def test_accept_trade_only_receiving_owner_can_respond(pool, monkeypatch):
         # proposer tries to accept their own proposal
         accept_resp = await client.post(f"/trades/{trade_id}/accept")
     assert accept_resp.status_code == 403
+
+
+async def test_accept_trade_succeeds_for_a_co_owner_not_just_the_original_owner(pool, monkeypatch):
+    """2026-09-22 real fix: a second real user linked to the same
+    owner_id via a co-owner invite must be able to respond to a trade
+    exactly like the original owner — this is the one authorization
+    check (_team_is_controlled_by_user) that used to compare a single
+    owners.user_id value, so only one of the two linked accounts could
+    ever pass it."""
+    _set_env(monkeypatch)
+    a, b, give_player, receive_player = await _setup_two_teams(pool, "coowner")
+
+    co_owner_user_id = await make_safe_session_user_id(pool)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", b["owner_id"], co_owner_user_id
+        )
+    co_owner_token = create_session_token(_SESSION_SECRET, user_id=co_owner_user_id, owner_id=b["owner_id"])
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        propose_resp = await client.post(
+            "/trades", json={"receiving_team_id": b["team_id"], "give": [give_player], "receive": [receive_player]}
+        )
+        trade_id = propose_resp.json()["id"]
+
+        client.cookies.update({"session": co_owner_token})
+        accept_resp = await client.post(f"/trades/{trade_id}/accept")
+    assert accept_resp.status_code == 200, accept_resp.text
 
 
 async def test_reject_trade_leaves_rosters_untouched(pool, monkeypatch):

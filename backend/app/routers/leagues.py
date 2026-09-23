@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_commissioner_of
+from app.auth.league_context import require_commissioner_of, resolve_owner_id
 from app.auth.session import create_session_token, decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
@@ -240,6 +240,78 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
         token_version=token_version,
     )
     return {"owner_id": body.owner_id, "claimed": True, "token": token}
+
+
+@router.post("/{league_id}/teams/{team_id}/co-owner-invite")
+async def create_co_owner_invite(league_id: int, team_id: int, request: Request):
+    """Lets a team's owner (or an existing co-owner — resolve_owner_id
+    already resolves either of them to the exact same owner_id, since
+    sharing that one identity is the whole point) generate a single-
+    use link a friend can redeem to become a co-owner: both people
+    then act as this exact owner_id everywhere (chat, trades, lineup,
+    push — all already owner_id-keyed, unchanged by this feature).
+    `team_id`/`league_id` only confirm the caller actually owns this
+    team before handing out a link — the invite itself, once redeemed,
+    shares the whole owner identity (every league/team it has), not
+    just this one team, since there's no smaller unit to share (see
+    app/queries/leagues.py's create_co_owner_invite)."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            raise HTTPException(status_code=403, detail="You don't have a team to invite a co-owner to")
+        owns_team = await conn.fetchval(
+            "SELECT 1 FROM teams_by_season WHERE id = $1 AND league_id = $2 AND owner_id = $3",
+            team_id, league_id, owner_id,
+        )
+        if not owns_team:
+            raise HTTPException(status_code=403, detail="That's not your team")
+        invite_code = await league_queries.create_co_owner_invite(conn, owner_id, payload["user_id"])
+    return {"invite_code": invite_code}
+
+
+class RedeemCoOwnerInviteRequest(BaseModel):
+    invite_code: str
+
+
+@router.post("/co-owner-invites/redeem")
+async def redeem_co_owner_invite(body: RedeemCoOwnerInviteRequest, request: Request):
+    """Redeeming links the caller to the invite's owner_id and enrolls
+    them in every league that owner already has a team in (see
+    app/queries/leagues.py's redeem_co_owner_invite) — no prior
+    /leagues/join needed, unlike claim-owner above, since a targeted
+    co-owner invite has no reason to force that separate manual step.
+    Not league-scoped in the URL (unlike claim-owner) since the
+    redeemer isn't a member of anything yet at the point they call
+    this. Reissues the session token with the shared owner_id baked
+    in, same as claim-owner, so the very next request already carries
+    it."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await league_queries.redeem_co_owner_invite(conn, body.invite_code, payload["user_id"])
+        if result is None:
+            raise HTTPException(
+                status_code=409,
+                detail="That invite has already been used, doesn't exist, or your account "
+                "already has a different owner linked to it",
+            )
+        owner_id, league_ids = result
+        for league_id in league_ids:
+            await chat_queries.add_owner_to_league_conversations(conn, league_id, owner_id)
+        token_version = await auth_queries.get_token_version(conn, payload["user_id"])
+
+    config = SessionConfig()
+    token = create_session_token(
+        config.session_secret,
+        user_id=payload["user_id"],
+        owner_id=owner_id,
+        discord_user_id=payload.get("discord_user_id"),
+        is_commissioner=payload.get("is_commissioner", False),
+        token_version=token_version,
+    )
+    return {"owner_id": owner_id, "token": token}
 
 
 @router.get("/{league_id}/members")

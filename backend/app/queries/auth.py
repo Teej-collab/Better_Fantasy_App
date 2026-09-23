@@ -13,7 +13,7 @@ async def get_owner_by_discord_id(conn, discord_user_id: int):
 
 async def get_owner_id_for_user(conn, user_id: int) -> int | None:
     """The owner_id (if any) this account is currently linked to —
-    resolved fresh from owners.user_id, never assumed. Every login path
+    resolved fresh from owner_users, never assumed. Every login path
     that mints a token for an EXISTING account (password /auth/login,
     /auth/google/callback) needs this so a already-claimed owner is
     reflected the very next time that account signs in, not only in
@@ -22,8 +22,16 @@ async def get_owner_id_for_user(conn, user_id: int) -> int | None:
     own docstring). Before this existed, only the Discord path ever
     put a real owner_id in a token at LOGIN time; a Google/email
     account's session stayed owner_id=null forever unless it happened
-    to still be holding the exact token claim-owner returned."""
-    return await conn.fetchval("SELECT owner_id FROM owners WHERE user_id = $1", user_id)
+    to still be holding the exact token claim-owner returned.
+
+    owner_users (not a plain owners.user_id column) is what makes a
+    co-owner invite work at all (2026-09-22, real ask: let a team owner
+    invite a friend to co-manage the same team) — more than one real
+    user_id can link to the same owner_id, and this lookup is the one
+    place every login path and every mid-session resolve_owner_id call
+    (app/auth/league_context.py) funnels through, so fixing it here is
+    what makes co-ownership work everywhere else automatically."""
+    return await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
 
 
 async def get_or_create_user_for_owner(
@@ -50,8 +58,8 @@ async def get_or_create_user_for_owner(
         discord_user_id, discord_username,
     )
     await conn.execute(
-        "UPDATE owners SET user_id = $1 WHERE owner_id = $2",
-        user_id, owner_id,
+        "INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING",
+        owner_id, user_id,
     )
     league_id = await leagues_queries.get_default_league_id(conn)
     if league_id is not None:
@@ -142,11 +150,11 @@ async def get_or_create_user_for_google(conn, google_user_id: str, email: str | 
 async def delete_account(conn, user_id: int) -> None:
     """Deletes the login itself — never the shared league history it
     may be linked to. If this account has claimed a historical owner
-    identity (owners.user_id), that owners row and everything hanging
-    off it (teams, matchups, chat messages, chug debts, awards,
+    identity (an owner_users row), that owners row and everything
+    hanging off it (teams, matchups, chat messages, chug debts, awards,
     rivalries — all still visible to and shared with other members) is
-    left fully intact, just unlinked from any login, the same state it
-    was in before this owner ever claimed it. Only the login
+    left fully intact, just unlinked from THIS login — a co-owner, if
+    one exists, keeps their own access untouched. Only the login
     credentials, this account's own feedback, and its league
     memberships are actually removed.
 
@@ -158,7 +166,7 @@ async def delete_account(conn, user_id: int) -> None:
     async with conn.transaction():
         await conn.execute("DELETE FROM feedback WHERE user_id = $1", user_id)
         await conn.execute("DELETE FROM league_members WHERE user_id = $1", user_id)
-        await conn.execute("UPDATE owners SET user_id = NULL WHERE user_id = $1", user_id)
+        await conn.execute("DELETE FROM owner_users WHERE user_id = $1", user_id)
         await conn.execute("DELETE FROM users WHERE id = $1", user_id)
 
 

@@ -42,9 +42,10 @@ async def _member_cookies(pool, suffix: str) -> dict:
             f"test-recordpay-{suffix}@example.com",
         )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-recordpay-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-recordpay-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "member")
     return _session_cookie(user_id, owner_id)
 
@@ -57,9 +58,10 @@ async def _commissioner_cookies(pool, suffix: str) -> dict:
             f"test-recordpay-{suffix}@example.com",
         )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-recordpay-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-recordpay-owner-{suffix}", f"Owner {suffix}",
         )
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
         await league_queries.add_member(conn, DEFAULT_LEAGUE_ID, user_id, "commissioner")
     return _session_cookie(user_id, owner_id)
 

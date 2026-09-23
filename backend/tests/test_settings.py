@@ -26,18 +26,20 @@ async def _seed_owner(pool, suffix, discord_username=None):
                 "INSERT INTO users (discord_username) VALUES ($1) RETURNING id", discord_username
             )
         owner_id = await conn.fetchval(
-            "INSERT INTO owners (espn_member_id, display_name, user_id) VALUES ($1, $2, $3) RETURNING owner_id",
-            f"test-settings-owner-{suffix}", f"Owner {suffix}", user_id,
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            f"test-settings-owner-{suffix}", f"Owner {suffix}",
         )
+        if user_id is not None:
+            await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     return owner_id
 
 
 async def _cleanup_user(pool, owner_id):
     async with pool.acquire() as conn:
-        user_id = await conn.fetchval("SELECT user_id FROM owners WHERE owner_id = $1", owner_id)
-        if user_id:
-            await conn.execute("UPDATE owners SET user_id = NULL WHERE owner_id = $1", owner_id)
-            await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        user_ids = [r["user_id"] for r in await conn.fetch("SELECT user_id FROM owner_users WHERE owner_id = $1", owner_id)]
+        if user_ids:
+            await conn.execute("DELETE FROM owner_users WHERE owner_id = $1", owner_id)
+            await conn.execute("DELETE FROM users WHERE id = ANY($1::int[])", user_ids)
 
 
 async def test_get_settings_requires_session(pool):

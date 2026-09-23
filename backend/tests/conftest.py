@@ -119,25 +119,32 @@ async def make_safe_session_user_id(pool) -> int:
 
 async def make_safe_session_user_id_for_owner(pool, owner_id: int) -> int:
     """Like make_safe_session_user_id, but also links the new user_id to
-    the given owner_id (UPDATE owners SET user_id = ...) — matching what
-    every real login path already does (app/queries/auth.py's
+    the given owner_id (an owner_users row) — matching what every real
+    login path already does (app/queries/auth.py's
     get_or_create_user_for_owner / get_or_create_user_for_google) before
     minting a token with that owner_id in it.
 
     2026-09 addition: app/auth/league_context.py's resolve_owner_id does
-    a LIVE lookup (SELECT owner_id FROM owners WHERE user_id = $1) now,
-    the same fix already applied to is_commissioner a month earlier —
-    the JWT's own owner_id claim is no longer trusted directly anywhere.
-    A test that hand-crafts a token via create_session_token(owner_id=X)
-    using a plain make_safe_session_user_id() (no real link) used to
-    work, since the old code trusted that claim outright; it now
-    resolves to None instead, and the request proceeds as if the caller
-    had no owner at all — a real, confusing failure mode (a 403/404 that
-    looks like an authorization bug, not a fixture gap) unless every
-    such helper is updated to use this instead."""
+    a LIVE lookup (SELECT owner_id FROM owner_users WHERE user_id = $1)
+    now, the same fix already applied to is_commissioner a month
+    earlier — the JWT's own owner_id claim is no longer trusted
+    directly anywhere. A test that hand-crafts a token via
+    create_session_token(owner_id=X) using a plain
+    make_safe_session_user_id() (no real link) used to work, since the
+    old code trusted that claim outright; it now resolves to None
+    instead, and the request proceeds as if the caller had no owner at
+    all — a real, confusing failure mode (a 403/404 that looks like an
+    authorization bug, not a fixture gap) unless every such helper is
+    updated to use this instead.
+
+    2026-09-22 update (co-owner invites): owner_users.owner_id is no
+    longer unique — a real owner can have more than one linked user —
+    so this INSERTs a new row rather than UPDATEing a single column.
+    Still guarded by owner_users.user_id's own UNIQUE constraint, same
+    as production."""
     user_id = await make_safe_session_user_id(pool)
     async with pool.acquire() as conn:
-        await conn.execute("UPDATE owners SET user_id = $1 WHERE owner_id = $2", user_id, owner_id)
+        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
     return user_id
 
 
@@ -219,6 +226,22 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM push_subscriptions WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
+        # native_push_tokens.owner_id -> owners.owner_id (migration
+        # 796e33a7e4dd, the APNs/FCM analog of push_subscriptions above)
+        # — same reasoning, same FK, must go before the owner DELETE.
+        await conn.execute(
+            "DELETE FROM native_push_tokens WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        # used_oauth_tickets (migration 4b0f790da9c8) has no owner_id/
+        # season column at all — it's keyed by jti, an opaque per-ticket
+        # id, not FK'd to anything. Real callers (app/routers/auth.py's
+        # redeem_native_oauth_ticket) never generate a "test-"-prefixed
+        # jti; test_native_oauth.py's own _mint_ticket helper always
+        # does, specifically so this sweep can find and remove them —
+        # without it, a test that hardcodes/reuses a jti would collide
+        # with its own prior run's already-redeemed row on the NEXT run
+        # and get rejected as a false replay.
+        await conn.execute("DELETE FROM used_oauth_tickets WHERE jti LIKE 'test-%'")
         # Chat v2: reactions/mentions reference messages, so they go first;
         # conversation_participants references conversations, so it goes
         # before the orphaned-direct-conversation cleanup. Tests never touch
@@ -303,7 +326,7 @@ async def cleanup_test_season(pool):
         # everything that references leagues.id, cleaned up FIRST and
         # entirely before any owners/users deletion below — a test
         # league's own creator (leagues.created_by_user_id -> users.id)
-        # is very often also one of the owners.user_id-linked users
+        # is very often also one of the owner_users-linked users
         # cleaned up next, and deleting that user before its league is
         # gone is a real FK violation, not a hypothetical one (caught
         # directly: test_draft_router.py's commissioner-seeding helper
@@ -421,13 +444,15 @@ async def cleanup_test_season(pool):
             "DELETE FROM keeper_selections WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
-        # owners.user_id -> users.id, so capture which users are linked to
-        # test owners *before* deleting those owners, then delete the
-        # users afterward — deleting users first would violate the FK.
+        # owner_users.owner_id -> owners.owner_id, so capture which
+        # users are linked to test owners *before* deleting those
+        # owners, then delete the users afterward — deleting users
+        # first would violate the FK.
         linked_user_ids = [
             r["user_id"]
             for r in await conn.fetch(
-                "SELECT user_id FROM owners WHERE espn_member_id LIKE 'test-%' AND user_id IS NOT NULL"
+                "SELECT ou.user_id FROM owner_users ou JOIN owners o ON o.owner_id = ou.owner_id "
+                "WHERE o.espn_member_id LIKE 'test-%'"
             )
         ]
         # analytics_events.owner_id -> owners.owner_id (2026-09 admin
@@ -436,6 +461,16 @@ async def cleanup_test_season(pool):
         # referencing table cleaned up here.
         await conn.execute(
             "DELETE FROM analytics_events WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        # owner_users.owner_id -> owners.owner_id and
+        # co_owner_invites.owner_id -> owners.owner_id (2026-09-22
+        # co-owner invites) — both must go before the owners DELETE
+        # below or it FK-violates.
+        await conn.execute(
+            "DELETE FROM owner_users WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
+            "DELETE FROM co_owner_invites WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
         if linked_user_ids:
@@ -455,11 +490,11 @@ async def cleanup_test_season(pool):
         # user's email. Must run after the teams_by_season cleanup
         # above (which already removed any TEST_SEASON team, so nothing
         # still references these owners) and before the users DELETE
-        # below (owners.user_id -> users.id).
+        # below (owner_users.user_id -> users.id).
         test_signup_owner_ids = [
             r["owner_id"]
             for r in await conn.fetch(
-                "SELECT o.owner_id FROM owners o JOIN users u ON u.id = o.user_id WHERE u.email LIKE 'test-%'"
+                "SELECT ou.owner_id FROM owner_users ou JOIN users u ON u.id = ou.user_id WHERE u.email LIKE 'test-%'"
             )
         ]
         if test_signup_owner_ids:
@@ -501,6 +536,8 @@ async def cleanup_test_season(pool):
             await conn.execute(
                 "DELETE FROM analytics_events WHERE owner_id = ANY($1::int[])", test_signup_owner_ids
             )
+            await conn.execute("DELETE FROM owner_users WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
+            await conn.execute("DELETE FROM co_owner_invites WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
             await conn.execute("DELETE FROM owners WHERE owner_id = ANY($1::int[])", test_signup_owner_ids)
             # A direct conversation between a test_signup_owner_ids owner
             # and a plain _seed_owner() one is now fully orphaned (both
@@ -517,7 +554,7 @@ async def cleanup_test_season(pool):
         # DEFAULT_LEAGUE_ID membership directly (bypassing owners
         # entirely, e.g. to exercise a real per-league commissioner
         # check) without ever getting an owners row, so this can't rely
-        # on the owners.user_id-derived linked_user_ids cleanup above.
+        # on the owner_users-derived linked_user_ids cleanup above.
         # Must run before the users DELETE below or it FK-violates.
         await conn.execute(
             "DELETE FROM league_members WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test-%')"

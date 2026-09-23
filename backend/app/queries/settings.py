@@ -7,7 +7,7 @@ their own row through this module."""
 from app.config import DEFAULT_LEAGUE_ID
 
 
-async def get_settings(conn, owner_id: int, active_season: int, league_id: int = DEFAULT_LEAGUE_ID):
+async def get_settings(conn, owner_id: int, user_id: int, active_season: int, league_id: int = DEFAULT_LEAGUE_ID):
     # discord_username/email/has_google feed AccountSection.tsx's
     # "Connected Accounts" line — it used to unconditionally claim
     # "Signed in with Discord" regardless of the account's real auth
@@ -17,6 +17,13 @@ async def get_settings(conn, owner_id: int, active_season: int, league_id: int =
     # links onto an existing email account by matching email), so this
     # reports every real one rather than picking a single assumed
     # method.
+    #
+    # user_id (2026-09-22, co-owner invites): more than one real login
+    # can now share the same owner_id, so the `users` join is pinned to
+    # THIS specific caller's own account rather than "whichever user
+    # this owner_id happens to join to" — team/display fields are
+    # shared, but email/Discord/Google/password are per-person even
+    # when the team isn't.
     return await conn.fetchrow(
         """
         SELECT o.display_name, o.display_name_is_custom, o.chat_color, o.logo_url, u.discord_username, u.email,
@@ -25,11 +32,11 @@ async def get_settings(conn, owner_id: int, active_season: int, league_id: int =
             (u.password_hash IS NOT NULL) AS has_password,
             t.team_name, t.team_name_is_custom
         FROM owners o
-        LEFT JOIN users u ON o.user_id = u.id
-        LEFT JOIN teams_by_season t ON t.owner_id = o.owner_id AND t.season = $2 AND t.league_id = $3
+        LEFT JOIN users u ON u.id = $2
+        LEFT JOIN teams_by_season t ON t.owner_id = o.owner_id AND t.season = $3 AND t.league_id = $4
         WHERE o.owner_id = $1
         """,
-        owner_id, active_season, league_id,
+        owner_id, user_id, active_season, league_id,
     )
 
 

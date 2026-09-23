@@ -113,7 +113,11 @@ async def test_login_auto_enrolls_into_the_default_league_if_one_exists(pool, mo
         )
 
     async with pool.acquire() as conn:
-        user_id = await conn.fetchval("SELECT user_id FROM owners WHERE discord_user_id = $1", discord_id)
+        user_id = await conn.fetchval(
+            "SELECT ou.user_id FROM owners o JOIN owner_users ou ON ou.owner_id = o.owner_id "
+            "WHERE o.discord_user_id = $1",
+            discord_id,
+        )
         role = await conn.fetchval(
             "SELECT role FROM league_members WHERE league_id = $1 AND user_id = $2", league_id, user_id
         )
@@ -806,7 +810,11 @@ async def test_login_rejects_discord_only_account_with_no_password(pool, monkeyp
         )
 
     async with pool.acquire() as conn:
-        user_id = await conn.fetchval("SELECT user_id FROM owners WHERE discord_user_id = $1", discord_id)
+        user_id = await conn.fetchval(
+            "SELECT ou.user_id FROM owners o JOIN owner_users ou ON ou.owner_id = o.owner_id "
+            "WHERE o.discord_user_id = $1",
+            discord_id,
+        )
         await conn.execute("UPDATE users SET email = $1 WHERE id = $2", "test-discord-only@example.com", user_id)
 
     async with _client() as fresh_client:
@@ -922,9 +930,9 @@ async def test_delete_account_removes_a_bare_signup(pool, monkeypatch):
 
 
 async def test_delete_account_unlinks_a_claimed_owner_without_deleting_league_history(pool, monkeypatch):
-    """A claimed owner identity (owners.user_id) must survive account
-    deletion — that owner's teams, chat messages, and history are
-    shared with the rest of the league, not this login's to erase."""
+    """A claimed owner identity (an owner_users link) must survive
+    account deletion — that owner's teams, chat messages, and history
+    are shared with the rest of the league, not this login's to erase."""
     _set_discord_env(monkeypatch)
     discord_id = 900000101
     owner_id = await _seed_owner_with_discord_id(pool, discord_id, "Deletable Discord User")
@@ -951,9 +959,11 @@ async def test_delete_account_unlinks_a_claimed_owner_without_deleting_league_hi
 
     async with pool.acquire() as conn:
         user_row = await conn.fetchrow("SELECT id FROM users WHERE id = $1", user_id)
-        owner_row = await conn.fetchrow("SELECT owner_id, user_id, display_name FROM owners WHERE owner_id = $1", owner_id)
+        owner_row = await conn.fetchrow("SELECT owner_id, display_name FROM owners WHERE owner_id = $1", owner_id)
+        linked = await conn.fetchval("SELECT 1 FROM owner_users WHERE owner_id = $1", owner_id)
     assert user_row is None
     assert owner_row is not None
+    assert linked is None  # the deleted login's owner_users row is gone too
     assert owner_row["user_id"] is None
     assert owner_row["display_name"] == "Deletable Discord User"
 
