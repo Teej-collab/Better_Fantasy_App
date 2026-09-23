@@ -11,6 +11,7 @@ import {
   type OwnershipInfo,
   type RosterEntry,
 } from "@/lib/api";
+import { createCoOwnerInvite } from "@/lib/leaguesApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
@@ -368,7 +369,32 @@ export function MyTeamApp({
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [weekLoading, setWeekLoading] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const { openPlayerCard } = usePlayerCard();
+
+  async function handleInviteCoOwner() {
+    setInviting(true);
+    setInviteError(null);
+    try {
+      const code = await createCoOwnerInvite();
+      setInviteLink(`${window.location.origin}/join-co-owner?code=${code}`);
+    } catch (e) {
+      setInviteError(e instanceof Error ? e.message : "Couldn't generate an invite link");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  function copyInviteLink() {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink).then(() => {
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    });
+  }
 
   useEffect(() => {
     // team/page.tsx server-fetches the roster and passes it as
@@ -531,7 +557,33 @@ export function MyTeamApp({
     <div className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold">{team.team_name}</h1>
+        <button
+          onClick={handleInviteCoOwner}
+          disabled={inviting}
+          className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/[0.05]"
+        >
+          {inviting ? "Generating…" : "Invite Co-Owner"}
+        </button>
       </div>
+
+      {inviteError && <p className="text-xs text-red-500">{inviteError}</p>}
+      {inviteLink && (
+        <div className="flex flex-col gap-1 rounded-xl bg-black/[0.03] p-3 text-xs dark:bg-white/[0.05]">
+          <p className="text-black/60 dark:text-white/60">
+            Send this link to your friend — once they sign up and open it, they&apos;ll be able to manage this team
+            with you.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate font-mono">{inviteLink}</code>
+            <button
+              onClick={copyInviteLink}
+              className="shrink-0 rounded-full border border-black/10 px-2 py-0.5 text-[11px] hover:bg-black/[0.03] dark:border-white/10 dark:hover:bg-white/[0.05]"
+            >
+              {inviteCopied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ESPN-style "< Week N >" arrow navigation (2026-09) — the
           current/live week stays fully editable; any other week is a

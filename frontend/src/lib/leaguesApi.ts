@@ -151,6 +151,37 @@ export async function claimOwner(leagueId: number, ownerId: number): Promise<voi
   }
 }
 
+// Generates a single-use link a friend can redeem to become a
+// co-owner of the caller's own team — both people then act as the
+// exact same owner_id everywhere (chat, trades, lineup, push). Not
+// scoped to a specific league/team: resolve_owner_id on the backend
+// is already the caller's real identity, and redeeming grants access
+// to every league/team that owner has, not just one.
+export async function createCoOwnerInvite(): Promise<string> {
+  const { invite_code } = await post<{ invite_code: string }>("/leagues/co-owner-invite", {});
+  return invite_code;
+}
+
+// Same session-cookie-swap requirement as claimOwner above (owner_id
+// lives in the JWT, set once at login, never re-derived from the DB)
+// — without it the redeemer's own browser would still show "No team
+// found for this owner" until they signed out and back in.
+export async function redeemCoOwnerInvite(inviteCode: string): Promise<number> {
+  const { owner_id, token } = await post<{ owner_id: number; token: string }>(
+    "/leagues/co-owner-invites/redeem",
+    { invite_code: inviteCode },
+  );
+  const res = await fetch("/auth/complete/set-cookie", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    throw new Error("Joined, but couldn't refresh your session — please sign out and back in.");
+  }
+  return owner_id;
+}
+
 export async function getLeagueMembers(leagueId: number): Promise<Member[]> {
   const { members } = await get<{ members: Member[] }>(`/leagues/${leagueId}/members`);
   return members;

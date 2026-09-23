@@ -41,14 +41,14 @@ async def test_generate_and_redeem_co_owner_invite_links_same_owner_id(pool, mon
         await _sign_up(owner_client, "test-coowner-owner@example.com")
         league_id, team = await _create_league_and_team(owner_client, "Test League CoOwner", "Owner's Team")
 
-        invite_resp = await owner_client.post(f"/leagues/{league_id}/teams/{team['team_id']}/co-owner-invite")
+        invite_resp = await owner_client.post("/leagues/co-owner-invite")
         assert invite_resp.status_code == 200, invite_resp.text
         invite_code = invite_resp.json()["invite_code"]
         assert invite_code
 
     async with _client() as friend_client:
         await _sign_up(friend_client, "test-coowner-friend@example.com")
-        redeem_resp = await friend_client.post("/co-owner-invites/redeem", json={"invite_code": invite_code})
+        redeem_resp = await friend_client.post("/leagues/co-owner-invites/redeem", json={"invite_code": invite_code})
         assert redeem_resp.status_code == 200, redeem_resp.text
         body = redeem_resp.json()
         assert body["owner_id"] == team["owner_id"]
@@ -70,17 +70,17 @@ async def test_redeem_co_owner_invite_twice_fails(pool, monkeypatch):
     async with _client() as owner_client:
         await _sign_up(owner_client, "test-coowner-twice-owner@example.com")
         league_id, team = await _create_league_and_team(owner_client, "Test League CoOwner Twice", "Team")
-        invite_resp = await owner_client.post(f"/leagues/{league_id}/teams/{team['team_id']}/co-owner-invite")
+        invite_resp = await owner_client.post("/leagues/co-owner-invite")
         invite_code = invite_resp.json()["invite_code"]
 
     async with _client() as first_friend:
         await _sign_up(first_friend, "test-coowner-twice-first@example.com")
-        first_redeem = await first_friend.post("/co-owner-invites/redeem", json={"invite_code": invite_code})
+        first_redeem = await first_friend.post("/leagues/co-owner-invites/redeem", json={"invite_code": invite_code})
         assert first_redeem.status_code == 200, first_redeem.text
 
     async with _client() as second_friend:
         await _sign_up(second_friend, "test-coowner-twice-second@example.com")
-        second_redeem = await second_friend.post("/co-owner-invites/redeem", json={"invite_code": invite_code})
+        second_redeem = await second_friend.post("/leagues/co-owner-invites/redeem", json={"invite_code": invite_code})
     assert second_redeem.status_code == 409
 
 
@@ -90,7 +90,7 @@ async def test_redeem_co_owner_invite_rejects_a_caller_who_already_has_a_differe
     async with _client() as owner_client:
         await _sign_up(owner_client, "test-coowner-conflict-owner@example.com")
         league_id, team = await _create_league_and_team(owner_client, "Test League CoOwner Conflict", "Team")
-        invite_resp = await owner_client.post(f"/leagues/{league_id}/teams/{team['team_id']}/co-owner-invite")
+        invite_resp = await owner_client.post("/leagues/co-owner-invite")
         invite_code = invite_resp.json()["invite_code"]
 
     async with _client() as other_owner_client:
@@ -98,18 +98,16 @@ async def test_redeem_co_owner_invite_rejects_a_caller_who_already_has_a_differe
         # This account already claims its own owner identity via its own team.
         await _create_league_and_team(other_owner_client, "Test League CoOwner Conflict Other", "Other Team")
 
-        redeem_resp = await other_owner_client.post("/co-owner-invites/redeem", json={"invite_code": invite_code})
+        redeem_resp = await other_owner_client.post("/leagues/co-owner-invites/redeem", json={"invite_code": invite_code})
     assert redeem_resp.status_code == 409
 
 
-async def test_co_owner_invite_requires_owning_the_team(pool, monkeypatch):
+async def test_co_owner_invite_requires_having_a_team(pool, monkeypatch):
+    """A signed-up account with no owner identity yet (never created or
+    joined a team) has nothing to invite a co-owner onto."""
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
 
-    async with _client() as owner_client:
-        await _sign_up(owner_client, "test-coowner-notyours-owner@example.com")
-        league_id, team = await _create_league_and_team(owner_client, "Test League CoOwner NotYours", "Team")
-
     async with _client() as bystander_client:
-        await _sign_up(bystander_client, "test-coowner-notyours-bystander@example.com")
-        resp = await bystander_client.post(f"/leagues/{league_id}/teams/{team['team_id']}/co-owner-invite")
+        await _sign_up(bystander_client, "test-coowner-noteam-bystander@example.com")
+        resp = await bystander_client.post("/leagues/co-owner-invite")
     assert resp.status_code == 403

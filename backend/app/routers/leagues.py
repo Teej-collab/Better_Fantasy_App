@@ -242,31 +242,26 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
     return {"owner_id": body.owner_id, "claimed": True, "token": token}
 
 
-@router.post("/{league_id}/teams/{team_id}/co-owner-invite")
-async def create_co_owner_invite(league_id: int, team_id: int, request: Request):
+@router.post("/co-owner-invite")
+async def create_co_owner_invite(request: Request):
     """Lets a team's owner (or an existing co-owner — resolve_owner_id
     already resolves either of them to the exact same owner_id, since
     sharing that one identity is the whole point) generate a single-
     use link a friend can redeem to become a co-owner: both people
     then act as this exact owner_id everywhere (chat, trades, lineup,
     push — all already owner_id-keyed, unchanged by this feature).
-    `team_id`/`league_id` only confirm the caller actually owns this
-    team before handing out a link — the invite itself, once redeemed,
-    shares the whole owner identity (every league/team it has), not
-    just this one team, since there's no smaller unit to share (see
-    app/queries/leagues.py's create_co_owner_invite)."""
+    Not scoped to one league/team in the URL — resolve_owner_id is
+    already the caller's real security boundary here, and the invite
+    itself, once redeemed, shares the whole owner identity (every
+    league/team it has), not just one team, since there's no smaller
+    unit to share (see app/queries/leagues.py's create_co_owner_invite).
+    """
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
         if owner_id is None:
             raise HTTPException(status_code=403, detail="You don't have a team to invite a co-owner to")
-        owns_team = await conn.fetchval(
-            "SELECT 1 FROM teams_by_season WHERE id = $1 AND league_id = $2 AND owner_id = $3",
-            team_id, league_id, owner_id,
-        )
-        if not owns_team:
-            raise HTTPException(status_code=403, detail="That's not your team")
         invite_code = await league_queries.create_co_owner_invite(conn, owner_id, payload["user_id"])
     return {"invite_code": invite_code}
 

@@ -39,13 +39,21 @@ const FIELD_STYLE = { background: "var(--wl-bg)", border: "1px solid var(--wl-bo
  * account creation, landing on /leagues with that action already
  * expanded (leagues/page.tsx's #join-league / #create-league deep
  * links, the same ones WelcomeBackStage's post-login buttons use).
+ *
+ * `onSuccess` — optional override for what happens right after
+ * completeSignIn succeeds, in place of the default router.push/refresh
+ * above. For a caller with its own next step after auth (e.g.
+ * join-co-owner/page.tsx redeeming an invite code once a session
+ * actually exists) rather than landing on the dashboard.
  */
 export function SignInCard({
   onBack,
   variant = "signin",
+  onSuccess,
 }: {
   onBack?: () => void;
   variant?: "signin" | "join" | "create";
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const isIntentVariant = variant !== "signin";
@@ -71,8 +79,12 @@ export function SignInCard({
     try {
       const { token } = mode === "signup" ? await signup(email, password, displayName) : await login(email, password);
       await completeSignIn(token);
-      router.push(variant === "join" ? "/leagues#join-league" : variant === "create" ? "/leagues#create-league" : "/");
-      router.refresh();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        router.push(variant === "join" ? "/leagues#join-league" : variant === "create" ? "/leagues#create-league" : "/");
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
