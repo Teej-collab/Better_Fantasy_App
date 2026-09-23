@@ -1,11 +1,11 @@
 """
-Can-to-mouth contact detection. Tracks wrist-to-mouth distance per
-frame. Critically: losing face tracking AFTER contact has started is
-treated as continued contact, not a gap — a real chug involves tilting
-the head back, which naturally loses front-facing tracking. This was
-confirmed against a real test video (see project notes).
+Can-to-mouth contact detection. Measures how close either hand gets to
+the mouth, relative to face size, on every frame, then takes the
+longest run of contact frames as the chug (see contact.py). Losing face
+tracking mid-chug doesn't end the chug — a real chug involves tilting
+the head back, which naturally loses front-facing tracking.
 
-Ported verbatim from Fantasy_Helper's
+Originally ported from Fantasy_Helper's
 bot/chug_analyzer/pose_detection.py.
 """
 import subprocess
@@ -15,6 +15,8 @@ import os
 
 import cv2
 import mediapipe as mp
+
+from app.chug_analyzer.contact import CONTACT_RATIO, contact_ratio, longest_contact_episode
 
 
 def _log(msg: str) -> None:
@@ -33,27 +35,11 @@ def _log(msg: str) -> None:
     upload."""
     print(f"[chug_analyzer] {msg}", file=sys.stderr, flush=True)
 
-# 2026-09-21 fix, real report: the SAME failure mode recurred one week
-# after the 0.22 fix below — a real member's upload (Railway logs,
-# 2026-09-21 22:56 UTC) again showed the pipeline working correctly
-# (955/1292 frames with hand, 1049/1292 with face, 720/1292 with both —
-# detection itself is healthy) but min_distance_seen=0.24517, narrowly
-# missing the 0.22 line, same as the 0.2037 miss that motivated 0.22 in
-# the first place. Two real misses climbing upward (0.2037, then
-# 0.24517) confirms this isn't one-off noise: the wrist-to-mouth
-# distance in mediapipe's normalized (0-1 of image width/height) space
-# scales with how tightly a video is framed/zoomed, not just grip
-# style, so no single fixed absolute threshold generalizes across
-# videos shot at different distances from the camera. A real
-# scale-invariant fix (normalizing by a face-size reference like
-# interocular distance) would need actual landmark data to calibrate,
-# which isn't available from these aggregate log lines — so this is
-# still a threshold bump, not that fix. Raised to 0.27, comfortably
-# past the new 0.24517 data point, with a proportionally larger margin
-# than last time since the failure has now recurred. If this recurs
-# again, the normalized-distance approach is the real fix, not another
-# bump.
-CONTACT_THRESHOLD = 0.27  # distance below this = can touching mouth, tuned from real test data
+# Contact is decided by app/chug_analyzer/contact.py (nearest hand
+# point to mouth, relative to face width). The old absolute
+# wrist-to-mouth CONTACT_THRESHOLD (0.18 -> 0.22 -> 0.27 over three
+# real misses) is gone — see contact.py's docstring for why no fixed
+# value of it could work.
 
 # 2026-09-12 fix, real report: a member's own video (confirmed by them
 # to clearly show a chug) still came back "no chug detected" — every
@@ -92,6 +78,17 @@ def _normalize_orientation(video_path: str) -> tuple[str, str | None]:
         result = subprocess.run(
             [
                 "ffmpeg", "-y", "-i", video_path,
+                # 2026-09-23: iPhone video is often 10-bit HDR (HLG +
+                # Dolby Vision). Without an explicit pixel format, x264
+                # keeps 10-bit, and how that reaches cv2's 8-bit frames
+                # varies by ffmpeg/x264 build — production (Debian apt
+                # ffmpeg) and local (Homebrew) produced different-sized
+                # outputs from the same file. Forcing yuv420p makes the
+                # frames mediapipe sees the same everywhere. Capping the
+                # long side at 1280 also speeds up the re-encode and
+                # decode; contact is measured relative to face size, so
+                # resolution doesn't affect the threshold.
+                "-vf", "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-an",
                 normalized_path,
             ],
@@ -127,7 +124,7 @@ def detect_can_to_mouth(video_path: str):
     # landmarks at the moment they're closest together. Still a real
     # detection, not a rubber stamp: this only affects how confident
     # mediapipe must be that it found a hand/face at all, not the
-    # CONTACT_THRESHOLD distance check that decides whether a detected
+    # CONTACT_RATIO check that decides whether a detected
     # hand and face actually count as touching.
     hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.3, min_tracking_confidence=0.3)
     face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, min_detection_confidence=0.3, min_tracking_confidence=0.3)
@@ -147,24 +144,30 @@ def detect_can_to_mouth(video_path: str):
             _log(f"cv2.VideoCapture failed to open {analysis_path!r} (source={video_path!r})")
         fps = cap.get(cv2.CAP_PROP_FPS)
 
-        in_contact = False
-        contact_start_frame = None
-        contact_end_frame = None
-        wrist_positions_during_contact = []
+        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+        # Every frame is read, not just up to the first frame that
+        # looks out-of-contact: mid-chug the face drops out and the
+        # measurement is noisy, so the old "stop at the first far
+        # frame" loop caught only a slice of real chugs (1.6s of
+        # IMG_9992's ~9s). Episodes are built afterward instead.
+        contact_frames = []
+        wrist_by_frame = {}  # normalized wrist of the nearest hand, for jitter
         frame_number = 0
 
         # 2026-09-14: contact=False on a real member's video, even past
         # the rotation fix above, still gave no way to tell WHICH of
         # mediapipe's two independent detectors (hand, face) — or both —
         # never fired, versus both firing but never close enough. These
-        # three counters plus the closest distance actually observed
+        # three counters plus the closest ratio actually observed
         # (None if hand+face were simply never detected in the same
         # frame at all) turn the next "still doesn't work" report into
         # something diagnosable instead of another silent miss.
         frames_with_hand = 0
         frames_with_face = 0
         frames_with_both = 0
-        min_distance_seen = None
+        min_ratio_seen = None
 
         while True:
             ret, frame = cap.read()
@@ -182,31 +185,29 @@ def detect_can_to_mouth(video_path: str):
 
             if hand_results.multi_hand_landmarks and face_results.multi_face_landmarks:
                 frames_with_both += 1
-                wrist = hand_results.multi_hand_landmarks[0].landmark[0]
-                mouth = face_results.multi_face_landmarks[0].landmark[13]
-                distance = ((wrist.x - mouth.x) ** 2 + (wrist.y - mouth.y) ** 2) ** 0.5
-                if min_distance_seen is None or distance < min_distance_seen:
-                    min_distance_seen = distance
+                hands_px = [
+                    [(p.x * width, p.y * height) for p in hand.landmark]
+                    for hand in hand_results.multi_hand_landmarks
+                ]
+                face_px = [(p.x * width, p.y * height) for p in face_results.multi_face_landmarks[0].landmark]
+                ratio, hand_index = contact_ratio(hands_px, face_px)
+                if min_ratio_seen is None or ratio < min_ratio_seen:
+                    min_ratio_seen = ratio
 
-                if distance < CONTACT_THRESHOLD:
-                    if not in_contact:
-                        in_contact = True
-                        contact_start_frame = frame_number
-                    contact_end_frame = frame_number
-                    wrist_positions_during_contact.append((wrist.x, wrist.y))
-                else:
-                    if in_contact:
-                        contact_end_frame = frame_number
-                        break
+                if ratio < CONTACT_RATIO:
+                    contact_frames.append(frame_number)
+                    wrist = hand_results.multi_hand_landmarks[hand_index].landmark[0]
+                    wrist_by_frame[frame_number] = (wrist.x, wrist.y)
 
             frame_number += 1
 
         cap.release()
+        episode = longest_contact_episode(contact_frames, fps)
         _log(
-            f"frames_read={frame_number}, contact={contact_start_frame is not None}, fps={fps}, "
+            f"frames_read={frame_number}, contact={episode is not None}, episode={episode}, fps={fps}, "
             f"frames_with_hand={frames_with_hand}, frames_with_face={frames_with_face}, "
-            f"frames_with_both={frames_with_both}, min_distance_seen={min_distance_seen}, "
-            f"contact_threshold={CONTACT_THRESHOLD}"
+            f"frames_with_both={frames_with_both}, contact_frames={len(contact_frames)}, "
+            f"min_ratio_seen={min_ratio_seen}, contact_ratio={CONTACT_RATIO}"
         )
     finally:
         if temp_path is not None:
@@ -215,14 +216,26 @@ def detect_can_to_mouth(video_path: str):
             except OSError:
                 pass
 
-    if contact_start_frame is None:
+    if episode is None:
         return {"contact": False}
 
+    start_frame, end_frame = episode
+    # None between non-consecutive contact frames, so jitter never
+    # measures a jump across frames that had no reading.
+    wrist_positions = []
+    prev = None
+    for f in contact_frames:
+        if not start_frame <= f <= end_frame:
+            continue
+        if prev is not None and f != prev + 1:
+            wrist_positions.append(None)
+        wrist_positions.append(wrist_by_frame[f])
+        prev = f
     return {
         "contact": True,
-        "start_frame": contact_start_frame,
-        "end_frame": contact_end_frame,
-        "duration_seconds": round((contact_end_frame - contact_start_frame) / fps, 2),
-        "wrist_positions": wrist_positions_during_contact,
+        "start_frame": start_frame,
+        "end_frame": end_frame,
+        "duration_seconds": round((end_frame - start_frame) / fps, 2),
+        "wrist_positions": wrist_positions,
         "fps": fps,
     }

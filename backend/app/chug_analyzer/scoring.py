@@ -22,12 +22,18 @@ def compute_jitter(wrist_positions: list[tuple]) -> float:
     """
     Measures how much the wrist wobbled frame-to-frame during contact.
     Returns 0-1: near 0 = smooth steady motion, near 1 = jerky/shaky.
+
+    A None entry marks a break (frames with no measurement, e.g. the
+    face dropped out mid-chug) — no delta is taken across it, since the
+    hand moving over a multi-frame gap isn't wobble.
     """
     if len(wrist_positions) < 3:
         return 0.0
 
     frame_to_frame_deltas = []
     for i in range(1, len(wrist_positions)):
+        if wrist_positions[i - 1] is None or wrist_positions[i] is None:
+            continue
         x1, y1 = wrist_positions[i - 1]
         x2, y2 = wrist_positions[i]
         delta = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
