@@ -17,7 +17,9 @@ days=1)` from the drop, which let a player dropped early in the week
 clear mid-week — well before the real Wednesday run, letting them be
 scooped up with no claim required). Modeled here as next Wednesday
 3:00 AM ET, the start of ESPN's own stated processing window — see
-`_next_wednesday_clear_et` below. Also per that same source: "Game
+`_next_wednesday_clear_et` below. 2026-09-23: that Wednesday clear
+applies to game-locked free agents only; a player a team actually drops
+is back on this league's real 1-day waiver period (DROP_WAIVER_PERIOD). Also per that same source: "Game
 Lock: individual players lock at the start of their team's scheduled
 game and move to waiver status" — exactly what waivers.ensure_waiver_
 clock_if_game_locked (below) already does, and "Same-Day Add/Drop: ...
@@ -61,6 +63,7 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
+from app.domain.nfl_schedule import locked_pro_teams
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
 from app.domain.waiver_exceptions import (
     ClaimNotCancellableError,
@@ -77,6 +80,12 @@ from app.queries.roster_transactions import log_transaction
 _ET = ZoneInfo("America/New_York")
 _WAIVER_CLEAR_TIME_ET = time(3, 0)  # 3:00 AM ET — start of ESPN's stated 3-5am processing window
 _WAIVER_CLEAR_WEEKDAY = 2  # Mon=0 ... Wed=2
+# A player a team actually drops is on waivers for 1 day — this league's
+# real ESPN setting (commissioner's screenshot, 2026-09). Only
+# game-locked, never-dropped free agents wait for the Wednesday clear.
+# 2026-09-23: the 2026-09-22 change had applied the Wednesday clear to
+# drops too, stranding a player dropped Wednesday morning for a week.
+DROP_WAIVER_PERIOD = timedelta(days=1)
 
 
 def _next_wednesday_clear_et(now: datetime) -> datetime:
@@ -94,13 +103,53 @@ def _next_wednesday_clear_et(now: datetime) -> datetime:
     return candidate.astimezone(timezone.utc)
 
 
-async def start_waiver_clock(conn, season: int, league_id: int, sleeper_player_id: str) -> None:
+def waiver_locked_pro_teams(
+    current_week_games: list[dict], prior_week_games: list[dict] | None, now: datetime | None = None,
+) -> frozenset[str]:
+    """Every real NFL team whose free agents currently need a waiver
+    claim instead of an instant add — NOT the same set as the lineup
+    lock. The current week's kicked-off teams always count. Right after
+    the week rolls over (current week hasn't kicked off yet), the week
+    that just ended still counts too, but ONLY until the Wednesday-3am-ET
+    clear that follows its last kickoff — the same instant a real drop
+    during that week clears (`_next_wednesday_clear_et`).
+
+    2026-09-23 real report: the 2026-09-22 rollover fallback had no
+    such end, and was also fed into the lineup lock — so all Wednesday
+    every week-2 team counted as "game already started" (nobody could
+    move a single player for week 3) and every free agent stayed a
+    claim well past the Wednesday clear, with each add attempt starting
+    a fresh clock out to the FOLLOWING Wednesday."""
+    now = now or datetime.now(timezone.utc)
+    locked = locked_pro_teams(current_week_games, now)
+    if locked or not prior_week_games:
+        return locked
+    prior_locked = locked_pro_teams(prior_week_games, now)
+    kickoffs = []
+    for game in prior_week_games:
+        try:
+            kickoffs.append(datetime.fromisoformat(game["date"].replace("Z", "+00:00")))
+        except (KeyError, AttributeError, ValueError):
+            continue
+    if not prior_locked or not kickoffs:
+        return locked
+    if now >= _next_wednesday_clear_et(max(kickoffs)):
+        return locked
+    return prior_locked
+
+
+async def start_waiver_clock(
+    conn, season: int, league_id: int, sleeper_player_id: str, clears_at: datetime | None = None,
+) -> None:
     """Called whenever a player becomes a free agent via a real drop
     (app/domain/lineup_engine.py's drop_player, or the displaced player
     in add_free_agent's own drop-to-make-room branch) — upsert rather
     than insert, since the same player can cycle on/off waivers
-    multiple times in a season."""
-    clears_at = _next_wednesday_clear_et(datetime.now(timezone.utc))
+    multiple times in a season. A real drop defaults to this league's
+    DROP_WAIVER_PERIOD; ensure_waiver_clock_if_game_locked passes the
+    Wednesday-3am-ET clear instead."""
+    if clears_at is None:
+        clears_at = datetime.now(timezone.utc) + DROP_WAIVER_PERIOD
     await conn.execute(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
@@ -172,7 +221,10 @@ async def ensure_waiver_clock_if_game_locked(
         return
     if await is_on_waivers(conn, season, league_id, sleeper_player_id):
         return
-    await start_waiver_clock(conn, season, league_id, sleeper_player_id)
+    await start_waiver_clock(
+        conn, season, league_id, sleeper_player_id,
+        clears_at=_next_wednesday_clear_et(datetime.now(timezone.utc)),
+    )
 
 
 async def force_clear_waiver(conn, season: int, league_id: int, sleeper_player_id: str, reason: str) -> None:

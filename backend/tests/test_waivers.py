@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain import waivers
@@ -10,8 +11,9 @@ from app.domain.waiver_exceptions import (
     DuplicateClaimError,
     PlayerNotOnWaiversError,
 )
-from app.routers.commissioner_lineup import _locked_pro_teams_for_current_week as commissioner_locked_pro_teams
+from app.routers.commissioner_lineup import _waiver_locked_pro_teams as commissioner_waiver_locked_pro_teams
 from app.routers.me import _locked_pro_teams_for_current_week as me_locked_pro_teams
+from app.routers.me import _waiver_locked_pro_teams as me_waiver_locked_pro_teams
 from tests.conftest import TEST_SEASON
 
 
@@ -94,23 +96,38 @@ async def test_start_waiver_clock_and_is_on_waivers(pool):
         assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player) is False
 
 
-async def test_start_waiver_clock_clears_at_next_wednesday_3am_et(pool):
+async def test_dropped_player_waiver_clock_is_one_day(pool):
+    """This league's real ESPN setting: a player a team actually drops
+    is on waivers for 1 day. The 2026-09-22 change had applied the
+    Wednesday-3am-ET clear to drops too, so every player dropped in
+    Wednesday morning's own waiver run was stranded for a full week."""
+    import datetime as dt
+
+    player = await _seed_player(pool, "drop-one-day")
+    before = dt.datetime.now(dt.timezone.utc)
+    async with pool.acquire() as conn:
+        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        clears_at = (await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player]))[player]
+    after = dt.datetime.now(dt.timezone.utc)
+    assert before + dt.timedelta(days=1) <= clears_at <= after + dt.timedelta(days=1)
+
+
+async def test_game_locked_waiver_clock_clears_at_next_wednesday_3am_et(pool):
     """Real 2026-09-22 correction, quoting ESPN's own rules text:
     "Waivers process daily between 3 a.m. and 5 a.m. ET, with the main
-    weekly run happening Tuesday night into Wednesday morning" — this
-    league's waivers clear everyone at the SAME fixed weekly instant
-    (3:00 AM ET every Wednesday), not a rolling N-hours-after-drop
-    timer. A player dropped Tuesday evening and one dropped Thursday
-    morning must both land on the SAME Wednesday-3am-ET clears_at, not
-    two different times offset from when each was individually
-    dropped."""
+    weekly run happening Tuesday night into Wednesday morning" — a
+    free agent locked by their game kicking off clears at the SAME
+    fixed weekly instant (3:00 AM ET every Wednesday), not a rolling
+    N-hours-after-kickoff timer."""
     import datetime as dt
     import zoneinfo
 
     et = zoneinfo.ZoneInfo("America/New_York")
     player = await _seed_player(pool, "wed-clear")
     async with pool.acquire() as conn:
-        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        await waivers.ensure_waiver_clock_if_game_locked(
+            conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, frozenset({"KC"})
+        )
         clears_at = (await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player]))[player]
 
     clears_at_et = clears_at.astimezone(et)
@@ -392,35 +409,82 @@ async def _seed_current_week(pool, week):
         )
 
 
-async def test_locked_pro_teams_falls_back_to_prior_week_right_after_rollover(pool, monkeypatch):
-    """Real 2026-09-22 bug: scheduler.py's week-settlement job advances
-    league_state.current_week the instant a week's games all go Final —
-    on purpose, so awards/recap can post right after Monday Night
-    Football. But this lookup used to trust that same cached week as
-    its only signal for "which real NFL games have already kicked
-    off" — so the moment the week rolled over, it started reading the
-    brand-new week's schedule (nothing kicked off yet) and returned an
-    empty locked set, silently reopening every player from the week
-    that just ended to instant, waiver-free adds. It must keep
-    reporting the week-that-just-ended's locked teams until the new
-    week's own games actually start."""
+async def test_lineup_lock_never_falls_back_to_prior_week(pool, monkeypatch):
+    """Real 2026-09-23 bug: the week-rollover fallback (meant only for
+    waiver gating) also fed the lineup lock, so every team that played
+    in the week that just ended read as "game already started" and
+    nobody could move a single player for the new week."""
     await _seed_current_week(pool, week=6)
+
+    async def fake_week_scoreboard(week, year, season_type=2):
+        assert week == 6, "the lineup lock must only ever read the current week"
+        return [{"date": "2099-01-01T17:00:00Z", "home_team": "SF", "away_team": "SEA"}]
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
+
+    async with pool.acquire() as conn:
+        assert await me_locked_pro_teams(conn, TEST_SEASON) == frozenset()
+
+
+async def test_waiver_lock_falls_back_to_prior_week_until_its_wednesday_clear(pool, monkeypatch):
+    """Real 2026-09-22 bug: league_state.current_week advances the
+    instant a week's games all go Final, so right after Monday Night
+    Football the new week's schedule has nothing kicked off — players
+    from the week that just ended must stay waiver-gated until their
+    own Wednesday-3am-ET clear."""
+    await _seed_current_week(pool, week=6)
+    just_kicked_off = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 
     async def fake_week_scoreboard(week, year, season_type=2):
         if week == 6:  # new week hasn't kicked off yet
             return [{"date": "2099-01-01T17:00:00Z", "home_team": "SF", "away_team": "SEA"}]
         assert week == 5  # the week that just settled
-        return [{"date": "2020-01-01T17:00:00Z", "home_team": "KC", "away_team": "BUF"}]
+        return [{"date": just_kicked_off, "home_team": "KC", "away_team": "BUF"}]
 
     monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
     monkeypatch.setattr("app.routers.commissioner_lineup.get_week_scoreboard", fake_week_scoreboard)
 
     async with pool.acquire() as conn:
-        assert await me_locked_pro_teams(conn, TEST_SEASON) == frozenset({"KC", "BUF"})
-        assert await commissioner_locked_pro_teams(conn, TEST_SEASON) == frozenset({"KC", "BUF"})
+        assert await me_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset({"KC", "BUF"})
+        assert await commissioner_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset({"KC", "BUF"})
 
 
-async def test_locked_pro_teams_prefers_current_week_once_its_own_games_start(pool, monkeypatch):
+async def test_waiver_lock_prior_week_fallback_ends_at_wednesday_clear(pool, monkeypatch):
+    await _seed_current_week(pool, week=6)
+
+    async def fake_week_scoreboard(week, year, season_type=2):
+        if week == 6:
+            return [{"date": "2099-01-01T17:00:00Z", "home_team": "SF", "away_team": "SEA"}]
+        return [{"date": "2020-01-01T17:00:00Z", "home_team": "KC", "away_team": "BUF"}]  # long since cleared
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
+
+    async with pool.acquire() as conn:
+        assert await me_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset()
+
+
+def test_waiver_locked_pro_teams_real_week_2_to_3_rollover():
+    # Week 2's last game: MNF, Mon 2026-09-21 8:15pm ET. Week 3 opens Thu 2026-09-24.
+    prior = [
+        {"date": "2026-09-20T17:00:00Z", "home_team": "KC", "away_team": "BUF"},
+        {"date": "2026-09-22T00:15:00Z", "home_team": "DAL", "away_team": "NYG"},
+    ]
+    current = [{"date": "2026-09-25T00:15:00Z", "home_team": "SF", "away_team": "SEA"}]
+    tuesday_night = datetime(2026, 9, 23, 3, 0, tzinfo=timezone.utc)  # Tue 11pm ET
+    just_before_clear = datetime(2026, 9, 23, 6, 59, tzinfo=timezone.utc)  # Wed 2:59am ET
+    at_clear = datetime(2026, 9, 23, 7, 0, tzinfo=timezone.utc)  # Wed 3:00am ET
+    wednesday_morning = datetime(2026, 9, 23, 15, 0, tzinfo=timezone.utc)
+    thursday_kickoff = datetime(2026, 9, 25, 0, 20, tzinfo=timezone.utc)
+
+    all_prior = frozenset({"KC", "BUF", "DAL", "NYG"})
+    assert waivers.waiver_locked_pro_teams(current, prior, tuesday_night) == all_prior
+    assert waivers.waiver_locked_pro_teams(current, prior, just_before_clear) == all_prior
+    assert waivers.waiver_locked_pro_teams(current, prior, at_clear) == frozenset()
+    assert waivers.waiver_locked_pro_teams(current, prior, wednesday_morning) == frozenset()
+    assert waivers.waiver_locked_pro_teams(current, prior, thursday_kickoff) == frozenset({"SF", "SEA"})
+
+
+async def test_waiver_lock_prefers_current_week_once_its_own_games_start(pool, monkeypatch):
     await _seed_current_week(pool, week=6)
 
     async def fake_week_scoreboard(week, year, season_type=2):
@@ -431,10 +495,10 @@ async def test_locked_pro_teams_prefers_current_week_once_its_own_games_start(po
     monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
 
     async with pool.acquire() as conn:
-        assert await me_locked_pro_teams(conn, TEST_SEASON) == frozenset({"SF", "SEA"})
+        assert await me_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset({"SF", "SEA"})
 
 
-async def test_locked_pro_teams_does_not_fall_back_before_week_one(pool, monkeypatch):
+async def test_waiver_lock_does_not_fall_back_before_week_one(pool, monkeypatch):
     await _seed_current_week(pool, week=1)
 
     async def fake_week_scoreboard(week, year, season_type=2):
@@ -444,7 +508,7 @@ async def test_locked_pro_teams_does_not_fall_back_before_week_one(pool, monkeyp
     monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
 
     async with pool.acquire() as conn:
-        assert await me_locked_pro_teams(conn, TEST_SEASON) == frozenset()
+        assert await me_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset()
 
 
 async def test_submit_claim_allowed_on_locked_never_dropped_player(pool):

@@ -41,19 +41,17 @@ from app.queries import league as league_queries
 router = APIRouter(prefix="/leagues", tags=["commissioner-roster"])
 
 
-async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozenset[str]:
+async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
     """Same best-effort, fail-open lookup as app/routers/me.py's own
     helper of the same name (kept as a separate copy rather than a
     cross-router import, since these are two independently-evolving
-    routers) — every real NFL team whose game has already kicked off
-    in the league's current fantasy week.
-
-    2026-09-22 fix (mirrors app/routers/me.py's own copy): falls back
-    to the week that just ended when the newly-rolled-over current
-    week's own games haven't kicked off yet, so a player from the
-    week that just finished doesn't become instantly, waiver-free
-    addable the moment scheduler.py's week-settlement job advances
-    league_state.current_week right after Monday Night Football."""
+    routers) — the free-agent waiver-lock trigger for force-add, plus the
+    2026-09-22 rollover fallback: league_state.current_week advances the
+    instant a week's games go Final, so the week that just ended still
+    counts until its own Wednesday-3am-ET waiver clear (see
+    waivers.waiver_locked_pro_teams). 2026-09-23: that fallback used to
+    live in the lineup lock too, with no end — blocking every week-3
+    lineup move and keeping every free agent a claim past the clear."""
     current_week = await league_queries.get_cached_current_week(conn, active_season)
     if current_week is None:
         return frozenset()
@@ -61,14 +59,13 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
         games = await get_week_scoreboard(current_week, active_season)
     except Exception:
         return frozenset()
-    locked = locked_pro_teams(games)
-    if locked or current_week <= 1:
-        return locked
-    try:
-        prior_games = await get_week_scoreboard(current_week - 1, active_season)
-    except Exception:
-        return locked
-    return locked_pro_teams(prior_games)
+    prior_games = None
+    if current_week > 1 and not locked_pro_teams(games):
+        try:
+            prior_games = await get_week_scoreboard(current_week - 1, active_season)
+        except Exception:
+            prior_games = None
+    return waivers.waiver_locked_pro_teams(games, prior_games)
 
 
 def _require_session(request: Request) -> dict:
@@ -206,7 +203,7 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
                 # entirely under override_waivers, same as the check
                 # itself: that flag means "bypass waivers outright,"
                 # kickoff-based or not.
-                locked = await _locked_pro_teams_for_current_week(conn, active_season)
+                locked = await _waiver_locked_pro_teams(conn, active_season)
                 await waivers.ensure_waiver_clock_if_game_locked(
                     conn, active_season, league_id, body.sleeper_player_id, locked
                 )

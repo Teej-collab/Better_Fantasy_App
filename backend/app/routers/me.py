@@ -130,27 +130,17 @@ def _map_waiver_error(e: Exception) -> HTTPException:
 
 
 async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozenset[str]:
-    """The server-side half of the per-player lineup lock AND the
-    free-agent waiver-lock trigger (waivers.ensure_waiver_clock_if_
-    game_locked): every real NFL team whose game has already kicked
-    off in the league's current fantasy week. Best-effort, same
-    disclosed trade-off as my_team's own scoreboard fetch above — a
-    flaky/unreachable ESPN scoreboard fails OPEN (no lock enforced)
-    rather than blocking every lineup edit in the app, since this is a
-    fairness safeguard, not the primary gate on roster integrity.
-
-    2026-09-22 fix, real report: league_state.current_week is advanced
-    by scheduler.py's week-settlement job the INSTANT a week's games
-    all go Final — deliberately ahead of real time, so awards/recap
-    can post right after Monday Night Football. But that same cached
-    week was also this function's only input, so the moment it rolled
-    over, this started reading the NEW week's schedule (nothing
-    kicked off yet) and returned an empty locked set — silently
-    letting anyone instant-add a player from the week that JUST
-    finished, with zero waiver clock, right through the rollover. If
-    the current week's own games haven't started yet, fall back to the
-    week that just ended so those players stay waiver-gated until this
-    new week's real games actually kick off."""
+    """The server-side half of the per-player lineup lock: every real
+    NFL team whose game has already kicked off in the league's current
+    fantasy week. Best-effort, same disclosed trade-off as my_team's
+    own scoreboard fetch above — a flaky/unreachable ESPN scoreboard
+    fails OPEN (no lock enforced) rather than blocking every lineup
+    edit in the app, since this is a fairness safeguard, not the
+    primary gate on roster integrity. Free-agent waiver locking uses
+    _waiver_locked_pro_teams below instead, which also covers the week
+    that just ended — never feed that into the lineup lock, or every
+    team from last week reads as "game already started" for the new
+    week's lineups (real 2026-09-23 bug)."""
     current_week = await league_queries.get_cached_current_week(conn, active_season)
     if current_week is None:
         return frozenset()
@@ -158,14 +148,33 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
         games = await get_week_scoreboard(current_week, active_season)
     except Exception:
         return frozenset()
-    locked = locked_pro_teams(games)
-    if locked or current_week <= 1:
-        return locked
+    return locked_pro_teams(games)
+
+
+async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
+    """The free-agent waiver-lock trigger (waivers.ensure_waiver_clock_
+    if_game_locked and the free-agent list's game_locked flag) — NOT
+    the lineup lock above. Same best-effort, fail-open lookup, plus the
+    2026-09-22 rollover fallback: league_state.current_week advances the
+    instant a week's games go Final, so the week that just ended still
+    counts until its own Wednesday-3am-ET waiver clear (see
+    waivers.waiver_locked_pro_teams). 2026-09-23: that fallback used to
+    live in the lineup lock too, with no end — blocking every week-3
+    lineup move and keeping every free agent a claim past the clear."""
+    current_week = await league_queries.get_cached_current_week(conn, active_season)
+    if current_week is None:
+        return frozenset()
     try:
-        prior_games = await get_week_scoreboard(current_week - 1, active_season)
+        games = await get_week_scoreboard(current_week, active_season)
     except Exception:
-        return locked
-    return locked_pro_teams(prior_games)
+        return frozenset()
+    prior_games = None
+    if current_week > 1 and not locked_pro_teams(games):
+        try:
+            prior_games = await get_week_scoreboard(current_week - 1, active_season)
+        except Exception:
+            prior_games = None
+    return waivers.waiver_locked_pro_teams(games, prior_games)
 
 
 def _roster_entry_dict(entry: dict) -> dict:
@@ -577,7 +586,7 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
             # this is the first time anyone's touched them since
             # kickoff; a no-op if they're already on waivers for a
             # real reason (a genuine recent drop).
-            locked = await _locked_pro_teams_for_current_week(conn, active_season)
+            locked = await _waiver_locked_pro_teams(conn, active_season)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.sleeper_player_id, locked
             )
@@ -696,7 +705,7 @@ async def list_free_agents(request: Request, position: str | None = None, search
         # happens on an actual add/claim attempt in
         # ensure_waiver_clock_if_game_locked), so this is a synthetic,
         # display-only flag derived straight from locked_pro_teams.
-        locked_pro_teams = await _locked_pro_teams_for_current_week(conn, active_season)
+        locked_pro_teams = await _waiver_locked_pro_teams(conn, active_season)
         for row in rows:
             clears_at = clears_at_by_player.get(row["sleeper_player_id"])
             row["waiver_clears_at"] = clears_at.isoformat() if clears_at else None
@@ -777,7 +786,7 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
             # how it tells "really on waivers" from "just a normal free
             # agent"), so this has to run before it, same as the
             # free-agent-add route above.
-            locked = await _locked_pro_teams_for_current_week(conn, active_season)
+            locked = await _waiver_locked_pro_teams(conn, active_season)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.add_sleeper_player_id, locked
             )
