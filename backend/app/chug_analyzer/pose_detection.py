@@ -16,7 +16,7 @@ import os
 import cv2
 import mediapipe as mp
 
-from app.chug_analyzer.contact import CONTACT_RATIO, contact_ratio, longest_contact_episode
+from app.chug_analyzer.contact import CONTACT_RATIO, contact_ratio, longest_contact_episode, wrist_relative_to_mouth
 
 
 def _log(msg: str) -> None:
@@ -153,7 +153,9 @@ def detect_can_to_mouth(video_path: str):
         # frame" loop caught only a slice of real chugs (1.6s of
         # IMG_9992's ~9s). Episodes are built afterward instead.
         contact_frames = []
-        wrist_by_frame = {}  # normalized wrist of the nearest hand, for jitter
+        # Nearest hand's wrist relative to the mouth (face widths) and
+        # which hand it is, per contact frame — for smoothness.
+        wrist_by_frame = {}
         frame_number = 0
 
         # 2026-09-14: contact=False on a real member's video, even past
@@ -196,8 +198,10 @@ def detect_can_to_mouth(video_path: str):
 
                 if ratio < CONTACT_RATIO:
                     contact_frames.append(frame_number)
-                    wrist = hand_results.multi_hand_landmarks[hand_index].landmark[0]
-                    wrist_by_frame[frame_number] = (wrist.x, wrist.y)
+                    handedness = hand_results.multi_handedness[hand_index].classification[0].label
+                    wrist_by_frame[frame_number] = (
+                        wrist_relative_to_mouth(hands_px[hand_index], face_px), handedness,
+                    )
 
             frame_number += 1
 
@@ -220,22 +224,16 @@ def detect_can_to_mouth(video_path: str):
         return {"contact": False}
 
     start_frame, end_frame = episode
-    # None between non-consecutive contact frames, so jitter never
-    # measures a jump across frames that had no reading.
-    wrist_positions = []
-    prev = None
-    for f in contact_frames:
-        if not start_frame <= f <= end_frame:
-            continue
-        if prev is not None and f != prev + 1:
-            wrist_positions.append(None)
-        wrist_positions.append(wrist_by_frame[f])
-        prev = f
+    wrist_track = [
+        {"frame": f, "rel": wrist_by_frame[f][0], "hand": wrist_by_frame[f][1]}
+        for f in contact_frames
+        if start_frame <= f <= end_frame
+    ]
     return {
         "contact": True,
         "start_frame": start_frame,
         "end_frame": end_frame,
         "duration_seconds": round((end_frame - start_frame) / fps, 2),
-        "wrist_positions": wrist_positions,
+        "wrist_track": wrist_track,
         "fps": fps,
     }

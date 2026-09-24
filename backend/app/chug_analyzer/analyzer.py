@@ -4,7 +4,7 @@ audio/hype scoring. Ported verbatim from Fantasy_Helper's
 bot/chug_analyzer/analyzer.py.
 """
 from app.chug_analyzer.pose_detection import detect_can_to_mouth
-from app.chug_analyzer.scoring import score_chug_time, compute_jitter, score_smoothness, score_hype
+from app.chug_analyzer.scoring import compute_wobble, score_chug_time, score_hype, score_smoothness
 from app.chug_analyzer.audio_analysis import extract_hype_energy
 
 
@@ -15,8 +15,8 @@ def analyze_chug_video(video_path: str) -> dict:
         return {"can_to_mouth": False, "final": 0.0}
 
     time_score = score_chug_time(detection["duration_seconds"])
-    jitter = compute_jitter(detection["wrist_positions"])
-    smoothness_score = score_smoothness(jitter)
+    wobble = compute_wobble(detection["wrist_track"])
+    smoothness_score = score_smoothness(wobble)
 
     chug_end_seconds = detection["end_frame"] / detection["fps"]
     audio_energy = extract_hype_energy(video_path, chug_end_seconds)
@@ -30,7 +30,9 @@ def analyze_chug_video(video_path: str) -> dict:
         "can_to_mouth": True,
         "duration_seconds": detection["duration_seconds"],
         "time_score": time_score,
-        "jitter": round(jitter, 3),
+        # Median wrist movement per frame in face widths (None if too
+        # few frames to measure) — see scoring.compute_wobble.
+        "wobble": round(wobble, 4) if wobble is not None else None,
         "smoothness_score": round(smoothness_score, 2),
         "audio_energy": audio_energy,
         "hype_score": round(hype_score, 2),

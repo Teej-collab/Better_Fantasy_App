@@ -60,6 +60,17 @@ def contact_ratio(hands_px: list[list[tuple[float, float]]], face_px: list[tuple
     return best / face_width, best_hand
 
 
+def wrist_relative_to_mouth(hand_px: list[tuple[float, float]], face_px: list[tuple[float, float]]) -> tuple[float, float]:
+    """Wrist (hand landmark 0) position relative to the mouth, in face
+    widths — for smoothness (app/chug_analyzer/scoring.py). Relative to
+    the face rather than the frame, so a selfie camera moving in the
+    other hand doesn't read as a shaky drinking hand."""
+    mouth = face_px[MOUTH_LANDMARK]
+    face_width = math.dist(face_px[FACE_LEFT_LANDMARK], face_px[FACE_RIGHT_LANDMARK]) or 1.0
+    wrist = hand_px[0]
+    return ((wrist[0] - mouth[0]) / face_width, (wrist[1] - mouth[1]) / face_width)
+
+
 def longest_contact_episode(contact_frames: list[int], fps: float) -> tuple[int, int] | None:
     """Groups contact frames into episodes (splitting on gaps longer
     than MAX_GAP_SECONDS) and returns (start_frame, end_frame) of the
