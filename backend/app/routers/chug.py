@@ -30,6 +30,7 @@ from app.auth.session import decode_session_token, get_session_token, decode_tic
 from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
+from app.domain import chug_roast
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_standing import (
     clear_fine,
@@ -112,6 +113,7 @@ async def chug_feed(
                 "final_score": r["final_score"],
                 "created_at": r["created_at"].isoformat(),
                 "has_video": r["has_video"],
+                "roast": r["roast"],
             }
             for r in rows
         ]
@@ -310,6 +312,31 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
                 video_key is not None,
             )
 
+            # Facts for the AI write-up (app/domain/chug_roast.py) — read
+            # here while the connection's open; the model call itself
+            # happens below, after it's released. Best-effort throughout.
+            roast_facts = None
+            try:
+                fined_owed = await conn.fetchval(
+                    "SELECT fined_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+                    active_season, owner_id, league_id,
+                ) or 0
+                roast_facts = await chug_roast.gather_facts(
+                    conn, chug_id=row["id"], owner_name=owner_row["display_name"], discord_user_id=discord_user_id,
+                    season=active_season, league_id=league_id, result=result, owed_before=owed_before,
+                    owed_after=owed_after, fined_owed=fined_owed, posted_by_commissioner=on_behalf_of is not None,
+                )
+            except Exception:
+                logger.warning("Gathering chug roast facts failed (chug %s)", row["id"], exc_info=True)
+
+        roast = await chug_roast.write_roast(roast_facts) if roast_facts else None
+        if roast:
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute("UPDATE chug_scores SET roast = $1 WHERE id = $2", roast, row["id"])
+            except Exception:
+                logger.warning("Saving chug roast failed (chug %s)", row["id"], exc_info=True)
+
         return {
             "can_to_mouth": True,
             "id": row["id"],
@@ -325,6 +352,9 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
             # say which, instead of guessing.
             "chugs_owed_before": owed_before,
             "chugs_owed_after": owed_after,
+            # Short AI trash-talk take on this chug, or null (no API
+            # key, generation failed or timed out).
+            "roast": roast,
         }
     finally:
         # The upload above reads temp_path via a subprocess call and

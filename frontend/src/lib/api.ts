@@ -1156,6 +1156,9 @@ export type ChugFeedEntry = {
   final_score: number;
   created_at: string;
   has_video: boolean;
+  // Short AI trash-talk take on this chug (backend app/domain/
+  // chug_roast.py) — null for older chugs or if generation failed.
+  roast: string | null;
 };
 
 // Individual graded chugs, newest first — distinct from

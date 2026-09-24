@@ -70,6 +70,9 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
         </span>
         <span className="shrink-0 tabular-nums text-black/70 dark:text-white/70">{chug.final_score}/10</span>
       </div>
+      {chug.roast && (
+        <p className="-mt-1.5 px-4 pb-3 text-[13px] leading-snug text-black/60 dark:text-white/60">{chug.roast}</p>
+      )}
 
       {open && (
         <div className="px-4 pb-3">

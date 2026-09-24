@@ -66,7 +66,7 @@ async def list_recent_chugs(conn, league_id: int, season: int | None = None, lim
         return await conn.fetch(
             """
             SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
-                   cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video
+                   cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video, cs.roast
             FROM chug_scores cs
             JOIN owners ON owners.discord_user_id = cs.discord_user_id
             WHERE cs.league_id = $1 AND cs.season = $2
@@ -78,7 +78,7 @@ async def list_recent_chugs(conn, league_id: int, season: int | None = None, lim
     return await conn.fetch(
         """
         SELECT cs.id, owners.owner_id, owners.display_name AS owner_name, cs.week,
-               cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video
+               cs.final_score, cs.created_at, (cs.video_url IS NOT NULL) AS has_video, cs.roast
         FROM chug_scores cs
         JOIN owners ON owners.discord_user_id = cs.discord_user_id
         WHERE cs.league_id = $1

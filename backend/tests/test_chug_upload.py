@@ -7,6 +7,7 @@ in CI" discipline as the ESPN write tests.
 """
 import os
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token, create_ticket_token
@@ -15,6 +16,17 @@ from tests.conftest import TEST_SEASON, make_safe_session_user_id_for_owner
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _DISCORD_USER_ID = 424242
+
+
+@pytest.fixture(autouse=True)
+def _no_real_chug_roast(monkeypatch):
+    """A successful upload now asks Claude for a short write-up (app/
+    domain/chug_roast.py). Never make a real, billed API call from the
+    test suite — the write-up itself is tested in test_chug_roast.py."""
+    async def _no_roast(facts):
+        return None
+
+    monkeypatch.setattr("app.domain.chug_roast.write_roast", _no_roast)
 
 
 def _client():

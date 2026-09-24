@@ -17,6 +17,8 @@ type UploadResult =
       created_at: string;
       chugs_owed_before: number;
       chugs_owed_after: number;
+      // Short AI trash-talk take — null if generation failed or timed out.
+      roast: string | null;
     };
 
 // Still fetches the backend directly (not through the /api/backend
@@ -165,6 +167,7 @@ export function ChugUpload({
               ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
               : "Nothing owed — logged as a bonus chug for the lifetime count."}
           </span>
+          {result.roast && <p className="mt-1 text-sm leading-snug text-black/70 dark:text-white/70">{result.roast}</p>}
         </div>
       )}
     </>

@@ -3,6 +3,7 @@ didn't get credited: waiving one week's MNF doubling
 (POST /chug/standing/{id}/waive-doubling) and posting a chug video on
 another owner's behalf (POST /chug/upload?owner_id=...). The upload
 tests mock run_chug_analysis, same as test_chug_upload.py."""
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
@@ -15,6 +16,17 @@ from tests.conftest import TEST_SEASON, make_safe_session_user_id_for_owner
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 _DISCORD_USER_ID = 434343
+
+
+@pytest.fixture(autouse=True)
+def _no_real_chug_roast(monkeypatch):
+    """A successful upload now asks Claude for a short write-up (app/
+    domain/chug_roast.py). Never make a real, billed API call from the
+    test suite — the write-up itself is tested in test_chug_roast.py."""
+    async def _no_roast(facts):
+        return None
+
+    monkeypatch.setattr("app.domain.chug_roast.write_roast", _no_roast)
 
 
 def _client():
