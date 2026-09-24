@@ -65,7 +65,7 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   faster than that would just recompute identical numbers.
 - Sleeper player sync (ENABLE_SLEEPER_PLAYER_SYNC_SCHEDULER): refreshes
   the `players` table from Sleeper's free player API once a day, at a
-  fixed 4:00 AM Pacific (a cron time, so deploys don't reset it) —
+  fixed 7:00 PM Central (a cron time, so deploys don't reset it) —
   Sleeper's own docs require at most one pull a day, so this interval
   is a hard ceiling, not a tuning knob (see app/providers/sleeper/
   client.py). There's also a manual POST /admin/players/sync trigger
@@ -842,11 +842,16 @@ def start_scheduler():
         # it back another day — with several deploys a day it almost
         # never ran, leaving injury statuses days stale (real report,
         # 2026-09-23: a player upgraded Out -> Doubtful still read Out).
+        # 7 PM Central (commissioner's choice, 2026-09-23) catches the
+        # day's practice reports and IR placements the same evening,
+        # instead of the next morning. Still once a day — Sleeper's
+        # own limit for this endpoint (app/providers/sleeper/client.py).
+        # America/Chicago follows CST/CDT automatically.
         _scheduler.add_job(
-            _run_sleeper_player_sync_job, "cron", hour=4, minute=0,
-            timezone="America/Los_Angeles", id="sleeper_player_sync",
+            _run_sleeper_player_sync_job, "cron", hour=19, minute=0,
+            timezone="America/Chicago", id="sleeper_player_sync",
         )
-        logger.info("Sleeper player sync scheduler started (daily at 4:00 AM Pacific)")
+        logger.info("Sleeper player sync scheduler started (daily at 7:00 PM Central)")
         started_any = True
 
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):

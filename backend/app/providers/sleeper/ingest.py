@@ -5,8 +5,8 @@ eedfda2cf6fb's docstring for the schema/identity reasoning).
 
 Filtering for is_draftable is deliberately decisive, not a fuzzy
 heuristic — see the project plan's Phase A: real fantasy positions,
-active roster status, a real pro team, explicit exclusion of practice
-squad/IR/PUP/suspended players. DEF entries are special-cased: Sleeper
+an Active or Inactive status, a real pro team, explicit exclusion of
+practice squad/suspended players. DEF entries are special-cased: Sleeper
 keys them by team abbreviation instead of a numeric id and leaves their
 name fields blank.
 """
@@ -18,8 +18,16 @@ from app.providers.sleeper.teams import team_full_name
 logger = logging.getLogger(__name__)
 
 _DRAFTABLE_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
+# 2026-09-23, commissioner's request: injured/inactive players must stay
+# addable (e.g. to stash in the IR slot). Sleeper puts a current NFL
+# player who's hurt or ruled out under status "Inactive" with a real
+# team and injury_status "IR"/"Out" (checked against live data: A.J.
+# Brown, James Conner, Alec Pierce). Its "Injured Reserve"/"Physically
+# Unable to Perform" statuses only appear on long-retired players with
+# no team, so the pro_team check already keeps those out.
+_ADDABLE_STATUSES = {"Active", "Inactive"}
 _EXCLUDED_STATUSES = {
-    "Inactive", "Practice Squad", "Injured Reserve", "PUP", "Non Football Injury", "Suspended",
+    "Practice Squad", "Injured Reserve", "PUP", "Non Football Injury", "Suspended",
 }
 
 # Sleeper and ESPN disagree on exactly one NFL team abbreviation:
@@ -52,7 +60,7 @@ def _is_draftable(position: str, fantasy_positions: list, status: str | None, pr
         return False
     if position == "DEF":
         return True  # DEF entries don't carry a normal individual-player status
-    if status != "Active":
+    if status not in _ADDABLE_STATUSES:
         return False
     if status in _EXCLUDED_STATUSES:
         return False

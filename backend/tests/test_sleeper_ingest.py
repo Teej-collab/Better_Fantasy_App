@@ -52,6 +52,19 @@ _FAKE_PLAYERS = {
         "injury_status": None,
         "search_rank": 400,
     },
+    "test-5": {
+        "player_id": "test-5",
+        "espn_id": 555005,
+        "full_name": "Test Hurt Receiver",
+        "first_name": "Test",
+        "last_name": "Hurt Receiver",
+        "position": "WR",
+        "fantasy_positions": ["WR"],
+        "team": "IND",
+        "status": "Inactive",
+        "injury_status": "IR",
+        "search_rank": 93,
+    },
     "test-4": {
         "player_id": "test-4",
         "espn_id": 555004,
@@ -76,12 +89,12 @@ async def test_sync_players_filters_and_upserts(pool, monkeypatch):
     _patch_fetch(monkeypatch)
 
     count = await ingest.sync_players(pool)
-    assert count == 4
+    assert count == 5
 
     async with pool.acquire() as conn:
         rows = {r["sleeper_player_id"]: r for r in await conn.fetch(
             "SELECT * FROM players WHERE sleeper_player_id = ANY($1::text[])",
-            ["test-1", "test-2", "test-3", "test-4"],
+            ["test-1", "test-2", "test-3", "test-4", "test-5"],
         )}
 
     assert rows["test-1"]["is_draftable"] is True
@@ -98,7 +111,10 @@ async def test_sync_players_filters_and_upserts(pool, monkeypatch):
     assert rows["test-2"]["full_name"] == "San Francisco 49ers"
 
     assert rows["test-3"]["is_draftable"] is False  # practice squad
-    assert rows["test-4"]["is_draftable"] is False  # no pro team / inactive
+    assert rows["test-4"]["is_draftable"] is False  # no pro team (retired)
+    # Hurt but still on an NFL roster — addable, so they can go on IR.
+    assert rows["test-5"]["is_draftable"] is True
+    assert rows["test-5"]["injury_status"] == "IR"
 
 
 async def test_sync_players_is_idempotent(pool, monkeypatch):
@@ -110,9 +126,9 @@ async def test_sync_players_is_idempotent(pool, monkeypatch):
     async with pool.acquire() as conn:
         count = await conn.fetchval(
             "SELECT count(*) FROM players WHERE sleeper_player_id = ANY($1::text[])",
-            ["test-1", "test-2", "test-3", "test-4"],
+            ["test-1", "test-2", "test-3", "test-4", "test-5"],
         )
-    assert count == 4
+    assert count == 5
 
 
 async def test_sync_players_updates_changed_fields_on_rerun(pool, monkeypatch):
@@ -120,13 +136,13 @@ async def test_sync_players_updates_changed_fields_on_rerun(pool, monkeypatch):
     await ingest.sync_players(pool)
 
     updated = dict(_FAKE_PLAYERS)
-    updated["test-1"] = {**_FAKE_PLAYERS["test-1"], "status": "Inactive"}
+    updated["test-1"] = {**_FAKE_PLAYERS["test-1"], "status": "Suspended"}
     _patch_fetch(monkeypatch, updated)
     await ingest.sync_players(pool)
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM players WHERE sleeper_player_id = 'test-1'")
-    assert row["status"] == "Inactive"
+    assert row["status"] == "Suspended"
     assert row["is_draftable"] is False
 
 
