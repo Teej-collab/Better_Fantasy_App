@@ -19,6 +19,7 @@ import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotD
 import { formatGameTime } from "@/lib/gameTime";
 import { positionColor } from "@/lib/positionColors";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { InGameInjuryTag, LiveProjectionValue } from "@/components/matchups/liveProjection";
 import { formatPositionRank, rankColorVar } from "@/lib/positionRank";
 
 // Which starter slots this position is eligible for at all (e.g. an RB
@@ -172,6 +173,7 @@ function RosterRow({
                 {injuryShortCode(entry.injury_status as string)}
               </span>
             )}
+            <InGameInjuryTag injury={entry.in_game_injury} />
           </button>
           <span className="text-xs text-black/50 dark:text-white/50">
             {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
@@ -205,11 +207,7 @@ function RosterRow({
           <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
             {entry.points !== null ? entry.points.toFixed(1) : "—"}
           </span>
-          {entry.points_projected !== null && (
-            <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
-              Proj {entry.points_projected.toFixed(1)}
-            </span>
-          )}
+          <ProjectionLine entry={entry} />
         </div>
       </li>
     );
@@ -263,6 +261,7 @@ function RosterRow({
               {injuryShortCode(entry.injury_status as string)}
             </span>
           )}
+          <InGameInjuryTag injury={entry.in_game_injury} />
         </button>
         <span className="text-xs text-black/50 dark:text-white/50">
           {entry.position} · {nflTeamName(entry.pro_team ?? undefined) ?? entry.pro_team ?? "—"}
@@ -311,13 +310,30 @@ function RosterRow({
         <span className="text-sm font-semibold tabular-nums text-black/80 dark:text-white/80">
           {entry.points !== null ? entry.points.toFixed(1) : "—"}
         </span>
-        {entry.points_projected !== null && (
-          <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
-            Proj {entry.points_projected.toFixed(1)}
-          </span>
-        )}
+        <ProjectionLine entry={entry} />
       </div>
     </li>
+  );
+}
+
+// "Proj" under a player's points: the live projection (backend
+// app/domain/live_projection.py) with a ▲/▼ against pregame, which is
+// just the pregame number before kickoff and their real points once
+// their game is over. Falls back to the pregame projection when the
+// live one isn't attached (a past week, pre-draft).
+function ProjectionLine({ entry }: { entry: RosterEntry }) {
+  const pregame = entry.points_projected;
+  const live = entry.live_projected;
+  if (live != null) {
+    return (
+      <span className="text-[11px] text-black/50 dark:text-white/50">
+        Proj <LiveProjectionValue live={live} pregame={pregame} />
+      </span>
+    );
+  }
+  if (pregame == null) return null;
+  return (
+    <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">Proj {pregame.toFixed(1)}</span>
   );
 }
 

@@ -4,7 +4,7 @@ win probability counting a finished player's real points, and ties
 counting as half a win. The chug-settlement and trade-deadline fixes
 are tested alongside their own features (test_chug_standing.py,
 test_trades.py)."""
-from app.domain.matchup_context import _expected_total
+from app.domain.live_projection import live_team_total
 from app.domain.streaks import compute_streak
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import _team_clutch_choke
@@ -77,25 +77,24 @@ async def test_standings_rank_a_tie_as_half_a_win(pool):
 
 # --- Win probability ---------------------------------------------------------
 
-def _starter(pro_team, scored, projected, slot="WR"):
-    return {"lineup_slot": slot, "pro_team": pro_team, "points_scored": scored, "points_projected": projected}
+def _starter(pro_team, scored, projected, slot="WR", position="WR", player_id="p"):
+    return {
+        "lineup_slot": slot, "pro_team": pro_team, "points_scored": scored, "points_projected": projected,
+        "position": position, "player_id": player_id,
+    }
 
 
-def test_expected_total_counts_a_finished_dud_at_its_real_score():
+def test_win_probability_total_counts_a_finished_dud_at_its_real_score():
+    # Win probability now runs off live projections (test_live_projection.py
+    # covers the math); the original issue — a finished 2-point game on a
+    # 15-point projection still counting 15 — stays fixed.
     roster = [
-        _starter("IND", 2, 15),     # game over: counts 2, not 15
-        _starter("KC", 20, 15),     # in progress, beating projection: 20
-        _starter("BUF", 3, 15),     # in progress, behind: still 15
-        _starter("SF", None, 12),   # not started: 12
-        _starter("DAL", 30, 10, slot="BE"),  # bench never counts
+        _starter("IND", 2, 15),                 # game over: counts 2
+        _starter("SF", None, 12),               # not started: 12
+        _starter("DAL", 30, 10, slot="BE"),     # bench never counts
     ]
-    statuses = {"IND": "final", "KC": "in_progress", "BUF": "in_progress", "SF": "scheduled"}
-    assert _expected_total(roster, frozenset({"IND", "KC", "BUF"}), statuses) == 2 + 20 + 15 + 12
-
-
-def test_expected_total_without_status_keeps_the_kickoff_rule():
-    roster = [_starter("IND", 2, 15)]
-    assert _expected_total(roster, frozenset({"IND"})) == 15
+    clock = {"IND": {"status": "final", "share_left": 0.0}, "SF": {"status": "scheduled", "share_left": 1.0}}
+    assert live_team_total(roster, clock) == 2 + 12
 
 
 # --- Game of the Week --------------------------------------------------------

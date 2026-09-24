@@ -76,7 +76,8 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
         if not home or not away:
             continue
 
-        status_type = competition.get("status", {}).get("type", {})
+        status = competition.get("status", {})
+        status_type = status.get("type", {})
 
         # Real-time possession/red-zone, present whenever the game is
         # actually in progress — ESPN's own "situation" object on this
@@ -111,6 +112,11 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 "state": status_type.get("state"),  # "pre" | "in" | "post"
                 "status_detail": status_type.get("shortDetail"),
                 "completed": status_type.get("completed", False),
+                # Game clock for live projections (app/domain/
+                # live_projection.py): quarter (5+ = overtime, 0 before
+                # kickoff) and seconds left in it.
+                "period": status.get("period") or 0,
+                "clock": float(status.get("clock") or 0),
                 # Real ISO8601 UTC kickoff time — e.g. "2026-08-21T00:00Z".
                 # Not surfaced to the frontend (the ticker only needs
                 # status_detail's human string); used by

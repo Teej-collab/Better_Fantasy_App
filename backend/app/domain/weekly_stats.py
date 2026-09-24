@@ -22,12 +22,16 @@ function app/scheduler.py's weekly-compute job and the commissioner's
 manual /admin/weekly-compute trigger both call.
 """
 import json
+import logging
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain import live_injuries
 from app.domain.matchup_scoring import compute_matchup_scores_for_week
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
 from app.providers.nfl_scoreboard import get_week_scoreboard
-from app.providers.nfl_stats.espn_public import get_game_stats
+from app.providers.nfl_stats.espn_public import fetch_injury_news, get_game_stats
+
+logger = logging.getLogger(__name__)
 
 
 async def _upsert_player_week_stat(
@@ -92,9 +96,11 @@ async def compute_week_stats(
     known_dst_ids = {row["sleeper_player_id"] for row in dst_rows}
 
     counts = {"players": 0, "team_dst": 0}
+    injury_plays: list[dict] = []
     async with conn.transaction():
         for event_id in event_ids:
             game = await get_game_stats(event_id)
+            injury_plays.extend(game.get("injury_plays", []))
 
             for player in game["players"]:
                 sleeper_id = espn_to_sleeper.get(player["espn_player_id"])
@@ -141,6 +147,15 @@ async def compute_week_stats(
                 await _upsert_player_week_stat(conn, season, week, team_abbr, stat_line, points, league_id)
                 counts["team_dst"] += 1
 
+    # In-game injuries for live projections — outside the scoring
+    # transaction and best-effort, so an injury-parsing problem can
+    # never roll back or block the week's actual points.
+    try:
+        async with conn.transaction():
+            await live_injuries.record_play_injuries(conn, season, week, injury_plays)
+    except Exception:
+        logger.warning("Recording in-game injury plays failed (season=%s week=%s)", season, week, exc_info=True)
+
     return counts
 
 
@@ -160,5 +175,14 @@ async def compute_and_store_week(pool, season: int, week: int, league_id: int = 
     async with pool.acquire() as conn:
         stat_counts = await compute_week_stats(conn, season, week, event_ids, league_id)
         matchups_updated = await compute_matchup_scores_for_week(conn, season, week, league_id)
+        # ESPN's in-game rulings ("ruled out", "questionable to
+        # return") — only while a game is in progress, best-effort.
+        if any(g.get("state") == "in" for g in games):
+            try:
+                news = live_injuries.parse_injury_news(await fetch_injury_news())
+                async with conn.transaction():
+                    await live_injuries.record_news_injuries(conn, season, week, news, games)
+            except Exception:
+                logger.warning("Recording injury news failed (season=%s week=%s)", season, week, exc_info=True)
 
     return {"event_count": len(event_ids), **stat_counts, "matchups_updated": matchups_updated}

@@ -5,6 +5,7 @@ import type { RosterPlayer } from "@/lib/api";
 import { getScoringRules } from "@/lib/leaguesApi";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { InGameInjuryTag, LiveProjectionValue } from "@/components/matchups/liveProjection";
 import { formatGameTime } from "@/lib/gameTime";
 import { humanizeStatCategory } from "@/lib/scoringLabels";
 import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
@@ -271,6 +272,7 @@ function PlayerCell({
           {injuryShortCode(player.injury_status as string)}
         </span>
       )}
+      <InGameInjuryTag injury={player.in_game_injury} />
     </>
   );
 
@@ -295,10 +297,22 @@ function PlayerCell({
             ? player.points_projected.toFixed(1)
             : "—"}
       </span>
-      {player.points_scored != null && player.points_projected != null && (
-        <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
-          {player.points_projected.toFixed(1)}
-        </span>
+      {/* While their game is on, the smaller line is the live
+          projection (moves with the game, ▲/▼ vs pregame); otherwise
+          the fixed pregame projection, as before. */}
+      {player.points_scored != null && isLive && player.live_projected != null ? (
+        <LiveProjectionValue
+          live={player.live_projected}
+          pregame={player.points_projected}
+          className="text-[11px] text-black/50 dark:text-white/50"
+        />
+      ) : (
+        player.points_scored != null &&
+        player.points_projected != null && (
+          <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
+            {player.points_projected.toFixed(1)}
+          </span>
+        )
       )}
     </span>
   );

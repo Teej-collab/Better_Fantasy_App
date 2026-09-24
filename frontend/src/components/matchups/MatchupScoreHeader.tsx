@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MatchupContextSide } from "@/lib/api";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
+import { LiveProjectionValue } from "@/components/matchups/liveProjection";
 
 function initialsFor(name: string): string {
   const parts = name.split(/\s+/).filter(Boolean);
@@ -72,7 +73,7 @@ function TeamScoreBlock({ side, align }: { side: MatchupContextSide; align: "lef
         )}
         {side.projected_total !== null && (
           <span className="text-xs font-semibold tabular-nums text-black dark:text-white">
-            Proj {side.projected_total.toFixed(1)}
+            Proj <LiveProjectionValue live={side.projected_total} pregame={side.pregame_projected_total} />
           </span>
         )}
       </span>

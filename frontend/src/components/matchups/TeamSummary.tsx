@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MatchupContextSide } from "@/lib/api";
 import { BenchCrimeBadge, ClutchChokeBadge } from "@/components/matchups/MatchupBadges";
+import { LiveProjectionValue } from "@/components/matchups/liveProjection";
 
 // Shared by MatchupCard.tsx's accordion and the full matchup detail
 // page — team/owner identity, record, streak, projected total, and
@@ -23,7 +24,11 @@ export function TeamSummary({ side }: { side: MatchupContextSide }) {
         {side.streak !== "neutral" && (
           <span>{side.streak === "hot" ? "\u{1F525} Hot streak" : "\u{1F976} Cold streak"}</span>
         )}
-        {side.projected_total !== null && <span>Proj {side.projected_total.toFixed(1)}</span>}
+        {side.projected_total !== null && (
+          <span>
+            Proj <LiveProjectionValue live={side.projected_total} pregame={side.pregame_projected_total} />
+          </span>
+        )}
       </div>
       {(side.clutch_choke || side.bench_crime) && (
         <div className="mt-1 flex flex-wrap gap-1.5 text-xs">

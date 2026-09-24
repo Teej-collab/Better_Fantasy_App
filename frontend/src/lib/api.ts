@@ -130,6 +130,14 @@ export type WeekMatchup = {
 // next_opponent already uses.
 export type PositionRank = { rank: number; average_allowed: number } | null;
 
+// Latest in-game injury event this week (backend app/domain/
+// live_injuries.py), from ESPN's play-by-play and injury news. "returned"
+// means they were hurt but came back.
+export type InGameInjury = {
+  state: "left" | "returned" | "questionable_return" | "doubtful_return" | "ruled_out";
+  detail: string | null;
+} | null;
+
 export type RosterPlayer = {
   player_name: string;
   position: string | null;
@@ -139,7 +147,13 @@ export type RosterPlayer = {
   // actually true at runtime (Number() on either works, so it went
   // unnoticed).
   points_scored: number | null;
+  // Pregame projection — fixed for the week.
   points_projected: number | null;
+  // Moves with the game: points so far + a pace- and injury-aware
+  // projection for the rest of it (backend app/domain/live_projection.py).
+  // Equals points_projected before kickoff and points_scored once final.
+  live_projected: number | null;
+  in_game_injury: InGameInjury;
   // Always a string (the real sleeper_player_id) now — every roster-
   // reading endpoint, including the team detail page's /teams/{id}/roster,
   // is sourced from current_rosters/roster_history (2026-09 pivot, see
@@ -378,7 +392,10 @@ export type MatchupContextSide = {
   season_points: number | null;
   record: string | null;
   streak: Streak;
+  // Live team projection (sum of starters' live_projected) — moves
+  // during games. pregame_projected_total is the fixed pregame sum.
   projected_total: number | null;
+  pregame_projected_total: number | null;
   roster: RosterPlayer[];
   touchdowns: TeamTouchdown[];
   bench_crime: BenchCrime | null;
@@ -817,7 +834,9 @@ export type YourWeekMatchup = {
   started: boolean;
   record: string | null;
   my_score: number | null;
+  // Live (moves during games); the *_pregame_ totals are fixed.
   my_projected_total: number;
+  my_pregame_projected_total: number;
   opponent_team_id: number;
   opponent_team_name: string;
   // This week's Standings-style #N power-rank badge for the opponent —
@@ -826,6 +845,7 @@ export type YourWeekMatchup = {
   opponent_power_rank: number | null;
   opponent_score: number | null;
   opponent_projected_total: number;
+  opponent_pregame_projected_total: number;
   // Our own estimate from real inputs (current score + season
   // projections + league scoring volatility) — ESPN's API doesn't
   // expose a win-probability field, confirmed directly against their
@@ -1520,6 +1540,10 @@ export type RosterEntry = {
   // players.projected_avg_points (ESPN's own per-game average) — only
   // present on the plain GET /team read, same as points above.
   points_projected: number | null;
+  // Live projection + in-game injury, same as RosterPlayer's. Only on
+  // GET /team with a resolved week.
+  live_projected?: number | null;
+  in_game_injury?: InGameInjury;
   next_opponent: string | null;
   game_time: string | null;
   opponent_position_rank: PositionRank;

@@ -63,6 +63,8 @@ from app.domain.waiver_exceptions import (
 )
 from app.domain.your_week import build_your_week
 from app.providers.espn.player_info import get_bulk_ownership
+from app.domain.live_injuries import get_injury_states
+from app.domain.live_projection import game_clock_by_pro_team, live_projection
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_week_scoreboard
 from app.queries import league as league_queries
 from app.queries import team_position_rankings as position_rankings_queries
@@ -204,6 +206,10 @@ def _roster_entry_dict(entry: dict) -> dict:
         "points_projected": (
             float(entry["points_projected"]) if entry.get("points_projected") is not None else None
         ),
+        # Live projection + in-game injury — only on GET /team with a
+        # resolved week, same convention as points_projected above.
+        "live_projected": entry.get("live_projected"),
+        "in_game_injury": entry.get("in_game_injury"),
         "next_opponent": entry.get("next_opponent"),
         "game_time": entry.get("game_time"),
         "opponent_position_rank": entry.get("opponent_position_rank"),
@@ -326,6 +332,11 @@ async def my_team(request: Request, week: int | None = None):
             if requested_week is not None
             else {}
         )
+        injuries = (
+            await get_injury_states(conn, active_season, requested_week, [e["sleeper_player_id"] for e in roster])
+            if requested_week is not None
+            else {}
+        )
 
     for entry in roster:
         bye_week = bye_weeks.get(entry["pro_team"])
@@ -341,10 +352,19 @@ async def my_team(request: Request, week: int | None = None):
             # absent, same as the pre-draft case.
             games = []
         schedule = _schedule_lookup(games)
+        game_clock = game_clock_by_pro_team(games)
         for entry in roster:
             info = schedule.get(entry["pro_team"])
             if info:
                 entry.update(info)
+            # Moves with the game (app/domain/live_projection.py);
+            # points_projected stays the fixed pregame number.
+            injury = injuries.get(entry["sleeper_player_id"])
+            entry["live_projected"] = live_projection(
+                entry.get("points_projected"), entry.get("points"), entry["position"],
+                game_clock.get(entry["pro_team"]), injury["state"] if injury else None,
+            )
+            entry["in_game_injury"] = injury
             opponent_pro_team = entry.get("opponent_pro_team")
             if opponent_pro_team and entry["position"] in _POSITION_RANK_ELIGIBLE:
                 entry["opponent_position_rank"] = rankings.get((opponent_pro_team, entry["position"]))

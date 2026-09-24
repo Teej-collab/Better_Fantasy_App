@@ -39,6 +39,7 @@ import re
 import httpx
 
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary"
+INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries"
 
 # (ESPN stat category name, ESPN's raw key within it) -> our
 # league_scoring_rules stat_category name. Deliberately explicit and
@@ -544,6 +545,28 @@ async def get_game_team_dst_stats(event_id: str) -> dict[str, dict]:
 async def get_game_stats(event_id: str) -> dict:
     """Both parses from a single fetch — use this (not the two
     functions above) when you need both, e.g. weekly_stats.py's
-    per-event loop."""
+    per-event loop. Also returns the game's in-game injury plays
+    (app/domain/live_injuries.py) from the same fetch, for live
+    projections — no extra request."""
     data = await _fetch_summary(event_id)
-    return {"players": parse_individual_player_stats(data), "team_dst": parse_team_dst_stats(data)}
+    # Imported here: live_injuries is a domain module, and this provider
+    # is otherwise domain-free.
+    from app.domain.live_injuries import parse_injury_plays
+
+    try:
+        injury_plays = parse_injury_plays(data)
+    except Exception:
+        injury_plays = []
+    return {
+        "players": parse_individual_player_stats(data),
+        "team_dst": parse_team_dst_stats(data),
+        "injury_plays": injury_plays,
+    }
+
+
+async def fetch_injury_news() -> dict:
+    """ESPN's league-wide injuries feed — one call covers all 32 teams."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(INJURIES_URL)
+        response.raise_for_status()
+        return response.json()

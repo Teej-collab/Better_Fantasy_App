@@ -38,6 +38,8 @@ import json
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import narrative_engine
+from app.domain.live_injuries import get_injury_states
+from app.domain.live_projection import game_clock_by_pro_team, live_projection, live_team_total
 from app.domain.nfl_schedule import (
     game_status_by_pro_team,
     live_status_by_pro_team,
@@ -67,58 +69,28 @@ def _projected_total(roster_rows) -> float | None:
     return round(sum(float(r["points_projected"] or 0) for r in starters), 2)
 
 
-# 2026-09-10 fix, real user report: win probability "doesn't live update
-# to the games." estimate_win_probability's own max(my_score,
-# my_projected_total) is a *team*-level floor — but my_projected_total
-# used to be _projected_total(), the whole team's static pregame
-# projection sum. Early in a real week (most starters' games haven't
-# kicked off yet), a team's live score sits far below that whole-team
-# number almost all week, so the team-level max() just returns the
-# static pregame projection regardless of what's actually happening —
-# win probability silently tracked "who had the better preseason
-# projection," not the live game. Applying the same max() logic per
-# PLAYER instead of once for the whole team fixes that: a starter whose
-# real game hasn't kicked off yet still contributes their projection
-# (unchanged), but one who has already played contributes whichever is
-# higher of their real live score or their own projection — so the
-# team's expected total actually moves as each player's own game
-# happens, instead of waiting for the whole team's live total to
-# clear its entire pregame number (which realistically never happens
-# before very late Monday night).
-#
-# 2026-09-24 fix: that max() also applied after a player's game was
-# over, so a finished dud (2 points on a 15-point projection) kept
-# counting as 15 and never lowered the team's odds. Once a player's
-# game is final, their real points are their final contribution.
-def _expected_total(
-    roster_rows, locked_teams: frozenset[str], game_status_by_pro_team_map: dict[str, str] | None = None,
-) -> float:
-    game_status_by_pro_team_map = game_status_by_pro_team_map or {}
-    starters = [r for r in roster_rows if r["lineup_slot"] not in _STARTER_EXCLUDED_SLOTS]
-    total = 0.0
-    for r in starters:
-        projected = float(r["points_projected"] or 0)
-        scored = float(r["points_scored"] or 0)
-        status = game_status_by_pro_team_map.get(r["pro_team"])
-        if status == "final":
-            total += scored
-        elif status == "in_progress" or r["pro_team"] in locked_teams:
-            total += max(scored, projected)
-        else:
-            total += projected
-    return round(total, 2)
+# Win probability runs off live projections (app/domain/
+# live_projection.py): each starter's points so far plus a pace- and
+# injury-aware projection for the rest of their game. That replaced a
+# per-player max(points, projection) stopgap (2026-09-10) that never let
+# a slow game — or, before 2026-09-24, even a finished dud — lower a
+# team's odds.
 
 
 def _roster_list(
-    roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings=None, game_status_by_pro_team_map=None
+    roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings=None, game_status_by_pro_team_map=None,
+    game_clock=None, injuries=None,
 ):
     rankings = rankings or {}
     game_status_by_pro_team_map = game_status_by_pro_team_map or {}
+    game_clock = game_clock or {}
+    injuries = injuries or {}
     result = []
     for r in roster_rows:
         info = schedule_by_pro_team.get(r["pro_team"], {})
         live_info = live_status_by_pro_team_map.get(r["pro_team"], {})
         opponent_pro_team = info.get("opponent_pro_team")
+        injury = injuries.get(r["player_id"])
         opponent_position_rank = None
         if opponent_pro_team and r["position"] in _POSITION_RANK_ELIGIBLE:
             opponent_position_rank = rankings.get((opponent_pro_team, r["position"]))
@@ -128,7 +100,19 @@ def _roster_list(
                 "position": r["position"],
                 "lineup_slot": r["lineup_slot"],
                 "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
+                # Pregame projection — never changes during the game.
                 "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
+                # Moves with the game: points so far + pace- and
+                # injury-aware rest-of-game projection. Equals the
+                # pregame number before kickoff and the real points once
+                # the game is final (app/domain/live_projection.py).
+                "live_projected": live_projection(
+                    r["points_projected"], r["points_scored"], r["position"],
+                    game_clock.get(r["pro_team"]), injury["state"] if injury else None,
+                ),
+                # {"state": "left"|"returned"|"questionable_return"|
+                # "doubtful_return"|"ruled_out", "detail"} or null.
+                "in_game_injury": injury,
                 # Raw per-category stat counts (rec/rec_yd/pass_td/...,
                 # see app/domain/scoring_engine.py) behind this week's
                 # points_scored — asyncpg returns jsonb as text (no
@@ -168,7 +152,7 @@ def _roster_list(
 def _side_dict(
     team_row, score, standings_row, streak, roster_rows, bench_crimes, clutch_choke, win_probability,
     schedule_by_pro_team, touchdowns, live_status_by_pro_team_map, rankings=None, power_rank=None,
-    game_status_by_pro_team_map=None,
+    game_status_by_pro_team_map=None, game_clock=None, injuries=None,
 ):
     return {
         "team_id": team_row["team_id"],
@@ -193,9 +177,14 @@ def _side_dict(
             else None
         ),
         "streak": streak,
-        "projected_total": _projected_total(roster_rows),
+        # Live team projection (sum of starters' live_projected) — the
+        # number that moves during games; pregame_projected_total is the
+        # fixed pregame sum.
+        "projected_total": live_team_total(roster_rows, game_clock or {}, _injury_state_map(injuries)),
+        "pregame_projected_total": _projected_total(roster_rows),
         "roster": _roster_list(
-            roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings, game_status_by_pro_team_map
+            roster_rows, schedule_by_pro_team, live_status_by_pro_team_map, rankings, game_status_by_pro_team_map,
+            game_clock, injuries,
         ),
         # Real touchdowns scored by this team's active starters this
         # week (see queries.get_touchdowns_for_teams) — empty before
@@ -209,6 +198,10 @@ def _side_dict(
         "clutch_choke": clutch_choke,
         "win_probability": win_probability,
     }
+
+
+def _injury_state_map(injuries) -> dict[str, str]:
+    return {pid: v["state"] for pid, v in (injuries or {}).items()}
 
 
 def _rivalry_dict(rivalry_row, home_owner_id):
@@ -231,7 +224,7 @@ def _matchup_entry(
     home_bench_crimes, away_bench_crimes, home_clutch_choke, away_clutch_choke,
     narrative, schedule_by_pro_team, home_touchdowns, away_touchdowns,
     locked_teams=frozenset(), live_status_by_pro_team_map=None, rankings=None,
-    power_rank_by_team=None, game_status_by_pro_team_map=None,
+    power_rank_by_team=None, game_status_by_pro_team_map=None, game_clock=None, injuries=None,
 ):
     """Pure assembly — every argument is already-fetched data, no DB
     access here. Shared by build_week_matchup_context (which batches
@@ -246,9 +239,10 @@ def _matchup_entry(
     home_win_probability = None
     away_win_probability = None
     if started:
+        injury_states = _injury_state_map(injuries)
         home_win_probability = estimate_win_probability(
-            float(home_score), _expected_total(home_roster, locked_teams, game_status_by_pro_team_map),
-            float(away_score), _expected_total(away_roster, locked_teams, game_status_by_pro_team_map),
+            float(home_score), live_team_total(home_roster, game_clock or {}, injury_states),
+            float(away_score), live_team_total(away_roster, game_clock or {}, injury_states),
             score_stdev,
         )
         away_win_probability = round(100 - home_win_probability, 1)
@@ -290,13 +284,13 @@ def _matchup_entry(
             home_team, home_score, home_standing, home_streak, home_roster,
             home_bench_crimes, home_clutch_choke, home_win_probability,
             schedule_by_pro_team, home_touchdowns, live_status_by_pro_team_map, rankings,
-            power_rank_by_team.get(home_team["team_id"]), game_status_by_pro_team_map,
+            power_rank_by_team.get(home_team["team_id"]), game_status_by_pro_team_map, game_clock, injuries,
         ),
         "away": _side_dict(
             away_team, away_score, away_standing, away_streak, away_roster,
             away_bench_crimes, away_clutch_choke, away_win_probability,
             schedule_by_pro_team, away_touchdowns, live_status_by_pro_team_map, rankings,
-            power_rank_by_team.get(away_team["team_id"]), game_status_by_pro_team_map,
+            power_rank_by_team.get(away_team["team_id"]), game_status_by_pro_team_map, game_clock, injuries,
         ),
         "narrative": narrative,
     }
@@ -339,6 +333,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     # docstring for why it was — 2026-09-13 fix).
     live_status_map = live_status_by_pro_team(games)
     game_status_map = game_status_by_pro_team(games)
+    game_clock = game_clock_by_pro_team(games)
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -358,6 +353,9 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     # used to be a plain `for m in matchups:` loop.
     teams_by_id = await queries.get_teams(conn, team_ids)
     rosters_by_id = await queries.get_rosters_for_week(conn, season, team_ids, week)
+    injuries = await get_injury_states(
+        conn, season, week, [r["player_id"] for roster in rosters_by_id.values() for r in roster]
+    )
     rivalry_by_pair = {
         frozenset({r["owner_a_id"], r["owner_b_id"]}): r for r in await queries.list_rivalries(conn)
     }
@@ -393,6 +391,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             None, schedule_by_pro_team,
             touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
             locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
+            game_clock, injuries,
         )
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
@@ -452,7 +451,9 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     locked_teams = locked_pro_teams(games)
     live_status_map = live_status_by_pro_team(games)
     game_status_map = game_status_by_pro_team(games)
+    game_clock = game_clock_by_pro_team(games)
     rankings = await position_rankings_queries.get_rankings(conn, season, week)
+    injuries = await get_injury_states(conn, season, week, [r["player_id"] for r in home_roster + away_roster])
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -471,6 +472,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         None, schedule_by_pro_team,
         touchdowns_by_team.get(m["home_team_id"], []), touchdowns_by_team.get(m["away_team_id"], []),
         locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
+        game_clock, injuries,
     )
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.

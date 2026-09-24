@@ -4,6 +4,7 @@ import { TeamLogo } from "@/components/matchups/MatchupScoreHeader";
 import { GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
+import { LiveProjectionValue } from "@/components/matchups/liveProjection";
 
 const STREAK_ICON: Record<string, string> = { hot: "\u{1F525}", cold: "\u{1F976}", neutral: "" };
 
@@ -101,7 +102,7 @@ function ScoreboardRow({
         </span>
         {side.projected_total !== null && (
           <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
-            Proj {side.projected_total.toFixed(1)}
+            Proj <LiveProjectionValue live={side.projected_total} pregame={side.pregame_projected_total} />
           </span>
         )}
       </div>

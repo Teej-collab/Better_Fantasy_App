@@ -18,8 +18,8 @@ authoritative "what season is it right now" value the rest of the app
 uses (app/providers/espn/config.py).
 """
 from app.config import DEFAULT_LEAGUE_ID
-from app.domain.matchup_context import _expected_total
-from app.domain.nfl_schedule import game_status_by_pro_team, locked_pro_teams
+from app.domain.live_injuries import get_injury_states
+from app.domain.live_projection import game_clock_by_pro_team, live_team_total
 from app.domain.win_probability import estimate_win_probability
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import draft as draft_queries
@@ -92,8 +92,19 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
 
     my_roster = await queries.get_current_roster(conn, season, team["team_id"], week)
     opp_roster = await queries.get_current_roster(conn, season, opp_team_id, week)
-    my_projected = _projected_total(my_roster)
-    opp_projected = _projected_total(opp_roster)
+    # Live projections (app/domain/live_projection.py): these move
+    # during games; equal the pregame projection before kickoff.
+    try:
+        games = await get_week_scoreboard(week, season)
+    except Exception:
+        games = []
+    game_clock = game_clock_by_pro_team(games)
+    injury_rows = await get_injury_states(conn, season, week, [r["player_id"] for r in my_roster + opp_roster])
+    injuries = {pid: v["state"] for pid, v in injury_rows.items()}
+    my_pregame = _projected_total(my_roster)
+    opp_pregame = _projected_total(opp_roster)
+    my_projected = live_team_total(my_roster, game_clock, injuries) if my_roster else my_pregame
+    opp_projected = live_team_total(opp_roster, game_clock, injuries) if opp_roster else opp_pregame
 
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
     my_standing = standings_by_team.get(team["team_id"])
@@ -105,20 +116,12 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
 
     win_probability = None
     if started:
-        # 2026-09-24: same per-player expected total the matchup page
-        # uses (matchup_context._expected_total), not the static pregame
-        # projection — this card had missed that page's 2026-09-10 live-
-        # update fix, so the two could show different odds for one game.
-        try:
-            games = await get_week_scoreboard(week, season)
-        except Exception:
-            games = []
-        locked = locked_pro_teams(games)
-        statuses = game_status_by_pro_team(games)
+        # Same live projections as the matchup page, so the two can
+        # never show different odds for one game.
         stdev = await queries.get_team_score_stdev(conn, season, league_id)
         win_probability = estimate_win_probability(
-            float(my_score), _expected_total(my_roster, locked, statuses),
-            float(opp_score), _expected_total(opp_roster, locked, statuses),
+            float(my_score), my_projected,
+            float(opp_score), opp_projected,
             stdev,
         )
 
@@ -129,11 +132,13 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
         "record": record,
         "my_score": float(my_score) if my_score is not None else None,
         "my_projected_total": my_projected,
+        "my_pregame_projected_total": my_pregame,
         "opponent_team_id": opp_team_id,
         "opponent_team_name": opp_team_name,
         "opponent_power_rank": power_rank_by_team.get(opp_team_id),
         "opponent_score": float(opp_score) if opp_score is not None else None,
         "opponent_projected_total": opp_projected,
+        "opponent_pregame_projected_total": opp_pregame,
         "win_probability": win_probability,
     }
     return base
