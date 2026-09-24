@@ -18,7 +18,10 @@ authoritative "what season is it right now" value the rest of the app
 uses (app/providers/espn/config.py).
 """
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.matchup_context import _expected_total
+from app.domain.nfl_schedule import game_status_by_pro_team, locked_pro_teams
 from app.domain.win_probability import estimate_win_probability
+from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import draft as draft_queries
 from app.queries import league as queries
 from app.queries.power_rankings import get_latest_power_rank_by_team
@@ -102,9 +105,21 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
 
     win_probability = None
     if started:
+        # 2026-09-24: same per-player expected total the matchup page
+        # uses (matchup_context._expected_total), not the static pregame
+        # projection — this card had missed that page's 2026-09-10 live-
+        # update fix, so the two could show different odds for one game.
+        try:
+            games = await get_week_scoreboard(week, season)
+        except Exception:
+            games = []
+        locked = locked_pro_teams(games)
+        statuses = game_status_by_pro_team(games)
         stdev = await queries.get_team_score_stdev(conn, season, league_id)
         win_probability = estimate_win_probability(
-            float(my_score), my_projected, float(opp_score), opp_projected, stdev
+            float(my_score), _expected_total(my_roster, locked, statuses),
+            float(opp_score), _expected_total(opp_roster, locked, statuses),
+            stdev,
         )
 
     base["matchup"] = {

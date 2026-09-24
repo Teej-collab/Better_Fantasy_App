@@ -194,10 +194,13 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
         LEFT JOIN final_standings fs ON fs.team_id = t.id AND fs.season = t.season
         WHERE t.season = $1 AND t.league_id = $2
         GROUP BY t.id, t.team_name, o.display_name, fs.final_rank
+        -- 2026-09-24: a tie counts as half a win (standard fantasy
+        -- rule, commissioner's call). With no ties this is the same
+        -- order as sorting by wins alone.
         ORDER BY
             CASE WHEN fs.final_rank IS NULL THEN 1 ELSE 0 END,
             fs.final_rank,
-            wins DESC,
+            COALESCE(SUM(r.win), 0) + 0.5 * COALESCE(SUM(r.tie), 0) DESC,
             points_for DESC
         """,
         season, league_id, exclude_week,

@@ -168,11 +168,16 @@ async def find_game_of_the_week(conn, season: int, week: int, matchups: list[dic
     number = better team, so we want the LOWEST sum). Returns None if
     not enough power-rank data exists yet (e.g. week 1).
 
-    Each team's rank is its most recent recorded power_rank in this
-    season by week number, with no upper bound at the current week —
-    that matches the original per-matchup query exactly (it never
-    filtered by week <= current), just batched into one query instead
-    of two per matchup.
+    Each team's rank is its rank going INTO this week: the most recent
+    recorded power_rank from an EARLIER week of this season.
+
+    2026-09-24 fix: this used to take the latest rank with no upper
+    bound (ported as-is from the original bot), so once week N went
+    final and week N ranks were written, week N's own Game of the Week
+    was re-picked with them and could move to a different matchup
+    after the games were already played — and every older week kept
+    shifting as ranks changed. Capping at week < N freezes each week's
+    pick to what was shown while it was being played.
     """
     if not matchups:
         return None
@@ -182,10 +187,10 @@ async def find_game_of_the_week(conn, season: int, week: int, matchups: list[dic
         """
         SELECT DISTINCT ON (team_id) team_id, power_rank
         FROM weekly_team_stats
-        WHERE season = $1 AND team_id = ANY($2::int[]) AND power_rank IS NOT NULL
+        WHERE season = $1 AND team_id = ANY($2::int[]) AND power_rank IS NOT NULL AND week < $3
         ORDER BY team_id, week DESC
         """,
-        season, list(team_ids),
+        season, list(team_ids), week,
     )
     ranks = {r["team_id"]: r["power_rank"] for r in rows}
 

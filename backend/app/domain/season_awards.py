@@ -31,6 +31,7 @@ than an error.
 """
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.expected_score import get_expected_score
+from app.domain.weekly_awards import _team_clutch_choke
 
 
 async def _get_team_id(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
@@ -41,6 +42,12 @@ async def _get_team_id(conn, season: int, owner_id: int, league_id: int = DEFAUL
 
 
 async def compute_clutch_choke_counts(conn, season: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID):
+    """2026-09-24: counts weeks with the exact rule the weekly Clutch/
+    Choke award and matchup badges use (weekly_awards._team_clutch_choke:
+    clutch = won AND beat expected by 15%+ OR won as a 10+ point
+    underdog; choke = lost AND missed by 15%+ OR lost as a 10+ point
+    favorite). Previously this counted the 15% condition only, so a
+    week could be "clutch" on the weekly award but not count here."""
     team_id = await _get_team_id(conn, season, owner_id, league_id)
     if not team_id:
         return None
@@ -49,7 +56,9 @@ async def compute_clutch_choke_counts(conn, season: int, owner_id: int, league_i
         """
         SELECT m.week,
             CASE WHEN m.home_team_id = $1 THEN m.home_score ELSE m.away_score END AS actual,
-            CASE WHEN m.home_team_id = $1 THEN m.home_score > m.away_score ELSE m.away_score > m.home_score END AS won
+            CASE WHEN m.home_team_id = $1 THEN m.away_team_id ELSE m.home_team_id END AS opp_id,
+            CASE WHEN m.home_team_id = $1 THEN m.home_score > m.away_score ELSE m.away_score > m.home_score END AS won,
+            m.home_score = m.away_score AS tied
         FROM matchups m
         WHERE m.season = $2 AND m.home_score > 0 AND m.is_playoff = FALSE
         AND (m.home_team_id = $1 OR m.away_team_id = $1)
@@ -61,14 +70,13 @@ async def compute_clutch_choke_counts(conn, season: int, owner_id: int, league_i
     choke_weeks = 0
     for g in games:
         expected = await get_expected_score(conn, season, g["week"], team_id, league_id)
-        if expected <= 0:
+        opp_expected = await get_expected_score(conn, season, g["week"], g["opp_id"], league_id)
+        status = _team_clutch_choke(float(g["actual"]), g["won"], expected, opp_expected, g["tied"])
+        if status is None:
             continue
-        actual = float(g["actual"])
-        pct_diff = (actual - expected) / expected
-
-        if pct_diff >= 0.15 and g["won"]:
+        if status["label"] == "clutch":
             clutch_weeks += 1
-        if pct_diff <= -0.15 and not g["won"]:
+        else:
             choke_weeks += 1
 
     return {"clutch_weeks": clutch_weeks, "choke_weeks": choke_weeks}
@@ -154,7 +162,8 @@ async def compute_longest_streaks(conn, season: int, owner_id: int, league_id: i
 
     games = await conn.fetch(
         """
-        SELECT week, CASE WHEN home_team_id = $1 THEN home_score > away_score ELSE away_score > home_score END AS won
+        SELECT week, CASE WHEN home_team_id = $1 THEN home_score > away_score ELSE away_score > home_score END AS won,
+               home_score = away_score AS tied
         FROM matchups WHERE season = $2 AND (home_team_id = $1 OR away_team_id = $1)
         AND home_score > 0 AND is_playoff = FALSE
         ORDER BY week
@@ -168,7 +177,10 @@ async def compute_longest_streaks(conn, season: int, owner_id: int, league_id: i
     current_win = current_loss = 0
 
     for g in games:
-        if g["won"]:
+        if g["tied"]:
+            # A tie ends both streaks (2026-09-24: used to extend a losing one).
+            current_win = current_loss = 0
+        elif g["won"]:
             current_win += 1
             current_loss = 0
         else:

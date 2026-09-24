@@ -149,7 +149,22 @@ async def settle_deadline_for_week(conn, season: int, week: int, league_id: int 
             "WHERE season = $1 AND owner_id = $2 AND league_id = $3",
             season, owner_id, league_id,
         )
-        owed_before = standing["outstanding_owed"]
+        # 2026-09-24 fix: chugs earned in THIS week aren't due until next
+        # week's MNF kickoff, so they're never part of this settlement.
+        # Normally they aren't in the balance yet anyway (settlement runs
+        # during MNF, before the week is final), but the catch-up path —
+        # app/scheduler.py's _run_week_settlement_job, when no live sync
+        # settled during MNF — accrues this week's debt first and used to
+        # double it on the spot, before anyone could pay it. Payments are
+        # applied to the oldest debt first, so only the balance above
+        # this week's own accrual is due.
+        this_week = await conn.fetchval(
+            "SELECT applied_amount FROM chug_debt_accruals "
+            "WHERE season = $1 AND week = $2 AND owner_id = $3 AND league_id = $4",
+            season, week, owner_id, league_id,
+        ) or 0
+        not_yet_due = min(max(this_week, 0), standing["outstanding_owed"])
+        owed_before = standing["outstanding_owed"] - not_yet_due
 
         if owed_before == 0:
             action = "no_debt"
@@ -167,13 +182,13 @@ async def settle_deadline_for_week(conn, season: int, week: int, league_id: int 
                 await conn.execute(
                     """
                     UPDATE chug_standing SET
-                        outstanding_owed = 0,
+                        outstanding_owed = $5,
                         fined_owed = fined_owed + $3,
                         consecutive_missed_weeks = 0,
                         updated_at = now()
                     WHERE season = $1 AND owner_id = $2 AND league_id = $4
                     """,
-                    season, owner_id, owed_before, league_id,
+                    season, owner_id, owed_before, league_id, not_yet_due,
                 )
             else:
                 action = "doubled"
@@ -181,7 +196,7 @@ async def settle_deadline_for_week(conn, season: int, week: int, league_id: int 
                 await conn.execute(
                     "UPDATE chug_standing SET outstanding_owed = $3, consecutive_missed_weeks = $4, updated_at = now() "
                     "WHERE season = $1 AND owner_id = $2 AND league_id = $5",
-                    season, owner_id, owed_after, missed, league_id,
+                    season, owner_id, owed_after + not_yet_due, missed, league_id,
                 )
 
         await conn.execute(

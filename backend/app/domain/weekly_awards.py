@@ -116,13 +116,16 @@ async def get_biggest_bench_crime(conn, season: int, week: int, league_id: int =
     return dict(row) if row else None
 
 
-def _team_clutch_choke(score: float, won: bool, expected: float, opp_expected: float) -> dict | None:
+def _team_clutch_choke(
+    score: float, won: bool, expected: float, opp_expected: float, tied: bool = False,
+) -> dict | None:
     """One team's clutch/choke qualification for a single game — pulled
     out of get_clutch_choke_of_week so get_clutch_choke_status_by_team
-    (matchup_context.py's per-matchup badge) evaluates the exact same
-    rule instead of a second, driftable copy of it. Returns None if
-    this team doesn't qualify as either this week."""
-    if expected <= 0 or opp_expected <= 0:
+    (matchup_context.py's per-matchup badge) and the season Clutch
+    Performer/Choke Artist awards (season_awards.py) evaluate the exact
+    same rule instead of a driftable copy of it. Returns None if this
+    team doesn't qualify as either this week; a tie is neither."""
+    if tied or expected <= 0 or opp_expected <= 0:
         return None
 
     pct_diff = (score - expected) / expected
@@ -153,7 +156,8 @@ async def get_clutch_choke_of_week(conn, season: int, week: int, league_id: int 
             score = float(m["home_score"] if is_home else m["away_score"])
             won = (m["home_score"] > m["away_score"]) if is_home else (m["away_score"] > m["home_score"])
 
-            status = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id))
+            tied = m["home_score"] == m["away_score"]
+            status = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id), tied)
             if status is None:
                 continue
             team_name = team_names.get(team_id)
@@ -183,7 +187,8 @@ async def get_clutch_choke_status_by_team(conn, season: int, week: int, league_i
             score = float(m["home_score"] if is_home else m["away_score"])
             won = (m["home_score"] > m["away_score"]) if is_home else (m["away_score"] > m["home_score"])
 
-            result = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id))
+            tied = m["home_score"] == m["away_score"]
+            result = _team_clutch_choke(score, won, expected_score(team_id), expected_score(opp_id), tied)
             status[team_id] = {"label": result["label"], "reason": result["reason"]} if result else None
 
     return status
@@ -255,7 +260,20 @@ async def get_game_of_week_result(
     if not m or m["home_score"] <= 0:
         return None
 
+    score = f"{max(m['home_score'], m['away_score'])}-{min(m['home_score'], m['away_score'])}"
+    if m["home_score"] == m["away_score"]:
+        # Used to fall through to "away team won" on a tie.
+        names = await conn.fetch(
+            "SELECT id, team_name FROM teams_by_season WHERE id = ANY($1::int[])",
+            [m["home_team_id"], m["away_team_id"]],
+        )
+        by_id = {r["id"]: r["team_name"] for r in names}
+        return {
+            "winner": f"{by_id.get(m['home_team_id'])} and {by_id.get(m['away_team_id'])}",
+            "score": score,
+            "tie": True,
+        }
     home_won = m["home_score"] > m["away_score"]
     winner_id = m["home_team_id"] if home_won else m["away_team_id"]
     winner_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", winner_id)
-    return {"winner": winner_name, "score": f"{max(m['home_score'], m['away_score'])}-{min(m['home_score'], m['away_score'])}"}
+    return {"winner": winner_name, "score": score, "tie": False}

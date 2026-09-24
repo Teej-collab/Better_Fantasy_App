@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.config import DEFAULT_LEAGUE_ID
 from app.main import app
+from app.domain import trades as trades_domain
 from tests.conftest import TEST_SEASON, make_safe_session_user_id
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -140,6 +141,35 @@ async def test_propose_trade_rejects_empty_side(pool, monkeypatch):
         client.cookies.update(a["cookies"])
         resp = await client.post("/trades", json={"receiving_team_id": b["team_id"], "give": [], "receive": [receive_player]})
     assert resp.status_code == 400
+
+
+async def test_accept_trade_blocked_after_deadline(pool, monkeypatch):
+    """2026-09-24: the deadline used to be checked only when a trade was
+    proposed, so one proposed in time could be accepted any time after."""
+    _set_env(monkeypatch)
+    a, b, give_player, receive_player = await _setup_two_teams(pool, "acceptdeadline")
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        resp = await client.post(
+            "/trades", json={"receiving_team_id": b["team_id"], "give": [give_player], "receive": [receive_player]}
+        )
+        assert resp.status_code == 200, resp.text
+        trade_id = resp.json()["id"]
+
+    past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)
+    async with pool.acquire() as conn:
+        league_id = await conn.fetchval("SELECT league_id FROM trades WHERE id = $1", trade_id)
+        await trades_domain.upsert_trade_settings(conn, league_id, TEST_SEASON, past, False)
+
+    async with _client() as client:
+        client.cookies.update(b["cookies"])
+        accept = await client.post(f"/trades/{trade_id}/accept")
+        assert accept.status_code == 400
+        assert "deadline" in accept.json()["detail"]
+        # Turning it down is still allowed.
+        reject = await client.post(f"/trades/{trade_id}/reject")
+        assert reject.status_code == 200, reject.text
 
 
 async def test_propose_trade_blocked_after_deadline(pool, monkeypatch):

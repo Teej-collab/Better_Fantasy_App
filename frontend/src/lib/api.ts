@@ -554,7 +554,8 @@ export type WeeklyAwards = {
   choke: { team_name: string; margin: number; reason: string } | null;
   boom_leaders: { player_name: string; points_scored: number; team_name: string }[];
   bust_leaders: { player_name: string; points_scored: number; team_name: string }[];
-  game_of_the_week: { winner: string; score: string } | null;
+  // tie: true -> `winner` names both teams ("A and B").
+  game_of_the_week: { winner: string; score: string; tie?: boolean } | null;
 };
 
 export type Rivalry = {

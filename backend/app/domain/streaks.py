@@ -12,15 +12,17 @@ instead of N round trips for N teams.
 """
 
 
-def compute_streak(recent_results: list[bool]) -> str:
-    """recent_results: list of booleans (True = win), most recent LAST."""
+def compute_streak(recent_results: list[bool | None]) -> str:
+    """recent_results: True = win, False = loss, None = tie, most recent
+    LAST. A tie breaks a streak either way (2026-09-24: ties used to
+    count as losses here)."""
     if len(recent_results) < 3:
         return "neutral"
 
     last_three = recent_results[-3:]
-    if all(last_three):
+    if all(r is True for r in last_three):
         return "hot"
-    if not any(last_three):
+    if all(r is False for r in last_three):
         return "cold"
     return "neutral"
 
@@ -49,6 +51,6 @@ async def get_team_streaks(conn, season: int, team_ids: list[int]) -> dict[int, 
 
     by_team: dict[int, list[bool]] = {tid: [] for tid in team_ids}
     for g in games:
-        by_team[g["team_id"]].append(g["my_score"] > g["opp_score"])
+        by_team[g["team_id"]].append(None if g["my_score"] == g["opp_score"] else g["my_score"] > g["opp_score"])
 
     return {tid: compute_streak(results) for tid, results in by_team.items()}

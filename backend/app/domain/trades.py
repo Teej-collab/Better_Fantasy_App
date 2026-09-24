@@ -131,6 +131,20 @@ async def _validate_assets(
     await _assert_capacity_ok(conn, season, league_id, receiving_team_id, len(give), len(receive))
 
 
+async def _assert_before_deadline(conn, league_id: int, season: int) -> None:
+    """Proposing AND accepting both have to happen before the deadline
+    (2026-09-24 fix: only proposing was checked, so a trade proposed
+    just before the deadline could still be accepted any time after
+    it). Commissioner approval isn't checked: a trade only reaches
+    review by being accepted, which this already gated, so a deal
+    agreed in time can finish review after the deadline — ESPN's
+    behavior too. Rejecting/cancelling are always allowed."""
+    settings = await get_trade_settings(conn, league_id, season)
+    if settings["trade_deadline"] is not None:
+        if datetime.datetime.now(datetime.timezone.utc) > settings["trade_deadline"]:
+            raise TradeDeadlinePassedError("The trade deadline for this season has passed")
+
+
 async def get_trade(conn, trade_id: int) -> dict | None:
     row = await conn.fetchrow(
         "SELECT id, league_id, season, proposing_team_id, receiving_team_id, status, proposed_at, resolved_at "
@@ -199,10 +213,7 @@ async def propose_trade(
     if not give or not receive:
         raise EmptyTradeError("A trade needs at least one player on each side")
 
-    settings = await get_trade_settings(conn, league_id, season)
-    if settings["trade_deadline"] is not None:
-        if datetime.datetime.now(datetime.timezone.utc) > settings["trade_deadline"]:
-            raise TradeDeadlinePassedError("The trade deadline for this season has passed")
+    await _assert_before_deadline(conn, league_id, season)
 
     async with conn.transaction():
         await _validate_assets(conn, season, league_id, proposing_team_id, receiving_team_id, give, receive)
@@ -262,6 +273,7 @@ async def respond_to_trade(conn, trade_id: int, responding_user_id: int, accept:
         await conn.execute("UPDATE trades SET status = 'rejected', resolved_at = now() WHERE id = $1", trade_id)
         return await get_trade(conn, trade_id)
 
+    await _assert_before_deadline(conn, trade["league_id"], trade["season"])
     settings = await get_trade_settings(conn, trade["league_id"], trade["season"])
     async with conn.transaction():
         if settings["review_required"]:

@@ -278,14 +278,60 @@ async def test_ensure_chug_deadline_settled_noop_before_deadline(pool):
 
 
 async def test_ensure_chug_deadline_settled_accrues_and_settles_once_past_deadline(pool):
+    # Week 1's chugs come due at week 2's deadline: accrued last week,
+    # doubled when week 2 settles.
     owner_id = await _seed_owner(pool, 13)
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 2)",
             TEST_SEASON, owner_id,
         )
-    settled = await ensure_chug_deadline_settled(pool, TEST_SEASON, 1, _GAMES, now=_AFTER_DEADLINE)
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)
+    settled = await ensure_chug_deadline_settled(pool, TEST_SEASON, 2, _GAMES, now=_AFTER_DEADLINE)
     assert settled == 1
 
     standing = await _standing(pool, owner_id)
-    assert standing["outstanding_owed"] == 4  # 2 accrued, then doubled
+    assert standing["outstanding_owed"] == 4  # week 1's 2, doubled at week 2's deadline
+
+
+async def test_settlement_never_doubles_the_same_weeks_new_debt(pool):
+    # The catch-up settlement path accrues a week's own debt right
+    # before settling that same week. Those chugs aren't due until next
+    # week's deadline, so they must survive untouched — only the older
+    # balance doubles.
+    owner_id = await _seed_owner(pool, 14)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 1)",
+            TEST_SEASON, owner_id,
+        )
+        await accrue_weekly_debt(conn, TEST_SEASON, 1)
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 2, $2, 3)",
+            TEST_SEASON, owner_id,
+        )
+    await ensure_chug_deadline_settled(pool, TEST_SEASON, 2, _GAMES, now=_AFTER_DEADLINE)
+
+    standing = await _standing(pool, owner_id)
+    assert standing["outstanding_owed"] == 2 + 3  # week 1's 1 doubled, week 2's 3 untouched
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT owed_before, action, owed_after FROM chug_deadline_settlements "
+            "WHERE season = $1 AND week = 2 AND owner_id = $2",
+            TEST_SEASON, owner_id,
+        )
+    assert (row["owed_before"], row["action"], row["owed_after"]) == (1, "doubled", 2)
+
+
+async def test_settlement_with_only_this_weeks_debt_is_no_debt(pool):
+    owner_id = await _seed_owner(pool, 15)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chug_debts (season, week, owner_id, chugs_owed) VALUES ($1, 1, $2, 2)",
+            TEST_SEASON, owner_id,
+        )
+    await ensure_chug_deadline_settled(pool, TEST_SEASON, 1, _GAMES, now=_AFTER_DEADLINE)
+
+    standing = await _standing(pool, owner_id)
+    assert standing["outstanding_owed"] == 2
+    assert standing["consecutive_missed_weeks"] == 0

@@ -27,6 +27,7 @@ from that week's own roster rows.
 
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.roster_source import uses_in_app_rosters
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 
 
@@ -153,8 +154,10 @@ async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: 
         if not games:
             continue
 
+        # A tie counts as half a win (2026-09-24, commissioner's call).
         wins = sum(1 for g in games if g["my_score"] > g["opp_score"])
-        win_pct = wins / len(games)
+        ties = sum(1 for g in games if g["my_score"] == g["opp_score"])
+        win_pct = (wins + 0.5 * ties) / len(games)
         avg_points = sum(float(g["my_score"]) for g in games) / len(games)
         recent = games[-3:] if len(games) >= 3 else games
         recent_form = sum(float(g["my_score"]) for g in recent) / len(recent)
@@ -185,9 +188,13 @@ async def compute_luck_scores_for_week(conn, season: int, week: int, league_id: 
         all_scores.append(float(m["away_score"]))
 
     for m in matchups:
-        home_won = m["home_score"] > m["away_score"]
-        home_luck = round(compute_luck_score(float(m["home_score"]), all_scores, home_won), 2)
-        away_luck = round(compute_luck_score(float(m["away_score"]), all_scores, not home_won), 2)
+        if m["home_score"] == m["away_score"]:
+            # A tie is neither a lucky win nor an unlucky loss.
+            home_luck = away_luck = 0.0
+        else:
+            home_won = m["home_score"] > m["away_score"]
+            home_luck = round(compute_luck_score(float(m["home_score"]), all_scores, home_won), 2)
+            away_luck = round(compute_luck_score(float(m["away_score"]), all_scores, not home_won), 2)
         await _upsert_stat(conn, season, week, m["home_team_id"], "luck_score", home_luck, league_id)
         await _upsert_stat(conn, season, week, m["away_team_id"], "luck_score", away_luck, league_id)
 
@@ -195,15 +202,29 @@ async def compute_luck_scores_for_week(conn, season: int, week: int, league_id: 
 
 
 async def compute_chaos_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    team_rows = await conn.fetch(
-        "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
-        season, week, league_id,
-    )
+    # 2026-09-24 fix: this only ever read the legacy ESPN-era `rosters`
+    # table, but in-app seasons (2026+) keep each week's lineup — and
+    # boom_bust.py's is_boom/is_bust flags — in roster_history, so no
+    # 2026 team ever got a chaos score. Same branch boom_bust.py,
+    # bench_crimes.py and chug_debt.py already use.
+    in_app = await uses_in_app_rosters(conn, season)
+    if in_app:
+        team_rows = await conn.fetch(
+            "SELECT DISTINCT rh.team_id FROM roster_history rh JOIN teams_by_season tbs ON tbs.id = rh.team_id "
+            "WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $3",
+            season, week, league_id,
+        )
+    else:
+        team_rows = await conn.fetch(
+            "SELECT DISTINCT team_id FROM rosters WHERE season = $1 AND week = $2 AND league_id = $3",
+            season, week, league_id,
+        )
 
     for t in team_rows:
         team_id = t["team_id"]
+        table = "roster_history" if in_app else "rosters"
         starters = await conn.fetch(
-            "SELECT is_boom, is_bust FROM rosters WHERE season = $1 AND week = $2 AND team_id = $3 "
+            f"SELECT is_boom, is_bust FROM {table} WHERE season = $1 AND week = $2 AND team_id = $3 "
             "AND lineup_slot NOT IN ('BE', 'IR')",
             season, week, team_id,
         )
@@ -247,7 +268,8 @@ async def compute_sos_for_week(conn, season: int, week: int, league_id: int = DE
         )
         if games:
             wins = sum(1 for g in games if g["my_score"] > g["opp_score"])
-            win_pct_by_team[team_id] = wins / len(games)
+            ties = sum(1 for g in games if g["my_score"] == g["opp_score"])
+            win_pct_by_team[team_id] = (wins + 0.5 * ties) / len(games)
 
     count = 0
     for team_id in team_ids:

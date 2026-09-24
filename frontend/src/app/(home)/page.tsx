@@ -690,7 +690,10 @@ function buildTickerItems(
 
   if (weekPlayed && awards) {
     if (awards.game_of_the_week) {
-      text("gotw", `⭐ Game of the Week: ${awards.game_of_the_week.winner} won ${awards.game_of_the_week.score}`);
+      text(
+        "gotw",
+        `⭐ Game of the Week: ${awards.game_of_the_week.winner} ${awards.game_of_the_week.tie ? "tied" : "won"} ${awards.game_of_the_week.score}`,
+      );
     }
     if (awards.overachiever) {
       text("overachiever", `📈 ${awards.overachiever.team_name} overachieved by +${awards.overachiever.diff.toFixed(1)}`);

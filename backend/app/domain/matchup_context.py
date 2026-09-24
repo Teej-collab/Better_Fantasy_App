@@ -85,13 +85,25 @@ def _projected_total(roster_rows) -> float | None:
 # happens, instead of waiting for the whole team's live total to
 # clear its entire pregame number (which realistically never happens
 # before very late Monday night).
-def _expected_total(roster_rows, locked_teams: frozenset[str]) -> float:
+#
+# 2026-09-24 fix: that max() also applied after a player's game was
+# over, so a finished dud (2 points on a 15-point projection) kept
+# counting as 15 and never lowered the team's odds. Once a player's
+# game is final, their real points are their final contribution.
+def _expected_total(
+    roster_rows, locked_teams: frozenset[str], game_status_by_pro_team_map: dict[str, str] | None = None,
+) -> float:
+    game_status_by_pro_team_map = game_status_by_pro_team_map or {}
     starters = [r for r in roster_rows if r["lineup_slot"] not in _STARTER_EXCLUDED_SLOTS]
     total = 0.0
     for r in starters:
         projected = float(r["points_projected"] or 0)
-        if r["pro_team"] in locked_teams:
-            total += max(float(r["points_scored"] or 0), projected)
+        scored = float(r["points_scored"] or 0)
+        status = game_status_by_pro_team_map.get(r["pro_team"])
+        if status == "final":
+            total += scored
+        elif status == "in_progress" or r["pro_team"] in locked_teams:
+            total += max(scored, projected)
         else:
             total += projected
     return round(total, 2)
@@ -235,8 +247,8 @@ def _matchup_entry(
     away_win_probability = None
     if started:
         home_win_probability = estimate_win_probability(
-            float(home_score), _expected_total(home_roster, locked_teams),
-            float(away_score), _expected_total(away_roster, locked_teams),
+            float(home_score), _expected_total(home_roster, locked_teams, game_status_by_pro_team_map),
+            float(away_score), _expected_total(away_roster, locked_teams, game_status_by_pro_team_map),
             score_stdev,
         )
         away_win_probability = round(100 - home_win_probability, 1)

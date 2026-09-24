@@ -435,7 +435,8 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
                 league_id,
             )
             if gow_result:
-                facts.append(f"Game of the Week result: {gow_result['winner']} won {gow_result['score']}")
+                verb = "tied" if gow_result.get("tie") else "won"
+                facts.append(f"Game of the Week result: {gow_result['winner']} {verb} {gow_result['score']}")
 
     # Right-now league context, same as _build_facts: current standings
     # (leader + last place) and real Jeffrey's Rule chug debts — applies
