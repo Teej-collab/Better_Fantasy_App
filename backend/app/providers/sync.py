@@ -154,11 +154,16 @@ async def run_full_sync(
     return results
 
 
-async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> dict:
+async def run_live_sync(
+    provider: FantasyProvider, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
     """Fast path for in-game updates: re-syncs one specific week's
     matchups and rosters (not a full season scan) and recomputes
     boom/bust for just that week. Cheap enough to poll frequently during
-    live games — see app/scheduler.py's live-sync job."""
+    live games — see app/scheduler.py's live-sync job. league_id
+    defaults to DEFAULT_LEAGUE_ID for the same reason as run_full_sync's
+    own — a per-league connection (Phase 6 of the multi-league
+    migration) passes its own explicitly."""
     pool = await get_pool()
     results = {}
 
@@ -174,16 +179,16 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
         results["league_state"] = {"status": "failed", "detail": str(e)}
 
     for step_name, step in (
-        ("matchups", lambda p, s: provider.sync_matchups_for_week(p, s, week)),
-        ("rosters", lambda p, s: provider.sync_rosters_for_week(p, s, week)),
-        ("boom_bust", lambda p, s: compute_boom_bust_for_single_week(p, s, week)),
-        ("chug_debts", lambda p, s: compute_chug_debts_for_single_week(p, s, week)),
-        ("chug_standing_accrual", lambda p, s: accrue_weekly_debt_for_single_week(p, s, week)),
-        ("weekly_team_stats", lambda p, s: compute_weekly_team_stats_for_single_week(p, s, week)),
-        ("bench_crimes", lambda p, s: compute_bench_crimes_for_single_week(p, s, week)),
+        ("matchups", lambda p, s, lid: provider.sync_matchups_for_week(p, s, week, lid)),
+        ("rosters", lambda p, s, lid: provider.sync_rosters_for_week(p, s, week, lid)),
+        ("boom_bust", lambda p, s, lid: compute_boom_bust_for_single_week(p, s, week, lid)),
+        ("chug_debts", lambda p, s, lid: compute_chug_debts_for_single_week(p, s, week, lid)),
+        ("chug_standing_accrual", lambda p, s, lid: accrue_weekly_debt_for_single_week(p, s, week, lid)),
+        ("weekly_team_stats", lambda p, s, lid: compute_weekly_team_stats_for_single_week(p, s, week, lid)),
+        ("bench_crimes", lambda p, s, lid: compute_bench_crimes_for_single_week(p, s, week, lid)),
     ):
         try:
-            count = await step(pool, season)
+            count = await step(pool, season, league_id)
             results[step_name] = {"status": "success", "count": count}
         except Exception as e:
             results[step_name] = {"status": "failed", "detail": str(e)}
@@ -198,7 +203,7 @@ async def run_live_sync(provider: FantasyProvider, season: int, week: int) -> di
     # it's the public, unauthenticated endpoint, not the private one.
     try:
         games = await get_nfl_scoreboard()
-        settled = await ensure_chug_deadline_settled(pool, season, week, games)
+        settled = await ensure_chug_deadline_settled(pool, season, week, games, league_id=league_id)
         results["chug_deadline_settlement"] = {"status": "success", "count": settled}
     except Exception as e:
         results["chug_deadline_settlement"] = {"status": "failed", "detail": str(e)}

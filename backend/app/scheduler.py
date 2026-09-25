@@ -157,6 +157,7 @@ from app.domain.draft_grades import compute_draft_grades
 from app.domain.draft_narratives import generate_draft_narratives
 from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
+from app.encryption import decrypt_secret
 from app.gamecast import service as gamecast_service
 from app.notifications import fantasy_events
 from app.notifications.draft_events import (
@@ -176,6 +177,7 @@ from app.domain import waivers
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
+from app.queries import league_espn_connections as espn_connection_queries
 from app.queries import watch_party as watch_party_queries
 from app.scheduler_status import record_job_run
 from app.watch_party.manager import manager as watch_party_manager
@@ -183,6 +185,31 @@ from app.watch_party.manager import manager as watch_party_manager
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
+
+
+async def _connected_espn_providers(active_season: int) -> list[tuple[int, ESPNProvider]]:
+    """Every OTHER league with its own saved ESPN connection (Phase 6 of
+    the multi-league migration — see TODO.md's PHASE 9 entry), alongside
+    League #1's own env-var-driven config below. A row whose credentials
+    can no longer be decrypted (an encryption-key mismatch — see
+    app/encryption.py) is logged and skipped, not fatal to every other
+    league's sync."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await espn_connection_queries.list_all_connections(conn)
+    providers = []
+    for row in rows:
+        try:
+            config = ESPNConfig(
+                league_id=row["espn_league_id"],
+                espn_s2=decrypt_secret(row["espn_s2_encrypted"]),
+                swid=decrypt_secret(row["espn_swid_encrypted"]),
+                active_season=active_season,
+            )
+            providers.append((row["league_id"], ESPNProvider(config)))
+        except Exception:
+            logger.exception("Couldn't build ESPN config for league_id=%s", row["league_id"])
+    return providers
 
 
 async def _run_full_sync_job():
@@ -193,6 +220,34 @@ async def _run_full_sync_job():
     )
     logger.info("Scheduled full ESPN sync finished: %s", results)
     record_job_run("full_sync")
+
+    # Every other league with its own saved ESPN connection gets synced
+    # too, independently — a broken connection (expired S2/SWID, ESPN
+    # league deleted) never blocks League #1's own sync above, or any
+    # other connected league's. Only the active season, not a historical
+    # backfill range — same scoping as the manual "Sync now" endpoint
+    # (app/routers/league_settings.py), since a scheduled tick re-runs
+    # regularly anyway.
+    pool = await get_pool()
+    for league_id, connected_provider in await _connected_espn_providers(espn_config.active_season):
+        season = espn_config.active_season
+        try:
+            connected_results = await run_full_sync(connected_provider, season, season, league_id=league_id)
+        except Exception as e:
+            async with pool.acquire() as conn:
+                await espn_connection_queries.mark_sync_failure(conn, league_id, str(e))
+            logger.exception("Scheduled full ESPN sync failed for league_id=%s", league_id)
+            continue
+
+        teams_result = connected_results.get(season, {}).get("teams", {})
+        async with pool.acquire() as conn:
+            if teams_result.get("status") == "failed":
+                await espn_connection_queries.mark_sync_failure(
+                    conn, league_id, teams_result.get("detail", "Sync failed")
+                )
+            else:
+                await espn_connection_queries.mark_sync_success(conn, league_id)
+        logger.info("Scheduled full ESPN sync finished for league_id=%s: %s", league_id, connected_results)
 
 
 async def _run_live_sync_job():
@@ -224,6 +279,36 @@ async def _run_live_sync_job():
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
     record_job_run("live_sync")
+
+    # Same "every connected league, independently, best-effort" shape
+    # as _run_full_sync_job above — reuses the same real `week`/`games`
+    # this tick already fetched for League #1, since it's the same real
+    # NFL slate for every league regardless of which fantasy league it
+    # is. No fantasy_events notification for these — that snapshot-diff
+    # is specifically tuned for League #1's own real roster/notification
+    # data (see fantasy_events.py); wiring it per-league is separate
+    # future work, not attempted here.
+    for league_id, connected_provider in await _connected_espn_providers(season):
+        try:
+            connected_results = await run_live_sync(connected_provider, season, week, league_id=league_id)
+        except Exception as e:
+            async with pool.acquire() as conn:
+                await espn_connection_queries.mark_sync_failure(conn, league_id, str(e))
+            logger.exception("Live sync failed for league_id=%s", league_id)
+            continue
+
+        matchups_result = connected_results.get("matchups", {})
+        async with pool.acquire() as conn:
+            if matchups_result.get("status") == "failed":
+                await espn_connection_queries.mark_sync_failure(
+                    conn, league_id, matchups_result.get("detail", "Sync failed")
+                )
+            else:
+                await espn_connection_queries.mark_sync_success(conn, league_id)
+        logger.info(
+            "Live sync finished for league_id=%s (season=%s week=%s): %s",
+            league_id, season, week, connected_results,
+        )
 
 
 async def _run_week_settlement_job():

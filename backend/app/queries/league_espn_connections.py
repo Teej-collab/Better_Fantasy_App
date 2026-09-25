@@ -7,6 +7,17 @@ via app/encryption.py; this module only ever moves ciphertext.
 """
 
 
+async def list_all_connections(conn):
+    """Every league with a saved ESPN connection — the scheduled sync
+    jobs (app/scheduler.py) iterate this to sync each independently of
+    League #1's own env-var-driven sync, not filtered by anything
+    beyond "has a connection at all" (a disconnected league just isn't
+    a row here anymore, see delete_connection)."""
+    return await conn.fetch(
+        "SELECT league_id, espn_league_id, espn_s2_encrypted, espn_swid_encrypted FROM league_espn_connections"
+    )
+
+
 async def get_connection(conn, league_id: int):
     return await conn.fetchrow(
         """

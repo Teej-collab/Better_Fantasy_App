@@ -140,12 +140,16 @@ async def generate_schedule(body: GenerateScheduleRequest, request: Request, poo
 # --- ESPN connection (Phase 6 of the multi-league migration — see
 # TODO.md's PHASE 9 entry). Lets a league other than League #1 import
 # its own real ESPN league, instead of ESPN_LEAGUE_ID/ESPN_S2/
-# ESPN_SWID only ever describing one global league. Deliberately scoped
-# to connect/disconnect/status + an on-demand manual sync in this
-# phase — the 4 scheduled jobs in app/scheduler.py still only ever
-# sync League #1 automatically; wiring them to iterate every connected
-# league is real future work, not attempted here (schedulers are off
-# by default in dev anyway — see AGENTS.md).
+# ESPN_SWID only ever describing one global league. This on-demand
+# manual sync is deliberately still here even though app/scheduler.py's
+# full/live sync jobs now also iterate every connected league
+# automatically (same day, same phase) — a commissioner who just
+# connected wants to see real data immediately, not wait for the next
+# scheduled tick (schedulers are off by default in dev anyway — see
+# AGENTS.md). Week settlement and weekly compute needed no scheduler
+# changes at all — both were already fully multi-league (DB-only
+# compute, no ESPN calls, already looping every league with real teams
+# for the season).
 
 
 class ConnectEspnRequest(BaseModel):
