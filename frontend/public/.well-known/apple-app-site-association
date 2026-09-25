@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appID": "REPLACE_WITH_APPLE_TEAM_ID.com.weekendleague.app",
+        "appID": "5K8V6776KS.com.weekendleague.app",
         "paths": ["/auth/native-complete*"]
       }
     ]
