@@ -44,6 +44,7 @@ from app.domain.weekly_team_stats import (
     compute_weekly_team_stats_for_season,
     compute_weekly_team_stats_for_single_week,
 )
+from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week
 from app.queries import roster_history as roster_history_queries
@@ -87,7 +88,17 @@ async def update_league_state(pool, season: int, current_week: int) -> None:
         await roster_history_queries.snapshot_week(conn, season, current_week)
 
 
-async def run_full_sync(provider: FantasyProvider, start_season: int, end_season: int) -> dict:
+async def run_full_sync(
+    provider: FantasyProvider, start_season: int, end_season: int, league_id: int = DEFAULT_LEAGUE_ID
+) -> dict:
+    """league_id defaults to DEFAULT_LEAGUE_ID (League #1) — every
+    existing caller (the scheduler's daily job, admin.py's manual
+    trigger) keeps working unchanged. A per-league manual sync
+    (app/routers/league_settings.py's POST /league/espn-connection/sync,
+    Phase 6 of the multi-league migration) passes its own league_id
+    explicitly, threaded into every step below — every one of them
+    already accepts a trailing league_id param from Phase 4's own sweep
+    of this codebase, so this is purely additive, not a new pattern."""
     pool = await get_pool()
     results = {}
 
@@ -122,7 +133,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
             ("season_awards", compute_season_awards_for_season),
         ):
             try:
-                count = await step(pool, season)
+                count = await step(pool, season, league_id)
                 season_results[step_name] = {"status": "success", "count": count}
             except Exception as e:
                 season_results[step_name] = {"status": "failed", "detail": str(e)}
@@ -131,7 +142,7 @@ async def run_full_sync(provider: FantasyProvider, start_season: int, end_season
     if current_week:
         try:
             games = await get_nfl_scoreboard()
-            settled = await ensure_chug_deadline_settled(pool, end_season, current_week, games)
+            settled = await ensure_chug_deadline_settled(pool, end_season, current_week, games, league_id=league_id)
             results.setdefault(end_season, {})["chug_deadline_settlement"] = {
                 "status": "success", "count": settled,
             }

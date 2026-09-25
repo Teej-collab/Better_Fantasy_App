@@ -443,6 +443,14 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM keeper_selections WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        # league_espn_connections.league_id -> leagues.id is ON DELETE
+        # CASCADE (migration 0abe0690feb3) — this DELETE is redundant
+        # with that cascade, kept anyway for the same explicit-not-
+        # implicit reasoning every other line here already follows.
+        await conn.execute(
+            "DELETE FROM league_espn_connections WHERE league_id IN "
+            "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owner_users.owner_id -> owners.owner_id, so capture which
         # users are linked to test owners *before* deleting those

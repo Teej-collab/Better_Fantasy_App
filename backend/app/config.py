@@ -149,3 +149,25 @@ def require_fcm_configured() -> str:
             "Native Android push isn't configured — set FCM_SERVICE_ACCOUNT_JSON (see .env.example)."
         )
     return FCM_SERVICE_ACCOUNT_JSON
+
+
+# Phase 6 of the multi-league migration (see TODO.md's PHASE 9 entry) —
+# per-league ESPN connections (app/encryption.py, app/queries/
+# league_espn_connections.py). Same lazy, fail-loud-at-use pattern as
+# every other optional credential above: a developer not touching this
+# feature never needs a real key. Unlike VAPID/APNs/FCM though, this
+# key doesn't come from an external provider — it's generated once
+# locally (Fernet.generate_key()) and only ever needs to be consistent
+# with itself across restarts, since it's decrypting rows this same
+# app wrote.
+ESPN_CREDENTIAL_ENCRYPTION_KEY = os.getenv("ESPN_CREDENTIAL_ENCRYPTION_KEY")
+
+
+def require_espn_credential_encryption_configured() -> str:
+    if not ESPN_CREDENTIAL_ENCRYPTION_KEY:
+        raise RuntimeError(
+            "Per-league ESPN connections aren't configured — set ESPN_CREDENTIAL_ENCRYPTION_KEY "
+            "(see .env.example; generate one with "
+            "`python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"`)."
+        )
+    return ESPN_CREDENTIAL_ENCRYPTION_KEY

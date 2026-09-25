@@ -11,11 +11,28 @@ from app.config import _require
 
 
 class ESPNConfig:
-    def __init__(self):
-        self.league_id = int(_require("ESPN_LEAGUE_ID"))
-        self.espn_s2 = _require("ESPN_S2")
-        self.swid = _require("ESPN_SWID")
-        self.active_season = int(_require("ACTIVE_SEASON"))
+    def __init__(
+        self, *, league_id: int | None = None, espn_s2: str | None = None,
+        swid: str | None = None, active_season: int | None = None,
+    ):
+        """Every param defaults to the global env vars, unchanged from
+        before — every existing call site (`ESPNConfig()`, no args)
+        keeps reading League #1's real credentials exactly as it always
+        has. The overrides exist for a per-league ESPN connection
+        (app/queries/league_espn_connections.py, Phase 6 of the
+        multi-league migration — see TODO.md's PHASE 9 entry): the
+        decrypted espn_s2/swid for a league OTHER than League #1 have
+        nowhere to live as env vars, so they're passed in directly
+        instead. league_start_season still isn't override-able — a
+        connected league's first real historical season isn't knowable
+        from anything this app has today, so a per-league manual sync
+        only ever targets active_season (see app/routers/
+        league_settings.py's sync endpoint), never a historical
+        backfill range."""
+        self.league_id = league_id if league_id is not None else int(_require("ESPN_LEAGUE_ID"))
+        self.espn_s2 = espn_s2 if espn_s2 is not None else _require("ESPN_S2")
+        self.swid = swid if swid is not None else _require("ESPN_SWID")
+        self.active_season = active_season if active_season is not None else int(_require("ACTIVE_SEASON"))
         self.league_start_season = int(
             os.getenv("LEAGUE_START_SEASON", str(self.active_season))
         )
