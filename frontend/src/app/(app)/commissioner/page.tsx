@@ -87,6 +87,11 @@ export default async function CommissionerPage() {
       title: "Polls",
       description: "Ask your league a question and collect votes",
     },
+    {
+      href: "/commissioner/espn",
+      title: "ESPN Connection",
+      description: "Import teams, matchups, and standings from a real ESPN league",
+    },
   ];
 
   return (

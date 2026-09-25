@@ -287,3 +287,45 @@ export async function updateScoringRules(
 ): Promise<{ season: number; rules: ScoringRule[] }> {
   return put<{ season: number; rules: ScoringRule[] }>("/league/scoring-rules", { season, rules });
 }
+
+// Phase 6 of the multi-league migration (see backend/TODO.md's PHASE 9
+// entry) — connects the caller's active league to its own real ESPN
+// league, instead of ESPN_LEAGUE_ID/S2/SWID only ever describing
+// League #1. Never returns the credentials themselves — write-only
+// past the moment they're saved.
+export type EspnConnectionStatus =
+  | { connected: false }
+  | { connected: true; espn_league_id: number; last_synced_at: string | null; last_sync_error: string | null };
+
+export async function getEspnConnection(): Promise<EspnConnectionStatus> {
+  return get<EspnConnectionStatus>("/league/espn-connection");
+}
+
+// Commissioner-only (backend-enforced via require_league_commissioner).
+// The backend validates these credentials against a real ESPN fetch
+// before saving anything — a bad League ID/S2/SWID surfaces here as a
+// thrown Error (see this file's own post() helper), not a silent save.
+export async function connectEspn(
+  espnLeagueId: number,
+  espnS2: string,
+  espnSwid: string
+): Promise<{ connected: true; espn_league_id: number }> {
+  return post<{ connected: true; espn_league_id: number }>("/league/espn-connection", {
+    espn_league_id: espnLeagueId,
+    espn_s2: espnS2,
+    espn_swid: espnSwid,
+  });
+}
+
+// Commissioner-only — removes the connection, never the data it already
+// synced (teams, matchups, rosters, ...).
+export async function disconnectEspn(): Promise<void> {
+  await del("/league/espn-connection");
+}
+
+// Commissioner-only, on-demand sync for this league's own connected
+// ESPN league — only ever syncs the active season (see backend's
+// ESPNConfig docstring), not a historical backfill range.
+export async function syncEspnNow(): Promise<{ season: number; results: unknown }> {
+  return post<{ season: number; results: unknown }>("/league/espn-connection/sync", {});
+}
