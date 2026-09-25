@@ -2039,26 +2039,35 @@ build/lint/test/curl verification, not visual inspection.
       needs ESPN at all (Phase 5's create-a-team flow above), so this
       only matters for someone wanting to import a *different* real
       ESPN league specifically.
-- [ ] **Commissioner scoring-rules UI** — a `PUT /league/scoring-rules`
-      endpoint (commissioner-only, same shape as the existing
-      `/keepers/rules` pattern) to edit `points_per_unit` per stat
-      category. Default rules are already seeded automatically at
-      league-creation time (`seed_default_scoring_rules`, copied from
-      League #1's real values) — this is just the editing surface on
-      top. Roster shape needs no new work — `draft_config.roster_slots`
-      is already commissioner-set per league via the existing
-      `DraftSetupPanel.tsx` / `POST /draft/setup`.
-- [ ] **Make the rest of the frontend league-aware.** Everything
-      outside the new `/leagues` page (standings, matchups, draft, My
-      Team, chat, chug, awards, power rankings — effectively the whole
-      app) still implicitly shows League #1 only; every API call
-      defaults `league_id` server-side rather than the frontend ever
-      choosing one. A real second league needs a selected-league
-      concept threaded through the frontend (a switcher, most likely
-      persisted per-visitor) and every existing page/API call updated
-      to pass it — a genuinely large, separate frontend initiative,
-      deliberately not attempted in the same pass as the backend work
-      above.
+- [x] **Commissioner scoring-rules UI — already built, this entry was
+      stale.** `PUT /league/scoring-rules` (`backend/app/routers/
+      league_settings.py`) is commissioner-gated via
+      `require_league_commissioner` and already league-aware (reads/
+      writes scoped by `require_active_league_id`'s `league_id`, not
+      `DEFAULT_LEAGUE_ID`). `frontend/src/components/commissioner/
+      ScoringRulesSection.tsx` (132 lines, real inputs + save button)
+      has called it since 2026-09-03 — this checklist just never got
+      updated once it shipped. Confirmed 2026-09-25 while re-auditing
+      Phase 9 before picking the next piece of work.
+- [x] **Make the rest of the frontend league-aware — mostly already
+      done; this entry was also stale.** Re-audited 2026-09-25 before
+      starting: every league-scoped router (16 files — standings,
+      matchups, draft, awards, chug, chat, keepers, trades, polls,
+      players, me, profile, watch_party, settings, league,
+      league_settings) already resolves `league_id` from the session
+      via `resolve_active_league_id`/`require_active_league_id`/
+      `require_league_access`, not `DEFAULT_LEAGUE_ID` — only 5 files
+      still reference the default, all legitimate global/League-#1-
+      specific uses (site admin, ESPN sync), not unmigrated data
+      routes. The frontend already threads `activeLeagueName` into all
+      14 league-family pages via `LeagueSubNav`, and `/leagues/
+      page.tsx` already has a working "Switch to this league" button
+      (`POST /leagues/{id}/select`, live since Phase 5). The one real
+      gap: that `activeLeagueName` display was a read-only `<span>` —
+      switching still required navigating away to `/leagues`. Fixed:
+      `frontend/src/components/nav/LeagueSwitcher.tsx`, a real inline
+      dropdown (mirrors `AccountMenu.tsx`'s accessible menu shape),
+      now rendered by `LeagueSubNav` across all 14 pages.
 
 ## PHASE 10 — ADDITIONAL PROVIDERS
 - [ ] Yahoo / Sleeper adapters, only after ESPN adapter is stable
