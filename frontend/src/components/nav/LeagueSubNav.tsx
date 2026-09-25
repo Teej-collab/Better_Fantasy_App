@@ -7,6 +7,7 @@ import {
   NAV_ACCENT,
   type DestinationKey,
 } from "@/lib/navDestinations";
+import { LeagueSwitcher } from "@/components/nav/LeagueSwitcher";
 
 export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers" | "freeAgents">;
 
@@ -50,8 +51,9 @@ export function LeagueSubNav({
   awardsHref: string;
   // Null/omitted for a signed-out visitor or one with no active league
   // yet (NeedsLeagueCard/SignInCard handle those states before this
-  // ever renders in practice) — a member of more than one league is
-  // the only case this chip actually needs to disambiguate for.
+  // ever renders in practice). Renders as LeagueSwitcher below, not a
+  // plain label — a member of more than one league can switch right
+  // from here instead of navigating to /leagues first (2026-09).
   activeLeagueName?: string | null;
 }) {
   // awardsAllTime's href is derived from awardsHref the same reason
@@ -93,15 +95,7 @@ export function LeagueSubNav({
         >
           ‹ League
         </Link>
-        {activeLeagueName && (
-          <span
-            className="ml-auto truncate rounded-full px-2.5 py-1 text-xs font-medium"
-            style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)", color: "var(--wl-text-secondary)" }}
-            title="Your active league"
-          >
-            {activeLeagueName}
-          </span>
-        )}
+        {activeLeagueName && <LeagueSwitcher activeLeagueName={activeLeagueName} />}
       </div>
       <nav aria-label="League sections" className="flex flex-col gap-1.5">
         {/* Fixed grid, not flex-wrap — flex-wrap's row-break point
