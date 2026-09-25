@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { completeSignIn, login, signup } from "@/lib/authApi";
+import { useIsNativeApp } from "@/lib/nativeApp";
 
 // Shared by every text field in the email/password form below. Used
 // to unconditionally strip the focus outline (focus:outline-none)
@@ -66,6 +67,14 @@ export function SignInCard({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // See app/auth/native-complete/page.tsx for why this changes anything:
+  // ?client=native tells the backend to route OAuth completion through a
+  // deep-link ticket instead of the web flow's #token= fragment, which a
+  // native app's own embedded WebView cookie jar would never see anyway
+  // (Discord/Google OAuth opens in the system browser, a separate cookie
+  // jar — see that page's own docstring).
+  const nativeClient = useIsNativeApp();
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -116,7 +125,7 @@ export function SignInCard({
       {!showEmailForm ? (
         <>
           <a
-            href={`${API_BASE_URL}/auth/discord/login`}
+            href={`${API_BASE_URL}/auth/discord/login${nativeClient ? "?client=native" : ""}`}
             target="_blank"
             rel="noopener"
             className="flex items-center justify-center gap-2.5 rounded-full bg-[#5865F2] px-6 py-3.5 text-sm font-semibold text-white transition-transform hover:brightness-110 active:scale-[0.98]"
