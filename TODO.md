@@ -2033,12 +2033,26 @@ build/lint/test/curl verification, not visual inspection.
       same real player, each with a `pick_number = 1`, each with their
       own `pass_td` value for the same season. Full backend suite
       green.
-- [ ] Phase 6 — per-league ESPN connection (Settings → Connected
-      Accounts), replacing the global `ESPN_LEAGUE_ID` env var — lower
-      priority than it looked: a brand-new self-serve league no longer
-      needs ESPN at all (Phase 5's create-a-team flow above), so this
-      only matters for someone wanting to import a *different* real
-      ESPN league specifically.
+- [x] **Phase 6 — per-league ESPN connection, 2026-09-25.** Commissioner
+      Tools → ESPN Connection: `POST/GET/DELETE /league/espn-connection`
+      + `POST .../sync` (`league_espn_connections` table, migration
+      `0abe0690feb3`), gated via `require_league_commissioner`. `espn_s2`/
+      `swid` are Fernet-encrypted at rest (`app/encryption.py`,
+      `ESPN_CREDENTIAL_ENCRYPTION_KEY`) — the first real per-user
+      credential this app stores in its own database rather than only
+      ever reading from an env var. `ESPNConfig` gained optional
+      override params (every existing `ESPNConfig()` call site
+      unchanged); `run_full_sync` gained a `league_id` param threaded
+      into every step (each already accepted one from Phase 4's own
+      sweep). Connect validates credentials against a real ESPN fetch
+      before saving. Deliberately scoped to connect/disconnect/status +
+      an on-demand manual sync, not automatic scheduling — the 4 jobs in
+      `app/scheduler.py` still only sync League #1 automatically;
+      refactoring them to iterate every connected league (with per-league
+      error isolation) is real, separate future work, not attempted here.
+      15 new tests, full targeted regression clean (one pre-existing,
+      confirmed-unrelated failure in `test_sync_orchestration.py` — a
+      real-clock-dependent assertion, not touched by this change).
 - [x] **Commissioner scoring-rules UI — already built, this entry was
       stale.** `PUT /league/scoring-rules` (`backend/app/routers/
       league_settings.py`) is commissioner-gated via
