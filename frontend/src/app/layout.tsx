@@ -11,6 +11,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
+import { NativePushRegistration } from "@/components/NativePushRegistration";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import { PresenceProvider } from "@/components/PresenceProvider";
@@ -234,6 +235,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <PlayerCardProvider>{children}</PlayerCardProvider>
         </PresenceProvider>
         <ServiceWorkerRegistration />
+        <NativePushRegistration />
         <AudioWarmup />
       </body>
     </html>
