@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.weekendleague.app",
+      "sha256_cert_fingerprints": [
+        "1A:F0:F0:19:B8:B4:F7:09:EE:79:A0:48:E6:3D:E5:F8:3D:6E:9F:9C:48:42:A9:1A:5A:28:4C:9B:35:67:3B:67"
+      ]
+    }
+  }
+]

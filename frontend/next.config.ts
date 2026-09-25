@@ -50,7 +50,19 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: devOrigins(),
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // apple-app-site-association has no file extension by Apple's own
+      // spec (see frontend/public/.well-known/apple-app-site-association),
+      // so Next's static file server can't infer a MIME type from the
+      // path the way it does for assetlinks.json's real .json extension —
+      // without this, it would serve as application/octet-stream, which
+      // some iOS versions' Universal Link validator rejects outright.
+      {
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+    ];
   },
   images: {
     remotePatterns: [
