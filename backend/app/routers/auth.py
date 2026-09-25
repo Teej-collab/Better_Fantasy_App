@@ -27,6 +27,7 @@ from app.auth.session import (
     create_session_token,
     create_ticket_token,
     decode_session_token,
+    decode_ticket_token,
     get_session_token,
 )
 from app.config import DEFAULT_LEAGUE_ID
@@ -34,17 +35,49 @@ from app.db import get_pool
 from app.notifications.email import send_password_reset_email
 from app.queries import auth as auth_queries
 from app.queries import leagues as league_queries
+from app.queries import used_oauth_tickets as used_oauth_tickets_queries
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 STATE_COOKIE_NAME = "oauth_state"
 STATE_COOKIE_MAX_AGE_SECONDS = 600  # just needs to survive the round trip to Discord and back
 
+# A native app completing OAuth can't land on a web page the way the
+# browser flow does (see discord_callback's own comment on the #token=
+# fragment) — it needs a deep link back into the app instead. Threading
+# which completion a given OAuth attempt wants through `state` itself
+# (prefixed, e.g. "native:xyz...") needs no new signing/CSRF mechanism:
+# the EXISTING cookie double-submit check below already makes `state`
+# tamper-evident, so a client_type an attacker didn't get from a real
+# oauth_state cookie round-trip can't be forged in either direction.
+# secrets.token_urlsafe() output is always letters/digits/-/_, never a
+# colon, so partitioning on ":" is unambiguous.
+NATIVE_OAUTH_TICKET_PURPOSE = "native_oauth"
+
+
+def _resolve_client_type(state: str) -> str:
+    client_type, _, _ = state.partition(":")
+    return client_type if client_type in ("web", "native") else "web"
+
+
+def _native_app_base_url() -> str:
+    return os.getenv("NATIVE_APP_UNIVERSAL_LINK_BASE") or os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
+def _native_completion_url(ticket: str) -> str:
+    return f"{_native_app_base_url()}/auth/native-complete?ticket={ticket}"
+
+
+def _native_error_url(error_code: str) -> str:
+    return f"{_native_app_base_url()}/auth/native-complete?error={error_code}"
+
 
 @router.get("/discord/login")
-async def discord_login():
+async def discord_login(client: str = "web"):
+    if client not in ("web", "native"):
+        raise HTTPException(status_code=400, detail="client must be 'web' or 'native'")
     config = DiscordAuthConfig()
-    state = secrets.token_urlsafe(24)
+    state = f"{client}:{secrets.token_urlsafe(24)}"
     response = RedirectResponse(discord_oauth.build_authorize_url(config, state))
     response.set_cookie(
         STATE_COOKIE_NAME, state,
@@ -61,6 +94,7 @@ async def discord_callback(request: Request, code: str | None = None, state: str
     expected_state = request.cookies.get(STATE_COOKIE_NAME)
     if not code or not state or not expected_state or state != expected_state:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    client_type = _resolve_client_type(state)
 
     access_token = await discord_oauth.exchange_code_for_token(config, code)
     discord_user = await discord_oauth.fetch_discord_user(access_token)
@@ -71,7 +105,10 @@ async def discord_callback(request: Request, code: str | None = None, state: str
     async with pool.acquire() as conn:
         owner = await auth_queries.get_owner_by_discord_id(conn, discord_user_id)
         if owner is None:
-            response = RedirectResponse(f"{config.frontend_url}/login?error=not_a_league_member")
+            if client_type == "native":
+                response = RedirectResponse(_native_error_url("not_a_league_member"))
+            else:
+                response = RedirectResponse(f"{config.frontend_url}/login?error=not_a_league_member")
             response.delete_cookie(STATE_COOKIE_NAME)
             return response
 
@@ -84,6 +121,26 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         config.commissioner_discord_id is not None
         and str(discord_user_id) == config.commissioner_discord_id
     )
+
+    if client_type == "native":
+        # A ticket, not the real session token — see this module's own
+        # NATIVE_OAUTH_TICKET_PURPOSE comment and redeem_native_oauth_ticket
+        # below for why the real token is only ever handed over via a
+        # direct POST response body, never a URL.
+        ticket = create_ticket_token(
+            config.session_secret,
+            purpose=NATIVE_OAUTH_TICKET_PURPOSE,
+            user_id=user_id,
+            owner_id=owner["owner_id"],
+            discord_user_id=discord_user_id,
+            is_commissioner=is_commissioner,
+            max_age_seconds=TICKET_MAX_AGE_SECONDS,
+            jti=secrets.token_urlsafe(16),
+        )
+        response = RedirectResponse(_native_completion_url(ticket))
+        response.delete_cookie(STATE_COOKIE_NAME)
+        return response
+
     token = create_session_token(
         config.session_secret,
         user_id=user_id,
@@ -121,9 +178,11 @@ async def discord_callback(request: Request, code: str | None = None, state: str
 
 
 @router.get("/google/login")
-async def google_login():
+async def google_login(client: str = "web"):
+    if client not in ("web", "native"):
+        raise HTTPException(status_code=400, detail="client must be 'web' or 'native'")
     config = GoogleAuthConfig()
-    state = secrets.token_urlsafe(24)
+    state = f"{client}:{secrets.token_urlsafe(24)}"
     response = RedirectResponse(google_oauth.build_authorize_url(config, state))
     response.set_cookie(
         STATE_COOKIE_NAME, state,
@@ -153,6 +212,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     expected_state = request.cookies.get(STATE_COOKIE_NAME)
     if not code or not state or not expected_state or state != expected_state:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    client_type = _resolve_client_type(state)
 
     access_token = await google_oauth.exchange_code_for_token(config, code)
     google_user = await google_oauth.fetch_google_user(access_token)
@@ -165,6 +225,21 @@ async def google_callback(request: Request, code: str | None = None, state: str 
         user_id = await auth_queries.get_or_create_user_for_google(conn, google_user_id, email, display_name)
         token_version = await auth_queries.get_token_version(conn, user_id)
         owner_id = await auth_queries.get_owner_id_for_user(conn, user_id)
+
+    if client_type == "native":
+        ticket = create_ticket_token(
+            config.session_secret,
+            purpose=NATIVE_OAUTH_TICKET_PURPOSE,
+            user_id=user_id,
+            owner_id=owner_id,
+            discord_user_id=None,
+            is_commissioner=False,
+            max_age_seconds=TICKET_MAX_AGE_SECONDS,
+            jti=secrets.token_urlsafe(16),
+        )
+        response = RedirectResponse(_native_completion_url(ticket))
+        response.delete_cookie(STATE_COOKIE_NAME)
+        return response
 
     token = create_session_token(config.session_secret, user_id=user_id, owner_id=owner_id, token_version=token_version)
 
@@ -179,6 +254,63 @@ async def google_callback(request: Request, code: str | None = None, state: str 
         samesite=config.cookie_samesite, secure=config.cookie_secure,
     )
     return response
+
+
+class NativeOAuthRedeemRequest(BaseModel):
+    ticket: str
+
+
+@router.post("/native/redeem")
+async def redeem_native_oauth_ticket(body: NativeOAuthRedeemRequest):
+    """Exchanges the short-lived ticket from a native OAuth completion
+    deep link (discord_callback/google_callback's client=native branch,
+    _native_completion_url) for a real session token — delivered
+    directly in this response's JSON body, never a URL, the same
+    {"token": ...} shape /auth/login and /auth/signup already return,
+    for a native client to store (Keychain/Keystore) and send back as
+    Authorization: Bearer thereafter (app/auth/session.py's
+    get_session_token already supports this for every route).
+
+    Single-use, not just short-lived: the ticket's jti is recorded in
+    used_oauth_tickets the FIRST time it's redeemed here; any later
+    attempt with the same ticket — a network retry, a replay of an
+    intercepted deep link, or a second tap — is rejected outright. This
+    is a deliberate, mandatory property (not deferred as an "optional
+    hardening" the way single-use enforcement is left for this app's
+    other ticket purposes, ws/chug_upload/watch_party_ws, which were
+    never meant to be redeemed exactly once) — a native OAuth ticket
+    stands in for an entire 30-day session, so replaying it is a much
+    bigger prize than replaying one of those.
+
+    Every failure path below (bad signature, wrong purpose, expired,
+    already-redeemed) raises before create_session_token is ever
+    called and never sets a cookie — a failed redemption cannot
+    accidentally leave the caller with a working session by any path."""
+    config = SessionConfig()
+    payload = decode_ticket_token(config.session_secret, body.ticket, NATIVE_OAUTH_TICKET_PURPOSE)
+    if payload is None or not payload.get("jti"):
+        raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        first_use = await used_oauth_tickets_queries.redeem_once(conn, payload["jti"])
+        if not first_use:
+            raise HTTPException(status_code=401, detail="This ticket has already been used")
+        # Fresh, not the ticket's own stale claim — same reasoning
+        # every real login path in this file already applies: fetch
+        # token_version live at the moment of minting a session token,
+        # never trust an earlier token's own copy of it.
+        token_version = await auth_queries.get_token_version(conn, payload["user_id"])
+
+    token = create_session_token(
+        config.session_secret,
+        user_id=payload["user_id"],
+        owner_id=payload["owner_id"],
+        discord_user_id=payload["discord_user_id"],
+        is_commissioner=payload["is_commissioner"],
+        token_version=token_version,
+    )
+    return {"token": token}
 
 
 @router.get("/me")

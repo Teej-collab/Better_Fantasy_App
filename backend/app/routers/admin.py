@@ -353,6 +353,22 @@ async def track_event(body: TrackEventRequest, request: Request):
             raise HTTPException(status_code=400, detail=error)
 
         route = body.route.strip()[: taxonomy.MAX_ROUTE_LENGTH] if body.route else None
+
+        # A page_view with no route at all is only meaningful for a
+        # genuinely native screen that has nothing to auto-classify a
+        # NAV_EVENT_NAMES name from (see taxonomy.py's SCREEN_NAMES) —
+        # require an explicit native platform and a real screen name in
+        # that case, rather than silently accepting an ambiguous
+        # route=null page_view from any client. Every existing web
+        # call site always sends a real route, so this never affects
+        # today's traffic.
+        if body.event_type == "page_view" and route is None:
+            if body.platform not in taxonomy.NATIVE_PLATFORMS:
+                raise HTTPException(
+                    status_code=400, detail="platform must be ios or android for a page_view with no route"
+                )
+            if body.event_name not in taxonomy.SCREEN_NAMES:
+                raise HTTPException(status_code=400, detail="unknown screen name")
         await admin_analytics.record_event(
             conn, owner_id, body.session_id, body.event_name, body.event_type, route,
             body.league_id, body.metadata, body.device_type, body.platform,

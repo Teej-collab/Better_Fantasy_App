@@ -22,6 +22,8 @@ import logging
 from pywebpush import WebPushException, webpush
 
 from app.config import require_vapid_configured
+from app.notifications import apns_client, fcm_client
+from app.queries import native_push_tokens as native_queries
 from app.queries import push_subscriptions as queries
 
 logger = logging.getLogger(__name__)
@@ -63,25 +65,71 @@ async def send_to_subscription(conn, subscription_row, payload: dict) -> bool:
     return delivered
 
 
+async def _send_native_one(registration_row, payload: dict) -> tuple[bool, bool]:
+    """Returns (delivered, permanently_gone) — routes to APNs or FCM
+    based on the registration's own platform column. Same contract as
+    _send_one above, so send_to_native_registration can treat every
+    channel identically."""
+    if registration_row["platform"] == "ios":
+        return await apns_client.send_apns(registration_row["push_token"], payload)
+    return await fcm_client.send_fcm(registration_row["push_token"], payload)
+
+
+async def send_to_native_registration(conn, registration_row, payload: dict) -> bool:
+    """Native (APNs/FCM) counterpart to send_to_subscription above.
+    Catches broadly, not just a specific provider exception the way
+    _send_one does for pywebpush's WebPushException — APNs/FCM being
+    unconfigured (RuntimeError from app.config.require_apns_configured/
+    require_fcm_configured) or a raw network error are both real
+    possibilities for this newer, less-exercised delivery path, and
+    neither should ever take down web push delivery to the SAME owner
+    in the SAME send_to_owner(s) call (see this module's own docstring:
+    a push failure must never break the feature that triggered it)."""
+    try:
+        delivered, permanently_gone = await _send_native_one(registration_row, payload)
+    except Exception:
+        logger.warning(
+            "Native push delivery failed unexpectedly (registration id=%s)",
+            registration_row["id"], exc_info=True,
+        )
+        await native_queries.mark_delivery_failed(conn, registration_row["id"], permanent=False)
+        return False
+    if delivered:
+        await native_queries.mark_delivery_success(conn, registration_row["id"])
+    else:
+        await native_queries.mark_delivery_failed(conn, registration_row["id"], permanent=permanently_gone)
+    return delivered
+
+
 async def send_to_owner(conn, owner_id: int, payload: dict) -> int:
     """Sends to every active device the owner has registered — a
     notification is per-owner, not per-device; each of their devices
-    gets its own independent push. Returns how many actually delivered."""
+    gets its own independent push, across BOTH the web (VAPID) and
+    native (APNs/FCM) channels. Returns how many actually delivered."""
     subs = await queries.list_active_subscriptions_for_owner(conn, owner_id)
     delivered = 0
     for sub in subs:
         if await send_to_subscription(conn, sub, payload):
+            delivered += 1
+    native_registrations = await native_queries.list_active_registrations_for_owner(conn, owner_id)
+    for registration in native_registrations:
+        if await send_to_native_registration(conn, registration, payload):
             delivered += 1
     return delivered
 
 
 async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
     """Fan-out variant — e.g. every owner who rosters the player who
-    just scored. Batches the subscription lookup into one query rather
-    than one per owner (see queries.list_active_subscriptions_for_owners)."""
+    just scored. Batches each channel's lookup into one query rather
+    than one per owner (see queries.list_active_subscriptions_for_owners
+    and native_queries.list_active_registrations_for_owners)."""
     subs = await queries.list_active_subscriptions_for_owners(conn, owner_ids)
     delivered = 0
     for sub in subs:
         if await send_to_subscription(conn, sub, payload):
+            delivered += 1
+    native_registrations = await native_queries.list_active_registrations_for_owners(conn, owner_ids)
+    for registration in native_registrations:
+        if await send_to_native_registration(conn, registration, payload):
             delivered += 1
     return delivered

@@ -13,3 +13,5 @@ pywebpush==2.4.0
 bcrypt==5.0.0
 anthropic==1.2.0
 boto3==1.40.63
+aioapns==4.0
+cryptography==50.0.1

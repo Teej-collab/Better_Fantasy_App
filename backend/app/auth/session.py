@@ -89,8 +89,16 @@ def decode_session_token(secret: str, token: str) -> dict | None:
 
 def create_ticket_token(
     secret: str, *, purpose: str, user_id: int, owner_id: int, discord_user_id: int, is_commissioner: bool,
-    max_age_seconds: int = TICKET_MAX_AGE_SECONDS,
+    max_age_seconds: int = TICKET_MAX_AGE_SECONDS, jti: str | None = None,
 ) -> str:
+    """jti (JWT ID) is optional and omitted by default — every existing
+    ticket purpose (ws, chug_upload, watch_party_ws) keeps working
+    unchanged. It exists for a purpose that needs single-use redemption
+    enforced server-side (native_oauth — see app/routers/auth.py's
+    redeem_native_oauth_ticket, which records a jti the first time it's
+    redeemed and rejects a second redemption of the same one); a plain
+    short expiry is enough for the other purposes, which were never
+    meant to be redeemed exactly once."""
     payload = {
         "user_id": user_id,
         "owner_id": owner_id,
@@ -99,6 +107,8 @@ def create_ticket_token(
         "purpose": purpose,
         "exp": int(time.time()) + max_age_seconds,
     }
+    if jti is not None:
+        payload["jti"] = jti
     return jwt.encode(payload, secret, algorithm="HS256")
 
 

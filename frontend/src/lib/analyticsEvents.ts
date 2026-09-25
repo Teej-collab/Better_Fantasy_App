@@ -1,3 +1,5 @@
+import { Capacitor } from "@capacitor/core";
+
 import { trackAnalyticsEvent } from "@/lib/api";
 
 // The frontend half of the app's one analytics taxonomy — mirrors
@@ -71,6 +73,23 @@ export function detectDeviceType(): "mobile" | "tablet" | "desktop" {
 }
 
 export function detectPlatform(): "ios" | "android" | "web" {
+  // Prefer Capacitor's own runtime signal when the app is running
+  // inside the native iOS/Android shell (frontend/capacitor.config.ts)
+  // — it's authoritative, unlike UA sniffing, which happens to already
+  // work today only because the WebView's OS-injected UA string still
+  // says "iPhone"/"Android". Falls through to the UA check below for a
+  // plain browser (Capacitor.isNativePlatform() is false there) or if
+  // the Capacitor runtime isn't present for any reason.
+  if (typeof window !== "undefined") {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const nativePlatform = Capacitor.getPlatform();
+        if (nativePlatform === "ios" || nativePlatform === "android") return nativePlatform;
+      }
+    } catch {
+      // Fall through to UA-based detection below.
+    }
+  }
   if (typeof navigator === "undefined") return "web";
   const ua = navigator.userAgent;
   if (/iPhone|iPad|iPod/.test(ua)) return "ios";
@@ -124,6 +143,25 @@ export function trackPageView(pathname: string): void {
     route: pathname,
     device_type: detectDeviceType(),
     platform: detectPlatform(),
+  });
+}
+
+// For a genuinely native (non-WebView) screen with no URL route to
+// auto-classify the way trackPageView/classifyRoute above do — see
+// backend/app/analytics/taxonomy.py's SCREEN_NAMES for the matching
+// allowlist and app/routers/admin.py's track_event for why route must
+// be explicitly null and platform explicitly native here, not just
+// omitted. Not used by today's Capacitor-WebView "native" apps, which
+// still have a real route for every screen and should keep calling
+// trackPageView — this exists for a future truly-native screen.
+export function trackScreenView(screenName: string, platform: "ios" | "android"): void {
+  void trackAnalyticsEvent({
+    session_id: getSessionId(),
+    event_name: screenName,
+    event_type: "page_view",
+    route: null,
+    device_type: detectDeviceType(),
+    platform,
   });
 }
 

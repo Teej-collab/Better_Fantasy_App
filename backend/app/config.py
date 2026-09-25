@@ -111,3 +111,41 @@ def require_livekit_configured() -> tuple[str, str, str]:
             "and LIVEKIT_URL (see .env.example)."
         )
     return LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL
+
+
+# Native push — APNs (app/notifications/apns_client.py), additive to Web
+# Push above. Same optional-at-import, fail-loud-at-use pattern: no
+# native client exists yet, so nothing should ever call
+# require_apns_configured() in production until one does.
+# APNS_KEY_CONTENT is the .p8 provider-auth key's own PEM content
+# (not a file path) — passed straight through to aioapns, which hands
+# it to PyJWT for ES256 signing.
+APNS_KEY_ID = os.getenv("APNS_KEY_ID")
+APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
+APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID")
+APNS_KEY_CONTENT = os.getenv("APNS_KEY_CONTENT")
+
+
+def require_apns_configured() -> tuple[str, str, str, str]:
+    if not (APNS_KEY_ID and APNS_TEAM_ID and APNS_BUNDLE_ID and APNS_KEY_CONTENT):
+        raise RuntimeError(
+            "Native iOS push isn't configured — set APNS_KEY_ID, APNS_TEAM_ID, "
+            "APNS_BUNDLE_ID, and APNS_KEY_CONTENT (see .env.example)."
+        )
+    return APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID, APNS_KEY_CONTENT
+
+
+# Native push — FCM (app/notifications/fcm_client.py), same pattern.
+# FCM_SERVICE_ACCOUNT_JSON is the whole Google service-account JSON key
+# file's content (not a path) — kept as one JSON blob, matching how
+# Google itself distributes this credential, rather than splitting it
+# into several env vars.
+FCM_SERVICE_ACCOUNT_JSON = os.getenv("FCM_SERVICE_ACCOUNT_JSON")
+
+
+def require_fcm_configured() -> str:
+    if not FCM_SERVICE_ACCOUNT_JSON:
+        raise RuntimeError(
+            "Native Android push isn't configured — set FCM_SERVICE_ACCOUNT_JSON (see .env.example)."
+        )
+    return FCM_SERVICE_ACCOUNT_JSON

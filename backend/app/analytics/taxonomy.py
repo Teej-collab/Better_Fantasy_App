@@ -102,10 +102,41 @@ FEATURE_EVENTS: dict[str, set[str]] = {
     "gamecast_game_selected": {"game_id"},
 }
 
-ALL_EVENT_NAMES = NAV_EVENT_NAMES | set(FEATURE_EVENTS.keys())
+# Screen-view names for a genuinely native (non-WebView) screen that
+# has no URL route to auto-classify from the way NAV_EVENT_NAMES above
+# does — see app/routers/admin.py's track_event for the rule that
+# actually requires these (route is null AND platform is ios/android).
+# Today's "native" iOS/Android apps are Capacitor WebView shells around
+# this same site (frontend/capacitor.config.ts) and so always have a
+# real route — this taxonomy exists ahead of any screen that needs it,
+# derived from the real frontend/src/app/(app)/* route tree so it's
+# ready the moment a truly native screen is built, not a placeholder
+# guess. Collapses each dynamic route segment ([matchupId], [gameId],
+# etc.) into one canonical name, never one per instance.
+SCREEN_NAMES = {
+    "home", "marketing_welcome", "marketing_commissioners",
+    "login", "forgot_password", "reset_password",
+    "leagues_list", "league_home",
+    "standings", "power_rankings", "history", "rivalries", "rules",
+    "seasons_hub", "season_detail", "season_awards", "season_draft_recap",
+    "draft_room",
+    "matchup_list", "matchup_detail",
+    "gamecast_hub", "gamecast_game",
+    "team_mine", "team_other", "players", "free_agents", "trades", "keepers",
+    "chat", "chug", "activity", "owners_list", "owner_detail",
+    "commissioner_home", "commissioner_league", "commissioner_members", "commissioner_polls",
+    "commissioner_roster", "commissioner_scoring", "commissioner_teams", "commissioner_trades",
+    "settings", "more",
+    "admin_overview", "admin_navigation", "admin_leagues", "admin_league_detail",
+    "admin_users", "admin_user_detail",
+    "weekend",
+}
+
+ALL_EVENT_NAMES = NAV_EVENT_NAMES | set(FEATURE_EVENTS.keys()) | SCREEN_NAMES
 
 ALLOWED_DEVICE_TYPES = {"mobile", "tablet", "desktop"}
 ALLOWED_PLATFORMS = {"ios", "android", "web"}
+NATIVE_PLATFORMS = {"ios", "android"}
 
 MAX_ROUTE_LENGTH = 200
 MAX_METADATA_VALUE_LENGTH = 200
@@ -123,7 +154,15 @@ def validate_event(
     not just noise)."""
     if event_type not in EVENT_TYPES:
         return f"event_type must be one of {sorted(EVENT_TYPES)}"
-    if event_type == "page_view" and event_name not in NAV_EVENT_NAMES:
+    # NAV_EVENT_NAMES (route-classified, the web/Capacitor-WebView case)
+    # or SCREEN_NAMES (a genuinely native screen with no route — see
+    # this module's own SCREEN_NAMES docstring) are both valid
+    # page_view names here; app/routers/admin.py's track_event is what
+    # enforces WHICH of the two applies to a given request (based on
+    # whether route/platform were sent), not this function — this stays
+    # a plain "is this name known at all" check, unchanged in shape,
+    # so every existing caller/test keeps working exactly as before.
+    if event_type == "page_view" and event_name not in NAV_EVENT_NAMES and event_name not in SCREEN_NAMES:
         return "unknown page_view event_name"
     if event_type == "feature":
         if event_name not in FEATURE_EVENTS:
