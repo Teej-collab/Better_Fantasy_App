@@ -2045,12 +2045,15 @@ build/lint/test/curl verification, not visual inspection.
       unchanged); `run_full_sync` gained a `league_id` param threaded
       into every step (each already accepted one from Phase 4's own
       sweep). Connect validates credentials against a real ESPN fetch
-      before saving. Deliberately scoped to connect/disconnect/status +
-      an on-demand manual sync, not automatic scheduling — the 4 jobs in
-      `app/scheduler.py` still only sync League #1 automatically;
-      refactoring them to iterate every connected league (with per-league
-      error isolation) is real, separate future work, not attempted here.
-      15 new tests, full targeted regression clean (one pre-existing,
+      before saving. Landed in two passes same day: connect/disconnect/
+      status + an on-demand manual sync first, then `_run_full_sync_job`/
+      `_run_live_sync_job` (`app/scheduler.py`) wired to also iterate
+      every connected league — not just League #1 — with per-league
+      error isolation (`_connected_espn_providers`, same teams/matchups-
+      step-status marking as the manual sync endpoint). Week settlement
+      and weekly compute needed no scheduler changes — both were already
+      fully multi-league (DB-only compute, no ESPN calls). 20 new tests
+      total, full targeted regression clean (one pre-existing,
       confirmed-unrelated failure in `test_sync_orchestration.py` — a
       real-clock-dependent assertion, not touched by this change).
 - [x] **Commissioner scoring-rules UI — already built, this entry was
