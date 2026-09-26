@@ -8,9 +8,8 @@ see app/domain/streaks.py), real all-time head-to-head (any owner
 pair, not just curated rivalries — see queries/league.py's
 get_head_to_head), whether the matchup is a curated rivalry, whether
 it's the week's Game of the Week (existing find_game_of_the_week,
-unchanged), a live win-probability estimate once the matchup has
-actually started (app/domain/win_probability.py — same "no meaningful
-50/50 before kickoff" gate app/domain/your_week.py already uses), each
+unchanged), a win-probability estimate (live once the matchup has
+started, projection-only before kickoff — app/domain/win_probability.py), each
 side's roster (with boom/bust flags) plus starters' combined projected
 total, and — scoped to just these two teams, not the week's overall
 winner — bench crime and clutch/choke status.
@@ -242,18 +241,16 @@ def _matchup_entry(
     live_status_by_pro_team_map = live_status_by_pro_team_map or {}
     power_rank_by_team = power_rank_by_team or {}
     home_score, away_score = m["home_score"], m["away_score"]
-    started = home_score is not None and away_score is not None and not (home_score == 0 and away_score == 0)
 
-    home_win_probability = None
-    away_win_probability = None
-    if started:
-        injury_states = _injury_state_map(injuries)
-        home_win_probability = estimate_win_probability(
-            float(home_score), live_team_total(home_roster, game_clock or {}, injury_states),
-            float(away_score), live_team_total(away_roster, game_clock or {}, injury_states),
-            score_stdev,
-        )
-        away_win_probability = round(100 - home_win_probability, 1)
+    # Always shown (2026-09-25 ask) — before kickoff the scores are 0
+    # and this runs purely off the two teams' projections.
+    injury_states = _injury_state_map(injuries)
+    home_win_probability = estimate_win_probability(
+        float(home_score or 0), live_team_total(home_roster, game_clock or {}, injury_states),
+        float(away_score or 0), live_team_total(away_roster, game_clock or {}, injury_states),
+        score_stdev,
+    )
+    away_win_probability = round(100 - home_win_probability, 1)
 
     return {
         "matchup_id": m["matchup_id"],

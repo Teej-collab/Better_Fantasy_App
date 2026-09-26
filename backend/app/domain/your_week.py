@@ -3,11 +3,8 @@
 matchup: opponent, scores, starters' projected totals, record, and a
 win-probability estimate (see win_probability.py).
 
-Win probability specifically is gated to only compute once the matchup
-has actually started (real, non-zero scores) — a meaningless 50/50
-before kickoff isn't worth showing, matching the explicit product call
-that it "won't show anything until the season starts and has live
-information feeding over."
+Win probability is always computed (2026-09-25 ask) — before kickoff
+the scores are 0 and it runs purely off the two teams' projections.
 
 `season` is passed in by the caller (app/routers/me.py, from
 ACTIVE_SEASON) rather than inferred from `MAX(teams_by_season.season)`
@@ -143,16 +140,14 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     my_yet_to_play, my_in_play = _starter_game_counts(my_roster, game_clock)
     opp_yet_to_play, opp_in_play = _starter_game_counts(opp_roster, game_clock)
 
-    win_probability = None
-    if started:
-        # Same live projections as the matchup page, so the two can
-        # never show different odds for one game.
-        stdev = await queries.get_team_score_stdev(conn, season, league_id)
-        win_probability = estimate_win_probability(
-            float(my_score), my_projected,
-            float(opp_score), opp_projected,
-            stdev,
-        )
+    # Same live projections as the matchup page, so the two can never
+    # show different odds for one game.
+    stdev = await queries.get_team_score_stdev(conn, season, league_id)
+    win_probability = estimate_win_probability(
+        float(my_score or 0), my_projected,
+        float(opp_score or 0), opp_projected,
+        stdev,
+    )
 
     base["matchup"] = {
         "matchup_id": matchup["matchup_id"],
