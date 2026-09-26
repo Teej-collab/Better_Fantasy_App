@@ -20,8 +20,9 @@ uses (app/providers/espn/config.py).
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.live_injuries import get_injury_states
 from app.domain.live_projection import game_clock_by_pro_team, live_team_total
+from app.domain.streaks import get_result_streaks
 from app.domain.win_probability import estimate_win_probability
-from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import draft as draft_queries
 from app.queries import league as queries
 from app.queries.power_rankings import get_latest_power_rank_by_team
@@ -32,6 +33,31 @@ _STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
 def _projected_total(roster_rows) -> float:
     starters = [r for r in roster_rows if r["lineup_slot"] not in _STARTER_EXCLUDED_SLOTS]
     return round(sum(float(r["points_projected"] or 0) for r in starters), 2)
+
+
+def _starter_game_counts(roster_rows, game_clock) -> tuple[int, int]:
+    """(yet to play, in play) among this week's starters, off the same
+    scoreboard game clock the live projections use. A starter on bye
+    (no game this week) counts toward neither."""
+    yet_to_play = in_play = 0
+    for r in roster_rows:
+        if r["lineup_slot"] in _STARTER_EXCLUDED_SLOTS:
+            continue
+        status = (game_clock.get(r["pro_team"]) or {}).get("status")
+        if status == "scheduled":
+            yet_to_play += 1
+        elif status == "in_progress":
+            in_play += 1
+    return yet_to_play, in_play
+
+
+def _record(standing) -> str | None:
+    if not standing:
+        return None
+    record = f"{standing['wins']}-{standing['losses']}"
+    if standing["ties"]:
+        record += f"-{standing['ties']}"
+    return record
 
 
 async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEFAULT_LEAGUE_ID):
@@ -107,12 +133,15 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     opp_projected = live_team_total(opp_roster, game_clock, injuries) if opp_roster else opp_pregame
 
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
-    my_standing = standings_by_team.get(team["team_id"])
-    record = None
-    if my_standing:
-        record = f"{my_standing['wins']}-{my_standing['losses']}"
-        if my_standing["ties"]:
-            record += f"-{my_standing['ties']}"
+    record = _record(standings_by_team.get(team["team_id"]))
+    opp_record = _record(standings_by_team.get(opp_team_id))
+    result_streaks = await get_result_streaks(
+        conn, season, [team["team_id"], opp_team_id], week, exclude_week=None if is_week_final(games) else week
+    )
+    teams_by_id = await queries.get_teams(conn, [team["team_id"], opp_team_id])
+    my_team_row, opp_team_row = teams_by_id.get(team["team_id"]), teams_by_id.get(opp_team_id)
+    my_yet_to_play, my_in_play = _starter_game_counts(my_roster, game_clock)
+    opp_yet_to_play, opp_in_play = _starter_game_counts(opp_roster, game_clock)
 
     win_probability = None
     if started:
@@ -130,12 +159,23 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
         "is_playoff": matchup["is_playoff"],
         "started": started,
         "record": record,
+        "my_owner_name": my_team_row["owner_name"] if my_team_row else None,
+        "my_logo_url": my_team_row["logo_url"] if my_team_row else None,
+        "my_result_streak": result_streaks.get(team["team_id"]),
+        "my_yet_to_play": my_yet_to_play,
+        "my_in_play": my_in_play,
         "my_score": float(my_score) if my_score is not None else None,
         "my_projected_total": my_projected,
         "my_pregame_projected_total": my_pregame,
         "opponent_team_id": opp_team_id,
         "opponent_team_name": opp_team_name,
         "opponent_power_rank": power_rank_by_team.get(opp_team_id),
+        "opponent_owner_name": opp_team_row["owner_name"] if opp_team_row else None,
+        "opponent_logo_url": opp_team_row["logo_url"] if opp_team_row else None,
+        "opponent_record": opp_record,
+        "opponent_result_streak": result_streaks.get(opp_team_id),
+        "opponent_yet_to_play": opp_yet_to_play,
+        "opponent_in_play": opp_in_play,
         "opponent_score": float(opp_score) if opp_score is not None else None,
         "opponent_projected_total": opp_projected,
         "opponent_pregame_projected_total": opp_pregame,

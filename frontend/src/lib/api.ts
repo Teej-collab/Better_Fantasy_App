@@ -392,6 +392,9 @@ export type MatchupContextSide = {
   season_points: number | null;
   record: string | null;
   streak: Streak;
+  // ESPN-style current streak ("W2", "L1") — distinct from `streak`,
+  // the 3-game hot/cold flag. Null before a first decided game.
+  result_streak: string | null;
   // Live team projection (sum of starters' live_projected) — moves
   // during games. pregame_projected_total is the fixed pregame sum.
   projected_total: number | null;
@@ -833,6 +836,14 @@ export type YourWeekMatchup = {
   is_playoff: boolean;
   started: boolean;
   record: string | null;
+  my_owner_name: string | null;
+  my_logo_url: string | null;
+  // ESPN-style current streak ("W2", "L1") — null before a first
+  // decided game. Same results the record counts.
+  my_result_streak: string | null;
+  // Starters whose NFL game hasn't kicked off / is in progress.
+  my_yet_to_play: number;
+  my_in_play: number;
   my_score: number | null;
   // Live (moves during games); the *_pregame_ totals are fixed.
   my_projected_total: number;
@@ -843,6 +854,12 @@ export type YourWeekMatchup = {
   // null until that team has at least one ranked week (see
   // app/domain/weekly_team_stats.py).
   opponent_power_rank: number | null;
+  opponent_owner_name: string | null;
+  opponent_logo_url: string | null;
+  opponent_record: string | null;
+  opponent_result_streak: string | null;
+  opponent_yet_to_play: number;
+  opponent_in_play: number;
   opponent_score: number | null;
   opponent_projected_total: number;
   opponent_pregame_projected_total: number;

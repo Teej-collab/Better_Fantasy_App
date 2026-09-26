@@ -6,6 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 import { BackButton } from "@/components/BackButton";
 import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
+import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
 
 // Real per-page title (mobile audit finding) — matters most here since
 // matchup pages are exactly the kind of link owners share with each
@@ -56,7 +57,8 @@ export default async function MatchupPage({
   // per entry and swipes between them client-side with zero further
   // fetches, rather than this page only ever knowing about the single
   // matchup it was linked to.
-  const { matchups: weekMatchups } = await getWeekMatchupContext(matchup.season, matchup.week, sessionCookie);
+  const { matchups: weekMatchupsRaw } = await getWeekMatchupContext(matchup.season, matchup.week, sessionCookie);
+  const weekMatchups = weekMatchupsRaw.map((m) => orientMatchupForViewer(m, me.owner_id));
 
   return (
     <div className="flex flex-col gap-3">

@@ -2,7 +2,6 @@ import type { MatchupContextSide, TeamTouchdown, WeekMatchupContextItem } from "
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
-import { WinProbabilityBar } from "@/components/matchups/WinProbabilityBar";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
 import { StarterComparisonTable } from "@/components/matchups/StarterComparisonTable";
 
@@ -19,7 +18,6 @@ import { StarterComparisonTable } from "@/components/matchups/StarterComparisonT
  */
 export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextItem }) {
   const { home, away } = matchup;
-  const hasWinProbability = home.win_probability !== null && away.win_probability !== null;
   const hasDetail = Boolean(home.clutch_choke || home.bench_crime || away.clutch_choke || away.bench_crime);
   const hasTouchdowns = home.touchdowns.length > 0 || away.touchdowns.length > 0;
 
@@ -35,12 +33,6 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
         )}
 
         <MatchupScoreHeader home={home} away={away} />
-
-        {hasWinProbability && (
-          <div className="mt-3">
-            <WinProbabilityBar homeWinProbability={home.win_probability!} awayWinProbability={away.win_probability!} />
-          </div>
-        )}
       </div>
 
       <div className="wl-card rounded-lg p-4">

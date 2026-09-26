@@ -94,6 +94,11 @@ export default async function StandingsPage({
   // — 2026-08-31 audit: "no visible playoff-picture indicator").
   const showPlayoffLine =
     !isFinal && playoffTeamCount !== null && playoffTeamCount > 0 && playoffTeamCount < standings.length;
+  // The bottom four play in the toilet bowl — a line above them, same
+  // style as the playoff line. Needs at least one team above the line
+  // that isn't also in the bottom four.
+  const toiletBowlCount = 4;
+  const showToiletBowlLine = !isFinal && standings.length > toiletBowlCount;
 
   // The real in-app bracket (backend/app/domain/playoffs.py) — empty
   // nodes before a commissioner has generated one for this season,
@@ -140,6 +145,7 @@ export default async function StandingsPage({
               {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
               {showPlayoffLine &&
                 ` The line below the top ${playoffTeamCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
+              {showToiletBowlLine && ` The bottom ${toiletBowlCount} are headed for the toilet bowl.`}
             </p>
 
             <div
@@ -171,6 +177,9 @@ export default async function StandingsPage({
                       movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
                     />
                     {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
+                    {showToiletBowlLine && i + 1 === standings.length - toiletBowlCount && (
+                      <ToiletBowlLine count={toiletBowlCount} />
+                    )}
                   </Fragment>
                 ))}
               </ul>
@@ -218,6 +227,19 @@ function PlayoffLine({ count }: { count: number }) {
         }}
       >
         Playoff line — top {count}
+      </span>
+    </li>
+  );
+}
+
+// Mirror of PlayoffLine for the other end of the table — the bottom
+// four's toilet bowl. Rendered right after the fifth-from-last row.
+function ToiletBowlLine({ count }: { count: number }) {
+  return (
+    <li aria-hidden className="relative py-0">
+      <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed border-amber-700 dark:border-amber-600" />
+      <span className="relative mx-auto block w-fit -translate-y-1/2 rounded-full bg-amber-700 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase dark:bg-amber-600">
+        🚽 Toilet bowl — bottom {count}
       </span>
     </li>
   );

@@ -22,6 +22,7 @@ import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
+import { YourWeekCard } from "@/components/YourWeekCard";
 import { findGamecastId } from "@/lib/gamecastApi";
 import type { GamecastLiveGameSummary } from "@/lib/gamecastApi";
 
@@ -114,7 +115,13 @@ export function HomePageBeta({
       {/* Pinned, not reorderable, not out-ranked by anything else on
           this page — the P0 fix. */}
       {myWeek?.matchup ? (
-        <YourWeekHeroBeta myWeek={myWeek} isGameDay={isGameDay} />
+        <YourWeekCard
+          myWeek={myWeek}
+          isGameDay={isGameDay}
+          leagueName={activeLeagueName}
+          surfaceClass={myWeek.matchup.started && isGameDay ? "wl-card--live" : "wl-card"}
+          showLineupLink
+        />
       ) : myWeek ? (
         <EmptyHeroBeta
           title={myWeek.team_name}
@@ -281,101 +288,6 @@ export function HomePageBeta({
 
       {chugFeed.length > 0 && <ChugFeed chugs={chugFeed} />}
       {leagueActivity.length > 0 && <LeagueActivityFeed items={leagueActivity} href="/activity" />}
-    </div>
-  );
-}
-
-function YourWeekHeroBeta({ myWeek, isGameDay }: { myWeek: YourWeek; isGameDay: boolean }) {
-  const m = myWeek.matchup!;
-  const winning = m.my_score !== null && m.opponent_score !== null && m.my_score >= m.opponent_score;
-  const isLive = m.started && isGameDay;
-
-  return (
-    <section className={`flex flex-col gap-3 rounded-xl p-4 text-white ${isLive ? "wl-card--live" : "wl-card"}`}>
-      <div className="flex items-center justify-between">
-        <span
-          className="flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase"
-          style={{ color: "var(--your-week-color, var(--user-accent, var(--wl-accent)))" }}
-        >
-          Your Week{m.is_playoff ? " — Playoffs" : ""}
-          {isLive && (
-            <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-1.5 py-0.5 text-red-400">
-              <span className="live-dot" aria-hidden />
-              Live
-            </span>
-          )}
-        </span>
-        {m.record && <span className="text-xs text-white/50">{m.record}</span>}
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <TeamScoreBlockBeta
-          name={myWeek.team_name}
-          powerRank={myWeek.power_rank}
-          score={m.my_score}
-          projected={m.my_projected_total}
-          lead={winning}
-        />
-        <span className="shrink-0 text-white/30">vs</span>
-        <TeamScoreBlockBeta
-          name={m.opponent_team_name}
-          powerRank={m.opponent_power_rank}
-          score={m.opponent_score}
-          projected={m.opponent_projected_total}
-          lead={!winning}
-          align="right"
-        />
-      </div>
-
-      {m.win_probability !== null && (
-        <div className="flex flex-col gap-1">
-          <div className="flex justify-between text-xs text-white/50">
-            <span>Win probability</span>
-            <span>{m.win_probability}%</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-[var(--wl-accent)]" style={{ width: `${m.win_probability}%` }} />
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-4">
-        <Link href={`/matchups/${m.matchup_id}`} className="text-sm text-[var(--wl-accent)] hover:underline">
-          View full matchup →
-        </Link>
-        <Link href="/team" className="text-sm text-white/50 hover:underline">
-          My lineup →
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-function TeamScoreBlockBeta({
-  name,
-  powerRank,
-  score,
-  projected,
-  lead,
-  align = "left",
-}: {
-  name: string;
-  powerRank: number | null;
-  score: number | null;
-  projected: number;
-  lead: boolean;
-  align?: "left" | "right";
-}) {
-  return (
-    <div className={`flex min-w-0 flex-col ${align === "right" ? "items-end text-right" : "items-start"}`}>
-      <span className="line-clamp-2 max-w-[10rem] text-sm leading-tight break-words text-white/70 sm:max-w-[14rem]">
-        {name}
-        <TeamRankBadge rank={powerRank} variant="dark" />
-      </span>
-      <span className={`score-pop text-2xl font-bold tabular-nums sm:text-3xl ${lead ? "text-white" : "text-white/60"}`}>
-        {score !== null ? score.toFixed(1) : "—"}
-      </span>
-      <span className="text-xs text-white/40 tabular-nums">Proj {projected.toFixed(1)}</span>
     </div>
   );
 }

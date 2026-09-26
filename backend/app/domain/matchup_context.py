@@ -46,11 +46,11 @@ from app.domain.nfl_schedule import (
     locked_pro_teams,
     schedule_lookup_by_pro_team,
 )
-from app.domain.streaks import get_team_streaks
+from app.domain.streaks import get_result_streaks, get_team_streaks
 from app.domain.team_profile import find_game_of_the_week
 from app.domain.weekly_awards import get_clutch_choke_status_by_team
 from app.domain.win_probability import estimate_win_probability
-from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import league as queries
 from app.queries import team_position_rankings as position_rankings_queries
 from app.queries.power_rankings import get_latest_power_rank_by_team
@@ -200,6 +200,14 @@ def _side_dict(
     }
 
 
+def _attach_result_streaks(entry, result_streaks):
+    # ESPN-style "W2"/"L1" next to each side's record (app/domain/
+    # streaks.py's get_result_streaks) — distinct from `streak`, which
+    # is the 3-game hot/cold flag.
+    for key in ("home", "away"):
+        entry[key]["result_streak"] = result_streaks.get(entry[key]["team_id"])
+
+
 def _injury_state_map(injuries) -> dict[str, str]:
     return {pid: v["state"] for pid, v in (injuries or {}).items()}
 
@@ -334,6 +342,9 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     live_status_map = live_status_by_pro_team(games)
     game_status_map = game_status_by_pro_team(games)
     game_clock = game_clock_by_pro_team(games)
+    result_streaks = await get_result_streaks(
+        conn, season, team_ids, week, exclude_week=None if is_week_final(games) else week
+    )
 
     gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
@@ -393,6 +404,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
             locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
             game_clock, injuries,
         )
+        _attach_result_streaks(entry, result_streaks)
         # Cache read only — never triggers a live generation here. See
         # narrative_engine.get_cached_narrative's own docstring for why
         # (up to ~7 sequential Claude calls on one page load otherwise).
@@ -454,6 +466,9 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     game_clock = game_clock_by_pro_team(games)
     rankings = await position_rankings_queries.get_rankings(conn, season, week)
     injuries = await get_injury_states(conn, season, week, [r["player_id"] for r in home_roster + away_roster])
+    result_streaks = await get_result_streaks(
+        conn, season, team_ids, week, exclude_week=None if is_week_final(games) else week
+    )
 
     rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
     h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
@@ -474,6 +489,7 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         locked_teams, live_status_map, rankings, power_rank_by_team, game_status_map,
         game_clock, injuries,
     )
+    _attach_result_streaks(entry, result_streaks)
     # The one path allowed to actually trigger a live generation — a
     # single matchup per request, a bounded cost. See narrative_engine.
     # get_or_generate_narrative's own docstring.
