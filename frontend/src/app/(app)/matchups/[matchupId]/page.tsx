@@ -5,7 +5,7 @@ import { getMatchup, getMe, getWeekMatchupContext } from "@/lib/api";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 import { BackButton } from "@/components/BackButton";
-import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
+import { MatchupWeekBrowser } from "@/components/matchups/MatchupWeekBrowser";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
 
 // Real per-page title (mobile audit finding) — matters most here since
@@ -69,10 +69,13 @@ export default async function MatchupPage({
           one specific week the way that route was, so this just goes
           home instead when there's no real back-history to use. */}
       <BackButton fallbackHref="/" label="Home" />
-      <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
-        {matchup.season} — Week {matchup.week}
-      </h1>
-      <MatchupCarousel matchups={weekMatchups} initialMatchupId={matchup.matchup_id} />
+      <MatchupWeekBrowser
+        season={matchup.season}
+        initialWeek={matchup.week}
+        initialMatchups={weekMatchups}
+        initialMatchupId={matchup.matchup_id}
+        myOwnerId={me.owner_id}
+      />
     </div>
   );
 }

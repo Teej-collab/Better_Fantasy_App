@@ -22,9 +22,11 @@ import { MatchupDetailPanel } from "@/components/matchups/MatchupDetailPanel";
 export function MatchupCarousel({
   matchups,
   initialMatchupId,
+  onActiveMatchupChange,
 }: {
   matchups: WeekMatchupContextItem[];
   initialMatchupId: number;
+  onActiveMatchupChange?: (matchup: WeekMatchupContextItem) => void;
 }) {
   const initialIndex = Math.max(
     0,
@@ -107,12 +109,14 @@ export function MatchupCarousel({
   // change there would remount this page and refetch server-side,
   // defeating the entire point of an instant, already-loaded swipe.
   useEffect(() => {
-    const id = matchups[activeIndex]?.matchup_id;
-    if (id === undefined) return;
-    const url = `/matchups/${id}`;
+    const active = matchups[activeIndex];
+    if (active === undefined) return;
+    onActiveMatchupChange?.(active);
+    const url = `/matchups/${active.matchup_id}`;
     if (window.location.pathname !== url) {
       window.history.replaceState(null, "", url);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, matchups]);
 
   return (
