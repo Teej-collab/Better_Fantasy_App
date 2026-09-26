@@ -357,7 +357,7 @@ async def _run_week_settlement_job():
     is the same lightweight, public, keyless NFL scoreboard call every
     other gate here already treats as free. The real (DB-writing,
     LLM-calling) settlement work below only actually runs between a
-    week going final and its Tuesday 2 AM Central flip (app/domain/
+    week going final and its Tuesday 2 PM Central flip (app/domain/
     week_flip.py) — every step is idempotent, the recap is a cache hit
     after its first generation. Once league_state.current_week has been advanced past a
     week, this job stops re-checking that week's game data at all on
@@ -414,7 +414,7 @@ async def _run_week_settlement_job():
             )
             continue
 
-    # 2026-09-25: the week itself flips at 2 AM Central the Tuesday
+    # 2026-09-25: the week itself flips at 2 PM Central the Tuesday
     # after its last game (app/domain/week_flip.py), not the instant
     # it's final. Everything above is idempotent, so it simply re-runs
     # each tick between "final" and the flip (keeping chug debts and the

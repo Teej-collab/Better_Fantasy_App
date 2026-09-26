@@ -176,7 +176,7 @@ async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: 
 
 async def lock_power_ranks_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     """Power ranks are decided once, when the week flips (app/domain/
-    week_flip.py — Tuesday 2 AM Central), and never rewritten after
+    week_flip.py — Tuesday 2 PM Central), and never rewritten after
     that (2026-09-25, commissioner's call: rankings shouldn't shift
     mid-week). Every sync path used to recompute every past week's rank
     on every run, so a later score change (a stat correction, a re-sync)

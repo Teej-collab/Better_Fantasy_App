@@ -76,7 +76,7 @@ async def update_league_state(pool, season: int, current_week: int, *, advance: 
     permanently, regardless of call order.
 
     2026-09-25: only the week-settlement job advances the week now
-    (advance=True), at the Tuesday 2 AM Central flip (app/domain/
+    (advance=True), at the Tuesday 2 PM Central flip (app/domain/
     week_flip.py). The sync paths feed ESPN's own week counter, which
     can roll over before that — with the default advance=False they
     only ever seed a season's first row, never move it forward, so the
