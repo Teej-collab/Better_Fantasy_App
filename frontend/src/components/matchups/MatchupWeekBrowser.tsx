@@ -19,12 +19,17 @@ export function MatchupWeekBrowser({
   initialMatchups,
   initialMatchupId,
   myOwnerId,
+  currentWeek,
 }: {
   season: number;
   initialWeek: number;
   initialMatchups: WeekMatchupContextItem[];
   initialMatchupId: number;
   myOwnerId: number;
+  // The league's live fantasy week (league_state.current_week, already
+  // resolved to >= 1) — drives the Current / Past / Upcoming label so
+  // paging back through old weeks never reads as "this week."
+  currentWeek: number;
 }) {
   const [week, setWeek] = useState(initialWeek);
   const [matchups, setMatchups] = useState(initialMatchups);
@@ -88,6 +93,40 @@ export function MatchupWeekBrowser({
             ›
           </button>
         </div>
+      </div>
+
+      <div className="-mt-1 flex flex-wrap items-center gap-2">
+        {week === currentWeek ? (
+          <span
+            className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase"
+            style={{
+              color: "var(--user-accent, var(--wl-accent))",
+              background: "color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent)",
+            }}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--user-accent, var(--wl-accent))" }}
+              aria-hidden
+            />
+            Current week
+          </span>
+        ) : (
+          <>
+            <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/60">
+              {week < currentWeek ? "Past week" : "Upcoming week"}
+            </span>
+            <button
+              type="button"
+              onClick={() => goTo(currentWeek)}
+              disabled={isPending}
+              className="text-xs font-semibold disabled:opacity-50"
+              style={{ color: "var(--user-accent, var(--wl-accent))" }}
+            >
+              Back to current week (Week {currentWeek}) →
+            </button>
+          </>
+        )}
       </div>
 
       <div className={isPending ? "opacity-50 transition-opacity" : "transition-opacity"}>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getMatchup, getMe, getWeekMatchupContext } from "@/lib/api";
+import { getCurrentWeek, getMatchup, getMe, getWeekMatchupContext, resolveWeek } from "@/lib/api";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 import { BackButton } from "@/components/BackButton";
@@ -57,7 +57,10 @@ export default async function MatchupPage({
   // per entry and swipes between them client-side with zero further
   // fetches, rather than this page only ever knowing about the single
   // matchup it was linked to.
-  const { matchups: weekMatchupsRaw } = await getWeekMatchupContext(matchup.season, matchup.week, sessionCookie);
+  const [{ matchups: weekMatchupsRaw }, { current_week: currentWeekRaw }] = await Promise.all([
+    getWeekMatchupContext(matchup.season, matchup.week, sessionCookie),
+    getCurrentWeek(matchup.season),
+  ]);
   const weekMatchups = weekMatchupsRaw.map((m) => orientMatchupForViewer(m, me.owner_id));
 
   return (
@@ -75,6 +78,7 @@ export default async function MatchupPage({
         initialMatchups={weekMatchups}
         initialMatchupId={matchup.matchup_id}
         myOwnerId={me.owner_id}
+        currentWeek={resolveWeek(currentWeekRaw)}
       />
     </div>
   );
