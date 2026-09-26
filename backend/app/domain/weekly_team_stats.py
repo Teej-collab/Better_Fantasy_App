@@ -174,6 +174,32 @@ async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: 
     return len(team_stats)
 
 
+async def lock_power_ranks_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Power ranks are decided once, when the week flips (app/domain/
+    week_flip.py — Tuesday 2 AM Central), and never rewritten after
+    that (2026-09-25, commissioner's call: rankings shouldn't shift
+    mid-week). Every sync path used to recompute every past week's rank
+    on every run, so a later score change (a stat correction, a re-sync)
+    could quietly reshuffle an already-published week. No-op once this
+    week has ranks."""
+    already_ranked = await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM weekly_team_stats WHERE season = $1 AND week = $2 AND league_id = $3 "
+        "AND power_rank IS NOT NULL)",
+        season, week, league_id,
+    )
+    if already_ranked:
+        return 0
+    return await compute_power_ranks_for_week(conn, season, week, league_id)
+
+
+async def _week_has_flipped(conn, season: int, week: int) -> bool:
+    """True once league_state.current_week has moved past `week` — only
+    the week-settlement job advances it, at the Tuesday flip. A season
+    with no league_state row (old backfilled seasons) counts as done."""
+    current_week = await conn.fetchval("SELECT current_week FROM league_state WHERE season = $1", season)
+    return current_week is None or week < current_week
+
+
 async def compute_luck_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     matchups = await conn.fetch(
         "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0",
@@ -347,7 +373,11 @@ async def compute_weekly_team_stats_for_week(conn, season: int, week: int, leagu
     games = await get_week_scoreboard(week=week, year=season)
     final = is_week_final(games)
     counts = [
-        await compute_power_ranks_for_week(conn, season, week, league_id) if final else 0,
+        # Only at/after the Tuesday flip, and only once per week — see
+        # lock_power_ranks_for_week.
+        await lock_power_ranks_for_week(conn, season, week, league_id)
+        if final and await _week_has_flipped(conn, season, week)
+        else 0,
         await compute_luck_scores_for_week(conn, season, week, league_id) if final else 0,
         await compute_chaos_scores_for_week(conn, season, week, league_id) if final else 0,
         await compute_team_projected_for_week(conn, season, week, league_id),

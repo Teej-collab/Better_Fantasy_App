@@ -148,7 +148,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, weekly_stats
-from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week
+from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
+from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
 from app.domain.chug_standing import accrue_weekly_debt_for_single_week, ensure_chug_deadline_settled
@@ -355,8 +356,10 @@ async def _run_week_settlement_job():
     Cheap enough to run often regardless of day/time: get_week_scoreboard
     is the same lightweight, public, keyless NFL scoreboard call every
     other gate here already treats as free. The real (DB-writing,
-    LLM-calling) settlement work below only actually runs once per
-    rollover — once league_state.current_week has been advanced past a
+    LLM-calling) settlement work below only actually runs between a
+    week going final and its Tuesday 2 AM Central flip (app/domain/
+    week_flip.py) — every step is idempotent, the recap is a cache hit
+    after its first generation. Once league_state.current_week has been advanced past a
     week, this job stops re-checking that week's game data at all on
     later ticks (it only ever looks at the CURRENTLY cached week).
     """
@@ -373,7 +376,7 @@ async def _run_week_settlement_job():
         # other job in this file already uses.
         real_week = await get_real_current_week()
         if real_week is not None:
-            await update_league_state(pool, season, real_week)
+            await update_league_state(pool, season, real_week, advance=True)
         return
 
     settle_week = cached_week
@@ -411,11 +414,32 @@ async def _run_week_settlement_job():
             )
             continue
 
+    # 2026-09-25: the week itself flips at 2 AM Central the Tuesday
+    # after its last game (app/domain/week_flip.py), not the instant
+    # it's final. Everything above is idempotent, so it simply re-runs
+    # each tick between "final" and the flip (keeping chug debts and the
+    # recap current); only the flip below waits.
+    if not is_past_week_flip(week_games):
+        return
+
     # Only advance our own pointer once settle_week is confirmed done —
     # the NEXT tick re-checks whatever week is cached now the same way,
     # so it keeps advancing one real week at a time as each one actually
     # finishes, never more than one rollover ahead of real completion.
-    await update_league_state(pool, season, settle_week + 1)
+    await update_league_state(pool, season, settle_week + 1, advance=True)
+
+    # Power rankings are decided here, at the flip, and locked for the
+    # week (weekly_team_stats.lock_power_ranks_for_week) — computed
+    # after the advance so the "has this week flipped" gate agrees.
+    for row in league_rows:
+        league_id = row["league_id"]
+        try:
+            async with pool.acquire() as conn:
+                await lock_power_ranks_for_week(conn, season, settle_week, league_id)
+        except Exception:
+            logger.exception(
+                "Power rank lock failed (season=%s week=%s league_id=%s)", season, settle_week, league_id
+            )
 
     record_job_run("week_settlement")
 

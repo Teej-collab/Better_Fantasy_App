@@ -50,7 +50,7 @@ from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_we
 from app.queries import roster_history as roster_history_queries
 
 
-async def update_league_state(pool, season: int, current_week: int) -> None:
+async def update_league_state(pool, season: int, current_week: int, *, advance: bool = False) -> None:
     """Caches current_week so pages can read it without hitting ESPN live
     on every request — see league_state migration for the reasoning.
     Also mirrors current_rosters into roster_history for this week (see
@@ -73,17 +73,26 @@ async def update_league_state(pool, season: int, current_week: int) -> None:
     settlement job's own advancement — every downstream reader would
     flip back and forth depending on which job last ran. GREATEST means
     whichever caller has seen the more-advanced week always wins,
-    permanently, regardless of call order."""
+    permanently, regardless of call order.
+
+    2026-09-25: only the week-settlement job advances the week now
+    (advance=True), at the Tuesday 2 AM Central flip (app/domain/
+    week_flip.py). The sync paths feed ESPN's own week counter, which
+    can roll over before that — with the default advance=False they
+    only ever seed a season's first row, never move it forward, so the
+    flip can't happen early and the settlement job never skips settling
+    a week because something else already advanced past it."""
     async with pool.acquire() as conn:
         await conn.execute(
             """
             INSERT INTO league_state (season, current_week, updated_at)
             VALUES ($1, $2, now())
             ON CONFLICT (season) DO UPDATE SET
-                current_week = GREATEST(EXCLUDED.current_week, league_state.current_week),
+                current_week = CASE WHEN $3::boolean THEN GREATEST(EXCLUDED.current_week, league_state.current_week)
+                                    ELSE league_state.current_week END,
                 updated_at = now()
             """,
-            season, current_week,
+            season, current_week, advance,
         )
         await roster_history_queries.snapshot_week(conn, season, current_week)
 
