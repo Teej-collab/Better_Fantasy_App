@@ -440,8 +440,9 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
 
     home_team = await queries.get_team(conn, m["home_team_id"])
     away_team = await queries.get_team(conn, m["away_team_id"])
-    home_roster = await queries.get_roster_for_week(conn, season, m["home_team_id"], week)
-    away_roster = await queries.get_roster_for_week(conn, season, m["away_team_id"], week)
+    rosters_by_id = await queries.get_rosters_for_week(conn, season, [m["home_team_id"], m["away_team_id"]], week)
+    home_roster = rosters_by_id.get(m["home_team_id"], [])
+    away_roster = rosters_by_id.get(m["away_team_id"], [])
 
     team_ids = [m["home_team_id"], m["away_team_id"]]
     standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}

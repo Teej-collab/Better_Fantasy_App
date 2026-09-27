@@ -29,7 +29,7 @@ def _top_scorer(roster_rows):
 
 async def get_week_ticker_data(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week, league_id)]
-    items = []
+    started_matchups = []
     for m in matchups:
         # ESPN represents an unplayed matchup as a real 0/0, not NULL —
         # same convention queries.get_standings/get_head_to_head already
@@ -44,13 +44,24 @@ async def get_week_ticker_data(conn, season: int, week: int, league_id: int = DE
         # just omits the strip with no further change needed.
         home_score, away_score = m["home_score"], m["away_score"]
         started = home_score is not None and away_score is not None and not (home_score == 0 and away_score == 0)
-        if not started:
-            continue
+        if started:
+            started_matchups.append(m)
 
-        home_team = await queries.get_team(conn, m["home_team_id"])
-        away_team = await queries.get_team(conn, m["away_team_id"])
-        home_roster = await queries.get_roster_for_week(conn, season, m["home_team_id"], week)
-        away_roster = await queries.get_roster_for_week(conn, season, m["away_team_id"], week)
+    # One batched teams query and one batched rosters query for the whole
+    # week, instead of four lookups per matchup one after another (~36
+    # sequential round trips for a 6-matchup week — 2026-09 load-time
+    # pass: this endpoint averaged over a second in Railway's
+    # slow-request log).
+    team_ids = list({m["home_team_id"] for m in started_matchups} | {m["away_team_id"] for m in started_matchups})
+    teams_by_id = await queries.get_teams(conn, team_ids)
+    rosters_by_id = await queries.get_rosters_for_week(conn, season, team_ids, week)
+
+    items = []
+    for m in started_matchups:
+        home_team = teams_by_id[m["home_team_id"]]
+        away_team = teams_by_id[m["away_team_id"]]
+        home_roster = rosters_by_id.get(m["home_team_id"], [])
+        away_roster = rosters_by_id.get(m["away_team_id"], [])
 
         items.append(
             {

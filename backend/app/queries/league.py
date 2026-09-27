@@ -400,14 +400,14 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
 
 
 async def get_current_rosters(conn, season: int, team_ids: list[int], week: int) -> dict[int, list]:
-    """Batched get_current_roster, keyed by team_id — same shape/reason
-    get_rosters exists alongside get_roster above."""
+    """Batched get_current_roster, keyed by team_id — same columns
+    (plus team_id), one query for every team instead of one per team."""
     if not team_ids:
         return {}
     rows = await conn.fetch(
         """
         SELECT cr.team_id, p.full_name AS player_name, p.position, cr.lineup_slot,
-               pws.fantasy_points AS points_scored,
+               pws.fantasy_points AS points_scored, pws.raw_stats,
                COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
                cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
         FROM current_rosters cr
@@ -441,7 +441,10 @@ async def get_roster_for_week(conn, season: int, team_id: int, week: int):
     current_week = await get_cached_current_week(conn, season)
     if current_week is not None and week == current_week:
         return await get_current_roster(conn, season, team_id, week)
+    return await _get_past_roster(conn, season, team_id, week)
 
+
+async def _get_past_roster(conn, season: int, team_id: int, week: int):
     snapshot_week = await roster_history_queries.get_latest_snapshotted_week(conn, season, team_id, week)
     if snapshot_week is None:
         return await get_current_roster(conn, season, team_id, week)
@@ -451,14 +454,18 @@ async def get_roster_for_week(conn, season: int, team_id: int, week: int):
 
 
 async def get_rosters_for_week(conn, season: int, team_ids: list[int], week: int) -> dict[int, list]:
-    """Batched get_roster_for_week — a plain per-team loop rather than a
-    new batched roster_history query. Unlike get_teams/get_current_rosters
-    (a real, measured N+1 fix — see get_teams' own comment), this is
-    called for a handful of teams in one matchup week at most, and each
-    call is a single indexed range-scan, not the same cost shape."""
+    """Batched get_roster_for_week. The current week — what Home, the
+    ticker, and the matchup screen show almost all the time — is one
+    get_current_rosters query for every team (it used to be two
+    sequential queries per team: ~24 round trips for a 12-team league,
+    2026-09 load-time pass). Past weeks still go team by team through
+    roster_history, but look up the current week once, not per team."""
     if not team_ids:
         return {}
-    return {tid: await get_roster_for_week(conn, season, tid, week) for tid in team_ids}
+    current_week = await get_cached_current_week(conn, season)
+    if current_week is not None and week == current_week:
+        return await get_current_rosters(conn, season, team_ids, week)
+    return {tid: await _get_past_roster(conn, season, tid, week) for tid in team_ids}
 
 
 async def get_touchdowns_for_teams(conn, season: int, week: int, team_ids: list[int]) -> dict[int, list]:
