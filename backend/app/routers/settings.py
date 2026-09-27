@@ -265,6 +265,7 @@ class PreferencesPatch(BaseModel):
     design_direction: str | None = None
     notify_game_alerts: bool | None = None
     notify_my_players: bool | None = None
+    notify_red_zone: bool | None = None
     notify_fantasy_team: bool | None = None
     notify_league: bool | None = None
     accent_color: str | None = None

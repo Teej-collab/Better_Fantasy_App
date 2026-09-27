@@ -270,25 +270,13 @@ async def _run_live_sync_job():
     results = await run_live_sync(provider, season, week)
     logger.info("Live sync finished (season=%s week=%s): %s", season, week, results)
 
-    # Diffed against the snapshot above, not derived from `results`
-    # (a per-step success/failure summary, not the actual numbers) —
-    # see app/notifications/fantasy_events.py's own docstring for why
-    # this watches the same real numbers My Team/Matchups already show
-    # rather than Gamecast's play-by-play (no fantasy-roster
-    # attribution of its own).
-    async with pool.acquire() as conn:
-        after = await fantasy_events.snapshot_week(conn, season, week)
-        await fantasy_events.notify_fantasy_events(conn, season, before, after)
-    record_job_run("live_sync")
-
     # Same "every connected league, independently, best-effort" shape
     # as _run_full_sync_job above — reuses the same real `week`/`games`
     # this tick already fetched for League #1, since it's the same real
     # NFL slate for every league regardless of which fantasy league it
-    # is. No fantasy_events notification for these — that snapshot-diff
-    # is specifically tuned for League #1's own real roster/notification
-    # data (see fantasy_events.py); wiring it per-league is separate
-    # future work, not attempted here.
+    # is. The fantasy_events diff below runs after all of these, so
+    # touchdown and lead-change alerts cover every league, not just
+    # League #1.
     for league_id, connected_provider in await _connected_espn_providers(season):
         try:
             connected_results = await run_live_sync(connected_provider, season, week, league_id=league_id)
@@ -310,6 +298,33 @@ async def _run_live_sync_job():
             "Live sync finished for league_id=%s (season=%s week=%s): %s",
             league_id, season, week, connected_results,
         )
+
+    # Diffed against the snapshot above, not derived from `results`
+    # (a per-step success/failure summary, not the actual numbers) —
+    # see app/notifications/fantasy_events.py's own docstring for why
+    # this watches the same real numbers My Team/Matchups already show
+    # rather than Gamecast's play-by-play (no fantasy-roster
+    # attribution of its own).
+    async with pool.acquire() as conn:
+        after = await fantasy_events.snapshot_week(conn, season, week)
+        await fantasy_events.notify_fantasy_events(conn, season, before, after)
+    record_job_run("live_sync")
+
+
+async def _run_red_zone_job():
+    """Red zone alerts, on their own faster tick than the live sync
+    (a trip inside the 20 often lasts under a minute). Only reads the
+    public scoreboard, which is already cached for 15 seconds and
+    carries each live game's possession and red-zone flags — no ESPN
+    league credentials involved."""
+    games = await get_nfl_scoreboard()
+    if not is_nfl_game_live(games):
+        return
+    season = int(_require("ACTIVE_SEASON"))
+    week = next((g["week"] for g in games if g.get("week")), None)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await fantasy_events.notify_red_zone(conn, season, week, games)
 
 
 async def _run_week_settlement_job():
@@ -908,6 +923,8 @@ def start_scheduler():
         # window either way — see is_nfl_game_live above).
         interval_seconds = int(os.getenv("LIVE_SYNC_INTERVAL_SECONDS", "60"))
         _scheduler.add_job(_run_live_sync_job, "interval", seconds=interval_seconds, id="espn_live_sync")
+        red_zone_seconds = int(os.getenv("RED_ZONE_POLL_INTERVAL_SECONDS", "20"))
+        _scheduler.add_job(_run_red_zone_job, "interval", seconds=red_zone_seconds, id="red_zone_alerts")
         logger.info(
             "Live ESPN sync scheduler started (every %d seconds, only during NFL game windows)",
             interval_seconds,

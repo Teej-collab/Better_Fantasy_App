@@ -8,27 +8,42 @@ url, data}. `url` is what a tap navigates to — every formatter sets a
 real destination, never a bare "/" (per the explicit "don't just send
 everything to the homepage" requirement).
 
-Chat formatters exist alongside "test" today — Gamecast/fantasy event
-formatters (TOUCHDOWN, MATCHUP_LEAD_CHANGE, etc.) land once the event
-pipeline that would actually call them is wired up (app/gamecast's
-normalized events feed app/notifications/events.py, not built yet —
-this module is deliberately ready for that, not preemptively guessing
-its exact payload shape).
+Fantasy-activity formatters (touchdowns, red zone, lead changes) are
+called from app/notifications/fantasy_events.py.
 """
 
 _DEFAULT_ICON = "/images/icon-192.png"
 _BODY_PREVIEW_LENGTH = 120
 
 
-def test_notification() -> dict:
+def _payload(title: str, body: str, url: str, type_: str, tag: str | None = None) -> dict:
+    """Every notification goes through here so the shape never drifts.
+    `url` is repeated inside `data` because that's where the service
+    worker's notificationclick handler (frontend/public/sw.js) and the
+    native app's tap handler (NativePushRegistration.tsx) read it from —
+    a top-level url alone used to be dropped on the web, so every tap
+    opened the homepage. `tag` lets a newer notification replace an
+    older one about the same thing (a lead flipping back and forth, a
+    team re-entering the red zone) instead of stacking up."""
+    data = {"type": type_, "url": url}
+    if tag:
+        data["tag"] = tag
     return {
-        "title": "🔔 Test Notification",
-        "body": "Weekend League notifications are working.",
+        "title": title,
+        "body": body,
         "icon": _DEFAULT_ICON,
         "badge": _DEFAULT_ICON,
-        "url": "/settings?section=notifications",
-        "data": {"type": "test"},
+        "url": url,
+        "tag": tag,
+        "data": data,
     }
+
+
+def test_notification() -> dict:
+    return _payload(
+        "🔔 Test Notification", "Weekend League notifications are working.",
+        "/settings?section=notifications", "test",
+    )
 
 
 def _preview(body: str) -> str:
@@ -50,113 +65,39 @@ def _chat_url(conversation_id: int) -> str:
 
 
 def chat_direct_message(sender_name: str, body: str, conversation_id: int) -> dict:
-    return {
-        "title": sender_name,
-        "body": _preview(body) or "Sent an image",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": _chat_url(conversation_id),
-        "data": {"type": "chat_direct_message"},
-    }
+    return _payload(sender_name, _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_direct_message")
 
 
 def chat_league_message(sender_name: str, body: str, conversation_id: int) -> dict:
-    return {
-        "title": f"{sender_name} in League Chat",
-        "body": _preview(body) or "Sent an image",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": _chat_url(conversation_id),
-        "data": {"type": "chat_league_message"},
-    }
+    return _payload(f"{sender_name} in League Chat", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_league_message")
 
 
 def chat_mention(sender_name: str, body: str, conversation_id: int) -> dict:
-    return {
-        "title": f"{sender_name} mentioned you",
-        "body": _preview(body) or "Sent an image",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": _chat_url(conversation_id),
-        "data": {"type": "chat_mention"},
-    }
+    return _payload(f"{sender_name} mentioned you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_mention")
 
 
 def chat_reply(sender_name: str, body: str, conversation_id: int) -> dict:
-    return {
-        "title": f"{sender_name} replied to you",
-        "body": _preview(body) or "Sent an image",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": _chat_url(conversation_id),
-        "data": {"type": "chat_reply"},
-    }
+    return _payload(f"{sender_name} replied to you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_reply")
 
 
 def draft_starting_soon(minutes: int) -> dict:
-    return {
-        "title": "🏈 Draft starting soon",
-        "body": f"The draft starts in {minutes} minutes — get in the room.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/draft",
-        "data": {"type": "draft_starting_soon"},
-    }
+    return _payload("🏈 Draft starting soon", f"The draft starts in {minutes} minutes — get in the room.", "/draft", "draft_starting_soon")
 
 
 def draft_room_open() -> dict:
-    return {
-        "title": "🏈 Draft room is open",
-        "body": "Build your player queue now — the real draft starts in an hour.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/draft",
-        "data": {"type": "draft_room_open"},
-    }
+    return _payload("🏈 Draft room is open", "Build your player queue now — the real draft starts in an hour.", "/draft", "draft_room_open")
 
 
 def draft_live() -> dict:
-    return {
-        "title": "🏈 The draft is live",
-        "body": "Picking has started — get in the room.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/draft",
-        "data": {"type": "draft_live"},
-    }
+    return _payload("🏈 The draft is live", "Picking has started — get in the room.", "/draft", "draft_live")
 
 
 def keeper_deadline_approaching(minutes: int) -> dict:
-    return {
-        "title": "⏰ Keeper picks lock soon",
-        "body": f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/keepers",
-        "data": {"type": "keeper_deadline_approaching"},
-    }
+    return _payload("⏰ Keeper picks lock soon", f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.", "/keepers", "keeper_deadline_approaching")
 
 
 def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:
-    return {
-        "title": "🏈 You're on the clock",
-        "body": f"Round {round_num}, pick {pick_number} — you have {seconds} seconds to pick.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/draft",
-        "data": {"type": "draft_on_the_clock"},
-    }
-
-
-def fantasy_player_touchdown(player_name: str, team_name: str) -> dict:
-    return {
-        "title": "🔥 Touchdown!",
-        "body": f"{player_name} just scored for your {team_name}.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/team",
-        "data": {"type": "fantasy_player_touchdown"},
-    }
+    return _payload("🏈 You're on the clock", f"Round {round_num}, pick {pick_number} — you have {seconds} seconds to pick.", "/draft", "draft_on_the_clock")
 
 
 def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
@@ -169,31 +110,67 @@ def chug_posted(owner_name: str, final_score: float, has_video: bool) -> dict:
     nothing to watch."""
     body = f"{owner_name} just posted a {final_score:g}/10 chug"
     body += " — go watch it." if has_video else "."
-    return {
-        "title": "🍺 New Chug Posted",
-        "body": body,
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/chug",
-        "data": {"type": "chug_posted"},
-    }
+    return _payload("🍺 New Chug Posted", body, "/chug", "chug_posted")
 
 
-def fantasy_matchup_lead_change(now_leading: bool, opponent_name: str) -> dict:
+_TD_KIND_LABEL = {"rush_td": "Rushing TD", "rec_td": "Receiving TD", "pass_td": "Passing TD"}
+
+
+def _matchup_url(matchup_id: int | None) -> str:
+    # Straight to the owner's own matchup for the week — where a
+    # touchdown or a lead change actually matters — falling back to My
+    # Team only when there's no matchup (bye week, schedule not set).
+    return f"/matchups/{matchup_id}" if matchup_id else "/team"
+
+
+def _points(delta: float | None) -> str:
+    return f" (+{delta:.1f} pts)" if delta and delta > 0 else ""
+
+
+def fantasy_player_touchdown(
+    player_name: str, team_name: str, td_kind: str | None, points_delta: float | None,
+    matchup_id: int | None, on_bench: bool, tag: str,
+) -> dict:
+    kind = _TD_KIND_LABEL.get(td_kind or "", "Touchdown")
+    if on_bench:
+        return _payload(
+            f"💀 {player_name} scored on your bench",
+            f"{kind}{_points(points_delta)} — none of it counts for {team_name}.",
+            _matchup_url(matchup_id), "fantasy_player_touchdown", tag,
+        )
+    return _payload(
+        f"🏈 TOUCHDOWN · {player_name}",
+        f"{kind}{_points(points_delta)} for {team_name}.",
+        _matchup_url(matchup_id), "fantasy_player_touchdown", tag,
+    )
+
+
+def fantasy_red_zone(pro_team: str, player_names: list[str], matchup_id: int | None) -> dict:
+    if len(player_names) == 1:
+        who = f"{player_names[0]} is"
+    elif len(player_names) == 2:
+        who = f"{player_names[0]} and {player_names[1]} are"
+    else:
+        who = f"{', '.join(player_names[:-1])}, and {player_names[-1]} are"
+    return _payload(
+        f"🚨 Red Zone · {pro_team}",
+        f"{who} inside the 20. Touchdown watch.",
+        _matchup_url(matchup_id), "fantasy_red_zone", f"red-zone-{pro_team}",
+    )
+
+
+def fantasy_matchup_lead_change(
+    now_leading: bool, opponent_name: str, my_score: float, their_score: float, matchup_id: int,
+) -> dict:
+    score = f"{my_score:.1f}–{their_score:.1f}"
     if now_leading:
-        return {
-            "title": "📈 You just took the lead",
-            "body": f"You're now ahead of {opponent_name}.",
-            "icon": _DEFAULT_ICON,
-            "badge": _DEFAULT_ICON,
-            "url": "/team",
-            "data": {"type": "fantasy_matchup_lead_change"},
-        }
-    return {
-        "title": "📉 You just lost the lead",
-        "body": f"{opponent_name} just took the lead over you.",
-        "icon": _DEFAULT_ICON,
-        "badge": _DEFAULT_ICON,
-        "url": "/team",
-        "data": {"type": "fantasy_matchup_lead_change"},
-    }
+        return _payload(
+            "📈 You took the lead",
+            f"Up {score} on {opponent_name}.",
+            _matchup_url(matchup_id), "fantasy_matchup_lead_change", f"lead-{matchup_id}",
+        )
+    return _payload(
+        "📉 You lost the lead",
+        f"{opponent_name} leads you {their_score:.1f}–{my_score:.1f}.",
+        _matchup_url(matchup_id), "fantasy_matchup_lead_change", f"lead-{matchup_id}",
+    )

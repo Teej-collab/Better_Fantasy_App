@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { Device } from "@capacitor/device";
 import { PushNotifications } from "@capacitor/push-notifications";
@@ -26,9 +27,41 @@ import { useIsNativeApp } from "@/lib/nativeApp";
  * rather than assuming a signed-in state, since a fresh app install
  * opens straight to this layout before any sign-in has happened.
  */
+// Only ever navigate to a path inside this app ("/chat?conversation=5"),
+// never an absolute or protocol-relative URL a payload might carry.
+function safeInAppPath(url: unknown): string | null {
+  return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") ? url : null;
+}
+
 export function NativePushRegistration() {
   const isNative = useIsNativeApp();
   const attempted = useRef(false);
+  const router = useRouter();
+
+  // Tapping a notification (lock screen, banner, Notification Center)
+  // opens the screen it's about. Registered immediately on mount and
+  // independent of sign-in, because a tap that cold-launches the app
+  // is delivered as soon as a listener exists — waiting for /auth/me
+  // first would miss it. APNs puts `url` at the top level of the
+  // payload and FCM puts it in the data map; Capacitor surfaces both
+  // as notification.data.
+  useEffect(() => {
+    if (!isNative) return;
+    let handle: { remove: () => void } | undefined;
+    let cancelled = false;
+    PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+      const data = (action.notification.data ?? {}) as { url?: unknown; data?: { url?: unknown } };
+      const path = safeInAppPath(data.url) ?? safeInAppPath(data.data?.url);
+      if (path) router.push(path);
+    }).then((h) => {
+      if (cancelled) h.remove();
+      else handle = h;
+    });
+    return () => {
+      cancelled = true;
+      handle?.remove();
+    };
+  }, [isNative, router]);
 
   useEffect(() => {
     if (!isNative || attempted.current) return;

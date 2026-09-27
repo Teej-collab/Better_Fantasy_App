@@ -26,6 +26,14 @@ const config: CapacitorConfig = {
   // instead of the Capacitor default white flash before the WebView
   // loads.
   backgroundColor: "#23212c",
+  plugins: {
+    // Without this, a push that arrives while the app is open on iOS is
+    // delivered silently (no banner, no sound). Takes effect after
+    // `npx cap sync` and a new native build.
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
+  },
 };
 
 export default config;

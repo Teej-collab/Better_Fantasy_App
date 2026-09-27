@@ -113,6 +113,16 @@ async def send_fcm(push_token: str, payload: dict) -> tuple[bool, bool]:
                     "token": push_token,
                     "notification": {"title": payload.get("title", ""), "body": payload.get("body", "")},
                     "data": _fcm_data_payload(data),
+                    # High priority so it shows promptly on a locked,
+                    # dozing phone; a tag replaces an older notification
+                    # about the same thing (see formatter._payload).
+                    "android": {
+                        "priority": "high",
+                        "notification": {
+                            "sound": "default",
+                            **({"tag": payload["tag"]} if payload.get("tag") else {}),
+                        },
+                    },
                 }
             },
         )

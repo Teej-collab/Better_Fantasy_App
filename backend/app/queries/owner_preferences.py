@@ -85,7 +85,12 @@ _DEFAULT_PREFERENCES = {
     # reality if set independently.
     "push_enabled": False,
     "notify_game_alerts": True,
-    "notify_my_players": False,
+    # On by default (2026-09): touchdown alerts are the app's headline
+    # game-day notification, and defaulting them off meant almost no one
+    # ever got one (migration e8b4c2d17a90 also switched it on for every
+    # existing row).
+    "notify_my_players": True,
+    "notify_red_zone": True,
     "notify_fantasy_team": True,
     "notify_league": True,
     # Consent for a not-yet-built feature (AI learning to shit-talk from

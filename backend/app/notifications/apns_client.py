@@ -54,7 +54,14 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
     request = NotificationRequest(
         device_token=push_token,
         message={
-            "aps": {"alert": {"title": payload.get("title", ""), "body": payload.get("body", "")}},
+            # sound: without it iOS delivers silently (no buzz or tone
+            # on a locked phone). thread-id groups notifications of the
+            # same kind together in Notification Center.
+            "aps": {
+                "alert": {"title": payload.get("title", ""), "body": payload.get("body", "")},
+                "sound": "default",
+                "thread-id": (payload.get("data") or {}).get("type", "weekend-league"),
+            },
             "url": payload.get("url"),
             "data": payload.get("data", {}),
         },

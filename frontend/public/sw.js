@@ -97,12 +97,25 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "Weekend League";
+  // The tap destination can arrive at the top level (payload.url) or
+  // inside payload.data — older payloads only set the former, and this
+  // used to keep `data` as-is whenever it existed, silently dropping the
+  // url so every tap opened the homepage.
+  const data = { ...(payload.data || {}), url: (payload.data && payload.data.url) || payload.url || "/" };
   const options = {
     body: payload.body || "",
     icon: payload.icon || DEFAULT_ICON,
     badge: payload.badge || DEFAULT_ICON,
-    data: payload.data || { url: payload.url || "/" },
+    data,
   };
+  // A tag makes a newer notification about the same thing (a lead that
+  // flips back, a team back in the red zone) replace the older one on
+  // screen instead of stacking up; renotify still buzzes for it.
+  const tag = payload.tag || data.tag;
+  if (tag) {
+    options.tag = tag;
+    options.renotify = true;
+  }
 
   event.waitUntil(self.registration.showNotification(title, options));
 });

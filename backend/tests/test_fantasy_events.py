@@ -153,8 +153,10 @@ async def test_notify_lead_change_pushes_both_owners_on_a_real_flip(pool, monkey
     assert len(sent) == 2
     by_owner = dict(sent)
     assert by_owner[owner_away]["data"]["type"] == "fantasy_matchup_lead_change"
-    assert "took the lead" in by_owner[owner_away]["title"].lower() or "lead" in by_owner[owner_away]["title"].lower()
-    assert "lost" in by_owner[owner_home]["title"].lower() or "lead" in by_owner[owner_home]["title"].lower()
+    assert "took the lead" in by_owner[owner_away]["title"].lower()
+    assert "20.0–10.0" in by_owner[owner_away]["body"]
+    assert "lost" in by_owner[owner_home]["title"].lower()
+    assert by_owner[owner_home]["url"] == "/matchups/1"
 
 
 async def test_notify_lead_change_is_a_noop_when_the_leader_is_unchanged(pool, monkeypatch):
@@ -185,3 +187,97 @@ async def test_notify_lead_change_is_a_noop_when_the_leader_is_unchanged(pool, m
         await fantasy_events.notify_fantasy_events(conn, TEST_SEASON, before, after)
 
     assert sent == []
+
+
+def test_every_formatter_payload_carries_its_url_inside_data():
+    # The service worker and the native tap handler both read the
+    # destination from data.url — a payload with only a top-level url
+    # used to open the homepage on tap.
+    from app.notifications import formatter
+
+    payloads = [
+        formatter.test_notification(),
+        formatter.chat_direct_message("A", "hi", 5),
+        formatter.chat_mention("A", "hi", 5),
+        formatter.draft_on_the_clock(1, 3, 90),
+        formatter.chug_posted("A", 8.5, True),
+        formatter.fantasy_player_touchdown("P", "Team", "rush_td", 6.0, 12, on_bench=False, tag="t"),
+        formatter.fantasy_red_zone("KC", ["P"], 12),
+        formatter.fantasy_matchup_lead_change(True, "Them", 80.0, 70.0, 12),
+    ]
+    for p in payloads:
+        assert p["data"]["url"] == p["url"]
+        assert p["url"].startswith("/") and p["url"] != "/"
+
+
+def test_touchdown_copy_names_the_kind_points_and_matchup():
+    from app.notifications import formatter
+
+    p = formatter.fantasy_player_touchdown("D. Henry", "Dime Package", "rush_td", 6.1, 42, on_bench=False, tag="td-1")
+    assert "D. Henry" in p["title"]
+    assert "Rushing TD" in p["body"] and "+6.1 pts" in p["body"]
+    assert p["url"] == "/matchups/42"
+
+    bench = formatter.fantasy_player_touchdown("D. Henry", "Dime Package", "rush_td", 6.1, 42, on_bench=True, tag="td-1")
+    assert "bench" in bench["title"].lower()
+
+    no_matchup = formatter.fantasy_player_touchdown("X", "T", None, None, None, on_bench=False, tag="td-2")
+    assert no_matchup["url"] == "/team"
+
+
+def test_red_zone_entries_fires_once_per_entry_with_a_cooldown():
+    fantasy_events._reset_red_zone_state_for_tests()
+    live_rz = [{"state": "in", "is_redzone": True, "possession_team_abbr": "KC"}]
+    out = [{"state": "in", "is_redzone": False, "possession_team_abbr": "KC"}]
+
+    assert fantasy_events.red_zone_entries(live_rz, now=0) == ["KC"]
+    # Still in the red zone next tick — no repeat.
+    assert fantasy_events.red_zone_entries(live_rz, now=20) == []
+    # Leaves and comes back within the cooldown (a sack, a penalty) — no repeat.
+    assert fantasy_events.red_zone_entries(out, now=40) == []
+    assert fantasy_events.red_zone_entries(live_rz, now=60) == []
+    # A later drive, past the cooldown — fires again.
+    assert fantasy_events.red_zone_entries(out, now=600) == []
+    assert fantasy_events.red_zone_entries(live_rz, now=620) == ["KC"]
+    fantasy_events._reset_red_zone_state_for_tests()
+
+
+async def test_notify_red_zone_only_names_starters_and_respects_the_preference(pool, monkeypatch):
+    fantasy_events._reset_red_zone_state_for_tests()
+    owner_on, team_on = await _seed_owner_and_team(pool, "rz-on", 700007)
+    owner_off, team_off = await _seed_owner_and_team(pool, "rz-off", 700008)
+    await _seed_player(pool, "test-fe-rz-starter", "RB")
+    await _seed_player(pool, "test-fe-rz-bench", "WR")
+    await _seed_player(pool, "test-fe-rz-other", "TE")
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via) "
+            "VALUES ($1, $2, $3, $4, 'draft')",
+            [
+                (TEST_SEASON, team_on, "test-fe-rz-starter", "RB"),
+                (TEST_SEASON, team_on, "test-fe-rz-bench", "BE"),
+                (TEST_SEASON, team_off, "test-fe-rz-other", "TE"),
+            ],
+        )
+        await preferences_queries.update_preferences(conn, owner_on, {"push_enabled": True, "notify_red_zone": True})
+        await preferences_queries.update_preferences(conn, owner_off, {"push_enabled": True, "notify_red_zone": False})
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+        return 1
+
+    monkeypatch.setattr(fantasy_events.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    games = [{"state": "in", "is_redzone": True, "possession_team_abbr": "KC"}]
+    async with pool.acquire() as conn:
+        await fantasy_events.notify_red_zone(conn, TEST_SEASON, None, games)
+
+    mine = [p for owner, p in sent if owner == owner_on]
+    assert len(mine) == 1
+    assert "Test Player test-fe-rz-starter" in mine[0]["body"]
+    assert "test-fe-rz-bench" not in mine[0]["body"]
+    assert mine[0]["data"]["type"] == "fantasy_red_zone"
+    assert all(owner != owner_off for owner, _ in sent)
+    fantasy_events._reset_red_zone_state_for_tests()

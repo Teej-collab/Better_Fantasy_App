@@ -46,8 +46,9 @@ const MESSAGE_TOGGLES: { key: keyof OwnerPreferences; label: string; description
 // (app/notifications/chug_events.py). Game Alerts still has no real
 // event source and stays out until it does.
 const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
-  { key: "notify_my_players", label: "My Players", description: "One of your rostered players scores a touchdown." },
-  { key: "notify_fantasy_team", label: "My Fantasy Team", description: "Your matchup lead changes, for better or worse." },
+  { key: "notify_my_players", label: "Touchdowns", description: "One of your players scores — starters and bench, with the points it was worth." },
+  { key: "notify_red_zone", label: "Red Zone", description: "An NFL team with one of your starters gets inside the 20." },
+  { key: "notify_fantasy_team", label: "Lead Changes", description: "You take the lead in your matchup, or lose it." },
   { key: "notify_league", label: "League Activity", description: "Someone in your league posts a graded chug." },
 ];
 

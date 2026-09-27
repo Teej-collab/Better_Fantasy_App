@@ -1498,6 +1498,7 @@ export type OwnerPreferences = {
   push_enabled: boolean;
   notify_game_alerts: boolean;
   notify_my_players: boolean;
+  notify_red_zone: boolean;
   notify_fantasy_team: boolean;
   notify_league: boolean;
   // Consent for a not-yet-built feature (AI learning to shit-talk from
