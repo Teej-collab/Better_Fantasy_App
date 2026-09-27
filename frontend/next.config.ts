@@ -49,6 +49,17 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: devOrigins(),
+  experimental: {
+    // Client-side router cache for dynamic pages. Next's default (0)
+    // throws away every page's server-rendered payload the moment you
+    // leave it, so tapping back to a tab you just viewed re-ran its
+    // whole server fetch chain. 30s keeps quick back-and-forth between
+    // tabs instant. Safe for freshness: every client-side mutation in
+    // this app already calls router.refresh(), which clears this cache,
+    // and GameDayRefresher does the same on its own interval for live
+    // scores.
+    staleTimes: { dynamic: 30 },
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

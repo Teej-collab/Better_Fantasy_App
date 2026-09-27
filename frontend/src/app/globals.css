@@ -385,6 +385,11 @@ body {
    (open/closed still work, just without the 250ms animation) rather
    than the app's ambient decorative animations above, which is what
    the rest of this class actually targets. */
+/* PageSkeleton.tsx's pulse — Tailwind's motion-safe: already covers the
+   OS-level setting, this covers Settings > Appearance > Animations. */
+.motion-reduced .wl-skeleton {
+  animation: none;
+}
 .motion-reduced .wl-drawer-panel,
 .motion-reduced .wl-drawer-scrim,
 .motion-reduced .wl-drawer-bar {
