@@ -793,6 +793,15 @@ export function getLatestPowerRankingsWeek(season: number, sessionCookie: string
   return getServer<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`, sessionCookie);
 }
 
+// The most recent locked week's rankings, not the in-progress one's —
+// power ranks are only decided at the Tuesday 2 PM Central flip (backend
+// app/domain/week_flip.py), so the current week never has any. Empty
+// before the season's first flip.
+export async function getLatestPowerRankings(season: number, sessionCookie: string | undefined) {
+  const { week } = await getLatestPowerRankingsWeek(season, sessionCookie);
+  return week !== null ? getWeekPowerRankings(season, week, sessionCookie) : { rankings: [] };
+}
+
 export type PowerRankTrendTeam = {
   team_id: number;
   team_name: string;

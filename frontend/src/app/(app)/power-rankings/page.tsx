@@ -46,11 +46,16 @@ export default async function PowerRankingsPage({
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const [me, myPreferences, activeLeagueName] = await Promise.all([
-    getMe(sessionCookie),
-    getMyPreferences(sessionCookie),
-    getActiveLeagueName(sessionCookie),
-  ]);
+  // listSeasons is public, so it runs alongside the auth check instead
+  // of after it — each await here is a real backend round trip.
+  const [me, myPreferences, activeLeagueName, { seasons }, { view: rawView, season: rawSeason, week: rawWeek }] =
+    await Promise.all([
+      getMe(sessionCookie),
+      getMyPreferences(sessionCookie),
+      getActiveLeagueName(sessionCookie),
+      listSeasons(),
+      searchParams,
+    ]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -63,10 +68,7 @@ export default async function PowerRankingsPage({
   }
   const betaLayout = Boolean(myPreferences?.beta_layout);
 
-  const { view: rawView, season: rawSeason, week: rawWeek } = await searchParams;
   const view: View = rawView === "trend" || rawView === "all-time" ? rawView : "week";
-
-  const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
   const season = rawSeason ? Number(rawSeason) : latestSeason;
 
@@ -127,8 +129,11 @@ async function WeekView({
   sessionCookie: string | undefined;
   beta: boolean;
 }) {
-  const { week: latestWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
-  const week = requestedWeek ? Number(requestedWeek) : latestWeek;
+  // Only look up the latest week when the URL didn't already name one —
+  // it's a whole extra backend round trip before the rankings fetch.
+  const week = requestedWeek
+    ? Number(requestedWeek)
+    : (await getLatestPowerRankingsWeek(season, sessionCookie)).week;
 
   if (week === null) {
     return (

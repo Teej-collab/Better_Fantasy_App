@@ -6,14 +6,13 @@ import {
   awardsHrefFor,
   getActiveLeagueName,
   getCurrentWeek,
-  getLatestPowerRankingsWeek,
+  getLatestPowerRankings,
   getMe,
   getMyPreferences,
   getPlayoffBracket,
   getProjectedPlayoffPicture,
   getStandings,
   getWeekMatchupContext,
-  getWeekPowerRankings,
   listSeasons,
   resolveWeek,
   safeLatestSeason,
@@ -39,7 +38,14 @@ export default async function StandingsPage({
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const me = await getMe(sessionCookie);
+  // listSeasons is public, so it runs alongside the auth check instead
+  // of after it — every await below is a real round trip to the
+  // backend, and they used to all run one after another (9 deep).
+  const [me, { seasons }, { season: seasonParam }] = await Promise.all([
+    getMe(sessionCookie),
+    listSeasons(),
+    searchParams,
+  ]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -51,38 +57,67 @@ export default async function StandingsPage({
     return <NeedsLeagueCard />;
   }
 
-  const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
-  const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const [{ standings, playoff_team_count: playoffTeamCount }, myPreferences, activeLeagueName] = await Promise.all([
-    season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
-    getMyPreferences(sessionCookie),
-    getActiveLeagueName(sessionCookie),
+  // Everything below only depends on `season`, so it all runs at once —
+  // the few fetches that depend on another fetch's answer are chained
+  // inside their own async block rather than holding up the rest.
+  const [
+    [{ standings, playoff_team_count: playoffTeamCount }, myPreferences, activeLeagueName],
+    { rankings: powerRankings },
+    { bracketNodes, projectedMatchups },
+    { currentWeek, currentWeekMatchups },
+  ] = await Promise.all([
+    Promise.all([
+      season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
+      getMyPreferences(sessionCookie),
+      getActiveLeagueName(sessionCookie),
+    ]),
+    // Power-rank badges next to each team name — a separate fetch/merge
+    // by team_id rather than joining onto get_standings itself, since
+    // standings' own ordering (win/loss record, or final_rank once a
+    // season's done) is a different concept from the weekly power-rank
+    // composite (app/domain/weekly_team_stats.py's compute_power_ranks).
+    // Settings > Labs > "Try the new look" also reuses this same fetch's
+    // `movement` field per row — Documentation/UX/00_UX_Audit.md's P2
+    // finding was that Standings doesn't convey momentum despite
+    // MovementBadge already existing and being wired into Power Rankings
+    // — this is a pure reuse, not a new data source.
+    season !== null ? getLatestPowerRankings(season, sessionCookie) : Promise.resolve({ rankings: [] }),
+    // The real in-app bracket (backend/app/domain/playoffs.py) — empty
+    // nodes before a commissioner has generated one for this season,
+    // in which case PlayoffBracket itself renders nothing. "If the
+    // season ended today" is only fetched/shown once the real bracket
+    // doesn't exist yet (the backend itself also returns null once a
+    // real one exists, so this is a pure optimization, not the only
+    // guard).
+    (async () => {
+      if (season === null) return { bracketNodes: [], projectedMatchups: null };
+      const { nodes } = await getPlayoffBracket(season, sessionCookie);
+      const { matchups } =
+        nodes.length === 0 ? await getProjectedPlayoffPicture(season, sessionCookie) : { matchups: null };
+      return { bracketNodes: nodes, projectedMatchups: matchups };
+    })(),
+    // Scoreboard tab (real ESPN League > Scoreboard, reference video
+    // 2026-09-15: prev/next arrows through every week's matchups, right
+    // alongside Standings and Playoffs as sibling tabs of the same
+    // screen) — replaces the old standalone /seasons/[season]/weeks/
+    // [week] route entirely; this fetches only the CURRENT week's
+    // matchups up front (WeekScoreboardBrowser's own arrows page through
+    // every other week client-side from here, see that component).
+    (async () => {
+      if (season === null) return { currentWeek: null, currentWeekMatchups: [] };
+      const week = resolveWeek((await getCurrentWeek(season)).current_week);
+      if (week === null) return { currentWeek: null, currentWeekMatchups: [] };
+      const { matchups } = await getWeekMatchupContext(season, week, sessionCookie);
+      return { currentWeek: week, currentWeekMatchups: matchups };
+    })(),
   ]);
   const betaLayout = Boolean(myPreferences?.beta_layout);
+  const powerRankByTeam = new Map(powerRankings.map((r) => [r.team_id, r.power_rank]));
+  const movementByTeam = new Map(powerRankings.map((r) => [r.team_id, r.movement]));
 
-  // Power-rank badges next to each team name — a separate fetch/merge
-  // by team_id rather than joining onto get_standings itself, since
-  // standings' own ordering (win/loss record, or final_rank once a
-  // season's done) is a different concept from the weekly power-rank
-  // composite (app/domain/weekly_team_stats.py's compute_power_ranks).
-  // Settings > Labs > "Try the new look" also reuses this same fetch's
-  // `movement` field per row — Documentation/UX/00_UX_Audit.md's P2
-  // finding was that Standings doesn't convey momentum despite
-  // MovementBadge already existing and being wired into Power Rankings
-  // — this is a pure reuse, not a new data source.
-  let powerRankByTeam = new Map<number, number>();
-  let movementByTeam = new Map<number, number | null>();
-  if (season !== null) {
-    const { week: latestPowerWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
-    if (latestPowerWeek !== null) {
-      const { rankings } = await getWeekPowerRankings(season, latestPowerWeek, sessionCookie);
-      powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
-      movementByTeam = new Map(rankings.map((r) => [r.team_id, r.movement]));
-    }
-  }
   // Already ordered by final_rank (ESPN's real final-season rank, full
   // playoff bracket) when the season's complete, falling back to
   // regular-season record when it's not — see app/queries/league.py.
@@ -99,34 +134,6 @@ export default async function StandingsPage({
   // that isn't also in the bottom four.
   const toiletBowlCount = 4;
   const showToiletBowlLine = !isFinal && standings.length > toiletBowlCount;
-
-  // The real in-app bracket (backend/app/domain/playoffs.py) — empty
-  // nodes before a commissioner has generated one for this season,
-  // in which case PlayoffBracket itself renders nothing.
-  const { nodes: bracketNodes } =
-    season !== null ? await getPlayoffBracket(season, sessionCookie) : { nodes: [] };
-  // "If the season ended today" — only fetched/shown once the real
-  // bracket doesn't exist yet (the backend itself also returns null
-  // once a real one exists, so this is a pure optimization, not the
-  // only guard).
-  const { matchups: projectedMatchups } =
-    season !== null && bracketNodes.length === 0
-      ? await getProjectedPlayoffPicture(season, sessionCookie)
-      : { matchups: null };
-
-  // Scoreboard tab (real ESPN League > Scoreboard, reference video
-  // 2026-09-15: prev/next arrows through every week's matchups, right
-  // alongside Standings and Playoffs as sibling tabs of the same
-  // screen) — replaces the old standalone /seasons/[season]/weeks/
-  // [week] route entirely; this fetches only the CURRENT week's
-  // matchups up front (WeekScoreboardBrowser's own arrows page through
-  // every other week client-side from here, see that component).
-  const currentWeek =
-    season !== null ? resolveWeek((await getCurrentWeek(season)).current_week) : null;
-  const { matchups: currentWeekMatchups } =
-    season !== null && currentWeek !== null
-      ? await getWeekMatchupContext(season, currentWeek, sessionCookie)
-      : { matchups: [] };
 
   const hasPlayoffsContent = bracketNodes.length > 0 || (projectedMatchups?.length ?? 0) > 0;
 

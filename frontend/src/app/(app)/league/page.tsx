@@ -4,9 +4,8 @@ import { cookies } from "next/headers";
 import {
   awardsHrefFor,
   getActiveLeagueName,
-  getLatestPowerRankingsWeek,
+  getLatestPowerRankings,
   getMe,
-  getWeekPowerRankings,
   listSeasons,
   listTeamsServer,
   safeLatestSeason,
@@ -28,7 +27,13 @@ export default async function LeaguePage({
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const me = await getMe(sessionCookie);
+  // listSeasons is public, so it runs alongside the auth check instead
+  // of after it — each await here is a real backend round trip.
+  const [me, { seasons }, { season: seasonParam }] = await Promise.all([
+    getMe(sessionCookie),
+    listSeasons(),
+    searchParams,
+  ]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -40,24 +45,15 @@ export default async function LeaguePage({
     return <NeedsLeagueCard />;
   }
 
-  const { seasons } = await listSeasons();
   const latestSeason = safeLatestSeason(seasons);
-  const { season: seasonParam } = await searchParams;
   const season = seasonParam ? Number(seasonParam) : latestSeason;
 
-  const [{ teams }, activeLeagueName] = await Promise.all([
+  const [{ teams }, activeLeagueName, { rankings }] = await Promise.all([
     season !== null ? listTeamsServer(sessionCookie, season) : Promise.resolve({ teams: [] }),
     getActiveLeagueName(sessionCookie),
+    season !== null ? getLatestPowerRankings(season, sessionCookie) : Promise.resolve({ rankings: [] }),
   ]);
-
-  let powerRankByTeam = new Map<number, number>();
-  if (season !== null) {
-    const { week: latestPowerWeek } = await getLatestPowerRankingsWeek(season, sessionCookie);
-    if (latestPowerWeek !== null) {
-      const { rankings } = await getWeekPowerRankings(season, latestPowerWeek, sessionCookie);
-      powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
-    }
-  }
+  const powerRankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
 
   return (
     <div className="flex flex-col gap-4">

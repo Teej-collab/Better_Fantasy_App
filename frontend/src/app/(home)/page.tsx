@@ -20,8 +20,7 @@ import {
   getActiveLeagueName,
   getChugDeadline,
   getWeekLeagueTicker,
-  getLatestPowerRankingsWeek,
-  getWeekPowerRankings,
+  getLatestPowerRankings,
   listRivalries,
   listSeasons,
   resolveWeek,
@@ -206,13 +205,9 @@ export default async function HomePage() {
       getWeekMatchupContext(season, week, sessionCookie),
       listRivalries(sessionCookie),
       getWeekLeagueTicker(season, week, sessionCookie),
-      // The most recent locked week, not the in-progress one — power
-      // ranks are only decided at the Tuesday 2 PM Central flip (backend
-      // app/domain/week_flip.py), so the current week never has any and
-      // the card used to go blank from the flip until the next one.
-      getLatestPowerRankingsWeek(season, sessionCookie).then(({ week: rankedWeek }) =>
-        rankedWeek !== null ? getWeekPowerRankings(season, rankedWeek, sessionCookie) : { rankings: [] },
-      ),
+      // The most recent locked week, not the in-progress one — the card
+      // used to go blank from the flip until the next one.
+      getLatestPowerRankings(season, sessionCookie),
       wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
       // Checks the active `week` itself, IN ADDITION to week-1 below —
       // not instead of it. Once a week's own real games are all final,

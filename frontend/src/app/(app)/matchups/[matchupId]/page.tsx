@@ -37,7 +37,10 @@ export default async function MatchupPage({
   const { matchupId } = await params;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const me = await getMe(sessionCookie);
+  // getMatchup returns null (never throws) without a signed-in session,
+  // so it runs alongside getMe instead of after it — one fewer backend
+  // round trip on the app's busiest game-day screen.
+  const [me, matchup] = await Promise.all([getMe(sessionCookie), getMatchup(Number(matchupId), sessionCookie)]);
   if (!me) {
     return (
       <div className="flex justify-center py-6">
@@ -49,7 +52,6 @@ export default async function MatchupPage({
     return <NeedsLeagueCard />;
   }
 
-  const matchup = await getMatchup(Number(matchupId), sessionCookie);
   if (!matchup) notFound();
 
   // The whole week's matchups, full rosters included — the exact same
