@@ -15,6 +15,10 @@ live (2026-08-26) that this same endpoint accepts week/seasontype/dates
 query params and returns exactly that week's real slate, with a
 week.number field to cross-check against.
 """
+import asyncio
+import copy
+import time
+
 import httpx
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
@@ -130,11 +134,60 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
     return games
 
 
-async def get_nfl_scoreboard() -> list[dict]:
+# Short-lived, per-process cache in front of both scoreboard fetches.
+# ~30 call sites hit this endpoint, and a single Home page load used to
+# fire five or so identical ESPN requests at once (/me/week, the league
+# ticker, matchup-context, awards, ...) — each one a fresh TLS handshake
+# to ESPN, and together the bulk of those endpoints' response time
+# (2026-09 load-time pass: matchup-context averaged 2.5s in Railway's
+# slow-request log). 15 seconds is well inside how often anything
+# downstream polls for live scores, and short enough that a game going
+# final is picked up by the next scheduler run anyway. Concurrent
+# misses for the same key share one in-flight request instead of each
+# starting their own. Failures are never cached.
+_CACHE_TTL_SECONDS = 15.0
+_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_inflight: dict[tuple, asyncio.Task] = {}
+
+
+def clear_scoreboard_cache() -> None:
+    _cache.clear()
+    _inflight.clear()
+
+
+async def _cached_games(key: tuple, fetch) -> list[dict]:
+    hit = _cache.get(key)
+    if hit is not None and time.monotonic() - hit[0] < _CACHE_TTL_SECONDS:
+        # Deep copy: every caller gets its own list/dicts, same as an
+        # uncached fetch, so one caller mutating a game can't leak into
+        # another's response.
+        return copy.deepcopy(hit[1])
+    task = _inflight.get(key)
+    if task is None:
+        task = asyncio.ensure_future(fetch())
+        _inflight[key] = task
+
+        def _store(t: asyncio.Task) -> None:
+            _inflight.pop(key, None)
+            if not t.cancelled() and t.exception() is None:
+                _cache[key] = (time.monotonic(), t.result())
+
+        task.add_done_callback(_store)
+    # shield: one caller's request being cancelled (a client
+    # disconnecting mid-load) mustn't cancel the fetch the other callers
+    # sharing it are still waiting on.
+    return copy.deepcopy(await asyncio.shield(task))
+
+
+async def _fetch_scoreboard(params: dict | None) -> list[dict]:
     async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(SCOREBOARD_URL)
+        response = await (client.get(SCOREBOARD_URL, params=params) if params else client.get(SCOREBOARD_URL))
         response.raise_for_status()
         return _parse_scoreboard_events(response.json())
+
+
+async def get_nfl_scoreboard() -> list[dict]:
+    return await _cached_games(("live",), lambda: _fetch_scoreboard(None))
 
 
 async def get_week_scoreboard(week: int, year: int, season_type: int = SEASON_TYPE_REGULAR) -> list[dict]:
@@ -142,12 +195,8 @@ async def get_week_scoreboard(week: int, year: int, season_type: int = SEASON_TY
     specific week/season/season-type instead of whatever's happening
     right now — the source of event ids for
     app/domain/weekly_stats.py's compute_week_stats()."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(
-            SCOREBOARD_URL, params={"week": week, "seasontype": season_type, "dates": year}
-        )
-        response.raise_for_status()
-        return _parse_scoreboard_events(response.json())
+    params = {"week": week, "seasontype": season_type, "dates": year}
+    return await _cached_games(("week", week, year, season_type), lambda: _fetch_scoreboard(params))
 
 
 async def get_real_current_week() -> int | None:
