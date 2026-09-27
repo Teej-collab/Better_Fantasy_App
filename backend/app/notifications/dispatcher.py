@@ -14,21 +14,30 @@ Gamecast) — every public function here swallows and logs delivery
 errors per-subscription rather than raising, and marks the offending
 subscription inactive if the provider says it's permanently gone
 (410/404) so the dispatcher stops wasting calls on a dead endpoint.
+
+Quiet hours are enforced here too (send_to_owner/send_to_owners), so
+no caller can forget them — see app/notifications/quiet_hours.py for
+what gets sent, held, or dropped.
 """
 import asyncio
+import datetime
 import json
 import logging
 
 from pywebpush import WebPushException, webpush
 
 from app.config import require_vapid_configured
-from app.notifications import apns_client, fcm_client
+from app.notifications import apns_client, fcm_client, formatter, quiet_hours
 from app.queries import native_push_tokens as native_queries
+from app.queries import owner_preferences as preferences_queries
 from app.queries import push_subscriptions as queries
 
 logger = logging.getLogger(__name__)
 
 _PERMANENT_FAILURE_STATUS = {404, 410}
+# More held pushes than this for one owner go out as a single summary
+# when quiet hours end, instead of a burst of separate buzzes.
+_MAX_HELD_PUSHES = 3
 
 
 def _send_one(subscription_row, payload: dict) -> tuple[bool, bool]:
@@ -101,11 +110,28 @@ async def send_to_native_registration(conn, registration_row, payload: dict) -> 
     return delivered
 
 
-async def send_to_owner(conn, owner_id: int, payload: dict) -> int:
+async def _quiet_hours_allow(conn, owner_id: int, payload: dict, now: datetime.datetime) -> bool:
+    """True if the push can go out now. Otherwise it's held for later
+    (deferred_notifications) or dropped, per quiet_hours.decide."""
+    prefs = await preferences_queries.get_preferences(conn, owner_id)
+    action, send_after = quiet_hours.decide(prefs, payload, now)
+    if action == quiet_hours.DEFER:
+        await conn.execute(
+            "INSERT INTO deferred_notifications (owner_id, payload, send_after) VALUES ($1, $2::jsonb, $3)",
+            owner_id, json.dumps(payload), send_after,
+        )
+    return action == quiet_hours.SEND
+
+
+async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.datetime | None = None) -> int:
     """Sends to every active device the owner has registered — a
     notification is per-owner, not per-device; each of their devices
     gets its own independent push, across BOTH the web (VAPID) and
-    native (APNs/FCM) channels. Returns how many actually delivered."""
+    native (APNs/FCM) channels. Returns how many actually delivered
+    (0 if quiet hours held or dropped it)."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    if not await _quiet_hours_allow(conn, owner_id, payload, now):
+        return 0
     subs = await queries.list_active_subscriptions_for_owner(conn, owner_id)
     delivered = 0
     for sub in subs:
@@ -123,6 +149,10 @@ async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
     just scored. Batches each channel's lookup into one query rather
     than one per owner (see queries.list_active_subscriptions_for_owners
     and native_queries.list_active_registrations_for_owners)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    owner_ids = [o for o in owner_ids if await _quiet_hours_allow(conn, o, payload, now)]
+    if not owner_ids:
+        return 0
     subs = await queries.list_active_subscriptions_for_owners(conn, owner_ids)
     delivered = 0
     for sub in subs:
@@ -132,4 +162,31 @@ async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
     for registration in native_registrations:
         if await send_to_native_registration(conn, registration, payload):
             delivered += 1
+    return delivered
+
+
+async def flush_deferred(conn, now: datetime.datetime | None = None) -> int:
+    """Sends every held push whose owner's quiet hours have ended.
+    Rows are deleted before sending, so a failed send is never retried
+    into a loop; each send still goes back through send_to_owner, so an
+    owner who has since widened their quiet hours gets it held again.
+    A newer push about the same thing (same tag) replaces an older one,
+    and more than _MAX_HELD_PUSHES collapse into one summary. Returns
+    how many pushes delivered."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    rows = await conn.fetch(
+        "DELETE FROM deferred_notifications WHERE send_after <= $1 RETURNING id, owner_id, payload",
+        now,
+    )
+    by_owner: dict[int, dict[str, dict]] = {}
+    for row in sorted(rows, key=lambda r: r["id"]):
+        payload = json.loads(row["payload"])
+        by_owner.setdefault(row["owner_id"], {})[payload.get("tag") or f"id-{row['id']}"] = payload
+    delivered = 0
+    for owner_id, held in by_owner.items():
+        payloads = list(held.values())
+        if len(payloads) > _MAX_HELD_PUSHES:
+            payloads = [formatter.held_player_updates(payloads)]
+        for payload in payloads:
+            delivered += await send_to_owner(conn, owner_id, payload, now=now)
     return delivered

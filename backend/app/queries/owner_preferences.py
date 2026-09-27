@@ -21,6 +21,10 @@ _DEFAULT_PREFERENCES = {
     "quiet_hours_enabled": False,
     "quiet_hours_start": datetime.time(22, 0),
     "quiet_hours_end": datetime.time(8, 0),
+    # IANA zone the two times above are read in, set from the owner's
+    # own device (Settings > Notifications). None means
+    # DEFAULT_TIMEZONE — see app/notifications/quiet_hours.py.
+    "timezone": None,
     "read_receipts_enabled": True,
     "typing_indicators_enabled": True,
     "message_previews_enabled": True,
@@ -91,6 +95,10 @@ _DEFAULT_PREFERENCES = {
     # existing row).
     "notify_my_players": True,
     "notify_red_zone": True,
+    # Injury alerts and player news (migration f3a9c1e5b7d2), both on
+    # by default — app/notifications/injury_events.py.
+    "notify_injuries": True,
+    "notify_player_news": True,
     "notify_fantasy_team": True,
     "notify_league": True,
     # Consent for a not-yet-built feature (AI learning to shit-talk from

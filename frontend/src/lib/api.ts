@@ -1447,6 +1447,10 @@ export type OwnerPreferences = {
   quiet_hours_enabled: boolean;
   quiet_hours_start: string;
   quiet_hours_end: string;
+  // IANA zone quiet hours are read in (e.g. "America/Chicago"), synced
+  // from the device by NotificationsSection. null = the league's home
+  // zone, America/Chicago.
+  timezone: string | null;
   read_receipts_enabled: boolean;
   typing_indicators_enabled: boolean;
   message_previews_enabled: boolean;
@@ -1499,6 +1503,8 @@ export type OwnerPreferences = {
   notify_game_alerts: boolean;
   notify_my_players: boolean;
   notify_red_zone: boolean;
+  notify_injuries: boolean;
+  notify_player_news: boolean;
   notify_fantasy_team: boolean;
   notify_league: boolean;
   // Consent for a not-yet-built feature (AI learning to shit-talk from

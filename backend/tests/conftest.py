@@ -241,6 +241,11 @@ async def cleanup_test_season(pool):
         await conn.execute(
             "DELETE FROM native_push_tokens WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
+        # deferred_notifications.owner_id -> owners.owner_id (migration
+        # f3a9c1e5b7d2, pushes held through quiet hours) — same FK.
+        await conn.execute(
+            "DELETE FROM deferred_notifications WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
         # used_oauth_tickets (migration 4b0f790da9c8) has no owner_id/
         # season column at all — it's keyed by jti, an opaque per-ticket
         # id, not FK'd to anything. Real callers (app/routers/auth.py's
@@ -599,6 +604,10 @@ async def cleanup_test_season(pool):
         # players has no season/owner column (it's a global Sleeper-sourced
         # reference table, not per-season) — test rows use a 'test-%'
         # sleeper_player_id prefix, same convention as owners.espn_member_id.
+        # player_injury_status/live_injury_status reference players
+        # (migrations f3a9c1e5b7d2, c4d1e7a9b2f3) — must go first.
+        await conn.execute("DELETE FROM player_injury_status WHERE sleeper_player_id LIKE 'test-%'")
+        await conn.execute("DELETE FROM live_injury_status WHERE sleeper_player_id LIKE 'test-%'")
         await conn.execute("DELETE FROM players WHERE sleeper_player_id LIKE 'test-%'")
 
 

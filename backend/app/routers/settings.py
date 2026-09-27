@@ -30,6 +30,7 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
 from app.image_url import validate_blob_image_url
+from app.notifications.quiet_hours import is_valid_timezone
 from app.queries import owner_preferences as preferences_queries
 from app.queries import settings as settings_queries
 
@@ -254,6 +255,7 @@ class PreferencesPatch(BaseModel):
     quiet_hours_enabled: bool | None = None
     quiet_hours_start: datetime.time | None = None
     quiet_hours_end: datetime.time | None = None
+    timezone: str | None = None
     read_receipts_enabled: bool | None = None
     typing_indicators_enabled: bool | None = None
     message_previews_enabled: bool | None = None
@@ -266,6 +268,8 @@ class PreferencesPatch(BaseModel):
     notify_game_alerts: bool | None = None
     notify_my_players: bool | None = None
     notify_red_zone: bool | None = None
+    notify_injuries: bool | None = None
+    notify_player_news: bool | None = None
     notify_fantasy_team: bool | None = None
     notify_league: bool | None = None
     accent_color: str | None = None
@@ -293,6 +297,8 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"neon_intensity must be one of {sorted(_VALID_NEON_INTENSITIES)}")
     if "theme" in patch and patch["theme"] not in _VALID_THEMES:
         raise HTTPException(status_code=400, detail=f"theme must be one of {sorted(_VALID_THEMES)}")
+    if patch.get("timezone") is not None and not is_valid_timezone(patch["timezone"]):
+        raise HTTPException(status_code=400, detail="timezone must be an IANA zone name like America/Chicago")
     if "design_direction" in patch and patch["design_direction"] not in _VALID_DESIGN_DIRECTIONS:
         raise HTTPException(
             status_code=400, detail=f"design_direction must be one of {sorted(_VALID_DESIGN_DIRECTIONS)}"

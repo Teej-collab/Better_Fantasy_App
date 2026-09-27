@@ -48,6 +48,8 @@ const MESSAGE_TOGGLES: { key: keyof OwnerPreferences; label: string; description
 const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description: string }[] = [
   { key: "notify_my_players", label: "Touchdowns", description: "One of your players scores — starters and bench, with the points it was worth." },
   { key: "notify_red_zone", label: "Red Zone", description: "An NFL team with one of your starters gets inside the 20." },
+  { key: "notify_injuries", label: "Injuries", description: "One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game." },
+  { key: "notify_player_news", label: "Player News", description: "Any other news about one of your players, like practice reports. Can get chatty — turn it off if it does." },
   { key: "notify_fantasy_team", label: "Lead Changes", description: "You take the lead in your matchup, or lose it." },
   { key: "notify_league", label: "League Activity", description: "Someone in your league posts a graded chug." },
 ];
@@ -72,7 +74,17 @@ export function NotificationsSection() {
 
   useEffect(() => {
     getPreferences()
-      .then(setPrefs)
+      .then((loaded) => {
+        setPrefs(loaded);
+        // Quiet hours are enforced server-side in the owner's own
+        // timezone — keep it matched to this device, silently.
+        const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (deviceZone && loaded.timezone !== deviceZone) {
+          updatePreferences({ timezone: deviceZone })
+            .then(setPrefs)
+            .catch(() => {});
+        }
+      })
       .catch(() => setError("Couldn't load your notification settings."));
   }, []);
 
@@ -369,7 +381,7 @@ export function NotificationsSection() {
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <ToggleRow
           label="Quiet Hours"
-          description="Saved now so it's ready the moment it's wired up — doesn't suppress today's message notifications yet."
+          description="Silences notifications overnight. Injury alerts and player news wait until quiet hours end; draft alerts still come through."
           checked={prefs.quiet_hours_enabled}
           onChange={(checked) => patch({ quiet_hours_enabled: checked })}
         />

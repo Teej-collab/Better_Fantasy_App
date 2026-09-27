@@ -138,6 +138,15 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   up to 24h of extra delay waiting for one fixed nightly slot. Loops
   over every league with an expired waiver_wire row, same "not just
   League #1" shape as the keeper/draft-clock jobs above.
+- Injury alerts (ENABLE_INJURY_ALERTS_SCHEDULER, 2026-09-27): checks
+  ESPN's injuries feed every 2 hours (INJURY_WATCH_EVERY_HOURS) and
+  pushes status changes and news for rostered players
+  (app/notifications/injury_events.py). A cron schedule on odd hours
+  at :45 Central, not interval(), for the same deploy-reset reason as
+  the Sleeper sync below — and 11:45 AM lands after Sunday's inactives
+  for the noon games are announced. Also sends pushes held through an
+  owner's quiet hours, every 5 minutes. In-game injury alerts ride the
+  weekly compute job instead, right after it records them.
 """
 import logging
 import os
@@ -160,7 +169,7 @@ from app.domain.player_projections import sync_projected_points
 from app.draft.manager import manager as draft_manager
 from app.encryption import decrypt_secret
 from app.gamecast import service as gamecast_service
-from app.notifications import fantasy_events
+from app.notifications import dispatcher, fantasy_events, injury_events
 from app.notifications.draft_events import (
     notify_draft_live,
     notify_draft_room_open,
@@ -171,6 +180,7 @@ from app.notifications.draft_events import (
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig
+from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync, update_league_state
@@ -868,7 +878,33 @@ async def _run_weekly_compute_job():
                 "Playoff bracket resolution failed (season=%s week=%s league_id=%s)", season, week, league_id
             )
 
+    # In-game injuries were just recorded by the compute above
+    # (NFL-wide, not per league), so announce any new ones once here.
+    try:
+        async with pool.acquire() as conn:
+            await injury_events.notify_in_game_injuries(conn, season, week)
+    except Exception:
+        logger.exception("In-game injury alerts failed (season=%s week=%s)", season, week)
+
     record_job_run("weekly_compute")
+
+
+async def _run_injury_watch_job():
+    feed = await fetch_injury_news()
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        results = await injury_events.run_injury_watch(conn, season, feed)
+    logger.info("Injury watch finished: %s", results)
+    record_job_run("injury_watch")
+
+
+async def _run_deferred_push_job():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        delivered = await dispatcher.flush_deferred(conn)
+    if delivered:
+        logger.info("Sent %d push(es) held through quiet hours", delivered)
 
 
 async def _run_waiver_processing_job():
@@ -1018,6 +1054,16 @@ def start_scheduler():
         interval_seconds = int(os.getenv("WAIVER_PROCESSING_INTERVAL_SECONDS", "3600"))
         _scheduler.add_job(_run_waiver_processing_job, "interval", seconds=interval_seconds, id="waiver_processing")
         logger.info("Waiver processing scheduler started (every %d seconds)", interval_seconds)
+        started_any = True
+
+    if os.getenv("ENABLE_INJURY_ALERTS_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        every_hours = int(os.getenv("INJURY_WATCH_EVERY_HOURS", "2"))
+        _scheduler.add_job(
+            _run_injury_watch_job, "cron", hour=f"1-23/{every_hours}", minute=45,
+            timezone="America/Chicago", id="injury_watch",
+        )
+        _scheduler.add_job(_run_deferred_push_job, "interval", minutes=5, id="deferred_pushes")
+        logger.info("Injury alerts scheduler started (every %d hours at :45 Central)", every_hours)
         started_any = True
 
     if started_any:

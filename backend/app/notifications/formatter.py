@@ -9,7 +9,8 @@ real destination, never a bare "/" (per the explicit "don't just send
 everything to the homepage" requirement).
 
 Fantasy-activity formatters (touchdowns, red zone, lead changes) are
-called from app/notifications/fantasy_events.py.
+called from app/notifications/fantasy_events.py; injury and player news
+formatters from app/notifications/injury_events.py.
 """
 
 _DEFAULT_ICON = "/images/icon-192.png"
@@ -174,3 +175,65 @@ def fantasy_matchup_lead_change(
         f"{opponent_name} leads you {their_score:.1f}–{my_score:.1f}.",
         _matchup_url(matchup_id), "fantasy_matchup_lead_change", f"lead-{matchup_id}",
     )
+
+
+# Injury alerts and player news (app/notifications/injury_events.py).
+# Both open My Team, where the injury badge and the start/sit call live.
+
+def _with_detail(lead: str, detail: str | None) -> str:
+    if not detail:
+        return lead
+    return _preview(f"{lead} {detail}" if lead else detail)
+
+
+def injury_update(
+    player_name: str, direction: str, status: str, previous: str | None,
+    injury: str | None, detail: str | None, tag: str,
+) -> dict:
+    """direction: "new", "downgrade", "upgrade", or "cleared"."""
+    what = f"({injury.lower()})" if injury else ""
+    if direction == "cleared":
+        title = f"✅ {player_name} is off the injury report"
+        lead = f"Was {previous}." if previous else ""
+    elif status == "Injured Reserve":
+        title = f"🚑 {player_name} placed on IR {what}".rstrip()
+        lead = ""
+    elif direction == "downgrade":
+        title = f"⬇️ {player_name} downgraded to {status} {what}".rstrip()
+        lead = f"Was {previous}." if previous else ""
+    elif direction == "upgrade":
+        title = f"⬆️ {player_name} upgraded to {status} {what}".rstrip()
+        lead = f"Was {previous}." if previous else ""
+    else:
+        title = f"🩹 {player_name} listed {status} {what}".rstrip()
+        lead = ""
+    return _payload(title, _with_detail(lead, detail) or "Check your lineup.", "/team", "injury_update", tag)
+
+
+def player_news(player_name: str, detail: str, tag: str) -> dict:
+    return _payload(f"📰 {player_name}", _preview(detail), "/team", "player_news", tag)
+
+
+def injury_in_game(player_name: str, state: str, matchup_id: int | None, tag: str) -> dict:
+    """state: one of live_injury_status's states (app/domain/live_injuries.py)."""
+    titles = {
+        "left": f"🩹 {player_name} left the game",
+        "questionable_return": f"🩹 {player_name} questionable to return",
+        "doubtful_return": f"🩹 {player_name} doubtful to return",
+        "ruled_out": f"❌ {player_name} ruled out",
+        "returned": f"✅ {player_name} is back in",
+    }
+    bodies = {
+        "left": "Injured on the play.",
+        "questionable_return": "Injury update from the sideline.",
+        "doubtful_return": "Injury update from the sideline.",
+        "ruled_out": "Out for the rest of the game.",
+        "returned": "Returned to the game.",
+    }
+    return _payload(titles[state], bodies[state], _matchup_url(matchup_id), "injury_in_game", tag)
+
+
+def held_player_updates(payloads: list[dict]) -> dict:
+    """Several injury/news pushes held through quiet hours, as one."""
+    body = _preview(" · ".join(p["title"] for p in payloads))
+    return _payload(f"🩹 {len(payloads)} player updates overnight", body, "/team", "player_news", "held-player-updates")
