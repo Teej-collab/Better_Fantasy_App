@@ -88,6 +88,9 @@ async def test_parses_real_shaped_scoreboard_response(monkeypatch):
     # rather than crash on a missing key.
     assert game["possession_team_abbr"] is None
     assert game["is_redzone"] is False
+    # No broadcasts/week on this fixture — both read as missing, not a crash.
+    assert game["broadcast"] is None
+    assert game["week"] is None
 
 
 _LIVE_FAKE_RESPONSE = {
@@ -95,6 +98,7 @@ _LIVE_FAKE_RESPONSE = {
         {
             "id": "500",
             "name": "Chicago Bears at Carolina Panthers",
+            "week": {"number": 2},
             "competitions": [
                 {
                     "status": {"type": {"state": "in", "completed": False, "shortDetail": "11:33 - 1st"}},
@@ -105,6 +109,7 @@ _LIVE_FAKE_RESPONSE = {
                     # Real shape from ESPN's own scoreboard endpoint —
                     # possession is a team id, not an abbreviation.
                     "situation": {"possession": "3", "isRedZone": False},
+                    "broadcasts": [{"market": "national", "names": ["FOX"]}],
                 }
             ],
         }
@@ -132,6 +137,8 @@ async def test_parses_possession_and_redzone_from_a_real_live_game(monkeypatch):
     assert game["state"] == "in"
     assert game["possession_team_abbr"] == "CHI"
     assert game["is_redzone"] is False
+    assert game["broadcast"] == "FOX"
+    assert game["week"] == 2
 
 
 async def test_get_week_scoreboard_passes_week_params_and_parses_same_shape(monkeypatch):
@@ -185,3 +192,11 @@ async def test_get_real_current_week_none_outside_regular_season(monkeypatch):
     monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _PreseasonClient)
 
     assert await get_real_current_week() is None
+
+
+def test_broadcast_name_joins_networks_and_falls_back_to_geo_broadcasts():
+    from app.providers.nfl_scoreboard import _broadcast_name
+
+    assert _broadcast_name({"broadcasts": [{"names": ["ESPN", "ABC"]}]}) == "ESPN/ABC"
+    assert _broadcast_name({"geoBroadcasts": [{"media": {"shortName": "Prime Video"}}]}) == "Prime Video"
+    assert _broadcast_name({}) is None

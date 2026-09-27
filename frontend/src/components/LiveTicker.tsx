@@ -62,7 +62,7 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
       onScroll={pauseThenScheduleResume}
     >
       <div
-        className={`live-ticker-track py-2.5 ${fast ? "live-ticker-track--fast" : ""} ${
+        className={`live-ticker-track py-1.5 ${fast ? "live-ticker-track--fast" : ""} ${
           paused ? "live-ticker-track--paused" : ""
         }`}
       >
@@ -80,12 +80,12 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
             <Link
               key={`${item.key}-${i}`}
               href={item.href}
-              className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90 hover:text-white"
+              className="mx-6 shrink-0 text-[13px] whitespace-nowrap text-white/90 hover:text-white"
             >
               {content}
             </Link>
           ) : (
-            <span key={`${item.key}-${i}`} className="mx-5 shrink-0 text-sm whitespace-nowrap text-white/90">
+            <span key={`${item.key}-${i}`} className="mx-6 shrink-0 text-[13px] whitespace-nowrap text-white/90">
               {content}
             </span>
           );

@@ -67,6 +67,25 @@ def is_week_final(games: list[dict]) -> bool:
     return all(g.get("completed") for g in games)
 
 
+def _broadcast_name(competition: dict) -> str | None:
+    """The TV network(s) carrying a game ("CBS", "FOX", "ESPN/ABC",
+    "Prime Video"), off ESPN's own `broadcasts` list on this same
+    scoreboard response, falling back to `geoBroadcasts` (the older,
+    per-market shape some events still carry). None when ESPN hasn't
+    listed one yet."""
+    names: list[str] = []
+    for broadcast in competition.get("broadcasts") or []:
+        for name in broadcast.get("names") or []:
+            if name and name not in names:
+                names.append(name)
+    if not names:
+        for geo in competition.get("geoBroadcasts") or []:
+            name = (geo.get("media") or {}).get("shortName")
+            if name and name not in names:
+                names.append(name)
+    return "/".join(names) or None
+
+
 def _parse_scoreboard_events(data: dict) -> list[dict]:
     games = []
     for event in data.get("events", []):
@@ -129,6 +148,11 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 "date": event.get("date"),
                 "possession_team_abbr": possession_team_abbr,
                 "is_redzone": bool(situation.get("isRedZone")),
+                "broadcast": _broadcast_name(competition),
+                # The real NFL week this game belongs to (ESPN's own
+                # per-event week.number) — lets the Gamecast hub label
+                # its slate without a second request.
+                "week": (event.get("week") or {}).get("number"),
             }
         )
     return games

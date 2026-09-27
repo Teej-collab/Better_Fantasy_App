@@ -931,6 +931,11 @@ export type NflGame = {
   // for the pre-kickoff ticker countdown (buildKickoffCountdownItem)
   // rather than parsing status_detail's human string.
   date: string | null;
+  // TV network(s) carrying the game ("CBS", "ESPN/ABC", "Prime Video"),
+  // from ESPN's own broadcasts list — null until ESPN lists one.
+  broadcast: string | null;
+  // The real NFL week this game belongs to.
+  week: number | null;
 };
 
 export async function getNflScoreboard(): Promise<NflGame[]> {
