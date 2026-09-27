@@ -72,66 +72,70 @@ export function MatchupWeekBrowser({
       {/* One pill-shaped week stepper instead of a big heading with faint
           arrows off to the side — the arrows sit inside the pill as real
           buttons so it reads at a glance as "tap to change weeks." */}
-      <div
-        className="flex w-fit max-w-full items-center gap-1 rounded-full p-1"
-        style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)" }}
-      >
-        <button
-          type="button"
-          onClick={() => goTo(week - 1)}
-          disabled={week <= 1 || isPending}
-          aria-label={`Previous week (Week ${week - 1})`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
+      <div className="flex items-center justify-between gap-3">
+        <div
+          className="flex w-fit min-w-0 items-center gap-1 rounded-full p-1"
+          style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)" }}
         >
-          ‹
-        </button>
-        <h1 className="flex min-w-0 items-baseline gap-2 px-3 font-display tracking-wide uppercase">
-          <span className="text-xs font-semibold text-black/50 dark:text-white/50">{season}</span>
-          <span className="text-lg font-semibold whitespace-nowrap">Week {week}</span>
-        </h1>
-        <button
-          type="button"
-          onClick={() => goTo(week + 1)}
-          disabled={week >= MAX_WEEK || isPending}
-          aria-label={`Next week (Week ${week + 1})`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
-        >
-          ›
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {week === currentWeek ? (
-          <span
-            className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase"
-            style={{
-              color: "var(--user-accent, var(--wl-accent))",
-              background: "color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent)",
-            }}
+          <button
+            type="button"
+            onClick={() => goTo(week - 1)}
+            disabled={week <= 1 || isPending}
+            aria-label={`Previous week (Week ${week - 1})`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
           >
+            ‹
+          </button>
+          <h1 className="flex min-w-0 items-baseline gap-2 px-3 font-display tracking-wide uppercase">
+            <span className="text-xs font-semibold text-black/50 dark:text-white/50">{season}</span>
+            <span className="text-lg font-semibold whitespace-nowrap">Week {week}</span>
+          </h1>
+          <button
+            type="button"
+            onClick={() => goTo(week + 1)}
+            disabled={week >= MAX_WEEK || isPending}
+            aria-label={`Next week (Week ${week + 1})`}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
+          >
+            ›
+          </button>
+        </div>
+        {/* Right side of the same row as the week stepper. Off the current
+            week, the "back" link stacks under the status pill so the row
+            stays one line even on a phone. */}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {week === currentWeek ? (
             <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--user-accent, var(--wl-accent))" }}
-              aria-hidden
-            />
-            Current week
-          </span>
-        ) : (
-          <>
-            <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/60">
-              {week < currentWeek ? "Past week" : "Upcoming week"}
-            </span>
-            <button
-              type="button"
-              onClick={() => goTo(currentWeek)}
-              disabled={isPending}
-              className="text-xs font-semibold disabled:opacity-50"
-              style={{ color: "var(--user-accent, var(--wl-accent))" }}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase"
+              style={{
+                color: "var(--user-accent, var(--wl-accent))",
+                background: "color-mix(in srgb, var(--user-accent, var(--wl-accent)) 14%, transparent)",
+              }}
             >
-              Back to current week (Week {currentWeek}) →
-            </button>
-          </>
-        )}
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: "var(--user-accent, var(--wl-accent))" }}
+                aria-hidden
+              />
+              Current week
+            </span>
+          ) : (
+            <>
+              <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-black/50 uppercase dark:bg-white/10 dark:text-white/60">
+                {week < currentWeek ? "Past week" : "Upcoming week"}
+              </span>
+              <button
+                type="button"
+                onClick={() => goTo(currentWeek)}
+                disabled={isPending}
+                className="text-xs font-semibold disabled:opacity-50"
+                style={{ color: "var(--user-accent, var(--wl-accent))" }}
+              >
+                Back to Week {currentWeek} →
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className={isPending ? "opacity-50 transition-opacity" : "transition-opacity"}>
