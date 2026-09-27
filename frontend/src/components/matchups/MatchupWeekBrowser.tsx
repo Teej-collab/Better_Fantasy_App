@@ -69,33 +69,38 @@ export function MatchupWeekBrowser({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-wide uppercase">
-          {season} — Week {week}
+      {/* One pill-shaped week stepper instead of a big heading with faint
+          arrows off to the side — the arrows sit inside the pill as real
+          buttons so it reads at a glance as "tap to change weeks." */}
+      <div
+        className="flex w-fit max-w-full items-center gap-1 rounded-full p-1"
+        style={{ background: "var(--wl-surface)", border: "1px solid var(--wl-border)" }}
+      >
+        <button
+          type="button"
+          onClick={() => goTo(week - 1)}
+          disabled={week <= 1 || isPending}
+          aria-label={`Previous week (Week ${week - 1})`}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
+        >
+          ‹
+        </button>
+        <h1 className="flex min-w-0 items-baseline gap-2 px-3 font-display tracking-wide uppercase">
+          <span className="text-xs font-semibold text-black/50 dark:text-white/50">{season}</span>
+          <span className="text-lg font-semibold whitespace-nowrap">Week {week}</span>
         </h1>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => goTo(week - 1)}
-            disabled={week <= 1 || isPending}
-            aria-label="Previous week"
-            className="rounded-full px-3 py-1 text-xl text-black/40 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            onClick={() => goTo(week + 1)}
-            disabled={week >= MAX_WEEK || isPending}
-            aria-label="Next week"
-            className="rounded-full px-3 py-1 text-xl text-black/40 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
-          >
-            ›
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => goTo(week + 1)}
+          disabled={week >= MAX_WEEK || isPending}
+          aria-label={`Next week (Week ${week + 1})`}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-xl leading-none transition-colors hover:bg-black/10 active:scale-95 disabled:pointer-events-none disabled:opacity-25 dark:bg-white/10 dark:hover:bg-white/20"
+        >
+          ›
+        </button>
       </div>
 
-      <div className="-mt-1 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {week === currentWeek ? (
           <span
             className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase"
