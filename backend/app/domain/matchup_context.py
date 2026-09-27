@@ -487,8 +487,9 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
         game_clock, injuries,
     )
     _attach_result_streaks(entry, result_streaks)
-    # The one path allowed to actually trigger a live generation — a
-    # single matchup per request, a bounded cost. See narrative_engine.
-    # get_or_generate_narrative's own docstring.
-    entry["narrative"] = await narrative_engine.get_or_generate_narrative(conn, entry)
+    # The one path allowed to trigger a generation — a single matchup per
+    # request, a bounded cost — but in the background, never holding up
+    # this response. See narrative_engine.
+    # get_cached_narrative_or_generate_later's own docstring.
+    entry["narrative"] = await narrative_engine.get_cached_narrative_or_generate_later(conn, entry)
     return entry

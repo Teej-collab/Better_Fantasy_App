@@ -41,7 +41,11 @@ error) whenever ANTHROPIC_API_KEY isn't set, so the feature degrades to
 today's placeholder rather than erroring on every page load for every
 visitor until a real key is supplied.
 """
+import asyncio
+import logging
+
 from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
+from app.db import get_pool
 from app.domain import weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
@@ -49,6 +53,8 @@ from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import chug as chug_queries
 from app.queries import league as league_queries
 from app.queries import narrative as narrative_queries
+
+logger = logging.getLogger(__name__)
 
 # Tuned 2026-09-02 per the owner's direct feedback on the first real
 # generated output: more shit-talking (not just "hyped"), a bit longer,
@@ -333,9 +339,56 @@ async def get_or_generate_narrative(conn, matchup: dict) -> str | None:
 
     system_prompt = RECAP_PROMPT if kind == "recap" else PREVIEW_PROMPT
     facts = await _build_facts(conn, matchup, kind)
-    text = generate_narrative(system_prompt, facts)
+    # generate_narrative is a synchronous network call to Anthropic that
+    # takes several seconds — called directly here, it froze the whole
+    # event loop (every user's request, not just this one) for the
+    # length of each generation. Same to_thread fix chug_roast.py and
+    # draft_narratives.py already use.
+    text = await asyncio.to_thread(generate_narrative, system_prompt, facts)
     await narrative_queries.save_narrative(conn, matchup["matchup_id"], kind, text, MODEL)
     return text
+
+
+# (matchup_id, kind) -> the in-flight background generation for it, so
+# several people opening the same matchup at once start one Claude call,
+# not one each. Also holds a strong reference to each task — asyncio
+# only keeps weak ones, and an unreferenced task can be garbage-collected
+# mid-run.
+_background_generations: dict[tuple[int, str], asyncio.Task] = {}
+
+
+async def get_cached_narrative_or_generate_later(conn, matchup: dict) -> str | None:
+    """What the matchup detail page uses instead of get_or_generate_
+    narrative: returns a cached write-up if there is one, and on a miss
+    starts generating it in the background and returns None right away
+    rather than holding the page for the several seconds a Claude call
+    takes (2026-09 load-time pass: first views of a matchup were the
+    6s outliers in Railway's slow-request log). The write-up shows up on
+    the next load once generation finishes."""
+    kind = await _resolve_kind(matchup)
+    if kind is None:
+        return None
+    cached = await narrative_queries.get_cached_narrative(conn, matchup["matchup_id"], kind)
+    if cached is not None or not ANTHROPIC_API_KEY:
+        return cached
+
+    key = (matchup["matchup_id"], kind)
+    if key not in _background_generations:
+        task = asyncio.create_task(_generate_in_background(matchup))
+        _background_generations[key] = task
+        task.add_done_callback(lambda _t: _background_generations.pop(key, None))
+    return None
+
+
+async def _generate_in_background(matchup: dict) -> None:
+    # Its own connection — the request that started this has already
+    # returned its connection to the pool by the time this runs.
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await get_or_generate_narrative(conn, matchup)
+    except Exception:
+        logger.exception("Background narrative generation failed for matchup %s", matchup.get("matchup_id"))
 
 
 async def _resolve_weekly_kind(season: int, week: int) -> str | None:
@@ -535,7 +588,7 @@ async def generate_weekly_recap(
         if text is None and ANTHROPIC_API_KEY:
             system_prompt = WEEKLY_RECAP_PROMPT if kind == "recap" else WEEKLY_PREVIEW_PROMPT
             facts = await _build_weekly_facts(conn, week_context, league_id, kind)
-            text = generate_narrative(system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
+            text = await asyncio.to_thread(generate_narrative, system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
             await narrative_queries.save_weekly_narrative(conn, season, week, league_id, kind, text, MODEL)
         if text is not None:
             weekly_narrative = {"text": text, "kind": kind}
