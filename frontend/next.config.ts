@@ -57,8 +57,11 @@ const nextConfig: NextConfig = {
     // tabs instant. Safe for freshness: every client-side mutation in
     // this app already calls router.refresh(), which clears this cache,
     // and GameDayRefresher does the same on its own interval for live
-    // scores.
-    staleTimes: { dynamic: 30 },
+    // scores. `static` is also what a full `prefetch={true}` Link's
+    // cached page falls under (NavLink.tsx's nav tabs) — lowered from
+    // Next's 5-minute default to its 30s minimum so a prefetched tab
+    // is never older than that when tapped.
+    staleTimes: { dynamic: 30, static: 30 },
   },
   async headers() {
     return [

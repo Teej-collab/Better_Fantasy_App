@@ -354,6 +354,7 @@ export function MobileNavDrawer({
                       inactiveClassName={ITEM_CLASS}
                       color={NAV_ACCENT}
                       onNavigate={close}
+                      prefetchFull={false}
                     >
                       <item.Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2 : 1.75} />
                       {item.label}

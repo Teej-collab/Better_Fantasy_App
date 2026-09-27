@@ -68,6 +68,7 @@ export function NavLink({
   color,
   cosmicColor,
   onNavigate,
+  prefetchFull = true,
 }: {
   href: string;
   section: NavSection;
@@ -89,12 +90,24 @@ export function NavLink({
   // so this stays optional; MobileNavDrawer.tsx is the one caller that
   // needs to close itself when one of its own links is tapped.
   onNavigate?: () => void;
+  // The persistent nav tabs prefetch their *whole* page — data included —
+  // not just the loading.tsx skeleton Next prefetches by default for a
+  // dynamic route, so tapping a tab shows the real page instantly
+  // instead of a skeleton while the server renders it (2026-09
+  // load-time pass). Visible links re-prefetch on every navigation and
+  // every router.refresh() (GameDayRefresher's 45s tick included), and
+  // next.config.ts's staleTimes.static caps a prefetched page's age at
+  // 30s. MobileNavDrawer opts out: it lists a dozen-plus destinations,
+  // and full-prefetching all of them each time it opens would be real
+  // backend load for pages that are rarely the next tap.
+  prefetchFull?: boolean;
 }) {
   const pathname = usePathname();
   const active = isSectionActive(section, pathname);
   return (
     <Link
       href={href}
+      prefetch={prefetchFull ? true : null}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={`neon-navlink ${active ? activeClassName : inactiveClassName}`}
