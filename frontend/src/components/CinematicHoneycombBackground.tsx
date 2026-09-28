@@ -168,6 +168,17 @@ export function CinematicHoneycombBackground({
       return /^#[0-9a-fA-F]{6}$/.test(c) ? c : DEFAULT_COLOR;
     };
 
+    // iOS WebKit keeps a canvas's pixel buffer until garbage collection
+    // gets around to it, and counts every one toward a hard per-page
+    // canvas memory cap — so each rebuild (resize, color change) would
+    // otherwise stack up old sprites. Zeroing the size frees it now.
+    function releaseSprites() {
+      if (!sprites) return;
+      sprites.line.width = sprites.line.height = 0;
+      sprites.light.width = sprites.light.height = 0;
+      sprites = null;
+    }
+
     function layout() {
       const rect = canvas!.getBoundingClientRect();
       width = rect.width;
@@ -179,6 +190,7 @@ export function CinematicHoneycombBackground({
       // Hex size tracks the viewport's long side, clamped, so it's
       // never dense on a phone or huge on a tablet/desktop.
       const r = Math.min(44, Math.max(22, 0.03 * Math.max(window.innerWidth, window.innerHeight)));
+      releaseSprites();
       sprites = buildSprites(r, dpr, currentColor());
 
       const colW = SQRT3 * r;
@@ -264,7 +276,13 @@ export function CinematicHoneycombBackground({
     function restart() {
       cancelAnimationFrame(raf);
       raf = 0;
-      if (isOff()) return;
+      if (isOff()) {
+        // Turned off — free every canvas buffer, not just the loop.
+        releaseSprites();
+        grid.width = grid.height = 0;
+        canvas!.width = canvas!.height = 0;
+        return;
+      }
       layout();
       if (isStill()) draw(0);
       else raf = requestAnimationFrame(frame);
@@ -300,6 +318,8 @@ export function CinematicHoneycombBackground({
       window.removeEventListener("resize", onResize);
       osReduced.removeEventListener("change", restart);
       observer.disconnect();
+      releaseSprites();
+      grid.width = grid.height = 0;
     };
   }, [animated, color, focalX, focalY, duration]);
 

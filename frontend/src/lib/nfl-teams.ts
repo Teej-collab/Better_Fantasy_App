@@ -113,7 +113,13 @@ export function sleeperHeadshotUrl(sleeperPlayerId: string | null | undefined): 
   return `https://sleepercdn.com/content/nfl/players/${sleeperPlayerId}.jpg`;
 }
 
+// Served through ESPN's own resizing endpoint (the same one espn.com
+// uses) at 160px instead of the raw 500px file. Every call site shows
+// these at 12-40px, and several are plain <img>s that skip next/image's
+// resizing — a 500px PNG decodes to ~1MB of memory each, so a matchup
+// or Gamecast screen with a couple dozen teams was holding ~25MB of
+// logos on older iPhones. 160px still covers the largest (40px) at 3x.
 export function teamLogoUrl(proTeam: string | null | undefined): string | null {
   if (!proTeam || !(proTeam in NFL_TEAM_NAMES)) return null;
-  return `https://a.espncdn.com/i/teamlogos/nfl/500/${proTeam.toLowerCase()}.png`;
+  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${proTeam.toLowerCase()}.png&w=160&h=160`;
 }
