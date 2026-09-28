@@ -73,7 +73,7 @@ export default async function LeaguePage({
           {teams.map((team) => (
             <li key={team.team_id} className="flex items-center justify-between gap-3 py-3">
               <span className="flex min-w-0 items-center">
-                <Link href={`/teams/${team.team_id}`} className="min-w-0 truncate hover:underline">
+                <Link href={`/teams/${team.team_id}`} className="min-w-0 wrap-break-word hover:underline">
                   {team.team_name}
                 </Link>
                 <TeamRankBadge rank={powerRankByTeam.get(team.team_id)} />

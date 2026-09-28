@@ -88,7 +88,7 @@ export default async function ChugLeaderboardPage({
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="w-5 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-                    <Link href={`/owners/${row.owner_id}`} className="truncate font-medium hover:underline">
+                    <Link href={`/owners/${row.owner_id}`} className="min-w-0 wrap-break-word font-medium hover:underline">
                       {row.owner_name}
                     </Link>
                   </span>

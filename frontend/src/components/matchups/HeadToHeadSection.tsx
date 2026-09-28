@@ -61,9 +61,9 @@ export function RecentMeetingsTable({
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-black/10 dark:border-white/10">
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-black/10 bg-black/[0.02] px-3 py-1.5 text-xs font-semibold text-black/50 dark:border-white/10 dark:bg-white/[0.03] dark:text-white/50">
-        <span className="truncate text-right">{home.team_name}</span>
+        <span className="min-w-0 wrap-break-word text-right">{home.team_name}</span>
         <span className="shrink-0 tracking-wide uppercase">Last {meetings.length}</span>
-        <span className="truncate">{away.team_name}</span>
+        <span className="min-w-0 wrap-break-word">{away.team_name}</span>
       </div>
       <ol className="divide-y divide-black/5 dark:divide-white/5">
         {[...meetings].reverse().map((g, i) => (

@@ -26,7 +26,7 @@ export function AdminLeagueDetail({ league }: { league: AdminLeagueDetailData })
               <div className="flex min-w-0 flex-col">
                 <Link
                   href={m.owner_id ? `/admin/users/${m.user_id}` : "#"}
-                  className={`truncate font-medium ${m.owner_id ? "hover:underline" : ""}`}
+                  className={`min-w-0 wrap-break-word font-medium ${m.owner_id ? "hover:underline" : ""}`}
                 >
                   {m.display_name}
                   {m.role === "commissioner" && (
@@ -35,7 +35,7 @@ export function AdminLeagueDetail({ league }: { league: AdminLeagueDetailData })
                     </span>
                   )}
                 </Link>
-                <span className="truncate text-xs text-black/50 dark:text-white/50">
+                <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
                   {m.team_name ?? "No team yet"}
                 </span>
               </div>

@@ -31,7 +31,7 @@ function RosterRow({ item }: { item: LeagueActivityRosterItem }) {
             </Link>{" "}
             <span className="text-black/70 dark:text-white/70">{rosterSummary(item)}</span>
           </span>
-          <span className="truncate text-xs text-black/50 dark:text-white/50">{item.team_name}</span>
+          <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{item.team_name}</span>
         </span>
       </span>
       <span className="shrink-0 text-xs whitespace-nowrap text-black/40 dark:text-white/40">

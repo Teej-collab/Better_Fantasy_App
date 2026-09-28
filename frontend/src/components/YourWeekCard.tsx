@@ -51,7 +51,7 @@ export function YourWeekCard({
           height={36}
           className="shrink-0"
         />
-        <span className="font-display min-w-0 flex-1 truncate text-lg font-bold tracking-wide uppercase">
+        <span className="font-display min-w-0 flex-1 wrap-break-word text-lg font-bold tracking-wide uppercase">
           {leagueName ?? "Your Week"}
         </span>
         {isLive && (

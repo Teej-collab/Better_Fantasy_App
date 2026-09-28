@@ -71,7 +71,7 @@ export default async function RulesPage() {
               className="flex items-center gap-1.5 rounded-lg border border-black/10 bg-black/[0.015] p-3 text-sm font-medium shadow-sm transition-all hover:bg-black/5 active:scale-[0.98] active:bg-black/10 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/5 dark:active:bg-white/10"
             >
               <span aria-hidden>{item.emoji}</span>
-              <span className="truncate">{item.title}</span>
+              <span className="min-w-0 wrap-break-word">{item.title}</span>
             </a>
           ))}
         </div>

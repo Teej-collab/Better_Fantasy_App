@@ -52,7 +52,7 @@ export function DraftGradesLeaderboard({
                   {g.letter_grade}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">
+                  <span className="block min-w-0 wrap-break-word font-medium">
                     {teamNameByOwner.get(g.owner_id) ?? g.owner_name}
                   </span>
                   <span className="block text-xs text-black/50 dark:text-white/50">

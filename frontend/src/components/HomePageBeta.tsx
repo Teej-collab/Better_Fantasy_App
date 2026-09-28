@@ -181,7 +181,7 @@ export function HomePageBeta({
             <FlatRow key={row.team_id}>
               <span className="flex min-w-0 items-center gap-2">
                 <span className="w-4 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-                <span className="truncate">{row.team_name}</span>
+                <span className="min-w-0 wrap-break-word">{row.team_name}</span>
               </span>
               <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
                 {row.wins}-{row.losses}
@@ -200,7 +200,7 @@ export function HomePageBeta({
                 <span className="w-4 shrink-0 font-bold text-black/50 tabular-nums dark:text-white/50">
                   {row.power_rank}
                 </span>
-                <span className="truncate">{row.team_name}</span>
+                <span className="min-w-0 wrap-break-word">{row.team_name}</span>
               </span>
               <span className="shrink-0 text-xs tabular-nums">
                 <MovementBadge movement={row.movement} />
@@ -222,10 +222,10 @@ export function HomePageBeta({
                     {isGameDay && started && <span className="live-dot" aria-hidden />}
                     {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
                     {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
-                    <span className="truncate">{m.home.team_name}</span>
+                    <span className="min-w-0 wrap-break-word">{m.home.team_name}</span>
                     <TeamRankBadge rank={m.home.power_rank} />
                   </span>
-                  <span className="truncate text-black/50 dark:text-white/50">
+                  <span className="min-w-0 wrap-break-word text-black/50 dark:text-white/50">
                     {m.away.team_name}
                     <TeamRankBadge rank={m.away.power_rank} />
                   </span>
@@ -247,7 +247,7 @@ export function HomePageBeta({
                 <FlatRow key={m.matchup_id} href={`/matchups/${m.matchup_id}`}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span>{m.rivalry?.emoji ?? "⚔️"}</span>
-                    <span className="truncate font-medium">{m.rivalry?.name}</span>
+                    <span className="min-w-0 wrap-break-word font-medium">{m.rivalry?.name}</span>
                   </span>
                   <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                     {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
@@ -258,7 +258,7 @@ export function HomePageBeta({
                 <FlatRow key={r.id}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span>{r.emoji ?? "⚔️"}</span>
-                    <span className="truncate font-medium">{r.name}</span>
+                    <span className="min-w-0 wrap-break-word font-medium">{r.name}</span>
                   </span>
                   <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                     {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}

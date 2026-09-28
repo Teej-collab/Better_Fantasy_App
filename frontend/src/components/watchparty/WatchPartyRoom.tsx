@@ -239,10 +239,10 @@ export function WatchPartyRoom({
               setNameDraft(localInfo?.localParticipant.name ?? "");
               setRenaming(true);
             }}
-            className="min-w-0 flex-1 truncate text-left"
+            className="min-w-0 flex-1 wrap-break-word text-left"
             title="Choose a display name for this room"
           >
-            <span className="font-display truncate text-sm font-bold">{room.name}</span>
+            <span className="font-display min-w-0 wrap-break-word text-sm font-bold">{room.name}</span>
             {localInfo && <span className="ml-2 text-xs text-white/40">✎ {localInfo.localParticipant.name || "Set your name"}</span>}
           </button>
         )}

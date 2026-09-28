@@ -72,7 +72,7 @@ export function ManagePartyModal({ room, myOwnerId, onClose }: { room: WatchPart
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/10 text-xs font-semibold dark:bg-white/10">
                   {m.display_name.slice(0, 2).toUpperCase()}
                 </span>
-                <span className="flex-1 truncate text-sm font-medium">
+                <span className="flex-1 min-w-0 wrap-break-word text-sm font-medium">
                   {m.display_name}
                   {m.owner_id === room.created_by_owner_id && (
                     <span className="ml-1.5 text-xs font-normal text-black/40 dark:text-white/40">Host</span>

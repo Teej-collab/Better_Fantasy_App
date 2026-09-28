@@ -86,8 +86,8 @@ export function NewPartyModal({
                   {m.display_name.slice(0, 2).toUpperCase()}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium">{m.display_name}</span>
-                  <span className="truncate text-xs text-black/50 dark:text-white/50">{m.team_name}</span>
+                  <span className="min-w-0 wrap-break-word text-sm font-medium">{m.display_name}</span>
+                  <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{m.team_name}</span>
                 </span>
                 <span
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${

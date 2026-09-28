@@ -179,7 +179,7 @@ export function AdminOverview({
             <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
               {activity.activity.map((item, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 py-1.5 text-sm">
-                  <span className="min-w-0 truncate">
+                  <span className="min-w-0 wrap-break-word">
                     <span className="text-black/50 dark:text-white/50">{ACTIVITY_LABELS[item.kind]}:</span>{" "}
                     {item.label}
                   </span>

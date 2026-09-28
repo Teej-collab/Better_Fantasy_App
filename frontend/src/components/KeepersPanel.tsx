@@ -188,7 +188,7 @@ export function KeepersPanel({ isCommissioner }: { isCommissioner: boolean }) {
                     className={`flex items-center justify-between gap-2 py-2 text-sm ${disabled && !isSelected ? "opacity-40" : ""}`}
                   >
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate font-medium">{p.player_name}</span>
+                      <span className="font-medium wrap-break-word">{p.player_name}</span>
                       <span className="text-xs text-black/50 dark:text-white/50">
                         {p.position ?? "—"} {p.pro_team ? `· ${p.pro_team}` : ""}
                         {!p.eligible && " · max years kept reached"}

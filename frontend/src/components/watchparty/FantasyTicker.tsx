@@ -56,10 +56,10 @@ export function FantasyTicker({ roomId }: { roomId: number }) {
         {digest.matchups.slice(0, 3).map((m) => (
           <div key={m.matchup_id} className="flex items-center gap-2 rounded-xl bg-white/5 px-2.5 py-1.5">
             <div className="flex min-w-0 flex-1 flex-col text-xs text-white">
-              <span className="truncate">
+              <span className="min-w-0 wrap-break-word">
                 {m.home.owner_name} {m.home.score?.toFixed(1) ?? "—"} · {m.away.owner_name} {m.away.score?.toFixed(1) ?? "—"}
               </span>
-              {m.sweat.label && <span className="truncate text-[11px] font-semibold text-red-400">{m.sweat.label}</span>}
+              {m.sweat.label && <span className="min-w-0 wrap-break-word text-[11px] font-semibold text-red-400">{m.sweat.label}</span>}
             </div>
           </div>
         ))}

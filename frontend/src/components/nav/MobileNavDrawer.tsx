@@ -303,7 +303,7 @@ export function MobileNavDrawer({
                 <BrandMark href="/" />
                 {signedIn ? (
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold" style={{ color: "var(--wl-text)" }}>
+                    <span className="min-w-0 wrap-break-word text-sm font-semibold" style={{ color: "var(--wl-text)" }}>
                       {displayName}
                     </span>
                     {isCommissioner && (
@@ -332,7 +332,7 @@ export function MobileNavDrawer({
                     className="flex items-center justify-between px-4 py-3 text-sm"
                     style={{ color: "var(--wl-text-secondary)" }}
                   >
-                    <span className="truncate">{activeLeagueName ?? "Your league"}</span>
+                    <span className="min-w-0 wrap-break-word">{activeLeagueName ?? "Your league"}</span>
                     <span className="shrink-0" style={{ color: "var(--wl-accent)" }}>
                       Switch ›
                     </span>

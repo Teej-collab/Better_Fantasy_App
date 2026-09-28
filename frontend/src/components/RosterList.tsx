@@ -3,7 +3,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 
 /**
  * Row list (not a <table>) so it works on a phone without horizontal
- * scrolling — slot + name on the left (name truncates if long), points
+ * scrolling — slot + name on the left (a long name wraps), points
  * on the right. showProjected is off for matchup box scores (final
  * score only matters there) and on for the team roster page (upcoming
  * or in-progress weeks care about projections too).
@@ -44,7 +44,7 @@ export function RosterList({
                 name={p.player_name}
                 size={28}
               />
-              <span className="truncate">{p.player_name}</span>
+              <span className="min-w-0 wrap-break-word">{p.player_name}</span>
               {p.is_boom && (
                 <span title="Boom performance" aria-hidden>
                   {"\u{1F525}"}

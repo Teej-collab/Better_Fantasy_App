@@ -141,14 +141,14 @@ function ConversationRow({
             {c.type === "league" && <span aria-hidden>🏈</span>}
             {c.type === "commish_corner" && <span aria-hidden>📢</span>}
             <span
-              className="truncate font-display font-semibold"
+              className="min-w-0 wrap-break-word font-display font-semibold"
               style={{ color: "var(--wl-text)" }}
             >
               {title}
             </span>
           </span>
           <span
-            className="truncate text-sm"
+            className="line-clamp-2 wrap-break-word text-sm"
             style={{ color: c.unread_count > 0 ? "var(--wl-text)" : "var(--wl-text-secondary)" }}
           >
             {isGroup && c.last_message ? preview : isGroup ? subtitle : preview || "No messages yet"}

@@ -51,7 +51,7 @@ export function DonutChart({ slices, centerLabel }: { slices: DonutSlice[]; cent
                 style={{ backgroundColor: COLORS[Math.min(i, COLORS.length - 1)] }}
                 aria-hidden
               />
-              <span className="min-w-0 flex-1 truncate">{s.label}</span>
+              <span className="min-w-0 flex-1 wrap-break-word">{s.label}</span>
               <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                 {total > 0 ? `${Math.round((s.value / total) * 100)}%` : "0%"}
               </span>

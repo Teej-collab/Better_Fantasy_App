@@ -61,7 +61,7 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
           <Link
             href={`/owners/${chug.owner_id}`}
             onClick={(e) => e.stopPropagation()}
-            className="truncate font-medium hover:underline"
+            className="min-w-0 wrap-break-word font-medium hover:underline"
           >
             {chug.owner_name}
           </Link>

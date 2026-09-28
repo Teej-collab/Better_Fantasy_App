@@ -54,11 +54,11 @@ export function WatchPartyBar({
           🎥
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex items-center gap-1.5 truncate text-sm font-semibold" style={{ color: "var(--wl-text)" }}>
+          <span className="flex items-center gap-1.5 min-w-0 wrap-break-word text-sm font-semibold" style={{ color: "var(--wl-text)" }}>
             League Lounge
             {rooms.open_room.is_live && <LiveDot />}
           </span>
-          <span className="truncate text-xs" style={{ color: "var(--wl-text-secondary)" }}>
+          <span className="min-w-0 wrap-break-word text-xs" style={{ color: "var(--wl-text-secondary)" }}>
             {rooms.open_room.is_live ? "Someone's in the room now" : `${rooms.open_room.member_count} in your league · always open`}
           </span>
         </span>
@@ -79,7 +79,7 @@ export function WatchPartyBar({
             <span className="text-sm" aria-hidden>
               🔒
             </span>
-            <span className="truncate text-sm font-medium" style={{ color: "var(--wl-text)" }}>
+            <span className="min-w-0 wrap-break-word text-sm font-medium" style={{ color: "var(--wl-text)" }}>
               {r.name}
             </span>
             {r.is_live && <LiveDot />}

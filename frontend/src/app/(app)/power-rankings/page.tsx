@@ -174,8 +174,8 @@ async function WeekView({
               <div className="flex min-w-0 items-center gap-3">
                 <span className="w-6 shrink-0 text-center font-bold tabular-nums">{r.power_rank}</span>
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{r.team_name}</p>
-                  <p className="truncate text-xs text-black/50 dark:text-white/50">{r.owner_name}</p>
+                  <p className="min-w-0 wrap-break-word font-medium">{r.team_name}</p>
+                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{r.owner_name}</p>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2 tabular-nums">
@@ -243,8 +243,8 @@ async function TrendView({
           return (
             <div key={t.team_id} className="flex items-center gap-3 px-4 py-3 text-sm">
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{t.team_name}</p>
-                <p className="truncate text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
+                <p className="min-w-0 wrap-break-word font-medium">{t.team_name}</p>
+                <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
               </div>
               {points.length > 1 && (
                 <svg viewBox="0 0 100 30" className="h-6 w-20 shrink-0" preserveAspectRatio="none" aria-hidden>
@@ -284,8 +284,8 @@ async function TrendView({
             return (
               <tr key={t.team_id}>
                 <td className="px-2 py-2 font-medium">
-                  <p className="truncate">{t.team_name}</p>
-                  <p className="truncate text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
+                  <p className="min-w-0 wrap-break-word">{t.team_name}</p>
+                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{t.owner_name}</p>
                 </td>
                 {allWeeks.map((w) => (
                   <td key={w} className="px-2 py-2 text-center tabular-nums">

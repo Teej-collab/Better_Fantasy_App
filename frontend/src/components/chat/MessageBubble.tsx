@@ -151,7 +151,7 @@ export function MessageBubble({
               className="flex min-w-0 flex-col rounded-lg border-l-2 border-black/15 bg-black/[0.03] px-2 py-1 text-left text-xs text-black/50 hover:bg-black/5 dark:border-white/15 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/10"
             >
               <span className="font-medium">{message.reply_to.owner_name}</span>
-              <span className="min-w-0 truncate">{message.reply_to.body}</span>
+              <span className="min-w-0 line-clamp-2 wrap-break-word">{message.reply_to.body}</span>
             </button>
           )}
 

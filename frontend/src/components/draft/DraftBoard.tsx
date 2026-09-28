@@ -120,7 +120,7 @@ export function DraftBoard({
                   className="flex min-w-0 flex-1 flex-col text-left disabled:cursor-default"
                 >
                   <span className="flex items-center gap-1.5">
-                    <span className="truncate text-xs font-semibold text-black/60 dark:text-white/60">
+                    <span className="min-w-0 wrap-break-word text-xs font-semibold text-black/60 dark:text-white/60">
                       {teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
                     </span>
                     {grade && (
@@ -138,8 +138,8 @@ export function DraftBoard({
                     )}
                   </span>
                   {pick?.sleeper_player_id ? (
-                    <span className="flex items-center gap-1.5 text-sm">
-                      <span className="truncate font-medium">{pick.player_name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5 text-sm">
+                      <span className="min-w-0 font-medium wrap-break-word">{pick.player_name}</span>
                       <span className="shrink-0 text-[10px]" style={{ color: color ?? undefined }}>
                         {pick.player_position}
                       </span>
@@ -171,7 +171,7 @@ export function DraftBoard({
               return (
                 <th
                   key={ownerId}
-                  className="min-w-28 truncate px-1 pb-1 text-left font-semibold text-black/60 dark:text-white/60"
+                  className="min-w-28 min-w-0 wrap-break-word px-1 pb-1 text-left font-semibold text-black/60 dark:text-white/60"
                 >
                   {teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
                   {grade && (
@@ -222,7 +222,7 @@ export function DraftBoard({
                     >
                       {pick?.sleeper_player_id ? (
                         <>
-                          <span className="truncate font-medium">{pick.player_name}</span>
+                          <span className="font-medium wrap-break-word">{pick.player_name}</span>
                           <span className="flex items-center gap-1 text-[10px]" style={{ color: color ?? undefined }}>
                             {pick.player_position}
                             {pick.is_autopick && <span className="text-amber-500">AUTO</span>}

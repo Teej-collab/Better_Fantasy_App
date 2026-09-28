@@ -21,7 +21,7 @@ export function AdminLeagues({ data }: { data: AdminLeagueList }) {
                 className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium">{l.name}</span>
+                  <span className="min-w-0 wrap-break-word font-medium">{l.name}</span>
                   <span className="text-xs text-black/50 dark:text-white/50">
                     {l.member_count} member{l.member_count === 1 ? "" : "s"} · created {relativeTime(l.created_at)}
                   </span>

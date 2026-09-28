@@ -24,7 +24,7 @@ function PlayerRow({ player }: { player: GamecastImpactPlayer }) {
           {player.position}
         </span>
       )}
-      <span className="min-w-0 flex-1 truncate font-medium">{player.player_name}</span>
+      <span className="min-w-0 flex-1 font-medium wrap-break-word">{player.player_name}</span>
       <span className="shrink-0 font-mono text-sm font-semibold tabular-nums">{player.points_scored.toFixed(1)}</span>
     </li>
   );
@@ -114,7 +114,7 @@ function ImpactSection({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
         <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{label}</h3>
-        {team && <span className="truncate text-xs text-black/40 dark:text-white/40">{team.team_name}</span>}
+        {team && <span className="min-w-0 wrap-break-word text-xs text-black/40 dark:text-white/40">{team.team_name}</span>}
       </div>
       {signedOutLabel ? (
         <p className="text-xs text-black/40 dark:text-white/40">{signedOutLabel}</p>
@@ -156,7 +156,7 @@ function GameLeaders({ leaders }: { leaders: GamecastFantasyImpact["game_leaders
               <ul className="flex flex-col gap-1">
                 {side.leaders.map((p) => (
                   <li key={p.player_id ?? p.player_name} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="min-w-0 truncate text-black/70 dark:text-white/70">
+                    <span className="min-w-0 wrap-break-word text-black/70 dark:text-white/70">
                       {p.player_name} <span className="text-black/40 dark:text-white/40">{p.position}</span>
                     </span>
                     <span className="shrink-0 font-mono tabular-nums text-black/70 dark:text-white/70">

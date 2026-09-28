@@ -364,7 +364,7 @@ export default async function HomePage() {
             <li key={row.team_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="w-4 shrink-0 text-black/50 tabular-nums dark:text-white/50">{i + 1}</span>
-                <span className="truncate">{row.team_name}</span>
+                <span className="min-w-0 wrap-break-word">{row.team_name}</span>
               </span>
               <span className="shrink-0 tabular-nums text-black/60 dark:text-white/60">
                 {row.wins}-{row.losses}
@@ -415,7 +415,7 @@ export default async function HomePage() {
                 <span className="w-4 shrink-0 font-bold text-black/50 tabular-nums dark:text-white/50">
                   {row.power_rank}
                 </span>
-                <span className="truncate">{row.team_name}</span>
+                <span className="min-w-0 wrap-break-word">{row.team_name}</span>
               </span>
               <span className="shrink-0 text-xs tabular-nums">
                 <MovementBadge movement={row.movement} />
@@ -453,10 +453,10 @@ export default async function HomePage() {
                       {isGameDay && started && <span className="live-dot" aria-hidden />}
                       {m.is_game_of_the_week && <span title="Game of the Week">⭐</span>}
                       {m.is_rivalry && <span title={m.rivalry?.name}>{m.rivalry?.emoji ?? "⚔️"}</span>}
-                      <span className="truncate">{m.home.team_name}</span>
+                      <span className="min-w-0 wrap-break-word">{m.home.team_name}</span>
                       <TeamRankBadge rank={m.home.power_rank} />
                     </span>
-                    <span className="truncate text-black/50 dark:text-white/50">
+                    <span className="min-w-0 wrap-break-word text-black/50 dark:text-white/50">
                       {m.away.team_name}
                       <TeamRankBadge rank={m.away.power_rank} />
                     </span>
@@ -508,7 +508,7 @@ export default async function HomePage() {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span>{m.rivalry?.emoji ?? "⚔️"}</span>
-                    <span className="truncate font-medium">{m.rivalry?.name}</span>
+                    <span className="min-w-0 wrap-break-word font-medium">{m.rivalry?.name}</span>
                   </span>
                   <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                     {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
@@ -526,7 +526,7 @@ export default async function HomePage() {
               <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <span className="flex min-w-0 items-center gap-2">
                   <span>{r.emoji ?? "⚔️"}</span>
-                  <span className="truncate font-medium">{r.name}</span>
+                  <span className="min-w-0 wrap-break-word font-medium">{r.name}</span>
                 </span>
                 <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                   {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
@@ -874,8 +874,8 @@ export function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
           <span className={`flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase ${t.accent}`}>
             {t.emoji} {t.label}
           </span>
-          <span className="truncate text-sm font-medium">{t.title}</span>
-          <span className="truncate text-xs text-black/50 dark:text-white/50">{t.subtitle}</span>
+          <span className="min-w-0 wrap-break-word text-sm font-medium">{t.title}</span>
+          <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{t.subtitle}</span>
         </div>
       ))}
     </div>
@@ -1006,7 +1006,7 @@ function DiscoveryTileCard({ href, label, description, color }: DiscoveryTile) {
         />
         {label}
       </span>
-      <span className="truncate text-xs text-black/50 dark:text-white/50">{description}</span>
+      <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{description}</span>
     </Link>
   );
 }

@@ -145,7 +145,7 @@ function CardFront({
 
       <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pt-10 pb-3 text-center">
         <p
-          className="min-w-0 max-w-full truncate text-lg font-bold text-amber-300"
+          className="min-w-0 max-w-full wrap-break-word text-lg font-bold text-amber-300"
           style={{ textShadow: "0 0 10px rgba(252,211,77,0.45)" }}
         >
           {owner.latest_team_name}
@@ -456,11 +456,12 @@ function MiniStat({
     // how narrow the grid-cols-3 track above is, which is what let a
     // long PF/PA value (e.g. "3210.08") overflow sideways into the
     // next column instead of respecting its own cell — the literal
-    // "bleeding together" bug (2026-09-03). truncate on the value
-    // below is the safety net once this cell can actually shrink.
+    // "bleeding together" bug (2026-09-03). The value below wraps as
+    // the safety net once this cell can actually shrink, so it's never
+    // cut off with "…" on a narrow phone.
     <div className="min-w-0">
       <dt className="text-[10px] tracking-wide text-white/40 uppercase">{label}</dt>
-      <dd className={`truncate text-sm font-semibold tabular-nums ${valueClassName}`}>{value}</dd>
+      <dd className={`min-w-0 wrap-break-word text-sm font-semibold tabular-nums ${valueClassName}`}>{value}</dd>
     </div>
   );
 }

@@ -86,12 +86,12 @@ function ScoreboardRow({
     >
       <TeamLogo side={side} size={36} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate text-sm ${leading ? "font-semibold" : "font-medium text-black/70 dark:text-white/70"}`}>
+        <span className={`min-w-0 wrap-break-word text-sm ${leading ? "font-semibold" : "font-medium text-black/70 dark:text-white/70"}`}>
           {side.team_name}
           {STREAK_ICON[side.streak] && <span className="ml-1">{STREAK_ICON[side.streak]}</span>}
           <TeamRankBadge rank={side.power_rank} />
         </span>
-        <span className="truncate text-xs text-black/50 dark:text-white/50">
+        <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
           {side.owner_name}
           {side.record && ` · ${side.record}`}
         </span>

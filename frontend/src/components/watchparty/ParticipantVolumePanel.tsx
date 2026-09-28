@@ -103,9 +103,9 @@ function ParticipantVolumeRow({
 
   return (
     <div className="flex items-center gap-3">
-      <span className="flex w-24 shrink-0 items-center gap-1 truncate text-sm" style={{ color: "var(--wl-text)" }}>
+      <span className="flex w-24 shrink-0 items-center gap-1 min-w-0 wrap-break-word text-sm" style={{ color: "var(--wl-text)" }}>
         <span aria-hidden>{icon}</span>
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 wrap-break-word">{label}</span>
       </span>
       <button
         onClick={() => handleChange(volume > 0 ? 0 : 1)}

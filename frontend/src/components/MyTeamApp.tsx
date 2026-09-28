@@ -158,7 +158,7 @@ function RosterRow({
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <button
             onClick={() => onViewPlayer(entry.player_id)}
-            className="truncate text-left text-sm font-medium hover:underline"
+            className="text-left text-sm font-medium wrap-break-word hover:underline"
           >
             {entry.player_name}
             {/* Name-adjacent single-letter flag, not a full-width pill
@@ -250,7 +250,7 @@ function RosterRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <button
           onClick={() => onViewPlayer(entry.player_id)}
-          className="truncate text-left text-sm font-medium hover:underline"
+          className="text-left text-sm font-medium wrap-break-word hover:underline"
         >
           {entry.player_name}
           {hasInjuryBadge(entry.injury_status) && (
@@ -590,7 +590,7 @@ export function MyTeamApp({
             with you.
           </p>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate font-mono">{inviteLink}</code>
+            <code className="min-w-0 flex-1 break-all font-mono">{inviteLink}</code>
             <button
               onClick={copyInviteLink}
               className="shrink-0 rounded-full border border-black/10 px-2 py-0.5 text-[11px] hover:bg-black/[0.03] dark:border-white/10 dark:hover:bg-white/[0.05]"
@@ -833,7 +833,7 @@ function EditLineupOptionRow({
         >
           {slotDisplayLabel(option.slot)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm">
+        <span className="min-w-0 flex-1 text-sm wrap-break-word">
           {option.occupant ? option.occupant.player_name : <span className="text-black/40 dark:text-white/40">Empty</span>}
         </span>
       </button>

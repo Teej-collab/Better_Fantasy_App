@@ -17,6 +17,13 @@ import { StadiumDock } from "@/components/nav/StadiumDock";
 import { ChatNavLink } from "@/components/nav/ChatNavLink";
 import { AuthStatus } from "@/components/AuthStatus";
 
+const BETA_LAYOUT_ON =
+  'try{document.documentElement.setAttribute("data-wl-layout","beta");' +
+  'document.cookie="wl_beta_layout=1; path=/; max-age=31536000; samesite=lax"}catch(e){}';
+const BETA_LAYOUT_OFF =
+  'try{document.documentElement.removeAttribute("data-wl-layout");' +
+  'document.cookie="wl_beta_layout=; path=/; max-age=31536000; samesite=lax"}catch(e){}';
+
 /**
  * Shared by app/(app)/layout.tsx and app/(home)/layout.tsx — every
  * route except /weekend, which lives outside both groups specifically
@@ -98,6 +105,17 @@ export async function NavBar() {
 
   return (
     <>
+      {/* The layout CSS that clears the floating menu button (globals.css's
+          [data-wl-layout="beta"] rules) keys off data-wl-layout, which
+          app/layout.tsx's startup script only sets from the
+          wl_beta_layout cookie — and that cookie used to be written only
+          by flipping Settings > Labs. beta_layout has defaulted on since
+          2026-09-16, so anyone who never touched that switch got the
+          floating button with no clearance, covering the top of every
+          page (2026-09-27, iPhone 14/16 reports). This syncs both from
+          the owner's real preference on every full page load, before
+          the content below it paints. */}
+      <script dangerouslySetInnerHTML={{ __html: betaLayout ? BETA_LAYOUT_ON : BETA_LAYOUT_OFF }} />
       {/* sticky, not the pre-2026-08-31 static-in-flow header — a header
           that scrolls away on every page (confirmed: any page long
           enough to actually scroll, like the new /gamecast hub, made

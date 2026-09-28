@@ -175,7 +175,7 @@ export function LeagueSwitcher({ activeLeagueName }: { activeLeagueName: string 
                     onClick={() => handleSelect(league)}
                     className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm outline-none transition-colors hover:bg-black/5 focus-visible:bg-black/5 disabled:cursor-default sm:py-2 dark:hover:bg-white/10 dark:focus-visible:bg-white/10"
                   >
-                    <span className="truncate">{league.name}</span>
+                    <span className="min-w-0 wrap-break-word">{league.name}</span>
                     {isActive && (
                       <span className="shrink-0 text-xs" style={{ color: "var(--wl-accent)" }}>
                         ✓

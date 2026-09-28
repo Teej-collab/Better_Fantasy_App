@@ -71,7 +71,7 @@ export function AdminNavigationHeatmap({
               const alpha = intensity(r.views, maxViews);
               return (
                 <div key={r.event_name} className="flex items-center gap-2">
-                  <span className="w-32 shrink-0 truncate text-sm">{eventLabel(r.event_name)}</span>
+                  <span className="w-32 shrink-0 min-w-0 wrap-break-word text-sm">{eventLabel(r.event_name)}</span>
                   <div className="h-3 flex-1 overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
                     <div
                       className="h-full rounded-full"

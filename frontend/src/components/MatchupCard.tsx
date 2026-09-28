@@ -43,12 +43,12 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
 
         <div className="flex items-center justify-between gap-3">
           <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-            <span className="truncate">
+            <span className="min-w-0 wrap-break-word">
               {home.team_name}
               {STREAK_ICON[home.streak]}
             </span>
             <span className="text-xs text-black/50 sm:text-sm dark:text-white/50">vs</span>
-            <span className="truncate">
+            <span className="min-w-0 wrap-break-word">
               {away.team_name}
               {STREAK_ICON[away.streak]}
             </span>

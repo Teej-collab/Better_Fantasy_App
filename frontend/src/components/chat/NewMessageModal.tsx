@@ -77,8 +77,8 @@ function MemberRow({ member, onSelect }: { member: ChatMember; onSelect: (ownerI
           )}
         </span>
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium">{member.display_name}</span>
-          <span className="truncate text-xs text-black/50 dark:text-white/50">{member.team_name}</span>
+          <span className="min-w-0 wrap-break-word text-sm font-medium">{member.display_name}</span>
+          <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{member.team_name}</span>
         </span>
       </button>
     </li>

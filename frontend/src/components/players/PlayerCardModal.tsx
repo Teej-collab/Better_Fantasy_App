@@ -139,7 +139,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                 )}
               </span>
               <div className="flex min-w-0 flex-col">
-                <h1 className="truncate text-2xl font-bold">
+                <h1 className="text-2xl font-bold wrap-break-word">
                   {card.full_name}
                   {hasInjuryBadge(card.injury_status) && (
                     <span
@@ -155,7 +155,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                   {card.jersey_number && ` · #${card.jersey_number}`}
                 </p>
                 {card.rostered_team_name && (
-                  <p className="truncate text-xs text-black/50 dark:text-white/50">{card.rostered_team_name}</p>
+                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{card.rostered_team_name}</p>
                 )}
               </div>
             </div>

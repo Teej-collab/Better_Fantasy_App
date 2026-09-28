@@ -256,7 +256,7 @@ export function MessageComposer({
 
       {replyTo && (
         <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-black/[0.04] px-3 py-1.5 text-xs dark:bg-white/[0.06]">
-          <span className="truncate text-black/60 dark:text-white/60">
+          <span className="line-clamp-2 wrap-break-word text-black/60 dark:text-white/60">
             Replying to <span className="font-medium">{replyTo.owner_name}</span> — {replyTo.body}
           </span>
           <button

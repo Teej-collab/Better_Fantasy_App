@@ -185,18 +185,18 @@ export function MessageThread({
             className="flex min-w-0 flex-col text-left"
             aria-label={`${title} info — see who's in this chat`}
           >
-            <span className="flex items-center gap-1.5 truncate font-display font-bold" style={{ color: "var(--wl-text)" }}>
+            <span className="flex items-center gap-1.5 min-w-0 wrap-break-word font-display font-bold" style={{ color: "var(--wl-text)" }}>
               {conversation.type === "commish_corner" && <span aria-hidden>📢</span>}
               {title}
               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--wl-accent)" }} aria-hidden />
             </span>
-            <span className="truncate text-xs" style={{ color: "var(--wl-text-secondary)" }}>
+            <span className="min-w-0 wrap-break-word text-xs" style={{ color: "var(--wl-text-secondary)" }}>
               {subtitle}
             </span>
           </button>
         ) : (
           <div className="flex min-w-0 flex-col">
-            <span className="flex items-center gap-1.5 truncate font-display font-bold" style={{ color: "var(--wl-text)" }}>
+            <span className="flex items-center gap-1.5 min-w-0 wrap-break-word font-display font-bold" style={{ color: "var(--wl-text)" }}>
               {title}
               {otherOnline && (
                 <span
@@ -208,7 +208,7 @@ export function MessageThread({
                 />
               )}
             </span>
-            <span className="truncate text-xs" style={{ color: "var(--wl-text-secondary)" }}>{subtitle}</span>
+            <span className="min-w-0 wrap-break-word text-xs" style={{ color: "var(--wl-text-secondary)" }}>{subtitle}</span>
           </div>
         )}
       </div>

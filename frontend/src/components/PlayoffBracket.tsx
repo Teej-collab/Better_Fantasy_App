@@ -24,7 +24,7 @@ function TeamRow({
     >
       <span className="flex min-w-0 items-center gap-1.5">
         {seed !== null && <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{seed}</span>}
-        <span className="truncate">{name ?? <span className="text-black/40 dark:text-white/40">TBD</span>}</span>
+        <span className="min-w-0 wrap-break-word">{name ?? <span className="text-black/40 dark:text-white/40">TBD</span>}</span>
         {isWinner && <span className="shrink-0 text-emerald-500">&#10003;</span>}
       </span>
       {score !== null && (
@@ -129,11 +129,11 @@ export function ProjectedPlayoffPicture({ matchups }: { matchups: ProjectedPlayo
             >
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
                 <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_a_seed}</span>
-                <span className="truncate">{m.team_a_name}</span>
+                <span className="min-w-0 wrap-break-word">{m.team_a_name}</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
                 <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_b_seed}</span>
-                <span className="truncate">{m.team_b_name}</span>
+                <span className="min-w-0 wrap-break-word">{m.team_b_name}</span>
               </div>
             </div>
           ))}

@@ -56,7 +56,7 @@ export function MyWaiverClaims() {
         {claims.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
             <span className="flex min-w-0 flex-col">
-              <span className="truncate">
+              <span className="wrap-break-word">
                 {c.add_player_name}
                 {c.drop_player_name && (
                   <span className="text-black/50 dark:text-white/50"> (drop {c.drop_player_name})</span>

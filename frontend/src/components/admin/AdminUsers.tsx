@@ -84,7 +84,7 @@ export function AdminUsers({ initial }: { initial: AdminUserList }) {
                 className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <div className="flex min-w-0 flex-col">
-                  <span className="flex items-center gap-1.5 truncate font-medium">
+                  <span className="flex items-center gap-1.5 min-w-0 wrap-break-word font-medium">
                     {u.display_name}
                     {u.is_commissioner_anywhere && (
                       <span className="rounded-full bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--admin-accent)]">
@@ -97,7 +97,7 @@ export function AdminUsers({ initial }: { initial: AdminUserList }) {
                       </span>
                     )}
                   </span>
-                  <span className="truncate text-xs text-black/50 dark:text-white/50">
+                  <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
                     {u.email ?? "No email"} · {u.league_count} league{u.league_count === 1 ? "" : "s"}
                   </span>
                 </div>

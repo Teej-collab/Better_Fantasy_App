@@ -619,11 +619,11 @@ export function DraftRoom({
                       <div className="flex min-w-0 flex-col">
                         <button
                           onClick={() => openPlayerCard(p.sleeper_player_id)}
-                          className={`truncate text-left text-sm font-medium hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
+                          className={`text-left text-sm font-medium wrap-break-word hover:underline ${p.drafted ? "line-through opacity-40" : ""}`}
                         >
                           {p.full_name}
                         </button>
-                        <span className="truncate text-xs text-black/50 dark:text-white/50">
+                        <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
                           {p.pro_team ?? "—"} · Proj {p.projected_points !== null ? p.projected_points.toFixed(1) : "—"} · Bye{" "}
                           {p.bye_week ?? "—"}
                         </span>
@@ -652,7 +652,7 @@ export function DraftRoom({
                   <div key={p.sleeper_player_id} className="flex items-center justify-between gap-1 py-0.5 text-sm">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="w-4 shrink-0 text-black/30 tabular-nums dark:text-white/30">{i + 1}</span>
-                      <button onClick={() => openPlayerCard(p.sleeper_player_id)} className="truncate hover:underline">
+                      <button onClick={() => openPlayerCard(p.sleeper_player_id)} className="min-w-0 text-left wrap-break-word hover:underline">
                         {p.full_name}
                       </button>
                       <PositionBadge position={p.position} />

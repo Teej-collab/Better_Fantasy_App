@@ -297,7 +297,7 @@ function StandingsListRow({
               💩 League Loser
             </span>
           )}
-          <div className="truncate text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
+          <div className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
         </div>
       </div>
       <div className="flex gap-4 pl-8 text-sm sm:gap-0 sm:pl-0">

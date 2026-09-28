@@ -157,7 +157,7 @@ export function AccountMenu({ me }: { me: Me }) {
               className="fixed inset-x-0 bottom-0 z-50 flex flex-col gap-0.5 rounded-t-2xl border-t border-black/10 bg-[var(--background)] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-full sm:mt-2 sm:w-56 sm:rounded-xl sm:border sm:border-black/10 sm:pb-2 sm:shadow-lg dark:border-white/10"
             >
               <div className="flex flex-col gap-0.5 px-3 py-2 sm:px-2">
-                <span className="truncate text-sm font-semibold">{me.display_name}</span>
+                <span className="min-w-0 wrap-break-word text-sm font-semibold">{me.display_name}</span>
                 {me.is_commissioner && (
                   <span className="text-xs text-[var(--wl-accent)]">Commissioner</span>
                 )}

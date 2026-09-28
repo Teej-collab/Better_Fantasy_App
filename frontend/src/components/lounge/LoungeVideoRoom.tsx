@@ -134,7 +134,7 @@ function DeviceList({ kind, onSelect }: { kind: MediaDeviceKind; onSelect: () =>
               setActiveMediaDevice(d.deviceId);
               onSelect();
             }}
-            className={`w-full truncate rounded px-1.5 py-1 text-left ${d.deviceId === activeDeviceId ? "bg-white/15 font-semibold" : ""}`}
+            className={`w-full min-w-0 wrap-break-word rounded px-1.5 py-1 text-left ${d.deviceId === activeDeviceId ? "bg-white/15 font-semibold" : ""}`}
           >
             {d.deviceId === activeDeviceId ? "✓ " : ""}
             {d.label || kind}
@@ -324,7 +324,7 @@ export function LoungeVideoRoom({
           className="flex shrink-0 items-center justify-between gap-2 px-4 py-3"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
         >
-          <span className="min-w-0 flex-1 truncate font-display text-sm font-bold">{roomName}</span>
+          <span className="min-w-0 flex-1 wrap-break-word font-display text-sm font-bold">{roomName}</span>
           <div className="flex shrink-0 items-center gap-2">
             <button
               onClick={() => setMobilePanel((p) => (p === "chat" ? "none" : "chat"))}

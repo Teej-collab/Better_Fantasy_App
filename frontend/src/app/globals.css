@@ -547,8 +547,7 @@ body {
    that actually needs to clear the button (`.wl-ticker-bar` below).
    Giving both the same top clearance would double it into a dead gap;
    the modifier here switches this shell's own top padding back to
-   `unset` (the ordinary py-6/py-4 Tailwind utility already on the
-   element takes back over) so only one of the two ever adds the
+   its ordinary py-6/py-4 amount so only one of the two ever adds the
    button-clearance amount. app/(home)/ and app/(chat)/ don't render a
    preceding ticker at all, so they never pass this prop and this shell
    keeps handling its own top clearance directly, as before.
@@ -578,8 +577,14 @@ body {
     padding-top: var(--hamburger-clear-bottom, calc(env(safe-area-inset-top) + 6rem));
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
+  /* The shell's own py-6 spacing, restated rather than `unset`: this
+     unlayered rule outranks the Tailwind utility, so `unset` resolved
+     to 0 and pressed every page's content flush against the ticker. */
   [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--ticker-above {
-    padding-top: unset;
+    padding-top: 1.5rem;
+  }
+  [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--chat.wl-page-shell--ticker-above {
+    padding-top: 1rem;
   }
   [data-wl-layout="beta"] .wl-page-shell.wl-page-shell--chat {
     padding-bottom: 0;
