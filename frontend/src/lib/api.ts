@@ -1466,6 +1466,10 @@ export type OwnerPreferences = {
   // --ring-color fallback chains.
   your_week_color: string | null;
   border_glow_color: string | null;
+  // The breathing honeycomb background behind every page
+  // (CinematicHoneycombBackground.tsx). A hex color, "off" to hide it,
+  // or null for the app default (crimson).
+  honeycomb_color: string | null;
   // Settings > Appearance > Look — "calm" (today's shipped near-black,
   // flat-panel palette) or "cosmic" (starfield/nebula background,
   // brighter mint-green default accent). Not a light/dark mode switch;

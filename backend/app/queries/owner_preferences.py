@@ -39,6 +39,9 @@ _DEFAULT_PREFERENCES = {
     # unset — see globals.css's --your-week-color/--ring-color chains.
     "your_week_color": None,
     "border_glow_color": None,
+    # The breathing honeycomb background behind every page. None means
+    # the app default (crimson); "off" hides it (migration a7c3e9f1d4b6).
+    "honeycomb_color": None,
     # Settings > Appearance > Look. "calm" is today's shipped near-black,
     # flat-panel palette; "cosmic" restores the earlier starfield/nebula
     # background and a brighter mint-green accent as an opt-in choice —

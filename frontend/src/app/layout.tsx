@@ -11,6 +11,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
+import { CinematicHoneycombBackground } from "@/components/CinematicHoneycombBackground";
 import { NativePushRegistration } from "@/components/NativePushRegistration";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageViewTracker } from "@/components/PageViewTracker";
@@ -175,6 +176,14 @@ const APPEARANCE_SCRIPT = `
     if (bg && /^#[0-9a-fA-F]{6}$/.test(bg[1])) {
       document.documentElement.style.setProperty("--border-glow-color", bg[1]);
     }
+    // Settings > Appearance > Background — the honeycomb's color, or
+    // "off" to hide it (CinematicHoneycombBackground.tsx).
+    var hc = document.cookie.match(/(?:^|; )wl_honeycomb=([^;]+)/);
+    if (hc && hc[1] === "off") {
+      document.documentElement.setAttribute("data-honeycomb", "off");
+    } else if (hc && /^#[0-9a-fA-F]{6}$/.test(hc[1])) {
+      document.documentElement.style.setProperty("--honeycomb-color", hc[1]);
+    }
     var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
     document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");
     // Settings > Labs > "Try the new look" (wl_beta_layout, mirrored by
@@ -228,6 +237,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             z-index/pointer-events:none, same restrained pattern as
             .home-ambient (the homepage's own decorative wash) — never
             affects layout, just what's painted behind it. */}
+        <CinematicHoneycombBackground />
         <div className="cosmic-ambient" aria-hidden />
         <OfflineBanner />
         <PageViewTracker />

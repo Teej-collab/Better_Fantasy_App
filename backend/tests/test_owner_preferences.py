@@ -484,3 +484,33 @@ async def test_sunday_mode_endpoint_applies_full_send(pool, monkeypatch):
     body = resp.json()
     assert body["sunday_mode"] == "full_send"
     assert body["notify_league_chat"] is True
+
+
+async def test_put_preferences_sets_and_clears_honeycomb_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 910)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"honeycomb_color": "#0ea5e9"})
+        assert resp.status_code == 200
+        assert resp.json()["honeycomb_color"] == "#0ea5e9"
+
+        resp = await client.put("/settings/preferences", json={"honeycomb_color": "off"})
+        assert resp.status_code == 200
+        assert resp.json()["honeycomb_color"] == "off"
+
+        resp = await client.put("/settings/preferences", json={"honeycomb_color": None})
+        assert resp.status_code == 200
+        assert resp.json()["honeycomb_color"] is None
+
+
+async def test_put_preferences_rejects_invalid_honeycomb_color(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 911)
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        resp = await client.put("/settings/preferences", json={"honeycomb_color": "red"})
+
+    assert resp.status_code == 400

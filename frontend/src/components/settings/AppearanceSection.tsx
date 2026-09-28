@@ -63,6 +63,27 @@ function applyBorderGlowColor(hex: string | null) {
   }
 }
 
+// The breathing honeycomb background (CinematicHoneycombBackground.tsx)
+// — a hex color, "off" (hides it via data-honeycomb on <html>), or
+// null for the default crimson. Same apply-now-and-mirror-to-a-cookie
+// approach as the colors above.
+const HONEYCOMB_DEFAULT = "#dc143c";
+
+function applyHoneycombColor(value: string | null) {
+  const root = document.documentElement;
+  if (value === "off") {
+    root.setAttribute("data-honeycomb", "off");
+  } else {
+    root.removeAttribute("data-honeycomb");
+  }
+  if (value && value !== "off") {
+    root.style.setProperty("--honeycomb-color", value);
+  } else {
+    root.style.removeProperty("--honeycomb-color");
+  }
+  setPreferenceCookie("wl_honeycomb", value ?? "");
+}
+
 export function AppearanceSection() {
   const [prefs, setPrefs] = useState<OwnerPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +199,23 @@ export function AppearanceSection() {
     } catch {
       setPrefs(previous);
       applyBorderGlowColor(previous.border_glow_color);
+      setError("Couldn't save that change — try again.");
+    }
+  }
+
+  async function setHoneycombColor(value: string | null) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, honeycomb_color: value });
+    applyHoneycombColor(value);
+    try {
+      const updated = await updatePreferences({ honeycomb_color: value });
+      setPrefs(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      applyHoneycombColor(previous.honeycomb_color);
       setError("Couldn't save that change — try again.");
     }
   }
@@ -353,6 +391,56 @@ export function AppearanceSection() {
               <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Background</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            The color of the faint breathing honeycomb behind every page.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Background Color">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.honeycomb_color === null}
+            onClick={() => setHoneycombColor(null)}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.honeycomb_color === null ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span className="h-8 w-8 rounded-full" style={{ backgroundColor: HONEYCOMB_DEFAULT }} aria-hidden />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Crimson</span>
+          </button>
+          {NEON_PALETTE.map((preset) => (
+            <button
+              key={preset.hex}
+              type="button"
+              role="radio"
+              aria-checked={prefs.honeycomb_color?.toLowerCase() === preset.hex}
+              onClick={() => setHoneycombColor(preset.hex)}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+                prefs.honeycomb_color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
+              }`}
+            >
+              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
+              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.honeycomb_color === "off"}
+            onClick={() => setHoneycombColor("off")}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.honeycomb_color === "off" ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span className="h-8 w-8 rounded-full border border-white/20 bg-black" aria-hidden />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Off</span>
+          </button>
         </div>
       </section>
 
