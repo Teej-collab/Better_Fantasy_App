@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { getFeatureUsage, getNavigationHeatmap, type FeatureUsage, type NavigationHeatmap } from "@/lib/api";
+import {
+  getAdminPaths,
+  getFeatureUsage,
+  getNavigationHeatmap,
+  type AdminPaths,
+  type FeatureUsage,
+  type NavigationHeatmap,
+} from "@/lib/api";
 import { eventLabel } from "@/lib/analyticsEvents";
+import { AdminSection, BarRow, EmptyNote } from "@/components/admin/AdminUi";
 
 const WINDOW_OPTIONS = [7, 30, 90] as const;
 
@@ -17,20 +25,24 @@ function intensity(views: number, max: number): number {
 export function AdminNavigationHeatmap({
   initialHeatmap,
   initialFeatures,
+  initialPaths,
 }: {
   initialHeatmap: NavigationHeatmap;
   initialFeatures: FeatureUsage;
+  initialPaths: AdminPaths;
 }) {
   const [heatmap, setHeatmap] = useState(initialHeatmap);
   const [features, setFeatures] = useState(initialFeatures);
+  const [paths, setPaths] = useState(initialPaths);
   const [loading, setLoading] = useState(false);
 
   function changeWindow(days: number) {
     setLoading(true);
-    Promise.all([getNavigationHeatmap(days), getFeatureUsage(days)])
-      .then(([h, f]) => {
+    Promise.all([getNavigationHeatmap(days), getFeatureUsage(days), getAdminPaths(days)])
+      .then(([h, f, p]) => {
         setHeatmap(h);
         setFeatures(f);
+        setPaths(p);
       })
       .finally(() => setLoading(false));
   }
@@ -91,6 +103,59 @@ export function AdminNavigationHeatmap({
           </div>
         )}
       </section>
+
+      <AdminSection title="Where People Go Next" hint="The most common page-to-page moves within a visit.">
+        {paths.transitions.length === 0 ? (
+          <EmptyNote>Not enough visits in this window yet.</EmptyNote>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {paths.transitions.slice(0, 20).map((t) => (
+              <BarRow
+                key={`${t.from_page}-${t.to_page}`}
+                label={
+                  <>
+                    {eventLabel(t.from_page)} <span className="text-black/40 dark:text-white/40">→</span>{" "}
+                    {eventLabel(t.to_page)}
+                  </>
+                }
+                value={t.moves}
+                max={paths.transitions[0].moves}
+              />
+            ))}
+          </div>
+        )}
+      </AdminSection>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AdminSection title="Where Visits Start">
+          {paths.entries.length === 0 ? (
+            <EmptyNote>No visits yet.</EmptyNote>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {paths.entries.map((e) => (
+                <BarRow key={e.event_name} label={eventLabel(e.event_name)} value={e.sessions} max={paths.entries[0].sessions} />
+              ))}
+            </div>
+          )}
+        </AdminSection>
+        <AdminSection title="Where Visits End" hint="Bounces are visits that only saw that one page.">
+          {paths.exits.length === 0 ? (
+            <EmptyNote>No visits yet.</EmptyNote>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {paths.exits.map((e) => (
+                <BarRow
+                  key={e.event_name}
+                  label={eventLabel(e.event_name)}
+                  value={e.sessions}
+                  max={paths.exits[0].sessions}
+                  right={`${e.sessions}${e.bounces ? ` · ${e.bounces} bounced` : ""}`}
+                />
+              ))}
+            </div>
+          )}
+        </AdminSection>
+      </div>
 
       <section className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] p-4 dark:bg-white/[0.03]">
         <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">

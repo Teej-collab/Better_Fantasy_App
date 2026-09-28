@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { reportClientError } from "@/lib/errorReporter";
 
 // Sits at the app root, so it wraps every route group ((app)/(home)/
 // weekend) and catches any uncaught rendering error below the root
@@ -23,8 +24,11 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     // Visible only in devtools/server logs, never to the user — the
-    // standard Next.js error-boundary logging pattern.
+    // standard Next.js error-boundary logging pattern. Also sent to
+    // Admin > Errors: React catches these itself, so the global error
+    // handlers in lib/errorReporter.ts never see them.
     console.error(error);
+    reportClientError(error);
   }, [error]);
 
   return (

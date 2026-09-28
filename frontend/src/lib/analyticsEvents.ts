@@ -221,6 +221,7 @@ const EVENT_LABELS: Record<string, string> = {
   nav_other: "Other",
   league_switched: "League Switched",
   gamecast_game_selected: "Gamecast Game Selected",
+  app_crash: "App Crash",
 };
 
 export function eventLabel(eventName: string): string {

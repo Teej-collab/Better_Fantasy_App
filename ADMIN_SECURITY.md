@@ -2,7 +2,7 @@
 
 ## The one authorization boundary
 
-Every `/admin/*` **dashboard** endpoint (Overview, Users, Leagues, Navigation, Online, and the admin-grant endpoint itself) is gated by `require_site_admin` (`app/auth/league_context.py`) — a live database check, run **independently, inside every single endpoint**, not a shared middleware and not a frontend guard. The six ESPN-sync/compute endpoints in the same router (`/sync`, `/sync/live`, `/weekly-compute`, `/sync/bye-weeks`, `/players/sync`, `/players/sync-projections`) are a separate, narrower grant — see "Two separate grants" below.
+Every `/admin/*` **dashboard** endpoint (Overview, Live, Engagement, Navigation, Paths, Users, Leagues, Crashes, Errors, Security, Audit Log, Badges, Online, and the admin-grant endpoint itself) is gated by `require_site_admin` (`app/auth/league_context.py`) — a live database check, run **independently, inside every single endpoint**, not a shared middleware and not a frontend guard. The six ESPN-sync/compute endpoints in the same router (`/sync`, `/sync/live`, `/weekly-compute`, `/sync/bye-weeks`, `/players/sync`, `/players/sync-projections`) are a separate, narrower grant — see "Two separate grants" below.
 
 `require_site_admin` passes if **either** of two things is true:
 1. The caller is League #1's commissioner (`is_commissioner` scoped to `DEFAULT_LEAGUE_ID` specifically — not "whichever league is currently active," which is a different, broader check the frontend also reads as plain `is_commissioner`).
@@ -42,6 +42,14 @@ async def list_users(request: Request, ...):
 ```
 
 Every admin endpoint follows this exact shape. There is no endpoint that trusts a client-supplied role claim, a JWT flag set at login, or "the frontend wouldn't show this link to a non-admin." The frontend's `/admin/layout.tsx` does check `is_site_owner` before rendering admin pages at all — that's a UX nicety (don't show pages that will just 403), never the actual boundary. Calling any `/admin/*` endpoint directly with a non-owner session — curl, a modified request, whatever — gets a real 403, not app-visible data. This is tested directly (see below), not just asserted.
+
+## `POST /admin/client-error` is open to everyone
+
+Browser errors happen on the sign-in and landing pages too, so this intake endpoint accepts signed-out visitors. It never takes identity from the body (owner/user come from the session, if there is one), caps every field's length, and has its own in-memory limit of 30 reports per IP per 10 minutes (`monitoring.client_error_rate_limited`). It only ever inserts into `app_errors`; it can't read anything back.
+
+## Monitoring sees IPs and emails
+
+`security_events` stores the IP and the email typed into a failed sign-in, and `app_errors` stores stack traces. Both are only readable through `require_site_admin`-gated endpoints (`/admin/security`, `/admin/errors`), same as every other dashboard read. Passwords are never recorded anywhere — `record_failed_login` is handed only the normalized email.
 
 ## `POST /admin/track` is intentionally different
 

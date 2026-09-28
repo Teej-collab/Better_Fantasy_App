@@ -37,7 +37,18 @@ from app.providers.nfl_scoreboard import get_real_current_week
 from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
-from app.queries import admin_analytics, admin_leagues, admin_overview, admin_system, admin_teams, admin_users
+from app import monitoring
+from app.notifications import admin_alerts
+from app.queries import (
+    admin_analytics,
+    admin_engagement,
+    admin_leagues,
+    admin_monitoring,
+    admin_overview,
+    admin_system,
+    admin_teams,
+    admin_users,
+)
 from app.scheduler_status import record_job_run
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -373,6 +384,56 @@ async def track_event(body: TrackEventRequest, request: Request):
             conn, owner_id, body.session_id, body.event_name, body.event_type, route,
             body.league_id, body.metadata, body.device_type, body.platform,
         )
+    if body.event_name == taxonomy.CRASH_EVENT_NAME and not monitoring.is_test_request(request):
+        _alert_crash_in_background(owner_id, route, body.metadata)
+    return {"ok": True}
+
+
+def _alert_crash_in_background(owner_id: int, route: str | None, metadata: dict) -> None:
+    async def run():
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await admin_alerts.maybe_alert_crash(conn, owner_id, route, metadata)
+
+    monitoring.run_in_background(run())
+
+
+class ClientErrorRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    stack: str | None = Field(default=None, max_length=20000)
+    route: str | None = Field(default=None, max_length=500)
+    platform: str | None = Field(default=None, max_length=20)
+    os: str | None = Field(default=None, max_length=40)
+    screen: str | None = Field(default=None, max_length=40)
+
+
+@router.post("/client-error")
+async def report_client_error(body: ClientErrorRequest, request: Request):
+    """JavaScript errors from users' browsers and phones (frontend/src/
+    lib/errorReporter.ts), for Admin > Errors. Open to signed-out
+    visitors too — the sign-in and landing pages break as well — so it
+    has its own per-IP cap (monitoring.client_error_rate_limited) and
+    never trusts the body for identity: owner/user come from the
+    session, if there is one."""
+    ip = monitoring.client_ip(request) or "unknown"
+    if monitoring.client_error_rate_limited(ip):
+        raise HTTPException(status_code=429, detail="Too many error reports")
+    payload = _decode_session(get_session_token(request))
+    user_id = payload.get("user_id") if payload and "purpose" not in payload else None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload) if user_id else None
+        fp = await monitoring.insert_error(
+            conn, source="client", message=body.message, stack=body.stack, route=body.route,
+            owner_id=owner_id, user_id=user_id, platform=body.platform, os=body.os, screen=body.screen,
+        )
+
+    async def alert():
+        async with pool.acquire() as conn:
+            await admin_alerts.maybe_alert_error(conn, fp)
+
+    if not monitoring.is_test_request(request):
+        monitoring.run_in_background(alert())
     return {"ok": True}
 
 
@@ -420,6 +481,88 @@ async def get_crash_reports(request: Request, days: int = 30):
     async with pool.acquire() as conn:
         await require_site_admin(conn, payload)
         return await admin_analytics.get_crash_reports(conn, days)
+
+
+@router.get("/errors")
+async def get_errors(request: Request, days: int = 7):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_monitoring.get_errors(conn, days)
+
+
+@router.get("/errors/{fingerprint}")
+async def get_error_detail(fingerprint: str, request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        detail = await admin_monitoring.get_error_detail(conn, fingerprint[:32])
+    if detail is None:
+        raise HTTPException(status_code=404, detail="No such error")
+    return detail
+
+
+@router.get("/security")
+async def get_security(request: Request, days: int = 7):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_monitoring.get_security(conn, days)
+
+
+@router.get("/audit")
+async def get_audit_log(request: Request, limit: int = 50, offset: int = 0):
+    payload = _require_session(request)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_monitoring.get_audit_log(conn, limit, offset)
+
+
+@router.get("/badges")
+async def get_badges(request: Request):
+    """Last-24-hour counts behind the admin nav's attention dots."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_monitoring.get_badges(conn)
+
+
+@router.get("/engagement")
+async def get_engagement(request: Request, days: int = 30):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_engagement.get_engagement(conn, days)
+
+
+@router.get("/live")
+async def get_live(request: Request):
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_engagement.get_live(conn)
+
+
+@router.get("/paths")
+async def get_paths(request: Request, days: int = 30):
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_engagement.get_paths(conn, days)
 
 
 @router.get("/timeseries")
@@ -520,6 +663,9 @@ async def set_user_is_admin(user_id: int, body: SetIsAdminRequest, request: Requ
         user = await admin_users.set_is_admin(conn, user_id, body.is_admin)
     if user is None:
         raise HTTPException(status_code=404, detail="No user found")
+    # The audit log (app/monitoring.py) only sees the URL, which is the
+    # same for granting and revoking.
+    request.state.audit_detail = "granted" if body.is_admin else "revoked"
     return user
 
 

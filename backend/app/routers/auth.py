@@ -32,6 +32,7 @@ from app.auth.session import (
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
+from app.monitoring import record_failed_login
 from app.notifications.email import send_password_reset_email
 from app.queries import auth as auth_queries
 from app.queries import leagues as league_queries
@@ -467,9 +468,8 @@ async def login(body: LoginRequest, request: Request, response: Response):
     # existing account-enumeration posture on the Discord side (a
     # non-member gets the same denial regardless of why).
     invalid = HTTPException(status_code=401, detail="Invalid email or password")
-    if user is None or user["password_hash"] is None:
-        raise invalid
-    if not verify_password(body.password, user["password_hash"]):
+    if user is None or user["password_hash"] is None or not verify_password(body.password, user["password_hash"]):
+        record_failed_login(request, email)
         raise invalid
 
     async with pool.acquire() as conn:

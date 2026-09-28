@@ -2541,6 +2541,138 @@ export type NavigationHeatmap = { window_days: number; total_views: number; rout
 export type FeatureUsageRow = { event_name: string; uses: number; unique_owners: number };
 export type FeatureUsage = { window_days: number; features: FeatureUsageRow[] };
 
+// Admin > Engagement (GET /admin/engagement) — days bucketed in
+// America/Chicago, activity counted per owner.
+export type EngagementDay = { day: string; dau: number; wau: number; mau: number };
+export type AdminEngagement = {
+  window_days: number;
+  timezone: string;
+  summary: {
+    dau: number;
+    wau: number;
+    mau: number;
+    avg_dau: number;
+    stickiness: number | null;
+    sessions: number;
+    avg_pages_per_session: number;
+    median_session_seconds: number;
+  };
+  series: EngagementDay[];
+  platforms: { platform: string; device_type: string; owners: number; events: number }[];
+  when_active: { dow: number; hour: number; events: number }[];
+  retention: { day: number; eligible: number; retained: number; rate: number | null }[];
+  cohorts: { week: string; size: number; weeks: (number | null)[] }[];
+  funnel: { step: string; label: string; count: number }[];
+};
+
+// Admin > Live (GET /admin/live).
+export type AdminLive = {
+  people: {
+    owner_id: number;
+    display_name: string;
+    route: string | null;
+    event_name: string | null;
+    platform: string | null;
+    device_type: string | null;
+    last_seen: string | null;
+    connected: boolean;
+  }[];
+  feed: {
+    created_at: string;
+    event_name: string;
+    event_type: string;
+    route: string | null;
+    platform: string | null;
+    device_type: string | null;
+    display_name: string | null;
+  }[];
+  last_hour: { events: number; owners: number };
+};
+
+// Admin > Navigation's path section (GET /admin/paths).
+export type AdminPaths = {
+  window_days: number;
+  transitions: { from_page: string; to_page: string; moves: number }[];
+  entries: { event_name: string; sessions: number }[];
+  exits: { event_name: string; sessions: number; bounces: number }[];
+};
+
+// Admin > Errors (GET /admin/errors, /admin/errors/{fingerprint}).
+export type AdminErrorGroup = {
+  fingerprint: string;
+  source: "client" | "server";
+  message: string;
+  route: string | null;
+  occurrences: number;
+  affected: number;
+  first_seen: string;
+  last_seen: string;
+  first_ever: string | null;
+};
+export type AdminErrors = {
+  window_days: number;
+  occurrences: number;
+  server: number;
+  client: number;
+  kinds: number;
+  groups: AdminErrorGroup[];
+};
+export type AdminErrorDetail = {
+  fingerprint: string;
+  occurrences: {
+    created_at: string;
+    source: "client" | "server";
+    message: string;
+    stack: string | null;
+    route: string | null;
+    method: string | null;
+    status_code: number | null;
+    platform: string | null;
+    os: string | null;
+    screen: string | null;
+    who: string | null;
+  }[];
+  daily: { day: string; occurrences: number }[];
+};
+
+// Admin > Security (GET /admin/security).
+export type AdminSecurity = {
+  window_days: number;
+  by_kind: { kind: string; events: number; ips: number }[];
+  top_ips: { ip: string; events: number; failed_logins: number; emails_tried: number; last_seen: string }[];
+  top_paths: { path: string; kind: string; events: number }[];
+  targeted_accounts: { email: string; failed_logins: number; ips: number; last_seen: string; real_account: boolean }[];
+  recent: {
+    created_at: string;
+    kind: string;
+    email: string | null;
+    ip: string | null;
+    method: string | null;
+    path: string | null;
+    user_agent: string | null;
+    who: string | null;
+  }[];
+};
+
+// Admin > Audit Log (GET /admin/audit).
+export type AdminAuditLog = {
+  total: number;
+  entries: {
+    id: number;
+    created_at: string;
+    action: string;
+    method: string;
+    path: string;
+    target: string | null;
+    status_code: number;
+    actor: string | null;
+    actor_user_id: number | null;
+  }[];
+};
+
+// The admin nav's attention dots (GET /admin/badges) — last 24 hours.
+export type AdminBadges = { crashes: number; errors: number; security: number };
+
 // App crashes reported by lib/crashReporter.ts (GET /admin/crashes).
 export type CrashReport = {
   created_at: string;
@@ -2674,6 +2806,36 @@ export async function getFeatureUsageServer(
   return getServerOrNull<FeatureUsage>(`/admin/features?days=${days}`, sessionCookie);
 }
 
+export async function getAdminEngagementServer(
+  sessionCookie: string | undefined,
+  days = 30
+): Promise<AdminEngagement | null> {
+  return getServerOrNull<AdminEngagement>(`/admin/engagement?days=${days}`, sessionCookie);
+}
+
+export async function getAdminLiveServer(sessionCookie: string | undefined): Promise<AdminLive | null> {
+  return getServerOrNull<AdminLive>("/admin/live", sessionCookie);
+}
+
+export async function getAdminPathsServer(sessionCookie: string | undefined, days = 30): Promise<AdminPaths | null> {
+  return getServerOrNull<AdminPaths>(`/admin/paths?days=${days}`, sessionCookie);
+}
+
+export async function getAdminErrorsServer(sessionCookie: string | undefined, days = 7): Promise<AdminErrors | null> {
+  return getServerOrNull<AdminErrors>(`/admin/errors?days=${days}`, sessionCookie);
+}
+
+export async function getAdminSecurityServer(
+  sessionCookie: string | undefined,
+  days = 7
+): Promise<AdminSecurity | null> {
+  return getServerOrNull<AdminSecurity>(`/admin/security?days=${days}`, sessionCookie);
+}
+
+export async function getAdminAuditLogServer(sessionCookie: string | undefined): Promise<AdminAuditLog | null> {
+  return getServerOrNull<AdminAuditLog>("/admin/audit?limit=50", sessionCookie);
+}
+
 export async function getCrashReportsServer(
   sessionCookie: string | undefined,
   days = 30
@@ -2757,6 +2919,38 @@ export function getNavigationHeatmap(days = 30): Promise<NavigationHeatmap> {
 
 export function getFeatureUsage(days = 30): Promise<FeatureUsage> {
   return _adminGet(`/admin/features?days=${days}`);
+}
+
+export function getAdminEngagement(days = 30): Promise<AdminEngagement> {
+  return _adminGet(`/admin/engagement?days=${days}`);
+}
+
+export function getAdminLive(): Promise<AdminLive> {
+  return _adminGet("/admin/live");
+}
+
+export function getAdminPaths(days = 30): Promise<AdminPaths> {
+  return _adminGet(`/admin/paths?days=${days}`);
+}
+
+export function getAdminErrors(days = 7): Promise<AdminErrors> {
+  return _adminGet(`/admin/errors?days=${days}`);
+}
+
+export function getAdminErrorDetail(fingerprint: string): Promise<AdminErrorDetail> {
+  return _adminGet(`/admin/errors/${encodeURIComponent(fingerprint)}`);
+}
+
+export function getAdminSecurity(days = 7): Promise<AdminSecurity> {
+  return _adminGet(`/admin/security?days=${days}`);
+}
+
+export function getAdminAuditLog(limit = 50, offset = 0): Promise<AdminAuditLog> {
+  return _adminGet(`/admin/audit?limit=${limit}&offset=${offset}`);
+}
+
+export function getAdminBadges(): Promise<AdminBadges> {
+  return _adminGet("/admin/badges");
 }
 
 export function getCrashReports(days = 30): Promise<CrashReports> {

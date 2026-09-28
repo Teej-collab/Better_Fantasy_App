@@ -1,6 +1,6 @@
 # Admin Dashboard
 
-The Weekend's admin/product-intelligence dashboard, at `/admin` — visible only to the site owner (League #1's commissioner; see `ADMIN_SECURITY.md`). Built in phases; this document describes Phase 1, what it deliberately left out and why, and what a real Phase 2 looks like.
+The Weekend's admin/product-intelligence dashboard, at `/admin` — visible only to the site owner (League #1's commissioner; see `ADMIN_SECURITY.md`). This document describes what's built, how the monitoring and alerts work, and what's still deliberately left out.
 
 ## Why phases
 
@@ -27,7 +27,8 @@ not in the fixed taxonomy before it's ever written
 analytics_events table
         │
         ▼
-GET /admin/overview | /navigation | /features | /users | /leagues
+GET /admin/overview | /navigation | /features | /users | /leagues | /engagement | /live | /paths |
+    /crashes | /errors | /security | /audit | /badges
 (site-owner-only — see ADMIN_SECURITY.md)
         │
         ▼
@@ -54,28 +55,57 @@ Indexed on `created_at`, `(owner_id, created_at)`, `(event_name, created_at)`, a
 
 `page_view` events don't carry a `league_id` — most routes aren't unambiguously "about" one league from the URL alone, and a visitor's active league can change independent of which page they're on. League-level "activity" in Phase 1 (`GET /admin/leagues`) is therefore *approximated*: a league's activity is its own members' overall event volume, not exact per-event attribution. This is disclosed directly in the Leagues page UI, not hidden. Sharpening this (having every event report which league was active when it fired) is real, straightforward future work if it turns out to matter.
 
-## What Phase 1 actually ships
+## What's built
 
-- **Overview** (`/admin`) — Total Users, New Users, Active Users, Total Leagues, Active Leagues, Online Now (all real, all for the selected window), captioned with "Tracking since {date}" so a small number reads as "collection just started," not "nobody's here." Below the KPI row (2026-09 redesign, see "Overview redesign" further down): a real Activity Over Time chart, a Feature Usage donut, a cross-cutting Recent Activity feed, a System Health panel (DB pool, live WebSocket connections, scheduled-job freshness), and a rule-based Alerts panel.
-- **Users** (`/admin/users`) — server-side search (name/email/user ID) and filters (Active/Inactive/New/Commissioner/Multiple Leagues/No League — no Verified/Unverified filter, since this app has no email-verification concept at all; adding a fake one would be exactly the fabrication the original spec explicitly ruled out).
-- **User detail** (`/admin/users/[id]`) — account info, real league memberships, a real activity timeline built from `analytics_events`. Never renders `password_hash`, tokens, or push credentials (the backing query never even selects them — see `ADMIN_SECURITY.md`).
-- **Leagues** (`/admin/leagues`) — every league, member counts, an approximated activity signal (see above).
-- **League detail** (`/admin/leagues/[id]`) — members, roles, teams, per-member last-active and recent-event counts.
-- **Navigation** (`/admin/navigation`) — a real visual heat map over every route in the taxonomy, switchable across 7/30/90-day windows, plus a small Feature Usage table for the curated `feature` events.
+The nav groups every page under **Usage**, **People**, and **Health**. On a phone every section is visible at once (a wrapping grid, not a sideways-scrolling row), and Crashes, Errors, and Security carry red counts for the last 24 hours (`GET /admin/badges`).
 
-## What's explicitly NOT built yet, and why
+### Usage
+- **Overview** (`/admin`) — Total/New/Active Users, Total/Active Leagues, Online Now, captioned "Tracking since {date}". Activity Over Time chart, Feature Usage donut, Recent Activity feed, System Health (DB pool, WebSocket connections, scheduled-job freshness), and rule-based Alerts — which now also flag crashes, server errors, app errors, and 10+ failed sign-ins in the last 24 hours.
+- **Live** (`/admin/live`) — who has the app open right now and which page each person is on (live connection, or a page view in the last 5 minutes), plus a running feed of the latest 40 events. Refreshes every 10s while visible.
+- **Engagement** (`/admin/engagement`) — active people today / this week / this month, stickiness (average daily ÷ monthly), sessions, pages per session, typical session length; a DAU/WAU/MAU chart; a day × hour heat map of when the league is active; Day 1/7/30 retention (with how many people each rate is based on); weekly signup cohorts; an all-time signup funnel (signed up → linked to a team → used the app → came back another day → active this week); and a device/platform breakdown. Days are bucketed in America/Chicago; activity is counted per owner.
+- **Navigation** (`/admin/navigation`) — the page heat map, the most common page-to-page moves, where visits start, where they end (with bounces), and Feature Usage.
 
-| Feature | Why not Phase 1 |
+### People
+- **Users** / **User detail** and **Leagues** / **League detail** — unchanged; see `ADMIN_SECURITY.md` for what user detail never shows.
+
+### Health
+- **Crashes** (`/admin/crashes`) — pages that died while someone was looking at them (on iPhones, almost always the WebView killed for memory). Detected by `frontend/src/lib/crashReporter.ts`: each page load leaves a beacon in localStorage that's marked clean when the page is hidden or unloaded; a beacon that never got marked clean is reported on the next launch as an `app_crash` event. By page, by device (OS + screen size), and a recent list with the pages leading up to each crash.
+- **Errors** (`/admin/errors`) — JavaScript errors from users' devices (`frontend/src/lib/errorReporter.ts`: uncaught errors, unhandled promise rejections, and render errors caught by `app/error.tsx`) and backend errors (any unhandled exception, with traceback, or 5xx response). Grouped by fingerprint (the message with ids, numbers, and quoted values blanked, plus where it happened), so each bug is one row with occurrences, people affected, and first/last seen; "new" marks one first seen in the last 24 hours. Tapping one (`?fp=`) shows every recent occurrence with who hit it, their device, and the stack.
+- **Security** (`/admin/security`) — failed sign-ins (with the email tried), blocked (403) requests, rate-limited (429) requests, and bad or reused sign-in links; accounts targeted, busiest IPs, which endpoints turned requests away, and a recent list.
+- **Audit Log** (`/admin/audit`) — every successful change made through `/admin/*` (granting/revoking admin, deleting users or teams, syncs, playoff generation, lineup changes), who made it, and when. Read-only.
+
+## Push alerts
+
+Site admins (League #1's commissioner, or `users.is_admin`) get a push on every device they've registered, regardless of quiet hours (`admin_crash`/`admin_error`/`admin_security` are in `quiet_hours._ALWAYS_SEND`). Throttled so a bad game day is a few pings, not dozens — every event is still recorded (`app/notifications/admin_alerts.py`):
+
+| Alert | Fires when | Opens |
+|---|---|---|
+| 💥 App crash | The first crash on a page in an hour (the body says how many on that page today) | Admin > Crashes |
+| 🐞 New error / Error is back | The first occurrence of an error in 6 hours ("new" if it's never been seen) | That error's detail |
+| 🛡️ Sign-in attack? | One IP reaches 10 failed sign-ins in 15 minutes, or one account reaches 5 | Admin > Security |
+
+## Monitoring data
+
+Written by `backend/app/monitoring.py` — one outermost middleware plus two direct calls (`record_failed_login` in `POST /auth/login`, and `POST /admin/client-error` for browser errors). Every write runs in a background task and swallows its own failures, so monitoring can never slow down or break the request it watches. Requests from the backend test suite (host `test`) are skipped entirely, since that suite runs against production.
+
+| Table | What's in it |
 |---|---|
-| DAU/WAU/MAU **trend lines**, retention (Day 1/7/30) | Needs weeks of real history to mean anything — a trend line with three days of data is noise, and retention needs cohorts of users who signed up 7–30+ days ago. |
-| Error monitoring | Needs an actual error-logging pipeline — today, errors only go to Railway's stdout logs, nothing queryable. Real Phase 2 work, not a dashboard afterthought. |
-| Security monitoring (failed logins, permission-denial events) | Same — needs a new logging table and instrumentation at every auth boundary. Real Phase 2 work. |
-| Admin audit log | Needs its own table + instrumenting every admin action. Small, but not free — Phase 2. |
-| Role hierarchy (Owner/Admin/Support/Analyst/Moderator) | Explicitly deferred at the owner's own direction — one real admin exists today; `is_site_owner` is a clean, sufficient boundary until a second one is ever needed. |
-| Click-level tracking | Deliberately never planned as "track everything" — see `ANALYTICS_EVENTS.md`'s own note on why a raw click logger produces noise, not intelligence. |
-| Real-time live activity feed | Straightforward to add later (the presence WebSocket pattern already exists twice in this codebase — chat and draft); not in Phase 1's scope. |
-| Path/Sankey-style navigation diagrams | The heat map covers "what's used, how much" today; sequence/path visualization is a real, separate visualization effort for later. |
-| Funnels (registration, league creation, Gamecast) | Buildable once there's enough real event volume to make a funnel meaningful — the event taxonomy this needs already exists, this is a query + UI, not new infrastructure. |
+| `app_errors` | `source` (client/server), `fingerprint`, message, stack, route, method, status, owner/user, platform, OS, screen |
+| `security_events` | `kind` (login_failed / forbidden / rate_limited / invalid_token), user, email tried, IP, method, path, user agent |
+| `admin_audit_log` | actor, plain-English action (`monitoring.AUDIT_ACTION_LABELS`), method, path, target (path ids plus any `request.state.audit_detail`), status |
+
+The visitor's real IP and user agent reach the backend because the frontend's `/api/backend` proxy forwards `x-forwarded-for` and `user-agent`; `monitoring.client_ip` reads the first `x-forwarded-for` entry. New admin endpoints are audited automatically — add a label to `AUDIT_ACTION_LABELS` so the log reads well.
+
+Crashes are `app_crash` analytics events (`ANALYTICS_EVENTS.md`), not a table of their own — they ride `analytics_events` with no schema change and are excluded from Feature Usage.
+
+## Still not built
+
+| Feature | Why not yet |
+|---|---|
+| Role hierarchy (Owner/Admin/Support/Analyst/Moderator) | Deliberately deferred — `is_admin` is a sufficient boundary until more roles are actually needed. |
+| Click-level tracking | Deliberately never planned — see `ANALYTICS_EVENTS.md`. |
+| Marking an error or crash "resolved" | The lists sort by most recent, and a fixed bug simply stops appearing; worth adding if the lists get long. |
+| Data retention / pruning for the monitoring tables | Tiny at this league's size; add a scheduled prune if `app_errors` or `security_events` ever grow large. |
 | Offline/PWA event queuing | A real edge case at this league's size; not worth the complexity yet. |
 
 ## Extending the taxonomy

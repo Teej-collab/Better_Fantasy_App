@@ -20,6 +20,7 @@ import { eventLabel } from "@/lib/analyticsEvents";
 import { KpiCard } from "@/components/admin/KpiCard";
 import { LineChart } from "@/components/admin/LineChart";
 import { DonutChart } from "@/components/admin/DonutChart";
+import { AdminHealthStrip } from "@/components/admin/AdminHealthStrip";
 
 const ONLINE_POLL_INTERVAL_MS = 20 * 1000;
 const OVERVIEW_POLL_INTERVAL_MS = 60 * 1000;
@@ -131,6 +132,8 @@ export function AdminOverview({
 
   return (
     <div className="flex flex-col gap-6">
+      <AdminHealthStrip />
+
       <p className="text-xs text-black/50 dark:text-white/50">{sinceLabel(overview.tracking_started_at)}</p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -265,14 +268,6 @@ export function AdminOverview({
         </section>
       </div>
 
-      <section className={`${sectionClass} text-xs text-black/50 dark:text-white/50`}>
-        <p>
-          <strong className="text-black/70 dark:text-white/70">Not built yet:</strong> retention (Day 1/7/30) needs
-          cohorts of users who signed up weeks ago; error monitoring, security monitoring, and the admin audit log
-          each need their own logging pipeline, none of which exist yet. All real, planned next phases — see
-          ADMIN_DASHBOARD.md.
-        </p>
-      </section>
     </div>
   );
 }

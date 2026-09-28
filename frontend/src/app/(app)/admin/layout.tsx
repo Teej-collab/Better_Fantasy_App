@@ -46,7 +46,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     <div style={{ "--admin-accent": "#38bdf8" } as CSSProperties} className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold">Admin</h1>
-        <p className="text-sm text-black/50 dark:text-white/50">The control room — usage, users, and leagues.</p>
+        <p className="text-sm text-black/50 dark:text-white/50">The control room — usage, people, and app health.</p>
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
         <AdminNav />

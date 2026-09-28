@@ -237,3 +237,30 @@ def held_player_updates(payloads: list[dict]) -> dict:
     """Several injury/news pushes held through quiet hours, as one."""
     body = _preview(" · ".join(p["title"] for p in payloads))
     return _payload(f"🩹 {len(payloads)} player updates overnight", body, "/team", "player_news", "held-player-updates")
+
+
+# Admin-only app-health alerts (app/notifications/admin_alerts.py) —
+# sent to site admins, never to the league at large.
+
+
+def admin_crash_alert(name: str, route: str, os: str, screen: str, today: int) -> dict:
+    device = " ".join(p for p in (os, screen) if p) or "unknown device"
+    extra = f" · {today} on this page today" if today > 1 else ""
+    return _payload(
+        "💥 App crash", f"{name} on {route} ({device}){extra}", "/admin/crashes", "admin_crash",
+        tag=f"admin-crash-{route}",
+    )
+
+
+def admin_error_alert(source: str, message: str, route: str | None, *, is_new: bool, fingerprint: str) -> dict:
+    where = "Server" if source == "server" else "App"
+    label = "New error" if is_new else "Error is back"
+    place = f" on {route}" if route else ""
+    return _payload(
+        f"🐞 {label} ({where})", _preview(f"{message}{place}"), f"/admin/errors?fp={fingerprint}", "admin_error",
+        tag=f"admin-error-{fingerprint}",
+    )
+
+
+def admin_security_alert(body: str) -> dict:
+    return _payload("🛡️ Sign-in attack?", body, "/admin/security", "admin_security", tag="admin-security")

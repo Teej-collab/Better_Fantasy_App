@@ -46,7 +46,7 @@ function writeBeacons(beacons: Beacons): void {
   }
 }
 
-function osVersion(): string {
+export function osVersion(): string {
   const ua = navigator.userAgent;
   const ios = ua.match(/OS (\d+)_(\d+)/);
   if (/iPhone|iPad|iPod/.test(ua) && ios) return `iOS ${ios[1]}.${ios[2]}`;
@@ -57,7 +57,7 @@ function osVersion(): string {
 
 // Screen points + pixel ratio — the closest a web page can get to the
 // phone model (375x667@2 is an iPhone 6/7/8/SE, 414x896@2 an XR/11…).
-function screenSize(): string {
+export function screenSize(): string {
   return `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
 }
 

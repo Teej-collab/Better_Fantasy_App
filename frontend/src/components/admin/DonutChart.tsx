@@ -15,7 +15,7 @@ export function DonutChart({ slices, centerLabel }: { slices: DonutSlice[]; cent
   let offset = 0;
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       <svg viewBox="0 0 100 100" className="h-28 w-28 shrink-0 -rotate-90">
         <circle cx="50" cy="50" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.08" strokeWidth="14" />
         {total > 0 &&
@@ -39,7 +39,7 @@ export function DonutChart({ slices, centerLabel }: { slices: DonutSlice[]; cent
             return circle;
           })}
       </svg>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex min-w-[9rem] flex-1 flex-col gap-1">
         {centerLabel && <span className="text-xs text-black/50 dark:text-white/50">{centerLabel}</span>}
         {slices.length === 0 ? (
           <p className="text-sm text-black/50 dark:text-white/50">No data yet.</p>

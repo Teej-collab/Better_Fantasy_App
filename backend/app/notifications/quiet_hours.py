@@ -31,6 +31,11 @@ _ALWAYS_SEND = {
     "draft_live",
     "draft_on_the_clock",
     "keeper_deadline_approaching",
+    # Admin app-health alerts (admin_alerts.py) — a crash or attack
+    # doesn't wait for morning.
+    "admin_crash",
+    "admin_error",
+    "admin_security",
 }
 _HOLD_UNTIL_MORNING = {"injury_update", "player_news"}
 

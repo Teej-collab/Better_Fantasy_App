@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.auth.config import SessionConfig
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
+from app.monitoring import monitoring_middleware
 from app.routers import (
     admin,
     admin_lineup,
@@ -141,6 +142,11 @@ async def security_headers(request, call_next):
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
+
+# Registered last so it's the outermost middleware: it sees every
+# response (including the two middlewares above rejecting a request)
+# and every unhandled exception — see app/monitoring.py.
+app.middleware("http")(monitoring_middleware)
 
 app.include_router(admin.router)
 app.include_router(admin_lineup.router)

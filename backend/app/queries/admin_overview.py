@@ -161,4 +161,33 @@ async def get_alerts(conn) -> list[dict]:
             }
         )
 
+    # App health (app/monitoring.py, lib/crashReporter.ts) — the last
+    # 24 hours, so a problem stays on the Overview until it's quiet.
+    health = await conn.fetchrow(
+        """
+        SELECT
+            (SELECT count(*) FROM analytics_events
+             WHERE event_name = 'app_crash' AND created_at > now() - interval '24 hours') AS crashes,
+            (SELECT count(DISTINCT fingerprint) FROM app_errors
+             WHERE created_at > now() - interval '24 hours') AS error_kinds,
+            (SELECT count(*) FROM app_errors
+             WHERE source = 'server' AND created_at > now() - interval '24 hours') AS server_errors,
+            (SELECT count(*) FROM security_events
+             WHERE kind = 'login_failed' AND created_at > now() - interval '24 hours') AS failed_logins
+        """
+    )
+    if health["crashes"]:
+        n = health["crashes"]
+        alerts.append({"severity": "warning", "message": f"{n} app crash{'es' if n != 1 else ''} in the last 24 hours"})
+    if health["server_errors"]:
+        n = health["server_errors"]
+        alerts.append({"severity": "warning", "message": f"{n} server error{'s' if n != 1 else ''} in the last 24 hours"})
+    elif health["error_kinds"]:
+        n = health["error_kinds"]
+        alerts.append({"severity": "info", "message": f"{n} kind{'s' if n != 1 else ''} of app error in the last 24 hours"})
+    if health["failed_logins"] >= 10:
+        alerts.append(
+            {"severity": "warning", "message": f"{health['failed_logins']} failed sign-ins in the last 24 hours"}
+        )
+
     return alerts

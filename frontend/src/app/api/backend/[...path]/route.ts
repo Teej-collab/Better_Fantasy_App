@@ -38,6 +38,14 @@ async function proxy(request: NextRequest, path: string[]) {
   const contentType = request.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
   if (sessionCookie) headers["cookie"] = `session=${sessionCookie}`;
+  // The real visitor's IP and device, for Admin > Security and Errors
+  // (backend/app/monitoring.py's client_ip) — without these the backend
+  // only ever sees this server's own address and Node's user agent.
+  // Vercel sets x-forwarded-for itself from the actual connection.
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers["x-forwarded-for"] = forwardedFor;
+  const userAgent = request.headers.get("user-agent");
+  if (userAgent) headers["user-agent"] = userAgent;
 
   const res = await fetch(target, {
     method: request.method,
