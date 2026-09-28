@@ -256,6 +256,11 @@ function PlayerCell({
   // staying white either way. No real scoreboard data this week (bye,
   // fetch failure) reads the same as "hasn't started yet."
   const isLive = player.game_status === "in_progress";
+  // A player has no points_scored until they record a stat, but once
+  // their game has kicked off they're on the board at 0.0 — not still
+  // showing a projection as if they hadn't played yet.
+  const scored =
+    player.points_scored ?? (player.game_status === "in_progress" || player.game_status === "final" ? 0 : null);
 
   const nameSpan = (
     <>
@@ -286,13 +291,13 @@ function PlayerCell({
     <span className="flex shrink-0 flex-col items-end leading-tight">
       <span
         className={
-          player.points_scored != null
+          scored != null
             ? "text-sm font-semibold tabular-nums"
             : "text-sm tabular-nums text-black/50 dark:text-white/50"
         }
       >
-        {player.points_scored != null
-          ? player.points_scored.toFixed(1)
+        {scored != null
+          ? scored.toFixed(1)
           : player.points_projected != null
             ? player.points_projected.toFixed(1)
             : "—"}
@@ -300,14 +305,14 @@ function PlayerCell({
       {/* While their game is on, the smaller line is the live
           projection (moves with the game, ▲/▼ vs pregame); otherwise
           the fixed pregame projection, as before. */}
-      {player.points_scored != null && isLive && player.live_projected != null ? (
+      {scored != null && isLive && player.live_projected != null ? (
         <LiveProjectionValue
           live={player.live_projected}
           pregame={player.points_projected}
           className="text-[11px] text-black/50 dark:text-white/50"
         />
       ) : (
-        player.points_scored != null &&
+        scored != null &&
         player.points_projected != null && (
           <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
             {player.points_projected.toFixed(1)}

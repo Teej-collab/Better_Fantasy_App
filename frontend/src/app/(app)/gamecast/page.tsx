@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { getNflScoreboard, type NflGame } from "@/lib/api";
-import { TrackedGamecastLink } from "@/components/gamecast/TrackedGamecastLink";
+import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { findGamecastId, getLiveGames } from "@/lib/gamecastApi";
-import { KickoffTime } from "@/components/gamecast/KickoffTime";
 
 export const metadata: Metadata = { title: "Gamecast — Weekend League" };
 
@@ -62,79 +61,12 @@ export default async function GamecastHubPage() {
             <h2 className="font-display text-xl font-semibold tracking-wide uppercase">{group.title}</h2>
             <div className="flex flex-col gap-2">
               {group.games.map((game) => (
-                <GameRow key={game.id} game={game} />
+                <NflGameRow key={game.id} game={game} gamecastId={game.gamecastId} />
               ))}
             </div>
           </section>
         ))
       )}
     </div>
-  );
-}
-
-// ESPN's live shortDetail reads "8:42 - 2nd"; the broadcast-style
-// "Q2 8:42" is easier to scan. Anything else (Halftime, End of 3rd,
-// OT clocks) passes through unchanged.
-function formatLiveStatus(detail: string | null): string {
-  if (!detail) return "Live";
-  const match = detail.match(/^(\d{1,2}:\d{2}) - (\d)(?:st|nd|rd|th)$/);
-  return match ? `Q${match[2]} ${match[1]}` : detail;
-}
-
-function TeamLine({ abbr, score, showScore, dim }: { abbr: string; score: string | null; showScore: boolean; dim: boolean }) {
-  return (
-    <span className={`flex items-center gap-3 ${dim ? "text-black/45 dark:text-white/45" : ""}`}>
-      <span className="w-10 font-semibold">{abbr}</span>
-      {showScore && <span className="font-mono tabular-nums">{score ?? "0"}</span>}
-    </span>
-  );
-}
-
-function GameRow({ game }: { game: AnnotatedGame }) {
-  const live = game.state === "in";
-  const final = game.state === "post";
-  const awayScore = Number(game.away_score ?? 0);
-  const homeScore = Number(game.home_score ?? 0);
-
-  const content = (
-    <div className="wl-card flex items-center justify-between gap-3 px-4 py-3 text-sm">
-      <span className="flex min-w-0 flex-col gap-1">
-        <TeamLine abbr={game.away_team!} score={game.away_score} showScore={game.state !== "pre"} dim={final && awayScore < homeScore} />
-        <TeamLine abbr={game.home_team!} score={game.home_score} showScore={game.state !== "pre"} dim={final && homeScore < awayScore} />
-      </span>
-      <span className="flex shrink-0 flex-col items-end gap-1 text-right text-xs">
-        {live ? (
-          <span className="flex items-center gap-1.5 font-semibold" style={{ color: "var(--wl-live)" }}>
-            <span className="live-dot" aria-hidden />
-            {formatLiveStatus(game.status_detail)}
-          </span>
-        ) : final ? (
-          <span className="text-black/60 dark:text-white/60">{game.status_detail ?? "Final"}</span>
-        ) : (
-          <span className="text-black/60 dark:text-white/60">
-            <KickoffTime iso={game.date} fallback={game.status_detail ?? "Upcoming"} />
-          </span>
-        )}
-        {game.broadcast && <span className="text-black/45 dark:text-white/45">{game.broadcast}</span>}
-      </span>
-    </div>
-  );
-
-  // A game with no Gamecast match (no live provider coverage for it
-  // this week) still shows in the hub for a complete slate — it just
-  // isn't a link, same convention withGamecastLinks already uses for
-  // the ticker.
-  if (!game.gamecastId) {
-    return <div className="opacity-70">{content}</div>;
-  }
-
-  return (
-    <TrackedGamecastLink
-      gamecastId={game.gamecastId}
-      href={`/gamecast/${game.gamecastId}`}
-      className="block rounded-[0.875rem] transition-opacity hover:opacity-85 active:opacity-70"
-    >
-      {content}
-    </TrackedGamecastLink>
   );
 }

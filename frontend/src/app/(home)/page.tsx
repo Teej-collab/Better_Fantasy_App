@@ -43,6 +43,7 @@ import { ChugCountdownCard } from "@/components/ChugCountdownCard";
 import { ChugFeed } from "@/components/ChugFeed";
 import { DraftCountdownCard } from "@/components/DraftCountdownCard";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { HomePageBeta } from "@/components/HomePageBeta";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
@@ -881,12 +882,10 @@ export function AwardsPreview({ awards }: { awards: WeeklyAwards }) {
   );
 }
 
-// The homepage's "Live Now" card — every currently-live real NFL game,
-// as compact score chips, each linking into its own Gamecast when one
-// exists. Deliberately reuses nflGames/gamecastGames this page already
-// fetched for its own ticker (no new data source), and the same
-// findGamecastId join withGamecastLinks already relies on — this is
-// just that same join applied to a card instead of a ticker item.
+// The homepage's "Live Now" section — every currently-live real NFL
+// game, as the same cards the Gamecast hub shows, each linking into its
+// own Gamecast when one exists. Reuses nflGames/gamecastGames this page
+// already fetched for its own ticker (no new data source).
 function GamecastPreview({
   games,
   gamecastGames,
@@ -895,45 +894,11 @@ function GamecastPreview({
   gamecastGames: Awaited<ReturnType<typeof getLiveGames>>;
 }) {
   return (
-    <ul
-      className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-      style={panelGlowStyle(SECTION_COLORS.gamecast)}
-    >
-      {games.map((g) => {
-        const gamecastId = findGamecastId(g.home_team, g.away_team, gamecastGames);
-        const row = (
-          <>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className="live-dot" aria-hidden />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm">
-                  {g.away_team ?? "—"} @ {g.home_team ?? "—"}
-                </span>
-                <span className="truncate text-xs text-black/50 dark:text-white/50">{g.status_detail}</span>
-              </span>
-            </span>
-            <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
-              <span className="block">{g.home_score ?? "—"}</span>
-              <span className="block">{g.away_score ?? "—"}</span>
-            </span>
-          </>
-        );
-        return (
-          <li key={g.id}>
-            {gamecastId ? (
-              <Link
-                href={`/gamecast/${gamecastId}`}
-                className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
-              >
-                {row}
-              </Link>
-            ) : (
-              <span className="flex items-center justify-between gap-3 px-3 py-2 text-sm">{row}</span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {games.map((g) => (
+        <NflGameRow key={g.id} game={g} gamecastId={findGamecastId(g.home_team, g.away_team, gamecastGames)} />
+      ))}
+    </div>
   );
 }
 

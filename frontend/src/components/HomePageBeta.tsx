@@ -20,6 +20,7 @@ import { MovementBadge } from "@/components/MovementBadge";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
 import { YourWeekCard } from "@/components/YourWeekCard";
@@ -142,33 +143,14 @@ export function HomePageBeta({
       {draftCountdownOrChugCard}
 
       {liveNflGames.length > 0 && (
-        <FlatSectionCard title="Live Now" href="/gamecast" live>
-          {liveNflGames.map((g) => {
-            const gamecastId = findGamecastId(g.home_team, g.away_team, gamecastGames);
-            const row = (
-              <>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="live-dot" aria-hidden />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm">
-                      {g.away_team ?? "—"} @ {g.home_team ?? "—"}
-                    </span>
-                    <span className="truncate text-xs text-black/50 dark:text-white/50">{g.status_detail}</span>
-                  </span>
-                </span>
-                <span className="shrink-0 text-right tabular-nums text-black/70 dark:text-white/70">
-                  <span className="block">{g.home_score ?? "—"}</span>
-                  <span className="block">{g.away_score ?? "—"}</span>
-                </span>
-              </>
-            );
-            return (
-              <FlatRow key={g.id} href={gamecastId ? `/gamecast/${gamecastId}` : undefined}>
-                {row}
-              </FlatRow>
-            );
-          })}
-        </FlatSectionCard>
+        <section className="flex flex-col gap-2">
+          <SectionHeaderBeta title="Live Now" href="/gamecast" />
+          <div className="flex flex-col gap-2">
+            {liveNflGames.map((g) => (
+              <NflGameRow key={g.id} game={g} gamecastId={findGamecastId(g.home_team, g.away_team, gamecastGames)} />
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Above Standings — real, but only shows up once a week's games
