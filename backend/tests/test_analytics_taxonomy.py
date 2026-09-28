@@ -66,3 +66,19 @@ def test_validate_event_rejects_an_invalid_platform():
 
 def test_validate_event_allows_null_device_and_platform():
     assert taxonomy.validate_event("nav_home", "page_view", {}, None, None) is None
+
+
+def test_validate_event_accepts_a_crash_report_with_its_metadata():
+    metadata = {
+        "trail": "/ › /matchups/12",
+        "uptime_s": 340,
+        "silent_s": 12,
+        "os": "iOS 16.7",
+        "screen": "375x667@2",
+        "native": True,
+    }
+    assert taxonomy.validate_event(taxonomy.CRASH_EVENT_NAME, "feature", metadata, "mobile", "ios") is None
+
+
+def test_validate_event_rejects_a_crash_report_with_an_unexpected_key():
+    assert taxonomy.validate_event(taxonomy.CRASH_EVENT_NAME, "feature", {"user_agent": "x"}, None, None) is not None

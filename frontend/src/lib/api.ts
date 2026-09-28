@@ -2541,6 +2541,30 @@ export type NavigationHeatmap = { window_days: number; total_views: number; rout
 export type FeatureUsageRow = { event_name: string; uses: number; unique_owners: number };
 export type FeatureUsage = { window_days: number; features: FeatureUsageRow[] };
 
+// App crashes reported by lib/crashReporter.ts (GET /admin/crashes).
+export type CrashReport = {
+  created_at: string;
+  route: string | null;
+  platform: string | null;
+  display_name: string | null;
+  metadata: {
+    trail?: string;
+    uptime_s?: number;
+    silent_s?: number;
+    os?: string;
+    screen?: string;
+    native?: boolean;
+  };
+};
+export type CrashReports = {
+  window_days: number;
+  crashes: number;
+  affected_owners: number;
+  by_route: { route: string; crashes: number; affected_owners: number }[];
+  by_device: { os: string; screen: string; crashes: number; affected_owners: number }[];
+  recent: CrashReport[];
+};
+
 // Daily signups/events/active-owners, zero-filled for every day in the
 // window (see app/queries/admin_overview.py's get_timeseries — real,
 // genuinely sparse infrastructure today, not a fabricated trend line).
@@ -2650,6 +2674,13 @@ export async function getFeatureUsageServer(
   return getServerOrNull<FeatureUsage>(`/admin/features?days=${days}`, sessionCookie);
 }
 
+export async function getCrashReportsServer(
+  sessionCookie: string | undefined,
+  days = 30
+): Promise<CrashReports | null> {
+  return getServerOrNull<CrashReports>(`/admin/crashes?days=${days}`, sessionCookie);
+}
+
 export async function getAdminTimeseriesServer(
   sessionCookie: string | undefined,
   days = 30
@@ -2726,6 +2757,10 @@ export function getNavigationHeatmap(days = 30): Promise<NavigationHeatmap> {
 
 export function getFeatureUsage(days = 30): Promise<FeatureUsage> {
   return _adminGet(`/admin/features?days=${days}`);
+}
+
+export function getCrashReports(days = 30): Promise<CrashReports> {
+  return _adminGet(`/admin/crashes?days=${days}`);
 }
 
 export function getAdminTimeseries(days = 30): Promise<AdminTimeseries> {

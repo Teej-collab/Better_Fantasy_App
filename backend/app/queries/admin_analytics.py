@@ -9,6 +9,7 @@ validated against before ever reaching record_event.
 """
 import json
 
+from app.analytics import taxonomy
 from app.chat.manager import manager as chat_manager
 
 
@@ -96,10 +97,74 @@ async def get_feature_usage(conn, days: int) -> list[dict]:
         """
         SELECT event_name, count(*) AS uses, count(DISTINCT owner_id) AS unique_owners
         FROM analytics_events
-        WHERE event_type = 'feature' AND created_at >= now() - ($1 || ' days')::interval
+        WHERE event_type = 'feature' AND event_name <> $2
+          AND created_at >= now() - ($1 || ' days')::interval
         GROUP BY event_name
         ORDER BY uses DESC
         """,
         str(days),
+        taxonomy.CRASH_EVENT_NAME,
     )
     return [dict(r) for r in rows]
+
+
+async def get_crash_reports(conn, days: int, limit: int = 50) -> dict:
+    """App crashes (taxonomy.CRASH_EVENT_NAME) over the trailing `days`
+    window: totals, which pages they happen on, which OS/screen sizes,
+    and the most recent individual reports with who hit them."""
+    window = str(days)
+    totals = await conn.fetchrow(
+        """
+        SELECT count(*) AS crashes, count(DISTINCT owner_id) AS affected_owners
+        FROM analytics_events
+        WHERE event_name = $2 AND created_at >= now() - ($1 || ' days')::interval
+        """,
+        window, taxonomy.CRASH_EVENT_NAME,
+    )
+    by_route = await conn.fetch(
+        """
+        SELECT coalesce(route, 'unknown') AS route, count(*) AS crashes,
+               count(DISTINCT owner_id) AS affected_owners
+        FROM analytics_events
+        WHERE event_name = $2 AND created_at >= now() - ($1 || ' days')::interval
+        GROUP BY 1
+        ORDER BY crashes DESC
+        LIMIT 25
+        """,
+        window, taxonomy.CRASH_EVENT_NAME,
+    )
+    by_device = await conn.fetch(
+        """
+        SELECT coalesce(metadata->>'os', 'unknown') AS os,
+               coalesce(metadata->>'screen', 'unknown') AS screen,
+               count(*) AS crashes, count(DISTINCT owner_id) AS affected_owners
+        FROM analytics_events
+        WHERE event_name = $2 AND created_at >= now() - ($1 || ' days')::interval
+        GROUP BY 1, 2
+        ORDER BY crashes DESC
+        LIMIT 25
+        """,
+        window, taxonomy.CRASH_EVENT_NAME,
+    )
+    recent = await conn.fetch(
+        """
+        SELECT e.created_at, e.route, e.platform, e.metadata, o.display_name
+        FROM analytics_events e
+        LEFT JOIN owners o ON o.owner_id = e.owner_id
+        WHERE e.event_name = $2 AND e.created_at >= now() - ($1 || ' days')::interval
+        ORDER BY e.created_at DESC
+        LIMIT $3
+        """,
+        window, taxonomy.CRASH_EVENT_NAME, limit,
+    )
+    return {
+        "window_days": days,
+        "crashes": totals["crashes"],
+        "affected_owners": totals["affected_owners"],
+        "by_route": [dict(r) for r in by_route],
+        "by_device": [dict(r) for r in by_device],
+        "recent": [
+            {**dict(r), "metadata": json.loads(r["metadata"]) if isinstance(r["metadata"], str) else r["metadata"]}
+            for r in recent
+        ],
+    }

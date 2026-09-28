@@ -8,12 +8,13 @@ const SECTIONS = [
   { href: "/admin/users", label: "Users", icon: "◐" },
   { href: "/admin/leagues", label: "Leagues", icon: "◆" },
   { href: "/admin/navigation", label: "Navigation", icon: "◉" },
+  { href: "/admin/crashes", label: "Crashes", icon: "◬" },
 ] as const;
 
 // One markup tree for both breakpoints, same approach AccountMenu.tsx
 // uses — a persistent left sidebar at sm: and up, a horizontal
 // scrollable pill row on mobile (simpler and more robust here than a
-// drawer/bottom-sheet: this is a 4-item list, not deep enough to need
+// drawer/bottom-sheet: this is a 5-item list, not deep enough to need
 // one). usePathname() decides "active" directly rather than each page
 // passing it in — unlike LeagueSubNav.tsx's per-page pattern, every
 // admin page already renders through this one shared layout

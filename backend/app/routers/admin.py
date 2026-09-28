@@ -410,6 +410,18 @@ async def get_feature_usage(request: Request, days: int = 30):
     return {"window_days": days, "features": features}
 
 
+@router.get("/crashes")
+async def get_crash_reports(request: Request, days: int = 30):
+    """App crashes reported by frontend/src/lib/crashReporter.ts — see
+    taxonomy.CRASH_EVENT_NAME for what counts as one."""
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_analytics.get_crash_reports(conn, days)
+
+
 @router.get("/timeseries")
 async def get_timeseries(request: Request, days: int = 30):
     """Daily signups/events/active-owners for the Overview page's

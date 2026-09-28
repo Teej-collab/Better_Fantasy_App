@@ -56,6 +56,7 @@ One per route prefix, matched longest-prefix-first:
 |---|---|---|
 | `league_switched` | `to_league_id: number` | An owner switches their active league (`/leagues`' "Switch to this league") |
 | `gamecast_game_selected` | `game_id: string` | A visitor taps into a specific game from the Gamecast hub |
+| `app_crash` | `trail, uptime_s, silent_s, os, screen, native` | Sent on the next launch after a page died while on screen (lib/crashReporter.ts). Not a product interaction — excluded from Feature Usage and shown on Admin > Crashes instead |
 
 Each event's metadata is an **allowlist**, not a schema hint — `POST /admin/track` rejects the whole event if `metadata` contains a key not listed for that `event_name`, even alongside valid keys.
 

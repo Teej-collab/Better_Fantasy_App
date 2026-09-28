@@ -15,6 +15,7 @@ import { CinematicHoneycombBackground } from "@/components/CinematicHoneycombBac
 import { NativePushRegistration } from "@/components/NativePushRegistration";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageViewTracker } from "@/components/PageViewTracker";
+import { CrashReporter } from "@/components/CrashReporter";
 import { PresenceProvider } from "@/components/PresenceProvider";
 import { PlayerCardProvider } from "@/components/players/PlayerCardProvider";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
@@ -241,6 +242,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="cosmic-ambient" aria-hidden />
         <OfflineBanner />
         <PageViewTracker />
+        <CrashReporter />
         <PresenceProvider>
           <PlayerCardProvider>{children}</PlayerCardProvider>
         </PresenceProvider>

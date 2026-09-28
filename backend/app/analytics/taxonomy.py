@@ -100,7 +100,20 @@ def classify_route(path: str) -> str:
 FEATURE_EVENTS: dict[str, set[str]] = {
     "league_switched": {"to_league_id"},
     "gamecast_game_selected": {"game_id"},
+    "app_crash": {"trail", "uptime_s", "silent_s", "os", "screen", "native"},
 }
+
+# app_crash rides the feature event type only so it needs no schema
+# change (analytics_events.event_type has a DB CHECK) — it isn't a
+# product interaction, so admin_analytics.get_feature_usage leaves it
+# out and GET /admin/crashes reports it instead. Sent by frontend/src/
+# lib/crashReporter.ts on the launch AFTER a page died without ever
+# being hidden or unloaded — on iOS, almost always the WebView being
+# killed for using too much memory. The row's `route` is the page that
+# died; metadata carries the few routes before it, how long that page
+# had been open, and OS/screen size (the closest a web page can get to
+# the phone model).
+CRASH_EVENT_NAME = "app_crash"
 
 # Screen-view names for a genuinely native (non-WebView) screen that
 # has no URL route to auto-classify from the way NAV_EVENT_NAMES above
