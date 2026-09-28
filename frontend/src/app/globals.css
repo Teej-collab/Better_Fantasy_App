@@ -363,13 +363,22 @@ body {
    conic-gradient below — same visual result (still a smooth-
    interpolated rotating ring, still per-panel since --ring-color and
    sizing stay local to each element), one shared timeline instead of
-   N independent ones. See the animation moved onto :root below. */
+   N independent ones.
+
+   Moved back off :root (2026-09 memory-crash pass): animating an
+   inherited property on the root element re-resolves the style of
+   every element on the page, every frame, forever — and since the
+   2026-09-12 flat-card decision hid .neon-panel::before, the only
+   reader left is .wl-card--featured, which nothing renders today. So
+   that whole-document churn was driving nothing visible. The ring now
+   animates on the one element that draws it, costing zero when none
+   are on screen. */
 @property --panel-border-angle {
   syntax: "<angle>";
   inherits: true;
   initial-value: 0deg;
 }
-:root {
+.wl-card--featured::before {
   animation: panel-border-rotate 5s linear infinite;
 }
 @keyframes panel-border-rotate {
@@ -377,7 +386,7 @@ body {
     --panel-border-angle: 360deg;
   }
 }
-.motion-reduced {
+.motion-reduced .wl-card--featured::before {
   animation: none;
 }
 /* MobileNavDrawer.tsx's slide/fade and hamburger-to-X morph — Settings
@@ -396,7 +405,7 @@ body {
   transition: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  .wl-card--featured::before {
     animation: none;
   }
 }
@@ -1175,20 +1184,12 @@ body {
 }
 
 /* Settings > Appearance > Background — the breathing honeycomb behind
-   every page (CinematicHoneycombBackground.tsx has the layer rundown).
-   The hex tile is one pointy-top honeycomb repeat (√3·r × 3r) drawn as
-   a mask, not a background image: the lines' color is just the
-   layer's background-color, so --honeycomb-color (the owner's pick,
-   set on <html> by layout.tsx) re-tints it instantly. Two wide, faint
-   strokes under the 1px line fake the soft glow without a blur filter
-   — blur would cost a full-screen filter pass and seam at tile edges.
-   Hex size tracks the viewport's long side, clamped, so it's never
-   dense on a phone or huge on a tablet/desktop. --wl-glow-scale (Neon
+   every page. The cells themselves are drawn on a canvas by
+   CinematicHoneycombBackground.tsx (each one breathes on its own, which
+   CSS can't do per cell); this is just the black base, the layer
+   stacking, and the barely-there depth scale. --wl-glow-scale (Neon
    Intensity) can soften it but never brighten it past the default. */
 .hc-bg {
-  --hc-color: var(--honeycomb-color, #dc143c);
-  --hc-r: clamp(22px, 3vmax, 44px);
-  --hc-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 173.205 300' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23fff' stroke-linejoin='round'%3E%3Cpath d='M86.6 0V50L173.2 100V200L86.6 250V300M86.6 250L0 200V100L86.6 50' stroke-width='16' stroke-opacity='.05'/%3E%3Cpath d='M86.6 0V50L173.2 100V200L86.6 250V300M86.6 250L0 200V100L86.6 50' stroke-width='7' stroke-opacity='.12'/%3E%3Cpath d='M86.6 0V50L173.2 100V200L86.6 250V300M86.6 250L0 200V100L86.6 50' stroke-width='2.6'/%3E%3C/g%3E%3C/svg%3E");
   position: fixed;
   inset: 0;
   z-index: -10;
@@ -1202,81 +1203,11 @@ html[data-honeycomb="off"] .hc-bg {
 .hc-surface {
   position: absolute;
   inset: -3%;
+  width: 106%;
+  height: 106%;
   transform-origin: var(--hc-x, 50%) var(--hc-y, 40%);
   opacity: calc(var(--hc-intensity, 1) * clamp(0.5, var(--wl-glow-scale, 1), 1));
   animation: hc-depth var(--hc-duration, 6s) ease-in-out infinite;
-  will-change: transform;
-}
-.hc-layer {
-  position: absolute;
-  inset: 0;
-  background-color: var(--hc-color);
-  -webkit-mask-image: var(--hc-tile), var(--hc-shape);
-  mask-image: var(--hc-tile), var(--hc-shape);
-  -webkit-mask-size: calc(var(--hc-r) * 1.7320508) calc(var(--hc-r) * 3), 100% 100%;
-  mask-size: calc(var(--hc-r) * 1.7320508) calc(var(--hc-r) * 3), 100% 100%;
-  -webkit-mask-repeat: repeat, no-repeat;
-  mask-repeat: repeat, no-repeat;
-  -webkit-mask-position: var(--hc-x, 50%) var(--hc-y, 40%), 0 0;
-  mask-position: var(--hc-x, 50%) var(--hc-y, 40%), 0 0;
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-/* The floor the breath never drops below — a vignette that's strongest
-   at the focal point and gone by the corners. */
-.hc-layer--base {
-  --hc-shape: radial-gradient(
-    ellipse 70% 60% at var(--hc-x, 50%) var(--hc-y, 40%),
-    #000 0%,
-    rgba(0, 0, 0, 0.55) 40%,
-    rgba(0, 0, 0, 0.18) 70%,
-    transparent 100%
-  );
-  opacity: 0.16;
-}
-.hc-layer--wave-inner,
-.hc-layer--wave-outer {
-  opacity: 0;
-  animation: var(--hc-duration, 6s) ease-in-out infinite;
-  will-change: opacity;
-}
-.hc-layer--wave-inner {
-  --hc-shape: radial-gradient(
-    ellipse 48% 40% at var(--hc-x, 50%) var(--hc-y, 40%),
-    #000 0%,
-    rgba(0, 0, 0, 0.6) 45%,
-    transparent 100%
-  );
-  animation-name: hc-breathe-inner;
-}
-.hc-layer--wave-outer {
-  --hc-shape: radial-gradient(
-    ellipse 85% 72% at var(--hc-x, 50%) var(--hc-y, 40%),
-    transparent 22%,
-    rgba(0, 0, 0, 0.5) 50%,
-    rgba(0, 0, 0, 0.15) 78%,
-    transparent 100%
-  );
-  animation-name: hc-breathe-outer;
-  animation-delay: 1s;
-}
-@keyframes hc-breathe-inner {
-  0%,
-  100% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-@keyframes hc-breathe-outer {
-  0%,
-  100% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.16;
-  }
 }
 @keyframes hc-depth {
   0%,
@@ -1287,36 +1218,12 @@ html[data-honeycomb="off"] .hc-bg {
     transform: scale(1.015);
   }
 }
-/* Reduced motion (the component's animated={false}, Settings >
-   Appearance > Animations, or the OS setting): hold a mid-breath still
-   frame so the design stays intact, just without movement. */
-.hc-bg--static .hc-surface,
 .motion-reduced .hc-surface {
   animation: none;
-  will-change: auto;
-}
-.hc-bg--static .hc-layer--wave-inner,
-.motion-reduced .hc-layer--wave-inner {
-  animation: none;
-  opacity: 0.15;
-}
-.hc-bg--static .hc-layer--wave-outer,
-.motion-reduced .hc-layer--wave-outer {
-  animation: none;
-  opacity: 0.08;
 }
 @media (prefers-reduced-motion: reduce) {
   .hc-surface {
     animation: none;
-    will-change: auto;
-  }
-  .hc-layer--wave-inner {
-    animation: none;
-    opacity: 0.15;
-  }
-  .hc-layer--wave-outer {
-    animation: none;
-    opacity: 0.08;
   }
 }
 
