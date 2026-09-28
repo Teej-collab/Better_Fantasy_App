@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import { getCurrentWeek, getMatchup, getMe, getWeekMatchupContext, resolveWeek } from "@/lib/api";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
-import { BackButton } from "@/components/BackButton";
 import { MatchupWeekBrowser } from "@/components/matchups/MatchupWeekBrowser";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
 
@@ -67,13 +66,6 @@ export default async function MatchupPage({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The dedicated /seasons/[season]/weeks/[week] list page this used
-          to fall back to is gone (2026-09-15) — Standings' own
-          Scoreboard tab (WeekScoreboardBrowser.tsx) is the real "browse
-          any week's matchups" destination now, and it isn't scoped to
-          one specific week the way that route was, so this just goes
-          home instead when there's no real back-history to use. */}
-      <BackButton fallbackHref="/" label="Home" />
       <MatchupWeekBrowser
         season={matchup.season}
         initialWeek={matchup.week}
