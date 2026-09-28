@@ -28,13 +28,13 @@ export function MatchupSwitcher({
             type="button"
             onClick={() => onSelect(i)}
             aria-current={active}
-            className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium tabular-nums transition-colors ${
+            className={`flex shrink-0 items-center gap-2.5 rounded-full border px-4 py-2 text-sm font-semibold tabular-nums transition-colors ${
               active
                 ? "border-black/30 bg-black/5 dark:border-white/40 dark:bg-white/10"
                 : "border-transparent bg-black/[0.03] text-black/60 hover:bg-black/5 dark:bg-white/[0.04] dark:text-white/60 dark:hover:bg-white/10"
             }`}
           >
-            <TeamLogo side={m.home} size={20} />
+            <TeamLogo side={m.home} size={28} />
             {active ? (
               <span className="text-black/40 dark:text-white/40">vs</span>
             ) : (
@@ -42,7 +42,7 @@ export function MatchupSwitcher({
                 {(m.home.score ?? 0).toFixed(0)}-{(m.away.score ?? 0).toFixed(0)}
               </span>
             )}
-            <TeamLogo side={m.away} size={20} />
+            <TeamLogo side={m.away} size={28} />
           </button>
         );
       })}

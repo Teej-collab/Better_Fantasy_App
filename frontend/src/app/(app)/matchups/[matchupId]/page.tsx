@@ -66,7 +66,7 @@ export default async function MatchupPage({
   const weekMatchups = weekMatchupsRaw.map((m) => orientMatchupForViewer(m, me.owner_id));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-1.5">
       {/* The dedicated /seasons/[season]/weeks/[week] list page this used
           to fall back to is gone (2026-09-15) — Standings' own
           Scoreboard tab (WeekScoreboardBrowser.tsx) is the real "browse

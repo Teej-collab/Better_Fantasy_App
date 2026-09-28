@@ -68,7 +68,7 @@ export function MatchupWeekBrowser({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       {/* One pill-shaped week stepper instead of a big heading with faint
           arrows off to the side — the arrows sit inside the pill as real
           buttons so it reads at a glance as "tap to change weeks." */}
