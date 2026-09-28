@@ -23,7 +23,7 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
+      <div className="wl-card rounded-lg p-4">
         {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
             {matchup.is_game_of_the_week && <GameOfWeekBadge />}
