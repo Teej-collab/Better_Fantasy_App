@@ -25,6 +25,15 @@ function rateTone(rate: number | null): "good" | "warn" | "bad" | "default" {
   return "bad";
 }
 
+// Stickiness runs much lower than retention for a healthy app — around
+// 20% is typical and 50%+ exceptional — so it gets its own scale.
+function stickinessTone(rate: number | null): "good" | "warn" | "bad" | "default" {
+  if (rate === null) return "default";
+  if (rate >= 0.4) return "good";
+  if (rate >= 0.2) return "warn";
+  return "bad";
+}
+
 export function AdminEngagement({ initial }: { initial: AdminEngagementData }) {
   const [data, setData] = useState(initial);
   const [loading, setLoading] = useState(false);
@@ -58,8 +67,8 @@ export function AdminEngagement({ initial }: { initial: AdminEngagementData }) {
         <StatTile
           label="Stickiness"
           value={pct(s.stickiness)}
-          hint={`avg ${s.avg_dau} a day of ${s.mau}`}
-          tone={rateTone(s.stickiness)}
+          hint={`${s.avg_dau} of ${s.mau} people open it on a typical day`}
+          tone={stickinessTone(s.stickiness)}
         />
         <StatTile label="Sessions" value={s.sessions.toLocaleString()} hint={`last ${data.window_days} days`} />
         <StatTile label="Pages / session" value={s.avg_pages_per_session} />
