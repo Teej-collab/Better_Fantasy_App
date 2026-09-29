@@ -613,3 +613,34 @@ async def test_get_game_stats_returns_both_players_and_team_dst(monkeypatch):
     result = await espn_public.get_game_stats("401873286")
     assert "players" in result and "team_dst" in result
     assert result["team_dst"]["HOU"]["def_sack"] == 2
+
+
+def test_points_allowed_excludes_the_opponents_defensive_touchdowns():
+    """Real week 3 miss (LAR @ DEN, event 401872962): DEN won 30-26 with
+    a 66-yard pick-six. ESPN charges the Rams D/ST 24 points allowed —
+    the 6 for the touchdown their offense threw away comes off, the
+    extra point after it doesn't — so 18-27, not 28-34."""
+    summary = {
+        "header": {"competitions": [{"competitors": [
+            {"team": {"id": "7", "abbreviation": "DEN"}, "homeAway": "home", "score": "30"},
+            {"team": {"id": "14", "abbreviation": "LAR"}, "homeAway": "away", "score": "26"},
+        ]}]},
+        "boxscore": {"teams": [], "players": []},
+        "drives": {"previous": [{"team": {"abbreviation": "LAR"}, "plays": [
+            {
+                "type": {"text": "Interception Return Touchdown"},
+                "text": "M.Stafford pass INTERCEPTED by T.Hufanga, 66 yd return, TOUCHDOWN.",
+                "scoringPlay": True,
+                "isTurnover": True,
+                "end": {"team": {"id": "7"}},
+            },
+            # An ordinary offensive TD by DEN stays fully on the Rams' tab.
+            {"type": {"text": "Rushing Touchdown"}, "scoringPlay": True, "isTurnover": False,
+             "end": {"team": {"id": "7"}}},
+        ]}]},
+    }
+    lines = espn_public.parse_team_dst_stats(summary)
+    assert "pts_allow_18_27" in lines["LAR"]
+    assert "pts_allow_28_34" not in lines["LAR"]
+    # DEN's own points allowed (LAR's 26) is untouched.
+    assert "pts_allow_18_27" in lines["DEN"]

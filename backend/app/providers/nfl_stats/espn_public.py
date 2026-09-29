@@ -378,6 +378,34 @@ def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     return counts
 
 
+def _parse_defensive_tds_by_team(data: dict) -> dict[str, int]:
+    """{team_abbreviation: touchdowns this team scored on DEFENSE} — a
+    scoring play that's also a turnover (an interception or fumble
+    returned for a score), credited to the team holding the ball at the
+    end of it. Keyed off isTurnover rather than ESPN's play-type text,
+    which isn't consistent: a strip-sack returned for a TD is tagged
+    "Sack Opp Fumble Recovery" (TB @ CIN, PIT @ NE 2026), a pick-six
+    "Interception Return Touchdown".
+
+    Real report/fix, 2026-09-29: LAR @ DEN week 3 (event 401872962)
+    ended 30-26 DEN with a Hufanga 66-yard pick-six. ESPN lists the Rams
+    D/ST at 24 points allowed — 30 minus the 6 for that touchdown (the
+    extra point after it still counts) — so 18-27 (0), where this app
+    had 28-34 (-1). A punt/kick return TD or a safety is not a turnover,
+    so it stays on the D/ST's tab, as ESPN also scores it."""
+    team_abbr_by_id = _team_abbr_by_id(data)
+    counts: dict[str, int] = {}
+    for drive in data.get("drives", {}).get("previous", []):
+        for play in drive.get("plays", []):
+            if not (play.get("scoringPlay") and play.get("isTurnover")):
+                continue
+            scoring_team_id = play.get("end", {}).get("team", {}).get("id")
+            abbr = team_abbr_by_id.get(str(scoring_team_id)) if scoring_team_id else None
+            if abbr:
+                counts[abbr] = counts.get(abbr, 0) + 1
+    return counts
+
+
 _POINTS_ALLOWED_TIERS: list[tuple[int | None, str]] = [
     (0, "pts_allow_0"), (6, "pts_allow_1_6"), (13, "pts_allow_7_13"), (17, "pts_allow_14_17"),
     (27, "pts_allow_18_27"), (34, "pts_allow_28_34"), (45, "pts_allow_35_45"), (None, "pts_allow_46_plus"),
@@ -511,13 +539,20 @@ def parse_team_dst_stats(data: dict) -> dict[str, dict]:
     team_abbrs = set(scores) | set(yards)
     stat_lines: dict[str, dict] = {abbr: {} for abbr in team_abbrs}
 
+    defensive_tds = _parse_defensive_tds_by_team(data)
+
     for abbr in team_abbrs:
         opponents = [a for a in team_abbrs if a != abbr]
         if len(opponents) != 1:
             continue  # not a normal 2-team game read — skip tiering rather than guess
         opponent = opponents[0]
         if opponent in scores:
-            stat_lines[abbr][_tier_category(scores[opponent], _POINTS_ALLOWED_TIERS)] = 1
+            # A D/ST isn't charged for touchdowns its own offense handed
+            # over — the opponent's pick-sixes and fumble-return TDs come
+            # off its points allowed, 6 each; the extra point after still
+            # counts, matching ESPN (see _parse_defensive_tds_by_team).
+            points_allowed = max(0, scores[opponent] - 6 * defensive_tds.get(opponent, 0))
+            stat_lines[abbr][_tier_category(points_allowed, _POINTS_ALLOWED_TIERS)] = 1
         if opponent in yards:
             stat_lines[abbr][_tier_category(yards[opponent], _YARDS_ALLOWED_TIERS)] = 1
 
