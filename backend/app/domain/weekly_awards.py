@@ -196,17 +196,28 @@ async def get_clutch_choke_status_by_team(conn, season: int, week: int, league_i
 
 async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, league_id: int = DEFAULT_LEAGUE_ID):
     if await uses_in_app_rosters(conn, season):
+        # Booms: the starters who beat their projection by the most, not
+        # only rh.is_boom rows. is_boom needs +20 over projection
+        # (app/domain/boom_bust.py), which most weeks nobody clears —
+        # week 3 2026's best was Gibbs at +16.05, so Boom of the Week
+        # silently vanished (2026-09 report). The leader board should
+        # always name someone; the is_boom tag keeps its stricter bar.
+        # Players with no projection are left out — there's nothing to
+        # have beaten.
         booms = await conn.fetch(
             """
             SELECT p.full_name AS player_name, pws.fantasy_points AS points_scored, tbs.team_name
             FROM roster_history rh
             JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
             JOIN teams_by_season tbs ON rh.team_id = tbs.id
-            LEFT JOIN player_week_stats pws
+            JOIN player_week_stats pws
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
                 AND pws.league_id = tbs.league_id
-            WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4 AND rh.is_boom = TRUE
-            ORDER BY pws.fantasy_points DESC LIMIT $3
+            WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4
+              AND rh.lineup_slot NOT IN ('BE', 'IR')
+              AND rh.points_projected > 0
+              AND pws.fantasy_points > rh.points_projected
+            ORDER BY pws.fantasy_points - rh.points_projected DESC LIMIT $3
             """,
             season, week, limit, league_id,
         )
