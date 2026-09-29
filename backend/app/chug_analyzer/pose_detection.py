@@ -16,7 +16,15 @@ import os
 import cv2
 import mediapipe as mp
 
-from app.chug_analyzer.contact import CONTACT_RATIO, contact_ratio, longest_contact_episode, wrist_relative_to_mouth
+from app.chug_analyzer.contact import (
+    CONTACT_RATIO,
+    choose_chug_episode,
+    contact_ratio,
+    drinking_side,
+    longest_contact_episode,
+    pose_wrist_relative_to_mouth,
+    wrist_relative_to_mouth,
+)
 
 
 def _log(msg: str) -> None:
@@ -128,6 +136,9 @@ def detect_can_to_mouth(video_path: str):
     # hand and face actually count as touching.
     hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.3, min_tracking_confidence=0.3)
     face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    # The primary chug signal now — see contact.py's drinking_side for
+    # why (keeps tracking when face mesh loses a tipped-back head).
+    pose = mp.solutions.pose.Pose(model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
 
     analysis_path, temp_path = _normalize_orientation(video_path)
     try:
@@ -170,6 +181,10 @@ def detect_can_to_mouth(video_path: str):
         frames_with_face = 0
         frames_with_both = 0
         min_ratio_seen = None
+        pose_frames = []
+        pose_wrist_by_frame = {}
+        frames_with_pose = 0
+        face_frames = []
 
         while True:
             ret, frame = cap.read()
@@ -179,11 +194,23 @@ def detect_can_to_mouth(video_path: str):
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_results = hands.process(frame_rgb)
             face_results = face_mesh.process(frame_rgb)
+            pose_results = pose.process(frame_rgb)
+
+            if pose_results.pose_landmarks:
+                frames_with_pose += 1
+                pose_px = [(p.x * width, p.y * height, p.visibility) for p in pose_results.pose_landmarks.landmark]
+                side = drinking_side(pose_px)
+                if side is not None:
+                    pose_frames.append(frame_number)
+                    pose_wrist_by_frame[frame_number] = (
+                        pose_wrist_relative_to_mouth(pose_px, side), "Left" if side == 0 else "Right",
+                    )
 
             if hand_results.multi_hand_landmarks:
                 frames_with_hand += 1
             if face_results.multi_face_landmarks:
                 frames_with_face += 1
+                face_frames.append(frame_number)
 
             if hand_results.multi_hand_landmarks and face_results.multi_face_landmarks:
                 frames_with_both += 1
@@ -206,9 +233,24 @@ def detect_can_to_mouth(video_path: str):
             frame_number += 1
 
         cap.release()
-        episode = longest_contact_episode(contact_frames, fps)
+        # Offline tuning aid: CHUG_DEBUG_DUMP=<path> writes the raw
+        # per-frame signals so episode rules can be tried against labeled
+        # videos without re-running mediapipe.
+        if os.getenv("CHUG_DEBUG_DUMP"):
+            import json
+            with open(os.environ["CHUG_DEBUG_DUMP"], "w") as f:
+                json.dump({"fps": fps, "frames": frame_number, "pose": pose_frames,
+                           "contact": contact_frames, "face": face_frames}, f)
+        # Pose, hand-at-mouth contact and the face being covered each
+        # propose chug frames; see contact.choose_chug_episode for how
+        # they're combined (and why none of them is enough alone).
+        chosen = choose_chug_episode(pose_frames, contact_frames, face_frames, frame_number, fps)
+        episode, source = (chosen[:2], chosen[2]) if chosen else (None, None)
+        contact_episode = longest_contact_episode(contact_frames, fps)
         _log(
-            f"frames_read={frame_number}, contact={episode is not None}, episode={episode}, fps={fps}, "
+            f"frames_read={frame_number}, contact={episode is not None}, episode={episode}, source={source}, "
+            f"fps={fps}, contact_episode={contact_episode}, "
+            f"frames_with_pose={frames_with_pose}, pose_frames={len(pose_frames)}, "
             f"frames_with_hand={frames_with_hand}, frames_with_face={frames_with_face}, "
             f"frames_with_both={frames_with_both}, contact_frames={len(contact_frames)}, "
             f"min_ratio_seen={min_ratio_seen}, contact_ratio={CONTACT_RATIO}"
@@ -229,6 +271,15 @@ def detect_can_to_mouth(video_path: str):
         for f in contact_frames
         if start_frame <= f <= end_frame
     ]
+    # Face mesh missed most of the chug (the case pose exists for) — the
+    # hand/face track is too thin to judge smoothness, so use pose's own.
+    episode_frames = end_frame - start_frame + 1
+    if len(wrist_track) < episode_frames / 3:
+        wrist_track = [
+            {"frame": f, "rel": pose_wrist_by_frame[f][0], "hand": pose_wrist_by_frame[f][1]}
+            for f in pose_frames
+            if start_frame <= f <= end_frame
+        ]
     return {
         "contact": True,
         "start_frame": start_frame,

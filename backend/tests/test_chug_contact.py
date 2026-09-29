@@ -114,3 +114,89 @@ def test_smoothness_scale():
     assert score_smoothness(0.125) == 5.0
     assert score_smoothness(0.20) == 0.0
     assert score_smoothness(0.5) == 0.0
+
+
+# ---- pose-based detection ----------------------------------------------------
+from app.chug_analyzer.contact import choose_chug_episode, drinking_side, smooth_frames
+
+
+def _pose(wrist_r=(360, 300), elbow_r=(420, 480), wrist_l=(200, 1000), elbow_l=(200, 800)):
+    """33 pose landmarks (x, y, visibility) with shoulders 300px apart at
+    y=560 and the mouth at y=440 — IMG_1527's real proportions."""
+    pts = [(0.0, 0.0, 1.0)] * 33
+    pts[9], pts[10] = (340, 440, 1.0), (380, 440, 1.0)
+    pts[11], pts[12] = (510, 560, 1.0), (210, 560, 1.0)
+    pts[13], pts[14] = (*elbow_l, 1.0), (*elbow_r, 1.0)
+    pts[15], pts[16] = (*wrist_l, 1.0), (*wrist_r, 1.0)
+    return pts
+
+
+def test_drinking_side_wrist_up_and_elbow_up():
+    assert drinking_side(_pose()) == 1
+
+
+def test_pouring_is_not_drinking_elbow_down():
+    # Wrist near mouth height while pouring, but the elbow hangs low.
+    assert drinking_side(_pose(wrist_r=(360, 520), elbow_r=(420, 800))) is None
+
+
+def test_empty_glass_raised_overhead_is_not_drinking():
+    # Arm still up, but the wrist has left the mouth (>1 shoulder width).
+    assert drinking_side(_pose(wrist_r=(360, 60))) is None
+
+
+def test_invisible_wrist_is_ignored():
+    pts = _pose()
+    pts[16] = (360, 300, 0.1)
+    assert drinking_side(pts) is None
+
+
+FPS = 30
+ALL_FACE = list(range(0, 900))  # face visible the whole clip unless a test removes it
+
+
+def _without(frames, start, end):
+    return [f for f in frames if not start <= f <= end]
+
+
+def test_smoothing_drops_a_brief_pass_but_keeps_short_dropouts():
+    chug = [f for f in range(100, 400) if not 200 <= f < 206]  # 6-frame tracker dropout mid-chug
+    stray = [420, 421]  # arm passing the mouth on the way down
+    smoothed = smooth_frames(chug + stray, fps=FPS)
+    assert 420 not in smoothed
+    assert smoothed[0] == 100 and smoothed[-1] == 399
+
+
+def test_pose_chug_confirmed_by_contact_uses_pose_boundaries():
+    pose = list(range(300, 600))
+    contact = list(range(290, 330)) + list(range(600, 660))  # contact lingers after (wiping the mouth)
+    assert choose_chug_episode(pose, contact, ALL_FACE, 900, FPS) == (300, 599, "pose")
+
+
+def test_unconfirmed_pose_stretch_is_not_a_chug():
+    # 526: a can held high to pour looks like drinking to pose, but no hand
+    # at the mouth and the face never covered.
+    pour = list(range(100, 280))
+    chug = list(range(500, 650))
+    contact = list(range(500, 650))
+    assert choose_chug_episode(pour, contact, ALL_FACE, 900, FPS)[:2] == (500, 649)
+    assert choose_chug_episode(pour, [], ALL_FACE, 900, FPS) is None
+
+
+def test_face_covered_by_the_glass_is_a_chug():
+    # 619: pose never fired, contact only 0.7s — but the glass covered the
+    # face for 4s with the face visible either side.
+    face = _without(ALL_FACE, 400, 520)
+    contact = list(range(395, 416))
+    start, end, _ = choose_chug_episode([], contact, face, 900, FPS)
+    assert (start, end) == (395, 520)
+
+
+def test_face_lost_at_the_clip_edge_or_too_long_is_not_a_chug():
+    assert choose_chug_episode([], [], _without(ALL_FACE, 0, 200), 900, FPS) is None  # clip starts off-face
+    assert choose_chug_episode([], [], _without(ALL_FACE, 100, 500), 900, FPS) is None  # 13s away
+
+
+def test_too_short_is_not_a_chug():
+    # Niko's old "0.70s": a brief hand-at-mouth moment on its own.
+    assert choose_chug_episode([], list(range(100, 121)), ALL_FACE, 900, FPS) is None
