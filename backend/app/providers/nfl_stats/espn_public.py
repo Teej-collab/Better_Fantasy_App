@@ -326,6 +326,20 @@ def _parse_def_block_by_team(data: dict) -> dict[str, int]:
     return counts
 
 
+# Every ESPN play-type tag confirmed to mean "this team recovered the
+# OTHER team's fumble." A strip-sack gets its own tag instead of the
+# generic one — real report/fix, 2026-09-29: Detroit's week 1 strip-sack
+# of Tyler Shough (NO @ DET, event 401872923 — McCreary forced it,
+# Wonnum recovered) is tagged "Sack Opp Fumble Recovery" (abbreviation
+# SFOP, isTurnover=True), so Detroit's D/ST was 2 points short. Only
+# tags seen in a real game belong here — see this file's "safer to
+# undercount than guess" rule.
+_OPPONENT_FUMBLE_RECOVERY_TYPES = frozenset({
+    "Fumble Recovery (Opponent)",
+    "Sack Opp Fumble Recovery",
+})
+
+
 def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     """{team_abbreviation: count of genuine defensive fumble recoveries}
     this game — i.e. recovering the OPPONENT's fumble (a real takeaway),
@@ -353,7 +367,7 @@ def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     counts: dict[str, int] = {}
     for drive in data.get("drives", {}).get("previous", []):
         for play in drive.get("plays", []):
-            if play.get("type", {}).get("text") != "Fumble Recovery (Opponent)":
+            if play.get("type", {}).get("text") not in _OPPONENT_FUMBLE_RECOVERY_TYPES:
                 continue
             recovering_team_id = play.get("end", {}).get("team", {}).get("id")
             abbr = team_abbr_by_id.get(str(recovering_team_id)) if recovering_team_id else None

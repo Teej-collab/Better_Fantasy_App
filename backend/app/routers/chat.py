@@ -33,6 +33,7 @@ from app.notifications import dispatcher, formatter
 from app.providers import giphy
 from app.queries import chat as chat_queries
 from app.queries import owner_preferences as preferences_queries
+from app.queries import watch_party as watch_party_queries
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -63,6 +64,37 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
+async def _require_participant(conn, payload: dict, conversation_id: int, owner_id: int) -> None:
+    """403 unless this owner can read `conversation_id`.
+
+    One exception is granted on the spot: the league's open Watch Party
+    room, whose chat access is otherwise only added lazily by the room's
+    token endpoint (see watch_party_queries.ensure_conversation_participant).
+    ChatApp loads the room's messages the moment the room opens — in
+    parallel with that token call, not after it — so a first-time
+    opener's messages fetch could land before their participant row
+    existed and 403. Real crash report, 2026-09-28 (Ian, /chat, iOS).
+    Open-room eligibility is just active league membership (see
+    watch_party router's _room_if_accessible), so granting it here is the
+    same rule, applied at whichever request arrives first."""
+    if await chat_queries.is_participant(conn, conversation_id, owner_id):
+        return
+    try:
+        league_id = await require_active_league_id(conn, payload)
+    except HTTPException:
+        league_id = None
+    if league_id is not None:
+        open_room = await watch_party_queries.get_open_room(conn, league_id)
+        if (
+            open_room is not None
+            and open_room["closed_at"] is None
+            and open_room["conversation_id"] == conversation_id
+        ):
+            await watch_party_queries.ensure_conversation_participant(conn, conversation_id, owner_id)
+            return
+    raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+
 @router.get("/conversations")
 async def list_conversations(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
@@ -81,8 +113,7 @@ async def get_messages(
     payload = _require_session(request)
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
-        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
-            raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+        await _require_participant(conn, payload, conversation_id, owner_id)
         messages = await chat_domain.get_conversation_messages(conn, conversation_id, before, limit, owner_id)
     return {"messages": messages}
 
@@ -96,8 +127,7 @@ async def get_conversation_members(conversation_id: int, request: Request, pool=
     payload = _require_session(request)
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
-        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
-            raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+        await _require_participant(conn, payload, conversation_id, owner_id)
         members = await chat_queries.list_all_conversation_participants(conn, conversation_id)
     return {"members": members}
 
@@ -164,8 +194,7 @@ async def mark_conversation_read(conversation_id: int, request: Request, pool=De
     payload = _require_session(request)
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
-        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
-            raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+        await _require_participant(conn, payload, conversation_id, owner_id)
         latest_id = await chat_queries.get_latest_message_id(conn, conversation_id)
         if latest_id is not None:
             # last_read_message_id itself always updates, regardless of

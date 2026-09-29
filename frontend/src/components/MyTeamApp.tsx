@@ -17,6 +17,7 @@ import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
+import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 import { positionColor } from "@/lib/positionColors";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { InGameInjuryTag, LiveProjectionValue } from "@/components/matchups/liveProjection";
@@ -483,6 +484,17 @@ export function MyTeamApp({
       if (id !== null) clearInterval(id);
     };
   }, [isGameDay, team?.is_editable]);
+
+  // Pull-to-refresh / live game-day ticks. team is local state seeded
+  // once from initialTeam, so the fresh roster router.refresh() hands
+  // down as a new prop was never read — the "refresh felt cosmetic"
+  // report (2026-09). Re-pulls whichever week is on screen: the live
+  // week when editable, otherwise the past/future week being viewed.
+  useOnAppRefresh(() =>
+    getMyTeam(team?.is_editable === false && team.week !== null ? team.week : undefined)
+      .then(setTeam)
+      .catch(() => {})
+  );
 
   function goToWeek(week: number) {
     setWeekLoading(true);

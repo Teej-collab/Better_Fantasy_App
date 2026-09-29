@@ -1651,20 +1651,23 @@ html[data-honeycomb="off"] .hc-bg {
 .live-ticker-track {
   display: flex;
   width: max-content;
-  /* Slowed down from an original 32s — the ticker now regularly carries
-     a full ~16-game NFL slate (plus league items on the homepage), and
-     32s no longer gave each item enough time to actually read. */
-  animation: live-ticker-scroll 68s linear infinite;
+  /* Off-day speed. Slowed down from an original 32s — the ticker now
+     regularly carries a full ~16-game NFL slate (plus league items on
+     the homepage), and 32s no longer gave each item enough time to
+     actually read. 68s was fine during live games but still felt a
+     touch quick when nothing's happening, so the idle ticker gets a
+     slower 90s and 68s is now the live speed (--fast below). */
+  animation: live-ticker-scroll 90s linear infinite;
   /* Runs the entire time this bar is on screen — force GPU layer
      promotion up front instead of leaving it to browser heuristics. */
   will-change: transform;
 }
-/* Faster during Game Day — "the ticker becomes more active" — but still
-   slower than the old baseline speed, same reasoning as above. 34s read
-   as too quick once there's a real live slate of items scrolling by, so
-   this only trims the baseline by about a third rather than halving it. */
+/* Faster during Game Day — "the ticker becomes more active". 46s read as
+   too quick with a real live slate scrolling by (2026-09 feedback), so
+   live now runs at the old 68s default and only the idle speed above
+   slowed down. */
 .live-ticker-track--fast {
-  animation-duration: 46s;
+  animation-duration: 68s;
 }
 .live-ticker-track:hover {
   animation-play-state: paused;

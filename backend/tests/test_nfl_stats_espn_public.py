@@ -250,6 +250,37 @@ def test_parse_team_dst_stats_fum_rec_only_counts_a_real_opponent_takeaway():
     assert stat_lines["LV"].get("def_fum_rec", 0) == 0
 
 
+def test_parse_team_dst_stats_fum_rec_counts_a_strip_sack_recovery():
+    """Real week 1 miss (NO @ DET, event 401872923): ESPN tags a
+    strip-sack recovered by the defense "Sack Opp Fumble Recovery", not
+    "Fumble Recovery (Opponent)", so Detroit's recovery went uncounted.
+    A "Fumble Recovery (Own)" by the offense still counts for no one."""
+    summary = {
+        "header": {"competitions": [{"competitors": [
+            {"team": {"id": "8", "abbreviation": "DET"}, "homeAway": "home", "score": "0"},
+            {"team": {"id": "18", "abbreviation": "NO"}, "homeAway": "away", "score": "0"},
+        ]}]},
+        "boxscore": {"teams": [], "players": []},
+        "drives": {"previous": [{"plays": [
+            {
+                "type": {"id": "80", "text": "Sack Opp Fumble Recovery", "abbreviation": "SFOP"},
+                "text": "T.Shough sacked at NO 23 for -8 yards (R.McCreary). FUMBLES (R.McCreary), "
+                        "RECOVERED by DET-D.Wonnum at NO 25.",
+                "isTurnover": True,
+                "end": {"team": {"id": "8"}},
+            },
+            {
+                "type": {"id": "9", "text": "Fumble Recovery (Own)"},
+                "text": "T.Shough FUMBLES (Aborted) at NO 21, recovered by NO-T.Etienne at NO 23.",
+                "isTurnover": False,
+                "end": {"team": {"id": "18"}},
+            },
+        ]}]},
+    }
+    counts = espn_public._parse_def_fum_rec_by_team(summary)
+    assert counts == {"DET": 1}
+
+
 def test_parse_team_dst_stats_return_td_credits_the_team_too():
     # LV's kick returner scored a return TD — this league's own scoring
     # credits both the individual returner (ret_td) and the team D/ST

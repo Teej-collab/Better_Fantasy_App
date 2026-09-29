@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getFantasyImpact, type GamecastFantasyImpact, type GamecastImpactPlayer } from "@/lib/gamecastApi";
 import type { LiveGame } from "@/lib/gamecastApi";
 import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
+import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
 const POLL_MS = 15000;
@@ -68,6 +69,14 @@ export function FantasyImpact({
       if (id) clearInterval(id);
     };
   }, [game.game_id, game.status]);
+
+  useOnAppRefresh(() =>
+    getFantasyImpact(game.game_id)
+      .then((impact) => {
+        if (impact) setData(impact);
+      })
+      .catch(() => {})
+  );
 
   return (
     <div

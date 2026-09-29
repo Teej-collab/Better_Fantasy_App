@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
 import { WeekScoreboardList } from "@/components/matchups/WeekScoreboardList";
+import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 
 // Real ESPN League > Scoreboard tab (reference video, 2026-09-15): a
 // single week's matchups with ‹ / › arrows to page to any other week
@@ -50,6 +51,14 @@ export function WeekScoreboardBrowser({
       }
     });
   }
+
+  // Same in-place refresh as MatchupWeekBrowser — keeps the scores
+  // already showing if the background refetch fails.
+  useOnAppRefresh(() =>
+    getWeekMatchupContextClient(season, week)
+      .then(({ matchups: next }) => setMatchups(next))
+      .catch(() => {})
+  );
 
   function goTo(nextWeek: number) {
     if (nextWeek < 1 || nextWeek > MAX_WEEK || nextWeek === week) return;

@@ -630,24 +630,22 @@ export default async function HomePage() {
             <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
               The Weekend Live
             </span>
+            {leagueTickerItems.length > 0 && activeLeagueName && (
+              <span className="truncate text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                · {activeLeagueName}
+              </span>
+            )}
             {isGameDay && (
               <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
                 Game Day
               </span>
             )}
           </div>
-          <div className="mt-2 flex flex-col gap-2">
+          {/* League name lives in the label row above, not wedged between
+              the two strips — keeps them stacked tight like AppTickerBar. */}
+          <div className="mt-2 flex flex-col gap-1.5">
             <LiveTicker items={tickerItems} fast={isGameDay} />
-            {leagueTickerItems.length > 0 && (
-              <div className="flex flex-col gap-1">
-                {activeLeagueName && (
-                  <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-                    {activeLeagueName}
-                  </span>
-                )}
-                <LiveTicker items={leagueTickerItems} fast={isGameDay} />
-              </div>
-            )}
+            {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
           </div>
         </div>
 

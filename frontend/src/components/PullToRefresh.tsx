@@ -6,6 +6,8 @@ import { useRefreshApplicationData } from "@/lib/usePullToRefresh";
 const PULL_THRESHOLD_PX = 70; // distance to pull before "release to refresh"
 const MAX_PULL_PX = 110; // the indicator caps out here regardless of how far the finger travels
 const RESISTANCE = 0.5; // pulled distance grows slower than the raw finger movement, like iOS's own overscroll
+const MIN_SPINNER_MS = 600; // a near-instant refresh still shows the spinner long enough to register
+const MAX_SPINNER_MS = 10_000; // gives up waiting on a hung refetch rather than spinning forever
 
 type PullState = "idle" | "pulling" | "ready" | "refreshing";
 
@@ -50,11 +52,16 @@ function findScrollableAncestor(node: EventTarget | null, stopAt: HTMLElement | 
 
 export function PullToRefresh({ children }: { children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const refresh = useRefreshApplicationData();
+  const { refresh, isPending } = useRefreshApplicationData();
   const refreshRef = useRef(refresh);
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
+  // The spinner retires only once all three are true: client refetches
+  // settled, the server re-render (isPending) finished, and a short
+  // minimum has passed so a fast refresh still reads as one.
+  const [clientDone, setClientDone] = useState(true);
+  const [minElapsed, setMinElapsed] = useState(true);
 
   const [pullState, setPullState] = useState<PullState>("idle");
   const [pullDistance, setPullDistance] = useState(0);
@@ -115,15 +122,10 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
         pullStateRef.current = "refreshing";
         setPullState("refreshing");
         setPullDistance(PULL_THRESHOLD_PX);
-        refreshRef.current();
-        // router.refresh() doesn't expose a promise/completion signal of
-        // its own, so this is just a reasonable minimum-visible duration
-        // for the spinner before retiring the pull indicator.
-        setTimeout(() => {
-          pullStateRef.current = "idle";
-          setPullState("idle");
-          setPullDistance(0);
-        }, 900);
+        setClientDone(false);
+        setMinElapsed(false);
+        refreshRef.current().finally(() => setClientDone(true));
+        setTimeout(() => setMinElapsed(true), MIN_SPINNER_MS);
       } else {
         pullStateRef.current = "idle";
         setPullState("idle");
@@ -142,6 +144,28 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
       el.removeEventListener("touchcancel", onTouchEnd);
     };
   }, []);
+
+  useEffect(() => {
+    if (pullState !== "refreshing" || !clientDone || !minElapsed || isPending) return;
+    pullStateRef.current = "idle";
+    // Deferred a tick, same lint-satisfying pattern as MyTeamApp's mount
+    // effect — no synchronous setState in an effect body.
+    const id = setTimeout(() => {
+      setPullState("idle");
+      setPullDistance(0);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [pullState, clientDone, minElapsed, isPending]);
+
+  // Safety net: never leave the spinner stuck if a refetch hangs.
+  useEffect(() => {
+    if (pullState !== "refreshing") return;
+    const id = setTimeout(() => {
+      setClientDone(true);
+      setMinElapsed(true);
+    }, MAX_SPINNER_MS);
+    return () => clearTimeout(id);
+  }, [pullState]);
 
   return (
     <div ref={containerRef}>

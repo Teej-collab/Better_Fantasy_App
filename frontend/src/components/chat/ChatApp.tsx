@@ -198,7 +198,17 @@ export function ChatApp({
   }, []);
 
   const loadConversationMessages = useCallback(async (conversationId: number) => {
-    const page = await getChatConversationMessages(conversationId);
+    // Every caller fires this without awaiting it, so a rejection here
+    // was an unhandled promise the crash reporter logged as an app
+    // error (2026-09-28: a 403 opening a Watch Party room's chat). A
+    // failed load just leaves the thread unloaded — it isn't added to
+    // loadedConversations, so opening it again retries.
+    let page: ChatMessage[];
+    try {
+      page = await getChatConversationMessages(conversationId);
+    } catch {
+      return;
+    }
     setMessagesByConversation((prev) => ({ ...prev, [conversationId]: page }));
     setHasMoreByConversation((prev) => ({ ...prev, [conversationId]: page.length >= PAGE_SIZE }));
     loadedConversations.current.add(conversationId);
@@ -493,7 +503,8 @@ export function ChatApp({
     if (selectedId === null) return;
     const current = messagesByConversation[selectedId] ?? [];
     if (current.length === 0) return;
-    const page = await getChatConversationMessages(selectedId, { before: current[0].id });
+    const page = await getChatConversationMessages(selectedId, { before: current[0].id }).catch(() => null);
+    if (!page) return;
     setMessagesByConversation((prev) => ({ ...prev, [selectedId]: [...page, ...current] }));
     setHasMoreByConversation((prev) => ({ ...prev, [selectedId]: page.length >= PAGE_SIZE }));
   }

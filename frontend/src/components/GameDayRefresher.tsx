@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { dispatchAppRefresh } from "@/lib/usePullToRefresh";
 
 // The NFL ticker's scores come from a direct, uncached fetch to ESPN's
 // public scoreboard on every request (app/providers/nfl_scoreboard.py),
 // not from the backend's own live-sync scheduler — so there's no
 // scheduler cadence to match here. Lined up with the live ticker's own
-// scroll duration instead (.live-ticker-track--fast, globals.css,
-// 46s) — close enough that a full lap of the ticker is a fresh lap.
+// scroll duration instead (.live-ticker-track--fast, globals.css) —
+// roughly one fresh set of scores per lap of the ticker.
 const REFRESH_INTERVAL_MS = 45 * 1000;
 
 /**
@@ -16,6 +17,10 @@ const REFRESH_INTERVAL_MS = 45 * 1000;
  * isNflGameLive, lib/api.ts), and just calls router.refresh() on an
  * interval so the server-rendered data (scores, ticker, win
  * probability) actually updates without the user having to reload.
+ * Also fires the app-refresh event (usePullToRefresh.ts) so client
+ * components holding their own copy of live data — matchup scores, the
+ * standings scoreboard — refetch on the same beat instead of sitting
+ * frozen at whatever the page first rendered.
  * Outside a live game this component isn't rendered at all, so there's
  * no background polling the rest of the time.
  *
@@ -31,11 +36,16 @@ export function GameDayRefresher() {
   useEffect(() => {
     let id: ReturnType<typeof setInterval> | null = null;
 
+    function refresh() {
+      router.refresh();
+      void dispatchAppRefresh();
+    }
+
     function startOrStop() {
       if (document.visibilityState === "visible") {
         if (id === null) {
-          router.refresh();
-          id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
+          refresh();
+          id = setInterval(refresh, REFRESH_INTERVAL_MS);
         }
       } else if (id !== null) {
         clearInterval(id);

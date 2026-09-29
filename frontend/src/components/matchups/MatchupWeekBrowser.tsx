@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
 import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
+import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 
 // Same 1-17 range and ‹ / › paging as Standings' Scoreboard tab
 // (WeekScoreboardBrowser.tsx), but on the matchup screen itself: paging
@@ -60,6 +61,17 @@ export function MatchupWeekBrowser({
       }
     });
   }
+
+  // Pull-to-refresh / live game-day ticks: re-pull the week on screen in
+  // place. matchups is local state seeded once from initialMatchups, so
+  // without this a live score here never moved after first render. A
+  // failed background refresh keeps the scores already showing rather
+  // than blanking them into an error.
+  useOnAppRefresh(() =>
+    getWeekMatchupContextClient(season, week)
+      .then(({ matchups: raw }) => setMatchups(raw.map((m) => orientMatchupForViewer(m, myOwnerId))))
+      .catch(() => {})
+  );
 
   function goTo(nextWeek: number) {
     if (nextWeek < 1 || nextWeek > MAX_WEEK || nextWeek === week || isPending) return;
