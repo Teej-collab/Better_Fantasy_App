@@ -615,6 +615,7 @@ export function MyTeamApp({
           beta={beta}
           rows={[...starters, ...bench, ...ir].map((e) => ({
             id: e.player_id,
+            position: e.position,
             cell: (
               <span className="flex items-center gap-2">
                 <span className="w-12 shrink-0 rounded-full bg-black/10 py-0.5 text-center text-[10px] font-semibold dark:bg-white/10">

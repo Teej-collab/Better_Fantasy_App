@@ -41,3 +41,9 @@ def test_projection_ratio_without_attempts():
 def test_rank_within_position_ignores_missing_values():
     ranks = _rank_within_position({"a": ("QB", 20.0), "b": ("QB", 25.0), "c": ("RB", 5.0), "d": ("QB", None)})
     assert ranks == {"b": 1, "a": 2, "c": 1}
+
+
+def test_projected_field_goals_sum_the_distance_buckets():
+    # Sleeper's season projections carry no fgm total, only buckets.
+    assert _stat_values({"fgm_30_39": 9, "fgm_40_49": 8, "fgm_50p": 4, "xpm": 42})["fg"] == "21"
+    assert _stat_values({"fgm": 27, "fga": 34})["fg"] == "27/34"

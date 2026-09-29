@@ -209,6 +209,9 @@ _GROUP_COLUMNS: dict[str, list[dict]] = {
 _GROUP_LABELS = {"passing": "Passing", "rushing": "Rushing", "receiving": "Receiving", "kicking": "Kicking", "defense": "Defense"}
 
 
+_FG_MADE_BUCKETS = {"fgm_0_19", "fgm_20_29", "fgm_30_39", "fgm_40_49", "fgm_50p"}
+
+
 def _stat_values(stats: dict) -> dict:
     """Sleeper stat dict -> the raw column values above."""
     def ratio(made, att):
@@ -225,7 +228,12 @@ def _stat_values(stats: dict) -> dict:
                     "rec_td", "rec_tgt", "sack", "int", "fum_rec", "pts_allow")
     }
     values["pass_ca"] = ratio("pass_cmp", "pass_att")
-    values["fg"] = ratio("fgm", "fga")
+    if stats.get("fgm") is None and any(k.startswith("fgm_") and k[4].isdigit() for k in stats):
+        # Season projections only carry makes by distance bucket.
+        made = sum(v for k, v in stats.items() if k in _FG_MADE_BUCKETS)
+        values["fg"] = f"{int(made)}"
+    else:
+        values["fg"] = ratio("fgm", "fga")
     values["xp"] = ratio("xpm", "xpa")
     values["def_td"] = (stats.get("def_td") or 0) + (stats.get("def_st_td") or 0) if stats else None
     return values
@@ -425,21 +433,23 @@ async def _stats_view(conn, view, players, season, league_id, rules) -> dict:
         }
 
     groups = _stat_groups({r["position"] for r in players.values()})
-    columns: list[dict] = []
-    for group in groups:
-        columns += [{**c, "group": _GROUP_LABELS[group]} for c in _GROUP_COLUMNS[group]]
-    columns += [
+    # Fantasy points first: the number people are looking for shouldn't
+    # sit past a sideways scroll (2026-09 report: "most data is missing").
+    columns: list[dict] = [
         {"key": "fpts", "label": "FPTS", "format": "number1", "group": "Fantasy"},
         {"key": "avg", "label": "AVG", "format": "number1", "group": "Fantasy"},
     ]
+    for group in groups:
+        columns += [{**c, "group": _GROUP_LABELS[group]} for c in _GROUP_COLUMNS[group]]
 
     out = {}
     for pid, r in players.items():
         stats = source.get(pid) or {}
         row = _stat_values(stats) if stats else {}
         fpts = league_totals.get(pid) if view == "stats_2026" else league_points(stats, r["position"], rules)
-        # Season projections carry no games-played; assume a full season.
-        games = stats.get("gp") or (_SEASON_GAMES if view == "proj_2026" and stats else None)
+        # Season projections' games-played is missing or meaningless (a
+        # D/ST's reads 1), so a projected average is over a full season.
+        games = _SEASON_GAMES if view == "proj_2026" and stats else (stats.get("gp") or None)
         row["fpts"] = round(fpts, 1) if fpts is not None else None
         row["avg"] = round(fpts / games, 1) if fpts is not None and games else None
         out[pid] = row

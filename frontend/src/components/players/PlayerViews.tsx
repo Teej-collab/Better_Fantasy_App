@@ -116,16 +116,63 @@ export function PlayerViewsPill({ view, onChange }: { view: PlayerViewKey; onCha
 
 export type PlayerViewRow = {
   id: string;
+  // Fantasy position (QB/RB/WR/TE/K/DEF) — splits the stat views into
+  // per-position sections.
+  position: string;
   // The fixed left column's content — name/team/etc. plus whatever the
   // list puts in front of it (an Add button, a slot pill).
   cell: ReactNode;
 };
 
+// The season stat views get one section per position family, each with
+// only its own columns — one mixed table carried Passing, Rushing,
+// Receiving, Kicking and Defense columns for every row, so a phone
+// showed QBs' passing numbers and "-" for everyone else, with their
+// real stats scrolled out of sight (2026-09 report: "most data is
+// missing").
+const STAT_VIEWS = new Set<PlayerViewKey>(["proj_2026", "stats_2026", "stats_2025"]);
+const POSITION_FAMILIES: { label: string; positions: string[] }[] = [
+  { label: "Quarterbacks", positions: ["QB"] },
+  { label: "RB / WR / TE", positions: ["RB", "WR", "TE"] },
+  { label: "Kickers", positions: ["K"] },
+  { label: "D/ST", positions: ["DEF"] },
+];
+
+export function PlayerViewTable({
+  view,
+  rows,
+  beta = false,
+}: {
+  view: Exclude<PlayerViewKey, "matchup">;
+  rows: PlayerViewRow[];
+  beta?: boolean;
+}) {
+  if (!STAT_VIEWS.has(view)) return <ViewSection view={view} rows={rows} beta={beta} />;
+  const sections = POSITION_FAMILIES.map((family) => ({
+    ...family,
+    rows: rows.filter((r) => family.positions.includes(r.position)),
+  })).filter((section) => section.rows.length > 0);
+  // One family only (a position filter's on) — no need for a heading.
+  if (sections.length === 1) return <ViewSection view={view} rows={sections[0].rows} beta={beta} />;
+  return (
+    <div className="flex flex-col gap-4">
+      {sections.map((section) => (
+        <section key={section.label} className="flex flex-col gap-1.5">
+          <h3 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+            {section.label}
+          </h3>
+          <ViewSection view={view} rows={section.rows} beta={beta} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
 /**
  * One view's stat columns for a list of players — the player column
  * stays pinned on the left while the stats scroll sideways, like ESPN.
  */
-export function PlayerViewTable({
+function ViewSection({
   view,
   rows,
   beta = false,

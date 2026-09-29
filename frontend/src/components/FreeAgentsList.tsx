@@ -173,6 +173,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
           view={view}
           rows={players.map((p) => ({
             id: p.sleeper_player_id,
+            position: p.position,
             cell: (
               <span className="flex items-center gap-2">
                 {/* Adding happens in the Matchup Stats layout (the confirm/
