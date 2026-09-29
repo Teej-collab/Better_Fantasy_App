@@ -35,6 +35,7 @@ not this file, does that split, since it needs the player's position,
 which this file's per-game stat parsing never looks at).
 """
 import re
+import time
 
 import httpx
 
@@ -556,12 +557,40 @@ async def get_game_team_dst_stats(event_id: str) -> dict[str, dict]:
     return parse_team_dst_stats(await _fetch_summary(event_id))
 
 
+# Parsed get_game_stats results, keyed by event id: {event_id:
+# (expires_at_monotonic, result)}. The weekly-compute job runs once per
+# league per tick, and every league reads the same real NFL games — so
+# without this, each tick fetched and parsed every game once PER LEAGUE,
+# finished games included. A live game's entry lives just under one
+# compute tick (so each tick still gets fresh stats, but every league in
+# that tick shares one fetch); a finished game's stats barely change, so
+# it's only re-fetched occasionally (still often enough to pick up
+# ESPN's post-game stat corrections).
+_GAME_STATS_CACHE: dict[str, tuple[float, dict]] = {}
+_LIVE_GAME_TTL_SECONDS = 10
+_FINAL_GAME_TTL_SECONDS = 30 * 60
+
+
+def clear_game_stats_cache() -> None:
+    _GAME_STATS_CACHE.clear()
+
+
+def _is_final(data: dict) -> bool:
+    competitions = data.get("header", {}).get("competitions") or [{}]
+    return bool(competitions[0].get("status", {}).get("type", {}).get("completed"))
+
+
 async def get_game_stats(event_id: str) -> dict:
     """Both parses from a single fetch — use this (not the two
     functions above) when you need both, e.g. weekly_stats.py's
     per-event loop. Also returns the game's in-game injury plays
     (app/domain/live_injuries.py) from the same fetch, for live
-    projections — no extra request."""
+    projections — no extra request. Cached briefly — see
+    _GAME_STATS_CACHE."""
+    cached = _GAME_STATS_CACHE.get(event_id)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+
     data = await _fetch_summary(event_id)
     # Imported here: live_injuries is a domain module, and this provider
     # is otherwise domain-free.
@@ -571,11 +600,14 @@ async def get_game_stats(event_id: str) -> dict:
         injury_plays = parse_injury_plays(data)
     except Exception:
         injury_plays = []
-    return {
+    result = {
         "players": parse_individual_player_stats(data),
         "team_dst": parse_team_dst_stats(data),
         "injury_plays": injury_plays,
     }
+    ttl = _FINAL_GAME_TTL_SECONDS if _is_final(data) else _LIVE_GAME_TTL_SECONDS
+    _GAME_STATS_CACHE[event_id] = (time.monotonic() + ttl, result)
+    return result
 
 
 async def fetch_injury_news() -> dict:

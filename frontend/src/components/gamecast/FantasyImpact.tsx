@@ -7,8 +7,6 @@ import { nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-const POLL_MS = 15000;
-
 function headshotUrl(playerId: string | undefined): string | null {
   return playerId ? `https://sleepercdn.com/content/nfl/players/${playerId}.jpg` : null;
 }
@@ -36,8 +34,8 @@ function PlayerRow({ player }: { player: GamecastImpactPlayer }) {
  * from Phase D's own scoring engine (app/gamecast/service.py's
  * build_fantasy_impact), replacing the old text-scraped "mentioned in
  * a play" version (2026-09-18 redesign, reference: a real ESPN
- * Gamecast screenshot showing exactly this three-section shape). Polls
- * a REST endpoint on an interval rather than riding the existing
+ * Gamecast screenshot showing exactly this three-section shape). Refetched
+ * on the app-refresh tick rather than riding the existing
  * gamecast WebSocket — real fantasy_points only ever change on the
  * scheduler's own poll cadence, not play-by-play, so a WS push here
  * would be over-engineering for how often this actually moves.
@@ -62,11 +60,10 @@ export function FantasyImpact({
     }
 
     load();
-    const isLive = game.status === "in_progress" || game.status === "halftime";
-    const id = isLive ? setInterval(load, POLL_MS) : null;
+    // Live refreshes come from GameDayRefresher's 15s app-refresh tick
+    // (useOnAppRefresh below), which replaced this panel's own poll.
     return () => {
       cancelled = true;
-      if (id) clearInterval(id);
     };
   }, [game.game_id, game.status]);
 

@@ -338,23 +338,11 @@ function ProjectionLine({ entry }: { entry: RosterEntry }) {
   );
 }
 
-// Live offense/red-zone status only ever matters during an actual
-// live window — polling any other time would just be background
-// requests for data that can't change (same "only during a live
-// window, nothing otherwise" discipline GameDayRefresher.tsx already
-// established for the homepage/ticker). This component owns its own
-// client-side fetch already (unlike a server component), so a
-// conditional interval here does the same job router.refresh() does
-// there.
-const LIVE_POLL_INTERVAL_MS = 15 * 1000;
-
 export function MyTeamApp({
-  isGameDay,
   initialTeam,
   initialOwnership,
   beta = false,
 }: {
-  isGameDay: boolean;
   initialTeam: MyTeam | null;
   initialOwnership: Record<string, OwnershipInfo> | null;
   // Settings > Labs > "Try the new look" — see RosterRow's own comment.
@@ -445,51 +433,14 @@ export function MyTeamApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-fetches the roster (which carries on_offense/is_redzone) on an
-  // interval, but only while a real NFL game is live AND the owner is
-  // actually looking at the live/editable week — see
-  // LIVE_POLL_INTERVAL_MS's own comment. Re-fetching the current week
-  // while they've navigated to a past week's read-only view would
-  // silently snap them back to "now" out from under them every 15s.
-  //
-  // Also paused whenever the tab/PWA isn't visible — a backgrounded
-  // app during a live game shouldn't keep polling the roster every
-  // 15s for however long the game runs (2026-09 battery audit, P0-2).
-  // Re-fetches once immediately on return to visible.
-  useEffect(() => {
-    if (!isGameDay || team?.is_editable === false) return;
-    let id: ReturnType<typeof setInterval> | null = null;
-
-    function poll() {
-      getMyTeam()
-        .then(setTeam)
-        .catch(() => {});
-    }
-    function startOrStop() {
-      if (document.visibilityState === "visible") {
-        if (id === null) {
-          poll();
-          id = setInterval(poll, LIVE_POLL_INTERVAL_MS);
-        }
-      } else if (id !== null) {
-        clearInterval(id);
-        id = null;
-      }
-    }
-
-    startOrStop();
-    document.addEventListener("visibilitychange", startOrStop);
-    return () => {
-      document.removeEventListener("visibilitychange", startOrStop);
-      if (id !== null) clearInterval(id);
-    };
-  }, [isGameDay, team?.is_editable]);
-
-  // Pull-to-refresh / live game-day ticks. team is local state seeded
-  // once from initialTeam, so the fresh roster router.refresh() hands
-  // down as a new prop was never read — the "refresh felt cosmetic"
-  // report (2026-09). Re-pulls whichever week is on screen: the live
-  // week when editable, otherwise the past/future week being viewed.
+  // Pull-to-refresh, plus GameDayRefresher's 15s live tick (mounted by
+  // AppTickerBar only while a game is live, paused while the app is
+  // hidden) — which replaced this component's own 15s poll. team is
+  // local state seeded once from initialTeam, so the fresh roster
+  // router.refresh() hands down as a new prop was never read — the
+  // "refresh felt cosmetic" report (2026-09). Re-pulls whichever week
+  // is on screen: the live week when editable, otherwise the
+  // past/future week being viewed.
   useOnAppRefresh(() =>
     getMyTeam(team?.is_editable === false && team.week !== null ? team.week : undefined)
       .then(setTeam)

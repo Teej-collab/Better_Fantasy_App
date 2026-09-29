@@ -21,6 +21,7 @@ recomputes matchup scores (Phase F) from the result. That's the single
 function app/scheduler.py's weekly-compute job and the commissioner's
 manual /admin/weekly-compute trigger both call.
 """
+import asyncio
 import json
 import logging
 
@@ -34,10 +35,18 @@ from app.providers.nfl_stats.espn_public import fetch_injury_news, get_game_stat
 logger = logging.getLogger(__name__)
 
 
-async def _upsert_player_week_stat(
-    conn, season: int, week: int, sleeper_player_id: str, stat_line: dict, points: float,
-    league_id: int = DEFAULT_LEAGUE_ID,
-) -> None:
+# Caps how many ESPN game summaries one compute fetches at once — the
+# week's games are fetched concurrently now (the job runs every ~20s
+# during live games), but a full Sunday slate shouldn't be 16
+# simultaneous requests at ESPN's public API.
+_MAX_CONCURRENT_GAME_FETCHES = 8
+
+
+async def _upsert_player_week_stats(conn, rows: list[tuple]) -> None:
+    """Batch upsert — one executemany instead of ~640 sequential round
+    trips per league per compute, which mattered once this job started
+    running every ~20s instead of every 2 minutes. Each row is
+    (season, week, sleeper_player_id, stat_line_json, points, league_id)."""
     # ON CONFLICT is keyed by (season, week, sleeper_player_id,
     # league_id) — widened in migration 130f4acc3a50, which closed the
     # gap flagged when league_id was first threaded through here
@@ -46,7 +55,7 @@ async def _upsert_player_week_stat(
     # for the same real player/week, computed under their own rules,
     # instead of the second league's compute silently overwriting the
     # first's.
-    await conn.execute(
+    await conn.executemany(
         """
         INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, computed_at, league_id)
         VALUES ($1, $2, $3, $4, $5, now(), $6)
@@ -55,7 +64,7 @@ async def _upsert_player_week_stat(
             fantasy_points = EXCLUDED.fantasy_points,
             computed_at = now()
         """,
-        season, week, sleeper_player_id, json.dumps(stat_line), points, league_id,
+        rows,
     )
 
 
@@ -95,57 +104,69 @@ async def compute_week_stats(
     dst_rows = await conn.fetch("SELECT sleeper_player_id FROM players WHERE position = 'DEF'")
     known_dst_ids = {row["sleeper_player_id"] for row in dst_rows}
 
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT_GAME_FETCHES)
+
+    async def fetch(event_id: str) -> dict:
+        async with semaphore:
+            return await get_game_stats(event_id)
+
+    # Fetched up front, concurrently, and outside the transaction — no
+    # point holding a DB transaction open across network calls.
+    games = await asyncio.gather(*(fetch(event_id) for event_id in event_ids))
+
     counts = {"players": 0, "team_dst": 0}
     injury_plays: list[dict] = []
+    rows: list[tuple] = []
+    for game in games:
+        injury_plays.extend(game.get("injury_plays", []))
+
+        for player in game["players"]:
+            sleeper_id = espn_to_sleeper.get(player["espn_player_id"])
+            if sleeper_id is None:
+                continue
+            stat_line = player["stat_line"]
+            # Nobody except a QB is ever awarded points for a
+            # tackle in this league (2026-09, the owner's explicit
+            # rule — D/ST is scored on sacks, not tackles). ESPN's
+            # own "defensive"/totalTackles category isn't position-
+            # scoped at all (see espn_public.py's docstring) — a
+            # rostered RB/WR/TE occasionally records a real one
+            # (e.g. chasing down a turnover), and without this it
+            # would silently carry a real (if usually zero-priced)
+            # def_tackle entry. That category no longer exists as
+            # a real scoring lever at all (removed from
+            # league_scoring_rules, not just zeroed — see migration
+            # 224c44524737), so it's dropped here rather than
+            # renamed for anyone but a QB. Handled here, not in
+            # espn_public.py, since that's a pure per-game stat
+            # parse with no access to a player's position — this is
+            # the first point in the pipeline with both the stat
+            # and the position at once.
+            if "def_tackle" in stat_line:
+                stat_line = dict(stat_line)
+                if espn_to_position.get(player["espn_player_id"]) == "QB":
+                    stat_line["qb_tackle"] = stat_line.pop("def_tackle")
+                else:
+                    del stat_line["def_tackle"]
+            points = compute_player_points(stat_line, rules)
+            rows.append((season, week, sleeper_id, json.dumps(stat_line), points, league_id))
+            counts["players"] += 1
+
+        for team_abbr, stat_line in game["team_dst"].items():
+            if team_abbr not in known_dst_ids:
+                continue
+            # Same formula as any individual player — no special
+            # baseline. D/ST "starts at 10" is already a natural
+            # consequence of pts_allow_0 (5) + yds_allow_lt100 (5),
+            # this league's own real values for "opponent has
+            # scored/gained nothing yet" — see scoring_engine.py's
+            # module docstring.
+            points = compute_player_points(stat_line, rules)
+            rows.append((season, week, team_abbr, json.dumps(stat_line), points, league_id))
+            counts["team_dst"] += 1
+
     async with conn.transaction():
-        for event_id in event_ids:
-            game = await get_game_stats(event_id)
-            injury_plays.extend(game.get("injury_plays", []))
-
-            for player in game["players"]:
-                sleeper_id = espn_to_sleeper.get(player["espn_player_id"])
-                if sleeper_id is None:
-                    continue
-                stat_line = player["stat_line"]
-                # Nobody except a QB is ever awarded points for a
-                # tackle in this league (2026-09, the owner's explicit
-                # rule — D/ST is scored on sacks, not tackles). ESPN's
-                # own "defensive"/totalTackles category isn't position-
-                # scoped at all (see espn_public.py's docstring) — a
-                # rostered RB/WR/TE occasionally records a real one
-                # (e.g. chasing down a turnover), and without this it
-                # would silently carry a real (if usually zero-priced)
-                # def_tackle entry. That category no longer exists as
-                # a real scoring lever at all (removed from
-                # league_scoring_rules, not just zeroed — see migration
-                # 224c44524737), so it's dropped here rather than
-                # renamed for anyone but a QB. Handled here, not in
-                # espn_public.py, since that's a pure per-game stat
-                # parse with no access to a player's position — this is
-                # the first point in the pipeline with both the stat
-                # and the position at once.
-                if "def_tackle" in stat_line:
-                    stat_line = dict(stat_line)
-                    if espn_to_position.get(player["espn_player_id"]) == "QB":
-                        stat_line["qb_tackle"] = stat_line.pop("def_tackle")
-                    else:
-                        del stat_line["def_tackle"]
-                points = compute_player_points(stat_line, rules)
-                await _upsert_player_week_stat(conn, season, week, sleeper_id, stat_line, points, league_id)
-                counts["players"] += 1
-
-            for team_abbr, stat_line in game["team_dst"].items():
-                if team_abbr not in known_dst_ids:
-                    continue
-                # Same formula as any individual player — no special
-                # baseline. D/ST "starts at 10" is already a natural
-                # consequence of pts_allow_0 (5) + yds_allow_lt100 (5),
-                # this league's own real values for "opponent has
-                # scored/gained nothing yet" — see scoring_engine.py's
-                # module docstring.
-                points = compute_player_points(stat_line, rules)
-                await _upsert_player_week_stat(conn, season, week, team_abbr, stat_line, points, league_id)
-                counts["team_dst"] += 1
+        await _upsert_player_week_stats(conn, rows)
 
     # In-game injuries for live projections — outside the scoring
     # transaction and best-effort, so an injury-parsing problem can

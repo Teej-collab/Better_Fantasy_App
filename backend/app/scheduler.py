@@ -1042,7 +1042,16 @@ def start_scheduler():
         started_any = True
 
     if os.getenv("ENABLE_WEEKLY_COMPUTE_SCHEDULER", "").lower() in ("1", "true", "yes"):
-        interval_seconds = int(os.getenv("WEEKLY_COMPUTE_INTERVAL_SECONDS", "120"))
+        # 20s (was 120s): this job is the only thing that turns a real
+        # play into fantasy points, so its interval was most of the
+        # play-to-app delay (2026-09 report: "takes a long time for the
+        # scores to update anywhere"). Affordable now that every league
+        # in a tick shares one fetch per game and finished games are
+        # cached (espn_public._GAME_STATS_CACHE), and the upserts are
+        # batched (weekly_stats._upsert_player_week_stats). A tick that
+        # overruns just skips the next one (APScheduler's default
+        # max_instances=1), never stacks.
+        interval_seconds = int(os.getenv("WEEKLY_COMPUTE_INTERVAL_SECONDS", "20"))
         _scheduler.add_job(_run_weekly_compute_job, "interval", seconds=interval_seconds, id="weekly_compute")
         logger.info(
             "Weekly compute scheduler started (every %d seconds, only during NFL game windows)",

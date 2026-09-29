@@ -21,6 +21,7 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
 from app.providers.nfl_scoreboard import clear_scoreboard_cache
+from app.providers.nfl_stats.espn_public import clear_game_stats_cache
 
 # Pools stashed here by tests/test_chat.py and tests/test_gamecast_router.py's
 # _use_fresh_pool_for_websocket() helper, to be closed on the NEXT test's
@@ -166,8 +167,10 @@ def _reset_rate_limits():
 def _reset_scoreboard_cache():
     """app/providers/nfl_scoreboard.py caches ESPN responses for a few
     seconds — without this, one test's faked scoreboard would be served
-    to the next test that fakes a different one."""
+    to the next test that fakes a different one. Same for
+    espn_public's per-game stats cache."""
     clear_scoreboard_cache()
+    clear_game_stats_cache()
 
 
 @pytest_asyncio.fixture(autouse=True)

@@ -12,6 +12,15 @@ import { dispatchAppRefresh } from "@/lib/usePullToRefresh";
 // roughly one fresh set of scores per lap of the ticker.
 const REFRESH_INTERVAL_MS = 45 * 1000;
 
+// Client components holding live fantasy scores (matchups, My Team,
+// the standings scoreboard) refetch on a faster beat than the full
+// server re-render above: the backend recomputes points every ~20s
+// (scheduler.py's weekly compute), so waiting 45s here threw most of
+// that away. These are small JSON fetches through /api/backend, far
+// cheaper than a full router.refresh() render, which is why only this
+// half got faster.
+const CLIENT_REFRESH_INTERVAL_MS = 15 * 1000;
+
 /**
  * Renders nothing — only mounted while a real NFL game is live (see
  * isNflGameLive, lib/api.ts), and just calls router.refresh() on an
@@ -34,22 +43,25 @@ export function GameDayRefresher() {
   const router = useRouter();
 
   useEffect(() => {
-    let id: ReturnType<typeof setInterval> | null = null;
+    let serverId: ReturnType<typeof setInterval> | null = null;
+    let clientId: ReturnType<typeof setInterval> | null = null;
 
-    function refresh() {
-      router.refresh();
-      void dispatchAppRefresh();
+    function stop() {
+      if (serverId !== null) clearInterval(serverId);
+      if (clientId !== null) clearInterval(clientId);
+      serverId = clientId = null;
     }
 
     function startOrStop() {
       if (document.visibilityState === "visible") {
-        if (id === null) {
-          refresh();
-          id = setInterval(refresh, REFRESH_INTERVAL_MS);
+        if (serverId === null) {
+          router.refresh();
+          void dispatchAppRefresh();
+          serverId = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
+          clientId = setInterval(() => void dispatchAppRefresh(), CLIENT_REFRESH_INTERVAL_MS);
         }
-      } else if (id !== null) {
-        clearInterval(id);
-        id = null;
+      } else {
+        stop();
       }
     }
 
@@ -57,7 +69,7 @@ export function GameDayRefresher() {
     document.addEventListener("visibilitychange", startOrStop);
     return () => {
       document.removeEventListener("visibilitychange", startOrStop);
-      if (id !== null) clearInterval(id);
+      stop();
     };
   }, [router]);
 
