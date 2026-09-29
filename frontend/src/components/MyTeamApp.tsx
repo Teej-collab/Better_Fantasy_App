@@ -18,6 +18,7 @@ import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
+import { PlayerViewTable, PlayerViewsPill, usePlayerView } from "@/components/players/PlayerViews";
 import { positionColor } from "@/lib/positionColors";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { InGameInjuryTag, LiveProjectionValue } from "@/components/matchups/liveProjection";
@@ -379,6 +380,9 @@ export function MyTeamApp({
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const { openPlayerCard } = usePlayerCard();
+  // Roster-tab Views menu (ESPN's) — every view but Matchup Stats is a
+  // read-only stats table; lineup editing stays in Matchup Stats.
+  const [view, setView] = usePlayerView("wl:player-view:roster");
 
   async function handleInviteCoOwner() {
     setInviting(true);
@@ -601,62 +605,97 @@ export function MyTeamApp({
       {actioning && <p className="text-xs text-black/50 dark:text-white/50">Saving…</p>}
       {submitted && <p className="text-xs text-emerald-600 dark:text-emerald-400">{submitted}</p>}
 
-      <section className="flex flex-col gap-1">
-        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
-        <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
-          {starters.map((e) => (
-            <RosterRow
-              key={e.player_id}
-              entry={e}
-              ownership={ownership[e.player_id]}
-              mounted={mounted}
-              editable={team.is_editable}
-              beta={beta}
-              onOpenEdit={openEdit}
-              onViewPlayer={openPlayerCard}
-            />
-          ))}
-        </ul>
-      </section>
+      <div className="flex justify-end">
+        <PlayerViewsPill view={view} onChange={setView} />
+      </div>
 
-      <section className="flex flex-col gap-1">
-        <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h2>
-        <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
-          {bench.map((e) => (
-            <RosterRow
-              key={e.player_id}
-              entry={e}
-              ownership={ownership[e.player_id]}
-              mounted={mounted}
-              editable={team.is_editable}
-              beta={beta}
-              onOpenEdit={openEdit}
-              onViewPlayer={openPlayerCard}
-            />
-          ))}
-        </ul>
-      </section>
+      {view !== "matchup" ? (
+        <PlayerViewTable
+          view={view}
+          beta={beta}
+          rows={[...starters, ...bench, ...ir].map((e) => ({
+            id: e.player_id,
+            cell: (
+              <span className="flex items-center gap-2">
+                <span className="w-12 shrink-0 rounded-full bg-black/10 py-0.5 text-center text-[10px] font-semibold dark:bg-white/10">
+                  {slotDisplayLabel(e.lineup_slot)}
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <button
+                    type="button"
+                    onClick={() => openPlayerCard(e.player_id)}
+                    className="truncate text-left text-sm font-medium hover:underline"
+                  >
+                    {e.player_name}
+                  </button>
+                  <span className="text-[11px] text-black/50 dark:text-white/50">
+                    {e.position === "DEF" ? "D/ST" : e.position} · {e.pro_team ?? "—"}
+                  </span>
+                </span>
+              </span>
+            ),
+          }))}
+        />
+      ) : (
+        <>
+          <section className="flex flex-col gap-1">
+            <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Starters</h2>
+            <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
+              {starters.map((e) => (
+                <RosterRow
+                  key={e.player_id}
+                  entry={e}
+                  ownership={ownership[e.player_id]}
+                  mounted={mounted}
+                  editable={team.is_editable}
+                  beta={beta}
+                  onOpenEdit={openEdit}
+                  onViewPlayer={openPlayerCard}
+                />
+              ))}
+            </ul>
+          </section>
 
-      {ir.length > 0 && (
-        <section className="flex flex-col gap-1">
-          <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-            Injured Reserve
-          </h2>
-          <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
-            {ir.map((e) => (
-              <RosterRow
-                key={e.player_id}
-                entry={e}
-                ownership={ownership[e.player_id]}
-                mounted={mounted}
-                editable={team.is_editable}
-                beta={beta}
-                onOpenEdit={openEdit}
-                onViewPlayer={openPlayerCard}
-              />
-            ))}
-          </ul>
-        </section>
+          <section className="flex flex-col gap-1">
+            <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h2>
+            <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
+              {bench.map((e) => (
+                <RosterRow
+                  key={e.player_id}
+                  entry={e}
+                  ownership={ownership[e.player_id]}
+                  mounted={mounted}
+                  editable={team.is_editable}
+                  beta={beta}
+                  onOpenEdit={openEdit}
+                  onViewPlayer={openPlayerCard}
+                />
+              ))}
+            </ul>
+          </section>
+
+          {ir.length > 0 && (
+            <section className="flex flex-col gap-1">
+              <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                Injured Reserve
+              </h2>
+              <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
+                {ir.map((e) => (
+                  <RosterRow
+                    key={e.player_id}
+                    entry={e}
+                    ownership={ownership[e.player_id]}
+                    mounted={mounted}
+                    editable={team.is_editable}
+                    beta={beta}
+                    onOpenEdit={openEdit}
+                    onViewPlayer={openPlayerCard}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
       )}
 
       {editingEntry && (

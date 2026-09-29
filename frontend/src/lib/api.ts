@@ -1845,6 +1845,41 @@ export type MyFreeAgent = {
 // forwarded explicitly, same pattern as getMe/getMyWeek/getMySettings —
 // a server component has no ambient browser cookie jar for a bare
 // fetch() to the backend's separate origin to ride along on.
+// The Views menu on the Available list and the Roster tab — see backend
+// app/domain/player_views.py. "matchup" is each list's own default
+// PROJ/SCORE layout and is never fetched from here.
+export type PlayerViewKey =
+  | "matchup"
+  | "proj_2026"
+  | "stats_2026"
+  | "stats_2025"
+  | "scoring"
+  | "research"
+  | "schedule"
+  | "rankings"
+  | "ppr_rankings";
+
+export type PlayerViewColumn = {
+  key: string;
+  label: string;
+  format: "int" | "number1" | "number2" | "ordinal" | "ordinal_matchup" | "signed_int" | "text";
+  group?: string;
+};
+
+export type PlayerViewData = {
+  view: PlayerViewKey;
+  week: number;
+  columns: PlayerViewColumn[];
+  rows: Record<string, Record<string, string | number | null>>;
+  note?: string;
+};
+
+export async function getPlayerView(view: Exclude<PlayerViewKey, "matchup">, playerIds: string[]): Promise<PlayerViewData> {
+  return authedGet<PlayerViewData>(
+    `/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(","))}`
+  );
+}
+
 export async function getMyFreeAgents(
   sessionCookie: string | undefined,
   position?: string,

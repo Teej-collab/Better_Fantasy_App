@@ -30,6 +30,7 @@ as keepers.py/settings.py.
 """
 import json
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -40,6 +41,7 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain import lineup_engine
+from app.domain import player_views
 from app.domain import waivers
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
@@ -641,6 +643,29 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
         "roster": [_roster_entry_dict(e) for e in result["roster"]],
         "dropped_player": _roster_entry_dict(result["dropped_player"]) if result["dropped_player"] else None,
     }
+
+
+@router.get("/team/player-views/{view}")
+async def my_player_views(view: str, request: Request, ids: str = ""):
+    """The Views menu on the Available list and the Roster tab (see
+    app/domain/player_views.py) — one view's columns for the given
+    comma-separated sleeper_player_ids, scored under the caller's own
+    league. Capped at 300 ids per call (a full free-agent page is well
+    under that)."""
+    if view not in player_views.VIEWS:
+        raise HTTPException(status_code=404, detail="Unknown view")
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    player_ids = [i for i in ids.split(",") if i][:300]
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        week = await league_queries.get_cached_current_week(conn, active_season) or 1
+        try:
+            result = await player_views.build_view(conn, view, player_ids, active_season, week, league_id)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Player stats are temporarily unavailable")
+    return {"view": view, "week": week, **result}
 
 
 @router.get("/team/free-agents")
