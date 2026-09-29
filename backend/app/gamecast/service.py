@@ -18,6 +18,8 @@ persisting every tick would just be writes for data with no lasting
 value.
 """
 from app.auth.league_context import resolve_active_league_id, resolve_owner_id
+from app.domain.scoring_engine import rules_dict_from_rows
+from app.gamecast import last_play
 from app.gamecast.models import LiveGame
 from app.gamecast.providers import get_nfl_data_provider
 from app.providers.espn.config import ESPNConfig
@@ -189,3 +191,38 @@ async def build_fantasy_impact(conn, game: LiveGame, payload: dict | None) -> di
             },
         },
     }
+
+
+async def build_last_play(conn, game: LiveGame, play_id: str, payload: dict | None) -> dict:
+    """The Gamecast "Last Play" card's fantasy half — who in the
+    viewer's league was on `play_id` and what it earned them (see
+    app/gamecast/last_play.py). The play's own description/down/yards
+    already ride the gamecast WebSocket; this is only the per-league
+    part. Signed out, or no active league: an empty list, never an
+    error — same public-preview-friendly shape as build_fantasy_impact."""
+    league_id = my_team_id = opponent_team_id = None
+    if payload is not None:
+        league_id = await resolve_active_league_id(conn, payload)
+        my_owner_id = await resolve_owner_id(conn, payload)
+        my_team = await conn.fetchrow(
+            "SELECT id AS team_id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            game.season, my_owner_id, league_id,
+        )
+        if my_team is not None:
+            my_team_id = my_team["team_id"]
+            matchup = await queries.get_matchup_for_team(conn, my_team_id, game.season, game.week, league_id)
+            if matchup is not None:
+                is_home = matchup["home_team_id"] == my_team_id
+                opponent_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
+
+    rules: dict[str, float] = {}
+    if league_id is not None:
+        rules = rules_dict_from_rows(await conn.fetch(
+            "SELECT stat_category, points_per_unit FROM league_scoring_rules WHERE season = $1 AND league_id = $2",
+            game.season, league_id,
+        ))
+
+    players = await last_play.build_last_play_fantasy(
+        conn, game, play_id, league_id, my_team_id, opponent_team_id, rules
+    )
+    return {"play_id": play_id, "players": players}

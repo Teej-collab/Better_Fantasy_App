@@ -13,6 +13,7 @@ handshake," nothing about its purpose string is chat-specific.
 """
 import json
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from app.auth.config import SessionConfig
@@ -81,6 +82,29 @@ async def game_fantasy_impact(game_id: str, request: Request):
     payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
     async with pool.acquire() as conn:
         return await service.build_fantasy_impact(conn, game, payload)
+
+
+@router.get("/games/{game_id}/plays/{play_id}/fantasy")
+async def play_fantasy(game_id: str, play_id: str, request: Request):
+    """The Last Play card's "who in your league was on this play, and
+    what did it earn them" — see service.build_last_play. Fetched once
+    per new last play (the card knows the play id from the WS state),
+    not polled. Never requires sign-in."""
+    game = service.get_cached_state(game_id)
+    pool = await get_pool()
+    if game is None:
+        try:
+            async with pool.acquire() as conn:
+                game, _events = await service.refresh_game(conn, game_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown game_id")
+
+    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    async with pool.acquire() as conn:
+        try:
+            return await service.build_last_play(conn, game, play_id, payload)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="Play details are temporarily unavailable")
 
 
 @router.websocket("/gamecast/ws")

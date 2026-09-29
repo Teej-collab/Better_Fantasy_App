@@ -8,6 +8,7 @@ import {
 } from "@/lib/gamecastApi";
 import { GameHeader } from "@/components/gamecast/GameHeader";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
+import { LastPlay } from "@/components/gamecast/LastPlay";
 import { CurrentDrive } from "@/components/gamecast/CurrentDrive";
 import { PlayByPlay } from "@/components/gamecast/PlayByPlay";
 import { ScoringSummary } from "@/components/gamecast/ScoringSummary";
@@ -112,8 +113,13 @@ export function GamecastShell({
     <div className="flex flex-col gap-4">
       <GameHeader game={game} connected={connected || !isLiveStatus} updatedSecondsAgo={updatedSecondsAgo} beta={beta} />
 
-      <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
-        <FieldVisualization game={game} beta={beta} />
+      <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2 sm:items-start">
+        {/* Last Play sits directly under the field graphic, in the same
+            column on desktop too, so the two read as one unit. */}
+        <div className="flex flex-col gap-4">
+          <FieldVisualization game={game} beta={beta} />
+          <LastPlay game={game} beta={beta} />
+        </div>
         <CurrentDrive game={game} beta={beta} />
       </div>
 

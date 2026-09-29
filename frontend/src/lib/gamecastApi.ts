@@ -32,6 +32,8 @@ export type GamecastPlay = {
   drive_id: string | null;
   period: number;
   clock: string;
+  // The offense on this play.
+  team_abbr: string | null;
   down: number | null;
   distance: number | null;
   description: string;
@@ -141,6 +143,35 @@ export async function getFantasyImpact(gameId: string): Promise<GamecastFantasyI
     });
     if (!res.ok) return null;
     return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// The Last Play card's fantasy half — see backend
+// app/gamecast/last_play.py. Only players rostered in the viewer's
+// league; empty signed out.
+export type GamecastPlayFantasyPlayer = {
+  player_id: string;
+  player_name: string;
+  position: string;
+  lineup_slot: string | null;
+  team_name: string;
+  owner_name: string;
+  is_mine: boolean;
+  is_opponent: boolean;
+  points: number;
+};
+
+export async function getPlayFantasy(gameId: string, playId: string): Promise<GamecastPlayFantasyPlayer[] | null> {
+  try {
+    const res = await fetch(
+      `/api/backend/nfl/games/${encodeURIComponent(gameId)}/plays/${encodeURIComponent(playId)}/fantasy`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const data: { players: GamecastPlayFantasyPlayer[] } = await res.json();
+    return data.players;
   } catch {
     return null;
   }
