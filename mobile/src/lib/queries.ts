@@ -363,3 +363,16 @@ export function useChugLeaderboard(season: number | undefined) {
     placeholderData: (previous) => previous,
   });
 }
+
+// stat_category → points per unit, for the score breakdown.
+export function useScoringRates(season: number) {
+  return useQuery({
+    queryKey: ['scoring-rules', season],
+    queryFn: async () =>
+      Object.fromEntries((await api.scoringRules(season)).rules.map((r) => [r.stat_category, r.points_per_unit])) as Record<
+        string,
+        number
+      >,
+    staleTime: 60 * 60_000,
+  });
+}

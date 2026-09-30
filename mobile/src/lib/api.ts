@@ -148,6 +148,11 @@ export const api = {
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
   matchup: (matchupId: number) => request<WeekMatchupContextItem>(`/matchups/${matchupId}`),
   myTeam: () => request<MyTeam>('/me/team'),
+  // A given season's rates (a past matchup needs its own season's rules).
+  scoringRules: (season: number) =>
+    request<{ season: number; rules: { stat_category: string; points_per_unit: number }[] }>(
+      `/league/scoring-rules?season=${season}`,
+    ),
   playerCard: (sleeperPlayerId: string) =>
     request<PlayerCard>(`/players/${encodeURIComponent(sleeperPlayerId)}/card`),
   // Both return the whole roster with new lineup_slots but without the

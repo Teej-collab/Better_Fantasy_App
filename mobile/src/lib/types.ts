@@ -61,32 +61,68 @@ export type StandingsRow = {
   final_rank: number | null;
 };
 
+export type InGameInjury = {
+  state: 'left' | 'returned' | 'questionable_return' | 'doubtful_return' | 'ruled_out';
+  detail: string | null;
+} | null;
+
+// Defense vs. position: rank 1 = fewest points allowed to this position.
+export type PositionRank = { rank: number; average_allowed: number } | null;
+
 export type RosterPlayer = {
   player_name: string;
   position: string | null;
   lineup_slot: string | null;
   points_scored: number | null;
   points_projected: number | null;
+  // Moves during the game; points_projected is the fixed pregame number.
   live_projected: number | null;
+  in_game_injury?: InGameInjury;
+  // A Sleeper id (string) for real players.
   player_id: number | string | null;
   pro_team: string | null;
   injury_status: string | null;
   next_opponent: string | null;
+  game_time: string | null;
+  opponent_position_rank: PositionRank;
+  is_boom: boolean;
+  is_bust: boolean;
+  raw_stats: Record<string, number> | null;
+  on_offense: boolean;
+  is_redzone: boolean;
   game_status: 'scheduled' | 'in_progress' | 'final' | null;
 };
 
 export type MatchupContextSide = {
   team_id: number;
   team_name: string;
+  owner_id: number;
   owner_name: string;
   power_rank: number | null;
   logo_url: string | null;
   score: number | null;
+  // Season-to-date total (standings' points_for).
+  season_points: number | null;
   record: string | null;
   result_streak: string | null;
+  // Live team projection; pregame_projected_total is fixed.
   projected_total: number | null;
+  pregame_projected_total: number | null;
   roster: RosterPlayer[];
+  touchdowns: { player_name: string; position: string | null; touchdowns: number }[];
+  bench_crime: { bench_player: string; started_player: string; position: string; points_diff: number; severity: string } | null;
+  clutch_choke: { label: 'clutch' | 'choke'; reason: string } | null;
+  // Only once the matchup has real scores (0–100).
   win_probability: number | null;
+};
+
+export type RecentMeeting = {
+  season: number;
+  week: number;
+  home_won: boolean;
+  tie: boolean;
+  home_score: number;
+  away_score: number;
 };
 
 export type WeekMatchupContextItem = {
@@ -96,8 +132,23 @@ export type WeekMatchupContextItem = {
   is_playoff: boolean;
   is_game_of_the_week: boolean;
   is_rivalry: boolean;
-  rivalry: { name: string; emoji: string | null } | null;
-  head_to_head: { wins_home: number; wins_away: number; ties: number };
+  rivalry: {
+    name: string;
+    emoji: string | null;
+    tier: string | null;
+    all_time_wins_home: number;
+    all_time_wins_away: number;
+  } | null;
+  head_to_head: {
+    wins_home: number;
+    wins_away: number;
+    ties: number;
+    last_season: number | null;
+    last_week: number | null;
+    // Oldest first, at most 5.
+    recent_meetings: RecentMeeting[];
+  };
+  narrative: string | null;
   home: MatchupContextSide;
   away: MatchupContextSide;
 };
