@@ -49,6 +49,8 @@ export default function HomeScreen() {
 
       <NflScoreStrip />
 
+      {myWeek.data?.draft && myWeek.data.draft.status !== 'complete' && <DraftCard draft={myWeek.data.draft} />}
+
       {myWeek.data && <YourWeekCard myWeek={myWeek.data} />}
 
       {others.length > 0 && (
@@ -64,7 +66,44 @@ export default function HomeScreen() {
           </Card>
         </>
       )}
+
+      {myWeek.data?.draft?.status === 'complete' && (
+        <Pressable onPress={() => router.push('/draft')} hitSlop={8} style={styles.draftResults}>
+          <Text style={styles.signOut}>Draft results</Text>
+        </Pressable>
+      )}
     </ScrollView>
+  );
+}
+
+function DraftCard({ draft }: { draft: NonNullable<YourWeek['draft']> }) {
+  const live = draft.status === 'in_progress' || draft.status === 'paused';
+  const when = draft.scheduled_start
+    ? new Date(draft.scheduled_start).toLocaleString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null;
+  return (
+    <Pressable onPress={() => router.push('/draft')}>
+      {({ pressed }) => (
+        <Card style={[styles.draftCard, live && styles.liveCard, pressed && styles.pressed]}>
+          <View style={styles.kickerRow}>
+            <Text style={styles.kicker}>Draft</Text>
+            {draft.status === 'in_progress' && <LiveBadge />}
+          </View>
+          <Text style={styles.teamName}>
+            {live ? (draft.status === 'paused' ? 'Draft paused' : 'Your draft is live') : 'Draft room'}
+          </Text>
+          <Text style={styles.muted}>
+            {live ? 'Tap to join.' : when ? `Starts ${when}. Build your queue now.` : 'Build your queue before draft day.'}
+          </Text>
+        </Card>
+      )}
+    </Pressable>
   );
 }
 
@@ -179,6 +218,8 @@ const styles = StyleSheet.create({
   signOut: { color: Colors.textSecondary, fontSize: 14 },
   kickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
   liveCard: { borderColor: Colors.live },
+  draftCard: { marginBottom: Spacing.lg },
+  draftResults: { alignSelf: 'center', marginTop: Spacing.xl },
   playCounts: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: Spacing.md },
   kicker: {
     color: Colors.accent,

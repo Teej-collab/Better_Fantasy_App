@@ -261,3 +261,55 @@ export type NflGame = {
   broadcast: string | null;
   week: number | null;
 };
+
+// Draft (backend/app/routers/draft.py; web types in frontend/src/lib/draftApi.ts).
+export type DraftStatus = 'not_started' | 'in_progress' | 'paused' | 'complete';
+
+export type DraftConfig = {
+  season: number;
+  pick_time_limit_seconds: number;
+  draft_order: number[];
+  roster_slots: Record<string, number>;
+  status: DraftStatus;
+  current_pick_number: number;
+  current_pick_deadline: string | null;
+  paused_remaining_seconds: number | null;
+  scheduled_start: string | null;
+};
+
+// Every slot in the draft exists up front; sleeper_player_id fills in
+// when the pick is made.
+export type DraftPick = {
+  pick_number: number;
+  round: number;
+  round_pick: number;
+  owner_id: number;
+  owner_name: string;
+  sleeper_player_id: string | null;
+  player_name: string | null;
+  player_position: string | null;
+  is_autopick: boolean;
+  is_keeper: boolean;
+  made_at: string | null;
+};
+
+export type DraftChatMessage = { id: number; owner_id: number; owner_name: string; text: string; created_at: string };
+
+export type DraftState = {
+  config: DraftConfig;
+  picks: DraftPick[];
+  connected_owner_ids: number[];
+  chat_messages: DraftChatMessage[];
+};
+
+export type DraftPoolPlayer = {
+  sleeper_player_id: string;
+  full_name: string;
+  position: string;
+  pro_team: string | null;
+  search_rank: number | null;
+  injury_status: string | null;
+  projected_points: number | null;
+  bye_week: number | null;
+  drafted: boolean;
+};

@@ -3,6 +3,8 @@ import type {
   ChatConversation,
   FreeAgent,
   ChatMessage,
+  DraftPoolPlayer,
+  DraftState,
   Me,
   MyTeam,
   NflGame,
@@ -129,6 +131,30 @@ export const api = {
     }),
   cancelWaiverClaim: (claimId: number) =>
     request<unknown>(`/me/team/waivers/claim/${claimId}/cancel`, { method: 'POST' }),
+  draftState: () => request<DraftState>('/draft/state'),
+  draftPool: (position?: string, search?: string) => {
+    const params = [position && `position=${encodeURIComponent(position)}`, search && `search=${encodeURIComponent(search)}`]
+      .filter(Boolean)
+      .join('&');
+    return request<{ players: DraftPoolPlayer[] }>(`/draft/pool${params ? `?${params}` : ''}`);
+  },
+  // Your queue: Sleeper player ids, best first.
+  draftQueue: () => request<{ queue: string[] }>('/draft/queue'),
+  addToDraftQueue: (playerId: string) =>
+    request<{ queue: string[] }>('/draft/queue', { method: 'POST', body: JSON.stringify({ sleeper_player_id: playerId }) }),
+  removeFromDraftQueue: (playerId: string) =>
+    request<{ queue: string[] }>(`/draft/queue/${encodeURIComponent(playerId)}`, { method: 'DELETE' }),
+  // Send the whole new order; the server reassigns ranks from it.
+  reorderDraftQueue: (playerIds: string[]) =>
+    request<{ queue: string[] }>('/draft/queue/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ sleeper_player_ids: playerIds }),
+    }),
+  draftPick: (playerId: string) =>
+    request<unknown>('/draft/pick', { method: 'POST', body: JSON.stringify({ sleeper_player_id: playerId }) }),
+  // Commissioner only.
+  draftControl: (action: 'start' | 'pause' | 'resume' | 'undo-last-pick') =>
+    request<unknown>(`/draft/${action}`, { method: 'POST' }),
   chatConversations: () => request<{ conversations: ChatConversation[] }>('/chat/conversations'),
   // Chronological, 50 per page; `before` pages back from a message id.
   chatMessages: (conversationId: number, before?: number) =>
@@ -152,4 +178,8 @@ export const api = {
 
 export function chatSocketUrl(ticket: string): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/chat/ws?ticket=${encodeURIComponent(ticket)}`;
+}
+
+export function draftSocketUrl(ticket: string, season: number): string {
+  return `${API_BASE_URL.replace(/^http/, 'ws')}/draft/ws?ticket=${encodeURIComponent(ticket)}&season=${season}`;
 }

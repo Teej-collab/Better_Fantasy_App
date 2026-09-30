@@ -184,3 +184,19 @@ export function openPlayer(sleeperPlayerId: string | number | null | undefined) 
   if (sleeperPlayerId === null || sleeperPlayerId === undefined) return;
   router.push({ pathname: '/player/[id]', params: { id: String(sleeperPlayerId) } });
 }
+
+export function useDraftState(enabled = true) {
+  return useQuery({ queryKey: ['draft-state'], queryFn: api.draftState, enabled });
+}
+
+export function useDraftPool(position: string | undefined, search: string) {
+  return useQuery({
+    queryKey: ['draft-pool', position ?? 'all', search],
+    queryFn: async () => (await api.draftPool(position, search || undefined)).players,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useDraftQueue() {
+  return useQuery({ queryKey: ['draft-queue'], queryFn: async () => (await api.draftQueue()).queue });
+}
