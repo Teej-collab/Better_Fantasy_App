@@ -24,6 +24,9 @@ import type {
 // The production backend by default (mobile/.env). Point it at a local
 // backend with a .env.local, e.g. EXPO_PUBLIC_API_BASE_URL=http://<your-mac>.local:8000.
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
+// The Next.js app, for the one route that lives there rather than on
+// the backend: chat photo uploads (uploadChatImage below).
+export const WEB_BASE_URL = process.env.EXPO_PUBLIC_WEB_BASE_URL ?? '';
 
 export class ApiError extends Error {
   constructor(
@@ -198,4 +201,22 @@ export function draftSocketUrl(ticket: string, season: number): string {
 
 export function gamecastSocketUrl(ticket: string, gameId: string): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/nfl/gamecast/ws?ticket=${encodeURIComponent(ticket)}&game_id=${encodeURIComponent(gameId)}`;
+}
+
+// Chat photos go to the web app's Blob store, the one image host the
+// backend accepts for chat (backend/app/image_url.py), through a route
+// built for the native app (frontend/src/app/api/chat/upload-native).
+// `uri` is a local, already-compressed JPEG (lib/chatImage.ts).
+export async function uploadChatImage(uri: string): Promise<string> {
+  const form = new FormData();
+  // React Native's FormData takes a { uri, name, type } file descriptor.
+  form.append('file', { uri, name: 'photo.jpg', type: 'image/jpeg' } as unknown as Blob);
+  const res = await fetch(`${WEB_BASE_URL}/api/chat/upload-native`, {
+    method: 'POST',
+    headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+    body: form,
+  });
+  if (!res.ok) throw new ApiError(res.status, `Upload failed (${res.status})`);
+  const { url } = (await res.json()) as { url: string };
+  return url;
 }

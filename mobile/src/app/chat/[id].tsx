@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -18,8 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { api } from '@/lib/api';
+import { api, uploadChatImage } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
+import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
 import { queryClient, useChatConversations, useChatMessages, useMe } from '@/lib/queries';
 import type { ChatMessage } from '@/lib/types';
@@ -28,6 +30,9 @@ import type { ChatMessage } from '@/lib/types';
 const REACTIONS = ['😂', '🔥', '💀', '👍', '❤️', '😭'];
 const PAGE_SIZE = 50;
 const TYPING_SEND_INTERVAL_MS = 2000;
+
+// One attachment at a time, like the web composer.
+type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string };
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,7 +45,12 @@ export default function ConversationScreen() {
 
   const [draft, setDraft] = useState('');
   const [title, setTitle] = useState('');
-  const [reactingTo, setReactingTo] = useState<ChatMessage | null>(null);
+  // The message whose long-press menu is open (reactions + Reply).
+  const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [reachedStart, setReachedStart] = useState(false);
   const lastTypingSent = useRef(0);
@@ -81,26 +91,68 @@ export default function ConversationScreen() {
     }
   }
 
+  const imageReady = pendingImage?.status === 'done';
+  const canSend =
+    connected && pendingImage?.status !== 'uploading' && (!!draft.trim() || imageReady) && (!isAnnouncements || !!title.trim());
+
   function onSend() {
-    const body = draft.trim();
-    if (!body || (isAnnouncements && !title.trim())) return;
-    const event: Record<string, unknown> = { type: 'message', conversation_id: conversationId, body };
+    if (!canSend) return;
+    const event: Record<string, unknown> = { type: 'message', conversation_id: conversationId, body: draft.trim() };
     if (isAnnouncements) event.title = title.trim();
+    if (imageReady) event.image_url = pendingImage.url;
+    if (replyTo) event.reply_to_id = replyTo.id;
     // The sent message comes back over the socket like everyone else's,
     // so it only appears once the server has saved it.
     if (send(event)) {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setDraft('');
       setTitle('');
+      setPendingImage(null);
+      setReplyTo(null);
     }
   }
 
   function react(emoji: string) {
-    const target = reactingTo;
-    setReactingTo(null);
+    const target = actionsFor;
+    setActionsFor(null);
     if (!target) return;
     void Haptics.selectionAsync();
     api.reactToMessage(target.id, emoji).catch(() => {});
+  }
+
+  function startReply() {
+    const target = actionsFor;
+    setActionsFor(null);
+    if (!target) return;
+    setReplyTo(target);
+    inputRef.current?.focus();
+  }
+
+  async function attach(source: PhotoSource) {
+    let localUri: string | null;
+    try {
+      localUri = await pickChatPhoto(source);
+    } catch {
+      Alert.alert("Couldn't open that photo");
+      return;
+    }
+    if (!localUri) return;
+    setPendingImage({ status: 'uploading', localUri });
+    try {
+      const url = await uploadChatImage(localUri);
+      setPendingImage((prev) => (prev?.localUri === localUri ? { status: 'done', localUri, url } : prev));
+    } catch {
+      setPendingImage((prev) => (prev?.localUri === localUri ? { status: 'error', localUri } : prev));
+    }
+  }
+
+  function chooseAttachment() {
+    if (pendingImage?.status === 'uploading') return;
+    Alert.alert('Add a photo', undefined, [
+      { text: 'Photo library', onPress: () => void attach('library') },
+      { text: 'Take photo', onPress: () => void attach('camera') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   const headerTitle = conversation ? conversationTitle(conversation) : 'Chat';
@@ -137,8 +189,9 @@ export default function ConversationScreen() {
               showName={showName}
               onLongPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setReactingTo(item);
+                setActionsFor(item);
               }}
+              onOpenImage={setViewingImage}
             />
           );
         }}
@@ -161,8 +214,40 @@ export default function ConversationScreen() {
               style={[styles.input, styles.titleInput]}
             />
           )}
+          {replyTo && (
+            <View style={styles.replyBanner}>
+              <View style={styles.replyBannerText}>
+                <Text style={styles.replyName}>Replying to {replyTo.owner_name}</Text>
+                <Text style={styles.replyBody} numberOfLines={1}>
+                  {replyTo.body || 'Photo'}
+                </Text>
+              </View>
+              <Pressable onPress={() => setReplyTo(null)} hitSlop={10}>
+                <Text style={styles.dismiss}>✕</Text>
+              </Pressable>
+            </View>
+          )}
+          {pendingImage && (
+            <View style={styles.pendingImage}>
+              <Image source={{ uri: pendingImage.localUri }} style={styles.pendingThumb} contentFit="cover" />
+              <Text style={[styles.pendingText, pendingImage.status === 'error' && styles.pendingError]}>
+                {pendingImage.status === 'uploading'
+                  ? 'Uploading…'
+                  : pendingImage.status === 'error'
+                    ? "Couldn't upload. Remove it and try again."
+                    : 'Ready to send'}
+              </Text>
+              <Pressable onPress={() => setPendingImage(null)} hitSlop={10}>
+                <Text style={styles.dismiss}>✕</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={styles.composerRow}>
+            <Pressable onPress={chooseAttachment} hitSlop={8} style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
+              <Text style={styles.attachText}>+</Text>
+            </Pressable>
             <TextInput
+              ref={inputRef}
               value={draft}
               onChangeText={onChangeDraft}
               placeholder={connected ? 'Message' : 'Connecting…'}
@@ -172,12 +257,8 @@ export default function ConversationScreen() {
             />
             <Pressable
               onPress={onSend}
-              disabled={!connected || !draft.trim()}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!connected || !draft.trim()) && styles.sendDisabled,
-                pressed && styles.pressed,
-              ]}>
+              disabled={!canSend}
+              style={({ pressed }) => [styles.sendButton, !canSend && styles.sendDisabled, pressed && styles.pressed]}>
               <Text style={styles.sendText}>Send</Text>
             </Pressable>
           </View>
@@ -188,8 +269,8 @@ export default function ConversationScreen() {
         </Text>
       )}
 
-      <Modal visible={reactingTo !== null} transparent animationType="fade" onRequestClose={() => setReactingTo(null)}>
-        <Pressable style={styles.reactBackdrop} onPress={() => setReactingTo(null)}>
+      <Modal visible={actionsFor !== null} transparent animationType="fade" onRequestClose={() => setActionsFor(null)}>
+        <Pressable style={styles.reactBackdrop} onPress={() => setActionsFor(null)}>
           <View style={styles.reactBar}>
             {REACTIONS.map((emoji) => (
               <Pressable key={emoji} onPress={() => react(emoji)} hitSlop={6} style={({ pressed }) => pressed && styles.pressed}>
@@ -197,13 +278,30 @@ export default function ConversationScreen() {
               </Pressable>
             ))}
           </View>
+          {canPost && (
+            <Pressable onPress={startReply} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
+              <Text style={styles.replyActionText}>Reply</Text>
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
+
+      <Modal visible={viewingImage !== null} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
+        <Pressable style={styles.imageViewer} onPress={() => setViewingImage(null)}>
+          {viewingImage && <Image source={{ uri: viewingImage }} style={styles.fullImage} contentFit="contain" />}
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
   );
 }
 
-function MessageBubble(props: { message: ChatMessage; mine: boolean; showName: boolean; onLongPress: () => void }) {
+function MessageBubble(props: {
+  message: ChatMessage;
+  mine: boolean;
+  showName: boolean;
+  onLongPress: () => void;
+  onOpenImage: (url: string) => void;
+}) {
   const { message, mine } = props;
   return (
     <View style={[styles.messageWrap, mine ? styles.alignEnd : styles.alignStart]}>
@@ -224,7 +322,9 @@ function MessageBubble(props: { message: ChatMessage; mine: boolean; showName: b
           )}
           {message.title && <Text style={[styles.announcementTitle, mine && styles.textMine]}>{message.title}</Text>}
           {message.image_url && (
-            <Image source={{ uri: message.image_url }} style={styles.image} contentFit="cover" transition={150} />
+            <Pressable onPress={() => props.onOpenImage(message.image_url!)} onLongPress={props.onLongPress}>
+              <Image source={{ uri: message.image_url }} style={styles.image} contentFit="cover" transition={150} />
+            </Pressable>
           )}
           {!!message.body && <Text style={[styles.body, mine && styles.textMine]}>{message.body}</Text>}
           <Text style={[styles.time, mine && styles.timeMine]}>{formatMessageTime(message.created_at)}</Text>
@@ -318,4 +418,39 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   reactEmoji: { fontSize: 30 },
+  replyAction: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  replyActionText: { color: Colors.text, fontSize: 16, fontWeight: '700' },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+    paddingLeft: Spacing.sm,
+  },
+  replyBannerText: { flex: 1 },
+  dismiss: { color: Colors.textSecondary, fontSize: 16, paddingHorizontal: Spacing.xs },
+  pendingImage: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  pendingThumb: { width: 48, height: 48, borderRadius: Radius.md },
+  pendingText: { flex: 1, color: Colors.textSecondary, fontSize: 13 },
+  pendingError: { color: Colors.loss },
+  attachButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  attachText: { color: Colors.text, fontSize: 22, lineHeight: 24 },
+  imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
+  fullImage: { width: '100%', height: '80%' },
 });
