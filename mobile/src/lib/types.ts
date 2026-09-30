@@ -207,3 +207,40 @@ export type WaiverClaim = {
   created_at: string;
   processed_at: string | null;
 };
+
+// GET /players/{sleeper_player_id}/card (frontend/src/lib/playerCardApi.ts).
+export type PlayerCard = {
+  sleeper_player_id: string;
+  full_name: string;
+  position: string;
+  pro_team: string | null;
+  status: string | null;
+  injury_status: string | null;
+  age: number | null;
+  height: string | null;
+  weight: string | null;
+  jersey_number: string | null;
+  years_exp: number | null;
+  headshot_url: string | null;
+  projection: {
+    season_projected_points: number;
+    season_avg_projected_points: number;
+    percent_owned: number;
+    percent_started: number;
+    bye_week: number | null;
+    next_opponent: string | null;
+    current_week: number;
+  } | null;
+  overview: {
+    news: { headline: string | null; description: string | null; published: string | null; link: string | null }[];
+    latest_note: { headline: string | null; story: string | null; published: string | null } | null;
+    draft_rank: number | null;
+    position_rank: number | null;
+    season_outlook: string | null;
+  } | null;
+  latest_week: { week: number; fantasy_points: number } | null;
+  weekly_scores: { week: number; fantasy_points: number; opponent: string | null }[];
+  rostered_team_id: number | null;
+  rostered_team_name: string | null;
+  is_on_my_team: boolean;
+};

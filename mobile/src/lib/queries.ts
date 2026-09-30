@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { QueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 
 import { api } from '@/lib/api';
 import type { MyTeam, RosterEntry } from '@/lib/types';
@@ -135,4 +136,15 @@ export function invalidateRosterMoves() {
   void queryClient.invalidateQueries({ queryKey: ['free-agents'] });
   void queryClient.invalidateQueries({ queryKey: ['waiver-claims'] });
   void queryClient.invalidateQueries({ queryKey: ['my-week'] });
+  // Who rosters the player.
+  void queryClient.invalidateQueries({ queryKey: ['player-card'] });
+}
+
+export function usePlayerCard(sleeperPlayerId: string) {
+  return useQuery({ queryKey: ['player-card', sleeperPlayerId], queryFn: () => api.playerCard(sleeperPlayerId) });
+}
+
+export function openPlayer(sleeperPlayerId: string | number | null | undefined) {
+  if (sleeperPlayerId === null || sleeperPlayerId === undefined) return;
+  router.push({ pathname: '/player/[id]', params: { id: String(sleeperPlayerId) } });
 }

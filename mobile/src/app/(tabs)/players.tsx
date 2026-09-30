@@ -2,11 +2,10 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatGameTime, formatPoints } from '@/lib/format';
-import { useFreeAgents } from '@/lib/queries';
+import { openPlayer, useFreeAgents } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
 
 // Label → stored players.position value. Defenses are stored as "DEF"
@@ -25,7 +24,6 @@ export default function PlayersScreen() {
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<FreeAgent | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const players = useFreeAgents(position, search);
 
@@ -98,9 +96,8 @@ export default function PlayersScreen() {
             <MessageState message="No free agents match." />
           )
         }
-        renderItem={({ item }) => <PlayerRow player={item} onPress={() => setSelected(item)} />}
+        renderItem={({ item }) => <PlayerRow player={item} onPress={() => openPlayer(item.sleeper_player_id)} />}
       />
-      {selected && <PlayerActionSheet player={selected} onClose={() => setSelected(null)} />}
     </View>
   );
 }

@@ -1,9 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card, formatScore, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
-import { useMatchup } from '@/lib/queries';
+import { openPlayer, useMatchup } from '@/lib/queries';
 import type { MatchupContextSide, RosterPlayer } from '@/lib/types';
 
 const BENCH_SLOTS = new Set(['BE', 'Bench', 'IR']);
@@ -71,7 +71,9 @@ function PlayerCell({ player, align }: { player: RosterPlayer | undefined; align
   if (!player) return <View style={styles.cell} />;
   const right = align === 'right';
   return (
-    <View style={[styles.cell, right && styles.cellRight]}>
+    <Pressable
+      onPress={() => openPlayer(player.player_id)}
+      style={({ pressed }) => [styles.cell, right && styles.cellRight, pressed && styles.pressed]}>
       <Text style={[styles.player, right && styles.textRight]} numberOfLines={1}>
         {player.player_name}
       </Text>
@@ -79,7 +81,7 @@ function PlayerCell({ player, align }: { player: RosterPlayer | undefined; align
         {formatScore(player.points_scored)}
         {player.game_status === 'in_progress' ? ' •' : ''}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -101,4 +103,5 @@ const styles = StyleSheet.create({
   player: { color: Colors.text, fontSize: 14 },
   points: { color: Colors.textSecondary, fontSize: 13, fontVariant: ['tabular-nums'] },
   textRight: { textAlign: 'right' },
+  pressed: { opacity: 0.6 },
 });

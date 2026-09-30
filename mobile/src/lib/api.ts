@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   Me,
   MyTeam,
+  PlayerCard,
   RosterEntry,
   StandingsRow,
   WaiverClaim,
@@ -81,6 +82,8 @@ export const api = {
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
   matchup: (matchupId: number) => request<WeekMatchupContextItem>(`/matchups/${matchupId}`),
   myTeam: () => request<MyTeam>('/me/team'),
+  playerCard: (sleeperPlayerId: string) =>
+    request<PlayerCard>(`/players/${encodeURIComponent(sleeperPlayerId)}/card`),
   // Both return the whole roster with new lineup_slots but without the
   // GET /me/team-only fields (points, matchup, kickoff) — see
   // applyLineupSlots in lib/queries.ts.

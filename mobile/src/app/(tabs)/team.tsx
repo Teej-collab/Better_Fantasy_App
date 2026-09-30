@@ -4,7 +4,7 @@ import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleS
 
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
+import { openPlayer, useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
 import {
   BENCH_SLOT_LABEL,
   IR_SLOT_LABEL,
@@ -110,7 +110,7 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
         <Text style={[styles.slotText, canEdit && styles.slotTextEditable]}>{slotDisplayLabel(entry.lineup_slot)}</Text>
       </Pressable>
 
-      <View style={styles.player}>
+      <Pressable onPress={() => openPlayer(entry.player_id)} style={({ pressed }) => [styles.player, pressed && styles.pressed]}>
         <View style={styles.nameLine}>
           <Text style={styles.playerName} numberOfLines={1}>
             {entry.player_name}
@@ -121,7 +121,7 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
         <Text style={styles.detail} numberOfLines={1}>
           {detail}
         </Text>
-      </View>
+      </Pressable>
 
       <View style={styles.points}>
         <Text style={styles.pointsValue}>{formatPoints(entry.points)}</Text>
