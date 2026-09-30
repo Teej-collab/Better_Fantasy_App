@@ -1,4 +1,6 @@
 import type {
+  ChatConversation,
+  ChatMessage,
   Me,
   MyTeam,
   RosterEntry,
@@ -80,9 +82,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
     }),
+  chatConversations: () => request<{ conversations: ChatConversation[] }>('/chat/conversations'),
+  // Chronological, 50 per page; `before` pages back from a message id.
+  chatMessages: (conversationId: number, before?: number) =>
+    request<{ messages: ChatMessage[] }>(
+      `/chat/conversations/${conversationId}/messages${before ? `?before=${before}` : ''}`,
+    ),
+  markChatRead: (conversationId: number) =>
+    request<{ last_read_message_id: number | null }>(`/chat/conversations/${conversationId}/read`, { method: 'POST' }),
+  // Toggles; the server broadcasts the result to everyone over the socket.
+  reactToMessage: (messageId: number, emoji: string) =>
+    request<{ added: boolean }>(`/chat/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
+  // Short-lived ticket for the chat WebSocket handshake, which can't
+  // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
+  chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',
       body: JSON.stringify({ sleeper_player_id_a: playerIdA, sleeper_player_id_b: playerIdB }),
     }),
 };
+
+export function chatSocketUrl(ticket: string): string {
+  return `${API_BASE_URL.replace(/^http/, 'ws')}/chat/ws?ticket=${encodeURIComponent(ticket)}`;
+}

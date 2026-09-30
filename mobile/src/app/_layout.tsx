@@ -6,6 +6,7 @@ import { useCallback, useEffect } from 'react';
 
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { ChatSocketProvider } from '@/lib/chatSocket';
 import { queryClient, queryPersister } from '@/lib/queries';
 
 SplashScreen.preventAutoHideAsync();
@@ -38,6 +39,7 @@ function RootStack() {
       <Stack.Protected guard={token !== null}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="matchup/[id]" options={{ title: 'Matchup', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="chat/[id]" options={{ title: 'Chat', headerBackTitle: 'Chat' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
@@ -57,8 +59,10 @@ export default function RootLayout() {
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister }}>
       <ThemeProvider value={theme}>
         <AuthProvider onSignOut={clearCache}>
-          <StatusBar style="light" />
-          <RootStack />
+          <ChatSocketProvider>
+            <StatusBar style="light" />
+            <RootStack />
+          </ChatSocketProvider>
         </AuthProvider>
       </ThemeProvider>
     </PersistQueryClientProvider>

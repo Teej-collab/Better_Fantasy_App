@@ -22,11 +22,12 @@ Someone who isn't on your Wi-Fi (like a tester in another state) can open it wit
 
 - **Sign-in** (`src/lib/auth.tsx`): Discord opens in the in-app sign-in sheet. The backend redirects to `weekendleague://auth/native-complete?ticket=…`, and the app swaps the one-time ticket for a session token (`POST /auth/native/redeem`), kept in the iOS Keychain via `expo-secure-store`.
 - **Data** (`src/lib/queries.ts`): TanStack Query, with the cache saved on the phone. Screens show the last data they had instantly, then refresh in the background.
+- **Live chat** (`src/lib/chatSocket.tsx`): one WebSocket while the app is on screen, authenticated with a short-lived ticket from `POST /auth/ticket?purpose=ws`. Incoming events are written straight into the query cache. It disconnects in the background and refetches on return.
 - **Types** (`src/lib/types.ts`): copied from `frontend/src/lib/api.ts`, trimmed to what these screens read.
 
 ## Screens so far
 
-Sign-in, Home (your matchup and the rest of the league), Team (your roster, with lineup moves and swaps from a bottom sheet), Standings, and matchup detail.
+Sign-in, Home (your matchup and the rest of the league), Team (your roster, with lineup moves and swaps from a bottom sheet), Chat (league chat, Commish Corner and DMs, live over the chat WebSocket, with reactions and typing indicators), Standings, and matchup detail.
 
 `src/lib/rosterSlots.ts` copies the slot-eligibility rules from `frontend/src/lib/rosterSlots.ts`, which mirrors `backend/app/domain/roster_slots.py`. Change all three together.
 

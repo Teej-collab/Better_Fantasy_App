@@ -96,3 +96,21 @@ export function useLineupChange() {
     },
   });
 }
+
+export function useMe() {
+  return useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: 5 * 60_000 });
+}
+
+export function useChatConversations() {
+  return useQuery({ queryKey: ['chat-conversations'], queryFn: async () => (await api.chatConversations()).conversations });
+}
+
+// The newest page. Older pages are prepended by the chat screen, and
+// live messages appended by lib/chatSocket.tsx, both straight into
+// this same cache entry.
+export function useChatMessages(conversationId: number) {
+  return useQuery({
+    queryKey: ['chat-messages', conversationId],
+    queryFn: async () => (await api.chatMessages(conversationId)).messages,
+  });
+}

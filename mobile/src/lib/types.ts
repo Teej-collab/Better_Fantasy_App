@@ -137,3 +137,37 @@ export type MyTeam = {
   // Per-slot capacity, e.g. { RB: 2, WR: 2 }. Null pre-draft.
   roster_slots: Record<string, number> | null;
 };
+
+// Chat (backend/app/routers/chat.py; web types in frontend/src/lib/api.ts).
+export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean; reactor_names: string[] };
+
+export type ChatMessage = {
+  id: number;
+  conversation_id: number;
+  owner_id: number;
+  owner_name: string;
+  owner_chat_color: string | null;
+  owner_logo_url: string | null;
+  body: string;
+  image_url: string | null;
+  // Commish Corner announcements only.
+  title: string | null;
+  deleted: boolean;
+  created_at: string;
+  reply_to: { id: number; owner_name: string; body: string } | null;
+  mentions: number[];
+  reactions: ChatReaction[];
+};
+
+export type ChatConversation = {
+  id: number;
+  type: 'league' | 'direct' | 'commish_corner';
+  member_count: number;
+  other_owner_id: number | null;
+  other_owner_name: string | null;
+  other_owner_logo_url: string | null;
+  unread_count: number;
+  last_message: { id: number; owner_name: string; body: string; created_at: string } | null;
+  // False for everyone but the commissioner in Commish Corner.
+  can_post: boolean;
+};
