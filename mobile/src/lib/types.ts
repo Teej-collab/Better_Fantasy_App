@@ -313,3 +313,95 @@ export type DraftPoolPlayer = {
   bye_week: number | null;
   drafted: boolean;
 };
+
+// Gamecast (backend/app/gamecast/models.py; web types in frontend/src/lib/gamecastApi.ts).
+export type GamecastStatus = 'scheduled' | 'in_progress' | 'halftime' | 'final' | 'postponed' | 'canceled';
+export type GamecastTeam = { abbr: string; name: string; score: number };
+
+export type GamecastPlay = {
+  play_id: string;
+  period: number;
+  clock: string;
+  team_abbr: string | null;
+  down: number | null;
+  distance: number | null;
+  description: string;
+  play_type: string;
+  yards_gained: number | null;
+  is_scoring_play: boolean;
+  is_turnover: boolean;
+};
+
+export type GamecastDrive = {
+  drive_id: string;
+  team_abbr: string;
+  play_count: number;
+  yards: number;
+  duration: string;
+  result: string | null;
+};
+
+export type GamecastScoringPlay = {
+  play_id: string;
+  period: number;
+  clock: string;
+  team_abbr: string;
+  score_type: string;
+  description: string;
+  home_score_after: number;
+  away_score_after: number;
+};
+
+export type LiveGame = {
+  game_id: string;
+  status: GamecastStatus;
+  week: number;
+  scheduled_start: string;
+  home_team: GamecastTeam;
+  away_team: GamecastTeam;
+  period_label: string | null;
+  clock: string | null;
+  possession_team_abbr: string | null;
+  down: number | null;
+  distance: number | null;
+  // 0–100: yards the offense still needs to score.
+  yards_to_goal: number | null;
+  field_position_label: string | null;
+  is_redzone: boolean;
+  current_drive: GamecastDrive | null;
+  // Most recent first.
+  plays: GamecastPlay[];
+  scoring_plays: GamecastScoringPlay[];
+};
+
+export type GamecastGameSummary = {
+  game_id: string;
+  status: GamecastStatus;
+  home_team: GamecastTeam;
+  away_team: GamecastTeam;
+};
+
+export type ImpactPlayer = { player_id?: string; player_name: string; position: string; pro_team?: string; points_scored: number };
+
+export type FantasyImpact = {
+  your_team: { team_id: number; team_name: string } | null;
+  your_players: ImpactPlayer[];
+  opponent_team: { team_id: number; team_name: string } | null;
+  opponent_players: ImpactPlayer[];
+  game_leaders: {
+    home: { abbr: string; name: string; leaders: ImpactPlayer[] };
+    away: { abbr: string; name: string; leaders: ImpactPlayer[] };
+  };
+};
+
+// Everyone in your league who was on a play, and what it earned them.
+export type PlayFantasyPlayer = {
+  player_id: string;
+  player_name: string;
+  position: string;
+  team_name: string;
+  owner_name: string;
+  is_mine: boolean;
+  is_opponent: boolean;
+  points: number;
+};

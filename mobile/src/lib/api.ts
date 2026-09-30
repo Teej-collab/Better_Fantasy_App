@@ -5,10 +5,14 @@ import type {
   ChatMessage,
   DraftPoolPlayer,
   DraftState,
+  FantasyImpact,
+  GamecastGameSummary,
+  LiveGame,
   Me,
   MyTeam,
   NflGame,
   PlayerCard,
+  PlayFantasyPlayer,
   RosterEntry,
   StandingsRow,
   WaiverClaim,
@@ -81,6 +85,14 @@ export const api = {
     request<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`),
   myWeek: () => request<YourWeek>('/me/week'),
   nflScoreboard: () => request<{ games: NflGame[] }>('/nfl/scoreboard'),
+  // Every game this week that has a Gamecast (live, upcoming or final).
+  gamecastGames: () => request<{ games: GamecastGameSummary[] }>('/nfl/live-games'),
+  gamecastGame: (gameId: string) => request<LiveGame>(`/nfl/games/${encodeURIComponent(gameId)}`),
+  fantasyImpact: (gameId: string) => request<FantasyImpact>(`/nfl/games/${encodeURIComponent(gameId)}/fantasy-impact`),
+  playFantasy: (gameId: string, playId: string) =>
+    request<{ players: PlayFantasyPlayer[] }>(
+      `/nfl/games/${encodeURIComponent(gameId)}/plays/${encodeURIComponent(playId)}/fantasy`,
+    ),
   standings: (season: number) => request<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`),
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
@@ -182,4 +194,8 @@ export function chatSocketUrl(ticket: string): string {
 
 export function draftSocketUrl(ticket: string, season: number): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/draft/ws?ticket=${encodeURIComponent(ticket)}&season=${season}`;
+}
+
+export function gamecastSocketUrl(ticket: string, gameId: string): string {
+  return `${API_BASE_URL.replace(/^http/, 'ws')}/nfl/gamecast/ws?ticket=${encodeURIComponent(ticket)}&game_id=${encodeURIComponent(gameId)}`;
 }

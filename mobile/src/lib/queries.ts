@@ -200,3 +200,43 @@ export function useDraftPool(position: string | undefined, search: string) {
 export function useDraftQueue() {
   return useQuery({ queryKey: ['draft-queue'], queryFn: async () => (await api.draftQueue()).queue });
 }
+
+export function useGamecastGames() {
+  const live = useIsGameLive();
+  return useQuery({
+    queryKey: ['gamecast-games'],
+    queryFn: async () => (await api.gamecastGames()).games,
+    refetchInterval: live ? 60_000 : false,
+  });
+}
+
+// The Gamecast id for a scoreboard game, matched by team pair — same
+// as the web's findGamecastId (frontend/src/lib/gamecastApi.ts).
+export function useGamecastIdFinder() {
+  const games = useGamecastGames().data ?? [];
+  return (home: string | null, away: string | null) =>
+    home && away ? (games.find((g) => g.home_team.abbr === home && g.away_team.abbr === away)?.game_id ?? null) : null;
+}
+
+// Initial state; the Gamecast screen's socket (app/gamecast/[id].tsx) keeps
+// this same cache entry current during the game.
+export function useGamecastGame(gameId: string) {
+  return useQuery({ queryKey: ['gamecast', gameId], queryFn: () => api.gamecastGame(gameId) });
+}
+
+export function useFantasyImpact(gameId: string, live: boolean) {
+  return useQuery({
+    queryKey: ['fantasy-impact', gameId],
+    queryFn: () => api.fantasyImpact(gameId),
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
+  });
+}
+
+export function usePlayFantasy(gameId: string, playId: string | null) {
+  return useQuery({
+    queryKey: ['play-fantasy', gameId, playId],
+    queryFn: async () => (await api.playFantasy(gameId, playId!)).players,
+    enabled: playId !== null,
+    staleTime: Infinity,
+  });
+}

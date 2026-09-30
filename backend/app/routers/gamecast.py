@@ -79,7 +79,9 @@ async def game_fantasy_impact(game_id: str, request: Request):
         except KeyError:
             raise HTTPException(status_code=404, detail="Unknown game_id")
 
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    # get_session_token, not the cookie alone: the native app sends
+    # `Authorization: Bearer` (app/auth/session.py's get_session_token).
+    payload = _decode_session(get_session_token(request))
     async with pool.acquire() as conn:
         return await service.build_fantasy_impact(conn, game, payload)
 
@@ -99,7 +101,9 @@ async def play_fantasy(game_id: str, play_id: str, request: Request):
         except KeyError:
             raise HTTPException(status_code=404, detail="Unknown game_id")
 
-    payload = _decode_session(request.cookies.get(SESSION_COOKIE_NAME))
+    # get_session_token, not the cookie alone: the native app sends
+    # `Authorization: Bearer` (app/auth/session.py's get_session_token).
+    payload = _decode_session(get_session_token(request))
     async with pool.acquire() as conn:
         try:
             return await service.build_last_play(conn, game, play_id, payload)

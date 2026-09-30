@@ -1,7 +1,8 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { useNflScoreboard } from '@/lib/queries';
+import { useGamecastIdFinder, useNflScoreboard } from '@/lib/queries';
 import type { NflGame } from '@/lib/types';
 
 // Live games first, then upcoming, then finals — what you want to see
@@ -18,8 +19,10 @@ function kickoff(game: NflGame): string {
 }
 
 // The web app's NFL ticker, as a sideways-scrolling row of score chips.
+// Each chip opens that game's Gamecast.
 export function NflScoreStrip() {
   const games = useNflScoreboard().data ?? [];
+  const findGamecastId = useGamecastIdFinder();
   if (games.length === 0) return null;
   const sorted = [...games].sort((a, b) => (STATE_ORDER[a.state ?? 'pre'] ?? 1) - (STATE_ORDER[b.state ?? 'pre'] ?? 1));
 
@@ -28,8 +31,13 @@ export function NflScoreStrip() {
       {sorted.map((game) => {
         const live = game.state === 'in';
         const started = game.state !== 'pre';
+        const gamecastId = findGamecastId(game.home_team, game.away_team);
         return (
-          <View key={game.id} style={[styles.chip, live && styles.chipLive]}>
+          <Pressable
+            key={game.id}
+            disabled={!gamecastId}
+            onPress={() => gamecastId && router.push({ pathname: '/gamecast/[id]', params: { id: gamecastId } })}
+            style={({ pressed }) => [styles.chip, live && styles.chipLive, pressed && styles.pressed]}>
             <TeamLine team={game.away_team} score={started ? game.away_score : null} />
             <TeamLine team={game.home_team} score={started ? game.home_score : null} />
             <View style={styles.statusLine}>
@@ -38,7 +46,7 @@ export function NflScoreStrip() {
                 {game.state === 'pre' ? kickoff(game) : (game.status_detail ?? '')}
               </Text>
             </View>
-          </View>
+          </Pressable>
         );
       })}
     </ScrollView>
@@ -66,6 +74,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   chipLive: { borderColor: Colors.live },
+  pressed: { opacity: 0.6 },
   teamLine: { flexDirection: 'row', justifyContent: 'space-between' },
   team: { color: Colors.text, fontSize: 13, fontWeight: '700' },
   score: { color: Colors.text, fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },

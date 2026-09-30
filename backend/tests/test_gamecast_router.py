@@ -163,6 +163,35 @@ async def test_fantasy_impact_works_signed_out_with_game_leaders_only():
     assert body["game_leaders"]["away"]["abbr"] == "BUF"
 
 
+async def test_fantasy_impact_reads_a_bearer_token_like_the_session_cookie(pool, monkeypatch):
+    # The native app has no cookie jar; it sends Authorization: Bearer.
+    # A real signup token, so the session_revocation middleware (which
+    # checks the user exists) lets it through; cleanup_test_season
+    # removes the test- account.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    seen = {}
+
+    async def fake_build_fantasy_impact(conn, game, payload):
+        seen["payload"] = payload
+        return {"your_team": None, "your_players": [], "opponent_team": None, "opponent_players": [], "game_leaders": {}}
+
+    monkeypatch.setattr(service, "build_fantasy_impact", fake_build_fantasy_impact)
+    async with _client() as signup_client:
+        signup = await signup_client.post(
+            "/auth/signup",
+            json={"email": "test-gamecast-bearer@example.com", "password": "correct-horse", "display_name": "Bearer"},
+        )
+    token = signup.json()["token"]
+
+    async with _client() as client:
+        resp = await client.get("/nfl/games/mock-kc-buf/fantasy-impact", headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.status_code == 200
+    # Signed out, payload would be None (see the signed-out test above).
+    assert seen["payload"] is not None
+    assert isinstance(seen["payload"]["user_id"], int)
+
+
 async def test_fantasy_impact_404s_for_an_unknown_game_id():
     async with _client() as client:
         resp = await client.get("/nfl/games/does-not-exist/fantasy-impact")
