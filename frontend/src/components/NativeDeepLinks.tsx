@@ -4,18 +4,22 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { App } from "@capacitor/app";
 import { useIsNativeApp } from "@/lib/nativeApp";
+import { nativeCallbackToPath } from "@/lib/nativeAuth";
 
 /**
- * Routes a universal link / Android App Link that opened the native
- * app into this WebView. The OS hands the URL to the native shell, but
- * Capacitor doesn't navigate the WebView on its own — without this,
- * the Discord sign-in handoff (backend redirects the system browser to
- * /auth/native-complete?ticket=…, see app/auth/native-complete/page.tsx)
- * brings the app to the front and then sits on whatever page it was
- * already showing, never redeeming the ticket.
+ * Routes a `weekendleague://auth/native-complete?…` link that opened
+ * the native app into this WebView. That's how Android finishes Discord
+ * sign-in: the login runs in the system browser, and the backend's
+ * redirect to the custom scheme brings the app back (see
+ * AndroidManifest.xml). Capacitor doesn't navigate the WebView on its
+ * own, so without this the app would come to the front and sit on
+ * whatever page it was already showing. iOS never needs this path: its
+ * in-app sign-in sheet hands the callback straight back to SignInCard
+ * (lib/nativeAuth.ts).
  *
- * Only same-host URLs are followed, and only their path + query, so a
- * link can never navigate the WebView off this site. Renders nothing.
+ * nativeCallbackToPath only ever yields that one in-app page, so a link
+ * another app fires at the scheme can't navigate anywhere else.
+ * Renders nothing.
  */
 export function NativeDeepLinks() {
   const isNative = useIsNativeApp();
@@ -30,14 +34,8 @@ export function NativeDeepLinks() {
     const open = (url: string | undefined) => {
       if (!url || handled.has(url)) return;
       handled.add(url);
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        return;
-      }
-      if (parsed.host !== window.location.host) return;
-      router.push(parsed.pathname + parsed.search);
+      const path = nativeCallbackToPath(url);
+      if (path) router.push(path);
     };
 
     App.getLaunchUrl()

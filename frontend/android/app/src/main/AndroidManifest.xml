@@ -19,14 +19,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Discord sign-in handoff: opens /auth/native-complete links
-                 in the app instead of the browser. Verified against
-                 public/.well-known/assetlinks.json. -->
-            <intent-filter android:autoVerify="true">
+            <!-- Discord sign-in handoff: the backend's weekendleague://auth/...
+                 redirect brings the app back from the browser (see
+                 src/components/NativeDeepLinks.tsx). -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="weekend-league-web.vercel.app" android:pathPrefix="/auth/native-complete" />
+                <data android:scheme="weekendleague" android:host="auth" />
             </intent-filter>
         </activity>
 

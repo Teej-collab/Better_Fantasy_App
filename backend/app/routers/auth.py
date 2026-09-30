@@ -61,16 +61,20 @@ def _resolve_client_type(state: str) -> str:
     return client_type if client_type in ("web", "native") else "web"
 
 
-def _native_app_base_url() -> str:
-    return os.getenv("NATIVE_APP_UNIVERSAL_LINK_BASE") or os.getenv("FRONTEND_URL", "http://localhost:3000")
+# The app's custom URL scheme. iOS's in-app sign-in sheet
+# (ASWebAuthenticationSession) closes itself when it sees a redirect to
+# it; Android registers it as an intent filter. Neither needs a
+# domain-verified universal link, so this works on a free Apple account.
+def _native_callback_base() -> str:
+    return f"{os.getenv('NATIVE_APP_CUSTOM_SCHEME') or 'weekendleague'}://auth"
 
 
 def _native_completion_url(ticket: str) -> str:
-    return f"{_native_app_base_url()}/auth/native-complete?ticket={ticket}"
+    return f"{_native_callback_base()}/native-complete?ticket={ticket}"
 
 
 def _native_error_url(error_code: str) -> str:
-    return f"{_native_app_base_url()}/auth/native-complete?error={error_code}"
+    return f"{_native_callback_base()}/native-complete?error={error_code}"
 
 
 @router.get("/discord/login")

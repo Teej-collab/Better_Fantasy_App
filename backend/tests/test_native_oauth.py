@@ -29,7 +29,7 @@ def _set_discord_env(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     monkeypatch.setenv("FRONTEND_URL", "http://localhost:3000")
     monkeypatch.delenv("COMMISSIONER_DISCORD_ID", raising=False)
-    monkeypatch.delenv("NATIVE_APP_UNIVERSAL_LINK_BASE", raising=False)
+    monkeypatch.delenv("NATIVE_APP_CUSTOM_SCHEME", raising=False)
 
 
 async def _seed_owner_with_discord_id(pool, discord_user_id, display_name):
@@ -108,7 +108,7 @@ async def test_native_discord_callback_redirects_to_a_deep_link_with_a_ticket(po
 
     assert callback_resp.status_code in (302, 307)
     location = callback_resp.headers["location"]
-    assert location.startswith("http://localhost:3000/auth/native-complete?ticket=")
+    assert location.startswith("weekendleague://auth/native-complete?ticket=")
     # No same-domain cookie for a native completion — the whole point
     # is a native client has no browser cookie jar to use.
     assert "session" not in callback_resp.cookies
@@ -136,7 +136,7 @@ async def test_native_discord_callback_not_a_league_member_redirects_to_a_native
         )
 
     location = callback_resp.headers["location"]
-    assert location.startswith("http://localhost:3000/auth/native-complete?error=")
+    assert location.startswith("weekendleague://auth/native-complete?error=")
     assert _query_param(location, "error") == "not_a_league_member"
 
 

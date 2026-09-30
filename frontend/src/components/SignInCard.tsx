@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { API_BASE_URL } from "@/lib/api";
 import { completeSignIn, login, signup } from "@/lib/authApi";
 import { useIsNativeApp } from "@/lib/nativeApp";
+import { canUseSignInSheet, signInWithSheet } from "@/lib/nativeAuth";
 
 // Shared by every text field in the email/password form below. Used
 // to unconditionally strip the focus outline (focus:outline-none)
@@ -74,6 +75,23 @@ export function SignInCard({
   // (Discord/Google OAuth opens in the system browser, a separate cookie
   // jar — see that page's own docstring).
   const nativeClient = useIsNativeApp();
+  const discordLoginUrl = `${API_BASE_URL}/auth/discord/login${nativeClient ? "?client=native" : ""}`;
+
+  // iOS: run Discord in the in-app sign-in sheet (lib/nativeAuth.ts),
+  // which closes itself and hands back the ticket link. Everywhere else
+  // (web, Android, an older iOS build without the plugin) the plain
+  // link below opens the login in the browser as before.
+  async function handleDiscordClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!nativeClient || !canUseSignInSheet()) return;
+    e.preventDefault();
+    setError(null);
+    try {
+      const path = await signInWithSheet(discordLoginUrl);
+      if (path) router.push(path);
+    } catch {
+      setError("Couldn't open Discord sign-in. Try again.");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -125,7 +143,8 @@ export function SignInCard({
       {!showEmailForm ? (
         <>
           <a
-            href={`${API_BASE_URL}/auth/discord/login${nativeClient ? "?client=native" : ""}`}
+            href={discordLoginUrl}
+            onClick={handleDiscordClick}
             target="_blank"
             rel="noopener"
             className="flex items-center justify-center gap-2.5 rounded-full bg-[#5865F2] px-6 py-3.5 text-sm font-semibold text-white transition-transform hover:brightness-110 active:scale-[0.98]"
