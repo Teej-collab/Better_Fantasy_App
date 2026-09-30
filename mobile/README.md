@@ -26,7 +26,9 @@ Someone who isn't on your Wi-Fi (like a tester in another state) can open it wit
 
 ## Screens so far
 
-Sign-in, Home (your matchup and the rest of the league), Standings, and matchup detail.
+Sign-in, Home (your matchup and the rest of the league), Team (your roster, with lineup moves and swaps from a bottom sheet), Standings, and matchup detail.
+
+`src/lib/rosterSlots.ts` copies the slot-eligibility rules from `frontend/src/lib/rosterSlots.ts`, which mirrors `backend/app/domain/roster_slots.py`. Change all three together.
 
 ## Checks
 

@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { QueryClient, useQuery } from '@tanstack/react-query';
+import { QueryClient, useMutation, useQuery } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
+import type { MyTeam, RosterEntry } from '@/lib/types';
 
 // This is the main reason the native app feels faster than the web one:
 // every screen renders the last data it saw immediately (saved on the
@@ -58,4 +59,40 @@ export function useStandings(season: number | null) {
 
 export function useMatchup(matchupId: number) {
   return useQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId) });
+}
+
+export function useMyTeam() {
+  return useQuery({ queryKey: ['my-team'], queryFn: api.myTeam });
+}
+
+// A move/swap response leaves every GET /me/team-only field (points,
+// matchup, kickoff, projection) empty. Replacing the roster with it
+// wholesale blanked all of that on the web (2026-09-23 report), so keep
+// each player's full entry and take only the new lineup_slot.
+function applyLineupSlots(prev: RosterEntry[], next: RosterEntry[]): RosterEntry[] {
+  const prevById = new Map(prev.map((e) => [e.player_id, e]));
+  return next.map((e) => {
+    const full = prevById.get(e.player_id);
+    return full ? { ...full, lineup_slot: e.lineup_slot } : e;
+  });
+}
+
+export type LineupChange =
+  | { kind: 'move'; player: RosterEntry; toSlot: string }
+  | { kind: 'swap'; player: RosterEntry; other: RosterEntry };
+
+export function useLineupChange() {
+  return useMutation({
+    mutationFn: (change: LineupChange) =>
+      change.kind === 'move'
+        ? api.moveLineup(change.player.player_id, change.toSlot)
+        : api.swapLineup(change.player.player_id, change.other.player_id),
+    onSuccess: ({ roster }) => {
+      queryClient.setQueryData<MyTeam>(['my-team'], (prev) =>
+        prev ? { ...prev, roster: applyLineupSlots(prev.roster, roster) } : prev,
+      );
+      // Starters feed the home card's projections.
+      void queryClient.invalidateQueries({ queryKey: ['my-week'] });
+    },
+  });
 }

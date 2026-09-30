@@ -106,3 +106,34 @@ export type WeekMatchupContext = {
   game_of_the_week_matchup_id: number | null;
   matchups: WeekMatchupContextItem[];
 };
+
+// GET /me/team's roster rows (frontend/src/lib/api.ts's RosterEntry).
+// player_id is the Sleeper player id the lineup endpoints take.
+export type RosterEntry = {
+  player_id: string;
+  player_name: string;
+  lineup_slot: string;
+  position: string;
+  pro_team: string | null;
+  injury_status: string | null;
+  points: number | null;
+  points_projected: number | null;
+  live_projected?: number | null;
+  next_opponent: string | null;
+  game_time: string | null;
+  bye_week: number | null;
+  // Their NFL game has started, so the backend rejects moving them.
+  is_locked: boolean;
+};
+
+export type MyTeam = {
+  team_name: string;
+  season: number;
+  week: number | null;
+  current_week: number | null;
+  // False when viewing any week but the live one.
+  is_editable: boolean;
+  roster: RosterEntry[];
+  // Per-slot capacity, e.g. { RB: 2, WR: 2 }. Null pre-draft.
+  roster_slots: Record<string, number> | null;
+};

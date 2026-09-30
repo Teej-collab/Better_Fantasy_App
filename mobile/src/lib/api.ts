@@ -1,4 +1,12 @@
-import type { Me, StandingsRow, WeekMatchupContext, WeekMatchupContextItem, YourWeek } from '@/lib/types';
+import type {
+  Me,
+  MyTeam,
+  RosterEntry,
+  StandingsRow,
+  WeekMatchupContext,
+  WeekMatchupContextItem,
+  YourWeek,
+} from '@/lib/types';
 
 // The production backend by default (mobile/.env). Point it at a local
 // backend with a .env.local, e.g. EXPO_PUBLIC_API_BASE_URL=http://<your-mac>.local:8000.
@@ -63,4 +71,18 @@ export const api = {
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
   matchup: (matchupId: number) => request<WeekMatchupContextItem>(`/matchups/${matchupId}`),
+  myTeam: () => request<MyTeam>('/me/team'),
+  // Both return the whole roster with new lineup_slots but without the
+  // GET /me/team-only fields (points, matchup, kickoff) — see
+  // applyLineupSlots in lib/queries.ts.
+  moveLineup: (playerId: string, toSlot: string) =>
+    request<{ roster: RosterEntry[] }>('/me/team/lineup/move', {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
+    }),
+  swapLineup: (playerIdA: string, playerIdB: string) =>
+    request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id_a: playerIdA, sleeper_player_id_b: playerIdB }),
+    }),
 };
