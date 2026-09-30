@@ -14,7 +14,10 @@ never the real global max). ACTIVE_SEASON is already the one
 authoritative "what season is it right now" value the rest of the app
 uses (app/providers/espn/config.py).
 """
+import asyncio
+
 from app.config import DEFAULT_LEAGUE_ID
+from app.db import on_own_conn
 from app.domain.live_injuries import get_injury_states
 from app.domain.live_projection import game_clock_by_pro_team, live_team_total
 from app.domain.streaks import get_result_streaks
@@ -57,48 +60,80 @@ def _record(standing) -> str | None:
     return record
 
 
+async def _week_scoreboard_or_empty(week: int, season: int) -> list[dict]:
+    # Live projections (app/domain/live_projection.py) move during
+    # games; a fetch failure just means pregame projections.
+    try:
+        return await get_week_scoreboard(week, season)
+    except Exception:
+        return []
+
+
+async def _none():
+    return None
+
+
 async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEFAULT_LEAGUE_ID):
-    team = await conn.fetchrow(
-        "SELECT id AS team_id, team_name FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
-        season, owner_id, league_id,
+    # Reads run in four parallel rounds, each only waiting on what it
+    # needs from the one before — see app/db.py's on_own_conn. This used
+    # to be ~14 sequential round trips (~0.8 s per home page load).
+    #
+    # Round 1: nothing depends on anything yet. The draft is cheap (one
+    # row, may not exist yet) and always attached regardless of week, so
+    # the response shape stays consistent whether or not a matchup
+    # exists. The pre-set schedule is only used when there's no
+    # draft_config row: a commissioner may have set just the date ahead
+    # of deciding the order (PUT /draft/schedule, held in
+    # league_draft_schedule — see that table's own migration docstring).
+    team, draft_row, pre_set, week = await asyncio.gather(
+        on_own_conn(
+            lambda c: c.fetchrow(
+                "SELECT id AS team_id, team_name FROM teams_by_season"
+                " WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+                season, owner_id, league_id,
+            )
+        ),
+        on_own_conn(
+            lambda c: c.fetchrow(
+                "SELECT scheduled_start, status FROM draft_config WHERE season = $1 AND league_id = $2",
+                season, league_id,
+            )
+        ),
+        on_own_conn(draft_queries.get_schedule_only, season, league_id),
+        on_own_conn(queries.get_cached_current_week, season),
     )
     if team is None:
         return None  # this owner has no team in the latest season (e.g. left the league)
 
-    # Real, current state right now (preseason, pre-draft): draft is
-    # cheap (one row, may not exist yet) and always attached regardless
-    # of week, not just in the no-matchup branch below, so the response
-    # shape stays consistent whether or not a matchup exists.
-    draft_row = await conn.fetchrow(
-        "SELECT scheduled_start, status FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
-    )
     if draft_row is not None:
         draft = {"scheduled_start": draft_row["scheduled_start"], "status": draft_row["status"]}
     else:
-        # No real draft set up yet — a commissioner may still have set
-        # just the date ahead of deciding the order (PUT /draft/schedule,
-        # held in league_draft_schedule — see that table's own migration
-        # docstring). "not_started" is the only real status this can
-        # ever be without a draft_config row to say otherwise.
-        pre_set = await draft_queries.get_schedule_only(conn, season, league_id)
+        # "not_started" is the only real status this can ever be
+        # without a draft_config row to say otherwise.
         draft = {"scheduled_start": pre_set, "status": "not_started"} if pre_set is not None else None
 
-    # This team's own current power rank (Standings-style #N badge —
+    # Round 2: this team's own power rank (Standings-style #N badge —
     # 2026-09-17: now also the Your Week hero, matchup header, and
-    # Other Matchups list, everywhere a team name already shows). Null
-    # until this team has at least one ranked week.
-    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, [team["team_id"]], league_id)
-
-    week = await queries.get_cached_current_week(conn, season)
+    # Other Matchups list; null until this team has a ranked week), plus
+    # everything the matchup needs that only depends on the week. On a
+    # bye week the standings/stdev/scoreboard reads are wasted, which is
+    # cheaper than waiting for the matchup before starting them.
+    has_week = bool(week) and week >= 1
+    power_rank_by_team, matchup, standings_rows, stdev, games = await asyncio.gather(
+        on_own_conn(get_latest_power_rank_by_team, season, [team["team_id"]], league_id),
+        on_own_conn(queries.get_matchup_for_team, team["team_id"], season, week, league_id) if has_week else _none(),
+        on_own_conn(queries.get_standings, season, league_id) if has_week else _none(),
+        on_own_conn(queries.get_team_score_stdev, season, league_id) if has_week else _none(),
+        _week_scoreboard_or_empty(week, season) if has_week else _none(),
+    )
     base = {
         "season": season, "week": week, "team_id": team["team_id"], "team_name": team["team_name"],
         "power_rank": power_rank_by_team.get(team["team_id"]),
         "matchup": None, "draft": draft,
     }
-    if not week or week < 1:
+    if not has_week:
         return base  # preseason — no real current week yet
 
-    matchup = await queries.get_matchup_for_team(conn, team["team_id"], season, week, league_id)
     if matchup is None:
         return base  # e.g. a bye week
 
@@ -108,19 +143,23 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     opp_team_id = matchup["away_team_id"] if is_home else matchup["home_team_id"]
     opp_team_name = matchup["away_team_name"] if is_home else matchup["home_team_name"]
 
-    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, [team["team_id"], opp_team_id], league_id)
-    base["power_rank"] = power_rank_by_team.get(team["team_id"])
-
     started = my_score is not None and opp_score is not None and not (my_score == 0 and opp_score == 0)
 
-    my_roster = await queries.get_current_roster(conn, season, team["team_id"], week)
-    opp_roster = await queries.get_current_roster(conn, season, opp_team_id, week)
-    # Live projections (app/domain/live_projection.py): these move
-    # during games; equal the pregame projection before kickoff.
-    try:
-        games = await get_week_scoreboard(week, season)
-    except Exception:
-        games = []
+    # Round 3: everything that needs the opponent.
+    pair = [team["team_id"], opp_team_id]
+    power_rank_by_team, my_roster, opp_roster, result_streaks, teams_by_id = await asyncio.gather(
+        on_own_conn(get_latest_power_rank_by_team, season, pair, league_id),
+        on_own_conn(queries.get_current_roster, season, team["team_id"], week),
+        on_own_conn(queries.get_current_roster, season, opp_team_id, week),
+        on_own_conn(
+            get_result_streaks, season, pair, week, exclude_week=None if is_week_final(games) else week
+        ),
+        on_own_conn(queries.get_teams, pair),
+    )
+    base["power_rank"] = power_rank_by_team.get(team["team_id"])
+
+    # Round 4: needs the rosters. Live projections equal the pregame
+    # projection before kickoff.
     game_clock = game_clock_by_pro_team(games)
     injury_rows = await get_injury_states(conn, season, week, [r["player_id"] for r in my_roster + opp_roster])
     injuries = {pid: v["state"] for pid, v in injury_rows.items()}
@@ -129,20 +168,15 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     my_projected = live_team_total(my_roster, game_clock, injuries) if my_roster else my_pregame
     opp_projected = live_team_total(opp_roster, game_clock, injuries) if opp_roster else opp_pregame
 
-    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
+    standings_by_team = {r["team_id"]: r for r in standings_rows}
     record = _record(standings_by_team.get(team["team_id"]))
     opp_record = _record(standings_by_team.get(opp_team_id))
-    result_streaks = await get_result_streaks(
-        conn, season, [team["team_id"], opp_team_id], week, exclude_week=None if is_week_final(games) else week
-    )
-    teams_by_id = await queries.get_teams(conn, [team["team_id"], opp_team_id])
     my_team_row, opp_team_row = teams_by_id.get(team["team_id"]), teams_by_id.get(opp_team_id)
     my_yet_to_play, my_in_play = _starter_game_counts(my_roster, game_clock)
     opp_yet_to_play, opp_in_play = _starter_game_counts(opp_roster, game_clock)
 
     # Same live projections as the matchup page, so the two can never
     # show different odds for one game.
-    stdev = await queries.get_team_score_stdev(conn, season, league_id)
     win_probability = estimate_win_probability(
         float(my_score or 0), my_projected,
         float(opp_score or 0), opp_projected,

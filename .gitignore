@@ -17,3 +17,7 @@ frontend/.next/
 
 # OS junk
 .DS_Store
+
+# Android release signing key — never commit
+*.keystore
+*.jks

@@ -93,6 +93,73 @@ function hasAwardsData(awards: WeeklyAwards): boolean {
   );
 }
 
+// Everything the dashboard's league cards need for one season/week —
+// only the week number, never anything from /me/week, so HomePage
+// starts it the moment getCurrentWeek resolves.
+async function fetchLeagueBatch(season: number, week: number, sessionCookie: string | undefined) {
+  const [
+    standingsRes,
+    awardsRes,
+    prevWeekAwardsRes,
+    matchupContextRes,
+    rivalriesRes,
+    leagueTicker,
+    powerRankingsRes,
+    weekRecapRes,
+    prevWeekRecapRes,
+    chugFeedRes,
+    leagueActivityRes,
+  ] = await Promise.all([
+    getStandings(season, sessionCookie),
+    getWeeklyAwards(season, week, sessionCookie),
+    // Same idea as the recap's own week/week-1 pair below: a fresh
+    // week (Tue/Wed after rollover, before its own Thursday games)
+    // has nothing real to award yet — falling back to the week that
+    // just wrapped keeps real awards on screen right up until the new
+    // week has its own (2026-09-15 ask: "weekly awards from the
+    // previous week should be displayed until Thursday" — this is
+    // data-driven rather than a hardcoded day, so it naturally holds
+    // exactly until the new week's first real games start producing
+    // award-worthy data, whenever that happens to land).
+    week > 1 ? getWeeklyAwards(season, week - 1, sessionCookie) : Promise.resolve(EMPTY_WEEKLY_AWARDS),
+    getWeekMatchupContext(season, week, sessionCookie),
+    listRivalries(sessionCookie),
+    getWeekLeagueTicker(season, week, sessionCookie),
+    // The most recent locked week, not the in-progress one — the card
+    // used to go blank from the flip until the next one.
+    getLatestPowerRankings(season, sessionCookie),
+    // Checks the active `week` itself, IN ADDITION to week-1 below —
+    // not instead of it. Once a week's own real games are all final,
+    // its recap becomes eligible immediately
+    // (app/domain/narrative_engine.py's _resolve_weekly_kind), fully
+    // independent of whether league_state.current_week (a separate,
+    // sometimes-lagging counter — see that module's own docstring)
+    // has rolled over past it yet. Real report, 2026-09-15: checking
+    // only week-1 left the homepage showing nothing at all for the
+    // entire stretch between "this week's games all went final" and
+    // "the app's own current-week counter finally rolled over" —
+    // querying `week` too covers exactly that gap, including week 1
+    // itself (week - 1 would be 0, never valid).
+    getWeeklyRecap(season, week, sessionCookie),
+    week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
+    getChugFeed(sessionCookie, season),
+    getLeagueActivity(season, sessionCookie, 5),
+  ]);
+  return {
+    standingsRes,
+    awardsRes,
+    prevWeekAwardsRes,
+    matchupContextRes,
+    rivalriesRes,
+    leagueTicker,
+    powerRankingsRes,
+    weekRecapRes,
+    prevWeekRecapRes,
+    chugFeedRes,
+    leagueActivityRes,
+  };
+}
+
 export default async function HomePage() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
@@ -128,16 +195,32 @@ export default async function HomePage() {
   // "no real current week" (current_week: null) for exactly the same
   // no-season/no-active-league case resolveWeek's caller below already
   // handled, just resolved a hop earlier.
-  const [myWeek, nflGames, gamecastGames, activeLeagueName, myPreferences, currentWeekRes] = await Promise.all([
-    getMyWeek(sessionCookie),
-    getNflScoreboard(),
-    getLiveGames(),
-    getActiveLeagueName(sessionCookie),
-    getMyPreferences(sessionCookie),
-    season !== null && me.active_league_id !== null
-      ? getCurrentWeek(season)
-      : Promise.resolve({ current_week: null as number | null }),
-  ]);
+  const hasLeagueSeason = season !== null && me.active_league_id !== null;
+  const myWeekPromise = getMyWeek(sessionCookie);
+  const currentWeekPromise = hasLeagueSeason
+    ? getCurrentWeek(season)
+    : Promise.resolve({ current_week: null as number | null });
+  // The league batch below only needs the week number (~75 ms), so it
+  // starts the moment that arrives instead of waiting on /me/week
+  // (~0.5 s) and the rest of this batch. Only chugDeadline needs
+  // myWeek, so it chains off that one promise alone.
+  const leagueBatchPromise = hasLeagueSeason
+    ? currentWeekPromise.then(({ current_week }) => fetchLeagueBatch(season, resolveWeek(current_week), sessionCookie))
+    : Promise.resolve(null);
+  const chugDeadlinePromise = hasLeagueSeason
+    ? myWeekPromise.then((mw) => (mw?.draft?.status === "complete" ? getChugDeadline(sessionCookie) : null))
+    : Promise.resolve(null);
+  const [myWeek, nflGames, gamecastGames, activeLeagueName, myPreferences, currentWeekRes, leagueBatch, chugDeadlineRes] =
+    await Promise.all([
+      myWeekPromise,
+      getNflScoreboard(),
+      getLiveGames(),
+      getActiveLeagueName(sessionCookie),
+      getMyPreferences(sessionCookie),
+      currentWeekPromise,
+      leagueBatchPromise,
+      chugDeadlinePromise,
+    ]);
   const isGameDay = isNflGameLive(nflGames);
   // Settings > Labs > "Try the new look" — see LabsSection.tsx and
   // Documentation/UX/06_Implementation_Roadmap.md section 0. HomePageBeta
@@ -167,17 +250,9 @@ export default async function HomePage() {
   // a league on /leagues) sees the dashboard shell with none of this,
   // same as the "no season synced yet" case below, rather than a
   // crashed page from an unhandled 409.
-  if (season !== null && me.active_league_id !== null) {
+  if (leagueBatch !== null) {
     week = resolveWeek(currentWeekRes.current_week);
-    // Third merge: chugDeadline never depended on anything in THIS batch
-    // either (only on myWeek.draft.status, already known from the batch
-    // above) — it used to run as its own sequential hop after this
-    // whole batch finished; now it's just one more entry in it, gated
-    // the same "only once the draft's actually done" way as before (see
-    // cards.chugCountdown below — no reason to hit ESPN's live
-    // scoreboard for a league that hasn't drafted).
-    const wantsPostDraftData = myWeek?.draft?.status === "complete";
-    const [
+    const {
       standingsRes,
       awardsRes,
       prevWeekAwardsRes,
@@ -185,48 +260,11 @@ export default async function HomePage() {
       rivalriesRes,
       leagueTicker,
       powerRankingsRes,
-      chugDeadlineRes,
       weekRecapRes,
       prevWeekRecapRes,
       chugFeedRes,
       leagueActivityRes,
-    ] = await Promise.all([
-      getStandings(season, sessionCookie),
-      getWeeklyAwards(season, week, sessionCookie),
-      // Same idea as the recap's own week/week-1 pair below: a fresh
-      // week (Tue/Wed after rollover, before its own Thursday games)
-      // has nothing real to award yet — falling back to the week that
-      // just wrapped keeps real awards on screen right up until the new
-      // week has its own (2026-09-15 ask: "weekly awards from the
-      // previous week should be displayed until Thursday" — this is
-      // data-driven rather than a hardcoded day, so it naturally holds
-      // exactly until the new week's first real games start producing
-      // award-worthy data, whenever that happens to land).
-      week > 1 ? getWeeklyAwards(season, week - 1, sessionCookie) : Promise.resolve(EMPTY_WEEKLY_AWARDS),
-      getWeekMatchupContext(season, week, sessionCookie),
-      listRivalries(sessionCookie),
-      getWeekLeagueTicker(season, week, sessionCookie),
-      // The most recent locked week, not the in-progress one — the card
-      // used to go blank from the flip until the next one.
-      getLatestPowerRankings(season, sessionCookie),
-      wantsPostDraftData ? getChugDeadline(sessionCookie) : Promise.resolve(null),
-      // Checks the active `week` itself, IN ADDITION to week-1 below —
-      // not instead of it. Once a week's own real games are all final,
-      // its recap becomes eligible immediately
-      // (app/domain/narrative_engine.py's _resolve_weekly_kind), fully
-      // independent of whether league_state.current_week (a separate,
-      // sometimes-lagging counter — see that module's own docstring)
-      // has rolled over past it yet. Real report, 2026-09-15: checking
-      // only week-1 left the homepage showing nothing at all for the
-      // entire stretch between "this week's games all went final" and
-      // "the app's own current-week counter finally rolled over" —
-      // querying `week` too covers exactly that gap, including week 1
-      // itself (week - 1 would be 0, never valid).
-      week !== null ? getWeeklyRecap(season, week, sessionCookie) : Promise.resolve({ narrative: null }),
-      week !== null && week > 1 ? getWeeklyRecap(season, week - 1, sessionCookie) : Promise.resolve({ narrative: null }),
-      getChugFeed(sessionCookie, season),
-      getLeagueActivity(season, sessionCookie, 5),
-    ]);
+    } = leagueBatch;
     standings = standingsRes.standings;
     // Prefer the active week's own awards once it has any real data;
     // fall back to the week that just wrapped otherwise (see the

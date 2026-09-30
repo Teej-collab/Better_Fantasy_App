@@ -2355,3 +2355,35 @@ button[data-lk-source="screen_share"] {
   display: none;
 }
 
+
+/* ============================================================
+   Native app shell (iOS/Android Capacitor WebView) — layout.tsx's
+   head script sets data-native-app only there. Makes taps and
+   scrolling behave like a native app instead of a web page; none of
+   this applies to the website in a browser.
+   ============================================================ */
+[data-native-app] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+[data-native-app] body {
+  overscroll-behavior: none;
+}
+
+/* No long-press link/image previews or text selection on controls —
+   text in the page body (chat messages, recaps) and every form field
+   stays selectable. */
+[data-native-app] a,
+[data-native-app] button,
+[data-native-app] nav,
+[data-native-app] img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-native-app] img {
+  -webkit-user-drag: none;
+}

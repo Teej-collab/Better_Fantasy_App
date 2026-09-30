@@ -208,6 +208,14 @@ const APPEARANCE_SCRIPT = `
     if (dir && (dir[1] === "broadcast" || dir[1] === "stadium")) {
       document.documentElement.setAttribute("data-wl-direction", dir[1]);
     }
+    // Inside the iOS/Android app shell — Capacitor injects
+    // window.Capacitor before any page script runs. Turns on
+    // globals.css's [data-native-app] touch behavior (no tap flash,
+    // no rubber-band bounce, no long-press link previews), which would
+    // be wrong for the plain website.
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+      document.documentElement.setAttribute("data-native-app", "");
+    }
   } catch (e) {}
 })();
 `;

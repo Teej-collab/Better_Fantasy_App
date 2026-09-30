@@ -35,7 +35,7 @@ import asyncio
 import json
 
 from app.config import DEFAULT_LEAGUE_ID
-from app.db import get_pool
+from app.db import get_pool, on_own_conn
 from app.domain import narrative_engine
 from app.domain.live_injuries import get_injury_states
 from app.domain.live_projection import game_clock_by_pro_team, live_projection, live_team_total
@@ -301,35 +301,78 @@ def _matchup_entry(
     }
 
 
+async def _week_scoreboard_or_empty(week: int, season: int) -> list[dict]:
+    # A fetch failure shouldn't break the whole matchup list, same
+    # discipline as GET /team.
+    try:
+        return await get_week_scoreboard(week, season)
+    except Exception:
+        return []
+
+
 async def build_week_matchup_context(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     matchups = [dict(m) for m in await queries.list_week_matchups(conn, season, week, league_id)]
     if not matchups:
         return {"season": season, "week": week, "game_of_the_week_matchup_id": None, "matchups": []}
 
     team_ids = list({m["home_team_id"] for m in matchups} | {m["away_team_id"] for m in matchups})
-    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
-    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, team_ids, league_id)
-    streaks_by_team = await get_team_streaks(conn, season, team_ids)
-    score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
-    bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
-    clutch_choke_by_team = await get_clutch_choke_status_by_team(conn, season, week, league_id)
-    touchdowns_by_team = await queries.get_touchdowns_for_teams(conn, season, week, team_ids)
+    # Everything below depends only on season/week/team_ids, so it all
+    # goes out at once — see app/db.py's on_own_conn. One real
+    # scoreboard fetch for the whole week: every matchup's roster rows share the same
+    # schedule, cross-referenced by pro_team (see app/domain/nfl_schedule.py).
+    # "Defense vs. position" rankings are the same bulk fetch GET /team
+    # surfaces (app/routers/me.py), joined per-player by (opponent
+    # pro_team, position) inside _roster_list. Teams, rosters and
+    # rivalries are batched rather than fetched per matchup — the real
+    # fix for the 2026-09-02 SSR-performance finding: this endpoint
+    # alone measured 3.36s for a 6-matchup week, almost entirely spent
+    # on ~40 small sequential round-trips inside what used to be a plain
+    # `for m in matchups:` loop.
+    (
+        standings_rows,
+        power_rank_by_team,
+        streaks_by_team,
+        score_stdev,
+        bench_crimes_by_team,
+        clutch_choke_by_team,
+        touchdowns_by_team,
+        games,
+        rankings,
+        gow,
+        teams_by_id,
+        rosters_by_id,
+        rivalry_rows,
+    ) = await asyncio.gather(
+        on_own_conn(queries.get_standings, season, league_id),
+        on_own_conn(get_latest_power_rank_by_team, season, team_ids, league_id),
+        on_own_conn(get_team_streaks, season, team_ids),
+        on_own_conn(queries.get_team_score_stdev, season, league_id),
+        on_own_conn(queries.get_bench_crimes_by_team, season, week, team_ids, league_id),
+        on_own_conn(get_clutch_choke_status_by_team, season, week, league_id),
+        on_own_conn(queries.get_touchdowns_for_teams, season, week, team_ids),
+        _week_scoreboard_or_empty(week, season),
+        on_own_conn(position_rankings_queries.get_rankings, season, week),
+        on_own_conn(find_game_of_the_week, season, week, matchups),
+        on_own_conn(queries.get_teams, team_ids),
+        on_own_conn(queries.get_rosters_for_week, season, team_ids, week),
+        on_own_conn(queries.list_rivalries),
+    )
+    standings_by_team = {r["team_id"]: r for r in standings_rows}
+    rivalry_by_pair = {frozenset({r["owner_a_id"], r["owner_b_id"]}): r for r in rivalry_rows}
 
-    # One real scoreboard fetch for the whole week — every matchup's
-    # roster rows share the same schedule, cross-referenced by pro_team
-    # (see app/domain/nfl_schedule.py). A fetch failure shouldn't break
-    # the whole week's matchup list, same discipline as GET /team.
-    try:
-        games = await get_week_scoreboard(week, season)
-    except Exception:
-        games = []
+    # The two reads that need a result from the batch above.
+    result_streaks, injuries = await asyncio.gather(
+        on_own_conn(
+            get_result_streaks, season, team_ids, week, exclude_week=None if is_week_final(games) else week
+        ),
+        on_own_conn(
+            get_injury_states, season, week,
+            [r["player_id"] for roster in rosters_by_id.values() for r in roster],
+        ),
+    )
+
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
-    # Same "defense vs. position" matchup rank GET /team already
-    # surfaces (app/routers/me.py) — one bulk fetch for the whole
-    # week's matchups, joined per-player by (opponent pro_team,
-    # position) inside _roster_list.
-    rankings = await position_rankings_queries.get_rankings(conn, season, week)
     # Reuses this same `games` scoreboard fetch — no extra network
     # call. live_status_by_pro_team naturally returns nothing for any
     # team without a real in-progress game right now, safe to compute
@@ -339,34 +382,13 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     live_status_map = live_status_by_pro_team(games)
     game_status_map = game_status_by_pro_team(games)
     game_clock = game_clock_by_pro_team(games)
-    result_streaks = await get_result_streaks(
-        conn, season, team_ids, week, exclude_week=None if is_week_final(games) else week
-    )
 
-    gow = await find_game_of_the_week(conn, season, week, matchups)
     gow_id = None
     if gow:
         for m in matchups:
             if m["home_team_id"] == gow["home_team_id"] and m["away_team_id"] == gow["away_team_id"]:
                 gow_id = m["matchup_id"]
                 break
-
-    # Batched instead of a get_team + get_roster call per matchup, and
-    # list_rivalries (already a single, unfiltered fetch — see this
-    # module's own get_rivalry_for_owners callers elsewhere) instead of
-    # a get_rivalry_for_owners call per matchup — the real fix for the
-    # 2026-09-02 SSR-performance finding: this endpoint alone measured
-    # 3.36s for a 6-matchup week, almost entirely spent on ~40 small
-    # sequential round-trips to the same handful of tables inside what
-    # used to be a plain `for m in matchups:` loop.
-    teams_by_id = await queries.get_teams(conn, team_ids)
-    rosters_by_id = await queries.get_rosters_for_week(conn, season, team_ids, week)
-    injuries = await get_injury_states(
-        conn, season, week, [r["player_id"] for roster in rosters_by_id.values() for r in roster]
-    )
-    rivalry_by_pair = {
-        frozenset({r["owner_a_id"], r["owner_b_id"]}): r for r in await queries.list_rivalries(conn)
-    }
 
     # head-to-head and the narrative cache read are the two remaining
     # per-matchup DB calls — genuinely per-pair/per-matchup, not
@@ -438,41 +460,60 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     m = dict(m)
     season, week, league_id = m["season"], m["week"], m["league_id"]
 
-    home_team = await queries.get_team(conn, m["home_team_id"])
-    away_team = await queries.get_team(conn, m["away_team_id"])
-    rosters_by_id = await queries.get_rosters_for_week(conn, season, [m["home_team_id"], m["away_team_id"]], week)
+    team_ids = [m["home_team_id"], m["away_team_id"]]
+
+    async def game_of_the_week(c):
+        week_matchups = [dict(r) for r in await queries.list_week_matchups(c, season, week, league_id)]
+        return await find_game_of_the_week(c, season, week, week_matchups)
+
+    # Independent reads go out together — see app/db.py's on_own_conn.
+    (
+        home_team,
+        away_team,
+        rosters_by_id,
+        standings_rows,
+        power_rank_by_team,
+        streaks_by_team,
+        score_stdev,
+        bench_crimes_by_team,
+        clutch_choke_by_team,
+        touchdowns_by_team,
+        games,
+        rankings,
+        gow,
+    ) = await asyncio.gather(
+        on_own_conn(queries.get_team, m["home_team_id"]),
+        on_own_conn(queries.get_team, m["away_team_id"]),
+        on_own_conn(queries.get_rosters_for_week, season, team_ids, week),
+        on_own_conn(queries.get_standings, season, league_id),
+        on_own_conn(get_latest_power_rank_by_team, season, team_ids, league_id),
+        on_own_conn(get_team_streaks, season, team_ids),
+        on_own_conn(queries.get_team_score_stdev, season, league_id),
+        on_own_conn(queries.get_bench_crimes_by_team, season, week, team_ids, league_id),
+        on_own_conn(get_clutch_choke_status_by_team, season, week, league_id),
+        on_own_conn(queries.get_touchdowns_for_teams, season, week, team_ids),
+        _week_scoreboard_or_empty(week, season),
+        on_own_conn(position_rankings_queries.get_rankings, season, week),
+        on_own_conn(game_of_the_week),
+    )
     home_roster = rosters_by_id.get(m["home_team_id"], [])
     away_roster = rosters_by_id.get(m["away_team_id"], [])
-
-    team_ids = [m["home_team_id"], m["away_team_id"]]
-    standings_by_team = {r["team_id"]: r for r in await queries.get_standings(conn, season, league_id)}
-    power_rank_by_team = await get_latest_power_rank_by_team(conn, season, team_ids, league_id)
-    streaks_by_team = await get_team_streaks(conn, season, team_ids)
-    score_stdev = await queries.get_team_score_stdev(conn, season, league_id)
-    bench_crimes_by_team = await queries.get_bench_crimes_by_team(conn, season, week, team_ids, league_id)
-    clutch_choke_by_team = await get_clutch_choke_status_by_team(conn, season, week, league_id)
-    touchdowns_by_team = await queries.get_touchdowns_for_teams(conn, season, week, team_ids)
-
-    try:
-        games = await get_week_scoreboard(week, season)
-    except Exception:
-        games = []
+    standings_by_team = {r["team_id"]: r for r in standings_rows}
     schedule_by_pro_team = schedule_lookup_by_pro_team(games)
     locked_teams = locked_pro_teams(games)
     live_status_map = live_status_by_pro_team(games)
     game_status_map = game_status_by_pro_team(games)
     game_clock = game_clock_by_pro_team(games)
-    rankings = await position_rankings_queries.get_rankings(conn, season, week)
-    injuries = await get_injury_states(conn, season, week, [r["player_id"] for r in home_roster + away_roster])
-    result_streaks = await get_result_streaks(
-        conn, season, team_ids, week, exclude_week=None if is_week_final(games) else week
+
+    # The reads that need a result from the batch above.
+    injuries, result_streaks, rivalry, h2h = await asyncio.gather(
+        on_own_conn(get_injury_states, season, week, [r["player_id"] for r in home_roster + away_roster]),
+        on_own_conn(
+            get_result_streaks, season, team_ids, week, exclude_week=None if is_week_final(games) else week
+        ),
+        on_own_conn(queries.get_rivalry_for_owners, home_team["owner_id"], away_team["owner_id"], league_id),
+        on_own_conn(queries.get_head_to_head, home_team["owner_id"], away_team["owner_id"], league_id),
     )
-
-    rivalry = await queries.get_rivalry_for_owners(conn, home_team["owner_id"], away_team["owner_id"], league_id)
-    h2h = await queries.get_head_to_head(conn, home_team["owner_id"], away_team["owner_id"], league_id)
-
-    week_matchups = [dict(r) for r in await queries.list_week_matchups(conn, season, week, league_id)]
-    gow = await find_game_of_the_week(conn, season, week, week_matchups)
     is_gow = bool(gow and gow["home_team_id"] == m["home_team_id"] and gow["away_team_id"] == m["away_team_id"])
 
     entry = _matchup_entry(

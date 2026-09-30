@@ -5,6 +5,7 @@ session — someone outside the league can complete Discord's OAuth
 consent screen, but won't get a session unless their Discord ID is
 already linked to an owner.
 """
+import asyncio
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -31,7 +32,7 @@ from app.auth.session import (
     get_session_token,
 )
 from app.config import DEFAULT_LEAGUE_ID
-from app.db import get_pool
+from app.db import get_pool, on_own_conn
 from app.monitoring import record_failed_login
 from app.notifications.email import send_password_reset_email
 from app.queries import auth as auth_queries
@@ -329,8 +330,7 @@ async def me(request: Request):
     if payload is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
+    async def load_owner_and_name(conn):
         owner_id = await resolve_owner_id(conn, payload)
         display_name = None
         if owner_id is not None:
@@ -345,45 +345,55 @@ async def me(request: Request):
             # of any league membership (see migration 1149bed021a5).
             user = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
             display_name = user["display_name"] if user else None
+        return owner_id, display_name
 
-        # A live per-active-league check, not the JWT's own
-        # is_commissioner claim — that claim is set once at login from
-        # the single global COMMISSIONER_DISCORD_ID env var, which
-        # predates per-league commissioners entirely (see TODO.md's
-        # PHASE 9 entry). Every commissioner-gated router already
-        # enforces this for real server-side (app/auth/
-        # league_context.py's require_commissioner_of) — this just
-        # makes what the frontend shows match what the backend actually
-        # allows, so a real second league's own commissioner (who never
-        # has the global env-var claim) still sees their own controls.
-        # The caller's REAL active_league_id (possibly null — a
-        # signed-in visitor who hasn't joined/created a league yet has
-        # no league to be commissioner of), not resolve_active_league_id's
-        # DEFAULT_LEAGUE_ID public-preview fallback — that fallback is
-        # for read-mostly browse routes (app/auth/league_context.py's
-        # own docstring), not for reporting the truth about this
-        # account back to the frontend, which needs to tell "genuinely
-        # no league yet" apart from "actively using League #1."
+    # A live per-active-league check, not the JWT's own
+    # is_commissioner claim — that claim is set once at login from
+    # the single global COMMISSIONER_DISCORD_ID env var, which
+    # predates per-league commissioners entirely (see TODO.md's
+    # PHASE 9 entry). Every commissioner-gated router already
+    # enforces this for real server-side (app/auth/
+    # league_context.py's require_commissioner_of) — this just
+    # makes what the frontend shows match what the backend actually
+    # allows, so a real second league's own commissioner (who never
+    # has the global env-var claim) still sees their own controls.
+    # The caller's REAL active_league_id (possibly null — a
+    # signed-in visitor who hasn't joined/created a league yet has
+    # no league to be commissioner of), not resolve_active_league_id's
+    # DEFAULT_LEAGUE_ID public-preview fallback — that fallback is
+    # for read-mostly browse routes (app/auth/league_context.py's
+    # own docstring), not for reporting the truth about this
+    # account back to the frontend, which needs to tell "genuinely
+    # no league yet" apart from "actively using League #1."
+    async def load_league_role(conn):
         active_league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
         is_commissioner = False
         if active_league_id is not None:
             membership = await league_queries.get_membership(conn, active_league_id, payload["user_id"])
             is_commissioner = membership is not None and membership["role"] == "commissioner"
+        return active_league_id, is_commissioner
 
-        # League #1's commissioner OR an explicit users.is_admin grant
-        # (app/auth/league_context.py's is_site_admin — same check
-        # every /admin/* endpoint enforces for real via
-        # require_site_admin) — deliberately not "is_commissioner of
-        # whichever league happens to be active right now," so a second
-        # real league's own commissioner (a genuinely different person)
-        # never sees the site-owner-only Admin link light up just
-        # because their own active_league_id happens to be League #1 at
-        # some other moment, and this account never loses it just
-        # because their active league is currently something else. The
-        # is_admin clause is what lets the real owner grant dashboard
-        # access to someone else (e.g. a second commissioner) without
-        # also handing them full League #1 commissioner power.
-        is_site_owner = await is_site_admin(conn, payload["user_id"])
+    # League #1's commissioner OR an explicit users.is_admin grant
+    # (app/auth/league_context.py's is_site_admin — same check
+    # every /admin/* endpoint enforces for real via
+    # require_site_admin) — deliberately not "is_commissioner of
+    # whichever league happens to be active right now," so a second
+    # real league's own commissioner (a genuinely different person)
+    # never sees the site-owner-only Admin link light up just
+    # because their own active_league_id happens to be League #1 at
+    # some other moment, and this account never loses it just
+    # because their active league is currently something else. The
+    # is_admin clause is what lets the real owner grant dashboard
+    # access to someone else (e.g. a second commissioner) without
+    # also handing them full League #1 commissioner power.
+    #
+    # The three lookups are independent, so they run side by side
+    # (app/db.py's on_own_conn) — every page load calls this endpoint.
+    (owner_id, display_name), (active_league_id, is_commissioner), is_site_owner = await asyncio.gather(
+        on_own_conn(load_owner_and_name),
+        on_own_conn(load_league_role),
+        on_own_conn(is_site_admin, payload["user_id"]),
+    )
 
     return {
         "user_id": payload["user_id"],

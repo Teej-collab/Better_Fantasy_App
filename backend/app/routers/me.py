@@ -28,6 +28,7 @@ Every endpoint resolves owner_id (and from it, team_id) from the
 session — never trusts a client-supplied team/owner id, same discipline
 as keepers.py/settings.py.
 """
+import asyncio
 import json
 
 import httpx
@@ -39,7 +40,7 @@ from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
-from app.db import get_pool
+from app.db import get_pool, on_own_conn
 from app.domain import lineup_engine
 from app.domain import player_views
 from app.domain import waivers
@@ -296,49 +297,86 @@ async def my_team(request: Request, week: int | None = None):
     active_season = int(_require("ACTIVE_SEASON"))
     team_id, team_name, league_id = await _require_my_team(payload, active_season)
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # None pre-draft/pre-season (nothing synced yet) — get_roster
-        # falls back to its no-score shape in that case, same as before
-        # this endpoint knew about weeks at all.
-        current_week = await league_queries.get_cached_current_week(conn, active_season)
-        requested_week = week if week is not None else current_week
-        is_editable = current_week is None or requested_week == current_week
+    # None pre-draft/pre-season (nothing synced yet) — get_roster
+    # falls back to its no-score shape in that case, same as before
+    # this endpoint knew about weeks at all.
+    current_week = await on_own_conn(league_queries.get_cached_current_week, active_season)
+    requested_week = week if week is not None else current_week
+    is_editable = current_week is None or requested_week == current_week
 
+    async def load_roster(conn):
         if is_editable:
-            roster = await lineup_engine.get_roster(conn, active_season, team_id, requested_week)
-        else:
-            raw_roster = await league_queries.get_roster_for_week(conn, active_season, team_id, requested_week)
-            roster = [_normalize_week_roster_row(r) for r in raw_roster]
+            return await lineup_engine.get_roster(conn, active_season, team_id, requested_week)
+        raw_roster = await league_queries.get_roster_for_week(conn, active_season, team_id, requested_week)
+        return [_normalize_week_roster_row(r) for r in raw_roster]
 
-        bye_weeks = await league_queries.get_bye_weeks(conn, active_season)
-        # Per-slot capacity (e.g. RB: 2, WR: 2) — the edit-lineup UI
-        # needs this to know how many occupants a slot can hold, not
-        # just who's in it right now (a slot can be under-filled right
-        # after a draft). None pre-draft, same as roster itself being
-        # empty then; MyTeamApp.tsx's own empty-roster case already
-        # short-circuits before this would matter.
-        raw_roster_slots = await conn.fetchval(
+    # Per-slot capacity (e.g. RB: 2, WR: 2) — the edit-lineup UI needs
+    # this to know how many occupants a slot can hold, not just who's in
+    # it right now (a slot can be under-filled right after a draft).
+    # None pre-draft, same as roster itself being empty then;
+    # MyTeamApp.tsx's own empty-roster case already short-circuits
+    # before this would matter.
+    async def load_roster_slots(conn):
+        raw = await conn.fetchval(
             "SELECT roster_slots FROM draft_config WHERE season = $1 AND league_id = $2", active_season, league_id
         )
-        roster_slots = (
-            json.loads(raw_roster_slots) if isinstance(raw_roster_slots, str) else raw_roster_slots
-        )
+        return json.loads(raw) if isinstance(raw, str) else raw
 
-        # Defense-vs-position matchup rank ("17th vs QB") — one bulk
-        # fetch, joined per-entry below by (opponent pro_team, position)
-        # once next_opponent is resolved. None pre-draft (requested_week
-        # unresolved yet), same guard as the scoreboard fetch below.
-        rankings = (
-            await position_rankings_queries.get_rankings(conn, active_season, requested_week)
-            if requested_week is not None
-            else {}
-        )
-        injuries = (
-            await get_injury_states(conn, active_season, requested_week, [e["sleeper_player_id"] for e in roster])
-            if requested_week is not None
-            else {}
-        )
+    # Defense-vs-position matchup rank ("17th vs QB") — one bulk fetch,
+    # joined per-entry below by (opponent pro_team, position) once
+    # next_opponent is resolved. None pre-draft (requested_week
+    # unresolved yet), same guard as the scoreboard fetch below.
+    async def load_rankings(conn):
+        if requested_week is None:
+            return {}
+        return await position_rankings_queries.get_rankings(conn, active_season, requested_week)
+
+    async def load_week_games():
+        if requested_week is None:
+            return []
+        try:
+            return await get_week_scoreboard(requested_week, active_season)
+        except Exception:
+            # A real scoreboard fetch failure shouldn't break loading
+            # your own roster — next_opponent/game_time just stay
+            # absent, same as the pre-draft case.
+            return []
+
+    # on_offense/is_redzone only ever mean something for a live game
+    # happening right now — never attach them when looking at a
+    # different (necessarily not-currently-live) week. Deliberately a
+    # SEPARATE fetch from the requested_week-scoped `games` (not a
+    # reuse of it): requested_week can be None even when is_editable is
+    # True (is_editable = current_week is None or ..., so a genuinely
+    # unresolved cached current_week satisfies it either way) — the
+    # week-scoped fetch would then return nothing, silently leaving
+    # on_offense/is_redzone unpopulated even during a real live game.
+    # get_nfl_scoreboard() (no week param — "what's actually happening
+    # right now," the same call AppTickerBar/game-day detection already
+    # trust) has no such dependency.
+    async def load_live_games():
+        if not is_editable:
+            return []
+        try:
+            return await get_nfl_scoreboard()
+        except Exception:
+            return []
+
+    # Independent reads go out together (app/db.py's on_own_conn) —
+    # these used to be ~8 sequential round trips.
+    roster, bye_weeks, roster_slots, rankings, games, live_games = await asyncio.gather(
+        on_own_conn(load_roster),
+        on_own_conn(league_queries.get_bye_weeks, active_season),
+        on_own_conn(load_roster_slots),
+        on_own_conn(load_rankings),
+        load_week_games(),
+        load_live_games(),
+    )
+    injuries = (
+        await on_own_conn(get_injury_states, active_season, requested_week, [e["sleeper_player_id"] for e in roster])
+        if requested_week is not None
+        else {}
+    )
 
     for entry in roster:
         bye_week = bye_weeks.get(entry["pro_team"])
@@ -346,13 +384,6 @@ async def my_team(request: Request, week: int | None = None):
             entry["bye_week"] = bye_week
 
     if requested_week is not None:
-        try:
-            games = await get_week_scoreboard(requested_week, active_season)
-        except Exception:
-            # A real scoreboard fetch failure shouldn't break loading
-            # your own roster — next_opponent/game_time just stay
-            # absent, same as the pre-draft case.
-            games = []
         schedule = _schedule_lookup(games)
         game_clock = game_clock_by_pro_team(games)
         for entry in roster:
@@ -379,23 +410,7 @@ async def my_team(request: Request, week: int | None = None):
             for entry in roster:
                 entry["is_locked"] = entry["pro_team"] in locked
 
-    # on_offense/is_redzone only ever mean something for a live game
-    # happening right now — never attach them when looking at a
-    # different (necessarily not-currently-live) week. Deliberately a
-    # SEPARATE fetch from the requested_week-scoped `games` above (not
-    # a reuse of it): requested_week can be None even when is_editable
-    # is True (is_editable = current_week is None or ..., so a
-    # genuinely unresolved cached current_week satisfies it either
-    # way) — the week-scoped fetch above would then never run at all,
-    # silently leaving on_offense/is_redzone unpopulated even during a
-    # real live game. get_nfl_scoreboard() (no week param — "what's
-    # actually happening right now," the same call AppTickerBar/game-
-    # day detection already trust) has no such dependency.
     if is_editable:
-        try:
-            live_games = await get_nfl_scoreboard()
-        except Exception:
-            live_games = []
         live_status = _live_status_lookup(live_games)
         for entry in roster:
             info = live_status.get(entry["pro_team"])
