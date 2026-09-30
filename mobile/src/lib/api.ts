@@ -1,10 +1,13 @@
 import type {
+  AddFreeAgentResult,
   ChatConversation,
+  FreeAgent,
   ChatMessage,
   Me,
   MyTeam,
   RosterEntry,
   StandingsRow,
+  WaiverClaim,
   WeekMatchupContext,
   WeekMatchupContextItem,
   YourWeek,
@@ -18,6 +21,9 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    // The parsed JSON error body, for endpoints whose 409s carry a
+    // machine-readable `error` code (e.g. roster_full, on_waivers).
+    public body: Record<string, unknown> | null = null,
   ) {
     super(message);
   }
@@ -50,13 +56,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
+    let body: Record<string, unknown> | null = null;
     try {
-      const body = await res.json();
+      body = await res.json();
       if (typeof body?.detail === 'string') detail = body.detail;
     } catch {
       // Not JSON; keep the status message.
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, body);
   }
   return res.json() as Promise<T>;
 }
@@ -82,6 +89,41 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
     }),
+  // `position` is the stored value (defenses are "DEF", shown as "D/ST").
+  freeAgents: (position?: string, search?: string) => {
+    const params = [position && `position=${encodeURIComponent(position)}`, search && `search=${encodeURIComponent(search)}`]
+      .filter(Boolean)
+      .join('&');
+    return request<{ players: FreeAgent[] }>(`/me/team/free-agents${params ? `?${params}` : ''}`);
+  },
+  // Two 409s are decisions, not failures: roster_full (pick someone to
+  // drop and call again) and on_waivers (file a waiver claim instead).
+  // Same handling as the web's addFreeAgent (frontend/src/lib/api.ts).
+  addFreeAgent: async (playerId: string, dropPlayerId?: string): Promise<AddFreeAgentResult> => {
+    try {
+      const result = await request<{ roster: RosterEntry[]; dropped_player: RosterEntry | null }>(
+        '/me/team/free-agents/add',
+        { method: 'POST', body: JSON.stringify({ sleeper_player_id: playerId, drop_sleeper_player_id: dropPlayerId ?? null }) },
+      );
+      return { status: 'ok', ...result };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.body?.error === 'roster_full') {
+        return { status: 'roster_full', detail: e.message };
+      }
+      if (e instanceof ApiError && e.status === 409 && e.body?.error === 'on_waivers') {
+        return { status: 'on_waivers', detail: e.message, clears_at: (e.body.clears_at as string | null) ?? null };
+      }
+      throw e;
+    }
+  },
+  waiverClaims: () => request<{ claims: WaiverClaim[] }>('/me/team/waivers'),
+  submitWaiverClaim: (addPlayerId: string, dropPlayerId: string | null) =>
+    request<WaiverClaim>('/me/team/waivers/claim', {
+      method: 'POST',
+      body: JSON.stringify({ add_sleeper_player_id: addPlayerId, drop_sleeper_player_id: dropPlayerId }),
+    }),
+  cancelWaiverClaim: (claimId: number) =>
+    request<unknown>(`/me/team/waivers/claim/${claimId}/cancel`, { method: 'POST' }),
   chatConversations: () => request<{ conversations: ChatConversation[] }>('/chat/conversations'),
   // Chronological, 50 per page; `before` pages back from a message id.
   chatMessages: (conversationId: number, before?: number) =>

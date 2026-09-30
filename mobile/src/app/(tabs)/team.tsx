@@ -13,20 +13,8 @@ import {
   starterSortIndex,
   type LineupOption,
 } from '@/lib/rosterSlots';
+import { formatGameTime, formatPoints } from '@/lib/format';
 import type { MyTeam, RosterEntry } from '@/lib/types';
-
-// Same format as the web app's formatGameTime (frontend/src/lib/gameTime.ts).
-function formatGameTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
-  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${weekday} ${time}`;
-}
-
-function formatPoints(points: number | null | undefined): string {
-  return points === null || points === undefined ? '–' : points.toFixed(1);
-}
 
 export default function TeamScreen() {
   const team = useMyTeam();

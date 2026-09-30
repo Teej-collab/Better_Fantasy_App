@@ -18,6 +18,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Team</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.3.fill" md="groups" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="players">
+        <NativeTabs.Trigger.Label>Players</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="person.badge.plus" md="person_add" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="chat">
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right.fill" md="chat" />

@@ -40,6 +40,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="matchup/[id]" options={{ title: 'Matchup', headerBackTitle: 'Back' }} />
         <Stack.Screen name="chat/[id]" options={{ title: 'Chat', headerBackTitle: 'Chat' }} />
+        <Stack.Screen name="waivers" options={{ title: 'My claims', headerBackTitle: 'Players' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />

@@ -171,3 +171,39 @@ export type ChatConversation = {
   // False for everyone but the commissioner in Commish Corner.
   can_post: boolean;
 };
+
+// GET /me/team/free-agents (frontend/src/lib/api.ts's MyFreeAgent).
+export type FreeAgent = {
+  sleeper_player_id: string;
+  full_name: string;
+  position: string;
+  pro_team: string | null;
+  injury_status: string | null;
+  // This week's projection when harvested, else the season per-game average.
+  projected_points: number | null;
+  score: number | null;
+  last_week_score: number | null;
+  next_opponent: string | null;
+  game_time: string | null;
+  // Set while the player is on waivers: add returns on_waivers, so claim instead.
+  waiver_clears_at: string | null;
+  // Their game started; adding them puts them on waivers.
+  game_locked: boolean;
+};
+
+export type AddFreeAgentResult =
+  | { status: 'ok'; roster: RosterEntry[]; dropped_player: RosterEntry | null }
+  | { status: 'roster_full'; detail: string }
+  | { status: 'on_waivers'; detail: string; clears_at: string | null };
+
+export type WaiverClaim = {
+  id: number;
+  add_sleeper_player_id: string;
+  add_player_name: string;
+  drop_sleeper_player_id: string | null;
+  drop_player_name: string | null;
+  status: 'pending' | 'successful' | 'failed' | 'cancelled';
+  failure_reason: string | null;
+  created_at: string;
+  processed_at: string | null;
+};

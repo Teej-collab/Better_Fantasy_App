@@ -114,3 +114,25 @@ export function useChatMessages(conversationId: number) {
     queryFn: async () => (await api.chatMessages(conversationId)).messages,
   });
 }
+
+export function useFreeAgents(position: string | undefined, search: string) {
+  return useQuery({
+    queryKey: ['free-agents', position ?? 'all', search],
+    queryFn: async () => (await api.freeAgents(position, search || undefined)).players,
+    // Keep the previous list on screen while a new filter loads.
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useWaiverClaims() {
+  return useQuery({ queryKey: ['waiver-claims'], queryFn: async () => (await api.waiverClaims()).claims });
+}
+
+// After any add, drop or claim: the roster, the free-agent pool and the
+// claim list can all have changed.
+export function invalidateRosterMoves() {
+  void queryClient.invalidateQueries({ queryKey: ['my-team'] });
+  void queryClient.invalidateQueries({ queryKey: ['free-agents'] });
+  void queryClient.invalidateQueries({ queryKey: ['waiver-claims'] });
+  void queryClient.invalidateQueries({ queryKey: ['my-week'] });
+}
