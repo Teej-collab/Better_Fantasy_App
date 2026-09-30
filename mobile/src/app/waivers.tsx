@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -89,7 +90,7 @@ export default function WaiversScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   list: { padding: 0, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', padding: Spacing.lg, gap: Spacing.md },

@@ -36,7 +36,8 @@
           "photosPermission": "Weekend League uses your photos so you can share them in league chat.",
           "cameraPermission": "Weekend League uses your camera so you can snap photos for league chat."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

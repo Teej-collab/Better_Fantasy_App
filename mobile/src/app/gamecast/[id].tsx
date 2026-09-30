@@ -1,7 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { LiveBadge } from '@/components/LiveBadge';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
@@ -294,7 +295,7 @@ function PlayRow({ play, divided }: { play: GamecastPlay; divided: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
   center: { alignItems: 'center', marginBottom: Spacing.md },
   liveCard: { borderColor: Colors.live },

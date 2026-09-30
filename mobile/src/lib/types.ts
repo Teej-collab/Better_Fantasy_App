@@ -26,9 +26,11 @@ export type YourWeekMatchup = {
   my_projected_total: number;
   opponent_team_id: number;
   opponent_team_name: string;
+  opponent_power_rank: number | null;
   opponent_owner_name: string | null;
   opponent_logo_url: string | null;
   opponent_record: string | null;
+  opponent_result_streak: string | null;
   opponent_yet_to_play: number;
   opponent_in_play: number;
   opponent_score: number | null;
@@ -405,3 +407,137 @@ export type PlayFantasyPlayer = {
   is_opponent: boolean;
   points: number;
 };
+
+// ---- Home (frontend/src/app/(home)/page.tsx's data; types from
+// frontend/src/lib/api.ts) ----
+
+export type WeeklyAwards = {
+  overachiever: { team_id: number; team_name: string; diff: number } | null;
+  meltdown: { team_id: number; team_name: string; diff: number } | null;
+  biggest_bench_crime: {
+    bench_player: string;
+    started_player: string;
+    position: string;
+    points_diff: number;
+    severity: string;
+    team_name: string;
+  } | null;
+  clutch: { team_name: string; margin: number; reason: string } | null;
+  choke: { team_name: string; margin: number; reason: string } | null;
+  boom_leaders: { player_name: string; points_scored: number; team_name: string }[];
+  bust_leaders: { player_name: string; points_scored: number; team_name: string }[];
+  game_of_the_week: { winner: string; score: string; tie?: boolean } | null;
+};
+
+export type Rivalry = {
+  id: number;
+  name: string | null;
+  emoji: string | null;
+  tagline: string | null;
+  tier: string | null;
+  all_time_wins_a: number;
+  all_time_wins_b: number;
+  owner_a_id: number;
+  owner_a_name: string;
+  owner_b_id: number;
+  owner_b_name: string;
+};
+
+export type LeagueTickerItem = {
+  matchup_id: number;
+  home_team_name: string;
+  home_score: number | null;
+  home_top_scorer: { player_name: string; points_scored: number } | null;
+  away_team_name: string;
+  away_score: number | null;
+  away_top_scorer: { player_name: string; points_scored: number } | null;
+};
+
+export type WeekPowerRanking = {
+  team_id: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  power_rank: number;
+  luck_score: number | null;
+  sos: number | null;
+  movement: number | null;
+};
+
+// deadline is null until week 1 finishes and there's a chug owed.
+export type ChugDeadline = { deadline: string | null; is_past: boolean };
+
+export type WeeklyNarrative = { text: string; kind: 'preview' | 'recap' };
+
+export type ChugFeedEntry = {
+  id: number;
+  owner_id: number;
+  owner_name: string;
+  week: number | null;
+  final_score: number;
+  created_at: string;
+  has_video: boolean;
+  roast: string | null;
+};
+
+export type LeagueActivityItem =
+  | {
+      kind: 'roster';
+      timestamp: string;
+      team_name: string;
+      owner_id: number;
+      owner_name: string;
+      source: 'free_agent' | 'waiver' | 'commissioner';
+      added_player_name: string | null;
+      dropped_player_name: string | null;
+    }
+  | {
+      kind: 'trade';
+      timestamp: string;
+      proposing_owner_id: number;
+      proposing_owner_name: string;
+      receiving_owner_id: number;
+      receiving_owner_name: string;
+      assets: { player_name: string; position: string; to_team_id: number }[];
+    };
+
+// The parts of GET /settings/preferences the app reads: the owner's
+// appearance (Settings > Appearance on the web) and Home card order.
+export type OwnerPreferences = {
+  accent_color: string | null;
+  your_week_color: string | null;
+  border_glow_color: string | null;
+  honeycomb_color: string | null;
+  theme: 'calm' | 'cosmic';
+  reduced_motion: boolean;
+  home_card_order: string | null;
+};
+
+// Chug (backend/app/routers/chug.py; web types in frontend/src/lib/api.ts).
+export type ChugLeaderboardRow = {
+  owner_id: number;
+  owner_name: string;
+  owed: number;
+  completed: number;
+  avg_grade: number | null;
+  lifetime_completed: number;
+  outstanding_owed: number;
+  fined_owed: number;
+  fine_amount: number;
+  doubled_weeks: { week: number; owed_before: number; owed_after: number }[];
+};
+
+export type ChugUploadResult =
+  | { can_to_mouth: false; message: string }
+  | {
+      can_to_mouth: true;
+      id: number;
+      duration_seconds: number;
+      time_score: number;
+      smoothness_score: number;
+      hype_score: number;
+      final_score: number;
+      chugs_owed_before: number;
+      chugs_owed_after: number;
+      roast: string | null;
+    };

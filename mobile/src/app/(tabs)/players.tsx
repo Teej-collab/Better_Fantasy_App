@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatGameTime, formatPoints } from '@/lib/format';
@@ -132,7 +133,7 @@ function PlayerRow({ player, onPress }: { player: FreeAgent; onPress: () => void
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { paddingBottom: Spacing.xl * 2 },
   header: { padding: Spacing.lg, paddingBottom: Spacing.sm, gap: Spacing.md },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

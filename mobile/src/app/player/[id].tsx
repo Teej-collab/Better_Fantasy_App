@@ -2,8 +2,9 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -204,7 +205,7 @@ function WeeklyChart({ scores }: { scores: PlayerCard['weekly_scores'] }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
   hero: { flexDirection: 'row', gap: Spacing.lg, alignItems: 'center' },
   headshot: { width: 88, height: 88, borderRadius: 44, backgroundColor: Colors.surface },

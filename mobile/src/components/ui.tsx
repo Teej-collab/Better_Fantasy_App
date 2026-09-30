@@ -1,11 +1,30 @@
 import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { NeonPanel } from '@/components/NeonPanel';
+import { Text } from '@/components/Text';
+import { Colors, Spacing } from '@/constants/theme';
 
-export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+// A card is the web's .neon-panel (components/NeonPanel.tsx): `color`
+// is its section color, `style` styles the inside of the card, and
+// `outerStyle` places the card itself (margins, flex).
+export function Card({
+  children,
+  style,
+  color,
+  outerStyle,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  color?: string;
+  outerStyle?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <NeonPanel color={color} style={outerStyle} contentStyle={style}>
+      {children}
+    </NeonPanel>
+  );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
@@ -59,13 +78,6 @@ export function MessageState({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-  },
   sectionTitle: {
     color: Colors.textSecondary,
     fontSize: 12,

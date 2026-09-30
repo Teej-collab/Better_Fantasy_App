@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { openPlayer, useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
@@ -197,7 +198,7 @@ function LineupSheet({ entry, team, onClose }: { entry: RosterEntry; team: MyTea
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
   subtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: Spacing.xs },

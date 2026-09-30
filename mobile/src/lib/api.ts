@@ -1,5 +1,16 @@
 import type {
   AddFreeAgentResult,
+  ChugDeadline,
+  ChugLeaderboardRow,
+  ChugUploadResult,
+  ChugFeedEntry,
+  LeagueActivityItem,
+  LeagueTickerItem,
+  OwnerPreferences,
+  Rivalry,
+  WeeklyAwards,
+  WeeklyNarrative,
+  WeekPowerRanking,
   ChatConversation,
   FreeAgent,
   ChatMessage,
@@ -87,6 +98,42 @@ export const api = {
   currentWeek: (season: number) =>
     request<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`),
   myWeek: () => request<YourWeek>('/me/week'),
+  preferences: () => request<OwnerPreferences>('/settings/preferences'),
+  myLeagues: () =>
+    request<{ leagues: { id: number; name: string }[]; active_league_id: number | null }>('/leagues/mine'),
+  weeklyAwards: (season: number, week: number) => request<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`),
+  weeklyRecap: (season: number, week: number) =>
+    request<{ narrative: WeeklyNarrative | null }>(`/seasons/${season}/weeks/${week}/recap`),
+  leagueTicker: (season: number, week: number) =>
+    request<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`),
+  // The most recent locked week, not the one in progress.
+  latestPowerRankings: async (season: number) => {
+    const { week } = await request<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`);
+    if (week === null) return { week: null, rankings: [] as WeekPowerRanking[] };
+    const { rankings } = await request<{ rankings: WeekPowerRanking[] }>(
+      `/seasons/${season}/weeks/${week}/power-rankings`,
+    );
+    return { week, rankings };
+  },
+  rivalries: () => request<{ rivalries: Rivalry[] }>('/rivalries'),
+  chugDeadline: () => request<ChugDeadline>('/chug/deadline'),
+  chugFeed: (season?: number) =>
+    request<{ chugs: ChugFeedEntry[] }>(season !== undefined ? `/chug/feed?season=${season}` : '/chug/feed'),
+  chugSeasons: () => request<{ seasons: number[] }>('/chug/seasons'),
+  // No season = all-time.
+  chugLeaderboard: (season?: number) =>
+    request<{ season: number | null; leaderboard: ChugLeaderboardRow[] }>(
+      season !== undefined ? `/chug/leaderboard?season=${season}` : '/chug/leaderboard',
+    ),
+  // Commissioner only.
+  recordChugPayment: (ownerId: number, amount = 1) =>
+    request<{ applied: number }>(`/chug/standing/${ownerId}/record-payment?amount=${amount}`, { method: 'POST' }),
+  clearChugFine: (ownerId: number) => request<{ cleared: number }>(`/chug/standing/${ownerId}/clear-fine`, { method: 'POST' }),
+  waiveChugDoubling: (ownerId: number, week: number) =>
+    request<{ waived: number }>(`/chug/standing/${ownerId}/waive-doubling?week=${week}`, { method: 'POST' }),
+  chugVideoUrl: (chugId: number) => request<{ url: string; expires_in: number }>(`/chug/${chugId}/video`),
+  leagueActivity: (season: number, limit?: number) =>
+    request<{ items: LeagueActivityItem[] }>(`/seasons/${season}/activity${limit !== undefined ? `?limit=${limit}` : ''}`),
   nflScoreboard: () => request<{ games: NflGame[] }>('/nfl/scoreboard'),
   // Every game this week that has a Gamecast (live, upcoming or final).
   gamecastGames: () => request<{ games: GamecastGameSummary[] }>('/nfl/live-games'),
@@ -219,4 +266,37 @@ export async function uploadChatImage(uri: string): Promise<string> {
   if (!res.ok) throw new ApiError(res.status, `Upload failed (${res.status})`);
   const { url } = (await res.json()) as { url: string };
   return url;
+}
+
+// Chug videos go straight to the backend (a whole video is too big for
+// a Vercel function), authorized by a short-lived chug_upload ticket in
+// the URL, same as the web's ChugUpload. The response streams progress
+// lines while the video is graded; the last line is the result.
+// `ownerId` credits someone else (commissioner only).
+export async function uploadChugVideo(uri: string, mimeType: string, ownerId?: number): Promise<ChugUploadResult> {
+  const { ticket } = await request<{ ticket: string }>('/auth/ticket?purpose=chug_upload', { method: 'POST' });
+  const form = new FormData();
+  const ext = mimeType.includes('quicktime') ? 'mov' : 'mp4';
+  form.append('video', { uri, name: `chug.${ext}`, type: mimeType } as unknown as Blob);
+  const onBehalf = ownerId !== undefined ? `&owner_id=${ownerId}` : '';
+  const res = await fetch(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `Upload failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch {
+      // Not JSON.
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const lines = (await res.text()).split('\n').map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1];
+  if (!last) throw new ApiError(500, 'Upload failed — empty response');
+  const data = JSON.parse(last);
+  if (data.error) throw new ApiError(data.status ?? 500, data.message ?? 'Upload failed');
+  return data as ChugUploadResult;
 }

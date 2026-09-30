@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 
@@ -39,7 +40,7 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', padding: Spacing.xl },
+  screen: { flex: 1, justifyContent: 'center', padding: Spacing.xl },
   hero: { alignItems: 'center', marginBottom: Spacing.xl * 2 },
   kicker: {
     color: Colors.textSecondary,

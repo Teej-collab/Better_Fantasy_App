@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { useSeasonWeek, useStandings } from '@/lib/queries';
@@ -60,7 +61,7 @@ export default function StandingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800', marginBottom: Spacing.lg },
   card: { padding: 0, overflow: 'hidden' },

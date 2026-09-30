@@ -1,247 +1,229 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { LiveBadge } from '@/components/LiveBadge';
-import { NflScoreStrip } from '@/components/NflScoreStrip';
-import { Card, formatScore, LoadingState, MessageState, PressableRow, SectionTitle, TeamAvatar } from '@/components/ui';
+import { AwardsCard } from '@/components/home/AwardsCard';
+import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
+import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
+import { LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
+import { LiveTicker } from '@/components/home/LiveTicker';
+import { YourWeekCard } from '@/components/home/YourWeekCard';
+import { NeonPanel } from '@/components/NeonPanel';
+import { Display, Text } from '@/components/Text';
+import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
-import { useAuth } from '@/lib/auth';
-import { useIsGameLive, useMatchupContext, useMyWeek, useNflScoreboard, useSeasonWeek } from '@/lib/queries';
-import type { WeekMatchupContextItem, YourWeek } from '@/lib/types';
+import { useAppearance } from '@/lib/appearance';
+import {
+  queryClient,
+  useActiveLeagueName,
+  useChugDeadline,
+  useChugFeed,
+  useGamecastIdFinder,
+  useHomeAwards,
+  useHomeRecap,
+  useIsGameLive,
+  useLatestPowerRankings,
+  useLeagueActivity,
+  useLeagueTicker,
+  useMatchupContext,
+  useMyWeek,
+  useNflScoreboard,
+  usePreferences,
+  useRivalries,
+  useSeasonWeek,
+  useStandings,
+} from '@/lib/queries';
+import { buildKickoffCountdownItem, buildLeagueTickerItems, buildTickerItems } from '@/lib/ticker';
+import type { Rivalry, YourWeek } from '@/lib/types';
+
+// The web's DEFAULT_HOME_CARD_ORDER (frontend/src/components/
+// HomeCardDeck.tsx). An owner's saved order (preferences.home_card_order,
+// set by dragging cards on the web) wins; cards it doesn't mention keep
+// their default place at the end.
+const DEFAULT_HOME_CARD_ORDER = ['yourWeek', 'awards', 'standings', 'powerRankings', 'matchups', 'rivalries', 'chugFeed', 'activity'];
+
+function cardOrder(raw: string | null | undefined): string[] {
+  let base = DEFAULT_HOME_CARD_ORDER;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every((k) => typeof k === 'string')) {
+        base = parsed.filter((k: string) => DEFAULT_HOME_CARD_ORDER.includes(k));
+      }
+    } catch {
+      // Keep the default.
+    }
+  }
+  return [...base, ...DEFAULT_HOME_CARD_ORDER.filter((k) => !base.includes(k))];
+}
 
 export default function HomeScreen() {
-  const { signOut } = useAuth();
+  const appearance = useAppearance();
+  const prefs = usePreferences();
   const seasonWeek = useSeasonWeek();
   const myWeek = useMyWeek();
+  const leagueName = useActiveLeagueName().data ?? null;
   const season = seasonWeek.data?.season ?? null;
   const week = seasonWeek.data?.week ?? null;
+  const isGameDay = useIsGameLive();
+  const nflGames = useNflScoreboard().data ?? [];
+  const findGamecastId = useGamecastIdFinder();
+
   const context = useMatchupContext(season, week);
-  const scoreboard = useNflScoreboard();
+  const standings = useStandings(season).data?.standings ?? [];
+  const awards = useHomeAwards(season, week).data ?? null;
+  const recap = useHomeRecap(season, week).data ?? null;
+  const leagueTicker = useLeagueTicker(season, week).data ?? [];
+  const powerRankings = useLatestPowerRankings(season).data?.rankings ?? [];
+  const rivalries = useRivalries().data ?? [];
+  const draftDone = myWeek.data?.draft?.status === 'complete';
+  const chugDeadline = useChugDeadline(draftDone).data ?? null;
+  const chugFeed = useChugFeed(season).data ?? [];
+  const activity = useLeagueActivity(season, 5).data ?? [];
   const [refreshing, setRefreshing] = useState(false);
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([seasonWeek.refetch(), myWeek.refetch(), context.refetch(), scoreboard.refetch()]);
+    await queryClient.invalidateQueries();
     setRefreshing(false);
   }
 
   if (myWeek.isPending && seasonWeek.isPending) return <LoadingState />;
-  if (myWeek.isError && !myWeek.data) {
-    return <MessageState message="Couldn't load your league. Pull down to try again." />;
+
+  const weekMatchups = context.data?.matchups ?? [];
+  const myMatchupId = myWeek.data?.matchup?.matchup_id;
+  const otherMatchups = weekMatchups.filter((m) => m.matchup_id !== myMatchupId);
+  const rivalryGames = weekMatchups.filter((m) => m.is_rivalry);
+  const weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
+  const liveNflGames = isGameDay ? nflGames.filter((g) => g.state === 'in') : [];
+
+  const tickerItems = buildTickerItems(nflGames, awards?.awards ?? null, standings, weekPlayed, rivalryGames);
+  let leagueTickerItems = buildLeagueTickerItems(leagueTicker);
+  if (leagueTickerItems.length === 0 && week !== null) {
+    const countdown = buildKickoffCountdownItem(nflGames, week);
+    if (countdown) leagueTickerItems = [countdown];
   }
 
-  const myMatchupId = myWeek.data?.matchup?.matchup_id;
-  const others = (context.data?.matchups ?? []).filter((m) => m.matchup_id !== myMatchupId);
+  // Draft countdown leads pre-draft; once the draft is done, Jeffrey's
+  // Rule takes the same slot for the rest of the season.
+  const draft = myWeek.data?.draft;
+  const topCard =
+    draft?.scheduled_start && draft.status === 'not_started' && myWeek.data ? (
+      <DraftCountdownCard teamName={myWeek.data.team_name} scheduledStart={draft.scheduled_start} />
+    ) : chugDeadline?.deadline ? (
+      <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} />
+    ) : null;
+
+  const cards: Record<string, ReactNode> = {
+    yourWeek: <YourWeekSlot myWeek={myWeek.data ?? null} isGameDay={isGameDay} leagueName={leagueName} color={appearance.yourWeek} />,
+    awards:
+      awards && week !== null ? (
+        <AwardsCard awards={awards.awards} awardsWeek={awards.week} currentWeek={week} recap={recap} />
+      ) : null,
+    standings: standings.length > 0 ? <StandingsCard standings={standings} /> : null,
+    powerRankings:
+      powerRankings.length > 0 || (!weekPlayed && season !== null) ? (
+        <PowerRankingsCard rankings={powerRankings} waiting={powerRankings.length === 0} />
+      ) : null,
+    matchups: otherMatchups.length > 0 ? <OtherMatchupsCard matchups={otherMatchups} isGameDay={isGameDay} /> : null,
+    rivalries:
+      rivalryGames.length > 0 || rivalries.length > 0 ? (
+        <RivalriesCard games={rivalryGames} top={topRivalries(rivalries)} />
+      ) : null,
+    chugFeed: chugFeed.length > 0 ? <ChugFeedCard chugs={chugFeed} /> : null,
+    activity: activity.length > 0 ? <ActivityCard items={activity} /> : null,
+  };
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{week !== null ? `Week ${week}` : 'Weekend League'}</Text>
-        <Pressable onPress={signOut} hitSlop={12}>
-          <Text style={styles.signOut}>Sign out</Text>
-        </Pressable>
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={appearance.accent} />}>
+      <View>
+        <View style={styles.liveRow}>
+          <View style={[styles.liveDot, !isGameDay && styles.liveDotIdle]} />
+          <Text style={styles.liveLabel}>The Weekend Live</Text>
+          {leagueTickerItems.length > 0 && leagueName && (
+            <Text style={styles.liveLabel} numberOfLines={1}>
+              · {leagueName}
+            </Text>
+          )}
+          {isGameDay && (
+            <View style={styles.gameDay}>
+              <Text style={styles.gameDayText}>Game Day</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.tickers}>
+          <LiveTicker items={tickerItems} fast={isGameDay} />
+          {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+        </View>
       </View>
 
-      <NflScoreStrip />
+      {topCard}
+      {liveNflGames.length > 0 && <LiveNowCard games={liveNflGames} findGamecastId={findGamecastId} />}
 
-      {myWeek.data?.draft && myWeek.data.draft.status !== 'complete' && <DraftCard draft={myWeek.data.draft} />}
+      {cardOrder(prefs.data?.home_card_order).map((key) => (cards[key] ? <View key={key}>{cards[key]}</View> : null))}
 
-      {myWeek.data && <YourWeekCard myWeek={myWeek.data} />}
-
-      {others.length > 0 && (
-        <>
-          <SectionTitle>Around the league</SectionTitle>
-          <Card style={styles.listCard}>
-            {others.map((m, i) => (
-              <View key={m.matchup_id}>
-                {i > 0 && <View style={styles.divider} />}
-                <MatchupRow matchup={m} />
-              </View>
-            ))}
-          </Card>
-        </>
-      )}
-
-      {myWeek.data?.draft?.status === 'complete' && (
-        <Pressable onPress={() => router.push('/draft')} hitSlop={8} style={styles.draftResults}>
-          <Text style={styles.signOut}>Draft results</Text>
+      {draft?.status === 'complete' && (
+        <Pressable onPress={() => router.push('/draft')} hitSlop={8} style={styles.footerLink}>
+          <Text style={styles.footerText}>Draft results</Text>
         </Pressable>
       )}
     </ScrollView>
   );
 }
 
-function DraftCard({ draft }: { draft: NonNullable<YourWeek['draft']> }) {
-  const live = draft.status === 'in_progress' || draft.status === 'paused';
-  const when = draft.scheduled_start
-    ? new Date(draft.scheduled_start).toLocaleString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : null;
-  return (
-    <Pressable onPress={() => router.push('/draft')}>
-      {({ pressed }) => (
-        <Card style={[styles.draftCard, live && styles.liveCard, pressed && styles.pressed]}>
-          <View style={styles.kickerRow}>
-            <Text style={styles.kicker}>Draft</Text>
-            {draft.status === 'in_progress' && <LiveBadge />}
-          </View>
-          <Text style={styles.teamName}>
-            {live ? (draft.status === 'paused' ? 'Draft paused' : 'Your draft is live') : 'Draft room'}
-          </Text>
-          <Text style={styles.muted}>
-            {live ? 'Tap to join.' : when ? `Starts ${when}. Build your queue now.` : 'Build your queue before draft day.'}
-          </Text>
-        </Card>
-      )}
-    </Pressable>
-  );
+// The web sorts by rivalry tier (frontend/src/app/(home)/page.tsx
+// TIER_RANK) and shows the top three.
+const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
+function topRivalries(rivalries: Rivalry[]) {
+  return [...rivalries].sort((a, b) => (TIER_RANK[a.tier ?? ''] ?? 3) - (TIER_RANK[b.tier ?? ''] ?? 3)).slice(0, 3);
 }
 
-function YourWeekCard({ myWeek }: { myWeek: YourWeek }) {
-  const gameLive = useIsGameLive();
-  const m = myWeek.matchup;
-  if (!m) {
-    const message =
-      myWeek.week === null || myWeek.week < 1
-        ? "No matchup yet — the season hasn't started."
-        : 'No matchup this week.';
-    return (
-      <Card>
-        <Text style={styles.teamName}>{myWeek.team_name}</Text>
-        <Text style={styles.muted}>{message}</Text>
-      </Card>
-    );
+// The hero, or the web's EmptyHero when there's no matchup to show.
+function YourWeekSlot(props: { myWeek: YourWeek | null; isGameDay: boolean; leagueName: string | null; color: string }) {
+  const { myWeek } = props;
+  if (myWeek?.matchup) {
+    return <YourWeekCard myWeek={myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} color={props.color} />;
   }
-
+  if (!myWeek) {
+    // /me/week fails for an account that hasn't joined a league yet.
+    return <MessageState message="You're signed in, but not on a team yet. Join or create a league on the website." />;
+  }
   return (
-    <Pressable onPress={() => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } })}>
-      {({ pressed }) => (
-        <Card style={[m.started && gameLive && styles.liveCard, pressed && styles.pressed]}>
-          <View style={styles.kickerRow}>
-            <Text style={styles.kicker}>Your matchup</Text>
-            {m.started && gameLive && <LiveBadge />}
-          </View>
-          <View style={styles.hero}>
-            <HeroSide
-              name={myWeek.team_name}
-              logoUrl={m.my_logo_url}
-              record={m.record}
-              score={m.my_score}
-              projected={m.my_projected_total}
-            />
-            <Text style={styles.vs}>vs</Text>
-            <HeroSide
-              name={m.opponent_team_name}
-              logoUrl={m.opponent_logo_url}
-              record={m.opponent_record}
-              score={m.opponent_score}
-              projected={m.opponent_projected_total}
-            />
-          </View>
-          {m.win_probability !== null && <WinBar probability={m.win_probability} />}
-          {(m.my_in_play > 0 || m.my_yet_to_play > 0) && (
-            <Text style={styles.playCounts}>
-              You: {m.my_in_play} playing · {m.my_yet_to_play} to go    Them: {m.opponent_in_play} playing ·{' '}
-              {m.opponent_yet_to_play} to go
-            </Text>
-          )}
-        </Card>
-      )}
-    </Pressable>
-  );
-}
-
-function HeroSide(props: {
-  name: string;
-  logoUrl: string | null;
-  record: string | null;
-  score: number | null;
-  projected: number;
-}) {
-  return (
-    <View style={styles.heroSide}>
-      <TeamAvatar name={props.name} logoUrl={props.logoUrl} size={48} />
-      <Text style={styles.heroName} numberOfLines={2}>
-        {props.name}
+    <NeonPanel color={props.color} contentStyle={styles.emptyHero}>
+      <Display style={styles.emptyTitle}>{myWeek.team_name}</Display>
+      <Text style={styles.emptyText}>
+        {myWeek.week === null || myWeek.week < 1
+          ? "No matchup yet — the season hasn't started."
+          : "No matchup this week (bye week or the schedule isn't set yet)."}
       </Text>
-      {props.record && <Text style={styles.muted}>{props.record}</Text>}
-      <Text style={styles.heroScore}>{formatScore(props.score)}</Text>
-      <Text style={styles.muted}>Proj {props.projected.toFixed(1)}</Text>
-    </View>
-  );
-}
-
-function WinBar({ probability }: { probability: number }) {
-  const pct = Math.round(probability * 100);
-  return (
-    <View style={styles.winWrap}>
-      <View style={styles.winTrack}>
-        <View style={[styles.winFill, { width: `${pct}%` }]} />
-      </View>
-      <Text style={styles.muted}>{pct}% to win</Text>
-    </View>
-  );
-}
-
-function MatchupRow({ matchup }: { matchup: WeekMatchupContextItem }) {
-  return (
-    <PressableRow
-      onPress={() => router.push({ pathname: '/matchup/[id]', params: { id: String(matchup.matchup_id) } })}>
-      {[matchup.home, matchup.away].map((side) => (
-        <View key={side.team_id} style={styles.rowSide}>
-          <TeamAvatar name={side.team_name} logoUrl={side.logo_url} size={28} />
-          <Text style={styles.rowName} numberOfLines={1}>
-            {side.team_name}
-          </Text>
-          <Text style={styles.rowScore}>{formatScore(side.score)}</Text>
-        </View>
-      ))}
-    </PressableRow>
+    </NeonPanel>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.lg },
-  headerTitle: { color: Colors.text, fontSize: 28, fontWeight: '800' },
-  signOut: { color: Colors.textSecondary, fontSize: 14 },
-  kickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
-  liveCard: { borderColor: Colors.live },
-  draftCard: { marginBottom: Spacing.lg },
-  draftResults: { alignSelf: 'center', marginTop: Spacing.xl },
-  playCounts: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: Spacing.md },
-  kicker: {
-    color: Colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
+  screen: { flex: 1 },
+  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.xl },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.live },
+  liveDotIdle: { backgroundColor: 'rgba(255,255,255,0.3)' },
+  liveLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
+    flexShrink: 1,
   },
-  teamName: { color: Colors.text, fontSize: 18, fontWeight: '700', marginBottom: Spacing.xs },
-  muted: { color: Colors.textSecondary, fontSize: 13 },
-  pressed: { opacity: 0.85 },
-  hero: { flexDirection: 'row', alignItems: 'flex-start' },
-  heroSide: { flex: 1, alignItems: 'center', gap: Spacing.xs },
-  heroName: { color: Colors.text, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  heroScore: { color: Colors.text, fontSize: 32, fontWeight: '800', fontVariant: ['tabular-nums'], marginTop: Spacing.sm },
-  vs: { color: Colors.textSecondary, fontSize: 13, marginTop: 64 },
-  winWrap: { marginTop: Spacing.lg, gap: Spacing.xs, alignItems: 'center' },
-  winTrack: { height: 6, alignSelf: 'stretch', borderRadius: 3, backgroundColor: Colors.border, overflow: 'hidden' },
-  winFill: { height: 6, backgroundColor: Colors.accent },
-  listCard: { padding: 0, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
-  rowSide: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 3 },
-  rowName: { flex: 1, color: Colors.text, fontSize: 15 },
-  rowScore: { color: Colors.text, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  gameDay: { backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  gameDayText: { color: '#ef4444', fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  tickers: { marginTop: Spacing.sm, gap: 6 },
+  emptyHero: { gap: Spacing.sm },
+  emptyTitle: { fontSize: 20 },
+  emptyText: { color: Colors.textSecondary, fontSize: 14 },
+  footerLink: { alignSelf: 'center' },
+  footerText: { color: Colors.textSecondary, fontSize: 14 },
 });

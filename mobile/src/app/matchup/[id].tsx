@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { LiveBadge } from '@/components/LiveBadge';
 
 import { Card, formatScore, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
@@ -106,7 +107,7 @@ function PlayerCell({ player, align }: { player: RosterPlayer | undefined; align
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   scoreboard: { flexDirection: 'row', alignItems: 'flex-start' },
   side: { flex: 1, alignItems: 'center', gap: Spacing.xs },

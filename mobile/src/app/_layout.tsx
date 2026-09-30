@@ -1,10 +1,21 @@
+import { GeistMono_500Medium, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
+import {
+  IBMPlexSans_400Regular,
+  IBMPlexSans_500Medium,
+  IBMPlexSans_600SemiBold,
+  IBMPlexSans_700Bold,
+} from '@expo-google-fonts/ibm-plex-sans';
+import { Oswald_500Medium, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect } from 'react';
+import { View } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { HoneycombBackground } from '@/components/HoneycombBackground';
+import { Colors, Fonts } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ChatSocketProvider } from '@/lib/chatSocket';
 import { queryClient, queryPersister } from '@/lib/queries';
@@ -15,7 +26,9 @@ const theme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: Colors.bg,
+    // Screens are see-through so the honeycomb behind the navigator
+    // shows, like the web's fixed CinematicHoneycombBackground.
+    background: 'transparent',
     card: Colors.surface,
     border: Colors.border,
     primary: Colors.accent,
@@ -25,17 +38,36 @@ const theme = {
 
 function RootStack() {
   const { token } = useAuth();
+  const [fontsLoaded] = useFonts({
+    Oswald_500Medium,
+    Oswald_600SemiBold,
+    Oswald_700Bold,
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    IBMPlexSans_600SemiBold,
+    IBMPlexSans_700Bold,
+    GeistMono_500Medium,
+    GeistMono_700Bold,
+  });
+  const ready = token !== undefined && fontsLoaded;
 
   useEffect(() => {
-    // Keep the splash up until we know whether there's a saved session,
-    // so a signed-in launch never flashes the sign-in screen.
-    if (token !== undefined) SplashScreen.hideAsync();
-  }, [token]);
+    // Keep the splash up until the fonts are in and we know whether
+    // there's a saved session, so a signed-in launch never flashes the
+    // sign-in screen or a system font.
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
 
-  if (token === undefined) return null;
+  if (!ready) return null;
 
   return (
-    <Stack screenOptions={{ headerStyle: { backgroundColor: Colors.bg }, headerTintColor: Colors.text }}>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: Colors.bg },
+        headerTintColor: Colors.text,
+        headerTitleStyle: { fontFamily: Fonts.display },
+        contentStyle: { backgroundColor: 'transparent' },
+      }}>
       <Stack.Protected guard={token !== null}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="matchup/[id]" options={{ title: 'Matchup', headerBackTitle: 'Back' }} />
@@ -44,6 +76,7 @@ function RootStack() {
         <Stack.Screen name="player/[id]" options={{ title: 'Player', headerBackTitle: 'Back' }} />
         <Stack.Screen name="draft" options={{ title: 'Draft Room', headerBackTitle: 'Home' }} />
         <Stack.Screen name="gamecast/[id]" options={{ title: 'Gamecast', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="chug" options={{ title: 'Chug', headerBackTitle: 'Back' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
@@ -64,8 +97,11 @@ export default function RootLayout() {
       <ThemeProvider value={theme}>
         <AuthProvider onSignOut={clearCache}>
           <ChatSocketProvider>
-            <StatusBar style="light" />
-            <RootStack />
+            <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+              <HoneycombBackground />
+              <StatusBar style="light" />
+              <RootStack />
+            </View>
           </ChatSocketProvider>
         </AuthProvider>
       </ThemeProvider>

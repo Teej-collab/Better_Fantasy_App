@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, PressableRow, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useChatConversations } from '@/lib/queries';
@@ -62,7 +63,7 @@ export default function ChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.bg },
+  screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800', marginBottom: Spacing.lg },
   listCard: { padding: 0, overflow: 'hidden' },

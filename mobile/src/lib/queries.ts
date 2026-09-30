@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { AppState } from 'react-native';
 
 import { api } from '@/lib/api';
-import type { MyTeam, RosterEntry } from '@/lib/types';
+import type { MyTeam, RosterEntry, WeeklyAwards } from '@/lib/types';
 
 // This is the main reason the native app feels faster than the web one:
 // every screen renders the last data it saw immediately (saved on the
@@ -238,5 +238,128 @@ export function usePlayFantasy(gameId: string, playId: string | null) {
     queryFn: async () => (await api.playFantasy(gameId, playId!)).players,
     enabled: playId !== null,
     staleTime: Infinity,
+  });
+}
+
+// ---- Home ----
+
+export function usePreferences() {
+  return useQuery({ queryKey: ['preferences'], queryFn: api.preferences, staleTime: 5 * 60_000 });
+}
+
+export function useActiveLeagueName() {
+  return useQuery({
+    queryKey: ['my-leagues'],
+    queryFn: api.myLeagues,
+    staleTime: 5 * 60_000,
+    select: (d) => d.leagues.find((l) => l.id === d.active_league_id)?.name ?? null,
+  });
+}
+
+function hasAwardsData(a: WeeklyAwards): boolean {
+  return (
+    !!a.game_of_the_week ||
+    a.boom_leaders.length > 0 ||
+    a.bust_leaders.length > 0 ||
+    !!a.biggest_bench_crime ||
+    !!a.overachiever ||
+    !!a.meltdown ||
+    !!a.clutch ||
+    !!a.choke
+  );
+}
+
+// This week's awards once it has any, else last week's — a fresh week
+// has nothing to award until its games start, so the web keeps the
+// week that just wrapped on screen until then (2026-09-15 ask).
+export function useHomeAwards(season: number | null, week: number | null) {
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({
+    queryKey: ['weekly-awards', season, week],
+    enabled: season !== null && week !== null,
+    refetchInterval,
+    queryFn: async () => {
+      const [current, previous] = await Promise.all([
+        api.weeklyAwards(season!, week!),
+        week! > 1 ? api.weeklyAwards(season!, week! - 1) : Promise.resolve(null),
+      ]);
+      if (hasAwardsData(current)) return { awards: current, week: week! };
+      if (previous && hasAwardsData(previous)) return { awards: previous, week: week! - 1 };
+      return null;
+    },
+  });
+}
+
+// The current week's recap once its games are final, else last week's
+// (same pair of checks as the web home page).
+export function useHomeRecap(season: number | null, week: number | null) {
+  return useQuery({
+    queryKey: ['weekly-recap', season, week],
+    enabled: season !== null && week !== null,
+    queryFn: async () => {
+      const [current, previous] = await Promise.all([
+        api.weeklyRecap(season!, week!),
+        week! > 1 ? api.weeklyRecap(season!, week! - 1) : Promise.resolve({ narrative: null }),
+      ]);
+      if (current.narrative?.kind === 'recap') return { recap: current.narrative, week: week! };
+      if (previous.narrative?.kind === 'recap') return { recap: previous.narrative, week: week! - 1 };
+      return null;
+    },
+  });
+}
+
+export function useLeagueTicker(season: number | null, week: number | null) {
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({
+    queryKey: ['league-ticker', season, week],
+    queryFn: async () => (await api.leagueTicker(season!, week!)).items,
+    enabled: season !== null && week !== null,
+    refetchInterval,
+  });
+}
+
+export function useLatestPowerRankings(season: number | null) {
+  return useQuery({
+    queryKey: ['power-rankings-latest', season],
+    queryFn: () => api.latestPowerRankings(season!),
+    enabled: season !== null,
+  });
+}
+
+export function useRivalries() {
+  return useQuery({ queryKey: ['rivalries'], queryFn: async () => (await api.rivalries()).rivalries });
+}
+
+// Only once the draft is done — before that nobody owes a chug.
+export function useChugDeadline(enabled: boolean) {
+  return useQuery({ queryKey: ['chug-deadline'], queryFn: api.chugDeadline, enabled });
+}
+
+// season undefined = all-time (the Chug page's All-Time tab).
+export function useChugFeed(season: number | null | undefined) {
+  return useQuery({
+    queryKey: ['chug-feed', season ?? 'all'],
+    queryFn: async () => (await api.chugFeed(season ?? undefined)).chugs,
+    enabled: season !== null,
+  });
+}
+
+export function useLeagueActivity(season: number | null, limit?: number) {
+  return useQuery({
+    queryKey: ['league-activity', season, limit ?? 'all'],
+    queryFn: async () => (await api.leagueActivity(season!, limit)).items,
+    enabled: season !== null,
+  });
+}
+
+export function useChugSeasons() {
+  return useQuery({ queryKey: ['chug-seasons'], queryFn: async () => (await api.chugSeasons()).seasons });
+}
+
+export function useChugLeaderboard(season: number | undefined) {
+  return useQuery({
+    queryKey: ['chug-leaderboard', season ?? 'all'],
+    queryFn: async () => (await api.chugLeaderboard(season)).leaderboard,
+    placeholderData: (previous) => previous,
   });
 }
