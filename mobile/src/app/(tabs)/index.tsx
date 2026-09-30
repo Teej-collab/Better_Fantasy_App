@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { LiveBadge } from '@/components/LiveBadge';
+import { NflScoreStrip } from '@/components/NflScoreStrip';
 import { Card, formatScore, LoadingState, MessageState, PressableRow, SectionTitle, TeamAvatar } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
-import { useMatchupContext, useMyWeek, useSeasonWeek } from '@/lib/queries';
+import { useIsGameLive, useMatchupContext, useMyWeek, useNflScoreboard, useSeasonWeek } from '@/lib/queries';
 import type { WeekMatchupContextItem, YourWeek } from '@/lib/types';
 
 export default function HomeScreen() {
@@ -15,11 +17,12 @@ export default function HomeScreen() {
   const season = seasonWeek.data?.season ?? null;
   const week = seasonWeek.data?.week ?? null;
   const context = useMatchupContext(season, week);
+  const scoreboard = useNflScoreboard();
   const [refreshing, setRefreshing] = useState(false);
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([seasonWeek.refetch(), myWeek.refetch(), context.refetch()]);
+    await Promise.all([seasonWeek.refetch(), myWeek.refetch(), context.refetch(), scoreboard.refetch()]);
     setRefreshing(false);
   }
 
@@ -44,6 +47,8 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      <NflScoreStrip />
+
       {myWeek.data && <YourWeekCard myWeek={myWeek.data} />}
 
       {others.length > 0 && (
@@ -64,6 +69,7 @@ export default function HomeScreen() {
 }
 
 function YourWeekCard({ myWeek }: { myWeek: YourWeek }) {
+  const gameLive = useIsGameLive();
   const m = myWeek.matchup;
   if (!m) {
     const message =
@@ -81,8 +87,11 @@ function YourWeekCard({ myWeek }: { myWeek: YourWeek }) {
   return (
     <Pressable onPress={() => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } })}>
       {({ pressed }) => (
-        <Card style={pressed ? styles.pressed : undefined}>
-          <Text style={styles.kicker}>Your matchup</Text>
+        <Card style={[m.started && gameLive && styles.liveCard, pressed && styles.pressed]}>
+          <View style={styles.kickerRow}>
+            <Text style={styles.kicker}>Your matchup</Text>
+            {m.started && gameLive && <LiveBadge />}
+          </View>
           <View style={styles.hero}>
             <HeroSide
               name={myWeek.team_name}
@@ -100,8 +109,12 @@ function YourWeekCard({ myWeek }: { myWeek: YourWeek }) {
               projected={m.opponent_projected_total}
             />
           </View>
-          {m.win_probability !== null && (
-            <WinBar probability={m.win_probability} />
+          {m.win_probability !== null && <WinBar probability={m.win_probability} />}
+          {(m.my_in_play > 0 || m.my_yet_to_play > 0) && (
+            <Text style={styles.playCounts}>
+              You: {m.my_in_play} playing · {m.my_yet_to_play} to go    Them: {m.opponent_in_play} playing ·{' '}
+              {m.opponent_yet_to_play} to go
+            </Text>
           )}
         </Card>
       )}
@@ -164,13 +177,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.lg },
   headerTitle: { color: Colors.text, fontSize: 28, fontWeight: '800' },
   signOut: { color: Colors.textSecondary, fontSize: 14 },
+  kickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
+  liveCard: { borderColor: Colors.live },
+  playCounts: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: Spacing.md },
   kicker: {
     color: Colors.accent,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: Spacing.md,
   },
   teamName: { color: Colors.text, fontSize: 18, fontWeight: '700', marginBottom: Spacing.xs },
   muted: { color: Colors.textSecondary, fontSize: 13 },

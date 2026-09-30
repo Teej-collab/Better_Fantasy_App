@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   Me,
   MyTeam,
+  NflGame,
   PlayerCard,
   RosterEntry,
   StandingsRow,
@@ -77,6 +78,7 @@ export const api = {
   currentWeek: (season: number) =>
     request<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`),
   myWeek: () => request<YourWeek>('/me/week'),
+  nflScoreboard: () => request<{ games: NflGame[] }>('/nfl/scoreboard'),
   standings: (season: number) => request<{ standings: StandingsRow[] }>(`/seasons/${season}/standings`),
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),

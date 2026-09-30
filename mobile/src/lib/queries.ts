@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { QueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { focusManager, QueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { AppState } from 'react-native';
 
 import { api } from '@/lib/api';
 import type { MyTeam, RosterEntry } from '@/lib/types';
@@ -22,6 +23,36 @@ export const queryClient = new QueryClient({
 
 export const queryPersister = createAsyncStoragePersister({ storage: AsyncStorage });
 
+// React Query only knows about browser tabs out of the box. Tell it when
+// the app is on screen, so live refetch timers pause in the background
+// (battery) and stale screens refresh the moment you come back.
+focusManager.setEventListener((setFocused) => {
+  const sub = AppState.addEventListener('change', (state) => setFocused(state === 'active'));
+  return () => sub.remove();
+});
+
+// While any NFL game is in progress, scores refetch on this beat — the
+// same 15 s the web's GameDayRefresher uses for its client data.
+const LIVE_REFRESH_MS = 15_000;
+
+export function useNflScoreboard() {
+  return useQuery({
+    queryKey: ['nfl-scoreboard'],
+    queryFn: async () => (await api.nflScoreboard()).games,
+    // Faster during games so a kickoff flips everything live quickly.
+    refetchInterval: (query) => (query.state.data?.some((g) => g.state === 'in') ? 30_000 : 5 * 60_000),
+  });
+}
+
+// Same test as the web's isNflGameLive (frontend/src/lib/api.ts).
+export function useIsGameLive(): boolean {
+  return useNflScoreboard().data?.some((g) => g.state === 'in') ?? false;
+}
+
+function useLiveRefetchInterval(): number | false {
+  return useIsGameLive() ? LIVE_REFRESH_MS : false;
+}
+
 // Latest synced season + its current week. Week is null in preseason;
 // ESPN reports 0 then, same fallback to week 1 as the web app's
 // resolveWeek (frontend/src/lib/api.ts).
@@ -39,11 +70,14 @@ export function useSeasonWeek() {
 }
 
 export function useMyWeek() {
-  return useQuery({ queryKey: ['my-week'], queryFn: api.myWeek });
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({ queryKey: ['my-week'], queryFn: api.myWeek, refetchInterval });
 }
 
 export function useMatchupContext(season: number | null, week: number | null) {
+  const refetchInterval = useLiveRefetchInterval();
   return useQuery({
+    refetchInterval,
     queryKey: ['matchup-context', season, week],
     queryFn: () => api.matchupContext(season!, week!),
     enabled: season !== null && week !== null,
@@ -59,11 +93,13 @@ export function useStandings(season: number | null) {
 }
 
 export function useMatchup(matchupId: number) {
-  return useQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId) });
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId), refetchInterval });
 }
 
 export function useMyTeam() {
-  return useQuery({ queryKey: ['my-team'], queryFn: api.myTeam });
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({ queryKey: ['my-team'], queryFn: api.myTeam, refetchInterval });
 }
 
 // A move/swap response leaves every GET /me/team-only field (points,

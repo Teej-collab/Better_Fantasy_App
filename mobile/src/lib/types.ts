@@ -244,3 +244,20 @@ export type PlayerCard = {
   rostered_team_name: string | null;
   is_on_my_team: boolean;
 };
+
+// GET /nfl/scoreboard — ESPN's public scoreboard, this week's real NFL games.
+export type NflGame = {
+  id: string;
+  name: string;
+  home_team: string | null;
+  home_score: string | null;
+  away_team: string | null;
+  away_score: string | null;
+  state: 'pre' | 'in' | 'post' | null;
+  // "Q3 5:12", "Halftime", "Final", "Sun 1:00 PM EDT".
+  status_detail: string | null;
+  completed: boolean;
+  date: string | null;
+  broadcast: string | null;
+  week: number | null;
+};

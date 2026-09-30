@@ -1,9 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { LiveBadge } from '@/components/LiveBadge';
 
 import { Card, formatScore, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
-import { openPlayer, useMatchup } from '@/lib/queries';
+import { openPlayer, useIsGameLive, useMatchup } from '@/lib/queries';
 import type { MatchupContextSide, RosterPlayer } from '@/lib/types';
 
 const BENCH_SLOTS = new Set(['BE', 'Bench', 'IR']);
@@ -11,6 +14,14 @@ const BENCH_SLOTS = new Set(['BE', 'Bench', 'IR']);
 export default function MatchupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const matchup = useMatchup(Number(id));
+  const gameLive = useIsGameLive();
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await matchup.refetch();
+    setRefreshing(false);
+  }
 
   if (matchup.isPending) return <LoadingState />;
   if (matchup.isError || !matchup.data) return <MessageState message="Couldn't load this matchup." />;
@@ -19,8 +30,17 @@ export default function MatchupScreen() {
   const starters = (side: MatchupContextSide) => side.roster.filter((p) => !BENCH_SLOTS.has(p.lineup_slot ?? ''));
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
       <Card>
+        {gameLive && (home.score ?? 0) + (away.score ?? 0) > 0 && (
+          <View style={styles.liveRow}>
+            <LiveBadge />
+          </View>
+        )}
         <View style={styles.scoreboard}>
           <Side side={home} />
           <Text style={styles.vs}>vs</Text>
@@ -104,4 +124,5 @@ const styles = StyleSheet.create({
   points: { color: Colors.textSecondary, fontSize: 13, fontVariant: ['tabular-nums'] },
   textRight: { textAlign: 'right' },
   pressed: { opacity: 0.6 },
+  liveRow: { alignItems: 'center', marginBottom: Spacing.md },
 });
