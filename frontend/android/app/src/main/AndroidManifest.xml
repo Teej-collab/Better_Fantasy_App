@@ -18,6 +18,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Discord sign-in handoff: opens /auth/native-complete links
+                 in the app instead of the browser. Verified against
+                 public/.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="weekend-league-web.vercel.app" android:pathPrefix="/auth/native-complete" />
+            </intent-filter>
         </activity>
 
         <provider

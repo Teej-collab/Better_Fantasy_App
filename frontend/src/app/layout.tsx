@@ -12,6 +12,7 @@ import {
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { CinematicHoneycombBackground } from "@/components/CinematicHoneycombBackground";
+import { NativeDeepLinks } from "@/components/NativeDeepLinks";
 import { NativePushRegistration } from "@/components/NativePushRegistration";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageViewTracker } from "@/components/PageViewTracker";
@@ -248,6 +249,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </PresenceProvider>
         <ServiceWorkerRegistration />
         <NativePushRegistration />
+        <NativeDeepLinks />
         <AudioWarmup />
       </body>
     </html>
