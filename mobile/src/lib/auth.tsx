@@ -22,6 +22,9 @@ type AuthState = {
   // undefined while the saved token is still being read.
   token: string | null | undefined;
   signInWithDiscord: () => Promise<SignInResult>;
+  // For a session token from email sign-in/sign-up, or the refreshed one
+  // claiming a team or redeeming a co-owner invite hands back.
+  signInWithToken: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -94,7 +97,12 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     }
   }, [applyToken]);
 
-  const value = useMemo(() => ({ token, signInWithDiscord, signOut }), [token, signInWithDiscord, signOut]);
+  const signInWithToken = useCallback((next: string) => applyToken(next), [applyToken]);
+
+  const value = useMemo(
+    () => ({ token, signInWithDiscord, signInWithToken, signOut }),
+    [token, signInWithDiscord, signInWithToken, signOut],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

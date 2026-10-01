@@ -5,7 +5,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
+import { NeedsLeague } from '@/components/NeedsLeague';
 import { Colors } from '@/constants/theme';
+import { useMe } from '@/lib/queries';
 
 // Wraps each tab's screen. Native tabs paint an opaque system background
 // over the app-wide honeycomb behind the navigator, so each tab draws
@@ -15,15 +17,19 @@ import { Colors } from '@/constants/theme';
 export function TabFrame({ children, ticker = false }: { children: ReactNode; ticker?: boolean }) {
   const focused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const me = useMe().data;
+  // Signed in but in no league yet: every tab is league data, so offer
+  // to join or create one instead.
+  const noLeague = me !== undefined && me.active_league_id === null;
   return (
     <View style={styles.frame}>
       {focused ? <HoneycombBackground /> : <View style={[StyleSheet.absoluteFill, styles.plain]} />}
-      {ticker && (
+      {ticker && !noLeague && (
         <View style={{ paddingTop: insets.top }}>
           <AppTickerBar />
         </View>
       )}
-      <View style={styles.flex}>{children}</View>
+      <View style={styles.flex}>{noLeague ? <NeedsLeague displayName={me.display_name} /> : children}</View>
     </View>
   );
 }

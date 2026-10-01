@@ -501,6 +501,35 @@ export const api = {
   },
   playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>
     request<PlayerViewData>(`/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(','))}`),
+  // ---- Onboarding: email accounts and leagues (frontend/src/lib/authApi.ts, leaguesApi.ts) ----
+  signup: (email: string, password: string, displayName: string) =>
+    request<{ token: string }>('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, display_name: displayName }) }),
+  login: (email: string, password: string) =>
+    request<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  createLeague: (name: string) => request<LeagueInfo>('/leagues', { method: 'POST', body: JSON.stringify({ name }) }),
+  joinLeague: (inviteCode: string) =>
+    request<LeagueInfo>('/leagues/join', { method: 'POST', body: JSON.stringify({ invite_code: inviteCode }) }),
+  createTeam: (leagueId: number, teamName: string) =>
+    request<LeagueTeam>(`/leagues/${leagueId}/teams`, { method: 'POST', body: JSON.stringify({ team_name: teamName }) }),
+  selectLeague: (leagueId: number) =>
+    request<{ active_league_id: number }>(`/leagues/${leagueId}/select`, { method: 'POST', body: '{}' }),
+  unclaimedOwners: async (leagueId: number) =>
+    (await request<{ owners: { owner_id: number; display_name: string }[] }>(`/leagues/${leagueId}/unclaimed-owners`)).owners,
+  // Both return a fresh session token (owner_id lives in it) — sign in with it.
+  claimOwner: (leagueId: number, ownerId: number) =>
+    request<{ owner_id: number; claimed: boolean; token: string }>(`/leagues/${leagueId}/claim-owner`, {
+      method: 'POST',
+      body: JSON.stringify({ owner_id: ownerId }),
+    }),
+  createCoOwnerInvite: async () =>
+    (await request<{ invite_code: string }>('/leagues/co-owner-invite', { method: 'POST', body: '{}' })).invite_code,
+  redeemCoOwnerInvite: (inviteCode: string) =>
+    request<{ owner_id: number; token: string }>('/leagues/co-owner-invites/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ invite_code: inviteCode }),
+    }),
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',

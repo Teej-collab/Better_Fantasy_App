@@ -1,4 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import * as Updates from 'expo-updates';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -41,6 +42,14 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Settings' }} />
+      {/* The web's account menu: Leagues (switch, join or create), then the commissioner/admin tools. */}
+      <Pressable onPress={() => router.push('/leagues')} style={[styles.commish, { borderColor: Colors.border }]}>
+        <View style={styles.commishText}>
+          <Text style={styles.commishTitle}>Leagues</Text>
+          <Text style={styles.commishSub}>Switch leagues, join one with an invite code, or start your own.</Text>
+        </View>
+        <Text style={[styles.chevron, { color: accent }]}>›</Text>
+      </Pressable>
       {/* Where the web's account menu puts it, for commissioners only. */}
       {isCommissioner && (
         <Pressable onPress={() => router.push('/commissioner')} style={[styles.commish, { borderColor: `${accent}55` }]}>
@@ -78,11 +87,21 @@ export default function SettingsScreen() {
       {section === 'labs' && <WebOnlySettings title="Labs" />}
       {section === 'account' && <AccountSettings />}
       {section === 'feedback' && <FeedbackSettings />}
+      <Text style={styles.version}>{appVersionLabel()}</Text>
     </ScrollView>
   );
 }
 
+// Which copy of the app's code is running: the one built into the app,
+// or an over-the-air update (EAS Update) and when it was published.
+function appVersionLabel(): string {
+  if (Updates.isEmbeddedLaunch || !Updates.createdAt) return 'App version: built-in';
+  const when = Updates.createdAt.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return `App version: update from ${when} (${(Updates.updateId ?? '').slice(0, 8)})`;
+}
+
 const styles = StyleSheet.create({
+  version: { color: Colors.textSecondary, fontSize: 11, textAlign: 'center', marginTop: Spacing.xl },
   commish: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.md, borderWidth: 1, backgroundColor: Colors.surface, padding: Spacing.md },
   commishText: { flex: 1, gap: 2 },
   commishTitle: { color: Colors.text, fontSize: 15, fontWeight: '600' },

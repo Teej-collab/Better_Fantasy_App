@@ -1,13 +1,14 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { TabFrame } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { api, WEB_BASE_URL } from '@/lib/api';
 import { openPlayer, useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
 import {
   BENCH_SLOT_LABEL,
@@ -55,9 +56,12 @@ function TeamScreenContent() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
-        <Text style={styles.title} numberOfLines={1}>
-          {data.team_name}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, styles.titleText]} numberOfLines={1}>
+            {data.team_name}
+          </Text>
+          <InviteCoOwner />
+        </View>
         <Text style={styles.subtitle}>
           {data.week !== null ? `Week ${data.week} · ` : ''}
           {formatPoints(starterPoints)} pts · Proj {formatPoints(starterProjected)}
@@ -103,6 +107,31 @@ function TeamScreenContent() {
 
       {editing && <LineupSheet entry={editing} team={data} onClose={() => setEditing(null)} />}
     </>
+  );
+}
+
+// The web's Invite Co-Owner: a link a friend opens (after signing up)
+// to manage this team with you — sent from the share sheet here.
+function InviteCoOwner() {
+  const [busy, setBusy] = useState(false);
+  async function invite() {
+    setBusy(true);
+    try {
+      const code = await api.createCoOwnerInvite();
+      const link = `${WEB_BASE_URL}/join-co-owner?code=${code}`;
+      await Share.share({
+        message: `Help me run my Weekend League team — open this after you sign up and you'll be able to manage it with me: ${link}`,
+      });
+    } catch (e) {
+      Alert.alert("Couldn't generate an invite link", e instanceof Error ? e.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Pressable onPress={invite} disabled={busy} hitSlop={6} style={({ pressed }) => [styles.invite, (pressed || busy) && styles.pressed]}>
+      <Text style={styles.inviteText}>{busy ? 'Generating…' : 'Invite Co-Owner'}</Text>
+    </Pressable>
   );
 }
 
@@ -265,6 +294,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  titleText: { flex: 1 },
+  invite: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: 12, paddingVertical: 6 },
+  inviteText: { color: Colors.text, fontSize: 12, fontWeight: '500' },
   subnav: { gap: Spacing.sm, marginTop: Spacing.md },
   subnavPill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
   subnavActive: { backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' },
