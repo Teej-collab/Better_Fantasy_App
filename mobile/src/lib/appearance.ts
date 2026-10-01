@@ -1,4 +1,9 @@
-import { Colors, HoneycombColor } from '@/constants/theme';
+import * as SecureStore from 'expo-secure-store';
+import * as Updates from 'expo-updates';
+import { useEffect } from 'react';
+import { DevSettings } from 'react-native';
+
+import { ActiveTheme, Colors, HoneycombColor, THEME_STORE_KEY, type ThemeName } from '@/constants/theme';
 import { usePreferences } from '@/lib/queries';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -33,7 +38,9 @@ export function useAppearance(): Appearance {
   const prefs = usePreferences().data;
   const accent = hexOr(prefs?.accent_color, Colors.accent);
   return {
-    theme: prefs?.theme === 'cosmic' ? 'cosmic' : 'calm',
+    // The palette this launch was built with, not the saved choice:
+    // the two only differ until the next launch (see useThemeSync).
+    theme: ActiveTheme,
     accent,
     ring: hexOr(prefs?.border_glow_color, accent),
     yourWeek: hexOr(prefs?.your_week_color, accent),
@@ -48,4 +55,32 @@ export function useAppearance(): Appearance {
 // same rule as the web's [data-wl-theme="cosmic"] panel override.
 export function ringColorFor(appearance: Appearance, sectionColor: string | undefined): string {
   return appearance.theme === 'cosmic' && sectionColor ? sectionColor : appearance.ring;
+}
+
+// Remember the Look for the next launch (constants/theme.ts reads it
+// before any screen's styles are built), and reload now if it changed
+// so the new palette shows right away.
+export function applyTheme(theme: ThemeName): void {
+  try {
+    SecureStore.setItem(THEME_STORE_KEY, theme);
+  } catch {
+    return;
+  }
+  if (theme === ActiveTheme) return;
+  Updates.reloadAsync().catch(() => DevSettings.reload());
+}
+
+// Picks up a Look chosen on the web (or on another phone). It's saved for
+// the next launch rather than applied mid-session: reloading the app out
+// from under someone would be worse than one more launch in the old look.
+export function useThemeSync(): void {
+  const theme = usePreferences().data?.theme;
+  useEffect(() => {
+    if (!theme) return;
+    try {
+      if (SecureStore.getItem(THEME_STORE_KEY) !== theme) SecureStore.setItem(THEME_STORE_KEY, theme);
+    } catch {
+      // Stays in the current look.
+    }
+  }, [theme]);
 }

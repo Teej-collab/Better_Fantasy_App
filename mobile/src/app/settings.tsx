@@ -45,7 +45,7 @@ export default function SettingsScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Settings' }} />
       {/* The web's account menu: Leagues (switch, join or create), then the commissioner/admin tools. */}
-      <Pressable onPress={() => router.push('/leagues')} style={[styles.commish, { borderColor: Colors.border }]}>
+      <Pressable onPress={() => router.push('/leagues')} accessibilityRole="button" accessibilityLabel="Leagues" accessibilityHint="Switch leagues, join one with an invite code, or start your own." style={[styles.commish, { borderColor: Colors.border }]}>
         <View style={styles.commishText}>
           <Text style={styles.commishTitle}>Leagues</Text>
           <Text style={styles.commishSub}>Switch leagues, join one with an invite code, or start your own.</Text>
@@ -54,7 +54,7 @@ export default function SettingsScreen() {
       </Pressable>
       {/* Where the web's account menu puts it, for commissioners only. */}
       {isCommissioner && (
-        <Pressable onPress={() => router.push('/commissioner')} style={[styles.commish, { borderColor: `${accent}55` }]}>
+        <Pressable onPress={() => router.push('/commissioner')} accessibilityRole="button" accessibilityLabel="Commissioner Tools" style={[styles.commish, { borderColor: `${accent}55` }]}>
           <View style={styles.commishText}>
             <Text style={styles.commishTitle}>Commissioner Tools</Text>
             <Text style={styles.commishSub}>Everything you can manage for your league.</Text>
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
         </Pressable>
       )}
       {me?.is_site_owner && (
-        <Pressable onPress={() => router.push('/admin')} style={[styles.commish, { borderColor: '#38bdf855' }]}>
+        <Pressable onPress={() => router.push('/admin')} accessibilityRole="button" accessibilityLabel="Admin" style={[styles.commish, { borderColor: '#38bdf855' }]}>
           <View style={styles.commishText}>
             <Text style={styles.commishTitle}>Admin</Text>
             <Text style={styles.commishSub}>The control room — usage, people, and app health.</Text>

@@ -127,6 +127,9 @@ function KeeperPicker({ data }: { data: MyKeepers }) {
                   key={p.espn_player_id}
                   disabled={disabled}
                   onPress={() => toggle(p.espn_player_id)}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={`${p.player_name}, ${p.position ?? 'no position'}${p.pro_team ? `, ${p.pro_team}` : ''}${!p.eligible ? ', max years kept reached' : ''}`}
+                  accessibilityState={{ checked: on, disabled }}
                   style={[styles.row, i > 0 && styles.divided, disabled && !on && styles.dimmed]}>
                   <View style={styles.flex}>
                     <Text style={styles.name}>{p.player_name}</Text>

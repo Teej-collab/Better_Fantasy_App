@@ -263,11 +263,11 @@ function WeekScoreboard({ season }: { season: number }) {
   return (
     <View style={styles.gap}>
       <View style={styles.weekStepper}>
-        <Pressable disabled={shown <= 1} onPress={() => setWeek(shown - 1)} hitSlop={10}>
+        <Pressable disabled={shown <= 1} onPress={() => setWeek(shown - 1)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Previous week" accessibilityState={{ disabled: shown <= 1 }}>
           <Text style={[styles.arrow, shown <= 1 && styles.disabled]}>‹</Text>
         </Pressable>
         <Text style={styles.weekLabel}>Week {shown}</Text>
-        <Pressable disabled={shown >= MAX_WEEK} onPress={() => setWeek(shown + 1)} hitSlop={10}>
+        <Pressable disabled={shown >= MAX_WEEK} onPress={() => setWeek(shown + 1)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: shown >= MAX_WEEK }}>
           <Text style={[styles.arrow, shown >= MAX_WEEK && styles.disabled]}>›</Text>
         </Pressable>
       </View>

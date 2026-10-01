@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
 import type { ChugFeedEntry, LeagueActivityItem } from '@/lib/types';
 
@@ -151,7 +151,7 @@ export function ActivityCard({ items }: { items: LeagueActivityItem[] }) {
 const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
   title: { fontSize: 18, textTransform: 'none', letterSpacing: 0 },
-  list: { padding: 0, backgroundColor: 'rgba(18,22,28,0.92)' },
+  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.05)' },
   row: {
     flexDirection: 'row',

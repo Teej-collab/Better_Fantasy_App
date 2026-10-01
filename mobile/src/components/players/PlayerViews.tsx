@@ -88,6 +88,9 @@ export function PlayerViewsPill({ view, onChange }: { view: PlayerViewKey; onCha
                     onChange(o.key);
                     setOpen(false);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={o.label}
+                  accessibilityState={{ selected: active }}
                   style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
                   <Text style={[styles.optionText, active && { color: accent, fontWeight: '600' }]}>{o.label}</Text>
                   {active && <Text style={{ color: accent }}>✓</Text>}

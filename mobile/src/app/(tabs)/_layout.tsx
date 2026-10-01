@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { useThemeSync } from '@/lib/appearance';
 import { updateMatchupWidget } from '@/lib/homeWidget';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
 import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
@@ -73,6 +74,7 @@ export default function TabsLayout() {
   useHomeScreenQuickActions();
   useLocalReminders();
   useHomeWidget();
+  useThemeSync();
   // Loaded here so lib/chatSocket.tsx always knows which live messages
   // are your own (those never count as unread).
   useMe();

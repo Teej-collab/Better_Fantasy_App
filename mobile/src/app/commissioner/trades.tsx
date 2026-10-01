@@ -80,7 +80,7 @@ function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
           </View>
         </View>
         <View style={[s.row, { flexWrap: 'nowrap' }]}>
-          <Switch value={reviewRequired} onValueChange={setReviewRequired} trackColor={{ true: accent }} />
+          <Switch value={reviewRequired} onValueChange={setReviewRequired} accessibilityLabel="Require commissioner review before a trade applies" trackColor={{ true: accent }} />
           <Text style={[s.bodySoft, s.flex]}>Require commissioner review before a trade applies</Text>
         </View>
         <View style={s.row}>

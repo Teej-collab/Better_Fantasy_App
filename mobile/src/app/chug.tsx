@@ -8,7 +8,7 @@ import { ChugFeedCard } from '@/components/home/FeedCards';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
-import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api, uploadChugVideo } from '@/lib/api';
 import { queryClient, useChugFeed, useChugLeaderboard, useChugSeasons, useMe } from '@/lib/queries';
 import type { ChugLeaderboardRow, ChugUploadResult } from '@/lib/types';
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
   sectionTitle: { fontSize: 18, textTransform: 'none', letterSpacing: 0 },
   muted: { color: Colors.textSecondary, fontSize: 14 },
-  list: { padding: 0, backgroundColor: 'rgba(18,22,28,0.92)' },
+  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
   upload: { gap: Spacing.sm },
   kicker: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   soft: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },

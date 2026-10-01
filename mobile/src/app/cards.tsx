@@ -108,7 +108,7 @@ function TradingCard({ owner }: { owner: Owner }) {
       end={{ x: 1, y: 1 }}
       style={styles.frame}>
       <View style={styles.bg}>
-        <Pressable onPress={toggle} style={styles.flipArea}>
+        <Pressable onPress={toggle} style={styles.flipArea} accessibilityRole="button" accessibilityLabel={`${owner.display_name}'s card`} accessibilityHint="Flips the card over">
           <Animated.View style={[styles.face, front]}>
             <CardFront owner={owner} badges={badges} />
           </Animated.View>

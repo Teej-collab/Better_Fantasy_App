@@ -29,14 +29,19 @@ export function Card({
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.sectionTitle}>{children}</Text>;
+  return (
+    <Text style={styles.sectionTitle} accessibilityRole="header">
+      {children}
+    </Text>
+  );
 }
 
 // Custom logo when the owner uploaded one, else their team's initials —
 // same fallback the web app's avatars use.
 export function TeamAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl: string | null; size?: number }) {
   const dims = { width: size, height: size, borderRadius: size / 2 };
-  if (logoUrl) return <Image source={{ uri: logoUrl }} style={dims} contentFit="cover" transition={150} />;
+  // Decorative: the team's name always sits next to it.
+  if (logoUrl) return <Image source={{ uri: logoUrl }} style={dims} contentFit="cover" transition={150} accessible={false} />;
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -44,7 +49,7 @@ export function TeamAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl
     .map((w) => w[0]?.toUpperCase())
     .join('');
   return (
-    <View style={[dims, styles.initials]}>
+    <View style={[dims, styles.initials]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Text style={[styles.initialsText, { fontSize: size * 0.38 }]}>{initials}</Text>
     </View>
   );
@@ -57,7 +62,7 @@ export function formatScore(score: number | null | undefined): string {
 // `onPress` is optional when a Link (asChild) supplies it.
 export function PressableRow({ onPress, children }: { onPress?: () => void; children: ReactNode }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
       {children}
     </Pressable>
   );

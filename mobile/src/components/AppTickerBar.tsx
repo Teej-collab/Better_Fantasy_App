@@ -30,7 +30,9 @@ export function AppTickerBar() {
     <View style={styles.bar}>
       <View style={styles.labelRow}>
         <View style={[styles.dot, !isGameDay && styles.dotIdle]} />
-        <Text style={styles.label}>This Week, Live</Text>
+        <Text style={styles.label} maxFontSizeMultiplier={1.25}>
+          This Week, Live
+        </Text>
       </View>
       {nflItems.length > 0 && <LiveTicker items={nflItems} fast={isGameDay} />}
       {leagueItems.length > 0 && <LiveTicker items={leagueItems} fast={leagueFast} />}

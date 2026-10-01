@@ -152,6 +152,7 @@ function AddButton({ onWaivers, onPress }: { onWaivers: boolean; onPress: () => 
         onPress();
       }}
       hitSlop={8}
+      accessibilityRole="button"
       accessibilityLabel={onWaivers ? 'Place waiver claim' : 'Add player'}
       style={({ pressed }) => [styles.addButton, { borderColor: color, backgroundColor: `${color}22` }, pressed && styles.addPressed]}>
       <Text style={[styles.addPlus, { color }]}>+</Text>

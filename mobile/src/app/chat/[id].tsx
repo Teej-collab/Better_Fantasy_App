@@ -213,7 +213,7 @@ export default function ConversationScreen() {
                   {replyTo.body || 'Photo'}
                 </Text>
               </View>
-              <Pressable onPress={() => setReplyTo(null)} hitSlop={10}>
+              <Pressable onPress={() => setReplyTo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Cancel reply">
                 <Text style={styles.dismiss}>✕</Text>
               </Pressable>
             </View>
@@ -228,13 +228,13 @@ export default function ConversationScreen() {
                     ? "Couldn't upload. Remove it and try again."
                     : 'Ready to send'}
               </Text>
-              <Pressable onPress={() => setPendingImage(null)} hitSlop={10}>
+              <Pressable onPress={() => setPendingImage(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove photo">
                 <Text style={styles.dismiss}>✕</Text>
               </Pressable>
             </View>
           )}
           <View style={styles.composerRow}>
-            <Pressable onPress={chooseAttachment} hitSlop={8} style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
+            <Pressable onPress={chooseAttachment} hitSlop={8} accessibilityRole="button" accessibilityLabel="Attach a photo" style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
               <Text style={styles.attachText}>+</Text>
             </Pressable>
             <TextInput
@@ -278,7 +278,7 @@ export default function ConversationScreen() {
       </Modal>
 
       <Modal visible={viewingImage !== null} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
-        <Pressable style={styles.imageViewer} onPress={() => setViewingImage(null)}>
+        <Pressable style={styles.imageViewer} onPress={() => setViewingImage(null)} accessibilityRole="button" accessibilityLabel="Close photo">
           {viewingImage && <Image source={{ uri: viewingImage }} style={styles.fullImage} contentFit="contain" />}
         </Pressable>
       </Modal>
@@ -313,7 +313,7 @@ function MessageBubble(props: {
           )}
           {message.title && <Text style={[styles.announcementTitle, mine && styles.textMine]}>{message.title}</Text>}
           {message.image_url && (
-            <Pressable onPress={() => props.onOpenImage(message.image_url!)} onLongPress={props.onLongPress}>
+            <Pressable onPress={() => props.onOpenImage(message.image_url!)} onLongPress={props.onLongPress} accessibilityRole="imagebutton" accessibilityLabel={`Photo from ${message.owner_name}`}>
               <Image source={{ uri: message.image_url }} style={styles.image} contentFit="cover" transition={150} />
             </Pressable>
           )}

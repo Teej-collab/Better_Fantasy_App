@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
-import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { invalidateRosterMoves, queryClient, useMe, useMyTrades, useTradeRoster, useTradeTeams } from '@/lib/queries';
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
   primary: { alignSelf: 'flex-start', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, minWidth: 140, alignItems: 'center' },
   primaryText: { color: '#000', fontSize: 14, fontWeight: '600' },
   disabled: { opacity: 0.4 },
-  list: { padding: 0, backgroundColor: 'rgba(18,22,28,0.92)' },
+  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
   trade: { padding: Spacing.lg, gap: Spacing.sm },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.06)' },
   tradeHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.sm },

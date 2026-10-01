@@ -15,12 +15,18 @@ function bodyFamily(weight: string | number | undefined): string {
   return Fonts.body;
 }
 
+// How far text grows with iOS Larger Text / Android font size. 1.5×
+// covers every standard size (the largest is about 1.35×) and the first
+// accessibility sizes; past that, fixed-size rows, pills and score
+// blocks would clip. Tight spots pass a lower maxFontSizeMultiplier.
+export const MAX_FONT_SCALE = 1.5;
+
 // Drop-in for react-native's Text with the app's body font and color.
-export function Text({ style, ...props }: TextProps) {
+export function Text({ style, maxFontSizeMultiplier = MAX_FONT_SCALE, ...props }: TextProps) {
   const flat = StyleSheet.flatten(style) ?? {};
   const { fontWeight, ...rest } = flat;
   const resolved = flat.fontFamily ? flat : { ...rest, fontFamily: bodyFamily(fontWeight) };
-  return <RNText {...props} style={[styles.base, resolved]} />;
+  return <RNText {...props} maxFontSizeMultiplier={maxFontSizeMultiplier} style={[styles.base, resolved]} />;
 }
 
 // Oswald, uppercase, tracked out: the web's .font-display headings.

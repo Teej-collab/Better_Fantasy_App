@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Text } from '@/components/Text';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useGamecastIdFinder } from '@/lib/queries';
 import type { TickerItem } from '@/lib/ticker';
@@ -117,6 +117,10 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
     <View
       key={copy}
       style={styles.line}
+      // The extra copies only exist to keep the loop seamless; VoiceOver
+      // reads the first one.
+      accessibilityElementsHidden={copy !== 0}
+      importantForAccessibility={copy !== 0 ? 'no-hide-descendants' : 'auto'}
       onLayout={
         copy === 0
           ? (e) => {
@@ -128,8 +132,15 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
           : undefined
       }>
       {items.map((item) => (
-        <Pressable key={item.key} onPress={() => open(item)} disabled={!interactive || (!item.game && !item.matchupId)} style={styles.itemWrap}>
-          <Text style={styles.item} numberOfLines={1}>
+        <Pressable
+          key={item.key}
+          onPress={() => open(item)}
+          disabled={!interactive || (!item.game && !item.matchupId)}
+          accessibilityRole={interactive && (item.game || item.matchupId) ? 'link' : 'text'}
+          accessibilityLabel={item.segments.map((seg) => seg.text).join('')}
+          style={styles.itemWrap}>
+          {/* One line in a fixed-height strip, so it grows less than body text. */}
+          <Text style={styles.item} numberOfLines={1} maxFontSizeMultiplier={1.25}>
             {item.segments.map((seg, i) => (
               <Text key={i} style={seg.color ? [styles.team, { color: lighten(seg.color) }] : undefined}>
                 {seg.text}
@@ -169,7 +180,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
-    backgroundColor: 'rgba(18,22,28,0.85)',
+    backgroundColor: withAlpha(Colors.surface, 0.85),
   },
   shellLive: { borderColor: 'rgba(239,68,68,0.6)' },
   track: { flexDirection: 'row', alignSelf: 'flex-start', paddingVertical: 11 },

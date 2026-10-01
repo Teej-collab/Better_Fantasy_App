@@ -430,13 +430,13 @@ function QueueView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Draf
             onOpen={() => openPlayer(id)}
             actions={
               <>
-                <Pressable onPress={() => move(index, -1)} hitSlop={6} style={styles.iconButton}>
+                <Pressable onPress={() => move(index, -1)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${player?.full_name ?? 'player'} up`}>
                   <Text style={styles.arrow}>▲</Text>
                 </Pressable>
-                <Pressable onPress={() => move(index, 1)} hitSlop={6} style={styles.iconButton}>
+                <Pressable onPress={() => move(index, 1)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${player?.full_name ?? 'player'} down`}>
                   <Text style={styles.arrow}>▼</Text>
                 </Pressable>
-                <Pressable onPress={() => remove(id)} hitSlop={6} style={styles.iconButton}>
+                <Pressable onPress={() => remove(id)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove ${player?.full_name ?? 'player'} from queue`}>
                   <Text style={styles.removeX}>✕</Text>
                 </Pressable>
                 {canDraft && player && !player.drafted && <DraftButton onPress={() => onDraft(player)} />}

@@ -19,7 +19,7 @@ import {
   type ReminderSettings,
 } from '@/lib/localNotifications';
 import type { ReminderCategory } from '@/lib/reminders';
-import { useAppearance } from '@/lib/appearance';
+import { applyTheme, useAppearance } from '@/lib/appearance';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
 import { queryClient, useFeedbackList, useMe, useMySettings, usePreferences } from '@/lib/queries';
@@ -45,7 +45,9 @@ function Header({ title, subtitle, saved }: { title: string; subtitle: string; s
   return (
     <View style={styles.header}>
       <View style={styles.flex}>
-        <Display style={styles.title}>{title}</Display>
+        <Display style={styles.title} accessibilityRole="header">
+          {title}
+        </Display>
         <Text style={styles.muted}>{subtitle}</Text>
       </View>
       {saved && <Text style={styles.saved}>✓ Saved</Text>}
@@ -129,6 +131,8 @@ function ToggleRow(props: { label: string; description?: string; value: boolean;
         value={props.value}
         disabled={props.disabled}
         onValueChange={props.onChange}
+        accessibilityLabel={props.label}
+        accessibilityHint={props.description}
         trackColor={{ true: accent, false: 'rgba(255,255,255,0.25)' }}
       />
     </View>
@@ -146,6 +150,8 @@ function Segment<T extends string>(props: { options: { key: T; label: string }[]
             key={o.key}
             disabled={props.disabled}
             onPress={() => props.onChange(o.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on, disabled: props.disabled }}
             style={[styles.segment, on && { borderColor: accent }, props.disabled && styles.dim]}>
             <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{o.label}</Text>
           </Pressable>
@@ -179,7 +185,7 @@ function Swatches(props: {
 
 function Swatch({ color, label, on, onPress, off }: { color: string; label: string; on: boolean; onPress: () => void; off?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={[styles.swatch, on && styles.swatchOn]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }} style={[styles.swatch, on && styles.swatchOn]}>
       <View style={[styles.swatchDot, { backgroundColor: color }, off && styles.swatchOff]}>{off && <Text style={styles.offX}>✕</Text>}</View>
       <Text style={styles.swatchLabel} numberOfLines={1}>
         {label}
@@ -204,9 +210,11 @@ function usePatchPreferences() {
       void Haptics.selectionAsync();
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
+      return true;
     } catch {
       if (previous) queryClient.setQueryData(['preferences'], previous);
       setError("Couldn't save that change — try again.");
+      return false;
     }
   }
   return { patch, saved, error };
@@ -317,7 +325,7 @@ function ProfileForm({ settings }: { settings: MySettings }) {
           title="Team Name"
           description={`Shown across the app — standings, league, rosters, everywhere.${settings.team_name_is_custom ? '' : ' Currently your real ESPN team name.'} Does not update your team name on ESPN itself.`}>
           <View style={styles.inputRow}>
-            <TextInput value={teamName} onChangeText={setTeamName} maxLength={40} style={[styles.input, styles.flex]} />
+            <TextInput value={teamName} onChangeText={setTeamName} maxLength={40} accessibilityLabel="Team name" style={[styles.input, styles.flex]} />
             <Pressable
               disabled={busy !== null}
               onPress={() => (teamName.trim() ? run('team', () => api.updateTeamName(teamName.trim())) : setError("Team name can't be empty."))}
@@ -493,7 +501,7 @@ export function NotificationSettings() {
                 style={[styles.input, styles.timeInput]}
               />
             </View>
-            <Text style={styles.arrow}>→</Text>
+            <Text style={styles.arrow} accessibilityElementsHidden importantForAccessibility="no">→</Text>
             <View style={styles.gapSm}>
               <Text style={styles.small}>To</Text>
               <TextInput
@@ -568,7 +576,7 @@ export function AppearanceSettings() {
         description={
           direction
             ? 'Controlled by your Design Direction in Labs right now — a Direction sets its own palette. Switch back to Default there to choose Calm or Cosmic again.'
-            : "Calm is Weekend League's current look. Cosmic brings back the starfield background and a brighter accent — everything else (layout, pages, features) stays exactly the same either way."
+            : "Calm is Weekend League's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch."
         }>
         <Segment
           options={[
@@ -577,7 +585,10 @@ export function AppearanceSettings() {
           ]}
           value={prefs.theme}
           disabled={direction}
-          onChange={(theme) => patch({ theme })}
+          onChange={(theme) => {
+            // The app reloads into the new palette once it's saved.
+            void patch({ theme }).then((ok) => ok && applyTheme(theme));
+          }}
         />
       </Panel>
 
@@ -782,7 +793,7 @@ export function FeedbackSettings() {
         {image && image.status !== 'error' && (
           <View style={styles.attachment}>
             <Image source={{ uri: image.local }} style={[styles.attachmentImage, image.status === 'uploading' && styles.dim]} contentFit="cover" />
-            <Pressable onPress={() => setImage(null)} style={styles.removeImage} hitSlop={8}>
+            <Pressable onPress={() => setImage(null)} style={styles.removeImage} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove screenshot">
               <Text style={styles.removeText}>✕</Text>
             </Pressable>
           </View>

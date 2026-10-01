@@ -17,6 +17,9 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
   const m = myWeek.matchup!;
   const isLive = m.started && props.isGameDay;
   const winning = m.my_score !== null && m.opponent_score !== null && m.my_score >= m.opponent_score;
+  // The scores are bare numbers on screen; say whose is whose.
+  const pts = (n: number | null) => `${(n ?? 0).toFixed(1)} points`;
+  const scoreLabel = `${myWeek.team_name} ${pts(m.my_score)}, projected ${m.my_projected_total.toFixed(1)}. ${m.opponent_team_name} ${pts(m.opponent_score)}, projected ${m.opponent_projected_total.toFixed(1)}.${m.win_probability !== null ? ` ${Math.round(m.win_probability)}% chance to win.` : ''} ${m.my_yet_to_play} of your starters yet to play, ${m.my_in_play} playing now.`;
   const open = () => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } });
 
   return (
@@ -41,7 +44,7 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
         )}
       </View>
 
-      <Pressable onPress={open} style={({ pressed }) => pressed && styles.pressed}>
+      <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={scoreLabel} accessibilityHint="Opens the matchup" style={({ pressed }) => pressed && styles.pressed}>
         <View style={styles.dotted} />
         <View style={styles.scores}>
           <ScoreBlock name={myWeek.team_name} logoUrl={m.my_logo_url} score={m.my_score} projected={m.my_projected_total} lead={winning} />

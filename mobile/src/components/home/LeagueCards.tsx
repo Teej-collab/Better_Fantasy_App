@@ -5,7 +5,7 @@ import { PreviewLink } from '@/components/PreviewLink';
 import { RankBadge } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
-import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import type { NflGame, Rivalry, StandingsRow, WeekMatchupContextItem, WeekPowerRanking } from '@/lib/types';
 
 // The home page's list cards (frontend/src/app/(home)/page.tsx): a
@@ -14,7 +14,7 @@ import type { NflGame, Rivalry, StandingsRow, WeekMatchupContextItem, WeekPowerR
 
 function Header({ title, onPress }: { title: string; onPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} hitSlop={6}>
+    <Pressable onPress={onPress} disabled={!onPress} hitSlop={6} accessibilityRole="header" accessibilityHint={onPress ? 'Opens the full list' : undefined}>
       <Text style={styles.header}>{title}</Text>
     </Pressable>
   );
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  list: { padding: 0, backgroundColor: 'rgba(18,22,28,0.92)' },
+  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

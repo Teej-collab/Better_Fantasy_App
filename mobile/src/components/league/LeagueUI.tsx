@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 
@@ -19,14 +19,20 @@ export function openTeam(teamId: number) {
 export function PageTitle({ children, subtitle }: { children: ReactNode; subtitle?: string }) {
   return (
     <View style={styles.titleBlock}>
-      <Display style={styles.title}>{children}</Display>
+      <Display style={styles.title} accessibilityRole="header">
+        {children}
+      </Display>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
     </View>
   );
 }
 
 export function SmallHeader({ children }: { children: ReactNode }) {
-  return <Text style={styles.smallHeader}>{children}</Text>;
+  return (
+    <Text style={styles.smallHeader} accessibilityRole="header">
+      {children}
+    </Text>
+  );
 }
 
 // The web's SeasonTabs: newest first, plus an optional extra tab
@@ -169,7 +175,7 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: 'rgba(255,255,255,0.15)' },
   segmentText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '500' },
   segmentTextActive: { color: Colors.text },
-  list: { padding: 0, backgroundColor: 'rgba(18,22,28,0.92)' },
+  list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
   muted: { color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 20 },
   small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
   ranked: { gap: Spacing.sm },

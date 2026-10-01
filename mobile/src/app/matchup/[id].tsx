@@ -92,6 +92,9 @@ export default function MatchupScreen() {
           <Pressable
             onPress={() => goTo(shownWeek - 1)}
             disabled={shownWeek <= 1}
+            accessibilityRole="button"
+            accessibilityLabel="Previous week"
+            accessibilityState={{ disabled: shownWeek <= 1 }}
             style={[styles.stepButton, shownWeek <= 1 && styles.disabled]}
             hitSlop={6}>
             <Text style={styles.stepArrow}>‹</Text>
@@ -103,6 +106,9 @@ export default function MatchupScreen() {
           <Pressable
             onPress={() => goTo(shownWeek + 1)}
             disabled={shownWeek >= MAX_WEEK}
+            accessibilityRole="button"
+            accessibilityLabel="Next week"
+            accessibilityState={{ disabled: shownWeek >= MAX_WEEK }}
             style={[styles.stepButton, shownWeek >= MAX_WEEK && styles.disabled]}
             hitSlop={6}>
             <Text style={styles.stepArrow}>›</Text>

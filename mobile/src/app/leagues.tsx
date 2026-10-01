@@ -272,7 +272,7 @@ function LeagueBlock(props: {
       <View style={styles.blockHead}>
         {props.renaming ? (
           <View style={[styles.row, styles.flex]}>
-            <TextInput value={props.renameValue} onChangeText={props.onRenameValue} maxLength={40} autoFocus style={[styles.input, styles.flex]} />
+            <TextInput value={props.renameValue} onChangeText={props.onRenameValue} maxLength={40} autoFocus accessibilityLabel="League name" style={[styles.input, styles.flex]} />
             <Pressable onPress={props.onSaveRename} disabled={!props.renameValue.trim()} style={[styles.smallPill, { backgroundColor: accent }]}>
               <Text style={styles.smallPillDark}>{props.busy === `rename-${league.id}` ? 'Saving…' : 'Save'}</Text>
             </Pressable>

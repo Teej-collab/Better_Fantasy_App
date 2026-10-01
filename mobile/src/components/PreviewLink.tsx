@@ -45,6 +45,7 @@ export function PreviewLink({
       <Link.Trigger>
         <Pressable
           disabled={disabled}
+          accessibilityRole="link"
           onPressIn={() => setPressed(true)}
           onPressOut={() => setPressed(false)}
           style={StyleSheet.flatten([style, pressed && pressedStyle])}>

@@ -72,7 +72,7 @@ export default function NewPartyScreen() {
           {filtered.map((m) => {
             const on = selected.has(m.owner_id);
             return (
-              <Pressable key={m.owner_id} onPress={() => toggle(m.owner_id)} style={styles.member}>
+              <Pressable key={m.owner_id} onPress={() => toggle(m.owner_id)} accessibilityRole="checkbox" accessibilityLabel={`${m.display_name}, ${m.team_name}`} accessibilityState={{ checked: on }} style={styles.member}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{m.display_name.slice(0, 2).toUpperCase()}</Text>
                 </View>
