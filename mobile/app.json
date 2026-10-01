@@ -4,13 +4,12 @@
     "slug": "weekend-league",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "weekendleague",
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "appleTeamId": "5K8V6776KS",
-      "icon": "./assets/expo.icon"
+      "appleTeamId": "5K8V6776KS"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,8 +26,8 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0d1016",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "image": "./assets/images/weekend-league-emblem.png",
+          "imageWidth": 200
         }
       ],
       "expo-secure-store",
@@ -39,7 +38,8 @@
           "cameraPermission": "Weekend League uses your camera so you can snap photos for league chat."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "./plugins/withSceneLifecycle"
     ],
     "experiments": {
       "typedRoutes": true,
