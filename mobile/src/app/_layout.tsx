@@ -20,6 +20,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
 import { IntroOverlay } from '@/components/IntroOverlay';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -51,10 +52,12 @@ const theme = {
 const NO_TICKER = /^(\(tabs\)|sign-in|chat\/|watch-party\/)/;
 
 function withTickerBar({ route, children }: { route: { name: string }; children: ReactNode }) {
-  if (NO_TICKER.test(route.name)) return <>{children}</>;
+  // The tabs draw their own banner and ticker (components/TabFrame.tsx).
+  if (route.name === '(tabs)') return <>{children}</>;
   return (
     <View style={{ flex: 1 }}>
-      <AppTickerBar />
+      <OfflineBanner />
+      {!NO_TICKER.test(route.name) && <AppTickerBar />}
       <View style={{ flex: 1 }}>{children}</View>
     </View>
   );

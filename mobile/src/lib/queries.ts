@@ -18,6 +18,10 @@ export const queryClient = new QueryClient({
       gcTime: 1000 * 60 * 60 * 24,
       retry: 1,
     },
+    // A save made while offline fails straight away with the offline
+    // message, instead of being held and fired whenever the connection
+    // returns (a lineup change landing minutes later would surprise).
+    mutations: { networkMode: 'always' },
   },
 });
 

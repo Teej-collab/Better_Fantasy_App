@@ -1,4 +1,5 @@
 import type * as A from '@/lib/adminTypes';
+import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
 import type {
   AddFreeAgentResult,
   ChatMember,
@@ -121,16 +122,39 @@ export function hasSessionToken(): boolean {
   return sessionToken !== null;
 }
 
+// A request that hasn't answered in this long fails with the offline
+// message instead of spinning forever on a dead connection.
+const REQUEST_TIMEOUT_MS = 20_000;
+export const OFFLINE_MESSAGE = "You're offline — check your connection and try again.";
+
+initConnectivity(`${API_BASE_URL}/health`);
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-      ...init?.headers,
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (e) {
+    if (isNetworkFailure(e)) {
+      reportUnreachable();
+      // status 0: never reached the server.
+      throw new ApiError(0, OFFLINE_MESSAGE);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  reportReachable();
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
