@@ -27,9 +27,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right.fill" md="chat" />
         <NativeTabs.Trigger.Badge hidden={unread === 0}>{unread > 99 ? '99+' : String(unread)}</NativeTabs.Trigger.Badge>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="standings">
-        <NativeTabs.Trigger.Label>Standings</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="list.number" md="leaderboard" />
+      <NativeTabs.Trigger name="league">
+        <NativeTabs.Trigger.Label>League</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="trophy.fill" md="emoji_events" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

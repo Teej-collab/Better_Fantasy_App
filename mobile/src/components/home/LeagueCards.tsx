@@ -27,6 +27,11 @@ function ListPanel({ color, children }: { color: string; children: React.ReactNo
   );
 }
 
+// Opens a League tab section (app/(tabs)/league.tsx).
+export function openLeague(section: string) {
+  router.navigate({ pathname: '/league', params: { section } });
+}
+
 function openMatchup(id: number) {
   router.push({ pathname: '/matchup/[id]', params: { id: String(id) } });
 }
@@ -34,7 +39,7 @@ function openMatchup(id: number) {
 export function StandingsCard({ standings }: { standings: StandingsRow[] }) {
   return (
     <View style={styles.section}>
-      <Header title="League Standings" onPress={() => router.navigate('/standings')} />
+      <Header title="League Standings" onPress={() => openLeague('standings')} />
       <ListPanel color={SectionColors.standings}>
         {standings.slice(0, 5).map((row, i) => (
           <View key={row.team_id} style={[styles.row, i > 0 && styles.divided]}>
@@ -66,7 +71,7 @@ function Movement({ movement }: { movement: number | null }) {
 export function PowerRankingsCard({ rankings, waiting }: { rankings: WeekPowerRanking[]; waiting: boolean }) {
   return (
     <View style={styles.section}>
-      <Header title="Power Rankings" />
+      <Header title="Power Rankings" onPress={() => openLeague('powerRankings')} />
       <ListPanel color={SectionColors.powerRankings}>
         {waiting ? (
           // Nothing to rank until the season's first game finishes; a
@@ -130,7 +135,7 @@ export function OtherMatchupsCard({ matchups, isGameDay }: { matchups: WeekMatch
 export function RivalriesCard({ games, top }: { games: WeekMatchupContextItem[]; top: Rivalry[] }) {
   return (
     <View style={styles.section}>
-      <Header title="Rivalries" />
+      <Header title="Rivalries" onPress={() => openLeague('rivalries')} />
       <ListPanel color={SectionColors.rivalries}>
         {games.length > 0
           ? games.map((m, i) => (
@@ -238,4 +243,52 @@ const styles = StyleSheet.create({
   liveTeams: { gap: 2 },
   liveStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   liveText: { color: '#f87171', fontSize: 13, fontWeight: '700' },
+  discoverGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  discoverTile: { width: '48.5%', flexGrow: 1 },
+  discoverInner: { gap: 2, padding: Spacing.md, minHeight: 72 },
+  discoverTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  discoverDot: { width: 6, height: 6, borderRadius: 3, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
+  discoverLabel: { color: Colors.text, fontSize: 14, fontWeight: '500' },
+  discoverDesc: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
 });
+
+// Home's Discover grid (frontend/src/app/(home)/page.tsx DiscoveryGrid):
+// a tile per League section, in LEAGUE_SUBNAV_ORDER, minus League
+// itself. The web's Gamecast tile is left out: on the phone every game
+// opens from the scores strip at the top of Home.
+const DISCOVER_TILES = [
+  { section: 'standings', label: 'Standings', description: 'Full league standings and records', color: SectionColors.standings },
+  {
+    section: 'powerRankings',
+    label: 'Power Rankings',
+    description: "Who's actually good this week, plus Luck and Strength of Schedule",
+    color: SectionColors.powerRankings,
+  },
+  { section: 'rivalries', label: 'Rivalries', description: 'All-time rivalry history and grudges', color: SectionColors.rivalries },
+  { section: 'rules', label: 'Rules', description: 'Scoring, roster, and league settings', color: SectionColors.rules },
+  { section: 'history', label: 'History', description: 'Awards, trading cards, and the lifetime Chug leaderboard', color: SectionColors.history },
+  { section: 'activity', label: 'Activity', description: 'Activity', color: '#64748b' },
+];
+
+export function DiscoverCard({ ringColor }: { ringColor: string }) {
+  return (
+    <View style={styles.section}>
+      <Header title="Discover" />
+      <View style={styles.discoverGrid}>
+        {DISCOVER_TILES.map((t) => (
+          <Pressable key={t.section} onPress={() => openLeague(t.section)} style={styles.discoverTile}>
+            {({ pressed }) => (
+              <NeonPanel color={t.color} radius={Radius.md} contentStyle={[styles.discoverInner, pressed && styles.pressed]}>
+                <View style={styles.discoverTitle}>
+                  <View style={[styles.discoverDot, { backgroundColor: ringColor, shadowColor: ringColor }]} />
+                  <Text style={styles.discoverLabel}>{t.label}</Text>
+                </View>
+                <Text style={styles.discoverDesc}>{t.description}</Text>
+              </NeonPanel>
+            )}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}

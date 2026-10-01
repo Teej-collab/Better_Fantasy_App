@@ -1,4 +1,5 @@
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -135,7 +136,9 @@ export function ActivityRow({ item, divided }: { item: LeagueActivityItem; divid
 export function ActivityCard({ items }: { items: LeagueActivityItem[] }) {
   return (
     <View style={styles.section}>
-      <Display style={styles.title}>League Activity</Display>
+      <Pressable onPress={() => router.navigate({ pathname: '/league', params: { section: 'activity' } })} hitSlop={6}>
+        <Display style={styles.title}>League Activity</Display>
+      </Pressable>
       <NeonPanel color={ACTIVITY_COLOR} radius={Radius.md} contentStyle={styles.list}>
         {items.map((item, i) => (
           <ActivityRow key={`${item.kind}-${item.timestamp}-${i}`} item={item} divided={i > 0} />

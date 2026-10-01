@@ -5,7 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { AwardsCard } from '@/components/home/AwardsCard';
 import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
-import { LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
+import { DiscoverCard, LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
 import { LiveTicker } from '@/components/home/LiveTicker';
 import { YourWeekCard } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -40,7 +40,17 @@ import type { Rivalry, YourWeek } from '@/lib/types';
 // HomeCardDeck.tsx). An owner's saved order (preferences.home_card_order,
 // set by dragging cards on the web) wins; cards it doesn't mention keep
 // their default place at the end.
-const DEFAULT_HOME_CARD_ORDER = ['yourWeek', 'awards', 'standings', 'powerRankings', 'matchups', 'rivalries', 'chugFeed', 'activity'];
+const DEFAULT_HOME_CARD_ORDER = [
+  'yourWeek',
+  'awards',
+  'standings',
+  'powerRankings',
+  'matchups',
+  'rivalries',
+  'chugFeed',
+  'activity',
+  'discover',
+];
 
 function cardOrder(raw: string | null | undefined): string[] {
   let base = DEFAULT_HOME_CARD_ORDER;
@@ -132,6 +142,7 @@ export default function HomeScreen() {
       ) : null,
     chugFeed: chugFeed.length > 0 ? <ChugFeedCard chugs={chugFeed} /> : null,
     activity: activity.length > 0 ? <ActivityCard items={activity} /> : null,
+    discover: <DiscoverCard ringColor={appearance.ring} />,
   };
 
   return (

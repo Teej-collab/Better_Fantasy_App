@@ -376,3 +376,122 @@ export function useScoringRates(season: number) {
     staleTime: 60 * 60_000,
   });
 }
+
+// ---- League section ----
+
+export function useSeasons() {
+  return useQuery({
+    queryKey: ['seasons'],
+    queryFn: async () => [...(await api.seasons()).seasons].sort((a, b) => b - a),
+    staleTime: 60 * 60_000,
+  });
+}
+
+export function useSeasonTeams(season: number | null) {
+  return useQuery({
+    queryKey: ['season-teams', season],
+    queryFn: async () => (await api.seasonTeams(season!)).teams,
+    enabled: season !== null,
+  });
+}
+
+export function usePolls(leagueId: number | null) {
+  return useQuery({
+    queryKey: ['polls', leagueId],
+    queryFn: async () => (await api.polls(leagueId!)).polls,
+    enabled: leagueId !== null,
+  });
+}
+
+// The real bracket once it exists, else the projected first round.
+export function usePlayoffs(season: number | null) {
+  return useQuery({
+    queryKey: ['playoffs', season],
+    enabled: season !== null,
+    queryFn: async () => {
+      const { nodes } = await api.playoffBracket(season!);
+      const projected = nodes.length === 0 ? (await api.projectedPlayoffs(season!)).matchups : null;
+      return { nodes, projected };
+    },
+  });
+}
+
+export function useWeekPowerRankings(season: number | null) {
+  return useQuery({
+    queryKey: ['power-rankings-week', season],
+    enabled: season !== null,
+    queryFn: async () => {
+      const { week } = await api.latestPowerRankingsWeek(season!);
+      if (week === null) return { week: null, rankings: [] };
+      return { week, rankings: (await api.weekPowerRankings(season!, week)).rankings };
+    },
+  });
+}
+
+export function usePowerRankingsTrend(season: number | null) {
+  return useQuery({
+    queryKey: ['power-rankings-trend', season],
+    queryFn: async () => (await api.powerRankingsTrend(season!)).teams,
+    enabled: season !== null,
+  });
+}
+
+export function useAllTimePowerRankings() {
+  return useQuery({ queryKey: ['power-rankings-all-time'], queryFn: async () => (await api.allTimePowerRankings()).categories });
+}
+
+export function useSeasonAwards(season: number) {
+  return useQuery({ queryKey: ['season-awards', season], queryFn: () => api.seasonAwards(season) });
+}
+
+export function useRecordBook() {
+  return useQuery({ queryKey: ['record-book'], queryFn: async () => (await api.recordBook()).categories });
+}
+
+export function useAwardLeaderboards() {
+  return useQuery({ queryKey: ['award-leaderboards'], queryFn: async () => (await api.awardLeaderboards()).categories });
+}
+
+export function useOwners() {
+  return useQuery({ queryKey: ['owners'], queryFn: async () => (await api.owners()).owners });
+}
+
+export function useCareerProfile(ownerId: number) {
+  return useQuery({ queryKey: ['career', ownerId], queryFn: () => api.careerProfile(ownerId) });
+}
+
+export function useOwnerBadges(ownerId: number) {
+  return useQuery({ queryKey: ['owner-badges', ownerId], queryFn: () => api.ownerBadges(ownerId) });
+}
+
+export function useSeasonProfile(ownerId: number, season: number | null) {
+  return useQuery({
+    queryKey: ['season-profile', ownerId, season],
+    queryFn: () => api.seasonProfile(ownerId, season!),
+    enabled: season !== null,
+  });
+}
+
+export function useOwnerDraftGrade(season: number | null, ownerId: number) {
+  return useQuery({
+    queryKey: ['owner-draft-grade', season, ownerId],
+    queryFn: () => api.ownerDraftGrade(season!, ownerId),
+    enabled: season !== null,
+  });
+}
+
+export function useSeasonDraftGrades(season: number) {
+  return useQuery({ queryKey: ['draft-grades', season], queryFn: () => api.seasonDraftGrades(season) });
+}
+
+export function useTeamDetail(teamId: number) {
+  return useQuery({ queryKey: ['team', teamId], queryFn: () => api.team(teamId) });
+}
+
+export function useTeamRoster(teamId: number, week: number | null) {
+  return useQuery({
+    queryKey: ['team-roster', teamId, week],
+    queryFn: async () => (await api.teamRoster(teamId, week!)).roster,
+    enabled: week !== null,
+  });
+}

@@ -1,5 +1,20 @@
 import type {
   AddFreeAgentResult,
+  AllTimePowerCategory,
+  AwardLeaderboardCategory,
+  CareerProfile,
+  DraftGrade,
+  Owner,
+  OwnerBadges,
+  PlayoffBracketNode,
+  Poll,
+  PowerRankTrendTeam,
+  ProjectedPlayoffMatchup,
+  RecordCategory,
+  SeasonAwards,
+  SeasonProfile,
+  Team,
+  TeamDetail,
   ChugDeadline,
   ChugLeaderboardRow,
   ChugUploadResult,
@@ -14,6 +29,7 @@ import type {
   ChatConversation,
   FreeAgent,
   ChatMessage,
+  DraftPick,
   DraftPoolPlayer,
   DraftState,
   FantasyImpact,
@@ -25,6 +41,7 @@ import type {
   PlayerCard,
   PlayFantasyPlayer,
   RosterEntry,
+  RosterPlayer,
   StandingsRow,
   WaiverClaim,
   WeekMatchupContext,
@@ -116,6 +133,34 @@ export const api = {
     return { week, rankings };
   },
   rivalries: () => request<{ rivalries: Rivalry[] }>('/rivalries'),
+  seasonTeams: (season: number) => request<{ teams: Team[] }>(`/seasons/${season}/teams`),
+  polls: (leagueId: number) => request<{ polls: Poll[] }>(`/leagues/${leagueId}/polls`),
+  votePoll: (leagueId: number, pollId: number, optionIndex: number) =>
+    request<Poll>(`/leagues/${leagueId}/polls/${pollId}/vote`, { method: 'POST', body: JSON.stringify({ option_index: optionIndex }) }),
+  playoffBracket: (season: number) => request<{ nodes: PlayoffBracketNode[] }>(`/seasons/${season}/playoffs/bracket`),
+  // "If the season ended today"; null once a real bracket exists.
+  projectedPlayoffs: (season: number) =>
+    request<{ matchups: ProjectedPlayoffMatchup[] | null }>(`/seasons/${season}/playoffs/projected`),
+  weekPowerRankings: (season: number, week: number) =>
+    request<{ rankings: WeekPowerRanking[] }>(`/seasons/${season}/weeks/${week}/power-rankings`),
+  latestPowerRankingsWeek: (season: number) => request<{ week: number | null }>(`/seasons/${season}/power-rankings/latest-week`),
+  powerRankingsTrend: (season: number) => request<{ teams: PowerRankTrendTeam[] }>(`/seasons/${season}/power-rankings/trend`),
+  allTimePowerRankings: () => request<{ categories: AllTimePowerCategory[] }>('/power-rankings/all-time'),
+  seasonAwards: (season: number) => request<SeasonAwards>(`/seasons/${season}/awards`),
+  recordBook: () => request<{ categories: RecordCategory[] }>('/records'),
+  awardLeaderboards: () => request<{ categories: AwardLeaderboardCategory[] }>('/awards/all-time'),
+  owners: () => request<{ owners: Owner[] }>('/owners'),
+  careerProfile: (ownerId: number) => request<CareerProfile>(`/owners/${ownerId}/career`),
+  ownerBadges: (ownerId: number) => request<OwnerBadges>(`/owners/${ownerId}/badges`),
+  seasonProfile: (ownerId: number, season: number) => request<SeasonProfile | null>(`/owners/${ownerId}/profile?season=${season}`),
+  ownerDraftGrade: (season: number, ownerId: number) =>
+    request<{ grade: DraftGrade | null; narrative: string | null }>(`/seasons/${season}/owners/${ownerId}/draft-grade`),
+  seasonDraftGrades: (season: number) =>
+    request<{ picks: DraftPick[]; grades: DraftGrade[]; narratives: Record<string, string | null> }>(
+      `/seasons/${season}/draft-grades`,
+    ),
+  team: (teamId: number) => request<TeamDetail>(`/teams/${teamId}`),
+  teamRoster: (teamId: number, week: number) => request<{ roster: RosterPlayer[] }>(`/teams/${teamId}/roster?week=${week}`),
   chugDeadline: () => request<ChugDeadline>('/chug/deadline'),
   chugFeed: (season?: number) =>
     request<{ chugs: ChugFeedEntry[] }>(season !== undefined ? `/chug/feed?season=${season}` : '/chug/feed'),

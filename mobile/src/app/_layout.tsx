@@ -77,6 +77,11 @@ function RootStack() {
         <Stack.Screen name="draft" options={{ title: 'Draft Room', headerBackTitle: 'Home' }} />
         <Stack.Screen name="gamecast/[id]" options={{ title: 'Gamecast', headerBackTitle: 'Back' }} />
         <Stack.Screen name="chug" options={{ title: 'Chug', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="owner/[id]" options={{ title: 'Owner', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="team/[id]" options={{ title: 'Team', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="awards/[season]" options={{ title: 'Awards', headerBackTitle: 'History' }} />
+        <Stack.Screen name="cards" options={{ title: 'Player Cards', headerBackTitle: 'History' }} />
+        <Stack.Screen name="draft-grades/[season]" options={{ title: 'Draft', headerBackTitle: 'History' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />

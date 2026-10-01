@@ -101,6 +101,8 @@ export type MatchupContextSide = {
   power_rank: number | null;
   logo_url: string | null;
   score: number | null;
+  // 3-game hot/cold form flag.
+  streak: 'hot' | 'cold' | 'neutral';
   // Season-to-date total (standings' points_for).
   season_points: number | null;
   record: string | null;
@@ -485,6 +487,7 @@ export type Rivalry = {
   name: string | null;
   emoji: string | null;
   tagline: string | null;
+  description: string | null;
   tier: string | null;
   all_time_wins_a: number;
   all_time_wins_b: number;
@@ -592,3 +595,124 @@ export type ChugUploadResult =
       chugs_owed_after: number;
       roast: string | null;
     };
+
+// ---- League section (frontend/src/lib/api.ts, pollsApi.ts) ----
+
+export type Team = { team_id: number; team_name: string; owner_id: number; owner_name: string };
+
+export type Poll = {
+  id: number;
+  question: string;
+  options: string[];
+  status: 'open' | 'closed';
+  results: number[];
+  // Option index, null until you vote.
+  my_vote: number | null;
+};
+
+export type PlayoffBracketNode = {
+  id: number;
+  round: number;
+  slot: number;
+  team_a_id: number | null;
+  team_a_name: string | null;
+  team_a_seed: number | null;
+  team_b_id: number | null;
+  team_b_name: string | null;
+  team_b_seed: number | null;
+  winner_team_id: number | null;
+  team_a_score: string | null;
+  team_b_score: string | null;
+};
+
+export type ProjectedPlayoffMatchup = {
+  slot: number;
+  team_a_name: string;
+  team_a_seed: number;
+  team_b_name: string;
+  team_b_seed: number;
+};
+
+export type PowerRankTrendTeam = {
+  team_id: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  weeks: { week: number; power_rank: number }[];
+};
+
+export type AllTimePowerCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  unit: string;
+  entries: { owner_id: number; owner_name: string; value: number }[];
+};
+
+export type RecordCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  unit: string;
+  entries: {
+    owner_id: number;
+    owner_name: string;
+    team_name: string;
+    season: number;
+    week: number | null;
+    value: number;
+    opponent_team_name: string | null;
+    opponent_score: number | null;
+    own_score?: number;
+  }[];
+};
+
+export type AwardLeaderboardCategory = {
+  key: string;
+  label: string;
+  emoji: string;
+  winners: { owner_id: number; owner_name: string; wins: number }[];
+};
+
+export type SeasonAwards = {
+  champion: { team_name: string; owner_id: number; owner_name: string } | null;
+  awards: { award_type: string; detail: string | null; owner_id: number; owner_name: string }[];
+};
+
+export type Owner = { owner_id: number; display_name: string; latest_team_name: string; seasons: number[] };
+
+export type PeriodSummary = { record: string; pf: number; pa: number; pfpg: number; papg: number; game_count: number };
+
+export type CareerProfile = {
+  team_name: string;
+  seasons: number[];
+  regular: PeriodSummary | null;
+  playoff: PeriodSummary | null;
+  best_week: { season: number; week: number; score: number } | null;
+  worst_week: { season: number; week: number; score: number } | null;
+  best_season: { season: number; record: string; pf: number } | null;
+  worst_season: { season: number; record: string; pf: number } | null;
+};
+
+export type OwnerBadges = { championship_years: number[]; award_summary: Record<string, number[]> };
+
+export type SeasonProfile = {
+  team_name: string;
+  regular: PeriodSummary | null;
+  playoff: PeriodSummary | null;
+  best_week: { week: number; score: number } | null;
+  worst_week: { week: number; score: number } | null;
+  avg_luck: number | null;
+  current_power_rank: number | null;
+  season_awards: { award_type: string; detail: string | null }[];
+};
+
+export type DraftGrade = {
+  owner_id: number;
+  owner_name: string;
+  total_projected_points: number;
+  percentile: number;
+  letter_grade: string;
+};
+
+export type TeamDetail = { team_id: number; season: number; team_name: string; owner_id: number; owner_name: string };
