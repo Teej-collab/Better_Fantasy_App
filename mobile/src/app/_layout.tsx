@@ -98,6 +98,19 @@ function RootStack() {
         <Stack.Screen name="commissioner/trades" options={{ title: 'Trades', headerBackTitle: 'Tools' }} />
         <Stack.Screen name="commissioner/polls" options={{ title: 'Polls', headerBackTitle: 'Tools' }} />
         <Stack.Screen name="commissioner/espn" options={{ title: 'ESPN Connection', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="admin/index" options={{ title: 'Admin', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="admin/live" options={{ title: 'Live', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/engagement" options={{ title: 'Engagement', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/navigation" options={{ title: 'Navigation', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/users/index" options={{ title: 'Users', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/users/[id]" options={{ title: 'User', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/leagues/index" options={{ title: 'Leagues', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/leagues/[id]" options={{ title: 'League', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/crashes" options={{ title: 'Crashes', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/errors/index" options={{ title: 'Errors', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/errors/[fp]" options={{ title: 'Error', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/security" options={{ title: 'Security', headerBackTitle: 'Admin' }} />
+        <Stack.Screen name="admin/audit" options={{ title: 'Audit Log', headerBackTitle: 'Admin' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />

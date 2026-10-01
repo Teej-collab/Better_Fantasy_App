@@ -1,3 +1,4 @@
+import type * as A from '@/lib/adminTypes';
 import type {
   AddFreeAgentResult,
   ChatMember,
@@ -442,6 +443,43 @@ export const api = {
     }),
   disconnectEspn: () => request<unknown>('/league/espn-connection', { method: 'DELETE' }),
   syncEspn: () => request<unknown>('/league/espn-connection/sync', { method: 'POST', body: '{}' }),
+  // ---- Admin dashboard (site owner only; the backend checks every call) ----
+  admin: {
+    badges: () => request<A.AdminBadges>('/admin/badges'),
+    overview: (days = 7) => request<A.AdminOverview>(`/admin/overview?days=${days}`),
+    timeseries: (days = 30) => request<A.AdminTimeseries>(`/admin/timeseries?days=${days}`),
+    features: (days = 30) => request<A.FeatureUsage>(`/admin/features?days=${days}`),
+    activity: (limit = 15) => request<A.AdminActivity>(`/admin/activity?limit=${limit}`),
+    alerts: () => request<A.AdminAlerts>('/admin/alerts'),
+    systemHealth: () => request<A.AdminSystemHealth>('/admin/system-health'),
+    online: () => request<{ owners: A.OnlineOwner[] }>('/admin/online'),
+    live: () => request<A.AdminLive>('/admin/live'),
+    engagement: (days = 30) => request<A.AdminEngagement>(`/admin/engagement?days=${days}`),
+    navigation: (days = 30) => request<A.NavigationHeatmap>(`/admin/navigation?days=${days}`),
+    paths: (days = 30) => request<A.AdminPaths>(`/admin/paths?days=${days}`),
+    users: (search: string, status: A.AdminUserStatus) =>
+      request<A.AdminUserList>(`/admin/users?status=${status}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+    user: (userId: number) => request<A.AdminUserDetail>(`/admin/users/${userId}`),
+    setUserIsAdmin: (userId: number, isAdmin: boolean) =>
+      request<A.AdminUserDetail>(`/admin/users/${userId}/admin`, { method: 'PATCH', body: JSON.stringify({ is_admin: isAdmin }) }),
+    // A refusal lists its reasons in detail.blockers.
+    deleteUser: async (userId: number) => {
+      try {
+        await request<unknown>(`/admin/users/${userId}`, { method: 'DELETE' });
+      } catch (e) {
+        const blockers = e instanceof ApiError ? ((e.body?.detail as { blockers?: string[] } | undefined)?.blockers ?? null) : null;
+        if (blockers?.length) throw new Error(blockers.join('; '));
+        throw e;
+      }
+    },
+    leagues: (days = 7) => request<A.AdminLeagueList>(`/admin/leagues?days=${days}`),
+    league: (leagueId: number, days = 7) => request<A.AdminLeagueDetail>(`/admin/leagues/${leagueId}?days=${days}`),
+    crashes: (days = 30) => request<A.CrashReports>(`/admin/crashes?days=${days}`),
+    errors: (days = 7) => request<A.AdminErrors>(`/admin/errors?days=${days}`),
+    error: (fingerprint: string) => request<A.AdminErrorDetail>(`/admin/errors/${encodeURIComponent(fingerprint)}`),
+    security: (days = 7) => request<A.AdminSecurity>(`/admin/security?days=${days}`),
+    audit: (limit = 50, offset = 0) => request<A.AdminAuditLog>(`/admin/audit?limit=${limit}&offset=${offset}`),
+  },
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',

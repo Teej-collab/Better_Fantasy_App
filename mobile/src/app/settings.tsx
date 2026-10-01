@@ -33,7 +33,8 @@ type SectionKey = (typeof SECTIONS)[number]['key'];
 export default function SettingsScreen() {
   const params = useLocalSearchParams<{ section?: string }>();
   const accent = useAppearance().accent;
-  const isCommissioner = useMe().data?.is_commissioner ?? false;
+  const me = useMe().data;
+  const isCommissioner = me?.is_commissioner ?? false;
   const initial = SECTIONS.find((s) => s.key === params.section)?.key ?? 'profile';
   const [section, setSection] = useState<SectionKey>(initial);
 
@@ -48,6 +49,15 @@ export default function SettingsScreen() {
             <Text style={styles.commishSub}>Everything you can manage for your league.</Text>
           </View>
           <Text style={[styles.chevron, { color: accent }]}>›</Text>
+        </Pressable>
+      )}
+      {me?.is_site_owner && (
+        <Pressable onPress={() => router.push('/admin')} style={[styles.commish, { borderColor: '#38bdf855' }]}>
+          <View style={styles.commishText}>
+            <Text style={styles.commishTitle}>Admin</Text>
+            <Text style={styles.commishSub}>The control room — usage, people, and app health.</Text>
+          </View>
+          <Text style={[styles.chevron, { color: '#38bdf8' }]}>›</Text>
         </Pressable>
       )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nav}>
