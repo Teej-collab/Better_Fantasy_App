@@ -10,7 +10,8 @@
       "environment": "production",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "node": "24.19.0"
     }
   }
 }
