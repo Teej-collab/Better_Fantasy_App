@@ -5,8 +5,9 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from
 
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
+import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { formatGameTime, formatPoints } from '@/lib/format';
 import { openPlayer, useFreeAgents } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
@@ -34,6 +35,9 @@ export default function PlayersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState<FreeAgent | null>(null);
   const players = useFreeAgents(position, search);
+  // ESPN's Views menu: Matchup Stats is this list; every other view is a stat table.
+  const [view, setView] = usePlayerView('wl:player-view:free-agents');
+  const list = players.data ?? [];
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -50,7 +54,7 @@ export default function PlayersScreen() {
   return (
     <View style={styles.screen}>
       <FlatList
-        data={players.data ?? []}
+        data={view === 'matchup' ? list : []}
         keyExtractor={(p) => p.sleeper_player_id}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
@@ -88,16 +92,33 @@ export default function PlayersScreen() {
                 );
               })}
             </View>
-            <View style={styles.columns}>
-              <View style={styles.addSpacer} />
-              <Text style={[styles.columnLabel, styles.flex]}>Player</Text>
-              <Text style={[styles.columnLabel, styles.num]}>Last</Text>
-              <Text style={[styles.columnLabel, styles.num]}>Proj</Text>
+            <View style={styles.availableRow}>
+              <Text style={styles.available}>Available</Text>
+              <PlayerViewsPill view={view} onChange={setView} />
             </View>
+            {view === 'matchup' && (
+              <View style={styles.columns}>
+                <View style={styles.addSpacer} />
+                <Text style={[styles.columnLabel, styles.flex]}>Player</Text>
+                <Text style={[styles.columnLabel, styles.num]}>Last</Text>
+                <Text style={[styles.columnLabel, styles.num]}>Proj</Text>
+              </View>
+            )}
           </View>
         }
         ListEmptyComponent={
-          players.isPending ? (
+          view !== 'matchup' && list.length > 0 ? (
+            <View style={styles.viewTable}>
+              <PlayerViewTable
+                view={view}
+                rows={list.map((p) => ({
+                  id: p.sleeper_player_id,
+                  position: p.position,
+                  cell: <ViewCell player={p} onPress={() => openPlayer(p.sleeper_player_id)} onAdd={() => setAdding(p)} />,
+                }))}
+              />
+            </View>
+          ) : players.isPending ? (
             <LoadingState />
           ) : players.isError ? (
             <MessageState message="Couldn't load players." />
@@ -129,6 +150,25 @@ function AddButton({ onWaivers, onPress }: { onWaivers: boolean; onPress: () => 
       style={({ pressed }) => [styles.addButton, { borderColor: color, backgroundColor: `${color}22` }, pressed && styles.addPressed]}>
       <Text style={[styles.addPlus, { color }]}>+</Text>
     </Pressable>
+  );
+}
+
+// The pinned player column in a stat view: the same add button, then name and team.
+function ViewCell({ player, onPress, onAdd }: { player: FreeAgent; onPress: () => void; onAdd: () => void }) {
+  const onWaivers = !!player.waiver_clears_at || player.game_locked;
+  return (
+    <View style={styles.viewCell}>
+      <AddButton onWaivers={onWaivers} onPress={onAdd} />
+      <Pressable onPress={onPress} style={styles.flex}>
+        <Text style={styles.viewName} numberOfLines={1}>
+          {player.full_name}
+        </Text>
+        <Text style={styles.detail} numberOfLines={1}>
+          {player.position === 'DEF' ? 'D/ST' : player.position} · {player.pro_team ?? '—'}
+          {onWaivers ? '  · W' : ''}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -230,4 +270,9 @@ const styles = StyleSheet.create({
   addPressed: { opacity: 0.6 },
   addPlus: { fontSize: 20, lineHeight: 22, fontWeight: '700' },
   addSpacer: { width: 28 + Spacing.md },
+  availableRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
+  available: { color: Colors.text, fontSize: 18, fontFamily: Fonts.display, letterSpacing: 1, textTransform: 'uppercase' },
+  viewTable: { paddingHorizontal: Spacing.lg },
+  viewCell: { flexDirection: 'row', alignItems: 'center' },
+  viewName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
 });

@@ -7,6 +7,8 @@ import type {
   LeagueInfo,
   LeagueMember,
   LeagueTeam,
+  PlayerViewData,
+  PlayerViewKey,
   PlayoffSettings,
   ScoringRule,
   TradeSettings,
@@ -497,6 +499,8 @@ export const api = {
     security: (days = 7) => request<A.AdminSecurity>(`/admin/security?days=${days}`),
     audit: (limit = 50, offset = 0) => request<A.AdminAuditLog>(`/admin/audit?limit=${limit}&offset=${offset}`),
   },
+  playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>
+    request<PlayerViewData>(`/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(','))}`),
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',

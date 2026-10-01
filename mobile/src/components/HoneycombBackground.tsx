@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
-  useAnimatedProps,
+  useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withDelay,
@@ -23,8 +23,6 @@ const SQRT3 = Math.sqrt(3);
 const GRID_ALPHA = 0.3;
 const GLOWING_CELLS = 10;
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
 function hexPath(cx: number, cy: number, r: number): string {
   let d = '';
   for (let i = 0; i < 6; i++) {
@@ -44,7 +42,10 @@ function seeded(seed: number) {
   };
 }
 
-function GlowCell({ d, delay, duration, color }: { d: string; delay: number; duration: number; color: string }) {
+// Each glowing cell is its own small layer, animated by opacity on the
+// UI thread. Animating paths inside the full-screen SVG made the whole
+// honeycomb redraw every frame, which made scrolling stutter on top of it.
+function GlowCell({ x, y, r, delay, duration, color }: { x: number; y: number; r: number; delay: number; duration: number; color: string }) {
   const systemReduced = useReducedMotion();
   const appReduced = useAppearance().reducedMotion;
   const reduceMotion = systemReduced || appReduced;
@@ -62,8 +63,22 @@ function GlowCell({ d, delay, duration, color }: { d: string; delay: number; dur
       ),
     );
   }, [reduceMotion, delay, duration, opacity]);
-  const animatedProps = useAnimatedProps(() => ({ opacity: opacity.value }));
-  return <AnimatedPath d={d} fill="url(#cellGlow)" stroke={color} strokeWidth={1.2} animatedProps={animatedProps} />;
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const size = r * 2 + 4;
+  return (
+    <Animated.View style={[styles.cell, { left: x - size / 2, top: y - size / 2, width: size, height: size }, style]}>
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id="cellGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={color} stopOpacity={0} />
+            <Stop offset="0.6" stopColor={color} stopOpacity={0.06} />
+            <Stop offset="1" stopColor={color} stopOpacity={0.22} />
+          </RadialGradient>
+        </Defs>
+        <Path d={hexPath(size / 2, size / 2, r)} fill="url(#cellGlow)" stroke={color} strokeWidth={1.2} />
+      </Svg>
+    </Animated.View>
+  );
 }
 
 export function HoneycombBackground() {
@@ -74,20 +89,20 @@ export function HoneycombBackground() {
   const { grid, glowing } = useMemo(() => {
     const colStep = SQRT3 * r;
     const rowStep = 1.5 * r;
-    const cells: string[] = [];
+    const cells: { x: number; y: number }[] = [];
     for (let row = -1; row * rowStep < height + r; row++) {
       const offset = row % 2 === 0 ? 0 : colStep / 2;
       for (let col = -1; col * colStep < width + r; col++) {
-        cells.push(hexPath(col * colStep + offset, row * rowStep, r));
+        cells.push({ x: col * colStep + offset, y: row * rowStep });
       }
     }
     const rand = seeded(7);
     const picks = Array.from({ length: GLOWING_CELLS }, () => ({
-      d: cells[Math.floor(rand() * cells.length)],
+      ...cells[Math.floor(rand() * cells.length)],
       delay: Math.floor(rand() * 6000),
       duration: 5000 + Math.floor(rand() * 4000),
     }));
-    return { grid: cells.join(''), glowing: picks };
+    return { grid: cells.map((c) => hexPath(c.x, c.y, r)).join(''), glowing: picks };
   }, [width, height, r]);
 
   // Settings > Appearance > Background: off.
@@ -95,23 +110,20 @@ export function HoneycombBackground() {
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.bg]}>
-      <Svg width={width} height={height}>
-        <Defs>
-          <RadialGradient id="cellGlow" cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor={color} stopOpacity={0} />
-            <Stop offset="0.6" stopColor={color} stopOpacity={0.06} />
-            <Stop offset="1" stopColor={color} stopOpacity={0.22} />
-          </RadialGradient>
-        </Defs>
-        <Path d={grid} stroke={color} strokeOpacity={GRID_ALPHA} strokeWidth={1} fill="none" />
-        {glowing.map((cell, i) => (
-          <GlowCell key={i} {...cell} color={color} />
-        ))}
-      </Svg>
+      {/* The grid never changes, so iOS can keep it as a cached bitmap. */}
+      <View shouldRasterizeIOS renderToHardwareTextureAndroid style={StyleSheet.absoluteFill}>
+        <Svg width={width} height={height}>
+          <Path d={grid} stroke={color} strokeOpacity={GRID_ALPHA} strokeWidth={1} fill="none" />
+        </Svg>
+      </View>
+      {glowing.map((cell, i) => (
+        <GlowCell key={i} {...cell} r={r} color={color} />
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   bg: { backgroundColor: Colors.bg },
+  cell: { position: 'absolute' },
 });

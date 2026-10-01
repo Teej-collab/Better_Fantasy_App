@@ -60,8 +60,16 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
     setSize(Math.ceil(Math.hypot(width, height)));
   }
 
+  // The glow lives on its own still layer behind the card, not on the
+  // view holding the spinning ring: iOS re-renders a shadow whenever
+  // anything inside its layer changes, which made every card recompute
+  // its glow on every frame and scrolling stutter.
   return (
-    <View style={[styles.glow, { shadowColor: color, shadowOpacity: appearance.glow, borderRadius: radius }, style]}>
+    <View style={style}>
+      <View
+        pointerEvents="none"
+        style={[styles.glow, { shadowColor: color, shadowOpacity: appearance.glow, borderRadius: radius }]}
+      />
       <View style={[styles.clip, { borderRadius: radius }]} onLayout={onLayout}>
         <View style={[StyleSheet.absoluteFill, styles.ringBase, { borderRadius: radius }]} />
         {size > 0 && (
@@ -89,6 +97,13 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
 
 const styles = StyleSheet.create({
   glow: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    // A solid fill gives iOS an opaque shape to cast the glow from.
+    backgroundColor: Colors.surface,
     shadowOpacity: 0.28,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },

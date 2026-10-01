@@ -872,3 +872,31 @@ export type CommissionerAddResult =
   | { status: 'ok'; roster: RosterEntry[] }
   | { status: 'roster_full' }
   | { status: 'on_waivers'; detail: string; clears_at: string | null };
+
+// The Views menu on Players and the roster (backend app/domain/player_views.py).
+// "matchup" is each list's own layout and is never fetched.
+export type PlayerViewKey =
+  | 'matchup'
+  | 'proj_2026'
+  | 'stats_2026'
+  | 'stats_2025'
+  | 'scoring'
+  | 'research'
+  | 'schedule'
+  | 'rankings'
+  | 'ppr_rankings';
+
+export type PlayerViewColumn = {
+  key: string;
+  label: string;
+  format: 'int' | 'number1' | 'number2' | 'ordinal' | 'ordinal_matchup' | 'signed_int' | 'text';
+  group?: string;
+};
+
+export type PlayerViewData = {
+  view: PlayerViewKey;
+  week: number;
+  columns: PlayerViewColumn[];
+  rows: Record<string, Record<string, string | number | null>>;
+  note?: string;
+};

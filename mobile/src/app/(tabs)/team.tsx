@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -22,6 +23,7 @@ export default function TeamScreen() {
   const team = useMyTeam();
   const [editing, setEditing] = useState<RosterEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = usePlayerView('wl:player-view:roster');
 
   async function onRefresh() {
     setRefreshing(true);
@@ -62,9 +64,40 @@ export default function TeamScreen() {
 
         <TeamSubNav />
 
-        <RosterSection title="Starters" entries={starters} editable={editable} onEdit={setEditing} />
-        {bench.length > 0 && <RosterSection title="Bench" entries={bench} editable={editable} onEdit={setEditing} />}
-        {ir.length > 0 && <RosterSection title="Injured reserve" entries={ir} editable={editable} onEdit={setEditing} />}
+        <View style={styles.viewsRow}>
+          <PlayerViewsPill view={view} onChange={setView} />
+        </View>
+
+        {view !== 'matchup' ? (
+          <PlayerViewTable
+            view={view}
+            rows={[...starters, ...bench, ...ir].map((e) => ({
+              id: e.player_id,
+              position: e.position,
+              cell: (
+                <View style={styles.viewCell}>
+                  <View style={styles.viewSlot}>
+                    <Text style={styles.viewSlotText}>{slotDisplayLabel(e.lineup_slot)}</Text>
+                  </View>
+                  <Pressable onPress={() => openPlayer(e.player_id)} style={styles.player}>
+                    <Text style={styles.playerName} numberOfLines={1}>
+                      {e.player_name}
+                    </Text>
+                    <Text style={styles.detail} numberOfLines={1}>
+                      {e.position === 'DEF' ? 'D/ST' : e.position} · {e.pro_team ?? '—'}
+                    </Text>
+                  </Pressable>
+                </View>
+              ),
+            }))}
+          />
+        ) : (
+          <>
+            <RosterSection title="Starters" entries={starters} editable={editable} onEdit={setEditing} />
+            {bench.length > 0 && <RosterSection title="Bench" entries={bench} editable={editable} onEdit={setEditing} />}
+            {ir.length > 0 && <RosterSection title="Injured reserve" entries={ir} editable={editable} onEdit={setEditing} />}
+          </>
+        )}
       </ScrollView>
 
       {editing && <LineupSheet entry={editing} team={data} onClose={() => setEditing(null)} />}
@@ -224,6 +257,10 @@ function LineupSheet({ entry, team, onClose }: { entry: RosterEntry; team: MyTea
 }
 
 const styles = StyleSheet.create({
+  viewsRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  viewCell: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  viewSlot: { width: 46, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 2, alignItems: 'center' },
+  viewSlotText: { color: Colors.text, fontSize: 10, fontWeight: '600' },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
