@@ -1,0 +1,16 @@
+diff --git a/node_modules/expo-quick-actions/ios/AppDelegate.swift b/node_modules/expo-quick-actions/ios/AppDelegate.swift
+index 37558e0..e651cde 100644
+--- a/node_modules/expo-quick-actions/ios/AppDelegate.swift
++++ b/node_modules/expo-quick-actions/ios/AppDelegate.swift
+@@ -17,6 +17,11 @@ public class ExpoQuickActionsAppDelegate: ExpoAppDelegateSubscriber {
+   }
+ 
+   public func application(_ application: UIApplication, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
++    // Under the UIScene life cycle (required on iOS 27), a quick action that
++    // cold-launches the app isn't in launchOptions: Expo's scene delegate
++    // forwards it here instead, before JS is listening for the event below.
++    // Keep it as the initial action too, so JS still routes it on launch.
++    initialAction = shortcutItem
+     NotificationCenter.default.post(name: Notification.Name(onQuickAction), object: shortcutItem)
+     completionHandler(true)
+   }

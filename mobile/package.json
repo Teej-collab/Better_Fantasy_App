@@ -15,6 +15,7 @@
     "@tanstack/react-query-persist-client": "^5.104.0",
     "eslint-config-expo": "~57.0.2",
     "expo": "~57.0.26",
+    "expo-asset": "~57.0.18",
     "expo-audio": "~57.0.5",
     "expo-constants": "~57.0.20",
     "expo-device": "~57.0.2",
@@ -26,6 +27,7 @@
     "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.11",
+    "expo-quick-actions": "^6.0.2",
     "expo-router": "~57.0.24",
     "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
@@ -50,6 +52,7 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -57,7 +60,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "patch-package"
   },
   "private": true,
   "reanimated": {

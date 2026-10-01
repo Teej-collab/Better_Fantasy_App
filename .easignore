@@ -1,0 +1,25 @@
+# What EAS Build uploads from this repo: only the Expo app in mobile/.
+# (Without this file EAS uploads the whole git repo — backend, frontend,
+# docs, .git and any untracked files.) This replaces .gitignore for EAS,
+# so mobile/.gitignore's own exclusions are repeated below.
+/*
+!/mobile
+
+mobile/node_modules
+mobile/ios
+mobile/android
+mobile/dist
+mobile/.expo
+mobile/web-build
+mobile/.kotlin
+mobile/.claude
+mobile/.vscode
+/mobile/**/*.jks
+/mobile/**/*.keystore
+/mobile/**/*.p8
+/mobile/**/*.p12
+/mobile/**/*.key
+/mobile/**/*.pem
+/mobile/**/*.mobileprovision
+/mobile/**/.env*.local
+/mobile/**/.DS_Store
