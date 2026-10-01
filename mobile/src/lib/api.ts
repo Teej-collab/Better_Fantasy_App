@@ -102,6 +102,23 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
+// Fire-and-forget POST for analytics and error reports: never throws,
+// and a 401 here doesn't sign anyone out (that's request()'s job).
+export function sendQuietly(path: string, body: unknown): void {
+  fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+export function hasSessionToken(): boolean {
+  return sessionToken !== null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,

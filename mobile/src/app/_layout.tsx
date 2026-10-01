@@ -16,11 +16,14 @@ import { View } from 'react-native';
 
 import { HoneycombBackground } from '@/components/HoneycombBackground';
 import { Colors, Fonts } from '@/constants/theme';
+import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ChatSocketProvider } from '@/lib/chatSocket';
 import { queryClient, queryPersister } from '@/lib/queries';
 
 SplashScreen.preventAutoHideAsync();
+// Uncaught JavaScript errors go to Admin > Errors, like the web's.
+startErrorReporter();
 
 const theme = {
   ...DarkTheme,
@@ -38,6 +41,7 @@ const theme = {
 
 function RootStack() {
   const { token } = useAuth();
+  useScreenTracking(Boolean(token));
   const [fontsLoaded] = useFonts({
     Oswald_500Medium,
     Oswald_600SemiBold,

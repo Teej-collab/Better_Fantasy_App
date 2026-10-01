@@ -1,5 +1,5 @@
-import { useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { SeasonTabs } from '@/components/league/LeagueUI';
@@ -14,6 +14,7 @@ import {
 } from '@/components/league/Sections';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { LEAGUE_SECTION_ROUTES, trackPageView } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useActiveLeagueName, useSeasons } from '@/lib/queries';
 
@@ -45,6 +46,9 @@ export default function LeagueScreen() {
   const [choice, setChoice] = useState<{ forLink: string | null; key: LeagueSectionKey }>({ forLink: null, key: 'league' });
   const section: LeagueSectionKey = linked && choice.forLink !== linked ? linked : choice.key;
   const setSection = (key: LeagueSectionKey) => setChoice({ forLink: linked, key });
+  // Each section is its own page on the web, so it's logged as one.
+  const sectionRoute = LEAGUE_SECTION_ROUTES[section];
+  useFocusEffect(useCallback(() => trackPageView(sectionRoute), [sectionRoute]));
   const [season, setSeason] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useRef<ScrollView>(null);

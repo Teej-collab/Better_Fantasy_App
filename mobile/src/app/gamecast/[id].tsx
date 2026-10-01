@@ -6,6 +6,7 @@ import { Text } from '@/components/Text';
 import { LiveBadge } from '@/components/LiveBadge';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
+import { trackGamecastGameSelected } from '@/lib/analytics';
 import { api, gamecastSocketUrl } from '@/lib/api';
 import { formatPoints } from '@/lib/format';
 import { openPlayer, queryClient, useFantasyImpact, useGamecastGame, usePlayFantasy } from '@/lib/queries';
@@ -72,6 +73,8 @@ function ordinal(n: number): string {
 
 export default function GamecastScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // The web's gamecast_game_selected feature event.
+  useEffect(() => trackGamecastGameSelected(id), [id]);
   const game = useGamecastGame(id);
   const live = game.data ? isLive(game.data) : false;
   // Finished games never change, so only a live or upcoming game
