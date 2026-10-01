@@ -1,6 +1,6 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
   AccountSettings,
@@ -14,6 +14,7 @@ import {
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
+import { useMe } from '@/lib/queries';
 
 // The web's SettingsShell sections, in order.
 const SECTIONS = [
@@ -32,12 +33,23 @@ type SectionKey = (typeof SECTIONS)[number]['key'];
 export default function SettingsScreen() {
   const params = useLocalSearchParams<{ section?: string }>();
   const accent = useAppearance().accent;
+  const isCommissioner = useMe().data?.is_commissioner ?? false;
   const initial = SECTIONS.find((s) => s.key === params.section)?.key ?? 'profile';
   const [section, setSection] = useState<SectionKey>(initial);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Settings' }} />
+      {/* Where the web's account menu puts it, for commissioners only. */}
+      {isCommissioner && (
+        <Pressable onPress={() => router.push('/commissioner')} style={[styles.commish, { borderColor: `${accent}55` }]}>
+          <View style={styles.commishText}>
+            <Text style={styles.commishTitle}>Commissioner Tools</Text>
+            <Text style={styles.commishSub}>Everything you can manage for your league.</Text>
+          </View>
+          <Text style={[styles.chevron, { color: accent }]}>›</Text>
+        </Pressable>
+      )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nav}>
         {SECTIONS.map((s) => {
           const active = s.key === section;
@@ -61,6 +73,11 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  commish: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: Radius.md, borderWidth: 1, backgroundColor: Colors.surface, padding: Spacing.md },
+  commishText: { flex: 1, gap: 2 },
+  commishTitle: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  commishSub: { color: Colors.textSecondary, fontSize: 12 },
+  chevron: { fontSize: 24, fontWeight: '300' },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   nav: { gap: Spacing.sm },

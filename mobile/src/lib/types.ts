@@ -844,3 +844,31 @@ export type FantasyDigest = {
 
 // Lounge (backend/app/routers/lounge.py).
 export type LoungeRoom = { id: number; slug: string; name: string; closed: boolean; created_at: string };
+
+// Commissioner tools (frontend/src/lib/leaguesApi.ts, tradesApi.ts).
+export type LeagueInfo = { id: number; name: string; invite_code: string; created_at: string; role: 'commissioner' | 'member' };
+
+export type LeagueMember = { user_id: number; role: 'commissioner' | 'member'; joined_at: string; display_name: string };
+
+export type LeagueTeam = { team_id: number; team_name: string; owner_id: number; owner_name: string };
+
+export type PlayoffSettings = {
+  season: number;
+  playoff_team_count: number | null;
+  weeks_per_matchup: number;
+  // null: inferred from the season's regular-season schedule.
+  start_week: number | null;
+};
+
+export type ScoringRule = { stat_category: string; points_per_unit: number };
+
+export type EspnConnectionStatus =
+  | { connected: false }
+  | { connected: true; espn_league_id: number; last_synced_at: string | null; last_sync_error: string | null };
+
+export type TradeSettings = { season: number; trade_deadline: string | null; review_required: boolean };
+
+export type CommissionerAddResult =
+  | { status: 'ok'; roster: RosterEntry[] }
+  | { status: 'roster_full' }
+  | { status: 'on_waivers'; detail: string; clears_at: string | null };

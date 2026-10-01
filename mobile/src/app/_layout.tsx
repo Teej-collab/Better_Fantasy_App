@@ -89,6 +89,15 @@ function RootStack() {
         <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />
         <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
         <Stack.Screen name="lounge" options={{ title: 'Lounge', headerBackTitle: 'Chat' }} />
+        <Stack.Screen name="commissioner/index" options={{ title: 'Commissioner Tools', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="commissioner/league" options={{ title: 'League Settings', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/scoring" options={{ title: 'Scoring Rules', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/members" options={{ title: 'Members', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/teams" options={{ title: 'Teams', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/roster" options={{ title: 'Roster & Keepers', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/trades" options={{ title: 'Trades', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/polls" options={{ title: 'Polls', headerBackTitle: 'Tools' }} />
+        <Stack.Screen name="commissioner/espn" options={{ title: 'ESPN Connection', headerBackTitle: 'Tools' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />

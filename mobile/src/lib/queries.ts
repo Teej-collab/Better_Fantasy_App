@@ -540,3 +540,54 @@ export function useWatchPartyMembers(roomId: number) {
 export function useLoungeRooms() {
   return useQuery({ queryKey: ['lounge-rooms'], queryFn: api.loungeRooms });
 }
+
+// ---- Commissioner tools ----
+export function useActiveLeague() {
+  return useQuery({
+    queryKey: ['leagues-mine'],
+    queryFn: api.leaguesMine,
+    select: (d) => d.leagues.find((l) => l.id === d.active_league_id) ?? null,
+  });
+}
+
+export function useLeagueMembers(leagueId: number | undefined) {
+  return useQuery({ queryKey: ['league-members', leagueId], queryFn: () => api.leagueMembers(leagueId!), enabled: leagueId !== undefined });
+}
+
+export function useLeagueTeams(leagueId: number | undefined) {
+  return useQuery({ queryKey: ['league-teams', leagueId], queryFn: () => api.leagueTeams(leagueId!), enabled: leagueId !== undefined });
+}
+
+export function usePlayoffSettings() {
+  return useQuery({ queryKey: ['playoff-settings'], queryFn: api.playoffSettings });
+}
+
+export function useScoringRulesEditor() {
+  return useQuery({ queryKey: ['scoring-rules-editor'], queryFn: api.scoringRulesEditor });
+}
+
+export function useKeeperRules() {
+  return useQuery({ queryKey: ['keeper-rules'], queryFn: api.keeperRules });
+}
+
+export function useRosterSettings() {
+  return useQuery({
+    queryKey: ['roster-settings'],
+    queryFn: async () => {
+      const [slots, max] = await Promise.all([api.rosterSlots(), api.positionMax()]);
+      return { slots, max };
+    },
+  });
+}
+
+export function useTradeSettings() {
+  return useQuery({ queryKey: ['trade-settings'], queryFn: api.tradeSettings });
+}
+
+export function usePendingTrades() {
+  return useQuery({ queryKey: ['pending-trades'], queryFn: api.pendingTrades });
+}
+
+export function useEspnConnection() {
+  return useQuery({ queryKey: ['espn-connection'], queryFn: api.espnConnection });
+}

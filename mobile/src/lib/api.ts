@@ -1,6 +1,14 @@
 import type {
   AddFreeAgentResult,
   ChatMember,
+  CommissionerAddResult,
+  EspnConnectionStatus,
+  LeagueInfo,
+  LeagueMember,
+  LeagueTeam,
+  PlayoffSettings,
+  ScoringRule,
+  TradeSettings,
   LoungeRoom,
   WatchPartyRoomMember,
   WatchPartyRoomsResponse,
@@ -349,6 +357,91 @@ export const api = {
   createLoungeRoom: (name: string, password: string) =>
     request<{ id: number; slug: string; name: string }>('/lounge/rooms', { method: 'POST', body: JSON.stringify({ name, password }) }),
   closeLoungeRoom: (roomId: number) => request<unknown>(`/lounge/rooms/${roomId}`, { method: 'DELETE' }),
+  // ---- Commissioner tools (backend enforces commissioner-only) ----
+  leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
+  renameLeague: (leagueId: number, name: string) =>
+    request<LeagueInfo>(`/leagues/${leagueId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  playoffSettings: () => request<PlayoffSettings>('/league/playoff-settings'),
+  updatePlayoffSettings: (season: number, playoffTeamCount: number, weeksPerMatchup: number, startWeek: number | null) =>
+    request<PlayoffSettings>('/league/playoff-settings', {
+      method: 'PUT',
+      body: JSON.stringify({ season, playoff_team_count: playoffTeamCount, weeks_per_matchup: weeksPerMatchup, start_week: startWeek }),
+    }),
+  leagueMembers: async (leagueId: number) =>
+    (await request<{ members: LeagueMember[] }>(`/leagues/${leagueId}/members`)).members,
+  setMemberRole: (leagueId: number, userId: number, role: 'commissioner' | 'member') =>
+    request<unknown>(`/leagues/${leagueId}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  removeMember: (leagueId: number, userId: number) =>
+    request<unknown>(`/leagues/${leagueId}/members/${userId}`, { method: 'DELETE' }),
+  leagueTeams: async (leagueId: number) => (await request<{ teams: LeagueTeam[] }>(`/leagues/${leagueId}/teams`)).teams,
+  reassignTeam: (leagueId: number, teamId: number, userId: number) =>
+    request<LeagueTeam>(`/leagues/${leagueId}/teams/${teamId}/reassign`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+  createTeamForMember: (leagueId: number, userId: number, teamName: string) =>
+    request<LeagueTeam>(`/leagues/${leagueId}/teams/for-member`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, team_name: teamName }),
+    }),
+  scoringRulesEditor: () => request<{ season: number; rules: ScoringRule[] }>('/league/scoring-rules'),
+  updateScoringRules: (season: number, rules: Record<string, number>) =>
+    request<{ season: number; rules: ScoringRule[] }>('/league/scoring-rules', { method: 'PUT', body: JSON.stringify({ season, rules }) }),
+  keeperRules: () => request<KeeperRules>('/keepers/rules'),
+  rosterSlots: () => request<{ roster_slots: Record<string, number> | null; editable: boolean }>('/draft/roster-slots'),
+  setRosterSlots: (rosterSlots: Record<string, number>) =>
+    request<{ roster_slots: Record<string, number>; editable: boolean }>('/draft/roster-slots', {
+      method: 'PUT',
+      body: JSON.stringify({ roster_slots: rosterSlots }),
+    }),
+  positionMax: () => request<{ position_max: Record<string, number> | null; editable: boolean }>('/draft/position-max'),
+  setPositionMax: (positionMax: Record<string, number>) =>
+    request<unknown>('/draft/position-max', { method: 'PUT', body: JSON.stringify({ position_max: positionMax }) }),
+  teamCurrentRoster: async (leagueId: number, teamId: number) =>
+    (await request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster`)).roster,
+  commissionerDrop: (leagueId: number, teamId: number, playerId: string) =>
+    request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster/drop`, {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id: playerId }),
+    }),
+  commissionerMove: (leagueId: number, teamId: number, playerId: string, toSlot: string) =>
+    request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster/move`, {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
+    }),
+  // Same two 409s as addFreeAgent; on_waivers can be overridden.
+  commissionerAdd: async (leagueId: number, teamId: number, playerId: string, overrideWaivers?: boolean): Promise<CommissionerAddResult> => {
+    try {
+      const { roster } = await request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster/add`, {
+        method: 'POST',
+        body: JSON.stringify({ sleeper_player_id: playerId, override_waivers: overrideWaivers }),
+      });
+      return { status: 'ok', roster };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.body?.error === 'on_waivers') {
+        return { status: 'on_waivers', detail: e.message, clears_at: (e.body.clears_at as string | null) ?? null };
+      }
+      if (e instanceof ApiError && e.status === 409) return { status: 'roster_full' };
+      throw e;
+    }
+  },
+  tradeSettings: () => request<TradeSettings>('/trades/settings'),
+  updateTradeSettings: (season: number, tradeDeadline: string | null, reviewRequired: boolean) =>
+    request<TradeSettings>('/trades/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ season, trade_deadline: tradeDeadline, review_required: reviewRequired }),
+    }),
+  pendingTrades: async () => (await request<{ trades: Trade[] }>('/trades/pending')).trades,
+  reviewTrade: (tradeId: number, approve: boolean) =>
+    request<Trade>(`/trades/${tradeId}/review`, { method: 'POST', body: JSON.stringify({ approve }) }),
+  createPoll: (leagueId: number, question: string, options: string[]) =>
+    request<Poll>(`/leagues/${leagueId}/polls`, { method: 'POST', body: JSON.stringify({ question, options }) }),
+  closePoll: (leagueId: number, pollId: number) => request<Poll>(`/leagues/${leagueId}/polls/${pollId}`, { method: 'PATCH' }),
+  espnConnection: () => request<EspnConnectionStatus>('/league/espn-connection'),
+  connectEspn: (espnLeagueId: number, espnS2: string, espnSwid: string) =>
+    request<unknown>('/league/espn-connection', {
+      method: 'POST',
+      body: JSON.stringify({ espn_league_id: espnLeagueId, espn_s2: espnS2, espn_swid: espnSwid }),
+    }),
+  disconnectEspn: () => request<unknown>('/league/espn-connection', { method: 'DELETE' }),
+  syncEspn: () => request<unknown>('/league/espn-connection/sync', { method: 'POST', body: '{}' }),
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',
