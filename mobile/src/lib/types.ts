@@ -557,14 +557,67 @@ export type LeagueActivityItem =
 
 // The parts of GET /settings/preferences the app reads: the owner's
 // appearance (Settings > Appearance on the web) and Home card order.
+export type SundayMode = 'full_send' | 'game_day' | 'leave_me_alone';
+
+// GET /settings/preferences (frontend/src/lib/api.ts OwnerPreferences).
 export type OwnerPreferences = {
+  notify_direct_messages: boolean;
+  notify_league_chat: boolean;
+  notify_mentions: boolean;
+  notify_replies: boolean;
+  sunday_mode: SundayMode | null;
+  quiet_hours_enabled: boolean;
+  // "22:00:00"
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  timezone: string | null;
+  read_receipts_enabled: boolean;
+  typing_indicators_enabled: boolean;
+  message_previews_enabled: boolean;
+  mention_highlighting_enabled: boolean;
+  neon_intensity: 'subtle' | 'standard' | 'high';
+  reduced_motion: boolean;
   accent_color: string | null;
   your_week_color: string | null;
   border_glow_color: string | null;
+  // A hex, "off", or null for the default crimson.
   honeycomb_color: string | null;
   theme: 'calm' | 'cosmic';
-  reduced_motion: boolean;
+  beta_layout: boolean;
+  design_direction: 'default' | 'broadcast' | 'stadium';
   home_card_order: string | null;
+  push_enabled: boolean;
+  notify_my_players: boolean;
+  notify_red_zone: boolean;
+  notify_injuries: boolean;
+  notify_player_news: boolean;
+  notify_fantasy_team: boolean;
+  notify_league: boolean;
+  ai_training_opt_out: boolean;
+};
+
+// GET /settings/me (frontend/src/lib/api.ts MySettings).
+export type MySettings = {
+  display_name: string;
+  display_name_is_custom: boolean;
+  chat_color: string | null;
+  logo_url: string | null;
+  discord_username: string | null;
+  email: string | null;
+  has_discord: boolean;
+  has_google: boolean;
+  has_password: boolean;
+  team_name: string | null;
+  team_name_is_custom: boolean | null;
+};
+
+export type FeedbackItem = {
+  id: number;
+  submitted_by: string;
+  message: string;
+  page_url: string | null;
+  image_url: string | null;
+  created_at: string;
 };
 
 // Chug (backend/app/routers/chug.py; web types in frontend/src/lib/api.ts).

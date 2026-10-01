@@ -45,6 +45,9 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
   }, []);
 
   const signOut = useCallback(async () => {
+    // Ends the session server-side too; signing out locally still
+    // happens if the network call fails.
+    await api.logout().catch(() => {});
     await applyToken(null);
     onSignOut();
   }, [applyToken, onSignOut]);
@@ -60,9 +63,13 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
 
   useEffect(() => {
     // An expired or revoked session anywhere in the app signs out.
-    setUnauthorizedHandler(() => void signOut());
+    // The session is already dead server-side, so just forget it here
+    // (calling signOut would make another request that 401s).
+    setUnauthorizedHandler(() => {
+      void applyToken(null).then(onSignOut);
+    });
     return () => setUnauthorizedHandler(null);
-  }, [signOut]);
+  }, [applyToken, onSignOut]);
 
   const signInWithDiscord = useCallback(async (): Promise<SignInResult> => {
     // iOS runs this in an in-app sign-in sheet (ASWebAuthenticationSession)

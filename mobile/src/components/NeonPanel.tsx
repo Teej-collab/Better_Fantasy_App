@@ -45,7 +45,8 @@ type Props = {
 export function NeonPanel({ children, color: sectionColor, style, contentStyle, radius = Radius.lg }: Props) {
   const appearance = useAppearance();
   const color = ringColorFor(appearance, sectionColor);
-  const reduceMotion = useReducedMotion();
+  const systemReduced = useReducedMotion();
+  const reduceMotion = systemReduced || appearance.reducedMotion;
   const [size, setSize] = useState(0);
   useEffect(() => {
     if (!reduceMotion) startRotation();
@@ -60,7 +61,7 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
   }
 
   return (
-    <View style={[styles.glow, { shadowColor: color, borderRadius: radius }, style]}>
+    <View style={[styles.glow, { shadowColor: color, shadowOpacity: appearance.glow, borderRadius: radius }, style]}>
       <View style={[styles.clip, { borderRadius: radius }]} onLayout={onLayout}>
         <View style={[StyleSheet.absoluteFill, styles.ringBase, { borderRadius: radius }]} />
         {size > 0 && (

@@ -1,5 +1,8 @@
 import type {
   AddFreeAgentResult,
+  FeedbackItem,
+  MySettings,
+  SundayMode,
   AllTimePowerCategory,
   AwardLeaderboardCategory,
   CareerProfile,
@@ -108,7 +111,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail, body);
   }
-  return res.json() as Promise<T>;
+  // 204 No Content (logout, account deletion, some settings writes).
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
@@ -120,6 +126,28 @@ export const api = {
     request<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`),
   myWeek: () => request<YourWeek>('/me/week'),
   preferences: () => request<OwnerPreferences>('/settings/preferences'),
+  updatePreferences: (patch: Partial<OwnerPreferences>) =>
+    request<OwnerPreferences>('/settings/preferences', { method: 'PUT', body: JSON.stringify(patch) }),
+  applySundayMode: (preset: SundayMode) =>
+    request<OwnerPreferences>('/settings/preferences/sunday-mode', { method: 'POST', body: JSON.stringify({ preset }) }),
+  mySettings: () => request<MySettings>('/settings/me'),
+  updateDisplayName: (displayName: string) =>
+    request<void>('/settings/display-name', { method: 'PUT', body: JSON.stringify({ display_name: displayName }) }),
+  resetDisplayName: () => request<void>('/settings/display-name/reset', { method: 'POST' }),
+  updateTeamName: (teamName: string) =>
+    request<void>('/settings/team-name', { method: 'PUT', body: JSON.stringify({ team_name: teamName }) }),
+  resetTeamName: () => request<void>('/settings/team-name/reset', { method: 'POST' }),
+  updateChatColor: (chatColor: string | null) =>
+    request<void>('/settings/chat-color', { method: 'PUT', body: JSON.stringify({ chat_color: chatColor }) }),
+  updateLogo: (logoUrl: string | null) =>
+    request<void>('/settings/logo', { method: 'PUT', body: JSON.stringify({ logo_url: logoUrl }) }),
+  // Bumps the account's token_version, so every session (web too) ends.
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  deleteAccount: () => request<void>('/auth/me', { method: 'DELETE' }),
+  submitFeedback: (message: string, imageUrl: string | null) =>
+    request<void>('/feedback', { method: 'POST', body: JSON.stringify({ message, page_url: 'native-app', image_url: imageUrl }) }),
+  // Commissioner only.
+  feedback: () => request<{ items: FeedbackItem[] }>('/feedback'),
   myLeagues: () =>
     request<{ leagues: { id: number; name: string }[]; active_league_id: number | null }>('/leagues/mine'),
   weeklyAwards: (season: number, week: number) => request<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`),

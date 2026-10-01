@@ -18,6 +18,8 @@ The app talks to the production backend by default (`.env`). To use a local back
 
 Someone who isn't on your Wi-Fi (like a tester in another state) can open it with `npx expo start --tunnel`.
 
+Settings (⚙︎ on Home): Profile (display and team names, logo, chat bubble color), Notifications (Sunday Mode, message and fantasy toggles, quiet hours), Chat, Appearance (Calm/Cosmic, neon intensity, accent, background, Your Week and border colors, animations — applied app-wide instantly), Account & Security (log out, delete account) and Feedback. Navigation and Labs only change the website, so the app points there.
+
 ## How it works
 
 - **Sign-in** (`src/lib/auth.tsx`): Discord opens in the in-app sign-in sheet. The backend redirects to `weekendleague://auth/native-complete?ticket=…`, and the app swaps the one-time ticket for a session token (`POST /auth/native/redeem`), kept in the iOS Keychain via `expo-secure-store`.

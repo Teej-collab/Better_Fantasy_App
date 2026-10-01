@@ -18,7 +18,14 @@ export type Appearance = {
   yourWeek: string;
   // The honeycomb's color, or null when it's turned off.
   honeycomb: string | null;
+  // Settings > Appearance > Neon Intensity, as a glow strength 0–1.
+  glow: number;
+  // Settings > Appearance > Animations: Reduced (the device's own
+  // Reduce Motion is honored separately, always).
+  reducedMotion: boolean;
 };
+
+const GLOW_BY_INTENSITY = { subtle: 0.14, standard: 0.28, high: 0.5 } as const;
 
 // The owner's Settings > Appearance choices (GET /settings/preferences),
 // applied the way the web's layout.tsx head script applies them.
@@ -31,6 +38,8 @@ export function useAppearance(): Appearance {
     ring: hexOr(prefs?.border_glow_color, accent),
     yourWeek: hexOr(prefs?.your_week_color, accent),
     honeycomb: prefs?.honeycomb_color === 'off' ? null : hexOr(prefs?.honeycomb_color, HoneycombColor),
+    glow: GLOW_BY_INTENSITY[prefs?.neon_intensity ?? 'standard'] ?? GLOW_BY_INTENSITY.standard,
+    reducedMotion: prefs?.reduced_motion ?? false,
   };
 }
 

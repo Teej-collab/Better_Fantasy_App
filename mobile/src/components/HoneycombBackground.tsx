@@ -45,7 +45,9 @@ function seeded(seed: number) {
 }
 
 function GlowCell({ d, delay, duration, color }: { d: string; delay: number; duration: number; color: string }) {
-  const reduceMotion = useReducedMotion();
+  const systemReduced = useReducedMotion();
+  const appReduced = useAppearance().reducedMotion;
+  const reduceMotion = systemReduced || appReduced;
   const opacity = useSharedValue(reduceMotion ? 0.35 : 0);
   useEffect(() => {
     if (reduceMotion) return;

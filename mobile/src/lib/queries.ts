@@ -515,3 +515,11 @@ export function useMyTrades() {
 export function useMyKeepers() {
   return useQuery({ queryKey: ['my-keepers'], queryFn: api.myKeepers });
 }
+
+export function useMySettings() {
+  return useQuery({ queryKey: ['my-settings'], queryFn: api.mySettings });
+}
+
+export function useFeedbackList(enabled: boolean) {
+  return useQuery({ queryKey: ['feedback'], queryFn: async () => (await api.feedback()).items, enabled });
+}
