@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -45,7 +46,7 @@ export default function KeepersScreen() {
   if (q.isPending) return <LoadingState />;
   if (!q.data) return <MessageState message="Couldn't load keepers." />;
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Keepers' }} />
       <Display style={styles.title}>Keepers</Display>
       {me?.is_commissioner && <CommissionerRules key={q.data.rules.season} rules={q.data.rules} />}

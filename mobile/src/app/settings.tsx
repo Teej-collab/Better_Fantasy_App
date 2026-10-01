@@ -12,8 +12,10 @@ import {
   ProfileSettings,
   WebOnlySettings,
 } from '@/components/settings/SettingsSections';
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 import { useMe } from '@/lib/queries';
 
@@ -40,7 +42,7 @@ export default function SettingsScreen() {
   const [section, setSection] = useState<SectionKey>(initial);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Settings' }} />
       {/* The web's account menu: Leagues (switch, join or create), then the commissioner/admin tools. */}
       <Pressable onPress={() => router.push('/leagues')} style={[styles.commish, { borderColor: Colors.border }]}>
@@ -73,7 +75,10 @@ export default function SettingsScreen() {
         {SECTIONS.map((s) => {
           const active = s.key === section;
           return (
-            <Pressable key={s.key} onPress={() => setSection(s.key)} style={[styles.pill, active && { borderColor: accent, backgroundColor: `${accent}22` }]}>
+            <Pressable key={s.key} onPress={() => {
+              haptics.select();
+              setSection(s.key);
+            }} style={[styles.pill, active && { borderColor: accent, backgroundColor: `${accent}22` }]}>
               <Text style={[styles.pillText, active && { color: accent }]}>{s.label}</Text>
             </Pressable>
           );

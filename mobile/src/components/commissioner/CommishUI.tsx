@@ -1,10 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 import { useMe } from '@/lib/queries';
 
@@ -24,7 +26,7 @@ export function CommishGate({ children }: { children: ReactNode }) {
 
 export function CommishScreen({ children }: { children: ReactNode }) {
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <CommishGate>{children}</CommishGate>
     </ScrollView>
   );
@@ -100,7 +102,12 @@ export function PrimaryButton({ label, busyLabel, busy, disabled, onPress }: { l
   const accent = useAppearance().accent;
   const off = busy || disabled;
   return (
-    <Pressable onPress={onPress} disabled={off} style={[styles.primary, { backgroundColor: accent }, off && styles.disabled]}>
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
+      disabled={off} style={[styles.primary, { backgroundColor: accent }, off && styles.disabled]}>
       {busy && !busyLabel ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryText}>{busy ? busyLabel : label}</Text>}
     </Pressable>
   );
@@ -130,6 +137,12 @@ const toneText = StyleSheet.create({
 export type SaveStatus = { status: 'idle' } | { status: 'saving' } | { status: 'saved' } | { status: 'error'; message: string };
 
 export function StatusText({ panel }: { panel: SaveStatus }) {
+  // Every commissioner form reports through here, so this is where a
+  // save lands as a success or error buzz.
+  useEffect(() => {
+    if (panel.status === 'saved') haptics.success();
+    else if (panel.status === 'error') haptics.error();
+  }, [panel.status]);
   if (panel.status === 'saved') return <Text style={styles.saved}>Saved.</Text>;
   if (panel.status === 'error') return <Text style={styles.error}>{panel.message}</Text>;
   return null;
@@ -172,6 +185,7 @@ export function Picker<T extends string | number>(props: {
                   key={String(o.value)}
                   onPress={() => {
                     setOpen(false);
+                    haptics.select();
                     props.onChange(o.value);
                   }}
                   style={styles.option}>

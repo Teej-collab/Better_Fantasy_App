@@ -46,7 +46,7 @@ export default function NewPartyScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Start a Party' }} />
       <TextInput
         autoFocus

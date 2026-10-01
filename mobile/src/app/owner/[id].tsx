@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { PageTitle, SeasonTabs } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -29,7 +30,7 @@ export default function OwnerScreen() {
   const p = profile.data;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: c.team_name }} />
       <View style={styles.gapSm}>
         <PageTitle>{c.team_name}</PageTitle>

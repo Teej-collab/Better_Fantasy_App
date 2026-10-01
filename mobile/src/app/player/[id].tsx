@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
@@ -68,7 +69,7 @@ export default function PlayerScreen() {
   return (
     <>
       <Stack.Screen options={{ title: p.full_name }} />
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
         <View style={styles.hero}>
           {p.headshot_url ? (
             <Image source={{ uri: p.headshot_url }} style={styles.headshot} contentFit="cover" transition={150} />

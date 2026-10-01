@@ -1,10 +1,11 @@
 import { Image } from 'expo-image';
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, type ReactNode } from 'react';
+import { Pressable, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 
 // A card is the web's .neon-panel (components/NeonPanel.tsx): `color`
 // is its section color, `style` styles the inside of the card, and
@@ -61,12 +62,30 @@ export function PressableRow({ onPress, children }: { onPress: () => void; child
   );
 }
 
+// Shimmering placeholder cards while a screen loads, instead of a lone
+// spinner — the shape of the page shows up immediately.
 export function LoadingState() {
   return (
-    <View style={styles.center}>
-      <ActivityIndicator color={Colors.accent} />
+    <View style={styles.skeleton} accessibilityLabel="Loading" accessible>
+      <SkeletonBlock height={22} width="45%" />
+      <SkeletonBlock height={120} />
+      <SkeletonBlock height={64} />
+      <SkeletonBlock height={64} />
+      <SkeletonBlock height={64} />
     </View>
   );
+}
+
+// One placeholder bar, gently pulsing on the UI thread.
+export function SkeletonBlock({ height, width = '100%' }: { height: number; width?: DimensionValue }) {
+  const reduceMotion = useReducedMotion();
+  const pulse = useSharedValue(0.5);
+  useEffect(() => {
+    if (reduceMotion) return;
+    pulse.set(withRepeat(withTiming(1, { duration: 750, easing: Easing.inOut(Easing.quad) }), -1, true));
+  }, [reduceMotion, pulse]);
+  const style = useAnimatedStyle(() => ({ opacity: 0.35 + 0.35 * pulse.get() }));
+  return <Animated.View style={[styles.bone, { height, width }, style]} />;
 }
 
 export function MessageState({ message }: { message: string }) {
@@ -78,6 +97,8 @@ export function MessageState({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
+  skeleton: { flex: 1, gap: Spacing.md, padding: Spacing.lg },
+  bone: { borderRadius: Radius.md, backgroundColor: Colors.tileRaised },
   sectionTitle: {
     color: Colors.textSecondary,
     fontSize: 12,

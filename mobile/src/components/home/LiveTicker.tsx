@@ -11,6 +11,7 @@ import Animated, {
 
 import { Text } from '@/components/Text';
 import { Colors, Radius } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useGamecastIdFinder } from '@/lib/queries';
 import type { TickerItem } from '@/lib/ticker';
 
@@ -102,6 +103,7 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
   const sets = setWidth > 0 && stripWidth > 0 ? Math.ceil(stripWidth / setWidth) + 3 : 1;
 
   function open(item: TickerItem) {
+    haptics.tap();
     if (item.game) {
       const id = findGamecastId(item.game.home, item.game.away);
       if (id) router.push({ pathname: '/gamecast/[id]', params: { id } });

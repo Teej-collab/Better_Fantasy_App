@@ -8,6 +8,7 @@ import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/pl
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
 import { openPlayer, useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
 import {
@@ -150,7 +151,10 @@ function TeamSubNav() {
         <Text style={styles.subnavTextActive}>My Team</Text>
       </View>
       {links.map((l) => (
-        <Pressable key={l.label} onPress={l.go} style={({ pressed }) => [styles.subnavPill, pressed && styles.pressed]}>
+        <Pressable key={l.label} onPress={() => {
+            haptics.select();
+            l.go();
+          }} style={({ pressed }) => [styles.subnavPill, pressed && styles.pressed]}>
           <Text style={styles.subnavText}>{l.label}</Text>
         </Pressable>
       ))}

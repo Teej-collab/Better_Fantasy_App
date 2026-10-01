@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { haptics } from '@/lib/haptics';
 import { Text } from '@/components/Text';
 import { Colors } from '@/constants/theme';
 
@@ -113,8 +114,13 @@ function useIntroSounds(enabled: boolean) {
     p.play();
   }
   return {
-    playLightSwitch: () => play('light'),
+    // Each light switching on lands as a firm tap; the can cracking open as a success buzz.
+    playLightSwitch: () => {
+      haptics.thud();
+      play('light');
+    },
     playCanThenPour: () => {
+      haptics.success();
       play('can');
       setTimeout(() => play('pour'), CAN_OPENING_MS);
     },

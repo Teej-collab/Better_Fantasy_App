@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import type { PlayerViewColumn, PlayerViewKey } from '@/lib/types';
@@ -60,7 +61,11 @@ export function PlayerViewsPill({ view, onChange }: { view: PlayerViewKey; onCha
   const label = PLAYER_VIEW_OPTIONS.find((o) => o.key === view)?.label ?? 'Matchup Stats';
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={6} style={({ pressed }) => [styles.pill, pressed && styles.pressed]}>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          setOpen(true);
+        }} hitSlop={6} style={({ pressed }) => [styles.pill, pressed && styles.pressed]}>
         <Text style={styles.pillText}>{label}</Text>
         <Text style={styles.pillChevron}>▾</Text>
       </Pressable>
@@ -79,6 +84,7 @@ export function PlayerViewsPill({ view, onChange }: { view: PlayerViewKey; onCha
                 <Pressable
                   key={o.key}
                   onPress={() => {
+                    haptics.select();
                     onChange(o.key);
                     setOpen(false);
                   }}

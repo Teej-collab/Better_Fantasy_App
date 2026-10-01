@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { openOwner, PageTitle } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -32,7 +33,7 @@ export default function TeamScreen() {
   const bench = players.filter((p) => p.lineup_slot === 'BE' || p.lineup_slot === 'IR');
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: t.team_name }} />
       <View style={styles.gapSm}>
         <PageTitle>{t.team_name}</PageTitle>

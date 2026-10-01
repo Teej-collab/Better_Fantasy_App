@@ -2,10 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, type GestureResponderEvent } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Polygon, Polyline, Stop } from 'react-native-svg';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useMe } from '@/lib/queries';
 
 // Shared building blocks for the admin screens — ports of the web's
@@ -23,7 +25,7 @@ export const WINDOW_OPTIONS = [7, 30, 90] as const;
 export function AdminScreen({ children }: { children: ReactNode }) {
   const me = useMe();
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       {me.isPending ? (
         <LoadingState />
       ) : !me.data?.is_site_owner ? (
@@ -52,7 +54,10 @@ export function WindowPicker({ value, onChange, disabled, options = WINDOW_OPTIO
   return (
     <View style={styles.windowRow}>
       {options.map((d) => (
-        <Pressable key={d} onPress={() => onChange(d)} disabled={disabled} style={[styles.windowPill, value === d && styles.windowActive, disabled && styles.dim]}>
+        <Pressable key={d} onPress={() => {
+            haptics.select();
+            onChange(d);
+          }} disabled={disabled} style={[styles.windowPill, value === d && styles.windowActive, disabled && styles.dim]}>
           <Text style={[styles.windowText, value === d && styles.windowTextActive]}>{d === 1 ? '24h' : `${d}d`}</Text>
         </Pressable>
       ))}

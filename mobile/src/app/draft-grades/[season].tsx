@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { ListPanel, Muted, PageTitle, SeasonTabs, SmallHeader } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
@@ -37,7 +38,7 @@ export default function DraftGradesScreen() {
   }, [picks]);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: 'Draft' }} />
       <PageTitle>Draft</PageTitle>
       <SeasonTabs seasons={seasons} active={season} onSelect={setSeason} />

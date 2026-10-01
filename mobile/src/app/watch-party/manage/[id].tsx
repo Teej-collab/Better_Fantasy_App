@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -42,7 +43,7 @@ export default function ManagePartyScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: name ? `Manage "${name}"` : 'Manage party' }} />
       {error && <Text style={styles.error}>{error}</Text>}
       {q.isPending ? (

@@ -3,10 +3,12 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { useAuth } from '@/lib/auth';
@@ -66,8 +68,10 @@ export default function LeaguesScreen() {
     try {
       await action();
       await refreshEverything();
+      haptics.success();
       return true;
     } catch (e) {
+      haptics.error();
       setError(e instanceof Error ? e.message : fallback);
       return false;
     } finally {
@@ -130,7 +134,7 @@ export default function LeaguesScreen() {
   );
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Leagues' }} />
       <View style={{ gap: 4 }}>
         <Display style={styles.title}>Leagues</Display>

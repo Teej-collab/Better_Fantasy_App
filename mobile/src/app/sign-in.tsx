@@ -7,6 +7,7 @@ import { LiveTicker } from '@/components/home/LiveTicker';
 import { IntroOverlay } from '@/components/IntroOverlay';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { setPendingLeagueIntent } from '@/lib/onboarding';
@@ -112,7 +113,10 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
     setError(null);
     const result = await signInWithDiscord();
     // On success the root layout's guard swaps to the app; nothing to do.
-    if (!result.ok && !result.canceled) setError(result.message ?? 'Something went wrong signing you in.');
+    if (!result.ok && !result.canceled) {
+      haptics.error();
+      setError(result.message ?? 'Something went wrong signing you in.');
+    }
     setBusy(false);
   }
 
@@ -128,6 +132,7 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
       if (intent) setPendingLeagueIntent(variant as 'join' | 'create');
       await signInWithToken(token);
     } catch (e) {
+      haptics.error();
       setError(e instanceof Error ? e.message : 'Something went wrong');
       setBusy(false);
     }

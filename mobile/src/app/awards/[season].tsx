@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { ListPanel, Muted, openOwner, PageTitle, RankedCategoryCard, SeasonTabs, SmallHeader } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -21,7 +22,7 @@ export default function AwardsScreen() {
   const [allTime, setAllTime] = useState(false);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: 'Awards' }} />
       <PageTitle>Awards</PageTitle>
       <SeasonTabs

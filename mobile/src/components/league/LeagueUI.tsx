@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 
 export function openOwner(ownerId: number, season?: number) {
@@ -42,14 +43,20 @@ export function SeasonTabs(props: {
       {props.seasons.map((s) => {
         const active = s === props.active && !props.extra?.active;
         return (
-          <Pressable key={s} onPress={() => props.onSelect(s)} style={[styles.tab, active && { backgroundColor: accent, borderColor: accent }]}>
+          <Pressable key={s} onPress={() => {
+            haptics.select();
+            props.onSelect(s);
+          }} style={[styles.tab, active && { backgroundColor: accent, borderColor: accent }]}>
             <Text style={[styles.tabText, active && styles.tabTextActive]}>{s}</Text>
           </Pressable>
         );
       })}
       {props.extra && (
         <Pressable
-          onPress={props.extra.onPress}
+          onPress={() => {
+            haptics.select();
+            props.extra?.onPress();
+          }}
           style={[styles.tab, props.extra.active && { backgroundColor: accent, borderColor: accent }]}>
           <Text style={[styles.tabText, props.extra.active && styles.tabTextActive]}>{props.extra.label}</Text>
         </Pressable>
@@ -63,7 +70,10 @@ export function Segmented<T extends string>(props: { options: { key: T; label: s
   return (
     <View style={styles.segmented}>
       {props.options.map((o) => (
-        <Pressable key={o.key} onPress={() => props.onChange(o.key)} style={[styles.segment, props.value === o.key && styles.segmentActive]}>
+        <Pressable key={o.key} onPress={() => {
+          haptics.select();
+          props.onChange(o.key);
+        }} style={[styles.segment, props.value === o.key && styles.segmentActive]}>
           <Text style={[styles.segmentText, props.value === o.key && styles.segmentTextActive]}>{o.label}</Text>
         </Pressable>
       ))}

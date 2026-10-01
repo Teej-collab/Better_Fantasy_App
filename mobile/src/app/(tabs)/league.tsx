@@ -15,6 +15,7 @@ import {
 } from '@/components/league/Sections';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { LEAGUE_SECTION_ROUTES, trackPageView } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useActiveLeagueName, useSeasons } from '@/lib/queries';
@@ -75,7 +76,10 @@ function LeagueScreenContent() {
           return (
             <Pressable
               key={s.key}
-              onPress={() => setSection(s.key)}
+              onPress={() => {
+                haptics.select();
+                setSection(s.key);
+              }}
               style={[styles.pill, active && { borderColor: accent, backgroundColor: `${accent}22` }]}>
               <Text style={[styles.pillText, active && { color: accent }]}>{s.label}</Text>
             </Pressable>

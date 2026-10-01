@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -456,7 +457,7 @@ function BoardView({ picks, currentPickNumber, myOwnerId }: { picks: DraftPick[]
   }, [picks]);
 
   return (
-    <ScrollView contentContainerStyle={styles.board}>
+    <ScrollView contentContainerStyle={styles.board} refreshControl={<AppRefreshControl />}>
       {rounds.map(([round, roundPicks]) => (
         <View key={round}>
           <Text style={styles.roundTitle}>Round {round}</Text>

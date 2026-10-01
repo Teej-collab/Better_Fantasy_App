@@ -9,6 +9,7 @@ import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { formatGameTime, formatPoints } from '@/lib/format';
 import { openPlayer, useFreeAgents } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
@@ -86,7 +87,10 @@ function PlayersScreenContent() {
                 return (
                   <Pressable
                     key={p.label}
-                    onPress={() => setPosition(p.value)}
+                    onPress={() => {
+                      haptics.select();
+                      setPosition(p.value);
+                    }}
                     style={[styles.chip, active && styles.chipActive]}>
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>{p.label}</Text>
                   </Pressable>
