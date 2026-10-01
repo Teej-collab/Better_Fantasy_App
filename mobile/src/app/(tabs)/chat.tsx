@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
+import { WatchPartyBar } from '@/components/watchparty/WatchPartyBar';
 import { Card, LoadingState, MessageState, PressableRow, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { useChatConversations } from '@/lib/queries';
+import { queryClient, useChatConversations } from '@/lib/queries';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 
 export default function ChatListScreen() {
@@ -14,7 +15,7 @@ export default function ChatListScreen() {
 
   async function onRefresh() {
     setRefreshing(true);
-    await conversations.refetch();
+    await Promise.all([conversations.refetch(), queryClient.invalidateQueries({ queryKey: ['watch-party-rooms'] })]);
     setRefreshing(false);
   }
 
@@ -29,6 +30,7 @@ export default function ChatListScreen() {
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
       <Text style={styles.title}>Chat</Text>
+      <WatchPartyBar />
       <Card style={styles.listCard}>
         {list.map((c, i) => (
           <View key={c.id} style={i > 0 ? styles.divided : undefined}>

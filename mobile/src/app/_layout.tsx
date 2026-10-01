@@ -85,6 +85,10 @@ function RootStack() {
         <Stack.Screen name="trades" options={{ title: 'Trades', headerBackTitle: 'Team' }} />
         <Stack.Screen name="keepers" options={{ title: 'Keepers', headerBackTitle: 'Team' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="watch-party/[id]" options={{ title: 'Watch Party', headerBackTitle: 'Chat' }} />
+        <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />
+        <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
+        <Stack.Screen name="lounge" options={{ title: 'Lounge', headerBackTitle: 'Chat' }} />
       </Stack.Protected>
       <Stack.Protected guard={token === null}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />

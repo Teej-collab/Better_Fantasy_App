@@ -620,6 +620,42 @@ async def issue_ticket(request: Request, purpose: str):
     return {"ticket": ticket}
 
 
+@router.post("/native/web-handoff")
+async def native_web_handoff(request: Request):
+    """Lets the native app open a web page (the Lounge/Watch Party video
+    rooms, which need LiveKit's browser SDK) already signed in. Mints the
+    same single-use native_oauth ticket the OAuth callback does, for the
+    caller's own current session; the in-app browser hands it to the
+    web's /auth/native-complete page, which redeems it via
+    /auth/native/redeem and sets the first-party cookie. Short-lived
+    (TICKET_MAX_AGE_SECONDS) and single-use, same as the OAuth ticket,
+    so it's never more than a one-tap-to-sign-in link."""
+    token = get_session_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+
+    ticket = create_ticket_token(
+        config.session_secret,
+        purpose=NATIVE_OAUTH_TICKET_PURPOSE,
+        user_id=payload["user_id"],
+        owner_id=owner_id,
+        discord_user_id=payload["discord_user_id"],
+        is_commissioner=payload["is_commissioner"],
+        max_age_seconds=TICKET_MAX_AGE_SECONDS,
+        jti=secrets.token_urlsafe(16),
+    )
+    return {"ticket": ticket}
+
+
 @router.post("/logout")
 async def logout(request: Request):
     # Must match the attributes the cookie was actually set with — a

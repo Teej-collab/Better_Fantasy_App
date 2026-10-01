@@ -14,11 +14,16 @@ export default async function ChatPage({
   // backend/app/notifications/formatter.py's _chat_url), so tapping one
   // opens the actual conversation it was about instead of always
   // landing on ChatApp's own most-recent-conversation default.
-  searchParams: Promise<{ conversation?: string }>;
+  searchParams: Promise<{ conversation?: string; party?: string }>;
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const { conversation } = await searchParams;
+  const { conversation, party } = await searchParams;
+  // ?party=<room id> opens that Watch Party room straight away — how the
+  // native app hands "Join video" off to the browser (LiveKit's video
+  // SDK only runs here, not in Expo Go).
+  const parsedPartyId = party !== undefined ? Number(party) : NaN;
+  const initialPartyId = Number.isInteger(parsedPartyId) ? parsedPartyId : null;
   const parsedConversationId = conversation !== undefined ? Number(conversation) : NaN;
   const initialConversationId = Number.isInteger(parsedConversationId) ? parsedConversationId : null;
 
@@ -52,6 +57,7 @@ export default async function ChatPage({
       initialConversations={conversations}
       myOwnerId={me.owner_id}
       initialConversationId={initialConversationId}
+      initialPartyId={initialPartyId}
     />
   );
 }

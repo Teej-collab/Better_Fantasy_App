@@ -1,5 +1,9 @@
 import type {
   AddFreeAgentResult,
+  ChatMember,
+  LoungeRoom,
+  WatchPartyRoomMember,
+  WatchPartyRoomsResponse,
   FeedbackItem,
   MySettings,
   SundayMode,
@@ -328,6 +332,23 @@ export const api = {
   // Short-lived ticket for the chat WebSocket handshake, which can't
   // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
   chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),
+  chatMembers: async () => (await request<{ members: ChatMember[] }>('/chat/members')).members,
+  // A single-use, 60-second sign-in link for the in-app browser
+  // (backend/app/routers/auth.py's native_web_handoff) — see lib/webHandoff.ts.
+  webHandoff: () => request<{ ticket: string }>('/auth/native/web-handoff', { method: 'POST' }),
+  watchPartyRooms: () => request<WatchPartyRoomsResponse>('/watch-party/rooms'),
+  createWatchPartyRoom: (name: string, invitedOwnerIds: number[]) =>
+    request<{ id: number }>('/watch-party/rooms', { method: 'POST', body: JSON.stringify({ name, invited_owner_ids: invitedOwnerIds }) }),
+  watchPartyMembers: (roomId: number) =>
+    request<{ members: WatchPartyRoomMember[]; created_by_owner_id: number }>(`/watch-party/rooms/${roomId}/members`),
+  removeWatchPartyMember: (roomId: number, ownerId: number) =>
+    request<unknown>(`/watch-party/rooms/${roomId}/members/${ownerId}`, { method: 'DELETE' }),
+  // Long-lived (one sitting) ticket for the fantasy-digest socket.
+  watchPartySocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=watch_party_ws', { method: 'POST' }),
+  loungeRooms: async () => (await request<{ rooms: LoungeRoom[] }>('/lounge/rooms')).rooms,
+  createLoungeRoom: (name: string, password: string) =>
+    request<{ id: number; slug: string; name: string }>('/lounge/rooms', { method: 'POST', body: JSON.stringify({ name, password }) }),
+  closeLoungeRoom: (roomId: number) => request<unknown>(`/lounge/rooms/${roomId}`, { method: 'DELETE' }),
   swapLineup: (playerIdA: string, playerIdB: string) =>
     request<{ roster: RosterEntry[] }>('/me/team/lineup/swap', {
       method: 'POST',
@@ -341,6 +362,10 @@ export function chatSocketUrl(ticket: string): string {
 
 export function draftSocketUrl(ticket: string, season: number): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/draft/ws?ticket=${encodeURIComponent(ticket)}&season=${season}`;
+}
+
+export function watchPartySocketUrl(ticket: string, roomId: number): string {
+  return `${API_BASE_URL.replace(/^http/, 'ws')}/watch-party/ws?ticket=${encodeURIComponent(ticket)}&room_id=${roomId}`;
 }
 
 export function gamecastSocketUrl(ticket: string, gameId: string): string {

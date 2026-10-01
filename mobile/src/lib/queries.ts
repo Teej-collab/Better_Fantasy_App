@@ -523,3 +523,20 @@ export function useMySettings() {
 export function useFeedbackList(enabled: boolean) {
   return useQuery({ queryKey: ['feedback'], queryFn: async () => (await api.feedback()).items, enabled });
 }
+
+export function useChatMembers() {
+  return useQuery({ queryKey: ['chat-members'], queryFn: api.chatMembers });
+}
+
+export function useWatchPartyRooms() {
+  // Live dots and member counts change as people come and go.
+  return useQuery({ queryKey: ['watch-party-rooms'], queryFn: api.watchPartyRooms, refetchInterval: 30_000 });
+}
+
+export function useWatchPartyMembers(roomId: number) {
+  return useQuery({ queryKey: ['watch-party-members', roomId], queryFn: () => api.watchPartyMembers(roomId) });
+}
+
+export function useLoungeRooms() {
+  return useQuery({ queryKey: ['lounge-rooms'], queryFn: api.loungeRooms });
+}

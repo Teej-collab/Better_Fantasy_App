@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { joinLoungeRoom, type LoungeJoinResult } from "@/lib/api";
 import { LoungeVideoRoom } from "@/components/lounge/LoungeVideoRoom";
 
@@ -24,6 +25,14 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LoungeJoinResult | null>(null);
+  // ?join=1 (optionally &name=…) is how the native app hands its own
+  // "Join" off to the browser for a lounge the visitor created — it
+  // tries joining once without a password, which the backend allows
+  // only for the room's creator. Anyone else just lands on the form.
+  const searchParams = useSearchParams();
+  const autoJoin = searchParams.get("join") === "1";
+  const autoJoinName = searchParams.get("name") ?? "";
+  const autoJoinTried = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,13 +49,13 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
     };
   }, []);
 
-  async function attemptJoin() {
+  async function attemptJoin(nameOverride?: string) {
     setStage("connecting");
     setError(null);
     try {
       const joined = await joinLoungeRoom(slug, {
         password,
-        display_name: displayName.trim() || undefined,
+        display_name: (nameOverride ?? displayName).trim() || undefined,
       });
       setResult(joined);
       setStage("in-call");
@@ -56,13 +65,24 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
     }
   }
 
+  useEffect(() => {
+    if (!autoJoin || !signedIn || autoJoinTried.current) return;
+    autoJoinTried.current = true;
+    setDisplayName(autoJoinName);
+    void attemptJoin(autoJoinName);
+    // attemptJoin is recreated every render; this runs once, guarded by the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoJoin, signedIn, autoJoinName]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!signedIn && !displayName.trim()) {
       setError("Enter your name to join.");
       return;
     }
-    if (!password) {
+    // A signed-in visitor may be this lounge's own creator, who the
+    // backend lets in without the password — let the server decide.
+    if (!password && !signedIn) {
       setError("Enter the room's password (unless this is your own lounge).");
       return;
     }
@@ -80,7 +100,7 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
           setResult(null);
           setStage("form");
         }}
-        onRejoin={attemptJoin}
+        onRejoin={() => attemptJoin()}
       />
     );
   }

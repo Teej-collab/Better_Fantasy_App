@@ -32,6 +32,12 @@ function NativeCompleteInner() {
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
   const ticket = searchParams.get("ticket");
+  // Set by the native app's web handoff (POST /auth/native/web-handoff)
+  // when it opens a page that needs the browser, like a Watch Party or
+  // Lounge video room. Only a same-site path is honored ("/x", never
+  // "//host" or "https://…"), so this can't become an open redirect.
+  const nextParam = searchParams.get("next");
+  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") && !nextParam.startsWith("/\\") ? nextParam : "/";
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,11 +56,11 @@ function NativeCompleteInner() {
         if (!res.ok) throw new Error("ticket redemption failed");
         const { token } = await res.json();
         await completeSignIn(token);
-        router.replace("/");
+        router.replace(next);
         router.refresh();
       })
       .catch(() => setRedeemError("This sign-in link has expired or already been used — try signing in again."));
-  }, [router, ticket, errorCode]);
+  }, [router, ticket, errorCode, next]);
 
   const message = errorCode
     ? (ERROR_MESSAGES[errorCode] ?? "Something went wrong signing you in.")

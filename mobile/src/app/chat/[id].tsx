@@ -24,7 +24,9 @@ const TYPING_SEND_INTERVAL_MS = 2000;
 type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string };
 
 export default function ConversationScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `title` names a conversation that isn't in the chat list, like a
+  // Watch Party room's chat.
+  const { id, title: titleParam } = useLocalSearchParams<{ id: string; title?: string }>();
   const conversationId = Number(id);
   const insets = useSafeAreaInsets();
   const me = useMe();
@@ -144,7 +146,7 @@ export default function ConversationScreen() {
     ]);
   }
 
-  const headerTitle = conversation ? conversationTitle(conversation) : 'Chat';
+  const headerTitle = conversation ? conversationTitle(conversation) : (titleParam ?? 'Chat');
   if (messages.isPending) return <LoadingState />;
   if (messages.isError && !messages.data) return <MessageState message="Couldn't load messages." />;
 

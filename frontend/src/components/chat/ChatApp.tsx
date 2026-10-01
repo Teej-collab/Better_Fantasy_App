@@ -71,6 +71,7 @@ export function ChatApp({
   initialConversations,
   myOwnerId,
   initialConversationId,
+  initialPartyId,
 }: {
   initialConversations: ChatConversation[];
   myOwnerId: number;
@@ -83,6 +84,10 @@ export function ChatApp({
   // existing default below, same as if no id had been passed at all —
   // never a broken or blank chat screen).
   initialConversationId?: number | null;
+  // Set from ?party=<room id> (see (chat)/chat/page.tsx). Opens that
+  // room once the room list loads, but only if it's actually in it —
+  // a stale or inaccessible id just shows the normal chat screen.
+  initialPartyId?: number | null;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
   // Opens to the conversation list, like iMessage does, rather than
@@ -181,8 +186,15 @@ export function ChatApp({
   const [managingRoom, setManagingRoom] = useState<WatchPartyRoomInfo | null>(null);
 
   useEffect(() => {
-    getWatchPartyRooms().then(setWatchPartyRooms).catch(() => {});
-  }, []);
+    getWatchPartyRooms()
+      .then((rooms) => {
+        setWatchPartyRooms(rooms);
+        if (initialPartyId == null) return;
+        const room = [rooms.open_room, ...rooms.private_rooms].find((r) => r.id === initialPartyId);
+        if (room) setActiveWatchPartyRoom(room);
+      })
+      .catch(() => {});
+  }, [initialPartyId]);
 
   async function createParty(name: string, invitedOwnerIds: number[]) {
     const id = await createWatchPartyRoom(name, invitedOwnerIds);

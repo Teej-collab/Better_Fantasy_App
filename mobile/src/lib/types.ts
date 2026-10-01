@@ -809,3 +809,38 @@ export type MyKeepers = {
   }[];
   selections: { espn_player_id: number; player_name: string; consecutive_years_kept: number }[];
 };
+
+// Chat's DM-eligible league members (GET /chat/members).
+export type ChatMember = { owner_id: number; display_name: string; team_name: string; online: boolean };
+
+// Watch Party (backend/app/routers/watch_party.py).
+export type WatchPartyRoom = {
+  id: number;
+  name: string;
+  kind: 'open' | 'private';
+  created_by_owner_id: number;
+  member_count: number;
+  conversation_id: number;
+  // Someone's in the room right now.
+  is_live: boolean;
+};
+
+export type WatchPartyRoomsResponse = { open_room: WatchPartyRoom; private_rooms: WatchPartyRoom[] };
+
+export type WatchPartyRoomMember = { owner_id: number; display_name: string };
+
+// Pushed over the watch-party socket (app/domain/watch_party.py).
+export type FantasyDigest = {
+  type: 'fantasy_digest';
+  season: number;
+  week: number;
+  matchups: {
+    matchup_id: number;
+    home: { team_name: string; owner_name: string; score: number | null };
+    away: { team_name: string; owner_name: string; score: number | null };
+    sweat: { score: number; label: string | null };
+  }[];
+};
+
+// Lounge (backend/app/routers/lounge.py).
+export type LoungeRoom = { id: number; slug: string; name: string; closed: boolean; created_at: string };

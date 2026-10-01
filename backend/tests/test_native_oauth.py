@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from httpx import ASGITransport, AsyncClient
 
-from app.auth.session import create_ticket_token, decode_session_token
+from app.auth.session import create_session_token, create_ticket_token, decode_session_token, decode_ticket_token
 from app.main import app
 from tests.conftest import make_safe_session_user_id_for_owner
 
@@ -262,3 +262,32 @@ async def test_failed_redemption_never_creates_an_authenticated_session(pool, mo
         # so this client has no cookie-based session at all.
         me_resp = await client.get("/auth/me")
     assert me_resp.status_code == 401
+
+
+# ---- web handoff: native app → signed-in in-app browser ------------------
+
+
+async def test_web_handoff_mints_a_native_ticket_for_the_caller_own_session(pool, monkeypatch):
+    """Only decoded here, not redeemed — the endpoint picks its own
+    random jti, and a redemption would leave a used_oauth_tickets row
+    without the "test-" prefix cleanup_test_season sweeps by. Redemption
+    itself is the same code path every test above already covers."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, "handoff-1")
+    user_id = await make_safe_session_user_id_for_owner(pool, owner_id)
+    session = create_session_token(_SESSION_SECRET, user_id=user_id, owner_id=owner_id)
+
+    async with _client() as client:
+        resp = await client.post("/auth/native/web-handoff", headers={"Authorization": f"Bearer {session}"})
+
+    assert resp.status_code == 200
+    payload = decode_ticket_token(_SESSION_SECRET, resp.json()["ticket"], "native_oauth")
+    assert payload["user_id"] == user_id
+    assert payload["owner_id"] == owner_id
+    assert payload["jti"]
+
+
+async def test_web_handoff_requires_a_session():
+    async with _client() as client:
+        resp = await client.post("/auth/native/web-handoff")
+    assert resp.status_code == 401
