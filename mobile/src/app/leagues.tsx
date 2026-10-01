@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -12,6 +13,7 @@ import { haptics } from '@/lib/haptics';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { useAuth } from '@/lib/auth';
+import { canScanQr, joinLinkFor, scanInvite, type ScannedInvite } from '@/lib/qrJoin';
 import { queryClient, useMe } from '@/lib/queries';
 import type { LeagueInfo } from '@/lib/types';
 
@@ -46,7 +48,9 @@ function useMyLeagues() {
 // create a league and join one by invite code. Plus a co-owner invite
 // code box — a co-owner link opens the website, so it can be pasted here.
 export default function LeaguesScreen() {
-  const params = useLocalSearchParams<{ focus?: string }>();
+  // ?join=CODE: a scanned league QR opened as an app link.
+  const params = useLocalSearchParams<{ focus?: string; join?: string }>();
+  const focus = params.join ? 'join' : params.focus;
   const accent = useAppearance().accent;
   const { signInWithToken } = useAuth();
   const myUserId = useMe().data?.user_id;
@@ -54,7 +58,7 @@ export default function LeaguesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [newLeagueName, setNewLeagueName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(params.join ?? '');
   const [coOwnerCode, setCoOwnerCode] = useState('');
   const [teamNames, setTeamNames] = useState<Record<number, string>>({});
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -79,6 +83,47 @@ export default function LeaguesScreen() {
     }
   }
 
+  async function joinLeague(code: string) {
+    if (await run('join', () => api.joinLeague(code), "Couldn't join that league")) {
+      setInviteCode('');
+      setNotice("You're in — welcome to the league.");
+    }
+  }
+
+  async function joinAsCoOwner(code: string) {
+    const ok = await run(
+      'coowner',
+      async () => {
+        const { token } = await api.redeemCoOwnerInvite(code);
+        await signInWithToken(token);
+      },
+      "Couldn't join as co-owner",
+    );
+    if (ok) {
+      setCoOwnerCode('');
+      setNotice("You're in — that team is now yours to manage too.");
+    }
+  }
+
+  async function scan() {
+    const onInvite = (invite: ScannedInvite) => {
+      haptics.success();
+      if (invite.kind === 'league') {
+        setInviteCode(invite.code);
+        void joinLeague(invite.code);
+      } else {
+        setCoOwnerCode(invite.code);
+        void joinAsCoOwner(invite.code);
+      }
+    };
+    const result = await scanInvite(onInvite);
+    if (result === 'denied') {
+      Alert.alert('Camera is off', 'Allow camera access for Weekend League in Settings to scan a league QR code.');
+    } else if (result === 'unavailable') {
+      Alert.alert("Can't scan here", 'Type the invite code instead.');
+    }
+  }
+
   if (q.isPending) return <LoadingState />;
   const details = q.data?.details ?? [];
   const activeId = q.data?.activeLeagueId ?? null;
@@ -92,7 +137,7 @@ export default function LeaguesScreen() {
           onChangeText={setNewLeagueName}
           placeholder="League name"
           placeholderTextColor={Colors.textSecondary}
-          autoFocus={params.focus === 'create'}
+          autoFocus={focus === 'create'}
           style={[styles.input, styles.flex]}
         />
         <Pressable
@@ -118,18 +163,21 @@ export default function LeaguesScreen() {
           placeholderTextColor={Colors.textSecondary}
           autoCapitalize="none"
           autoCorrect={false}
-          autoFocus={params.focus === 'join'}
+          autoFocus={focus === 'join' && !params.join}
           style={[styles.input, styles.flex]}
         />
         <Pressable
-          onPress={async () => {
-            if (await run('join', () => api.joinLeague(inviteCode.trim()), "Couldn't join that league")) setInviteCode('');
-          }}
+          onPress={() => void joinLeague(inviteCode.trim())}
           disabled={busy !== null || !inviteCode.trim()}
           style={[styles.outline, (busy !== null || !inviteCode.trim()) && styles.dim]}>
           {busy === 'join' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.outlineText}>Join</Text>}
         </Pressable>
       </View>
+      {canScanQr && (
+        <Pressable onPress={() => void scan()} disabled={busy !== null} accessibilityRole="button" style={[styles.outline, styles.scanButton]}>
+          <Text style={styles.outlineText}>Scan a league QR code</Text>
+        </Pressable>
+      )}
     </NeonPanel>
   );
 
@@ -144,8 +192,8 @@ export default function LeaguesScreen() {
       {notice && <Text style={styles.notice}>{notice}</Text>}
 
       {/* Someone who came here to join or create sees that step first. */}
-      {params.focus === 'join' && joinSection}
-      {params.focus === 'create' && createSection}
+      {focus === 'join' && joinSection}
+      {focus === 'create' && createSection}
 
       <NeonPanel color={accent} contentStyle={styles.gap}>
         <Text style={styles.sectionTitle}>Your leagues</Text>
@@ -199,8 +247,8 @@ export default function LeaguesScreen() {
         )}
       </NeonPanel>
 
-      {params.focus !== 'create' && createSection}
-      {params.focus !== 'join' && joinSection}
+      {focus !== 'create' && createSection}
+      {focus !== 'join' && joinSection}
 
       <NeonPanel color={accent} contentStyle={styles.gap}>
         <Text style={styles.sectionTitle}>Join as a co-owner</Text>
@@ -218,21 +266,7 @@ export default function LeaguesScreen() {
             style={[styles.input, styles.flex]}
           />
           <Pressable
-            onPress={async () => {
-              const code = coOwnerCode.trim().replace(/^.*[?&]code=/, '');
-              const ok = await run(
-                'coowner',
-                async () => {
-                  const { token } = await api.redeemCoOwnerInvite(code);
-                  await signInWithToken(token);
-                },
-                "Couldn't join as co-owner",
-              );
-              if (ok) {
-                setCoOwnerCode('');
-                setNotice("You're in — that team is now yours to manage too.");
-              }
-            }}
+            onPress={() => void joinAsCoOwner(coOwnerCode.trim().replace(/^.*[?&]code=/, ''))}
             disabled={busy !== null || !coOwnerCode.trim()}
             style={[styles.outline, (busy !== null || !coOwnerCode.trim()) && styles.dim]}>
             {busy === 'coowner' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.outlineText}>Join</Text>}
@@ -267,6 +301,8 @@ function LeagueBlock(props: {
   const { league } = props;
   const accent = useAppearance().accent;
   const isCommish = league.role === 'commissioner';
+  const [showQr, setShowQr] = useState(false);
+  const joinLink = joinLinkFor(league.invite_code);
   return (
     <View style={styles.block}>
       <View style={styles.blockHead}>
@@ -309,11 +345,28 @@ function LeagueBlock(props: {
           Invite code: <Text style={[styles.small, { fontFamily: Fonts.mono }]}>{league.invite_code}</Text>
         </Text>
         <Pressable
-          onPress={() => void Share.share({ message: `Join my Weekend League "${league.name}" with invite code ${league.invite_code}` })}
+          onPress={() =>
+            void Share.share({ message: `Join my Weekend League "${league.name}" with invite code ${league.invite_code}: ${joinLink}` })
+          }
           style={styles.smallPill}>
           <Text style={styles.smallPillText}>Share</Text>
         </Pressable>
+        <Pressable onPress={() => setShowQr((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: showQr }} style={styles.smallPill}>
+          <Text style={styles.smallPillText}>{showQr ? 'Hide QR' : 'Show QR'}</Text>
+        </Pressable>
       </View>
+
+      {showQr && (
+        <View style={styles.qrBlock}>
+          {/* Dark on white with a quiet zone: what every scanner reads best. */}
+          <View style={styles.qrCard} accessible accessibilityRole="image" accessibilityLabel={`QR code to join ${league.name}`}>
+            <QRCode value={joinLink} size={200} color="#000000" backgroundColor="#ffffff" ecl="M" />
+          </View>
+          <Text style={[styles.small, styles.qrCaption]}>
+            Have a friend scan this in Leagues → Join a league, or with their phone&apos;s camera.
+          </Text>
+        </View>
+      )}
 
       {props.teams.length > 0 && (
         <View>
@@ -414,6 +467,10 @@ const styles = StyleSheet.create({
   rolePill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 1 },
   smallPill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 5 },
   smallPillText: { color: Colors.text, fontSize: 12, fontWeight: '500' },
+  scanButton: { alignSelf: 'stretch' },
+  qrBlock: { alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
+  qrCard: { backgroundColor: '#ffffff', padding: 16, borderRadius: Radius.md },
+  qrCaption: { textAlign: 'center' },
   smallPillDark: { color: '#06110a', fontSize: 12, fontWeight: '600' },
   sub: { gap: 6, borderRadius: 8, backgroundColor: Colors.tileRaised, padding: Spacing.sm },
 });

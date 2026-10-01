@@ -112,6 +112,10 @@ export default function LeaguesPage() {
   useEffect(() => {
     if (leagues === null || scrolledToHash.current) return;
     scrolledToHash.current = true;
+    // A league QR code from the app (mobile/src/lib/qrJoin.ts) links
+    // here as ?join=CODE#join-league — fill the code in, ready to Join.
+    const joinCode = new URLSearchParams(window.location.search).get("join");
+    if (joinCode) setTimeout(() => setInviteCode(joinCode), 0);
     const hash = window.location.hash.slice(1);
     if (!hash) return;
     document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });

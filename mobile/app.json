@@ -78,6 +78,14 @@
             }
           ]
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Weekend League uses your camera to scan league invite QR codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {
