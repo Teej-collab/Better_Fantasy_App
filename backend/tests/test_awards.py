@@ -230,7 +230,8 @@ async def test_weekly_recap_get_returns_cached_narrative(pool, monkeypatch):
 
     resp = await _get(f"/seasons/{TEST_SEASON}/weeks/5/recap", cookies)
     assert resp.status_code == 200
-    assert resp.json() == {"narrative": {"text": "A real cached weekly recap.", "kind": "recap"}}
+    # `released`: the recap goes live at the Tuesday flip (app/domain/recap_release.py).
+    assert resp.json() == {"narrative": {"text": "A real cached weekly recap.", "kind": "recap", "released": True}}
 
 
 async def test_weekly_recap_generate_requires_session(monkeypatch):
@@ -276,4 +277,4 @@ async def test_weekly_recap_generate_as_commissioner_fills_and_returns_narrative
 
     # A plain read afterward picks up the now-cached result without regenerating.
     get_resp = await _get(f"/seasons/{TEST_SEASON}/weeks/{week}/recap", cookies)
-    assert get_resp.json() == {"narrative": {"text": "Real generated text.", "kind": "recap"}}
+    assert get_resp.json() == {"narrative": {"text": "Real generated text.", "kind": "recap", "released": True}}

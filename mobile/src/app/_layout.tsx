@@ -114,6 +114,8 @@ function RootStack() {
           <Stack.Screen name="waivers" options={{ title: 'My claims', headerBackTitle: 'Players' }} />
           <Stack.Screen name="player/[id]" options={{ title: 'Player', headerBackTitle: 'Back' }} />
           <Stack.Screen name="draft" options={{ title: 'Draft Room', headerBackTitle: 'Home' }} />
+          <Stack.Screen name="recap/[season]/[week]" options={{ title: 'Recap' }} />
+          <Stack.Screen name="admin/recaps" options={{ title: 'Recaps', headerBackTitle: 'Admin' }} />
           <Stack.Screen name="gamecast/index" options={{ title: 'Gamecast' }} />
           <Stack.Screen name="gamecast/[id]" options={{ title: 'Gamecast', headerBackTitle: 'Back' }} />
           <Stack.Screen name="chug" options={{ title: 'Chug', headerBackTitle: 'Back' }} />

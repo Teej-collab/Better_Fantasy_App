@@ -239,6 +239,23 @@ def held_player_updates(payloads: list[dict]) -> dict:
     return _payload(f"🩹 {len(payloads)} player updates overnight", body, "/team", "player_news", "held-player-updates")
 
 
+def recap_url(season: int, week: int) -> str:
+    return f"/seasons/{season}/weeks/{week}/recap"
+
+
+def weekly_recap_live(season: int, week: int, recap_text: str) -> dict:
+    """The Tuesday-flip push (app/domain/recap_release.py). The body is
+    the recap's own opening line, so the notification itself is a
+    teaser. `from=push` on the url is how the recap page tells a
+    notification tap apart for the admin Recaps stats."""
+    lines = [line.strip().lstrip("#").strip() for line in recap_text.splitlines()]
+    opening = next((line for line in lines if line), "") or "The week's winners, losers and roasts are in."
+    return _payload(
+        f"📰 Week {week} Recap — LIVE NOW", _preview(opening), f"{recap_url(season, week)}?from=push",
+        "weekly_recap", tag=f"recap-{season}-{week}",
+    )
+
+
 # Admin-only app-health alerts (app/notifications/admin_alerts.py) —
 # sent to site admins, never to the league at large.
 
@@ -264,3 +281,12 @@ def admin_error_alert(source: str, message: str, route: str | None, *, is_new: b
 
 def admin_security_alert(body: str) -> dict:
     return _payload("🛡️ Sign-in attack?", body, "/admin/security", "admin_security", tag="admin-security")
+
+
+def admin_feedback_alert(submitted_by: str, message: str, has_image: bool) -> dict:
+    body = _preview(message) or ("Sent a screenshot" if has_image else "")
+    if has_image and message:
+        body = _preview(f"{message} 📎")
+    return _payload(
+        f"💬 New feedback from {submitted_by}", body, "/settings?section=feedback", "admin_feedback",
+    )

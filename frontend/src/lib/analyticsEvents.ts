@@ -184,6 +184,13 @@ export function trackGamecastGameSelected(gameId: string): void {
   trackFeature("gamecast_game_selected", { game_id: gameId });
 }
 
+// Someone reading a week's recap — its page, or expanding it on Home.
+// `source`: "push" (tapped the LIVE NOW notification), "home" or "page".
+// Feeds Admin > Recaps (backend/app/queries/admin_recaps.py).
+export function trackRecapOpened(season: number, week: number, source: "push" | "home" | "page"): void {
+  trackFeature("recap_opened", { season, week, source });
+}
+
 // Human-readable labels for the admin dashboard — every event_name
 // this taxonomy can produce (NAV_EVENT_NAMES + FEATURE_EVENTS' keys)
 // gets a real label here, not a raw "nav_power_rankings" string on
@@ -222,6 +229,7 @@ const EVENT_LABELS: Record<string, string> = {
   league_switched: "League Switched",
   gamecast_game_selected: "Gamecast Game Selected",
   app_crash: "App Crash",
+  recap_opened: "Recap Opened",
 };
 
 export function eventLabel(eventName: string): string {

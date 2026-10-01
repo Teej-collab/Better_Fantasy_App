@@ -37,7 +37,8 @@ _ALWAYS_SEND = {
     "admin_error",
     "admin_security",
 }
-_HOLD_UNTIL_MORNING = {"injury_update", "player_news"}
+# The recap and new feedback stay worth reading in the morning.
+_HOLD_UNTIL_MORNING = {"injury_update", "player_news", "weekly_recap", "admin_feedback"}
 
 SEND = "send"
 DEFER = "defer"

@@ -11,19 +11,23 @@ vulnerability alongside league.py's/profile.py's (see league.py's module
 docstring and app/auth/league_context.py's require_league_access for the
 full story).
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_league_access, require_league_commissioner
+from app.auth.league_context import require_commissioner_of, require_league_access, require_league_commissioner
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
-from app.domain import awards_all_time, narrative_engine, team_profile, weekly_awards
+from app.domain import awards_all_time, narrative_engine, recap_release, team_profile, weekly_awards
 from app.domain.draft_grades import get_draft_grade, get_draft_grades_for_season
 from app.domain.draft_narratives import get_draft_narrative
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import awards as awards_queries
 from app.queries import draft as draft_queries
 from app.queries import league as league_queries
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["awards"])
 
@@ -155,17 +159,39 @@ async def weekly_awards_endpoint(
 
 @router.get("/seasons/{season}/weeks/{week}/recap")
 async def weekly_recap(
-    season: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+    season: int,
+    week: int,
+    request: Request,
+    league_id: int = Depends(require_league_access),
+    pool=Depends(get_pool),
 ):
     """Cache-only read of the whole-week narrative — same reasoning as
     narrative_engine.get_cached_weekly_narrative's own docstring, this
     must never trigger a live generation on a plain page view. `null`
     text means nothing's been generated yet (or nothing's eligible
     yet); see the POST below for the commissioner-only action that
-    actually generates it."""
+    actually generates it.
+
+    A recap goes live at the Tuesday flip (app/domain/recap_release.py):
+    until then members get null, and commissioners get it early with
+    `released: false` so they can proof or regenerate it."""
     async with pool.acquire() as conn:
         narrative = await narrative_engine.get_cached_weekly_narrative(conn, season, week, league_id)
+        if narrative is not None and narrative["kind"] == "recap":
+            released = await recap_release.is_recap_released(conn, season, week)
+            if not released and not await _is_commissioner(conn, request, league_id):
+                narrative = None
+            else:
+                narrative = {**narrative, "released": released}
     return {"narrative": narrative}
+
+
+async def _is_commissioner(conn, request: Request, league_id: int) -> bool:
+    try:
+        await require_commissioner_of(conn, _require_session(request), league_id)
+    except HTTPException:
+        return False
+    return True
 
 
 @router.post("/seasons/{season}/weeks/{week}/recap/generate")
@@ -188,4 +214,16 @@ async def generate_weekly_recap(
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         result = await narrative_engine.generate_weekly_recap(conn, season, week, league_id, force=force)
+        # Generated after the flip already happened (it failed or was
+        # skipped at the time): it's live right away, so release it now —
+        # with the push only for the week that just flipped, never for an
+        # older week being regenerated.
+        # Bookkeeping only — never a reason for the regeneration to fail.
+        try:
+            current_week = await league_queries.get_cached_current_week(conn, season)
+            if recap_release.is_released_week(week, current_week):
+                just_flipped = current_week is not None and week == current_week - 1
+                await recap_release.release_and_notify(conn, season, week, league_id, notify=just_flipped)
+        except Exception:
+            logger.exception("Recap release after generation failed (season=%s week=%s)", season, week)
     return result

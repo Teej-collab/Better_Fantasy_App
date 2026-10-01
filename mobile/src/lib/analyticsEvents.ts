@@ -32,6 +32,7 @@ const EVENT_LABELS: Record<string, string> = {
   league_switched: 'League Switched',
   gamecast_game_selected: 'Gamecast Game Selected',
   app_crash: 'App Crash',
+  recap_opened: 'Recap Opened',
 };
 
 export function eventLabel(eventName: string): string {

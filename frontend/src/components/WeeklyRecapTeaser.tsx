@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { generateWeeklyRecap, type WeeklyNarrative } from "@/lib/api";
+import { trackRecapOpened } from "@/lib/analyticsEvents";
 import { DESTINATIONS } from "@/lib/navDestinations";
 import { panelGlowStyle } from "@/lib/sectionColors";
 
@@ -61,6 +62,15 @@ export function WeeklyRecapTeaser({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  // Expanding it here is reading it — counted once per visit for Admin > Recaps.
+  const tracked = useRef(false);
+  function toggle() {
+    if (!expanded && !tracked.current) {
+      tracked.current = true;
+      trackRecapOpened(season, week, "home");
+    }
+    setExpanded((v) => !v);
+  }
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fullText = recap.text.trim();
@@ -106,10 +116,15 @@ export function WeeklyRecapTeaser({
       </div>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
+      {recap.released === false && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+          Commissioner preview — goes live for the league at the Tuesday flip.
+        </p>
+      )}
 
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={toggle}
         aria-expanded={expanded}
         className="flex flex-col gap-2 text-left transition-transform active:scale-[0.99]"
       >

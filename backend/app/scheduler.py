@@ -156,7 +156,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import _require
 from app.db import get_pool
-from app.domain import draft_engine, narrative_engine, weekly_stats
+from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
@@ -465,6 +465,17 @@ async def _run_week_settlement_job():
             logger.exception(
                 "Power rank lock failed (season=%s week=%s league_id=%s)", season, settle_week, league_id
             )
+
+    # The flip is also when the week's recap goes live and everyone gets
+    # "Week N Recap LIVE NOW" (app/domain/recap_release.py) — once per
+    # league and week, however many times this runs.
+    for row in league_rows:
+        league_id = row["league_id"]
+        try:
+            async with pool.acquire() as conn:
+                await recap_release.release_and_notify(conn, season, settle_week, league_id)
+        except Exception:
+            logger.exception("Recap release failed (season=%s week=%s league_id=%s)", season, settle_week, league_id)
 
     record_job_run("week_settlement")
 

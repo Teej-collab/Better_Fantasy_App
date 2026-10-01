@@ -75,6 +75,7 @@ export function webRouteFor(pathname: string): string {
     [/^\/team\/(.+)$/, '/teams/$1'],
     [/^\/awards\/(.+)$/, '/seasons/$1/awards'],
     [/^\/draft-grades\/(.+)$/, '/seasons/$1/draft'],
+    [/^\/recap\/([^/]+)\/([^/]+)$/, '/seasons/$1/weeks/$2/recap'],
     [/^\/watch-party(\/.*)?$/, '/chat'], // watch parties live inside Chat on the web
     [/^\/sign-in$/, '/login'],
   ];
@@ -128,6 +129,20 @@ export function trackGamecastGameSelected(gameId: string): void {
     event_name: 'gamecast_game_selected',
     event_type: 'feature',
     metadata: { game_id: gameId },
+    device_type: deviceType,
+    platform,
+  });
+}
+
+// Someone reading a week's recap — its screen, or expanding it on Home.
+// `source`: "push" (the LIVE NOW notification), "home" or "page".
+export function trackRecapOpened(season: number, week: number, source: 'push' | 'home' | 'page'): void {
+  if (!hasSessionToken()) return;
+  sendQuietly('/admin/track', {
+    session_id: sessionId,
+    event_name: 'recap_opened',
+    event_type: 'feature',
+    metadata: { season, week, source },
     device_type: deviceType,
     platform,
   });

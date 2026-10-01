@@ -1,19 +1,23 @@
 """
 Push alerts to the site's admins about app health — crashes, new errors,
-and sign-in attacks — so a problem reaches the owner when it happens
-instead of whenever they next open the admin dashboard.
+and sign-in attacks — and about new feedback, so a problem (or a
+suggestion) reaches the owner when it happens instead of whenever they
+next open the admin dashboard.
 
 Recipients are everyone app/auth/league_context.py's is_site_admin
 would let into /admin (League #1's commissioner, or users.is_admin),
-on every device they've registered for push. These types are in
-quiet_hours._ALWAYS_SEND, so they arrive regardless of quiet hours.
+on every device they've registered for push. The health alerts are in
+quiet_hours._ALWAYS_SEND, so they arrive regardless of quiet hours;
+feedback is held until quiet hours end instead.
 
 Each alert is throttled so a bad game day is a few pings, not dozens:
 - a crash alerts only if it's the first on that page in the last hour;
 - an error alerts only if it's the first of its kind (fingerprint) in
   the last 6 hours;
 - failed sign-ins alert once when one IP reaches 10 in 15 minutes, or
-  one account reaches 5.
+  one account reaches 5;
+- feedback alerts on every submission (it's rare, and each one matters),
+  except to the admin who sent it.
 Every event is still recorded — the throttle only limits the pings.
 """
 import logging
@@ -47,9 +51,9 @@ async def admin_owner_ids(conn) -> list[int]:
     return [r["owner_id"] for r in rows]
 
 
-async def _send(conn, payload: dict) -> None:
+async def _send(conn, payload: dict, exclude_owner_id: int | None = None) -> None:
     try:
-        owner_ids = await admin_owner_ids(conn)
+        owner_ids = [o for o in await admin_owner_ids(conn) if o != exclude_owner_id]
         if owner_ids:
             await dispatcher.send_to_owners(conn, owner_ids, payload)
     except Exception:
@@ -132,3 +136,8 @@ async def maybe_alert_login_burst(conn, ip: str | None, email: str | None) -> No
             await _send(conn, formatter.admin_security_alert(
                 f"{by_email} failed sign-ins for {email} in {window} minutes."
             ))
+
+
+async def alert_feedback(conn, submitted_by: str, message: str, has_image: bool, submitter_owner_id: int | None) -> None:
+    """Called right after a feedback row is inserted."""
+    await _send(conn, formatter.admin_feedback_alert(submitted_by, message, has_image), exclude_owner_id=submitter_owner_id)

@@ -19,6 +19,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
       { href: '/admin/live', label: 'Live', icon: '◍' },
       { href: '/admin/engagement', label: 'Engagement', icon: '◭' },
       { href: '/admin/navigation', label: 'Navigation', icon: '◉' },
+      { href: '/admin/recaps', label: 'Recaps', icon: '◧' },
     ],
   },
   {

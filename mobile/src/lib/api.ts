@@ -498,6 +498,7 @@ export const api = {
     error: (fingerprint: string) => request<A.AdminErrorDetail>(`/admin/errors/${encodeURIComponent(fingerprint)}`),
     security: (days = 7) => request<A.AdminSecurity>(`/admin/security?days=${days}`),
     audit: (limit = 50, offset = 0) => request<A.AdminAuditLog>(`/admin/audit?limit=${limit}&offset=${offset}`),
+    recaps: () => request<A.AdminRecaps>('/admin/recaps'),
   },
   playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>
     request<PlayerViewData>(`/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(','))}`),

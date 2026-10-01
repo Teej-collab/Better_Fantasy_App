@@ -39,6 +39,7 @@ from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync
 from app import monitoring
 from app.notifications import admin_alerts
+from app.queries import admin_recaps
 from app.queries import (
     admin_analytics,
     admin_engagement,
@@ -553,6 +554,18 @@ async def get_live(request: Request):
     async with pool.acquire() as conn:
         await require_site_admin(conn, payload)
         return await admin_engagement.get_live(conn)
+
+
+@router.get("/recaps")
+async def get_recaps(request: Request, league_id: int = DEFAULT_LEAGUE_ID, season: int | None = None):
+    """Admin > Recaps: each week's recap release, push reach and readers
+    (app/queries/admin_recaps.py)."""
+    payload = _require_session(request)
+    season = season or int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_recaps.get_recap_stats(conn, league_id, season)
 
 
 @router.get("/paths")

@@ -101,6 +101,10 @@ FEATURE_EVENTS: dict[str, set[str]] = {
     "league_switched": {"to_league_id"},
     "gamecast_game_selected": {"game_id"},
     "app_crash": {"trail", "uptime_s", "silent_s", "os", "screen", "native"},
+    # Someone actually reading a week's recap — its page, or expanding it
+    # on Home. `source`: "push" (tapped the LIVE NOW notification),
+    # "home" or "page". Feeds the admin dashboard's Recaps page.
+    "recap_opened": {"season", "week", "source"},
 }
 
 # app_crash rides the feature event type only so it needs no schema

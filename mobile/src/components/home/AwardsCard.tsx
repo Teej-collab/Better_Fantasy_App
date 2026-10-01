@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { SectionTitle } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { trackRecapOpened } from '@/lib/analytics';
 import type { WeeklyAwards, WeeklyNarrative } from '@/lib/types';
 
 type Tile = { emoji: string; label: string; accent: string; title: string; subtitle: string };
@@ -83,7 +84,7 @@ export function AwardsCard(props: {
   awards: WeeklyAwards;
   awardsWeek: number;
   currentWeek: number;
-  recap: { recap: WeeklyNarrative; week: number } | null;
+  recap: { recap: WeeklyNarrative; week: number; season: number } | null;
 }) {
   const tiles = buildAwardTiles(props.awards);
   return (
@@ -100,7 +101,7 @@ export function AwardsCard(props: {
           </View>
         ))}
       </View>
-      {props.recap && <RecapTeaser recap={props.recap.recap} week={props.recap.week} />}
+      {props.recap && <RecapTeaser recap={props.recap.recap} week={props.recap.week} season={props.recap.season} />}
     </View>
   );
 }
@@ -109,8 +110,17 @@ const RECAP_TEASER_MAX_CHARS = 220;
 
 // Port of the web's WeeklyRecapTeaser: a 220-character preview that
 // expands in place to the full AI recap.
-function RecapTeaser({ recap, week }: { recap: WeeklyNarrative; week: number }) {
+function RecapTeaser({ recap, week, season }: { recap: WeeklyNarrative; week: number; season: number }) {
   const [expanded, setExpanded] = useState(false);
+  // Expanding it is reading it — counted once per visit for Admin > Recaps.
+  const tracked = useRef(false);
+  function toggle() {
+    if (!expanded && !tracked.current) {
+      tracked.current = true;
+      trackRecapOpened(season, week, 'home');
+    }
+    setExpanded((v) => !v);
+  }
   const full = recap.text.trim();
   const flat = full.replace(/\s+/g, ' ');
   const truncatable = flat.length > RECAP_TEASER_MAX_CHARS;
@@ -119,7 +129,8 @@ function RecapTeaser({ recap, week }: { recap: WeeklyNarrative; week: number }) 
   return (
     <NeonPanel color={SectionColors.awards} contentStyle={styles.recap}>
       <Text style={[styles.recapKicker, { color: SectionColors.awards }]}>📰 Week {week} Recap</Text>
-      <Pressable onPress={() => setExpanded((v) => !v)} style={styles.recapBody}>
+      {recap.released === false && <Text style={styles.recapPreview}>Commissioner preview — goes live for the league at the Tuesday flip.</Text>}
+      <Pressable onPress={toggle} style={styles.recapBody}>
         <Text style={styles.recapText}>{expanded ? full : `${snippet}${truncatable ? '…' : ''}`}</Text>
         <View style={[styles.recapButton, { backgroundColor: `${SectionColors.awards}2e` }]}>
           <Text style={styles.recapButtonText}>{expanded ? 'Show less ↑' : 'Read the full recap →'}</Text>
@@ -146,6 +157,7 @@ const styles = StyleSheet.create({
   tileTitle: { color: Colors.text, fontSize: 14, fontWeight: '500' },
   tileSubtitle: { color: Colors.textSecondary, fontSize: 12 },
   recap: { gap: Spacing.sm },
+  recapPreview: { color: '#fbbf24', fontSize: 12, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.1)', paddingHorizontal: 10, paddingVertical: 6 },
   recapKicker: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   recapBody: { gap: Spacing.sm },
   recapText: { color: 'rgba(255,255,255,0.8)', fontSize: 16, lineHeight: 24 },

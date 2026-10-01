@@ -521,7 +521,9 @@ export type WeekPowerRanking = {
 // deadline is null until week 1 finishes and there's a chug owed.
 export type ChugDeadline = { deadline: string | null; is_past: boolean };
 
-export type WeeklyNarrative = { text: string; kind: 'preview' | 'recap' };
+// `released` (recaps only): false until the Tuesday flip — only a
+// commissioner gets an unreleased recap at all (backend/app/domain/recap_release.py).
+export type WeeklyNarrative = { text: string; kind: 'preview' | 'recap'; released?: boolean };
 
 export type ChugFeedEntry = {
   id: number;

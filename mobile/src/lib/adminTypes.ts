@@ -247,3 +247,14 @@ export type AdminAuditLog = {
     actor_user_id: number | null;
   }[];
 };
+
+export type AdminRecapWeek = {
+  week: number;
+  released_at: string | null;
+  notified: number;
+  member_count: number;
+  readers: { owner_id: number; display_name: string; first_opened_at: string; opens: number; source: string | null }[];
+  not_read: { owner_id: number; display_name: string }[];
+};
+
+export type AdminRecaps = { league_id: number; league_name: string | null; season: number; weeks: AdminRecapWeek[] };

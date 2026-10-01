@@ -5,6 +5,9 @@ per the owner's own call: store the submission, give a simple page for the
 commissioner to check it. No email, no webhook — those are real follow-ups
 if this turns out to need them, not built speculatively now.
 
+Each new submission also pushes the site's admins (app/notifications/
+admin_alerts.py's alert_feedback) so none get missed.
+
 Any signed-in account (league-less or not) can submit; only a commissioner
 of their own active league can list submissions — same "commissioner only"
 concept every other admin-ish surface in this app already uses
@@ -19,6 +22,8 @@ from app.auth.league_context import require_league_commissioner, resolve_owner_i
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
 from app.image_url import validate_blob_image_url
+from app import monitoring
+from app.notifications import admin_alerts
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -78,6 +83,13 @@ async def submit_feedback(body: FeedbackRequest, request: Request):
             "INSERT INTO feedback (user_id, submitted_by, message, page_url, image_url) VALUES ($1, $2, $3, $4, $5)",
             payload["user_id"], submitted_by, message, body.page_url, image_url,
         )
+
+    if not monitoring.is_test_request(request):
+        async def alert():
+            async with pool.acquire() as conn:
+                await admin_alerts.alert_feedback(conn, submitted_by, message, bool(image_url), owner_id)
+
+        monitoring.run_in_background(alert())
     return {"status": "ok"}
 
 

@@ -302,8 +302,8 @@ export function useHomeRecap(season: number | null, week: number | null) {
         api.weeklyRecap(season!, week!),
         week! > 1 ? api.weeklyRecap(season!, week! - 1) : Promise.resolve({ narrative: null }),
       ]);
-      if (current.narrative?.kind === 'recap') return { recap: current.narrative, week: week! };
-      if (previous.narrative?.kind === 'recap') return { recap: previous.narrative, week: week! - 1 };
+      if (current.narrative?.kind === 'recap') return { recap: current.narrative, week: week!, season: season! };
+      if (previous.narrative?.kind === 'recap') return { recap: previous.narrative, week: week! - 1, season: season! };
       return null;
     },
   });

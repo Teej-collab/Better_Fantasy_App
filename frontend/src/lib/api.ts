@@ -662,7 +662,10 @@ export function getOwnerDraftGrade(season: number, ownerId: number, sessionCooki
   return getServer<OwnerDraftGradeResponse>(`/seasons/${season}/owners/${ownerId}/draft-grade`, sessionCookie);
 }
 
-export type WeeklyNarrative = { text: string; kind: "preview" | "recap" };
+// `released` (recaps only): false until the Tuesday flip — only a
+// commissioner gets an unreleased recap at all (backend/app/domain/
+// recap_release.py), to proof or regenerate it early.
+export type WeeklyNarrative = { text: string; kind: "preview" | "recap"; released?: boolean };
 
 // Cache-only read — never triggers a live generation (see
 // app/domain/narrative_engine.py's own docstrings for why). `narrative`
@@ -2982,6 +2985,26 @@ export function getAdminSecurity(days = 7): Promise<AdminSecurity> {
 
 export function getAdminAuditLog(limit = 50, offset = 0): Promise<AdminAuditLog> {
   return _adminGet(`/admin/audit?limit=${limit}&offset=${offset}`);
+}
+
+// Admin > Recaps (GET /admin/recaps) — each week's recap release,
+// push reach, and who read it.
+export type AdminRecapWeek = {
+  week: number;
+  released_at: string | null;
+  notified: number;
+  member_count: number;
+  readers: { owner_id: number; display_name: string; first_opened_at: string; opens: number; source: string | null }[];
+  not_read: { owner_id: number; display_name: string }[];
+};
+export type AdminRecaps = { league_id: number; league_name: string | null; season: number; weeks: AdminRecapWeek[] };
+
+export function getAdminRecaps(): Promise<AdminRecaps> {
+  return _adminGet("/admin/recaps");
+}
+
+export async function getAdminRecapsServer(sessionCookie: string | undefined): Promise<AdminRecaps | null> {
+  return getServer<AdminRecaps>("/admin/recaps", sessionCookie).catch(() => null);
 }
 
 export function getAdminBadges(): Promise<AdminBadges> {
