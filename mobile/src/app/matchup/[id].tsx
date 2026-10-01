@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: 'transparent',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: Colors.tileRaised,
     paddingHorizontal: Spacing.lg,
     paddingVertical: 10,
   },

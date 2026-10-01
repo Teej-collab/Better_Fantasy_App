@@ -279,10 +279,10 @@ const styles = StyleSheet.create({
   small: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   error: { color: Colors.loss, fontSize: 14 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
+  chip: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { color: Colors.text, fontSize: 12 },
   chipTextActive: { color: '#06110a', fontWeight: '600' },
-  pickRow: {
+  pickRow: { backgroundColor: Colors.surface,
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderRadius: Radius.md,
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   sides: { gap: Spacing.sm },
   side: { gap: 2 },
   actions: { flexDirection: 'row', gap: Spacing.sm },
-  action: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
+  action: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
   actionText: { color: Colors.text, fontSize: 12 },
   actionTextDark: { color: '#06110a', fontSize: 12, fontWeight: '600' },
 });

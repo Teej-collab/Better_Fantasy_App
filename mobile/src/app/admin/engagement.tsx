@@ -21,6 +21,7 @@ import {
 } from '@/components/admin/AdminUI';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
+import { Colors } from '@/constants/theme';
 import { api } from '@/lib/api';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -229,7 +230,7 @@ const styles = StyleSheet.create({
   heatDay: { width: 30, color: 'rgba(255,255,255,0.5)', fontSize: 10 },
   heatCell: { flex: 1, height: 14, borderRadius: 2 },
   heatHour: { flex: 1, color: 'rgba(255,255,255,0.4)', fontSize: 8, overflow: 'visible' },
-  retention: { flex: 1, alignItems: 'center', gap: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.04)', padding: 8 },
+  retention: { flex: 1, alignItems: 'center', gap: 2, borderRadius: 8, backgroundColor: Colors.tileRaised, padding: 8 },
   retentionLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '600', textTransform: 'uppercase' },
   retentionValue: { fontSize: 20, letterSpacing: 0, fontVariant: ['tabular-nums'] },
   cohortRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },

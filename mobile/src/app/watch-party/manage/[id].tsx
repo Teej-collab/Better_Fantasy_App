@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   avatarText: { color: Colors.text, fontSize: 12, fontWeight: '600' },
   name: { flex: 1, color: Colors.text, fontSize: 14, fontWeight: '500' },
   host: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '400' },
-  remove: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4 },
+  remove: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4 },
   removeText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '500' },
   disabled: { opacity: 0.4 },
   error: { color: Colors.loss, fontSize: 14 },

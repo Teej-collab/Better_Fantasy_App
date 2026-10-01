@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
   alignEnd: { alignItems: 'flex-end' },
   poll: { gap: Spacing.md },
   pollTitle: { color: Colors.text, fontSize: 14, fontWeight: '600' },
-  pollOption: {
+  pollOption: { backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
   rivalry: { gap: Spacing.sm },
   rivalryHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   rivalryName: { color: Colors.text, fontSize: 16, fontWeight: '500', flexShrink: 1 },
-  tier: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 2 },
+  tier: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 2 },
   tierText: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
   tagline: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontStyle: 'italic' },
   description: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 20 },

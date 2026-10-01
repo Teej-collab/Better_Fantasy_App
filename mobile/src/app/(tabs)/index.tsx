@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { TabFrame } from '@/components/TabFrame';
 import { AwardsCard } from '@/components/home/AwardsCard';
 import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
@@ -67,7 +68,7 @@ function cardOrder(raw: string | null | undefined): string[] {
   return [...base, ...DEFAULT_HOME_CARD_ORDER.filter((k) => !base.includes(k))];
 }
 
-export default function HomeScreen() {
+function HomeScreenContent() {
   const appearance = useAppearance();
   const prefs = usePreferences();
   const seasonWeek = useSeasonWeek();
@@ -175,10 +176,14 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Your Week always leads, then the draft or chug countdown. */}
+      {cards.yourWeek}
       {topCard}
       {liveNflGames.length > 0 && <LiveNowCard games={liveNflGames} findGamecastId={findGamecastId} />}
 
-      {cardOrder(prefs.data?.home_card_order).map((key) => (cards[key] ? <View key={key}>{cards[key]}</View> : null))}
+      {cardOrder(prefs.data?.home_card_order)
+        .filter((key) => key !== 'yourWeek')
+        .map((key) => (cards[key] ? <View key={key}>{cards[key]}</View> : null))}
 
       {draft?.status === 'complete' && (
         <Pressable onPress={() => router.push('/draft')} hitSlop={8} style={styles.footerLink}>
@@ -243,3 +248,11 @@ const styles = StyleSheet.create({
   footerLink: { alignSelf: 'center' },
   footerText: { color: Colors.textSecondary, fontSize: 14 },
 });
+
+export default function HomeScreen() {
+  return (
+    <TabFrame>
+      <HomeScreenContent />
+    </TabFrame>
+  );
+}

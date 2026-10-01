@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { WatchPartyBar } from '@/components/watchparty/WatchPartyBar';
 import { Card, LoadingState, MessageState, PressableRow, TeamAvatar } from '@/components/ui';
@@ -9,7 +10,7 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { queryClient, useChatConversations } from '@/lib/queries';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 
-export default function ChatListScreen() {
+function ChatListScreenContent() {
   const conversations = useChatConversations();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -88,3 +89,11 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: Colors.bg, fontSize: 12, fontWeight: '800' },
 });
+
+export default function ChatListScreen() {
+  return (
+    <TabFrame>
+      <ChatListScreenContent />
+    </TabFrame>
+  );
+}

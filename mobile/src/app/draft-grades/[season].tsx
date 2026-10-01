@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   name: { color: Colors.text, fontSize: 14, fontWeight: '500' },
   small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
   toggle: { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
-  recap: { marginTop: Spacing.md, borderRadius: Radius.md, backgroundColor: 'rgba(255,255,255,0.05)', padding: Spacing.md },
+  recap: { marginTop: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.tileRaised, padding: Spacing.md },
   recapText: { color: Colors.text, fontSize: 14, lineHeight: 20 },
   round: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: Spacing.sm },
   pick: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.surface },

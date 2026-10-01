@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: 24, textTransform: 'none', letterSpacing: 0 },
   tabs: { gap: Spacing.sm },
-  tab: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
+  tab: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
   tabActive: { backgroundColor: SectionColors.chug, borderColor: SectionColors.chug },
   tabText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   tabTextActive: { color: '#000' },

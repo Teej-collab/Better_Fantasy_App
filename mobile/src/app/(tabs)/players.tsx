@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
+import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
@@ -28,7 +29,7 @@ const POSITIONS: { label: string; value: string | undefined }[] = [
   { label: 'K', value: 'K' },
 ];
 
-export default function PlayersScreen() {
+function PlayersScreenContent() {
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
@@ -220,7 +221,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 2,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  chip: {
+  chip: { backgroundColor: Colors.surface,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -276,3 +277,11 @@ const styles = StyleSheet.create({
   viewCell: { flexDirection: 'row', alignItems: 'center' },
   viewName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
 });
+
+export default function PlayersScreen() {
+  return (
+    <TabFrame ticker>
+      <PlayersScreenContent />
+    </TabFrame>
+  );
+}

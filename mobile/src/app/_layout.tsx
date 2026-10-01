@@ -11,11 +11,12 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
-import { Colors, Fonts } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ChatSocketProvider } from '@/lib/chatSocket';
@@ -38,6 +39,22 @@ const theme = {
     text: Colors.text,
   },
 };
+
+// The web shows its "This Week, Live" ticker strip on every page but
+// Home, Chat and the signed-out pages. Tabs pin their own
+// (components/TabFrame.tsx); every other screen gets it here, pinned
+// under the header.
+const NO_TICKER = /^(\(tabs\)|sign-in|chat\/|watch-party\/)/;
+
+function withTickerBar({ route, children }: { route: { name: string }; children: ReactNode }) {
+  if (NO_TICKER.test(route.name)) return <>{children}</>;
+  return (
+    <View style={{ flex: 1 }}>
+      <AppTickerBar />
+      <View style={{ flex: 1 }}>{children}</View>
+    </View>
+  );
+}
 
 function RootStack() {
   const { token } = useAuth();
@@ -66,10 +83,15 @@ function RootStack() {
 
   return (
     <Stack
+      screenLayout={withTickerBar}
       screenOptions={{
+        // iOS's own header: the system font for titles (Oswald stays
+        // for in-page headings) and a chevron-only back button.
         headerStyle: { backgroundColor: Colors.bg },
         headerTintColor: Colors.text,
-        headerTitleStyle: { fontFamily: Fonts.display },
+        headerTitleStyle: { fontSize: 17, fontWeight: '600' },
+        headerBackButtonDisplayMode: 'minimal',
+        headerShadowVisible: false,
         contentStyle: { backgroundColor: 'transparent' },
       }}>
       <Stack.Protected guard={token !== null}>

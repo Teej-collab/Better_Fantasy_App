@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ADMIN_ACCENT } from '@/components/admin/AdminUI';
 import { Text } from '@/components/Text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import type { AdminBadges } from '@/lib/adminTypes';
 
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: Colors.tileRaised,
   },
   pressed: { backgroundColor: 'rgba(56,189,248,0.15)' },
   icon: { color: ADMIN_ACCENT, fontSize: 12 },

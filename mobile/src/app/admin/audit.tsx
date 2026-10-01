@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AdminScreen, AdminSection, adminStyles as s, Divided, EmptyNote, formatWhen, Pill } from '@/components/admin/AdminUI';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
-import { Radius } from '@/constants/theme';
+import { Colors, Radius } from '@/constants/theme';
 import { api } from '@/lib/api';
 
 const PAGE_SIZE = 50;
@@ -76,5 +76,5 @@ export default function AdminAuditScreen() {
 }
 
 const styles = StyleSheet.create({
-  more: { alignSelf: 'center', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 4 },
+  more: { backgroundColor: Colors.surface, alignSelf: 'center', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 4 },
 });

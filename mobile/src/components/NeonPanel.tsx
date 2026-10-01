@@ -15,6 +15,13 @@ import { ringColorFor, useAppearance } from '@/lib/appearance';
 
 const RING_WIDTH = 1.5;
 const ROTATION_MS = 5000;
+// The sweeping gradient is drawn once at this size and scaled up to
+// cover the card. expo-linear-gradient paints its gradient as a CPU
+// bitmap the size of its view; sized to the card's diagonal, a tall card
+// (a Views table) needed a bitmap too big for iOS to allocate and
+// crashed, and every card's repaint kept the main thread busy enough to
+// make scrolling stutter. A small bitmap scaled on the GPU looks the same.
+const GRADIENT_SIZE = 128;
 
 // One rotation shared by every panel, like the web's single
 // --panel-border-angle timeline (frontend/src/app/globals.css, the
@@ -52,7 +59,8 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
     if (!reduceMotion) startRotation();
   }, [reduceMotion]);
 
-  const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
+  const scale = size / GRADIENT_SIZE;
+  const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }, { scale }] }), [scale]);
 
   function onLayout(e: LayoutChangeEvent) {
     const { width, height } = e.nativeEvent.layout;
@@ -75,11 +83,7 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
         {size > 0 && (
           <Animated.View
             pointerEvents="none"
-            style={[
-              styles.spinner,
-              { width: size, height: size, marginLeft: -size / 2, marginTop: -size / 2 },
-              reduceMotion ? styles.still : spin,
-            ]}>
+            style={[styles.spinner, reduceMotion ? { transform: [{ rotate: '225deg' }, { scale }] } : spin]}>
             <LinearGradient
               colors={[color, `${color}00`, `${color}00`]}
               locations={[0, 0.3, 1]}
@@ -110,7 +114,14 @@ const styles = StyleSheet.create({
   },
   clip: { overflow: 'hidden', padding: RING_WIDTH },
   ringBase: { backgroundColor: Colors.border },
-  spinner: { position: 'absolute', left: '50%', top: '50%' },
-  still: { transform: [{ rotate: '225deg' }] },
+  spinner: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: GRADIENT_SIZE,
+    height: GRADIENT_SIZE,
+    marginLeft: -GRADIENT_SIZE / 2,
+    marginTop: -GRADIENT_SIZE / 2,
+  },
   content: { backgroundColor: Colors.surface, padding: 16 },
 });

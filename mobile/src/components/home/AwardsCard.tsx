@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: Colors.tile,
   },
   tileLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   tileTitle: { color: Colors.text, fontSize: 14, fontWeight: '500' },

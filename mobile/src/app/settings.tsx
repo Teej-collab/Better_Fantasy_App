@@ -91,6 +91,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   nav: { gap: Spacing.sm },
-  pill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 7 },
+  pill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 7 },
   pillText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
 });

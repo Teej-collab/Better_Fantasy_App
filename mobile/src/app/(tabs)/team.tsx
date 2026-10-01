@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { TabFrame } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
@@ -19,7 +20,7 @@ import {
 import { formatGameTime, formatPoints } from '@/lib/format';
 import type { MyTeam, RosterEntry } from '@/lib/types';
 
-export default function TeamScreen() {
+function TeamScreenContent() {
   const team = useMyTeam();
   const [editing, setEditing] = useState<RosterEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -265,7 +266,7 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
   subnav: { gap: Spacing.sm, marginTop: Spacing.md },
-  subnavPill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
+  subnavPill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
   subnavActive: { backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' },
   subnavText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   subnavTextActive: { color: Colors.text, fontSize: 13, fontWeight: '600' },
@@ -273,7 +274,7 @@ const styles = StyleSheet.create({
   listCard: { padding: 0, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
-  slotPill: {
+  slotPill: { backgroundColor: Colors.surface,
     minWidth: 48,
     minHeight: 32,
     paddingHorizontal: Spacing.sm,
@@ -317,3 +318,11 @@ const styles = StyleSheet.create({
   optionAction: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
   spinner: { marginTop: Spacing.lg },
 });
+
+export default function TeamScreen() {
+  return (
+    <TabFrame ticker>
+      <TeamScreenContent />
+    </TabFrame>
+  );
+}

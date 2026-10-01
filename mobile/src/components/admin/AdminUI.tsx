@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   sectionTitle: { flex: 1, color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   hint: { color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 17 },
   windowRow: { flexDirection: 'row', gap: 4 },
-  windowPill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 2 },
+  windowPill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 8, paddingVertical: 2 },
   windowActive: { borderColor: ADMIN_ACCENT, backgroundColor: 'rgba(56,189,248,0.12)' },
   windowText: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '500' },
   windowTextActive: { color: ADMIN_ACCENT },

@@ -191,9 +191,9 @@ const styles = StyleSheet.create({
   primary: { alignSelf: 'flex-start', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, minWidth: 130, alignItems: 'center' },
   primaryText: { color: '#000', fontSize: 14, fontWeight: '600' },
   disabled: { opacity: 0.4 },
-  secondary: { alignSelf: 'flex-start', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  secondary: { backgroundColor: Colors.surface, alignSelf: 'flex-start', borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   secondaryText: { color: Colors.text, fontSize: 14, fontWeight: '500' },
-  matchup: { borderRadius: Radius.md, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, gap: 2 },
+  matchup: { borderRadius: Radius.md, backgroundColor: Colors.tileRaised, paddingHorizontal: 10, paddingVertical: 6, gap: 2 },
   matchupText: { color: Colors.text, fontSize: 13 },
   sweat: { color: '#f87171', fontSize: 11, fontWeight: '600' },
 });

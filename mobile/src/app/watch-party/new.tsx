@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
   flex: { flex: 1, minWidth: 0 },
-  input: {
+  input: { backgroundColor: Colors.surface,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',

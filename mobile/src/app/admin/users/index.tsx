@@ -90,7 +90,7 @@ export default function AdminUsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  search: {
+  search: { backgroundColor: Colors.surface,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   tabs: { gap: 6 },
-  tab: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4 },
+  tab: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4 },
   tabActive: { borderColor: ADMIN_ACCENT, backgroundColor: 'rgba(56,189,248,0.12)' },
   tabText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '500' },
   list: { padding: 0 },

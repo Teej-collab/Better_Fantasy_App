@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { TabFrame } from '@/components/TabFrame';
 import { SeasonTabs } from '@/components/league/LeagueUI';
 import { RulesSection } from '@/components/league/RulesSection';
 import {
@@ -34,7 +35,7 @@ type LeagueSectionKey = (typeof LEAGUE_SECTIONS)[number]['key'];
 // Sections whose content changes by season get season tabs.
 const SEASONAL: LeagueSectionKey[] = ['league', 'standings', 'powerRankings'];
 
-export default function LeagueScreen() {
+function LeagueScreenContent() {
   const params = useLocalSearchParams<{ section?: string }>();
   const accent = useAppearance().accent;
   const leagueName = useActiveLeagueName().data;
@@ -104,6 +105,14 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   leagueName: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   subnav: { gap: Spacing.sm },
-  pill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 7 },
+  pill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 7 },
   pillText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
 });
+
+export default function LeagueScreen() {
+  return (
+    <TabFrame ticker>
+      <LeagueScreenContent />
+    </TabFrame>
+  );
+}

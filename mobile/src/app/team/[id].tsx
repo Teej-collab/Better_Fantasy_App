@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   muted: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
   link: { color: Colors.text, textDecorationLine: 'underline' },
   weeks: { gap: Spacing.sm },
-  week: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
+  week: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
   weekActive: { borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.1)' },
   weekText: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
   weekTextActive: { color: Colors.text, fontWeight: '600' },

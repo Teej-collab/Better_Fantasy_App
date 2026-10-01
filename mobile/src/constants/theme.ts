@@ -3,6 +3,11 @@
 export const Colors = {
   bg: '#0d1016',
   surface: '#12161c',
+  // Solid versions of the web's faint white tiles (3% / 5% white over
+  // surface): they look the same inside a card, but stay readable when a
+  // tile sits straight on the honeycomb.
+  tile: '#191d23',
+  tileRaised: '#1e2227',
   border: '#1c2027',
   accent: '#39ff14',
   text: '#eceef1',

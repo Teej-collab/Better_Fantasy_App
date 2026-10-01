@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
-import { Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
 
 type Remaining = { days: number; hours: number; minutes: number; seconds: number };
 
@@ -126,9 +126,9 @@ const styles = StyleSheet.create({
   subtitle: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
   tiles: { flexDirection: 'row', gap: Spacing.sm },
   tileOuter: { flex: 1 },
-  tile: { alignItems: 'center', paddingVertical: Spacing.md, paddingHorizontal: 0, backgroundColor: 'rgba(255,255,255,0.05)' },
+  tile: { alignItems: 'center', paddingVertical: Spacing.md, paddingHorizontal: 0, backgroundColor: Colors.tileRaised },
   tileValue: { color: '#fff', fontSize: 24, fontFamily: Fonts.monoBold, fontVariant: ['tabular-nums'] },
   tileLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-  reached: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: Radius.md, paddingVertical: Spacing.md, alignItems: 'center' },
+  reached: { backgroundColor: Colors.tileRaised, borderRadius: Radius.md, paddingVertical: Spacing.md, alignItems: 'center' },
   reachedText: { color: '#fff', fontSize: 18, fontWeight: '700' },
 });

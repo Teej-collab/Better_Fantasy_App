@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   disabledBtn: { opacity: 0.4 },
   error: { color: Colors.loss, fontSize: 14 },
   field: { gap: 4 },
-  input: {
+  input: { backgroundColor: Colors.surface,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -287,5 +287,5 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  secondary: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
+  secondary: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
 });
