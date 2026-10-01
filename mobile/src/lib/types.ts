@@ -373,8 +373,11 @@ export type DraftPoolPlayer = {
 export type GamecastStatus = 'scheduled' | 'in_progress' | 'halftime' | 'final' | 'postponed' | 'canceled';
 export type GamecastTeam = { abbr: string; name: string; score: number };
 
+export type GamecastPlayerRef = { name: string; team_abbr: string; role: string; provider_player_id?: string | null };
+
 export type GamecastPlay = {
   play_id: string;
+  drive_id: string | null;
   period: number;
   clock: string;
   team_abbr: string | null;
@@ -383,8 +386,15 @@ export type GamecastPlay = {
   description: string;
   play_type: string;
   yards_gained: number | null;
+  // Yards to the end zone before the snap (0–100); 0 on bookkeeping
+  // entries like "END GAME".
+  yard_line: number | null;
   is_scoring_play: boolean;
   is_turnover: boolean;
+  is_first_down: boolean;
+  // ESPN's event: TOUCHDOWN, FIELD_GOAL, FIRST_DOWN, PUNT, PLAY_COMPLETED…
+  event_type: string | null;
+  players_involved: GamecastPlayerRef[];
 };
 
 export type GamecastDrive = {
@@ -393,7 +403,12 @@ export type GamecastDrive = {
   play_count: number;
   yards: number;
   duration: string;
+  // Not measured the same way for both teams — use the drive's first
+  // snap's yard_line for where it started (lib/gamecast.ts).
+  start_yard_line: number;
   result: string | null;
+  // Oldest first.
+  plays: GamecastPlay[];
 };
 
 export type GamecastScoringPlay = {
@@ -414,6 +429,8 @@ export type LiveGame = {
   scheduled_start: string;
   home_team: GamecastTeam;
   away_team: GamecastTeam;
+  // 1–4, 5+ for overtime; null before kickoff.
+  period: number | null;
   period_label: string | null;
   clock: string | null;
   possession_team_abbr: string | null;
@@ -424,9 +441,12 @@ export type LiveGame = {
   field_position_label: string | null;
   is_redzone: boolean;
   current_drive: GamecastDrive | null;
+  // Oldest first.
+  drives: GamecastDrive[];
   // Most recent first.
   plays: GamecastPlay[];
   scoring_plays: GamecastScoringPlay[];
+  last_updated: string;
 };
 
 export type GamecastGameSummary = {
@@ -454,6 +474,7 @@ export type PlayFantasyPlayer = {
   player_id: string;
   player_name: string;
   position: string;
+  lineup_slot: string | null;
   team_name: string;
   owner_name: string;
   is_mine: boolean;

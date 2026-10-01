@@ -237,12 +237,16 @@ export function useFantasyImpact(gameId: string, live: boolean) {
   });
 }
 
-export function usePlayFantasy(gameId: string, playId: string | null) {
+// While live, re-asks on the 15s tick like the web's LastPlay: a play
+// seconds old can come back before ESPN has attached its players, and a
+// reviewed play can change.
+export function usePlayFantasy(gameId: string, playId: string | null, live = false) {
   return useQuery({
     queryKey: ['play-fantasy', gameId, playId],
     queryFn: async () => (await api.playFantasy(gameId, playId!)).players,
     enabled: playId !== null,
-    staleTime: Infinity,
+    staleTime: live ? 0 : Infinity,
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
   });
 }
 
