@@ -2,6 +2,7 @@ import type * as A from '@/lib/adminTypes';
 import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
 import type {
   AddFreeAgentResult,
+  ChatGif,
   ChatMember,
   CommissionerAddResult,
   EspnConnectionStatus,
@@ -385,6 +386,8 @@ export const api = {
   // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
   chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),
   chatMembers: async () => (await request<{ members: ChatMember[] }>('/chat/members')).members,
+  // A 503 means GIF search isn't configured on the server (no GIPHY key).
+  searchGifs: async (query: string) => (await request<{ gifs: ChatGif[] }>(`/chat/gifs?search=${encodeURIComponent(query)}`)).gifs,
   // A single-use, 60-second sign-in link for the in-app browser
   // (backend/app/routers/auth.py's native_web_handoff) — see lib/webHandoff.ts.
   webHandoff: () => request<{ ticket: string }>('/auth/native/web-handoff', { method: 'POST' }),

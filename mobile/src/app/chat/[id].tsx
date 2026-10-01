@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -13,15 +14,16 @@ import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
 import { queryClient, useChatConversations, useChatMessages, useMe } from '@/lib/queries';
-import type { ChatMessage } from '@/lib/types';
+import type { ChatGif, ChatMessage } from '@/lib/types';
 
 // backend/app/routers/chat.py's ALLOWED_REACTIONS and DEFAULT_PAGE_SIZE.
 const REACTIONS = ['😂', '🔥', '💀', '👍', '❤️', '😭'];
 const PAGE_SIZE = 50;
 const TYPING_SEND_INTERVAL_MS = 2000;
 
-// One attachment at a time, like the web composer.
-type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string };
+// One attachment at a time, like the web composer. A GIF is one too:
+// already hosted by GIPHY, so it's ready to send straight away.
+type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string; gif?: boolean };
 
 export default function ConversationScreen() {
   // `title` names a conversation that isn't in the chat list, like a
@@ -40,6 +42,7 @@ export default function ConversationScreen() {
   const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -137,6 +140,11 @@ export default function ConversationScreen() {
     }
   }
 
+  function pickGif(gif: ChatGif) {
+    setGifPickerOpen(false);
+    setPendingImage({ status: 'done', localUri: gif.preview_url, url: gif.url, gif: true });
+  }
+
   function chooseAttachment() {
     if (pendingImage?.status === 'uploading') return;
     Alert.alert('Add a photo', undefined, [
@@ -226,9 +234,11 @@ export default function ConversationScreen() {
                   ? 'Uploading…'
                   : pendingImage.status === 'error'
                     ? "Couldn't upload. Remove it and try again."
-                    : 'Ready to send'}
+                    : pendingImage.gif
+                      ? 'GIF ready to send'
+                      : 'Ready to send'}
               </Text>
-              <Pressable onPress={() => setPendingImage(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove photo">
+              <Pressable onPress={() => setPendingImage(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel={pendingImage.gif ? 'Remove GIF' : 'Remove photo'}>
                 <Text style={styles.dismiss}>✕</Text>
               </Pressable>
             </View>
@@ -236,6 +246,19 @@ export default function ConversationScreen() {
           <View style={styles.composerRow}>
             <Pressable onPress={chooseAttachment} hitSlop={8} accessibilityRole="button" accessibilityLabel="Attach a photo" style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
               <Text style={styles.attachText}>+</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (pendingImage?.status === 'uploading') return;
+                setGifPickerOpen(true);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Send a GIF"
+              style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
+              <Text style={styles.gifText} maxFontSizeMultiplier={1.2}>
+                GIF
+              </Text>
             </Pressable>
             <TextInput
               ref={inputRef}
@@ -259,6 +282,8 @@ export default function ConversationScreen() {
           Only the commissioner can post here.
         </Text>
       )}
+
+      <GifPicker visible={gifPickerOpen} onSelect={pickGif} onClose={() => setGifPickerOpen(false)} />
 
       <Modal visible={actionsFor !== null} transparent animationType="fade" onRequestClose={() => setActionsFor(null)}>
         <Pressable style={styles.reactBackdrop} onPress={() => setActionsFor(null)}>
@@ -442,6 +467,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   attachText: { color: Colors.text, fontSize: 22, lineHeight: 24 },
+  gifText: { color: Colors.text, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
   fullImage: { width: '100%', height: '80%' },
 });

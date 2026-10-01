@@ -923,3 +923,15 @@ export type PlayerViewData = {
   rows: Record<string, Record<string, string | number | null>>;
   note?: string;
 };
+
+// GET /chat/gifs (backend app/providers/giphy.py, proxied so the GIPHY
+// key never reaches the app). `url` is what gets sent; `preview_url` is a
+// smaller rendition for the picker grid.
+export type ChatGif = {
+  id: string;
+  description: string;
+  url: string;
+  preview_url: string;
+  width: number | null;
+  height: number | null;
+};
