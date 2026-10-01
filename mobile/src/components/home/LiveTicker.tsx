@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
@@ -140,13 +140,17 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
           accessibilityLabel={item.segments.map((seg) => seg.text).join('')}
           style={styles.itemWrap}>
           {/* One line in a fixed-height strip, so it grows less than body text. */}
-          <Text style={styles.item} numberOfLines={1} maxFontSizeMultiplier={1.25}>
-            {item.segments.map((seg, i) => (
-              <Text key={i} style={seg.color ? [styles.team, { color: lighten(seg.color) }] : undefined}>
-                {seg.text}
-              </Text>
-            ))}
-            <Text style={styles.separator}>{'   •   '}</Text>
+          {item.segments.map((seg, i) => (
+            <Text
+              key={i}
+              numberOfLines={1}
+              maxFontSizeMultiplier={TICKER_FONT_SCALE}
+              style={[styles.item, seg.color ? [styles.team, { color: lighten(seg.color) }] : null]}>
+              {seg.text}
+            </Text>
+          ))}
+          <Text style={[styles.item, styles.separator]} maxFontSizeMultiplier={TICKER_FONT_SCALE}>
+            {'   •   '}
           </Text>
         </Pressable>
       ))}
@@ -155,12 +159,21 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
 
   return (
     <View style={[styles.shell, fast && styles.shellLive]} onLayout={(e) => setStripWidth(e.nativeEvent.layout.width)}>
-      <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.track, lineStyle]}>{Array.from({ length: sets }, (_, i) => line(i))}</Animated.View>
-      </GestureDetector>
+      {/* A horizontal ScrollView (never scrolled — the pan below moves the
+          line) only to give the line unlimited width: inside a plain View
+          the item crossing the strip's right edge was measured to fit the
+          space left, drew at full length anyway, and the next item ran
+          over it. */}
+      <ScrollView horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false}>
+        <GestureDetector gesture={pan}>
+          <Animated.View style={[styles.track, lineStyle]}>{Array.from({ length: sets }, (_, i) => line(i))}</Animated.View>
+        </GestureDetector>
+      </ScrollView>
     </View>
   );
 }
+
+const TICKER_FONT_SCALE = 1.25;
 
 // Several team colors (NYG navy, LAR blue) are unreadable on the dark
 // strip; lift them toward white the way the web's ticker does with its
@@ -186,7 +199,7 @@ const styles = StyleSheet.create({
   track: { flexDirection: 'row', alignSelf: 'flex-start', paddingVertical: 11 },
   // Never shrink to the screen width: the line runs as long as it needs.
   line: { flexDirection: 'row', flexShrink: 0 },
-  itemWrap: { flexShrink: 0 },
+  itemWrap: { flexShrink: 0, flexDirection: 'row', alignItems: 'baseline' },
   item: { color: Colors.text, fontSize: 17, flexShrink: 0 },
   team: { fontWeight: '700' },
   separator: { color: Colors.textSecondary },
