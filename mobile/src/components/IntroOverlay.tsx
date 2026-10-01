@@ -1,5 +1,5 @@
 import { setAudioModeAsync, createAudioPlayer, type AudioPlayer } from 'expo-audio';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
@@ -24,6 +24,11 @@ import { Colors } from '@/constants/theme';
 // each), then the WEEKEND neon and the "League" script with a can
 // cracking open and a pour, "Welcome Back", and finally the scene
 // rushing away into a bloom of light that reveals the app.
+//
+// mode "enter" is the signed-out front door (the web's
+// OpeningExperience.tsx): the same build-up, but the final beat is the
+// tagline and a neon Enter Here sign, with `footer` (the scores ticker)
+// along the bottom; tapping Enter Here plays the bloom and calls onDone.
 
 const WORDS = ['WELCOME', 'TO', 'THE'];
 // Each word ignites a little quicker than the last.
@@ -116,7 +121,17 @@ function useIntroSounds(enabled: boolean) {
   };
 }
 
-export function IntroOverlay({ displayName, onDone }: { displayName: string | null; onDone: () => void }) {
+export function IntroOverlay({
+  displayName = null,
+  onDone,
+  mode = 'welcome',
+  footer,
+}: {
+  displayName?: string | null;
+  onDone: () => void;
+  mode?: 'welcome' | 'enter';
+  footer?: ReactNode;
+}) {
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -133,6 +148,8 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
   const welcome = useSharedValue(0);
   const scene = useSharedValue(0); // 0 → 1 as the scene rushes away
   const bloom = useSharedValue(0);
+  const enterSign = useSharedValue(0);
+  const enterGlow = useSharedValue(0);
 
   function after(ms: number, fn: () => void) {
     timers.current.push(setTimeout(fn, ms));
@@ -144,6 +161,27 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
     league.set(withTiming(1, { duration: fast ? 200 : 1600, easing: Easing.out(Easing.quad) }));
     welcome.set(withDelay(fast ? 0 : 600, withTiming(1, { duration: fast ? 200 : 900 })));
     if (!fast) sounds.playCanThenPour();
+    if (mode === 'enter') {
+      // The sign rises in after the wordmark, then breathes like neon.
+      enterSign.set(withDelay(fast ? 300 : 1000, withTiming(1, { duration: 700 })));
+      enterGlow.set(
+        withDelay(
+          fast ? 1000 : 1700,
+          withRepeat(
+            withSequence(
+              withTiming(0.4, { duration: 830 }),
+              withTiming(0.1, { duration: 180 }),
+              withTiming(0.55, { duration: 830 }),
+              withTiming(0.15, { duration: 1060 }),
+              withTiming(0.5, { duration: 320 }),
+              withTiming(0, { duration: 1380 }),
+            ),
+            -1,
+          ),
+        ),
+      );
+      return;
+    }
     after(fast ? FAST_HOLD_MS : HOLD_MS, reveal);
   }
 
@@ -157,6 +195,11 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
   function skip() {
     timers.current.forEach(clearTimeout);
     timers.current = [];
+    if (mode === 'enter') {
+      // Skips to the Enter Here sign, not past it.
+      if (stage !== 'final') showFinal(true);
+      return;
+    }
     if (stage !== 'final') showFinal(true);
     timers.current.forEach(clearTimeout);
     timers.current = [];
@@ -188,8 +231,9 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
       };
       after(WORD_INTERVALS_MS[0], advance);
     });
-    // Absolute backstop: the app is never stuck behind the intro.
-    const failsafe = setTimeout(onDone, 12000);
+    // Absolute backstop: the app is never stuck behind the welcome
+    // intro. (The front door waits for Enter Here instead.)
+    const failsafe = mode === 'welcome' ? setTimeout(onDone, 12000) : undefined;
     return () => {
       timers.current.forEach(clearTimeout);
       timers.current = [];
@@ -214,6 +258,8 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
     opacity: 1 - scene.get(),
     transform: [{ translateY: -0.06 * height * scene.get() }, { scale: 1 + 0.6 * scene.get() }],
   }));
+  const signStyle = useAnimatedStyle(() => ({ opacity: enterSign.get(), transform: [{ translateY: 8 * (1 - enterSign.get()) }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: enterGlow.get() }));
   const bloomSize = Math.max(width, height) * 0.4;
   const bloomStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, bloom.get() * 4),
@@ -245,9 +291,9 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
         </Svg>
       </Animated.View>
 
-      {!revealing && (
+      {!revealing && (mode === 'welcome' || stage === 'word') && (
         <Pressable onPress={skip} hitSlop={12} style={[styles.skip, { top: insets.top + 8 }]}>
-          <Text style={styles.skipText}>Skip →</Text>
+          <Text style={styles.skipText}>{mode === 'enter' ? 'Skip intro →' : 'Skip →'}</Text>
         </Pressable>
       )}
 
@@ -265,12 +311,32 @@ export function IntroOverlay({ displayName, onDone }: { displayName: string | nu
             <Animated.View style={leagueStyle}>
               <Text style={styles.league}>League</Text>
             </Animated.View>
-            <Animated.View style={welcomeStyle}>
-              <Text style={styles.welcome}>Welcome Back{displayName ? `, ${displayName}` : ''}</Text>
-            </Animated.View>
+            {mode === 'welcome' ? (
+              <Animated.View style={welcomeStyle}>
+                <Text style={styles.welcome}>Welcome Back{displayName ? `, ${displayName}` : ''}</Text>
+              </Animated.View>
+            ) : (
+              <>
+                <Animated.View style={welcomeStyle}>
+                  <Text style={styles.tagline}>Sit back. Relax. Dive into the League.</Text>
+                </Animated.View>
+                <Animated.View style={[styles.signWrap, signStyle]}>
+                  <Animated.View pointerEvents="none" style={[styles.signGlow, glowStyle]} />
+                  <Pressable
+                    onPress={() => {
+                      if (!revealing) reveal();
+                    }}
+                    style={({ pressed }) => [styles.sign, pressed && styles.signPressed]}>
+                    <Text style={styles.signText}>ENTER HERE</Text>
+                  </Pressable>
+                </Animated.View>
+              </>
+            )}
           </>
         )}
       </Animated.View>
+
+      {footer && !revealing && <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>{footer}</View>}
 
       {revealing && (
         <Animated.View
@@ -335,4 +401,41 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bloom: { position: 'absolute', zIndex: 20 },
+  tagline: { maxWidth: 260, color: Colors.textSecondary, fontSize: 15, textAlign: 'center' },
+  signWrap: { marginTop: 14 },
+  signGlow: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    bottom: -6,
+    left: -6,
+    borderRadius: 18,
+    backgroundColor: 'rgba(57,255,20,0.08)',
+    shadowColor: ACCENT,
+    shadowOpacity: 1,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  sign: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(6,10,7,0.85)',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  signPressed: { transform: [{ scale: 0.97 }] },
+  signText: {
+    color: ACCENT,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textShadowColor: ACCENT,
+    textShadowRadius: 8,
+  },
+  footer: { position: 'absolute', left: 12, right: 12, bottom: 0, zIndex: 5 },
 });

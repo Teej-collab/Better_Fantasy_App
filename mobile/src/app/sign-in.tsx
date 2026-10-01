@@ -2,14 +2,23 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LiveTicker } from '@/components/home/LiveTicker';
+import { IntroOverlay } from '@/components/IntroOverlay';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { useNflScoreboard } from '@/lib/queries';
+import { buildNflTickerItems } from '@/lib/ticker';
 
 export default function SignInScreen() {
   const { signInWithDiscord } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The front door (the web's OpeningExperience): the intro, then Enter
+  // Here, before the sign-in buttons. Real NFL scores run along the
+  // bottom the whole time (a public endpoint, fine while signed out).
+  const [entered, setEntered] = useState(false);
+  const games = useNflScoreboard().data ?? [];
 
   async function onDiscord() {
     setBusy(true);
@@ -18,6 +27,16 @@ export default function SignInScreen() {
     // On success the root layout's guard swaps to the tabs; nothing to do.
     if (!result.ok && !result.canceled) setError(result.message ?? 'Something went wrong signing you in.');
     setBusy(false);
+  }
+
+  if (!entered) {
+    return (
+      <IntroOverlay
+        mode="enter"
+        onDone={() => setEntered(true)}
+        footer={<LiveTicker items={buildNflTickerItems(games)} fast={games.some((g) => g.state === 'in')} interactive={false} />}
+      />
+    );
   }
 
   return (

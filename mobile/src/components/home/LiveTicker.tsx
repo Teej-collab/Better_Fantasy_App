@@ -32,7 +32,8 @@ const FAST_SPEED = 70;
 // wraps by exactly one set's width, so there's no gap, no visible
 // restart, and a label changing width (a countdown ticking down) doesn't
 // jump it back to the start.
-export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?: boolean }) {
+// `interactive` false (the signed-out front door) leaves items untappable.
+export function LiveTicker({ items, fast = false, interactive = true }: { items: TickerItem[]; fast?: boolean; interactive?: boolean }) {
   const reduceMotion = useReducedMotion();
   const findGamecastId = useGamecastIdFinder();
   const [stripWidth, setStripWidth] = useState(0);
@@ -125,7 +126,7 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
           : undefined
       }>
       {items.map((item) => (
-        <Pressable key={item.key} onPress={() => open(item)} disabled={!item.game && !item.matchupId} style={styles.itemWrap}>
+        <Pressable key={item.key} onPress={() => open(item)} disabled={!interactive || (!item.game && !item.matchupId)} style={styles.itemWrap}>
           <Text style={styles.item} numberOfLines={1}>
             {item.segments.map((seg, i) => (
               <Text key={i} style={seg.color ? [styles.team, { color: lighten(seg.color) }] : undefined}>
