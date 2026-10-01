@@ -60,6 +60,24 @@
         {
           "color": "#39ff14"
         }
+      ],
+      [
+        "expo-widgets",
+        {
+          "widgets": [
+            {
+              "name": "MatchupWidget",
+              "displayName": "Matchup",
+              "description": "Your Weekend League matchup score.",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium"
+                ]
+              }
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { updateMatchupWidget } from '@/lib/homeWidget';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
 import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
 import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
@@ -57,9 +58,21 @@ function useLocalReminders() {
   }, []);
 }
 
+// Hands the home-screen widget a fresh matchup snapshot whenever /me/week
+// loads (the live refetch keeps it current on game day), and blanks it on
+// sign-out so it doesn't keep showing someone's score.
+function useHomeWidget() {
+  const myWeek = useMyWeek().data;
+  useEffect(() => {
+    if (myWeek !== undefined) updateMatchupWidget(myWeek);
+  }, [myWeek]);
+  useEffect(() => () => updateMatchupWidget(null), []);
+}
+
 export default function TabsLayout() {
   useHomeScreenQuickActions();
   useLocalReminders();
+  useHomeWidget();
   // Loaded here so lib/chatSocket.tsx always knows which live messages
   // are your own (those never count as unread).
   useMe();
