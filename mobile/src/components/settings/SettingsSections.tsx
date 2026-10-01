@@ -9,6 +9,16 @@ import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, HoneycombColor, Radius, SectionColors, Spacing } from '@/constants/theme';
 import { api, uploadChatImage } from '@/lib/api';
+import {
+  canScheduleReminders,
+  DEFAULT_REMINDER_SETTINGS,
+  getReminderSettings,
+  invalidateReminders,
+  saveReminderSettings,
+  sendTestReminder,
+  type ReminderSettings,
+} from '@/lib/localNotifications';
+import type { ReminderCategory } from '@/lib/reminders';
 import { useAppearance } from '@/lib/appearance';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
@@ -50,6 +60,60 @@ function Panel({ title, description, children, color, danger }: { title?: string
       {description && <Text style={styles.small}>{description}</Text>}
       {children}
     </NeonPanel>
+  );
+}
+
+// Game-day reminders scheduled on this phone (lib/localNotifications.ts) —
+// separate from push, and saved on this phone only.
+const REMINDER_TOGGLES: { key: ReminderCategory; label: string; description: string }[] = [
+  { key: 'lineup', label: 'Lineup check', description: 'An hour before kickoff, if a starter is Out, on bye, or a slot is empty.' },
+  { key: 'draft', label: 'Draft and keepers', description: 'Before the draft starts, and before keeper picks are due if you haven’t made them.' },
+  { key: 'chug', label: "Jeffrey's Rule", description: 'Two hours before the chug deadline.' },
+];
+
+function PhoneReminders() {
+  const [settings, setSettings] = useState<ReminderSettings | null>(null);
+  const [testNote, setTestNote] = useState<string | null>(null);
+  useEffect(() => {
+    getReminderSettings().then(setSettings).catch(() => setSettings(DEFAULT_REMINDER_SETTINGS));
+  }, []);
+
+  function toggle(key: ReminderCategory, value: boolean) {
+    if (!settings) return;
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    void saveReminderSettings(next).then(invalidateReminders);
+  }
+
+  return (
+    <Panel title="Reminders on this phone" description="Scheduled right on your phone from what the app last loaded — no push notifications needed.">
+      {!canScheduleReminders ? (
+        <Text style={styles.small}>These arrive with the next app install.</Text>
+      ) : (
+        <>
+          {REMINDER_TOGGLES.map((t, i) => (
+            <ToggleRow
+              key={t.key}
+              divided={i > 0}
+              label={t.label}
+              description={t.description}
+              value={settings?.[t.key] ?? true}
+              disabled={!settings}
+              onChange={(v) => toggle(t.key, v)}
+            />
+          ))}
+          <Pressable
+            onPress={async () => {
+              const ok = await sendTestReminder();
+              setTestNote(ok ? 'Sent — it arrives in 5 seconds. Lock your phone to see it.' : 'Turn on notifications for Weekend League in iPhone Settings first.');
+            }}
+            style={styles.secondary}>
+            <Text style={styles.body}>Send a test reminder</Text>
+          </Pressable>
+          {testNote && <Text style={styles.small}>{testNote}</Text>}
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -389,6 +453,8 @@ export function NotificationSettings() {
             : 'Not available in this preview build yet — native push needs the published app. You can turn on push from the website on your phone (Share → Add to Home Screen, then Settings → Notifications).'}
         </Text>
       </Panel>
+
+      <PhoneReminders />
 
       <Panel title="Fantasy Activity" description={prefs.push_enabled ? 'What push notifications you get, by category.' : 'Turn on push notifications above to receive these.'}>
         {FANTASY_TOGGLES.map((t, i) => (

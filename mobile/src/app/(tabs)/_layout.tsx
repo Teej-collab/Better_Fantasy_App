@@ -5,7 +5,9 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
-import { useChatConversations, useMe } from '@/lib/queries';
+import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
+import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
+import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
 
 // Long-press the app icon: four shortcuts (iOS's maximum), with the
 // search one last as Apple suggests. Set here, not in the root layout,
@@ -29,8 +31,35 @@ function useHomeScreenQuickActions() {
   }, []);
 }
 
+// Game-day reminders scheduled on this phone (lib/reminders.ts), rebuilt
+// whenever the data behind them changes — and cleared on sign-out, when
+// this layout unmounts.
+function useLocalReminders() {
+  const team = useMyTeam().data;
+  const myWeek = useMyWeek().data;
+  const keepers = useMyKeepers().data;
+  const chug = useChugDeadline(myWeek?.draft?.status === 'complete').data;
+  useEffect(() => {
+    const now = Date.now();
+    syncReminders([
+      ...lineupReminders(team, now),
+      ...draftReminders(myWeek, now),
+      ...keeperReminders(keepers, now),
+      ...chugReminders(chug, now),
+    ]).catch(() => {});
+  }, [team, myWeek, keepers, chug]);
+  useEffect(() => {
+    const stop = setUpReminderHandling();
+    return () => {
+      stop();
+      syncReminders([]).catch(() => {});
+    };
+  }, []);
+}
+
 export default function TabsLayout() {
   useHomeScreenQuickActions();
+  useLocalReminders();
   // Loaded here so lib/chatSocket.tsx always knows which live messages
   // are your own (those never count as unread).
   useMe();

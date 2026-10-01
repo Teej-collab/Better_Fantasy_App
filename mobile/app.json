@@ -53,7 +53,14 @@
       ],
       "expo-quick-actions",
       "expo-asset",
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/withoutPushEntitlement",
+      [
+        "expo-notifications",
+        {
+          "color": "#39ff14"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
