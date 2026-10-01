@@ -8,6 +8,8 @@
     "scheme": "weekendleague",
     "userInterfaceStyle": "dark",
     "ios": {
+      "bundleIdentifier": "com.weekendleague.native",
+      "appleTeamId": "5K8V6776KS",
       "icon": "./assets/expo.icon"
     },
     "android": {
