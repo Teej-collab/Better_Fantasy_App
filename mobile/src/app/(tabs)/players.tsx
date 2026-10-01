@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text } from '@/components/Text';
+import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatGameTime, formatPoints } from '@/lib/format';
@@ -11,6 +13,10 @@ import type { FreeAgent } from '@/lib/types';
 
 // Label → stored players.position value. Defenses are stored as "DEF"
 // (same mapping as the web's free-agents page).
+// ESPN's add / waiver-claim button colors.
+const ADD_GREEN = '#22c55e';
+const WAIVER_YELLOW = '#facc15';
+
 const POSITIONS: { label: string; value: string | undefined }[] = [
   { label: 'All', value: undefined },
   { label: 'QB', value: 'QB' },
@@ -26,6 +32,7 @@ export default function PlayersScreen() {
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [adding, setAdding] = useState<FreeAgent | null>(null);
   const players = useFreeAgents(position, search);
 
   // Wait for a pause in typing before searching.
@@ -82,6 +89,7 @@ export default function PlayersScreen() {
               })}
             </View>
             <View style={styles.columns}>
+              <View style={styles.addSpacer} />
               <Text style={[styles.columnLabel, styles.flex]}>Player</Text>
               <Text style={[styles.columnLabel, styles.num]}>Last</Text>
               <Text style={[styles.columnLabel, styles.num]}>Proj</Text>
@@ -97,13 +105,34 @@ export default function PlayersScreen() {
             <MessageState message="No free agents match." />
           )
         }
-        renderItem={({ item }) => <PlayerRow player={item} onPress={() => openPlayer(item.sleeper_player_id)} />}
+        renderItem={({ item }) => (
+          <PlayerRow player={item} onPress={() => openPlayer(item.sleeper_player_id)} onAdd={() => setAdding(item)} />
+        )}
       />
+      {adding && <PlayerActionSheet player={adding} onClose={() => setAdding(null)} />}
     </View>
   );
 }
 
-function PlayerRow({ player, onPress }: { player: FreeAgent; onPress: () => void }) {
+// ESPN's add button: green + for a free agent you can pick up now,
+// yellow + for one on waivers (that tap files a claim instead).
+function AddButton({ onWaivers, onPress }: { onWaivers: boolean; onPress: () => void }) {
+  const color = onWaivers ? WAIVER_YELLOW : ADD_GREEN;
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      hitSlop={8}
+      accessibilityLabel={onWaivers ? 'Place waiver claim' : 'Add player'}
+      style={({ pressed }) => [styles.addButton, { borderColor: color, backgroundColor: `${color}22` }, pressed && styles.addPressed]}>
+      <Text style={[styles.addPlus, { color }]}>+</Text>
+    </Pressable>
+  );
+}
+
+function PlayerRow({ player, onPress, onAdd }: { player: FreeAgent; onPress: () => void; onAdd: () => void }) {
   const onWaivers = !!player.waiver_clears_at || player.game_locked;
   const detail = [
     `${player.position === 'DEF' ? 'D/ST' : player.position}${player.pro_team ? ` · ${player.pro_team}` : ''}`,
@@ -114,6 +143,7 @@ function PlayerRow({ player, onPress }: { player: FreeAgent; onPress: () => void
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+      <AddButton onWaivers={onWaivers} onPress={onAdd} />
       <View style={styles.flex}>
         <View style={styles.nameLine}>
           <Text style={styles.name} numberOfLines={1}>
@@ -188,4 +218,16 @@ const styles = StyleSheet.create({
   detail: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   value: { color: Colors.textSecondary, fontSize: 15, fontVariant: ['tabular-nums'] },
   proj: { color: Colors.text, fontWeight: '700' },
+  addButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  addPressed: { opacity: 0.6 },
+  addPlus: { fontSize: 20, lineHeight: 22, fontWeight: '700' },
+  addSpacer: { width: 28 + Spacing.md },
 });

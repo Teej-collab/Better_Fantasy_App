@@ -716,3 +716,43 @@ export type DraftGrade = {
 };
 
 export type TeamDetail = { team_id: number; season: number; team_name: string; owner_id: number; owner_name: string };
+
+// Trades (backend/app/routers/trades.py; web types in frontend/src/lib/tradesApi.ts).
+export type TradeStatus = 'pending' | 'awaiting_review' | 'accepted' | 'rejected' | 'cancelled' | 'vetoed';
+
+export type Trade = {
+  id: number;
+  proposing_team_id: number;
+  receiving_team_id: number;
+  status: TradeStatus;
+  proposed_at: string;
+  resolved_at: string | null;
+  assets: { sleeper_player_id: string; player_name: string; position: string; from_team_id: number; to_team_id: number }[];
+};
+
+export type TradeRosterPlayer = { sleeper_player_id: string; player_name: string; position: string };
+
+// Keepers (backend/app/routers/keepers.py; web types in frontend/src/lib/api.ts).
+export type KeeperRules = {
+  season: number;
+  max_keepers: number;
+  max_consecutive_years: number | null;
+  keeper_deadline: string | null;
+  locked_at: string | null;
+  is_open: boolean;
+  draft_scheduled_start: string | null;
+};
+
+export type MyKeepers = {
+  rules: KeeperRules;
+  // Last season's roster to pick from.
+  roster_pool: {
+    espn_player_id: number;
+    player_name: string;
+    position: string | null;
+    pro_team: string | null;
+    eligible: boolean;
+    consecutive_years_if_kept: number;
+  }[];
+  selections: { espn_player_id: number; player_name: string; consecutive_years_kept: number }[];
+};

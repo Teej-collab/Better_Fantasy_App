@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -59,6 +60,8 @@ export default function TeamScreen() {
           {formatPoints(starterPoints)} pts · Proj {formatPoints(starterProjected)}
         </Text>
 
+        <TeamSubNav />
+
         <RosterSection title="Starters" entries={starters} editable={editable} onEdit={setEditing} />
         {bench.length > 0 && <RosterSection title="Bench" entries={bench} editable={editable} onEdit={setEditing} />}
         {ir.length > 0 && <RosterSection title="Injured reserve" entries={ir} editable={editable} onEdit={setEditing} />}
@@ -66,6 +69,29 @@ export default function TeamScreen() {
 
       {editing && <LineupSheet entry={editing} team={data} onClose={() => setEditing(null)} />}
     </>
+  );
+}
+
+// The web's MyTeamSubNav (MY_TEAM_SUBNAV_ORDER): My Team, then Draft,
+// Keepers, Free Agents and Trades.
+function TeamSubNav() {
+  const links = [
+    { label: 'Draft', go: () => router.push('/draft') },
+    { label: 'Keepers', go: () => router.push('/keepers') },
+    { label: 'Free Agents', go: () => router.navigate('/players') },
+    { label: 'Trades', go: () => router.push('/trades') },
+  ];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subnav}>
+      <View style={[styles.subnavPill, styles.subnavActive]}>
+        <Text style={styles.subnavTextActive}>My Team</Text>
+      </View>
+      {links.map((l) => (
+        <Pressable key={l.label} onPress={l.go} style={({ pressed }) => [styles.subnavPill, pressed && styles.pressed]}>
+          <Text style={styles.subnavText}>{l.label}</Text>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -201,6 +227,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
+  subnav: { gap: Spacing.sm, marginTop: Spacing.md },
+  subnavPill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 6 },
+  subnavActive: { backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.3)' },
+  subnavText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
+  subnavTextActive: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   subtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: Spacing.xs },
   listCard: { padding: 0, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },

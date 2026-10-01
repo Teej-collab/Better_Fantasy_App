@@ -495,3 +495,23 @@ export function useTeamRoster(teamId: number, week: number | null) {
     enabled: week !== null,
   });
 }
+
+export function useTradeTeams() {
+  return useQuery({ queryKey: ['trade-teams'], queryFn: async () => (await api.tradeTeams()).teams });
+}
+
+export function useTradeRoster(teamId: number | null) {
+  return useQuery({
+    queryKey: ['trade-roster', teamId],
+    queryFn: async () => (await api.tradeRoster(teamId!)).roster,
+    enabled: teamId !== null,
+  });
+}
+
+export function useMyTrades() {
+  return useQuery({ queryKey: ['my-trades'], queryFn: async () => (await api.myTrades()).trades });
+}
+
+export function useMyKeepers() {
+  return useQuery({ queryKey: ['my-keepers'], queryFn: api.myKeepers });
+}

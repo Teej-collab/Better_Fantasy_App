@@ -15,6 +15,10 @@ import type {
   SeasonProfile,
   Team,
   TeamDetail,
+  Trade,
+  TradeRosterPlayer,
+  KeeperRules,
+  MyKeepers,
   ChugDeadline,
   ChugLeaderboardRow,
   ChugUploadResult,
@@ -267,6 +271,21 @@ export const api = {
   // Commissioner only.
   draftControl: (action: 'start' | 'pause' | 'resume' | 'undo-last-pick') =>
     request<unknown>(`/draft/${action}`, { method: 'POST' }),
+  tradeTeams: () => request<{ teams: Team[] }>('/trades/teams'),
+  tradeRoster: (teamId: number) => request<{ roster: TradeRosterPlayer[] }>(`/trades/teams/${teamId}/roster`),
+  myTrades: () => request<{ trades: Trade[] }>('/trades/mine'),
+  proposeTrade: (receivingTeamId: number, give: string[], receive: string[]) =>
+    request<Trade>('/trades', { method: 'POST', body: JSON.stringify({ receiving_team_id: receivingTeamId, give, receive }) }),
+  tradeAction: (tradeId: number, action: 'accept' | 'reject' | 'cancel') =>
+    request<Trade>(`/trades/${tradeId}/${action}`, { method: 'POST', body: '{}' }),
+  myKeepers: () => request<MyKeepers>('/keepers/me'),
+  saveKeepers: (espnPlayerIds: number[]) =>
+    request<unknown>('/keepers/me', { method: 'PUT', body: JSON.stringify({ espn_player_ids: espnPlayerIds }) }),
+  // Commissioner only.
+  setKeeperRules: (rules: { season: number; max_keepers: number; max_consecutive_years: number | null; keeper_deadline: string | null }) =>
+    request<KeeperRules>('/keepers/rules', { method: 'PUT', body: JSON.stringify(rules) }),
+  setKeepersLocked: (season: number, locked: boolean) =>
+    request<KeeperRules>(`/keepers/rules/${locked ? 'lock' : 'unlock'}`, { method: 'POST', body: JSON.stringify({ season }) }),
   chatConversations: () => request<{ conversations: ChatConversation[] }>('/chat/conversations'),
   // Chronological, 50 per page; `before` pages back from a message id.
   chatMessages: (conversationId: number, before?: number) =>
