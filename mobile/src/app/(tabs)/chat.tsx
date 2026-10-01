@@ -1,12 +1,13 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { WatchPartyBar } from '@/components/watchparty/WatchPartyBar';
-import { Card, LoadingState, MessageState, PressableRow, TeamAvatar } from '@/components/ui';
+import { Card, LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { markConversationRead } from '@/lib/chatSocket';
 import { queryClient, useChatConversations } from '@/lib/queries';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 
@@ -35,7 +36,11 @@ function ChatListScreenContent() {
       <Card style={styles.listCard}>
         {list.map((c, i) => (
           <View key={c.id} style={i > 0 ? styles.divided : undefined}>
-            <PressableRow onPress={() => router.push({ pathname: '/chat/[id]', params: { id: String(c.id) } })}>
+            <PreviewLink
+              href={{ pathname: '/chat/[id]', params: { id: String(c.id) } }}
+              menu={c.unread_count > 0 ? [{ title: 'Mark as Read', icon: 'checkmark.message', onPress: () => markConversationRead(c.id) }] : undefined}
+              style={styles.chatRow}
+              pressedStyle={styles.chatRowPressed}>
               <View style={styles.row}>
                 <TeamAvatar name={conversationTitle(c)} logoUrl={c.other_owner_logo_url} size={44} />
                 <View style={styles.body}>
@@ -57,7 +62,7 @@ function ChatListScreenContent() {
                   </View>
                 </View>
               </View>
-            </PressableRow>
+            </PreviewLink>
           </View>
         ))}
       </Card>
@@ -70,6 +75,8 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
   title: { color: Colors.text, fontSize: 28, fontWeight: '800', marginBottom: Spacing.lg },
   listCard: { padding: 0, overflow: 'hidden' },
+  chatRow: { paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg },
+  chatRowPressed: { backgroundColor: Colors.border },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   body: { flex: 1, gap: 2 },

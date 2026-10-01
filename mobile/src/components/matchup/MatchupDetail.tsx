@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ShareableCard } from '@/components/ShareableCard';
 import { RecordWithStreak, RankBadge, WinProbabilityBar } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -39,6 +40,7 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
 
   return (
     <View style={styles.panel}>
+      <ShareableCard title={`Week ${matchup.week}: ${home.team_name} vs ${away.team_name}`}>
       <NeonPanel contentStyle={styles.card}>
         {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <View style={styles.badges}>
@@ -49,6 +51,7 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
         )}
         <ScoreHeader home={home} away={away} />
       </NeonPanel>
+      </ShareableCard>
 
       <NeonPanel contentStyle={styles.card}>
         <Text style={styles.sectionTitle}>Starting Lineups</Text>

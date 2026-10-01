@@ -12,6 +12,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { ShareableCard } from '@/components/ShareableCard';
 import { PageTitle } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -100,6 +101,7 @@ function TradingCard({ owner }: { owner: Owner }) {
   }
 
   return (
+    <ShareableCard title={`${owner.display_name}'s card`}>
     <LinearGradient
       colors={['#38bdf8', '#a855f7', '#ec4899', '#f97316', '#facc15', '#38bdf8']}
       start={{ x: 0, y: 0 }}
@@ -116,6 +118,7 @@ function TradingCard({ owner }: { owner: Owner }) {
         </Pressable>
       </View>
     </LinearGradient>
+    </ShareableCard>
   );
 }
 

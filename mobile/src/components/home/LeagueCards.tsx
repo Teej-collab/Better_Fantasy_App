@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { RankBadge } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -101,10 +102,11 @@ export function OtherMatchupsCard({ matchups, isGameDay }: { matchups: WeekMatch
         {matchups.map((m, i) => {
           const started = m.home.score !== null && m.away.score !== null && !(m.home.score === 0 && m.away.score === 0);
           return (
-            <Pressable
+            <PreviewLink
               key={m.matchup_id}
-              onPress={() => openMatchup(m.matchup_id)}
-              style={({ pressed }) => [styles.row, i > 0 && styles.divided, pressed && styles.pressed]}>
+              href={{ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } }}
+              style={[styles.row, i > 0 && styles.divided]}
+              pressedStyle={styles.pressed}>
               <View style={styles.matchupNames}>
                 <View style={styles.nameLine}>
                   {isGameDay && started && <View style={styles.liveDot} />}
@@ -122,7 +124,7 @@ export function OtherMatchupsCard({ matchups, isGameDay }: { matchups: WeekMatch
                 <Text style={styles.value}>{m.home.score !== null ? m.home.score.toFixed(1) : '—'}</Text>
                 <Text style={styles.value}>{m.away.score !== null ? m.away.score.toFixed(1) : '—'}</Text>
               </View>
-            </Pressable>
+            </PreviewLink>
           );
         })}
       </ListPanel>
@@ -139,10 +141,11 @@ export function RivalriesCard({ games, top }: { games: WeekMatchupContextItem[];
       <ListPanel color={SectionColors.rivalries}>
         {games.length > 0
           ? games.map((m, i) => (
-              <Pressable
+              <PreviewLink
                 key={m.matchup_id}
-                onPress={() => openMatchup(m.matchup_id)}
-                style={({ pressed }) => [styles.row, i > 0 && styles.divided, pressed && styles.pressed]}>
+                href={{ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } }}
+                style={[styles.row, i > 0 && styles.divided]}
+                pressedStyle={styles.pressed}>
                 <View style={styles.rowLeft}>
                   <Text>{m.rivalry?.emoji ?? '⚔️'}</Text>
                   <Text style={[styles.name, styles.medium]}>{m.rivalry?.name}</Text>
@@ -150,7 +153,7 @@ export function RivalriesCard({ games, top }: { games: WeekMatchupContextItem[];
                 <Text style={styles.valueMuted}>
                   {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
                 </Text>
-              </Pressable>
+              </PreviewLink>
             ))
           : top.map((r, i) => (
               <View key={r.id} style={[styles.row, i > 0 && styles.divided]}>

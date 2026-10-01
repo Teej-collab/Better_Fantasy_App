@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
@@ -132,7 +133,7 @@ function PlayersScreenContent() {
           )
         }
         renderItem={({ item }) => (
-          <PlayerRow player={item} onPress={() => openPlayer(item.sleeper_player_id)} onAdd={() => setAdding(item)} />
+          <PlayerRow player={item} onAdd={() => setAdding(item)} />
         )}
       />
       {adding && <PlayerActionSheet player={adding} onClose={() => setAdding(null)} />}
@@ -177,7 +178,7 @@ function ViewCell({ player, onPress, onAdd }: { player: FreeAgent; onPress: () =
   );
 }
 
-function PlayerRow({ player, onPress, onAdd }: { player: FreeAgent; onPress: () => void; onAdd: () => void }) {
+function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) {
   const onWaivers = !!player.waiver_clears_at || player.game_locked;
   const detail = [
     `${player.position === 'DEF' ? 'D/ST' : player.position}${player.pro_team ? ` · ${player.pro_team}` : ''}`,
@@ -187,7 +188,13 @@ function PlayerRow({ player, onPress, onAdd }: { player: FreeAgent; onPress: () 
     .join('  ·  ');
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+    <PreviewLink
+      href={{ pathname: '/player/[id]', params: { id: player.sleeper_player_id } }}
+      menu={[
+        { title: onWaivers ? 'Place Waiver Claim' : 'Add to Roster', icon: onWaivers ? 'clock' : 'plus.circle', onPress: onAdd },
+      ]}
+      style={styles.row}
+      pressedStyle={styles.rowPressed}>
       <AddButton onWaivers={onWaivers} onPress={onAdd} />
       <View style={styles.flex}>
         <View style={styles.nameLine}>
@@ -203,7 +210,7 @@ function PlayerRow({ player, onPress, onAdd }: { player: FreeAgent; onPress: () 
       </View>
       <Text style={[styles.num, styles.value]}>{formatPoints(player.last_week_score)}</Text>
       <Text style={[styles.num, styles.value, styles.proj]}>{formatPoints(player.projected_points)}</Text>
-    </Pressable>
+    </PreviewLink>
   );
 }
 

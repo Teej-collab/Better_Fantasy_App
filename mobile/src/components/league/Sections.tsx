@@ -3,6 +3,7 @@ import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { ActivityRow } from '@/components/home/FeedCards';
 import { RankBadge } from '@/components/home/YourWeekCard';
 import {
@@ -10,7 +11,6 @@ import {
   ListPanel,
   Muted,
   openOwner,
-  openTeam,
   PageTitle,
   RankedCategoryCard,
   Segmented,
@@ -57,10 +57,13 @@ export function LeagueOverview({ season }: { season: number | null }) {
       <ListPanel color={SectionColors.league}>
         {teams.map((t, i) => (
           <View key={t.team_id} style={[ls.row, i > 0 && ls.divided]}>
-            <Pressable onPress={() => openTeam(t.team_id)} style={styles.nameWithBadge}>
+            <PreviewLink
+              href={{ pathname: '/team/[id]', params: { id: String(t.team_id) } }}
+              menu={[{ title: 'Owner Profile', icon: 'person.crop.circle', onPress: () => openOwner(t.owner_id) }]}
+              style={styles.nameWithBadge}>
               <Text style={ls.name}>{t.team_name}</Text>
               <RankBadge rank={rankByTeam.get(t.team_id)} />
-            </Pressable>
+            </PreviewLink>
             <Pressable onPress={() => openOwner(t.owner_id)}>
               <Text style={styles.ownerRight}>{t.owner_name}</Text>
             </Pressable>
@@ -198,10 +201,10 @@ function StandingsTable(props: {
                 <View style={styles.standingsTop}>
                   <Text style={ls.rank}>{i + 1}</Text>
                   <View style={ls.flex}>
-                    <Pressable onPress={() => openTeam(row.team_id)} style={styles.nameWithBadge}>
+                    <PreviewLink href={{ pathname: '/team/[id]', params: { id: String(row.team_id) } }} style={styles.nameWithBadge}>
                       <Text style={ls.name}>{row.team_name}</Text>
                       <RankBadge rank={rankByTeam.get(row.team_id)} />
-                    </Pressable>
+                    </PreviewLink>
                     {champion && <Pill text="🏆 Champion" color="#fcd34d" bg="rgba(251,191,36,0.2)" />}
                     {loser && <Pill text="💩 League Loser" color="#d9b98a" bg="rgba(139,90,43,0.3)" />}
                     <Text style={ls.owner}>{row.owner_name}</Text>

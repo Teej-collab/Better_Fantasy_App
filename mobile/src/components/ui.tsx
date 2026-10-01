@@ -54,7 +54,8 @@ export function formatScore(score: number | null | undefined): string {
   return score === null || score === undefined ? '–' : score.toFixed(2);
 }
 
-export function PressableRow({ onPress, children }: { onPress: () => void; children: ReactNode }) {
+// `onPress` is optional when a Link (asChild) supplies it.
+export function PressableRow({ onPress, children }: { onPress?: () => void; children: ReactNode }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
       {children}

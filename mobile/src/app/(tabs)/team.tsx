@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { Text } from '@/components/Text';
@@ -204,7 +205,11 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
         <Text style={[styles.slotText, canEdit && styles.slotTextEditable]}>{slotDisplayLabel(entry.lineup_slot)}</Text>
       </Pressable>
 
-      <Pressable onPress={() => openPlayer(entry.player_id)} style={({ pressed }) => [styles.player, pressed && styles.pressed]}>
+      <PreviewLink
+        href={{ pathname: '/player/[id]', params: { id: entry.player_id } }}
+        menu={canEdit ? [{ title: 'Change Lineup Slot', icon: 'arrow.up.arrow.down', onPress: () => props.onEdit(entry) }] : undefined}
+        style={styles.player}
+        pressedStyle={styles.pressed}>
         <View style={styles.nameLine}>
           <Text style={styles.playerName} numberOfLines={1}>
             {entry.player_name}
@@ -215,7 +220,7 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
         <Text style={styles.detail} numberOfLines={1}>
           {detail}
         </Text>
-      </Pressable>
+      </PreviewLink>
 
       <View style={styles.points}>
         <Text style={styles.pointsValue}>{formatPoints(entry.points)}</Text>

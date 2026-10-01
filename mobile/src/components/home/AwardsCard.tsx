@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ShareableCard } from '@/components/ShareableCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { SectionTitle } from '@/components/ui';
@@ -89,6 +90,7 @@ export function AwardsCard(props: {
   const tiles = buildAwardTiles(props.awards);
   return (
     <View style={styles.section}>
+      <ShareableCard title={`Week ${props.awardsWeek} Awards`} style={styles.shareGap}>
       <SectionTitle>{props.awardsWeek === props.currentWeek ? "This Week's Awards" : `Week ${props.awardsWeek} Awards`}</SectionTitle>
       <View style={styles.grid}>
         {tiles.map((t, i) => (
@@ -101,6 +103,7 @@ export function AwardsCard(props: {
           </View>
         ))}
       </View>
+      </ShareableCard>
       {props.recap && <RecapTeaser recap={props.recap.recap} week={props.recap.week} season={props.recap.season} />}
     </View>
   );
@@ -142,6 +145,7 @@ function RecapTeaser({ recap, week, season }: { recap: WeeklyNarrative; week: nu
 
 const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
+  shareGap: { gap: Spacing.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   tile: {
     width: '48.5%',

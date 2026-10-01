@@ -3,6 +3,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ShareableCard } from '@/components/ShareableCard';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -44,6 +45,7 @@ export default function RecapScreen() {
           </Pressable>
         </NeonPanel>
       ) : (
+        <ShareableCard title={`Week ${week} Recap`}>
         <NeonPanel color={color} contentStyle={styles.gap}>
           {recap.released === false && (
             <View style={styles.preview}>
@@ -54,6 +56,7 @@ export default function RecapScreen() {
             {recap.text.trim()}
           </Text>
         </NeonPanel>
+        </ShareableCard>
       )}
     </ScrollView>
   );

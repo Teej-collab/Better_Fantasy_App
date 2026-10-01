@@ -1,7 +1,8 @@
-import { router, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { PreviewLink } from '@/components/PreviewLink';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
@@ -79,11 +80,7 @@ function GameRow({ game, gamecastId }: { game: NflGame; gamecastId: string | nul
   const final = game.state === 'post';
   const away = Number(game.away_score ?? 0);
   const home = Number(game.home_score ?? 0);
-  return (
-    <Pressable
-      disabled={!gamecastId}
-      onPress={() => gamecastId && router.push({ pathname: '/gamecast/[id]', params: { id: gamecastId } })}
-      style={({ pressed }) => [!gamecastId && styles.dim, pressed && styles.pressed]}>
+  const content = (
       <NeonPanel color={live ? SectionColors.gamecast : undefined} radius={Radius.md} contentStyle={styles.row}>
         <View style={styles.teams}>
           <TeamLine abbr={game.away_team ?? '—'} score={game.away_score} showScore={game.state !== 'pre'} dim={final && away < home} />
@@ -103,7 +100,12 @@ function GameRow({ game, gamecastId }: { game: NflGame; gamecastId: string | nul
           {game.broadcast && <Text style={styles.broadcast}>{game.broadcast}</Text>}
         </View>
       </NeonPanel>
-    </Pressable>
+  );
+  if (!gamecastId) return <View style={styles.dim}>{content}</View>;
+  return (
+    <PreviewLink href={{ pathname: '/gamecast/[id]', params: { id: gamecastId } }} pressedStyle={styles.pressed}>
+      {content}
+    </PreviewLink>
   );
 }
 
