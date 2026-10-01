@@ -600,3 +600,31 @@ export function usePendingTrades() {
 export function useEspnConnection() {
   return useQuery({ queryKey: ['espn-connection'], queryFn: api.espnConnection });
 }
+
+// ---- Bet tracking ----
+
+export function useBets() {
+  return useQuery({
+    queryKey: ['bets'],
+    queryFn: api.bets,
+    // Open legs move with the games.
+    refetchInterval: (q) => (q.state.data?.bets.some((b) => b.status === 'open') ? 30_000 : false),
+  });
+}
+
+export function useBetsInGame(eventId: string, live: boolean) {
+  return useQuery({
+    queryKey: ['bets-in-game', eventId],
+    queryFn: () => api.betsInGame(eventId),
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
+  });
+}
+
+export function useSharedBet(betId: number) {
+  return useQuery({
+    queryKey: ['shared-bet', betId],
+    queryFn: () => api.sharedBet(betId),
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === 'open' ? 30_000 : false),
+  });
+}

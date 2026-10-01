@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   AccountSettings,
   AppearanceSettings,
+  BetSettings,
   ChatSettings,
   FeedbackSettings,
   NotificationSettings,
@@ -25,6 +26,7 @@ const SECTIONS = [
   { key: 'notifications', label: 'Notifications' },
   { key: 'chat', label: 'Chat' },
   { key: 'appearance', label: 'Appearance' },
+  { key: 'bets', label: 'Bets' },
   { key: 'navigation', label: 'Navigation' },
   { key: 'labs', label: 'Labs' },
   { key: 'account', label: 'Account & Security' },
@@ -45,6 +47,18 @@ export default function SettingsScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Settings' }} />
       {/* The web's account menu: Leagues (switch, join or create), then the commissioner/admin tools. */}
+      <Pressable
+        onPress={() => router.push('/bets')}
+        accessibilityRole="button"
+        accessibilityLabel="My Bets"
+        accessibilityHint="Track your bets live. Private unless you share one."
+        style={[styles.commish, { borderColor: Colors.border }]}>
+        <View style={styles.commishText}>
+          <Text style={styles.commishTitle}>My Bets</Text>
+          <Text style={styles.commishSub}>Track your bets live — private unless you share one.</Text>
+        </View>
+        <Text style={[styles.chevron, { color: accent }]}>›</Text>
+      </Pressable>
       <Pressable onPress={() => router.push('/leagues')} accessibilityRole="button" accessibilityLabel="Leagues" accessibilityHint="Switch leagues, join one with an invite code, or start your own." style={[styles.commish, { borderColor: Colors.border }]}>
         <View style={styles.commishText}>
           <Text style={styles.commishTitle}>Leagues</Text>
@@ -88,6 +102,7 @@ export default function SettingsScreen() {
       {section === 'notifications' && <NotificationSettings />}
       {section === 'chat' && <ChatSettings />}
       {section === 'appearance' && <AppearanceSettings />}
+      {section === 'bets' && <BetSettings />}
       {section === 'navigation' && <WebOnlySettings title="Navigation" />}
       {section === 'labs' && <WebOnlySettings title="Labs" />}
       {section === 'account' && <AccountSettings />}

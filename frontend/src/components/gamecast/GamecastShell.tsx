@@ -13,6 +13,7 @@ import { CurrentDrive } from "@/components/gamecast/CurrentDrive";
 import { PlayByPlay } from "@/components/gamecast/PlayByPlay";
 import { ScoringSummary } from "@/components/gamecast/ScoringSummary";
 import { FantasyImpact } from "@/components/gamecast/FantasyImpact";
+import { GamecastBets } from "@/components/bets/GamecastBets";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
@@ -127,6 +128,7 @@ export function GamecastShell({
         <ScoringSummary game={game} beta={beta} />
         <FantasyImpact game={game} isSignedIn={isSignedIn} beta={beta} />
       </div>
+      {isSignedIn && <GamecastBets gameId={gameId} live={game.status === "in_progress" || game.status === "halftime"} />}
 
       <PlayByPlay game={game} beta={beta} />
     </div>

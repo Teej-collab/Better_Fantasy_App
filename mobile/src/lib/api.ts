@@ -2,9 +2,13 @@ import type * as A from '@/lib/adminTypes';
 import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
 import type {
   AddFreeAgentResult,
+  Bet,
+  BetLegStatus,
+  BetStatus,
   ChatGif,
   ChatMember,
   CommissionerAddResult,
+  DraftBet,
   EspnConnectionStatus,
   LeagueInfo,
   LeagueMember,
@@ -386,6 +390,20 @@ export const api = {
   // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
   chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),
   chatMembers: async () => (await request<{ members: ChatMember[] }>('/chat/members')).members,
+  // Bet tracking — tracking only. Private unless shared to league chat.
+  bets: () => request<{ enabled: boolean; bets: Bet[] }>('/bets'),
+  betsInGame: (eventId: string) => request<{ enabled: boolean; bets: Bet[] }>(`/bets/games/${encodeURIComponent(eventId)}`),
+  sharedBet: (betId: number) => request<Bet>(`/bets/shared/${betId}`),
+  parseBetSlip: (imageBase64: string, mediaType: string) =>
+    request<DraftBet>('/bets/parse-slip', { method: 'POST', body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) }),
+  createBet: (bet: DraftBet & { source: 'screenshot' | 'manual' }) => request<Bet>('/bets', { method: 'POST', body: JSON.stringify(bet) }),
+  setBetStatus: (betId: number, status: BetStatus | 'auto') =>
+    request<Bet>(`/bets/${betId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  setBetLegStatus: (betId: number, legId: number, status: BetLegStatus) =>
+    request<Bet>(`/bets/${betId}/legs/${legId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteBet: (betId: number) => request<{ deleted: boolean }>(`/bets/${betId}`, { method: 'DELETE' }),
+  shareBet: (betId: number) => request<{ shared: boolean; posted: boolean }>(`/bets/${betId}/share`, { method: 'POST' }),
+  unshareBet: (betId: number) => request<{ shared: boolean }>(`/bets/${betId}/share`, { method: 'DELETE' }),
   // A 503 means GIF search isn't configured on the server (no GIPHY key).
   searchGifs: async (query: string) => (await request<{ gifs: ChatGif[] }>(`/chat/gifs?search=${encodeURIComponent(query)}`)).gifs,
   // A single-use, 60-second sign-in link for the in-app browser

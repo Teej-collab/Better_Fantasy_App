@@ -1,5 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
@@ -649,6 +650,37 @@ export function AppearanceSettings() {
           onChange={(v) => patch({ reduced_motion: v === 'reduced' })}
         />
       </Panel>
+    </View>
+  );
+}
+
+// ---- Bets ----
+
+// The switch for bet tracking (My Bets and the Gamecast's Your Bets
+// card). Off hides them; saved bets stay put for when it's back on.
+export function BetSettings() {
+  const accent = useAppearance().accent;
+  const prefs = usePreferences().data;
+  const { patch, saved, error } = usePatchPreferences();
+  if (!prefs) return <LoadingState />;
+  return (
+    <View style={styles.gap}>
+      <Header title="Bets" subtitle="Track your bets live. Tracking only — nothing is ever placed." saved={saved} />
+      {error && <Text style={styles.error}>{error}</Text>}
+      <Panel>
+        <ToggleRow
+          label="Bet Tracking"
+          description="Show My Bets and a Your Bets card on the Gamecast for games you have a leg in. Your bets are private — nobody else sees one unless you share it to league chat."
+          value={prefs.bet_tracking_enabled ?? true}
+          onChange={(bet_tracking_enabled) => void patch({ bet_tracking_enabled })}
+        />
+      </Panel>
+      {(prefs.bet_tracking_enabled ?? true) && (
+        <Pressable onPress={() => router.push('/bets')} accessibilityRole="link" hitSlop={6}>
+          <Text style={[styles.body, { color: accent, fontWeight: '700' }]}>Go to My Bets →</Text>
+        </Pressable>
+      )}
+      <Text style={styles.small}>21+. If gambling stops being fun, call or text 1-800-GAMBLER.</Text>
     </View>
   );
 }

@@ -207,6 +207,8 @@ export type ChatMessage = {
   image_url: string | null;
   // Commish Corner announcements only.
   title: string | null;
+  // A bet shared from the bet tracker — rendered as a live bet card.
+  bet_id?: number | null;
   deleted: boolean;
   created_at: string;
   reply_to: { id: number; owner_name: string; body: string } | null;
@@ -610,6 +612,8 @@ export type OwnerPreferences = {
   design_direction: 'default' | 'broadcast' | 'stadium';
   home_card_order: string | null;
   push_enabled: boolean;
+  // Settings > Bets — off hides My Bets and the Gamecast's Your Bets card.
+  bet_tracking_enabled: boolean;
   notify_my_players: boolean;
   notify_red_zone: boolean;
   notify_injuries: boolean;
@@ -934,4 +938,74 @@ export type ChatGif = {
   preview_url: string;
   width: number | null;
   height: number | null;
+};
+
+// ---- Bet tracking (backend app/routers/bets.py) — tracking only ----
+
+export type BetLegStatus = 'open' | 'won' | 'lost' | 'push' | 'void';
+export type BetStatus = BetLegStatus | 'cashed_out';
+export type BetMarket = 'player_prop' | 'moneyline' | 'spread' | 'total' | 'other';
+export type BetDirection = 'over' | 'under' | 'yes' | 'no';
+
+export type BetLeg = {
+  id: number;
+  description: string;
+  market: BetMarket;
+  player_name: string | null;
+  sleeper_player_id: string | null;
+  team_abbr: string | null;
+  stat_key: string | null;
+  stat_label: string | null;
+  line: number | null;
+  direction: BetDirection | null;
+  odds_american: number | null;
+  espn_event_id: string | null;
+  game: {
+    state: 'pre' | 'in' | 'post' | null;
+    home_team: string | null;
+    away_team: string | null;
+    home_score: number | null;
+    away_score: number | null;
+  } | null;
+  status: BetLegStatus;
+  current: number | null;
+  target: number | null;
+  // False for legs the app can't grade (market "other", or no game found).
+  tracked: boolean;
+};
+
+export type Bet = {
+  id: number;
+  owner_name: string;
+  sportsbook: string | null;
+  // Only on your own bets — a shared bet never shows its money.
+  stake?: number | null;
+  payout?: number | null;
+  note?: string | null;
+  status_set_manually?: boolean;
+  odds_american: number | null;
+  status: BetStatus;
+  shared: boolean;
+  created_at: string;
+  legs: BetLeg[];
+};
+
+export type DraftLeg = {
+  description: string;
+  market: BetMarket;
+  player_name: string | null;
+  team_abbr: string | null;
+  stat_key: string | null;
+  line: number | null;
+  direction: BetDirection | null;
+  odds_american: number | null;
+  matched?: boolean;
+};
+
+export type DraftBet = {
+  sportsbook: string | null;
+  stake: number | null;
+  odds_american: number | null;
+  payout: number | null;
+  legs: DraftLeg[];
 };

@@ -21,6 +21,9 @@ def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict
         "body": "This message was deleted." if deleted else row["body"],
         "image_url": None if deleted else row["image_url"],
         "title": None if deleted else row["title"],
+        # A bet shared from the bet tracker (app/routers/bets.py): the
+        # client renders a live bet card from GET /bets/shared/{id}.
+        "bet_id": None if deleted else row.get("bet_id"),
         "deleted": deleted,
         "created_at": row["created_at"].isoformat(),
         "reply_to": reply_to,
@@ -100,7 +103,7 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
         """
         SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                o.logo_url AS owner_logo_url,
-               m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
+               m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])
         ORDER BY m.id

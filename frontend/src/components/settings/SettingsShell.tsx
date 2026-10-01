@@ -9,12 +9,14 @@ import { NavigationSection } from "@/components/settings/NavigationSection";
 import { AccountSection } from "@/components/settings/AccountSection";
 import { FeedbackSection } from "@/components/settings/FeedbackSection";
 import { LabsSection } from "@/components/settings/LabsSection";
+import { BetsSection } from "@/components/settings/BetsSection";
 
 const SECTIONS = [
   { key: "profile", label: "Profile" },
   { key: "notifications", label: "Notifications" },
   { key: "chat", label: "Chat" },
   { key: "appearance", label: "Appearance" },
+  { key: "bets", label: "Bets" },
   { key: "navigation", label: "Navigation" },
   { key: "labs", label: "Labs" },
   { key: "account", label: "Account & Security" },
@@ -82,6 +84,7 @@ export function SettingsShell({
         {active === "appearance" && <AppearanceSection />}
         {active === "navigation" && <NavigationSection />}
         {active === "labs" && <LabsSection />}
+        {active === "bets" && <BetsSection />}
         {active === "account" && <AccountSection initial={initial} />}
         {active === "feedback" && <FeedbackSection isCommissioner={isCommissioner} />}
       </div>

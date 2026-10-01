@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { GamecastBets } from '@/components/bets/GamecastBets';
 import { GamecastField } from '@/components/gamecast/GamecastField';
 import { DriveChart, LastPlayCard, PlayByPlay, Scoreboard, ScoringCard, StakeCard } from '@/components/gamecast/GamecastSections';
 import { MomentBanner, useGameMoments } from '@/components/gamecast/MomentBanner';
@@ -122,6 +123,7 @@ export default function GamecastScreen() {
         <Scoreboard game={g} connected={connected} />
         <GamecastField game={g} />
         {g.status !== 'scheduled' && <LastPlayCard play={lastPlay} fantasy={playFantasy.data ?? []} />}
+        <GamecastBets gameId={g.game_id} live={live} />
         {impact.data && <StakeCard impact={impact.data} />}
         <ScoringCard game={g} />
         <DriveChart game={g} />

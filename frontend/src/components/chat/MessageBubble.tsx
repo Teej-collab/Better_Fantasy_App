@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatReaction } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
+import { SharedBetCard } from "@/components/bets/SharedBetCard";
 
 export const REACTION_CHOICES = ["😂", "🔥", "💀", "👍", "❤️", "😭"];
 
@@ -165,6 +166,8 @@ export function MessageBubble({
               flex column (which used to stretch to the widest sibling
               — reply preview or image — and silently misplaced a short
               text bubble's badge halfway over its own words). */}
+          {!message.deleted && message.bet_id && <SharedBetCard betId={message.bet_id} mine={mine} />}
+
           {!message.deleted && message.image_url && (
             <div className="relative w-fit">
               <a href={message.image_url} target="_blank" rel="noopener noreferrer">

@@ -113,6 +113,10 @@ _DEFAULT_PREFERENCES = {
     # opted in" and "never saw it" don't collapse into the same value.
     "ai_training_opt_out": False,
     "ai_training_notice_seen": False,
+    # Settings' Bet Tracking switch (migration d7a2c4e8f1b9) — on by
+    # default; off hides My Bets and the Gamecast's Your Bets card.
+    # Bets themselves are always private to their user until shared.
+    "bet_tracking_enabled": True,
 }
 
 # Every real column except owner_id itself — used to build a full

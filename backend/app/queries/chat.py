@@ -272,7 +272,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.id < $2 AND m.deleted_at IS NULL
@@ -286,7 +286,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
@@ -345,6 +345,7 @@ async def insert_message(
     reply_to_id: int | None,
     image_url: str | None = None,
     title: str | None = None,
+    bet_id: int | None = None,
 ):
     # title is only ever non-NULL for a commish_corner announcement
     # (app/routers/chat.py's WS handler is the sole caller that ever
@@ -352,11 +353,19 @@ async def insert_message(
     # "column exists, most rows don't use it" shape as image_url.
     return await conn.fetchrow(
         """
-        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url, title
+        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url, title, bet_id
         """,
-        conversation_id, owner_id, body, reply_to_id, image_url, title,
+        conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id,
+    )
+
+
+async def bet_message_exists(conn, bet_id: int) -> bool:
+    """Whether a bet already has its card in chat (sharing it again
+    shouldn't post a second one)."""
+    return await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM messages WHERE bet_id = $1 AND deleted_at IS NULL)", bet_id
     )
 
 

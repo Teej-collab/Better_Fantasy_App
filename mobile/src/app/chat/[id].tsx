@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SharedBetCard } from '@/components/bets/SharedBetCard';
 import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -327,6 +328,9 @@ function MessageBubble(props: {
         </Text>
       )}
       <Pressable onLongPress={props.onLongPress} delayLongPress={300}>
+        {/* A shared bet's live card sits above its "Shared a bet" bubble,
+            outside it, so it keeps its own colors. */}
+        {message.bet_id ? <SharedBetCard betId={message.bet_id} mine={mine} /> : null}
         <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
           {message.reply_to && (
             <View style={styles.reply}>

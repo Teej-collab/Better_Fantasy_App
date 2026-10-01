@@ -14,6 +14,7 @@ from app.routers import (
     admin_lineup,
     auth,
     awards,
+    bets,
     chat,
     chug,
     commissioner_lineup,
@@ -159,6 +160,7 @@ app.include_router(draft.router)
 app.include_router(feedback.router)
 app.include_router(free_agents.router)
 app.include_router(game_day.router)
+app.include_router(bets.router)
 app.include_router(gamecast.router)
 app.include_router(keepers.router)
 app.include_router(league.router)

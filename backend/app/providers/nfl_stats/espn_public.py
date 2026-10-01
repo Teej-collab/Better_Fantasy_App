@@ -506,6 +506,80 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
     return list(players_by_id.values())
 
 
+# Bet tracking's stat lines (app/domain/bets.py) — the common player-prop
+# markets, read from the same boxscore tables as the scoring map above
+# but kept separate from it, so nothing here can change fantasy scoring.
+# "Long" stats keep the max across categories rather than summing.
+_PROP_STAT_MAP: dict[tuple[str, str], str] = {
+    ("passing", "passingYards"): "pass_yd",
+    ("passing", "passingTouchdowns"): "pass_td",
+    ("passing", "interceptions"): "pass_int",
+    ("rushing", "rushingAttempts"): "rush_att",
+    ("rushing", "rushingYards"): "rush_yd",
+    ("rushing", "rushingTouchdowns"): "rush_td",
+    ("receiving", "receptions"): "rec",
+    ("receiving", "receivingYards"): "rec_yd",
+    ("receiving", "receivingTouchdowns"): "rec_td",
+    ("kickReturns", "kickReturnTouchdowns"): "ret_td",
+    ("puntReturns", "puntReturnTouchdowns"): "ret_td",
+    ("interceptions", "interceptionTouchdowns"): "ret_td",
+    ("defensive", "sacks"): "sacks",
+    ("defensive", "totalTackles"): "tackles",
+    ("kicking", "totalKickingPoints"): "kick_pts",
+}
+_PROP_LONG_MAP: dict[tuple[str, str], str] = {
+    ("rushing", "longRushing"): "long_rush",
+    ("receiving", "longReception"): "long_rec",
+}
+
+
+def parse_prop_stats(data: dict) -> dict[int, dict]:
+    """{espn_player_id: {"player_name", "pro_team", "stats": {key: value}}}
+    for everyone in the boxscore. Completions/attempts arrive as "15/20"
+    and become pass_cmp + pass_att; field goals made likewise."""
+    players: dict[int, dict] = {}
+    for team_entry in data.get("boxscore", {}).get("players", []):
+        team_abbr = team_entry.get("team", {}).get("abbreviation")
+        for category in team_entry.get("statistics", []):
+            name = category.get("name")
+            keys = category.get("keys", [])
+            for athlete_entry in category.get("athletes", []):
+                athlete = athlete_entry.get("athlete", {})
+                if athlete.get("id") is None:
+                    continue
+                pid = int(athlete["id"])
+                entry = players.setdefault(
+                    pid, {"player_name": athlete.get("displayName"), "pro_team": team_abbr, "stats": {}}
+                )
+                stats = entry["stats"]
+                for raw_key, raw_value in zip(keys, athlete_entry.get("stats", [])):
+                    if (name, raw_key) == ("passing", "completions/passingAttempts"):
+                        made, _, att = str(raw_value).partition("/")
+                        try:
+                            stats["pass_cmp"] = stats.get("pass_cmp", 0) + float(made)
+                            stats["pass_att"] = stats.get("pass_att", 0) + float(att)
+                        except ValueError:
+                            pass
+                        continue
+                    if (name, raw_key) == ("kicking", "fieldGoalsMade/fieldGoalAttempts"):
+                        try:
+                            stats["fg_made"] = stats.get("fg_made", 0) + _parse_made(raw_value)
+                        except ValueError:
+                            pass
+                        continue
+                    try:
+                        value = float(raw_value)
+                    except (TypeError, ValueError):
+                        continue
+                    if (name, raw_key) in _PROP_LONG_MAP:
+                        k = _PROP_LONG_MAP[(name, raw_key)]
+                        stats[k] = max(stats.get(k, 0), value)
+                    elif (name, raw_key) in _PROP_STAT_MAP:
+                        k = _PROP_STAT_MAP[(name, raw_key)]
+                        stats[k] = stats.get(k, 0) + value
+    return players
+
+
 def parse_team_dst_stats(data: dict) -> dict[str, dict]:
     """One entry per team, keyed by ESPN's team abbreviation (matching
     Sleeper's own DEF sleeper_player_id convention — see
@@ -610,6 +684,23 @@ def clear_game_stats_cache() -> None:
     _GAME_STATS_CACHE.clear()
 
 
+def _scoreline(data: dict) -> dict:
+    """Both teams and the score, plus "pre" | "in" | "post" — for grading
+    bets on the game itself (spreads, totals, moneylines)."""
+    competition = (data.get("header", {}).get("competitions") or [{}])[0]
+    out = {"state": competition.get("status", {}).get("type", {}).get("state")}
+    for c in competition.get("competitors", []):
+        side = c.get("homeAway")
+        if side not in ("home", "away"):
+            continue
+        out[f"{side}_team"] = c.get("team", {}).get("abbreviation")
+        try:
+            out[f"{side}_score"] = int(c.get("score") or 0)
+        except ValueError:
+            out[f"{side}_score"] = 0
+    return out
+
+
 def _is_final(data: dict) -> bool:
     competitions = data.get("header", {}).get("competitions") or [{}]
     return bool(competitions[0].get("status", {}).get("type", {}).get("completed"))
@@ -635,10 +726,17 @@ async def get_game_stats(event_id: str) -> dict:
         injury_plays = parse_injury_plays(data)
     except Exception:
         injury_plays = []
+    try:
+        prop_stats = parse_prop_stats(data)
+    except Exception:
+        prop_stats = {}
     result = {
         "players": parse_individual_player_stats(data),
         "team_dst": parse_team_dst_stats(data),
         "injury_plays": injury_plays,
+        "prop_stats": prop_stats,
+        "final": _is_final(data),
+        "scoreline": _scoreline(data),
     }
     ttl = _FINAL_GAME_TTL_SECONDS if _is_final(data) else _LIVE_GAME_TTL_SECONDS
     _GAME_STATS_CACHE[event_id] = (time.monotonic() + ttl, result)

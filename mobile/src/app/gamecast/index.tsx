@@ -1,6 +1,6 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -52,6 +52,9 @@ export default function GamecastHubScreen() {
         <Text style={styles.kicker}>Gamecast</Text>
         <Display style={styles.title}>NFL Games</Display>
         <Text style={styles.sub}>Live scores{week !== null ? ` · Week ${week}` : ''}</Text>
+        <Pressable onPress={() => router.push('/bets')} accessibilityRole="link" hitSlop={6} style={styles.betsLink}>
+          <Text style={styles.betsLinkText}>🎟️ My Bets →</Text>
+        </Pressable>
       </View>
 
       {scoreboard.isPending ? (
@@ -119,6 +122,8 @@ function TeamLine({ abbr, score, showScore, dim }: { abbr: string; score: string
 }
 
 const styles = StyleSheet.create({
+  betsLink: { alignSelf: 'flex-start', marginTop: Spacing.xs },
+  betsLinkText: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.xl },
   head: { gap: 2 },

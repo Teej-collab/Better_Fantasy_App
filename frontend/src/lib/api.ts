@@ -1521,6 +1521,8 @@ export type OwnerPreferences = {
   // chat send (MessageComposer.tsx) has actually been shown yet.
   ai_training_opt_out: boolean;
   ai_training_notice_seen: boolean;
+  // Settings > Bets — off hides My Bets and the Gamecast's Your Bets card.
+  bet_tracking_enabled: boolean;
 };
 
 async function _preferencesRequest(path: string, method: string, body?: object): Promise<OwnerPreferences> {
@@ -2036,6 +2038,9 @@ export type ChatMessage = {
   // commissioner wrote, distinct from the body. Always null for every
   // other conversation type (league/direct never set or accept one).
   title: string | null;
+  // A bet shared from the bet tracker — rendered as a live BetCard
+  // (components/bets/SharedBetCard.tsx).
+  bet_id?: number | null;
   deleted: boolean;
   created_at: string;
   reply_to: ChatReplyPreview | null;
