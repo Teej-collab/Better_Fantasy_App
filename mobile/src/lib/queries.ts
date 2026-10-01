@@ -134,8 +134,9 @@ export function useLineupChange() {
   });
 }
 
-export function useMe() {
-  return useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: 5 * 60_000 });
+// `enabled` is false while signed out (the app root asks for it either way).
+export function useMe(enabled = true) {
+  return useQuery({ queryKey: ['me'], queryFn: api.me, staleTime: 5 * 60_000, enabled });
 }
 
 export function useChatConversations() {

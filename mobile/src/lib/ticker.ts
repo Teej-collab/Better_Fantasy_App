@@ -5,7 +5,14 @@ import { nflTeamColor } from '@/lib/nflTeams';
 import type { LeagueTickerItem, NflGame, StandingsRow, WeekMatchupContextItem, WeeklyAwards } from '@/lib/types';
 
 export type TickerSegment = { text: string; color?: string };
-export type TickerItem = { key: string; segments: TickerSegment[] };
+// `game` (an NFL game's teams) opens its Gamecast when tapped;
+// `matchupId` opens that league matchup.
+export type TickerItem = {
+  key: string;
+  segments: TickerSegment[];
+  game?: { home: string; away: string };
+  matchupId?: number;
+};
 
 function team(abbr: string): TickerSegment {
   const color = nflTeamColor(abbr);
@@ -16,9 +23,11 @@ export function buildNflTickerItems(games: NflGame[]): TickerItem[] {
   const items: TickerItem[] = [];
   for (const g of games) {
     if (!g.home_team || !g.away_team) continue;
+    const game = { home: g.home_team, away: g.away_team };
     if (g.state === 'in') {
       items.push({
         key: g.id,
+        game,
         segments: [
           team(g.away_team),
           { text: ` ${g.away_score} — ` },
@@ -29,11 +38,13 @@ export function buildNflTickerItems(games: NflGame[]): TickerItem[] {
     } else if (g.state === 'post') {
       items.push({
         key: g.id,
+        game,
         segments: [team(g.away_team), { text: ` ${g.away_score} — ` }, team(g.home_team), { text: ` ${g.home_score} Final` }],
       });
     } else {
       items.push({
         key: g.id,
+        game,
         segments: [team(g.away_team), { text: ' @ ' }, team(g.home_team), { text: ` — ${g.status_detail ?? 'Upcoming'}` }],
       });
     }
@@ -92,6 +103,7 @@ function leagueSide(name: string, score: number | null, top: LeagueTickerItem['h
 export function buildLeagueTickerItems(items: LeagueTickerItem[]): TickerItem[] {
   return items.map((m) => ({
     key: `league-${m.matchup_id}`,
+    matchupId: m.matchup_id,
     segments: [
       {
         text: `${leagueSide(m.home_team_name, m.home_score, m.home_top_scorer)} vs ${leagueSide(m.away_team_name, m.away_score, m.away_top_scorer)}`,

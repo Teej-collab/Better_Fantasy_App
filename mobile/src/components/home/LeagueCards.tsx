@@ -254,9 +254,9 @@ const styles = StyleSheet.create({
 
 // Home's Discover grid (frontend/src/app/(home)/page.tsx DiscoveryGrid):
 // a tile per League section, in LEAGUE_SUBNAV_ORDER, minus League
-// itself. The web's Gamecast tile is left out: on the phone every game
-// opens from the scores strip at the top of Home.
+// itself, plus Gamecast — the web's DiscoveryGrid leads with it.
 const DISCOVER_TILES = [
+  { section: 'gamecast', label: 'Gamecast', description: "Live play-by-play for this week's real NFL games", color: SectionColors.gamecast },
   { section: 'standings', label: 'Standings', description: 'Full league standings and records', color: SectionColors.standings },
   {
     section: 'powerRankings',
@@ -276,7 +276,7 @@ export function DiscoverCard({ ringColor }: { ringColor: string }) {
       <Header title="Discover" />
       <View style={styles.discoverGrid}>
         {DISCOVER_TILES.map((t) => (
-          <Pressable key={t.section} onPress={() => openLeague(t.section)} style={styles.discoverTile}>
+          <Pressable key={t.section} onPress={() => (t.section === 'gamecast' ? router.push('/gamecast') : openLeague(t.section))} style={styles.discoverTile}>
             {({ pressed }) => (
               <NeonPanel color={t.color} radius={Radius.md} contentStyle={[styles.discoverInner, pressed && styles.pressed]}>
                 <View style={styles.discoverTitle}>
