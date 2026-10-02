@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Door, GhostButton, Icon, Kicker, StartScreen, startStyles, Sub, Title } from '@/components/start/StartUI';
@@ -11,12 +11,15 @@ import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
 import { queryClient, useMe } from '@/lib/queries';
 import { seasonalEmblem } from '@/lib/seasonal';
+import type { LeagueInfo } from '@/lib/types';
 
 // The front door for joining or creating a league (port of the web's
 // /start, components/start/StartFlow.tsx): two doors for someone with no
 // league yet, or "Welcome back" with their leagues for someone who has
 // one. Join and Create are their own screens (start/join, start/create).
 export default function StartScreenRoute() {
+  // ?launch=1: opened on a cold launch as the front screen (app/_layout.tsx).
+  const { launch } = useLocalSearchParams<{ launch?: string }>();
   const me = useMe().data;
   const q = useQuery({ queryKey: ['leagues-mine'], queryFn: api.leaguesMine });
   if (q.isPending) return <LoadingState />;
@@ -25,9 +28,12 @@ export default function StartScreenRoute() {
 
   async function open(leagueId: number) {
     haptics.tap();
-    if (leagueId !== activeId) await api.selectLeague(leagueId).catch(() => {});
-    await queryClient.invalidateQueries();
-    router.replace('/');
+    if (leagueId !== activeId) {
+      await api.selectLeague(leagueId).catch(() => {});
+      await queryClient.invalidateQueries();
+    }
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   }
 
   if (leagues.length > 0) {
@@ -39,16 +45,7 @@ export default function StartScreenRoute() {
             <GhostButton label="Create new" onPress={() => router.push('/start/create')} flex />
           </View>
         }>
-        <Stack.Screen
-          options={{
-            title: 'Your Leagues',
-            headerRight: () => (
-              <Pressable onPress={() => router.push('/leagues')} hitSlop={8} accessibilityRole="button">
-                <Text style={styles.manage}>Manage</Text>
-              </Pressable>
-            ),
-          }}
-        />
+        <Stack.Screen options={{ title: 'Your Leagues', headerBackVisible: !launch, gestureEnabled: !launch }} />
         <View style={styles.welcomeRow}>
           <Image source={seasonalEmblem()} style={styles.smallEmblem} contentFit="contain" accessible={false} />
           <View>
@@ -73,7 +70,12 @@ export default function StartScreenRoute() {
                   </View>
                 )}
               </View>
-              <Text style={[startStyles.muted, styles.capital]}>{l.role}</Text>
+              <Text style={startStyles.muted}>{cardLine(l)}</Text>
+              {statusChip(l) && (
+                <View style={styles.statusPill}>
+                  <Text style={styles.statusText}>{statusChip(l)}</Text>
+                </View>
+              )}
             </Pressable>
           ))}
         </View>
@@ -83,7 +85,7 @@ export default function StartScreenRoute() {
 
   return (
     <StartScreen>
-      <Stack.Screen options={{ title: 'Get Started' }} />
+      <Stack.Screen options={{ title: 'Get Started', headerBackVisible: !launch, gestureEnabled: !launch }} />
       <View style={styles.hero}>
         <Image source={seasonalEmblem()} style={styles.emblem} contentFit="contain" accessibilityLabel="The Weekend" />
         <Kicker>Welcome to The Weekend</Kicker>
@@ -107,6 +109,32 @@ export default function StartScreenRoute() {
   );
 }
 
+// "Bucky'd Up · 2–1 · Week 4 · Commissioner", like the mockup.
+function cardLine(l: LeagueInfo): string {
+  const s = l.summary;
+  const role = l.role === 'commissioner' ? 'Commissioner' : 'Member';
+  if (!s?.team_name) return s && s.team_count ? `${s.teams} of ${s.team_count} teams in · ${role}` : role;
+  const bits = [s.team_name];
+  if (s.record && s.draft_status === 'complete') bits.push(s.record.replace('-', '–'));
+  if (s.week && s.draft_status === 'complete') bits.push(`Week ${s.week}`);
+  bits.push(role);
+  return bits.join(' · ');
+}
+
+// What's next for the league, when there's something: the draft, or
+// open spots before it.
+function statusChip(l: LeagueInfo): string | null {
+  const s = l.summary;
+  if (!s || s.draft_status === 'complete') return null;
+  if (s.draft_at && new Date(s.draft_at).getTime() > Date.now()) {
+    const d = new Date(s.draft_at);
+    return `Draft ${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  if (s.draft_status === 'in_progress' || s.draft_status === 'paused') return 'Drafting now';
+  if (s.team_count && s.teams < s.team_count) return `${s.team_count - s.teams} spots open`;
+  return null;
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', gap: Spacing.sm },
@@ -120,8 +148,8 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   activePill: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(57,255,20,0.14)' },
   activeText: { color: Colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
-  capital: { textTransform: 'capitalize' },
   espn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },
   strong: { color: Colors.text, fontWeight: '700' },
-  manage: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
+  statusPill: { alignSelf: 'flex-start', borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(251,191,36,0.14)' },
+  statusText: { color: '#fbbf24', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
 });

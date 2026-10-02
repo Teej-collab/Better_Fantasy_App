@@ -319,7 +319,7 @@ async def set_member_role(conn, league_id: int, user_id: int, role: str) -> bool
 async def list_leagues_for_user(conn, user_id: int):
     return await conn.fetch(
         """
-        SELECT l.id, l.name, l.invite_code, l.created_at, lm.role
+        SELECT l.id, l.name, l.invite_code, l.created_at, l.team_count, lm.role
         FROM league_members lm
         JOIN leagues l ON l.id = lm.league_id
         WHERE lm.user_id = $1
@@ -327,6 +327,60 @@ async def list_leagues_for_user(conn, user_id: int):
         """,
         user_id,
     )
+
+
+async def league_card_summaries(conn, user_id: int, season: int, league_ids: list[int]) -> dict[int, dict]:
+    """Each league's line on the league picker (the app's cold-open Your
+    Leagues screen): your team and record this season, the week, how
+    full it is, and the draft's status/time."""
+    if not league_ids:
+        return {}
+    owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1 LIMIT 1", user_id)
+    week = await conn.fetchval("SELECT current_week FROM league_state WHERE season = $1", season)
+    rows = await conn.fetch(
+        """
+        SELECT l.id AS league_id, l.team_count,
+               (SELECT count(*) FROM teams_by_season t WHERE t.league_id = l.id AND t.season = $2) AS teams,
+               mine.id AS team_id, mine.team_name,
+               dc.status AS draft_status,
+               COALESCE(dc.scheduled_start, ds.scheduled_start) AS draft_at
+        FROM leagues l
+        LEFT JOIN teams_by_season mine ON mine.league_id = l.id AND mine.season = $2 AND mine.owner_id = $3
+        LEFT JOIN draft_config dc ON dc.league_id = l.id AND dc.season = $2
+        LEFT JOIN league_draft_schedule ds ON ds.league_id = l.id AND ds.season = $2
+        WHERE l.id = ANY($1::int[])
+        """,
+        league_ids, season, owner_id,
+    )
+    out: dict[int, dict] = {}
+    for r in rows:
+        record = None
+        if r["team_id"] is not None:
+            games = await conn.fetch(
+                """
+                SELECT CASE WHEN home_team_id = $1 THEN home_score ELSE away_score END AS mine,
+                       CASE WHEN home_team_id = $1 THEN away_score ELSE home_score END AS theirs
+                FROM matchups
+                WHERE season = $2 AND league_id = $3 AND (home_team_id = $1 OR away_team_id = $1)
+                  AND ($4::int IS NULL OR week < $4) AND home_score IS NOT NULL AND away_score IS NOT NULL
+                  AND (home_score > 0 OR away_score > 0)
+                """,
+                r["team_id"], season, r["league_id"], week,
+            )
+            w = sum(1 for g in games if g["mine"] > g["theirs"])
+            l_ = sum(1 for g in games if g["mine"] < g["theirs"])
+            t = len(games) - w - l_
+            record = f"{w}-{l_}" + (f"-{t}" if t else "")
+        out[r["league_id"]] = {
+            "team_name": r["team_name"],
+            "record": record,
+            "week": week,
+            "teams": r["teams"] or 0,
+            "team_count": r["team_count"],
+            "draft_status": r["draft_status"],
+            "draft_at": r["draft_at"].isoformat() if r["draft_at"] else None,
+        }
+    return out
 
 
 async def created_leagues(conn, user_id: int):

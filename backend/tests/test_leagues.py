@@ -738,3 +738,17 @@ async def test_preview_and_join_by_link_or_lowercase_code(pool, monkeypatch):
         assert joined.status_code == 200
         assert (await joiner.get("/leagues/mine")).json()["active_league_id"] == created["id"]
         assert (await joiner.get("/leagues/preview", params={"code": code})).json()["already_member"] is True
+
+
+async def test_my_leagues_carry_a_card_summary(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-summary@example.com")
+        league = (await client.post("/leagues", json={"name": "Test League Summary", "team_count": 10})).json()
+        team = await client.post(f"/leagues/{league['id']}/teams", json={"team_name": "Test Summary Team"})
+        assert team.status_code == 200, team.text
+        mine = (await client.get("/leagues/mine")).json()
+    summary = next(l for l in mine["leagues"] if l["id"] == league["id"])["summary"]
+    assert summary["team_name"] == "Test Summary Team"
+    assert summary["teams"] == 1 and summary["team_count"] == 10
+    assert summary["record"] == "0-0"

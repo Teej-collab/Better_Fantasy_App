@@ -9,7 +9,7 @@ import {
 import { Oswald_500Medium, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Satisfy_400Regular } from '@expo-google-fonts/satisfy';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -72,6 +72,13 @@ function RootStack() {
   const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>('pending');
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
   const displayName = useMe(Boolean(token)).data?.display_name ?? null;
+  const pathname = usePathname();
+  // A cold open lands on the league picker once the intro ends — unless a
+  // notification or link already opened something specific.
+  function introDone() {
+    setIntro('done');
+    if (pathname === '/') router.push({ pathname: '/start', params: { launch: '1' } });
+  }
   const [fontsLoaded] = useFonts({
     Oswald_500Medium,
     Oswald_600SemiBold,
@@ -162,7 +169,7 @@ function RootStack() {
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
-      {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={() => setIntro('done')} />}
+      {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={introDone} />}
     </>
   );
 }

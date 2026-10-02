@@ -209,13 +209,15 @@ export function StartFlow({
                   </span>
                 )}
               </div>
-              <span className="text-sm text-[#aab2bf] capitalize">{l.role}</span>
+              <span className="text-sm text-[#aab2bf]">{cardLine(l)}</span>
+              {statusChip(l) && (
+                <span className="self-start rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-bold tracking-wider text-amber-400 uppercase">
+                  {statusChip(l)}
+                </span>
+              )}
             </button>
           ))}
         </div>
-        <Link href="/leagues" className="self-start text-sm font-semibold text-[color:var(--wl-accent)] hover:underline">
-          Manage leagues, members and invites →
-        </Link>
         <div className="mt-auto grid grid-cols-2 gap-2.5">
           <button type="button" className={styles.ghost} onClick={() => go("join")}>
             Join another
@@ -655,6 +657,32 @@ function Stat({ value, label }: { value: string; label: string }) {
       <div className="text-xs text-[color:var(--wl-text-secondary)]">{label}</div>
     </div>
   );
+}
+
+// "Bucky'd Up · 2–1 · Week 4 · Commissioner", like the mockup.
+function cardLine(l: League): string {
+  const s = l.summary;
+  const role = l.role === "commissioner" ? "Commissioner" : "Member";
+  if (!s?.team_name) return s && s.team_count ? `${s.teams} of ${s.team_count} teams in · ${role}` : role;
+  const bits = [s.team_name];
+  if (s.record && s.draft_status === "complete") bits.push(s.record.replace("-", "–"));
+  if (s.week && s.draft_status === "complete") bits.push(`Week ${s.week}`);
+  bits.push(role);
+  return bits.join(" · ");
+}
+
+// What's next for the league, when there's something: the draft, or
+// open spots before it.
+function statusChip(l: League): string | null {
+  const s = l.summary;
+  if (!s || s.draft_status === "complete") return null;
+  if (s.draft_at && new Date(s.draft_at).getTime() > Date.now()) {
+    const d = new Date(s.draft_at);
+    return `Draft ${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  }
+  if (s.draft_status === "in_progress" || s.draft_status === "paused") return "Drafting now";
+  if (s.team_count && s.teams < s.team_count) return `${s.team_count - s.teams} spots open`;
+  return null;
 }
 
 function initials(name: string): string {

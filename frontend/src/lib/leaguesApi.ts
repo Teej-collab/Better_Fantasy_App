@@ -12,6 +12,18 @@ export type League = {
   // How many teams it's meant to have (the Create a League flow); null
   // for leagues made before that was asked.
   team_count?: number | null;
+  // GET /leagues/mine only: the league picker's card line.
+  summary?: LeagueSummary | null;
+};
+
+export type LeagueSummary = {
+  team_name: string | null;
+  record: string | null;
+  week: number | null;
+  teams: number;
+  team_count: number | null;
+  draft_status: "not_started" | "in_progress" | "paused" | "complete" | null;
+  draft_at: string | null;
 };
 
 export type ScoringPreset = "ppr" | "half" | "standard";

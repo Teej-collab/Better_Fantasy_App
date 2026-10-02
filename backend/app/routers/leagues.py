@@ -59,10 +59,16 @@ def _league_dict(row, role: str | None = None) -> dict:
 async def my_leagues(request: Request):
     payload = _require_session(request)
     pool = await get_pool()
+    season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         rows = await league_queries.list_leagues_for_user(conn, payload["user_id"])
         active_league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
-    return {"leagues": [_league_dict(r, r["role"]) for r in rows], "active_league_id": active_league_id}
+        # The league picker's card line for each (your team, record, draft).
+        summaries = await league_queries.league_card_summaries(conn, payload["user_id"], season, [r["id"] for r in rows])
+    return {
+        "leagues": [{**_league_dict(r, r["role"]), "summary": summaries.get(r["id"])} for r in rows],
+        "active_league_id": active_league_id,
+    }
 
 
 @router.post("/{league_id}/select")

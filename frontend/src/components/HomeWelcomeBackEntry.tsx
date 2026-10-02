@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
+import { useRouter } from "next/navigation";
 import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
 import { TheWordmark } from "@/components/TheWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
@@ -79,6 +80,7 @@ export function HomeWelcomeBackEntry({
   needsLeague?: boolean;
   children: ReactNode;
 }) {
+  const router = useRouter();
   const { stage, wordIndex, fast, skip, markSeen } = useWeekendIntro();
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
@@ -108,6 +110,8 @@ export function HomeWelcomeBackEntry({
         // the real reason the 2026-09-01 re-audit measured 8.45s on
         // Home on *every* load, not just first-time onboarding.
         markSeen();
+        // A fresh visit lands on the league picker, like the app's cold open.
+        router.push("/start");
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
     }, holdMs);
@@ -151,6 +155,7 @@ export function HomeWelcomeBackEntry({
     setTimeout(() => {
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
+      if (!needsLeague) router.push("/start");
     }, REVEAL_TRANSITION_MS);
   }
 
