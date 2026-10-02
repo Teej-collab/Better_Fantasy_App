@@ -213,6 +213,9 @@ export function StartFlow({
             </button>
           ))}
         </div>
+        <Link href="/leagues" className="self-start text-sm font-semibold text-[color:var(--wl-accent)] hover:underline">
+          Manage leagues, members and invites →
+        </Link>
         <div className="mt-auto grid grid-cols-2 gap-2.5">
           <button type="button" className={styles.ghost} onClick={() => go("join")}>
             Join another

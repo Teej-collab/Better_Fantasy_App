@@ -39,7 +39,16 @@ export default function StartScreenRoute() {
             <GhostButton label="Create new" onPress={() => router.push('/start/create')} flex />
           </View>
         }>
-        <Stack.Screen options={{ title: 'Your Leagues' }} />
+        <Stack.Screen
+          options={{
+            title: 'Your Leagues',
+            headerRight: () => (
+              <Pressable onPress={() => router.push('/leagues')} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.manage}>Manage</Text>
+              </Pressable>
+            ),
+          }}
+        />
         <View style={styles.welcomeRow}>
           <Image source={seasonalEmblem()} style={styles.smallEmblem} contentFit="contain" accessible={false} />
           <View>
@@ -114,4 +123,5 @@ const styles = StyleSheet.create({
   capital: { textTransform: 'capitalize' },
   espn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },
   strong: { color: Colors.text, fontWeight: '700' },
+  manage: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
 });

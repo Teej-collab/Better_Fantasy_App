@@ -59,7 +59,7 @@ export default function SettingsScreen() {
         </View>
         <Text style={[styles.chevron, { color: accent }]}>›</Text>
       </Pressable>
-      <Pressable onPress={() => router.push('/leagues')} accessibilityRole="button" accessibilityLabel="Leagues" accessibilityHint="Switch leagues, join one with an invite code, or start your own." style={[styles.commish, { borderColor: Colors.border }]}>
+      <Pressable onPress={() => router.push('/start')} accessibilityRole="button" accessibilityLabel="Leagues" accessibilityHint="Switch leagues, join one with an invite code, or start your own." style={[styles.commish, { borderColor: Colors.border }]}>
         <View style={styles.commishText}>
           <Text style={styles.commishTitle}>Leagues</Text>
           <Text style={styles.commishSub}>Switch leagues, join one with an invite code, or start your own.</Text>

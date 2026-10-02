@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   claimOwner,
@@ -241,6 +242,9 @@ export default function LeaguesPage() {
         <p className="text-sm text-black/60 dark:text-white/60">
           Join an existing league with the invite code your commissioner shares, or start a new one of your own.
         </p>
+        <Link href="/start" className="text-sm font-semibold text-[color:var(--wl-accent-dim)] hover:underline">
+          Join or create a league, step by step →
+        </Link>
       </div>
       {error && <p className="text-sm text-red-500">{error}</p>}
 
