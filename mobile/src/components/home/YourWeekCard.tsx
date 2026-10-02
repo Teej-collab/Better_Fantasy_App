@@ -49,9 +49,10 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
       <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={scoreLabel} accessibilityHint="Opens the matchup" style={({ pressed }) => pressed && styles.pressed}>
         <View style={styles.dotted} />
         <View style={styles.scores}>
-          <ScoreBlock name={myWeek.team_name} logoUrl={m.my_logo_url} score={m.my_score} projected={m.my_projected_total} lead={winning} />
+          {/* Avatars show the owner's initials when there's no logo. */}
+          <ScoreBlock name={m.my_owner_name ?? myWeek.team_name} logoUrl={m.my_logo_url} score={m.my_score} projected={m.my_projected_total} lead={winning} />
           <ScoreBlock
-            name={m.opponent_team_name}
+            name={m.opponent_owner_name ?? m.opponent_team_name}
             logoUrl={m.opponent_logo_url}
             score={m.opponent_score}
             projected={m.opponent_projected_total}

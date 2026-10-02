@@ -301,7 +301,7 @@ function ScoreRow({ side, opponent, onPress }: { side: MatchupContextSide; oppon
   const leading = side.score !== null && opponent.score !== null && side.score > opponent.score;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.scoreRow, pressed && ls.pressed]}>
-      <TeamAvatar name={side.team_name} logoUrl={side.logo_url} size={36} />
+      <TeamAvatar name={side.owner_name ?? side.team_name} logoUrl={side.logo_url} size={36} />
       <View style={ls.flex}>
         <View style={styles.nameWithBadge}>
           <Text style={[styles.scoreName, !leading && styles.dim]}>

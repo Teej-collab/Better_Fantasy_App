@@ -308,7 +308,7 @@ function ProfileForm({ settings }: { settings: MySettings }) {
 
       <Panel title="Team Logo" description="Shown next to your name in League Chat.">
         <View style={styles.logoRow}>
-          <TeamAvatar name={settings.team_name ?? settings.display_name} logoUrl={settings.logo_url} size={64} />
+          <TeamAvatar name={settings.display_name ?? settings.team_name ?? '?'} logoUrl={settings.logo_url} size={64} />
           <View style={styles.gapSm}>
             <Pressable disabled={busy !== null} onPress={changeLogo} style={[styles.secondary, { borderColor: accent }]}>
               {busy === 'logo' ? <ActivityIndicator color={accent} /> : <Text style={styles.body}>{settings.logo_url ? 'Change logo' : 'Upload logo'}</Text>}

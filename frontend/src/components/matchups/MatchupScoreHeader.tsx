@@ -50,7 +50,8 @@ export function LogoAvatar({
 }
 
 export function TeamLogo({ side, size = 48 }: { side: MatchupContextSide; size?: number }) {
-  return <LogoAvatar logoUrl={side.logo_url} name={side.team_name} size={size} />;
+  // Owner initials when there's no logo, same as every avatar in the app.
+  return <LogoAvatar logoUrl={side.logo_url} name={side.owner_name ?? side.team_name} size={size} />;
 }
 
 // "2-0 (W2)" — the streak colored by result, ESPN-style.

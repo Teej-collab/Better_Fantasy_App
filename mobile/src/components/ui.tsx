@@ -36,7 +36,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
-// Custom logo when the owner uploaded one, else their team's initials —
+// Custom logo when the owner uploaded one, else the owner's initials —
 // same fallback the web app's avatars use.
 export function TeamAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl: string | null; size?: number }) {
   const dims = { width: size, height: size, borderRadius: size / 2 };

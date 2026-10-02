@@ -138,7 +138,7 @@ function TeamScore({ side, right }: { side: MatchupContextSide; right?: boolean 
   return (
     <View style={[styles.teamScore, align]}>
       <View style={[styles.logoScore, right && styles.reverse]}>
-        <TeamAvatar name={side.team_name} logoUrl={side.logo_url} size={56} />
+        <TeamAvatar name={side.owner_name ?? side.team_name} logoUrl={side.logo_url} size={56} />
         <View style={align}>
           <Text style={styles.bigScore}>{side.score !== null ? side.score.toFixed(1) : '0.0'}</Text>
           {side.projected_total !== null && <LiveProjection live={side.projected_total} pregame={side.pregame_projected_total} />}

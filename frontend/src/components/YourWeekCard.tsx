@@ -72,15 +72,16 @@ export function YourWeekCard({
         <div className="border-t border-dotted border-white/20" />
 
         <div className="flex items-center justify-between gap-3">
+          {/* Avatars show the owner's initials when there's no logo. */}
           <ScoreBlock
-            name={myWeek.team_name}
+            name={m.my_owner_name ?? myWeek.team_name}
             logoUrl={m.my_logo_url}
             score={m.my_score}
             projected={m.my_projected_total}
             lead={winning}
           />
           <ScoreBlock
-            name={m.opponent_team_name}
+            name={m.opponent_owner_name ?? m.opponent_team_name}
             logoUrl={m.opponent_logo_url}
             score={m.opponent_score}
             projected={m.opponent_projected_total}
