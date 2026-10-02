@@ -122,7 +122,7 @@ function HomeScreenContent() {
     draft?.scheduled_start && draft.status === 'not_started' && myWeek.data ? (
       <DraftCountdownCard teamName={myWeek.data.team_name} scheduledStart={draft.scheduled_start} />
     ) : chugDeadline?.deadline ? (
-      <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} />
+      <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} mine={chugDeadline.mine} />
     ) : null;
 
   const cards: Record<string, ReactNode> = {

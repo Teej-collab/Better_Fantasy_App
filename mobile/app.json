@@ -86,6 +86,19 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-alternate-app-icons",
+        [
+          {
+            "name": "Halloween",
+            "ios": "./assets/images/app-icon-halloween.png",
+            "android": {
+              "foregroundImage": "./assets/images/android-icon-foreground-halloween.png",
+              "backgroundColor": "#0d1016"
+            }
+          }
+        ]
       ]
     ],
     "experiments": {

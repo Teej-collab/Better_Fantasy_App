@@ -56,7 +56,17 @@ function Tiles({ remaining }: { remaining: Remaining | null }) {
 // Port of the web's ChugCountdownCard: Jeffrey's Rule, counting down
 // to Monday Night Football kickoff, with the upload button always in
 // the corner (relabeled once it's actually chug time).
-export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPast: boolean }) {
+export function ChugCountdownCard({
+  deadline,
+  isPast,
+  mine,
+}: {
+  deadline: string;
+  isPast: boolean;
+  // Your own balance (backend /chug/deadline's "mine"), so you can see at
+  // a glance how many you owe without opening the Chug screen.
+  mine?: { outstanding_owed: number; fined_owed: number; fine_amount: number } | null;
+}) {
   const remaining = useRemaining(deadline);
   const reached = isPast || remaining === null;
   return (
@@ -71,6 +81,22 @@ export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPa
         <Text style={styles.title}>🍺 Jeffrey&apos;s Rule</Text>
         <Text style={styles.subtitle}>Chugs due by Monday Night Football kickoff</Text>
       </View>
+      {mine && (
+        <View style={styles.owedRow}>
+          <View style={[styles.owedPill, mine.outstanding_owed > 0 ? styles.owedPillDue : styles.owedPillClear]}>
+            <Text style={[styles.owedText, mine.outstanding_owed > 0 ? styles.owedTextDue : styles.owedTextClear]}>
+              {mine.outstanding_owed > 0
+                ? `You owe ${mine.outstanding_owed} chug${mine.outstanding_owed === 1 ? '' : 's'}`
+                : 'You’re all square 🍻'}
+            </Text>
+          </View>
+          {mine.fined_owed > 0 && (
+            <View style={[styles.owedPill, styles.finePill]}>
+              <Text style={[styles.owedText, styles.fineText]}>${mine.fine_amount} fine</Text>
+            </View>
+          )}
+        </View>
+      )}
       {!reached && <Tiles remaining={remaining} />}
     </NeonPanel>
   );
@@ -109,6 +135,15 @@ export function DraftCountdownCard({ teamName, scheduledStart }: { teamName: str
 }
 
 const styles = StyleSheet.create({
+  owedRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  owedPill: { borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
+  owedPillDue: { backgroundColor: 'rgba(251,191,36,0.15)' },
+  owedPillClear: { backgroundColor: 'rgba(34,197,94,0.15)' },
+  finePill: { backgroundColor: 'rgba(239,68,68,0.15)' },
+  owedText: { fontSize: 14, fontWeight: '800' },
+  owedTextDue: { color: '#fcd34d' },
+  owedTextClear: { color: '#4ade80' },
+  fineText: { color: '#f87171' },
   card: { gap: Spacing.md, backgroundColor: '#0a0a0a' },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   kicker: {

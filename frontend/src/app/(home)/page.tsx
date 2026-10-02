@@ -387,7 +387,9 @@ export default async function HomePage() {
     // actually finishes and the season's first real chug debt exists —
     // before that there's nothing owed by anyone yet, regardless of
     // what the calendar's next Monday happens to be (2026-09-12 report).
-    cards.draftCountdown = <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} />;
+    cards.draftCountdown = (
+      <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} mine={chugDeadline.mine} />
+    );
   }
 
   if (standings.length > 0) {

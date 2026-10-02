@@ -32,7 +32,9 @@ from app.db import get_pool
 from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
 from app.domain import chug_roast
 from app.domain.chug_leaderboard import build_chug_leaderboard
+from app.domain.chug_ledger import build_chug_ledger
 from app.domain.chug_standing import (
+    FINE_PER_CHUG,
     clear_fine,
     record_completed_chug,
     record_manual_payment,
@@ -91,6 +93,22 @@ async def chug_leaderboard(
     return {"season": season, "leaderboard": leaderboard}
 
 
+@router.get("/ledger")
+async def chug_ledger(
+    season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """Why each owner owes what they owe (app/domain/chug_ledger.py) —
+    every week's earned chugs with the starters behind them, each
+    deadline's doubling or fine, and chugs posted. Same league-members-
+    only gate as the leaderboard it explains. Defaults to the active
+    season."""
+    active_season = int(_require("ACTIVE_SEASON"))
+    scope = season if season is not None else active_season
+    async with pool.acquire() as conn:
+        ledger = await build_chug_ledger(conn, scope, active_season, league_id)
+    return {"season": scope, "owners": {str(owner_id): events for owner_id, events in ledger.items()}}
+
+
 @router.get("/feed")
 async def chug_feed(
     season: int | None = None, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
@@ -140,7 +158,7 @@ async def chug_video(chug_id: int, league_id: int = Depends(require_league_acces
 
 
 @router.get("/deadline")
-async def chug_deadline(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+async def chug_deadline(request: Request, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
     """When this week's chugs are due by (Jeffrey's Rule — see
     app/domain/chug_deadline.py) — real ESPN Monday Night Football
     kickoff, not a guessed fixed time. league_id is otherwise unused
@@ -178,8 +196,21 @@ async def chug_deadline(league_id: int = Depends(require_league_access), pool=De
             active_season, league_id,
         )
         if not any_debt_assigned:
-            return {"deadline": None, "is_past": False}
+            return {"deadline": None, "is_past": False, "mine": None}
         cached_week = await league_queries.get_cached_current_week(conn, active_season)
+        # The caller's own balance, for the countdown card's "You owe"
+        # line — the same chug_standing numbers the leaderboard shows.
+        mine = None
+        payload = _decode_session(get_session_token(request))
+        owner_id = await resolve_owner_id(conn, payload) if payload else None
+        if owner_id is not None:
+            standing = (await chug_queries.get_chug_standing_by_owner(conn, active_season, league_id)).get(owner_id)
+            mine = {
+                "outstanding_owed": standing["outstanding_owed"] if standing else 0,
+                "fined_owed": standing["fined_owed"] if standing else 0,
+                "fine_amount": standing["fined_owed"] * FINE_PER_CHUG if standing else 0,
+                "consecutive_missed_weeks": standing["consecutive_missed_weeks"] if standing else 0,
+            }
 
     deadline = None
     if cached_week is not None:
@@ -188,10 +219,10 @@ async def chug_deadline(league_id: int = Depends(require_league_access), pool=De
 
     if deadline is not None:
         now_et = datetime.now(_ET)
-        return {"deadline": deadline.isoformat(), "is_past": now_et > deadline}
+        return {"deadline": deadline.isoformat(), "is_past": now_et > deadline, "mine": mine}
 
     games = await get_nfl_scoreboard()
-    return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games)}
+    return {"deadline": get_mnf_deadline(games).isoformat(), "is_past": is_past_mnf_deadline(games), "mine": mine}
 
 
 async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf_of: int | None = None) -> dict:

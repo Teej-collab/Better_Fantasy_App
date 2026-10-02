@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { currentSeason, seasonalEmblem } from "@/lib/seasonal";
 
 // The header brand mark — the real emblem now (public/images/
 // weekend-league-emblem.png): neon-green "WEEKEND" arced over a blue
@@ -12,15 +13,19 @@ import Link from "next/link";
 // this mark specifically, though LeagueWordmark.tsx's plain styled
 // text (used elsewhere, e.g. the sign-in gate) is untouched.
 export function BrandMark({ href }: { href: string }) {
+  // October's spider-web emblem and the like (lib/seasonal.ts). Those
+  // hang decorations off the circle's corners, so they aren't clipped
+  // round the way the plain (already circular) emblem is.
+  const seasonal = currentSeason() !== null;
   return (
     <Link href={href} className="flex shrink-0 items-center gap-2 text-[color:var(--foreground)]">
       <Image
-        src="/images/weekend-league-emblem.png"
+        src={seasonalEmblem()}
         alt="Weekend League"
         width={40}
         height={40}
         priority
-        className="h-8 w-8 shrink-0 rounded-full sm:h-9 sm:w-9"
+        className={`h-8 w-8 shrink-0 sm:h-9 sm:w-9 ${seasonal ? "" : "rounded-full"}`}
       />
       {/* The emblem alone reads fine on its own at narrow widths — the
           full wordmark returns once there's room, same breakpoint the

@@ -2,11 +2,12 @@ import * as QuickActions from 'expo-quick-actions';
 import { useQuickActionRouting } from 'expo-quick-actions/router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useThemeSync } from '@/lib/appearance';
 import { updateMatchupWidget } from '@/lib/homeWidget';
+import { syncSeasonalAppIcon } from '@/lib/seasonal';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
 import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
 import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
@@ -70,11 +71,24 @@ function useHomeWidget() {
   useEffect(() => () => updateMatchupWidget(null), []);
 }
 
+// The season's home-screen icon (October's spider web...), checked each
+// time the app opens since the date is what changes it.
+function useSeasonalAppIcon() {
+  useEffect(() => {
+    void syncSeasonalAppIcon();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncSeasonalAppIcon();
+    });
+    return () => sub.remove();
+  }, []);
+}
+
 export default function TabsLayout() {
   useHomeScreenQuickActions();
   useLocalReminders();
   useHomeWidget();
   useThemeSync();
+  useSeasonalAppIcon();
   // Loaded here so lib/chatSocket.tsx always knows which live messages
   // are your own (those never count as unread).
   useMe();

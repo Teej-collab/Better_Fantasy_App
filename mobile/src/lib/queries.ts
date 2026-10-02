@@ -628,3 +628,7 @@ export function useSharedBet(betId: number) {
     refetchInterval: (q) => (q.state.data?.status === 'open' ? 30_000 : false),
   });
 }
+
+export function useChugLedger(season: number | undefined) {
+  return useQuery({ queryKey: ['chug-ledger', season], queryFn: () => api.chugLedger(season) });
+}

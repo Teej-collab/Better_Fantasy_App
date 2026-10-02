@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { awardsHrefFor, getActiveLeagueName, getChugFeed, getChugLeaderboard, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { awardsHrefFor, getActiveLeagueName, getChugFeed, getChugLeaderboard, getChugLedger, getChugSeasons, getMe, listSeasons, safeLatestSeason } from "@/lib/api";
+import { ChugBreakdown } from "@/components/ChugBreakdown";
 import { ChugUpload } from "@/components/ChugUpload";
 import { ChugFeed } from "@/components/ChugFeed";
 import { ChugFineButton } from "@/components/ChugFineButton";
@@ -36,12 +37,14 @@ export default async function ChugLeaderboardPage({
     return <NeedsLeagueCard />;
   }
 
-  const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName] = await Promise.all([
+  const [{ seasons }, { leaderboard }, { chugs }, { seasons: allSeasons }, activeLeagueName, ledger] = await Promise.all([
     getChugSeasons(),
     getChugLeaderboard(sessionCookie, season),
     getChugFeed(sessionCookie, season),
     listSeasons(),
     getActiveLeagueName(sessionCookie),
+    // Each row's "Why?" history — this season's when no season is picked.
+    getChugLedger(sessionCookie, season).catch(() => ({ season: season ?? 0, owners: {} as Record<string, never[]> })),
   ]);
   const latestSeason = safeLatestSeason(allSeasons);
 
@@ -124,6 +127,7 @@ export default async function ChugLeaderboardPage({
                   )}
                   <span className="text-black/50 dark:text-white/50">Lifetime: {row.lifetime_completed}</span>
                 </div>
+                <ChugBreakdown events={ledger.owners[String(row.owner_id)] ?? []} />
               </li>
             ))}
           </ol>

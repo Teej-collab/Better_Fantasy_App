@@ -44,6 +44,7 @@ import type {
   KeeperRules,
   MyKeepers,
   ChugDeadline,
+  ChugLedgerEvent,
   ChugLeaderboardRow,
   ChugUploadResult,
   ChugFeedEntry,
@@ -255,6 +256,8 @@ export const api = {
   team: (teamId: number) => request<TeamDetail>(`/teams/${teamId}`),
   teamRoster: (teamId: number, week: number) => request<{ roster: RosterPlayer[] }>(`/teams/${teamId}/roster?week=${week}`),
   chugDeadline: () => request<ChugDeadline>('/chug/deadline'),
+  chugLedger: (season?: number) =>
+    request<{ season: number; owners: Record<string, ChugLedgerEvent[]> }>(season !== undefined ? `/chug/ledger?season=${season}` : '/chug/ledger'),
   chugFeed: (season?: number) =>
     request<{ chugs: ChugFeedEntry[] }>(season !== undefined ? `/chug/feed?season=${season}` : '/chug/feed'),
   chugSeasons: () => request<{ seasons: number[] }>('/chug/seasons'),

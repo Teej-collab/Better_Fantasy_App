@@ -542,7 +542,20 @@ export type WeekPowerRanking = {
 };
 
 // deadline is null until week 1 finishes and there's a chug owed.
-export type ChugDeadline = { deadline: string | null; is_past: boolean };
+export type ChugDeadline = {
+  deadline: string | null;
+  is_past: boolean;
+  // The signed-in owner's own balance, for the card's "You owe" line.
+  mine?: { outstanding_owed: number; fined_owed: number; fine_amount: number; consecutive_missed_weeks: number } | null;
+};
+
+// GET /chug/ledger (backend app/domain/chug_ledger.py) — the history
+// behind each owner's balance, oldest first.
+export type ChugLedgerEvent =
+  | { kind: 'earned'; week: number; chugs: number; change: number; balance: number; reasons: { player_name: string; position: string | null; points: number }[] }
+  | { kind: 'doubled' | 'fined' | 'waived'; week: number; owed_before: number; owed_after: number; change: number; balance: number; fine_amount?: number }
+  | { kind: 'chug'; at: string; score: number | null; change: number; balance: number }
+  | { kind: 'adjustment'; change: number; balance: number };
 
 // `released` (recaps only): false until the Tuesday flip — only a
 // commissioner gets an unreleased recap at all (backend/app/domain/recap_release.py).

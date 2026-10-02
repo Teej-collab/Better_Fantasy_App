@@ -6,6 +6,7 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { seasonalEmblem } from '@/lib/seasonal';
 import type { YourWeek } from '@/lib/types';
 
 // Port of the web's YourWeekCard (frontend/src/components/
@@ -25,7 +26,8 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
   return (
     <NeonPanel color={isLive ? Colors.live : props.color} contentStyle={styles.card}>
       <View style={styles.header}>
-        <Image source={require('@/assets/images/weekend-league-emblem.png')} style={styles.emblem} contentFit="contain" />
+        {/* October's spider-web emblem and the like (lib/seasonal.ts). */}
+        <Image source={seasonalEmblem()} style={styles.emblem} contentFit="contain" />
         <Display style={styles.league} numberOfLines={2}>
           {props.leagueName ?? 'Your Week'}
         </Display>

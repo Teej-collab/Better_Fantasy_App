@@ -21,6 +21,7 @@ import {
 } from '@/lib/localNotifications';
 import type { ReminderCategory } from '@/lib/reminders';
 import { applyTheme, useAppearance } from '@/lib/appearance';
+import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
 import { queryClient, useFeedbackList, useMe, useMySettings, usePreferences } from '@/lib/queries';
@@ -640,6 +641,8 @@ export function AppearanceSettings() {
         <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} palette={NEON_PALETTE} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
       </Panel>
 
+      {canChangeAppIcon && <SeasonalIconSetting />}
+
       <Panel title="Animations" description="Your device's own reduced-motion setting is always respected regardless of this choice.">
         <Segment
           options={[
@@ -682,6 +685,33 @@ export function BetSettings() {
       )}
       <Text style={styles.small}>21+. If gambling stops being fun, call or text 1-800-GAMBLER.</Text>
     </View>
+  );
+}
+
+// The home-screen icon's seasonal looks (lib/seasonal.ts) — on by
+// default; kept on this phone only, since the icon is this phone's.
+function SeasonalIconSetting() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void seasonalIconEnabled().then((v) => !cancelled && setEnabled(v));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (enabled === null) return null;
+  return (
+    <Panel>
+      <ToggleRow
+        label="Seasonal app icon"
+        description="Dress up the home-screen icon for the season — spider webs in October. Your phone confirms each change."
+        value={enabled}
+        onChange={(v) => {
+          setEnabled(v);
+          void setSeasonalIconEnabled(v);
+        }}
+      />
+    </Panel>
   );
 }
 

@@ -33,7 +33,17 @@ function pad(n: number): string {
  * server and browser clocks/timezones can otherwise mismatch on the
  * first render.
  */
-export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPast: boolean }) {
+export function ChugCountdownCard({
+  deadline,
+  isPast,
+  mine,
+}: {
+  deadline: string;
+  isPast: boolean;
+  // Your own balance (backend /chug/deadline's "mine"), so you can see at
+  // a glance how many you owe without opening the Chug page.
+  mine?: { outstanding_owed: number; fined_owed: number; fine_amount: number } | null;
+}) {
   const targetMs = new Date(deadline).getTime();
   const [remaining, setRemaining] = useState<Remaining | null>(null);
   const [reached, setReached] = useState(isPast);
@@ -75,6 +85,25 @@ export function ChugCountdownCard({ deadline, isPast }: { deadline: string; isPa
         <span className="font-medium">🍺 Jeffrey&apos;s Rule</span>
         <span className="text-sm text-white/50">Chugs due by Monday Night Football kickoff</span>
       </div>
+
+      {mine && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-bold ${
+              mine.outstanding_owed > 0 ? "bg-amber-400/15 text-amber-300" : "bg-emerald-500/15 text-emerald-400"
+            }`}
+          >
+            {mine.outstanding_owed > 0
+              ? `You owe ${mine.outstanding_owed} chug${mine.outstanding_owed === 1 ? "" : "s"}`
+              : "You're all square 🍻"}
+          </span>
+          {mine.fined_owed > 0 && (
+            <span className="rounded-full bg-red-500/15 px-3 py-1 text-sm font-bold text-red-400">
+              ${mine.fine_amount} fine
+            </span>
+          )}
+        </div>
+      )}
 
       {!reached && (
         <div className="grid grid-cols-4 gap-2">

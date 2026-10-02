@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { seasonalEmblem } from "@/lib/seasonal";
 import type { YourWeek } from "@/lib/api";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import {
@@ -45,7 +46,7 @@ export function YourWeekCard({
     >
       <div className="flex items-center gap-3">
         <Image
-          src="/images/weekend-league-emblem.png"
+          src={seasonalEmblem()}
           alt=""
           width={36}
           height={36}

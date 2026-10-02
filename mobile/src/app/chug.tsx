@@ -5,13 +5,14 @@ import { useState } from 'react';
 import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ChugFeedCard } from '@/components/home/FeedCards';
+import { ChugBreakdown } from '@/components/ChugBreakdown';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api, uploadChugVideo } from '@/lib/api';
-import { queryClient, useChugFeed, useChugLeaderboard, useChugSeasons, useMe } from '@/lib/queries';
-import type { ChugLeaderboardRow, ChugUploadResult } from '@/lib/types';
+import { queryClient, useChugFeed, useChugLeaderboard, useChugLedger, useChugSeasons, useMe } from '@/lib/queries';
+import type { ChugLeaderboardRow, ChugUploadResult, ChugLedgerEvent } from '@/lib/types';
 
 // Port of the web's /chug page (frontend/src/app/(app)/chug/page.tsx):
 // submit a chug, the rule, recent chugs, and the leaderboard, per
@@ -22,11 +23,13 @@ export default function ChugScreen() {
   const [season, setSeason] = useState<number | undefined>(undefined);
   const leaderboard = useChugLeaderboard(season);
   const feed = useChugFeed(season);
+  // Each row's "Why?" history — this season's when All-Time is picked.
+  const ledger = useChugLedger(season);
   const [refreshing, setRefreshing] = useState(false);
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([leaderboard.refetch(), feed.refetch()]);
+    await Promise.all([leaderboard.refetch(), feed.refetch(), ledger.refetch()]);
     setRefreshing(false);
   }
 
@@ -69,7 +72,14 @@ export default function ChugScreen() {
         ) : (
           <NeonPanel color={SectionColors.chug} radius={Radius.md} contentStyle={styles.list}>
             {rows.map((row, i) => (
-              <LeaderboardRow key={row.owner_id} row={row} rank={i + 1} divided={i > 0} isCommissioner={isCommissioner} />
+              <LeaderboardRow
+                key={row.owner_id}
+                row={row}
+                rank={i + 1}
+                divided={i > 0}
+                isCommissioner={isCommissioner}
+                history={ledger.data?.owners[String(row.owner_id)] ?? []}
+              />
             ))}
           </NeonPanel>
         )}
@@ -186,7 +196,7 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
   );
 }
 
-function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided: boolean; isCommissioner: boolean }) {
+function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided: boolean; isCommissioner: boolean; history: ChugLedgerEvent[] }) {
   const { row } = props;
 
   async function run(action: () => Promise<unknown>) {
@@ -251,6 +261,7 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided:
           </Pressable>
         )}
       </View>
+      <ChugBreakdown events={props.history} />
     </Pressable>
   );
 }
