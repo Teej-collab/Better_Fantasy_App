@@ -84,6 +84,18 @@ export function HomeWelcomeBackEntry({
   const { stage, wordIndex, fast, skip, markSeen } = useWeekendIntro();
   const [revealing, setRevealing] = useState(false);
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
+  // A fresh visit's intro opens onto the league picker (/start), like the
+  // app's cold open — the splash stays up until it loads, so the
+  // dashboard never flashes in between.
+  const [leaving, setLeaving] = useState(false);
+  function openPicker() {
+    setLeaving(true);
+    markBootedThisPageLoad();
+    router.push("/start");
+  }
+  useEffect(() => {
+    router.prefetch("/start");
+  }, [router]);
 
   // Already booted this JS runtime (an ordinary soft navigation back to
   // '/', not a fresh page load) — see appBoot.ts for why this is a
@@ -99,8 +111,6 @@ export function HomeWelcomeBackEntry({
     const holdTimeout = setTimeout(() => {
       setRevealing(true);
       const revealTimeout = setTimeout(() => {
-        setRevealedAfterBoot(true);
-        markBootedThisPageLoad();
         // This used to never run on the normal (non-skip) completion
         // path — AppEntry.tsx's equivalent effect always has, but this
         // one didn't, so wl_intro_seen never got persisted from an
@@ -110,8 +120,7 @@ export function HomeWelcomeBackEntry({
         // the real reason the 2026-09-01 re-audit measured 8.45s on
         // Home on *every* load, not just first-time onboarding.
         markSeen();
-        // A fresh visit lands on the league picker, like the app's cold open.
-        router.push("/start");
+        openPicker();
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
     }, holdMs);
@@ -132,7 +141,7 @@ export function HomeWelcomeBackEntry({
   }, [revealed]);
 
   useEffect(() => {
-    if (revealed || needsLeague) return;
+    if (revealed || needsLeague || leaving) return;
     const failsafe = setTimeout(() => {
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
@@ -140,7 +149,7 @@ export function HomeWelcomeBackEntry({
     }, MAX_BOOT_MS);
     return () => clearTimeout(failsafe);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revealed, needsLeague]);
+  }, [revealed, needsLeague, leaving]);
 
   // A plain event handler, not an effect — fine to setState directly.
   // Used both by the persistent "Skip" corner link below (any time, any
@@ -153,13 +162,13 @@ export function HomeWelcomeBackEntry({
     skip();
     setRevealing(true);
     setTimeout(() => {
+      if (!needsLeague) return openPicker();
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
-      if (!needsLeague) router.push("/start");
     }, REVEAL_TRANSITION_MS);
   }
 
-  if (revealed) return <>{children}</>;
+  if (revealed && !leaving) return <>{children}</>;
 
   const showFinal = stage === "final";
 

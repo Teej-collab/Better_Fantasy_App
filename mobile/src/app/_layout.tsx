@@ -9,7 +9,7 @@ import {
 import { Oswald_500Medium, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Satisfy_400Regular } from '@expo-google-fonts/satisfy';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +20,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
 import { IntroOverlay } from '@/components/IntroOverlay';
+import { LaunchPicker } from '@/components/LaunchPicker';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
@@ -72,13 +73,14 @@ function RootStack() {
   const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>('pending');
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
   const displayName = useMe(Boolean(token)).data?.display_name ?? null;
+  // A cold open's intro reveals the league picker (components/LaunchPicker.tsx),
+  // drawn over the tabs from the start so the bloom opens onto it, not a
+  // league — unless a notification or link already opened something
+  // specific.
+  const [picker, setPicker] = useState(false);
+  if (intro === 'pending' && token) setPicker(true);
   const pathname = usePathname();
-  // A cold open lands on the league picker once the intro ends — unless a
-  // notification or link already opened something specific.
-  function introDone() {
-    setIntro('done');
-    if (pathname === '/') router.push({ pathname: '/start', params: { launch: '1' } });
-  }
+  if (picker && pathname !== '/') setPicker(false);
   const [fontsLoaded] = useFonts({
     Oswald_500Medium,
     Oswald_600SemiBold,
@@ -169,7 +171,8 @@ function RootStack() {
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
-      {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={introDone} />}
+      {picker && token && <LaunchPicker onDismiss={() => setPicker(false)} />}
+      {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={() => setIntro('done')} />}
     </>
   );
 }
