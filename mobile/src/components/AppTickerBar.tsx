@@ -9,8 +9,9 @@ import { buildKickoffCountdownItem, buildLeagueTickerItems, buildNflTickerItems 
 // Port of the web's AppTickerBar: the "This Week, Live" strips on every
 // page except Home (which has its own richer tickers) and Chat. Real NFL
 // scores, then this week's league scores — or, before any matchup has
-// started, the NFL kickoff countdown.
-export function AppTickerBar() {
+// started, the NFL kickoff countdown. nflOnly drops the league strip
+// for screens outside any one league (the league picker).
+export function AppTickerBar({ nflOnly = false }: { nflOnly?: boolean }) {
   const nflGames = useNflScoreboard().data ?? [];
   const isGameDay = nflGames.some((g) => g.state === 'in');
   const { season = null, week = null } = useSeasonWeek().data ?? {};
@@ -19,7 +20,8 @@ export function AppTickerBar() {
   const nflItems = buildNflTickerItems(nflGames);
   let leagueItems = buildLeagueTickerItems(leagueTicker);
   let leagueFast = isGameDay;
-  if (leagueItems.length === 0 && week !== null) {
+  if (nflOnly) leagueItems = [];
+  else if (leagueItems.length === 0 && week !== null) {
     const countdown = buildKickoffCountdownItem(nflGames, week);
     leagueItems = countdown ? [countdown] : [];
     leagueFast = false;

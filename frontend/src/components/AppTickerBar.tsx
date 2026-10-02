@@ -14,6 +14,7 @@ import {
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { LiveTicker } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
+import { LeagueTickerSlot } from "@/components/LeagueTickerSlot";
 
 /**
  * The persistent site-wide ticker(s) — used only by app/(app)/layout.tsx,
@@ -92,7 +93,7 @@ export async function AppTickerBar() {
         </span>
       </div>
       <LiveTicker items={nflTickerItems} fast={isGameDay} />
-      {leagueTicker}
+      {leagueTicker && <LeagueTickerSlot>{leagueTicker}</LeagueTickerSlot>}
       {isGameDay && <GameDayRefresher />}
     </div>
   );

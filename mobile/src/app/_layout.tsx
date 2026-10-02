@@ -58,7 +58,7 @@ function withTickerBar({ route, children }: { route: { name: string }; children:
   return (
     <View style={{ flex: 1 }}>
       <OfflineBanner />
-      {!NO_TICKER.test(route.name) && <AppTickerBar />}
+      {!NO_TICKER.test(route.name) && <AppTickerBar nflOnly={route.name.startsWith('start/')} />}
       <View style={{ flex: 1 }}>{children}</View>
     </View>
   );

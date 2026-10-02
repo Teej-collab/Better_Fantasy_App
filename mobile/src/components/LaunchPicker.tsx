@@ -8,7 +8,7 @@ import { LeaguePicker } from '@/components/start/LeaguePicker';
 
 // The cold-open front screen: what the intro's bloom reveals, sitting
 // over the (already-mounted) tabs until a league is picked — so a cold
-// open never lands inside a league first. The live ticker rides along
+// open never lands inside a league first. The NFL ticker rides along
 // the top. Picking a league fades this away onto its Home; Join and
 // Create hide it and open their own screens.
 export function LaunchPicker({ onDismiss }: { onDismiss: () => void }) {
@@ -16,7 +16,7 @@ export function LaunchPicker({ onDismiss }: { onDismiss: () => void }) {
   return (
     <Animated.View exiting={FadeOut.duration(250)} style={[StyleSheet.absoluteFill, { paddingTop: insets.top }]}>
       <HoneycombBackground />
-      <AppTickerBar />
+      <AppTickerBar nflOnly />
       <View style={styles.body}>
         <LeaguePicker onOpened={onDismiss} onLeave={onDismiss} />
       </View>
