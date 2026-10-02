@@ -1,0 +1,302 @@
+/* The Join / Create a League flow (StartFlow.tsx) — the approved "Join &
+   Create League Flow" mockups: neon signage on the dark ground, Anton
+   headings, one decision per screen. */
+.shell {
+  position: relative;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 28rem;
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem 0 2rem;
+}
+.glowA,
+.glowB {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+}
+.glowA {
+  left: -6rem;
+  top: -8rem;
+  width: 22rem;
+  height: 22rem;
+  background: radial-gradient(circle, rgba(57, 255, 20, 0.1), rgba(57, 255, 20, 0) 70%);
+}
+.glowB {
+  right: -8rem;
+  bottom: -6rem;
+  width: 24rem;
+  height: 24rem;
+  background: radial-gradient(circle, rgba(47, 208, 255, 0.08), rgba(47, 208, 255, 0) 70%);
+}
+.kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--wl-text-secondary);
+  font-weight: 600;
+}
+.title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sub {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #aab2bf;
+}
+.neon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3.4rem;
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 2px solid var(--wl-accent);
+  background: rgba(6, 10, 7, 0.9);
+  color: var(--wl-accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--wl-accent) 45%, transparent), inset 0 0 10px color-mix(in srgb, var(--wl-accent) 12%, transparent);
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+.neon:hover:not(:disabled) {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--wl-accent) 70%, transparent), inset 0 0 12px color-mix(in srgb, var(--wl-accent) 18%, transparent);
+}
+.neon:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  border-radius: 0.875rem;
+  border: 1px solid #2a303a;
+  background: var(--wl-surface);
+  color: var(--wl-text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.ghost:hover {
+  border-color: var(--wl-accent);
+}
+.door {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 1.25rem 1.1rem;
+  border-radius: 1.1rem;
+  background: var(--wl-surface);
+  color: var(--wl-text);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.door:hover {
+  transform: translateY(-1px);
+}
+.doorIcon {
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doorTitle {
+  font-size: 1.375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--wl-border);
+  background: var(--wl-surface);
+}
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3.1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #2a303a;
+  background: #191d23;
+  color: var(--wl-text);
+  font-size: 1rem;
+  padding: 0 0.875rem;
+  outline: none;
+}
+.field:focus {
+  border-color: var(--wl-accent);
+}
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #aab2bf;
+}
+.segs {
+  display: grid;
+  gap: 0.5rem;
+}
+.seg {
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid #2a303a;
+  background: var(--wl-surface);
+  color: var(--wl-text);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.segOn {
+  border-color: var(--wl-accent);
+  background: color-mix(in srgb, var(--wl-accent) 12%, transparent);
+  color: var(--wl-accent);
+}
+.option {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid #2a303a;
+  background: var(--wl-surface);
+  color: var(--wl-text);
+  cursor: pointer;
+}
+.optionOn {
+  border: 2px solid var(--wl-accent);
+  background: color-mix(in srgb, var(--wl-accent) 7%, transparent);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  color: #aab2bf;
+  font-size: 0.875rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+.back:hover {
+  color: var(--wl-text);
+}
+.dots {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+.dot {
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 0.25rem;
+  background: #2a303a;
+}
+.dotDone {
+  background: var(--wl-accent);
+}
+.dotNow {
+  width: 1.4rem;
+  background: var(--wl-accent);
+}
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--wl-text-secondary);
+  font-size: 0.8rem;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex-grow: 1;
+  height: 1px;
+  background: var(--wl-border);
+}
+.stat {
+  padding: 0.6rem 0.25rem;
+  border-radius: 0.625rem;
+  background: #191d23;
+  text-align: center;
+}
+.qr {
+  align-self: center;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 0 34px color-mix(in srgb, var(--wl-accent) 35%, transparent);
+}
+.qr svg {
+  display: block;
+  width: 12.5rem;
+  height: 12.5rem;
+}
+.bar {
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--wl-border);
+  overflow: hidden;
+}
+.barFill {
+  height: 100%;
+  background: var(--wl-accent);
+  box-shadow: 0 0 10px var(--wl-accent);
+}
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 3.1rem;
+  height: 1.9rem;
+  border-radius: 1rem;
+  border: 0;
+  background: #2a303a;
+  cursor: pointer;
+}
+.switchOn {
+  background: var(--wl-accent);
+}
+.knob {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #0d1016;
+  transition: transform 0.15s;
+}
+.switchOn .knob {
+  transform: translateX(1.2rem);
+}
+.error {
+  font-size: 0.875rem;
+  color: #f87171;
+}

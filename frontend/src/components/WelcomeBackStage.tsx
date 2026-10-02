@@ -43,10 +43,10 @@ export function WelcomeBackStage({
             You&apos;re not on a team yet — join a league you&apos;re already in, or start one of your own.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link href="/leagues#join-league" className="wl-enter-sign px-6 py-2.5 text-xs sm:text-sm">
+            <Link href="/start?flow=join" className="wl-enter-sign px-6 py-2.5 text-xs sm:text-sm">
               Join a League
             </Link>
-            <Link href="/leagues#create-league" className="wl-enter-sign px-6 py-2.5 text-xs sm:text-sm">
+            <Link href="/start?flow=create" className="wl-enter-sign px-6 py-2.5 text-xs sm:text-sm">
               Create a League
             </Link>
           </div>

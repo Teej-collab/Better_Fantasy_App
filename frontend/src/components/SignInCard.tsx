@@ -52,10 +52,14 @@ export function SignInCard({
   onBack,
   variant = "signin",
   onSuccess,
+  nextHref,
 }: {
   onBack?: () => void;
   variant?: "signin" | "join" | "create";
   onSuccess?: () => void;
+  // Where to land after signing in, e.g. the Join flow with an invite
+  // code already filled in. Defaults to the Join/Create flow or Home.
+  nextHref?: string;
 }) {
   const router = useRouter();
   const isIntentVariant = variant !== "signin";
@@ -109,7 +113,7 @@ export function SignInCard({
       if (onSuccess) {
         onSuccess();
       } else {
-        router.push(variant === "join" ? "/leagues#join-league" : variant === "create" ? "/leagues#create-league" : "/");
+        router.push(nextHref ?? (variant === "join" ? "/start?flow=join" : variant === "create" ? "/start?flow=create" : "/"));
         router.refresh();
       }
     } catch (err) {

@@ -891,7 +891,31 @@ export type FantasyDigest = {
 export type LoungeRoom = { id: number; slug: string; name: string; closed: boolean; created_at: string };
 
 // Commissioner tools (frontend/src/lib/leaguesApi.ts, tradesApi.ts).
-export type LeagueInfo = { id: number; name: string; invite_code: string; created_at: string; role: 'commissioner' | 'member' };
+export type LeagueInfo = {
+  id: number;
+  name: string;
+  invite_code: string;
+  created_at: string;
+  role: 'commissioner' | 'member';
+  // How many teams it's meant to have; null for leagues made before that was asked.
+  team_count?: number | null;
+};
+
+export type ScoringPreset = 'ppr' | 'half' | 'standard';
+
+// GET /leagues/preview — the league behind an invite code, before joining.
+export type LeaguePreview = {
+  id: number;
+  name: string;
+  invite_code: string;
+  season: number;
+  team_count: number | null;
+  teams: number;
+  history_seasons: number;
+  scoring: 'PPR' | 'Half PPR' | 'Standard' | 'Custom';
+  commissioner: string | null;
+  already_member: boolean;
+};
 
 export type LeagueMember = { user_id: number; role: 'commissioner' | 'member'; joined_at: string; display_name: string };
 

@@ -2,12 +2,13 @@ import { requireOptionalNativeModule } from 'expo';
 
 import { WEB_BASE_URL } from '@/lib/api';
 
-// Scan-to-join. A league's QR code is a link to the web's /leagues page
+// Scan-to-join. A league's QR code is a link to the web's Join flow
 // with the invite code filled in, so it works from any phone's camera
 // app too — the app's own scanner just reads the code out of it.
 
+// The web's Join flow (/start?join=CODE) with the code filled in.
 export function joinLinkFor(inviteCode: string): string {
-  return `${WEB_BASE_URL}/leagues?join=${encodeURIComponent(inviteCode)}#join-league`;
+  return `${WEB_BASE_URL}/start?join=${encodeURIComponent(inviteCode)}`;
 }
 
 export type ScannedInvite = { kind: 'league' | 'co-owner'; code: string };

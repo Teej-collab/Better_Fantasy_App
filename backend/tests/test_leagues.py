@@ -688,3 +688,53 @@ async def test_create_team_for_member_rejects_a_second_team_for_the_same_owner(p
             f"/leagues/{league_id}/teams/for-member", json={"user_id": member_user_id, "team_name": "Duplicate Team"}
         )
     assert resp.status_code == 409
+
+
+async def test_create_flow_sets_teams_scoring_keepers_and_switches_to_it(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-flow@example.com")
+        resp = await client.post(
+            "/leagues", json={"name": "Test League Flow", "team_count": 12, "scoring": "half", "keepers": True, "make_active": True}
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["team_count"] == 12
+        # Readable code: 6 characters, no look-alikes.
+        assert len(body["invite_code"]) == 6 and not set(body["invite_code"]) & set("0O1IL")
+        mine = (await client.get("/leagues/mine")).json()
+        assert mine["active_league_id"] == body["id"]
+        bad = await client.post("/leagues", json={"name": "Test League Bad", "scoring": "quarter"})
+        assert bad.status_code == 422
+
+    async with pool.acquire() as conn:
+        rec = await conn.fetchval(
+            "SELECT points_per_unit FROM league_scoring_rules WHERE league_id = $1 AND season = $2 AND stat_category = 'rec'",
+            body["id"], TEST_SEASON,
+        )
+        keepers = await conn.fetchval(
+            "SELECT max_keepers FROM league_keeper_rules WHERE league_id = $1 AND season = $2", body["id"], TEST_SEASON
+        )
+    assert float(rec) == 0.5 and keepers == 2
+
+
+async def test_preview_and_join_by_link_or_lowercase_code(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as creator:
+        await _sign_up(creator, "test-leagues-preview-creator@example.com", "Commish Carl")
+        created = (await creator.post("/leagues", json={"name": "Test League Preview", "team_count": 10, "scoring": "ppr"})).json()
+    code = created["invite_code"]
+
+    async with _client() as joiner:
+        await _sign_up(joiner, "test-leagues-preview-joiner@example.com")
+        preview = await joiner.get("/leagues/preview", params={"code": f"https://theweekend.app/leagues?join={code.lower()}#join-league"})
+        assert preview.status_code == 200, preview.text
+        p = preview.json()
+        assert p["name"] == "Test League Preview" and p["team_count"] == 10 and p["already_member"] is False
+        assert p["commissioner"] == "Commish Carl"
+        assert (await joiner.get("/leagues/preview", params={"code": "NOPE99"})).status_code == 404
+
+        joined = await joiner.post("/leagues/join", json={"invite_code": f"theweekend.app/join/{code.lower()}", "make_active": True})
+        assert joined.status_code == 200
+        assert (await joiner.get("/leagues/mine")).json()["active_league_id"] == created["id"]
+        assert (await joiner.get("/leagues/preview", params={"code": code})).json()["already_member"] is True

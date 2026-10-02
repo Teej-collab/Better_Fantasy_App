@@ -10,11 +10,27 @@ import secrets
 from app.config import DEFAULT_LEAGUE_ID
 
 
-async def create_league(conn, name: str, created_by_user_id: int, invite_code: str) -> int:
+async def create_league(conn, name: str, created_by_user_id: int, invite_code: str, team_count: int | None = None) -> int:
     return await conn.fetchval(
-        "INSERT INTO leagues (name, created_by_user_id, invite_code) VALUES ($1, $2, $3) RETURNING id",
-        name, created_by_user_id, invite_code,
+        "INSERT INTO leagues (name, created_by_user_id, invite_code, team_count) VALUES ($1, $2, $3, $4) RETURNING id",
+        name, created_by_user_id, invite_code, team_count,
     )
+
+
+# Readable league codes for new leagues — easy to read aloud and type
+# (no 0/O, 1/I/L), the way an ESPN league ID is something you can just
+# tell someone. Older leagues keep their original random codes, which
+# still work.
+_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+CODE_LENGTH = 6
+
+
+async def new_invite_code(conn) -> str:
+    for _ in range(20):
+        code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(CODE_LENGTH))
+        if not await conn.fetchval("SELECT 1 FROM leagues WHERE invite_code = $1", code):
+            return code
+    return secrets.token_urlsafe(8)
 
 
 async def add_member(conn, league_id: int, user_id: int, role: str) -> None:
@@ -60,7 +76,61 @@ async def get_default_league_id(conn) -> int | None:
 
 
 async def get_league_by_invite_code(conn, invite_code: str):
-    return await conn.fetchrow("SELECT * FROM leagues WHERE invite_code = $1", invite_code)
+    """Exact match first (older codes are case-sensitive), then the
+    readable codes typed in lower case."""
+    row = await conn.fetchrow("SELECT * FROM leagues WHERE invite_code = $1", invite_code)
+    if row is None and invite_code.upper() != invite_code:
+        row = await conn.fetchrow("SELECT * FROM leagues WHERE invite_code = $1", invite_code.upper())
+    return row
+
+
+async def league_preview(conn, league_id: int, season: int) -> dict:
+    """What someone about to join sees: how full it is, its scoring
+    style and how many seasons of history it has."""
+    teams = await conn.fetchval(
+        "SELECT count(*) FROM teams_by_season WHERE league_id = $1 AND season = $2", league_id, season
+    )
+    history = await conn.fetchval(
+        "SELECT count(DISTINCT season) FROM teams_by_season WHERE league_id = $1", league_id
+    )
+    rec = await conn.fetchval(
+        "SELECT points_per_unit FROM league_scoring_rules WHERE league_id = $1 AND season = $2 AND stat_category = 'rec'",
+        league_id, season,
+    )
+    commissioner = await conn.fetchval(
+        """
+        SELECT COALESCE(o.display_name, u.display_name)
+        FROM league_members lm JOIN users u ON u.id = lm.user_id
+        LEFT JOIN owner_users ou ON ou.user_id = u.id LEFT JOIN owners o ON o.owner_id = ou.owner_id
+        WHERE lm.league_id = $1 AND lm.role = 'commissioner'
+        ORDER BY lm.user_id LIMIT 1
+        """,
+        league_id,
+    )
+    return {"teams": teams or 0, "history_seasons": history or 0, "scoring": scoring_label(rec), "commissioner": commissioner}
+
+
+SCORING_PRESETS = {"ppr": 1.0, "half": 0.5, "standard": 0.0}
+
+
+def scoring_label(points_per_reception) -> str:
+    if points_per_reception is None:
+        return "Custom"
+    value = float(points_per_reception)
+    return {1.0: "PPR", 0.5: "Half PPR", 0.0: "Standard"}.get(value, "Custom")
+
+
+async def apply_scoring_preset(conn, league_id: int, season: int, preset: str) -> None:
+    """PPR / Half PPR / Standard differ only in points per catch; every
+    other rule stays the seeded default (a copy of League #1's)."""
+    await conn.execute(
+        """
+        INSERT INTO league_scoring_rules (season, stat_category, points_per_unit, league_id)
+        VALUES ($1, 'rec', $2, $3)
+        ON CONFLICT (season, stat_category, league_id) DO UPDATE SET points_per_unit = EXCLUDED.points_per_unit
+        """,
+        season, SCORING_PRESETS[preset], league_id,
+    )
 
 
 async def get_league(conn, league_id: int):

@@ -8,8 +8,9 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import { takePendingLeagueIntent } from '@/lib/onboarding';
 
+// The Join / Create a League flow (app/start).
 function openLeagues(focus?: 'join' | 'create') {
-  router.push(focus ? { pathname: '/leagues', params: { focus } } : '/leagues');
+  router.push(focus === 'join' ? '/start/join' : focus === 'create' ? '/start/create' : '/start');
 }
 
 // A signed-in account with no active league yet (a new email sign-up):

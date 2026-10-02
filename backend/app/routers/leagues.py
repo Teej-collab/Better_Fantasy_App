@@ -9,10 +9,11 @@ draft setup (POST /draft/setup) and scoring already work per-league as
 of Phase 4, so nothing else needs to change for a self-serve league to
 become fully playable once it has teams.
 """
-import secrets
+import re
+from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, resolve_owner_id
@@ -21,6 +22,7 @@ from app.config import _require
 from app.db import get_pool
 from app.queries import auth as auth_queries
 from app.queries import chat as chat_queries
+from app.queries import keepers as keeper_queries
 from app.queries import leagues as league_queries
 from app.queries import teams as team_queries
 
@@ -41,7 +43,13 @@ def _require_session(request: Request) -> dict:
 
 
 def _league_dict(row, role: str | None = None) -> dict:
-    d = {"id": row["id"], "name": row["name"], "invite_code": row["invite_code"], "created_at": row["created_at"]}
+    d = {
+        "id": row["id"],
+        "name": row["name"],
+        "invite_code": row["invite_code"],
+        "created_at": row["created_at"],
+        "team_count": row.get("team_count"),
+    }
     if role is not None:
         d["role"] = role
     return d
@@ -75,6 +83,14 @@ async def select_league(league_id: int, request: Request):
 
 class CreateLeagueRequest(BaseModel):
     name: str
+    # The Create a League flow's basics; all optional so older clients
+    # (name only) keep working.
+    team_count: int | None = Field(default=None, ge=2, le=32)
+    scoring: str | None = None  # "ppr" | "half" | "standard"
+    keepers: bool | None = None
+    # The Create a League flow switches you to the new league; the
+    # Leagues page's plain create doesn't.
+    make_active: bool = False
 
 
 @router.post("")
@@ -83,14 +99,22 @@ async def create_league(body: CreateLeagueRequest, request: Request):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Enter a league name")
+    if body.scoring is not None and body.scoring not in league_queries.SCORING_PRESETS:
+        raise HTTPException(status_code=422, detail="Scoring must be PPR, Half PPR or Standard")
 
-    invite_code = secrets.token_urlsafe(8)
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
-        league_id = await league_queries.create_league(conn, name, payload["user_id"], invite_code)
+        invite_code = await league_queries.new_invite_code(conn)
+        league_id = await league_queries.create_league(conn, name, payload["user_id"], invite_code, body.team_count)
         await league_queries.add_member(conn, league_id, payload["user_id"], "commissioner")
+        if body.make_active:
+            await league_queries.set_active_league_id(conn, payload["user_id"], league_id)
         await league_queries.seed_default_scoring_rules(conn, league_id, season)
+        if body.scoring is not None:
+            await league_queries.apply_scoring_preset(conn, league_id, season, body.scoring)
+        if body.keepers is not None:
+            await keeper_queries.upsert_rules(conn, season, 2 if body.keepers else 0, None, None, league_id)
 
         # Give the new league somewhere to talk from day one — same
         # precedent as seed_default_scoring_rules above ("give a new
@@ -110,6 +134,41 @@ async def create_league(body: CreateLeagueRequest, request: Request):
 
 class JoinLeagueRequest(BaseModel):
     invite_code: str
+    # The Join flow switches you to the league you just joined.
+    make_active: bool = False
+
+
+def _code_from(text: str) -> str:
+    """An invite code, whether pasted bare or inside a join link
+    (…/leagues?join=CODE or …/join/CODE)."""
+    text = text.strip()
+    m = re.search(r"[?&]join=([^&#\s]+)", text) or re.search(r"/join/([^/?#\s]+)", text)
+    return unquote(m.group(1)) if m else text
+
+
+@router.get("/preview")
+async def preview_league(code: str, request: Request):
+    """The league behind an invite code, before joining: its name, how
+    full it is, scoring style, seasons of history and commissioner —
+    the Join flow's "League found" card. Signed-in only, like joining."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league = await league_queries.get_league_by_invite_code(conn, _code_from(code))
+        if league is None:
+            raise HTTPException(status_code=404, detail="No league found for that code")
+        preview = await league_queries.league_preview(conn, league["id"], season)
+        membership = await league_queries.get_membership(conn, league["id"], payload["user_id"])
+    return {
+        "id": league["id"],
+        "name": league["name"],
+        "invite_code": league["invite_code"],
+        "season": season,
+        "team_count": league["team_count"],
+        "already_member": membership is not None,
+        **preview,
+    }
 
 
 @router.post("/join")
@@ -117,10 +176,12 @@ async def join_league(body: JoinLeagueRequest, request: Request):
     payload = _require_session(request)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        league = await league_queries.get_league_by_invite_code(conn, body.invite_code.strip())
+        league = await league_queries.get_league_by_invite_code(conn, _code_from(body.invite_code))
         if league is None:
             raise HTTPException(status_code=404, detail="No league found for that invite code")
         await league_queries.add_member(conn, league["id"], payload["user_id"], "member")
+        if body.make_active:
+            await league_queries.set_active_league_id(conn, payload["user_id"], league["id"])
         membership = await league_queries.get_membership(conn, league["id"], payload["user_id"])
     return _league_dict(league, membership["role"])
 

@@ -9,6 +9,25 @@ export type League = {
   invite_code: string;
   created_at: string;
   role: "commissioner" | "member";
+  // How many teams it's meant to have (the Create a League flow); null
+  // for leagues made before that was asked.
+  team_count?: number | null;
+};
+
+export type ScoringPreset = "ppr" | "half" | "standard";
+
+// GET /leagues/preview — the league behind an invite code, before joining.
+export type LeaguePreview = {
+  id: number;
+  name: string;
+  invite_code: string;
+  season: number;
+  team_count: number | null;
+  teams: number;
+  history_seasons: number;
+  scoring: "PPR" | "Half PPR" | "Standard" | "Custom";
+  commissioner: string | null;
+  already_member: boolean;
 };
 
 export type Team = {
@@ -92,12 +111,26 @@ export async function getMyLeagues(): Promise<{ leagues: League[]; activeLeagueI
   return { leagues: body.leagues, activeLeagueId: body.active_league_id };
 }
 
-export async function createLeague(name: string): Promise<League> {
-  return post<League>("/leagues", { name });
+export async function createLeague(
+  name: string,
+  options?: { teamCount?: number; scoring?: ScoringPreset; keepers?: boolean; makeActive?: boolean },
+): Promise<League> {
+  return post<League>("/leagues", {
+    name,
+    team_count: options?.teamCount,
+    scoring: options?.scoring,
+    keepers: options?.keepers,
+    make_active: options?.makeActive ?? false,
+  });
 }
 
-export async function joinLeague(inviteCode: string): Promise<League> {
-  return post<League>("/leagues/join", { invite_code: inviteCode });
+// `inviteCode` may be a bare code or a pasted join link.
+export async function joinLeague(inviteCode: string, makeActive = false): Promise<League> {
+  return post<League>("/leagues/join", { invite_code: inviteCode, make_active: makeActive });
+}
+
+export async function previewLeague(codeOrLink: string): Promise<LeaguePreview> {
+  return get<LeaguePreview>(`/leagues/preview?code=${encodeURIComponent(codeOrLink)}`);
 }
 
 export async function createTeam(leagueId: number, teamName: string): Promise<Team> {

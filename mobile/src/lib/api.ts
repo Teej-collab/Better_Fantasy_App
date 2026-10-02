@@ -11,6 +11,7 @@ import type {
   DraftBet,
   EspnConnectionStatus,
   LeagueInfo,
+  LeaguePreview,
   LeagueMember,
   LeagueTeam,
   PlayerViewData,
@@ -45,6 +46,7 @@ import type {
   MyKeepers,
   ChugDeadline,
   ChugLedgerEvent,
+  ScoringPreset,
   ChugLeaderboardRow,
   ChugUploadResult,
   ChugFeedEntry,
@@ -559,9 +561,22 @@ export const api = {
     request<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   forgotPassword: (email: string) =>
     request<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
-  createLeague: (name: string) => request<LeagueInfo>('/leagues', { method: 'POST', body: JSON.stringify({ name }) }),
-  joinLeague: (inviteCode: string) =>
-    request<LeagueInfo>('/leagues/join', { method: 'POST', body: JSON.stringify({ invite_code: inviteCode }) }),
+  createLeague: (name: string, options?: { teamCount?: number; scoring?: ScoringPreset; keepers?: boolean; makeActive?: boolean }) =>
+    request<LeagueInfo>('/leagues', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        team_count: options?.teamCount,
+        scoring: options?.scoring,
+        keepers: options?.keepers,
+        make_active: options?.makeActive ?? false,
+      }),
+    }),
+  // `inviteCode` may be a bare code or a pasted join link.
+  joinLeague: (inviteCode: string, makeActive = false) =>
+    request<LeagueInfo>('/leagues/join', { method: 'POST', body: JSON.stringify({ invite_code: inviteCode, make_active: makeActive }) }),
+  previewLeague: (codeOrLink: string) => request<LeaguePreview>(`/leagues/preview?code=${encodeURIComponent(codeOrLink)}`),
+  setDraftSchedule: (iso: string) => request<unknown>('/draft/schedule', { method: 'PUT', body: JSON.stringify({ scheduled_start: iso }) }),
   createTeam: (leagueId: number, teamName: string) =>
     request<LeagueTeam>(`/leagues/${leagueId}/teams`, { method: 'POST', body: JSON.stringify({ team_name: teamName }) }),
   selectLeague: (leagueId: number) =>
