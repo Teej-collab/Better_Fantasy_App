@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminLiveServer } from "@/lib/api";
 import { AdminLive } from "@/components/admin/AdminLive";
 
-export const metadata: Metadata = { title: "Live — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Live — Admin — The Weekend" };
 
 export default async function AdminLivePage() {
   const cookieStore = await cookies();

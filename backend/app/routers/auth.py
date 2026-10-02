@@ -224,7 +224,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     google_user = await google_oauth.fetch_google_user(access_token)
     google_user_id = google_user["sub"]
     email = google_user.get("email")
-    display_name = google_user.get("name") or (email.split("@")[0] if email else "Weekend League user")
+    display_name = google_user.get("name") or (email.split("@")[0] if email else "The Weekend user")
 
     pool = await get_pool()
     async with pool.acquire() as conn:

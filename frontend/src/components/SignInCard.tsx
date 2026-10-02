@@ -126,7 +126,7 @@ export function SignInCard({
     >
       <div className="flex flex-col items-center gap-1 text-center">
         <span className="text-xs font-semibold tracking-[0.25em] text-[color:var(--wl-text-secondary)] uppercase">
-          Weekend League
+          The Weekend
         </span>
         <h1 className="font-display text-2xl font-semibold tracking-wide text-[color:var(--wl-text)] uppercase">
           {variant === "join" ? "Join a League" : variant === "create" ? "Create a League" : "Welcome back"}

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Anton, Satisfy } from "next/font/google";
-import { LeagueWordmark } from "@/components/LeagueWordmark";
+import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
+import { TheWordmark } from "@/components/TheWordmark";
 import { WelcomeBackStage } from "@/components/WelcomeBackStage";
 import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad, useHasBootedSnapshot } from "@/lib/appBoot";
@@ -160,6 +161,7 @@ export function HomeWelcomeBackEntry({
   return (
     <div className="wl-gate flex flex-col items-center justify-center">
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
+      <IntroSeasonDecor />
       {revealing && <div className="wl-bloom" aria-hidden />}
 
       {stage === "word" && (
@@ -198,10 +200,9 @@ export function HomeWelcomeBackEntry({
 
         {showFinal && (
           <>
+            {/* The Weekend: "The" in script settles in above the WEEKEND neon. */}
+            <TheWordmark className={satisfy.className} />
             <h1 className={`wl-weekend text-5xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
-            <div className="wl-league-wrap -mt-1 sm:-mt-2">
-              <LeagueWordmark className={satisfy.className} />
-            </div>
             <WelcomeBackStage
               displayName={displayName}
               needsLeague={needsLeague}

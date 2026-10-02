@@ -29,7 +29,7 @@ import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { MovementBadge } from "@/components/MovementBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "Standings — Weekend League" };
+export const metadata: Metadata = { title: "Standings — The Weekend" };
 
 export default async function StandingsPage({
   searchParams,

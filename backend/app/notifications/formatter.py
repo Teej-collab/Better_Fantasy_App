@@ -1,6 +1,6 @@
 """
 Turns a notification type + data into the actual title/body/url a
-device shows — the one place that owns Weekend League's notification
+device shows — the one place that owns The Weekend's notification
 copy, so it never gets hand-written inline at each call site. Every
 formatter returns the same shape the frontend's service worker expects
 (see frontend/public/sw.js's push handler): {title, body, icon, badge,
@@ -42,7 +42,7 @@ def _payload(title: str, body: str, url: str, type_: str, tag: str | None = None
 
 def test_notification() -> dict:
     return _payload(
-        "🔔 Test Notification", "Weekend League notifications are working.",
+        "🔔 Test Notification", "The Weekend notifications are working.",
         "/settings?section=notifications", "test",
     )
 

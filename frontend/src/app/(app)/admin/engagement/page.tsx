@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminEngagementServer } from "@/lib/api";
 import { AdminEngagement } from "@/components/admin/AdminEngagement";
 
-export const metadata: Metadata = { title: "Engagement — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Engagement — Admin — The Weekend" };
 
 export default async function AdminEngagementPage() {
   const cookieStore = await cookies();

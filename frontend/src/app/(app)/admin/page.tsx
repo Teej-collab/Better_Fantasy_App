@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 import { AdminOverview } from "@/components/admin/AdminOverview";
 
-export const metadata: Metadata = { title: "Overview — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Overview — Admin — The Weekend" };
 
 export default async function AdminOverviewPage() {
   const cookieStore = await cookies();

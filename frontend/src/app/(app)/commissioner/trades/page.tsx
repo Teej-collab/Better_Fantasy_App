@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { TradeSettingsAndReview } from "@/components/commissioner/TradeSettingsAndReview";
 
-export const metadata: Metadata = { title: "Trades — Weekend League" };
+export const metadata: Metadata = { title: "Trades — The Weekend" };
 
 export default async function CommissionerTradesPage() {
   const cookieStore = await cookies();

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminSecurityServer } from "@/lib/api";
 import { AdminSecurity } from "@/components/admin/AdminSecurity";
 
-export const metadata: Metadata = { title: "Security — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Security — Admin — The Weekend" };
 
 export default async function AdminSecurityPage() {
   const cookieStore = await cookies();

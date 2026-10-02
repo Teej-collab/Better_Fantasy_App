@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { listAdminLeaguesServer } from "@/lib/api";
 import { AdminLeagues } from "@/components/admin/AdminLeagues";
 
-export const metadata: Metadata = { title: "Leagues — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Leagues — Admin — The Weekend" };
 
 export default async function AdminLeaguesPage() {
   const cookieStore = await cookies();

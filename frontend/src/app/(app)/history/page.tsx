@@ -8,7 +8,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 import { panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "History — Weekend League" };
+export const metadata: Metadata = { title: "History — The Weekend" };
 
 /**
  * A small hub, not a merged mega-page — Awards, Player Cards, and the

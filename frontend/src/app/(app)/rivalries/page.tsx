@@ -7,7 +7,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "Rivalries — Weekend League" };
+export const metadata: Metadata = { title: "Rivalries — The Weekend" };
 
 export default async function RivalriesPage() {
   const cookieStore = await cookies();

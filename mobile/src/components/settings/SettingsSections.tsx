@@ -109,7 +109,7 @@ function PhoneReminders() {
           <Pressable
             onPress={async () => {
               const ok = await sendTestReminder();
-              setTestNote(ok ? 'Sent — it arrives in 5 seconds. Lock your phone to see it.' : 'Turn on notifications for Weekend League in iPhone Settings first.');
+              setTestNote(ok ? 'Sent — it arrives in 5 seconds. Lock your phone to see it.' : 'Turn on notifications for The Weekend in iPhone Settings first.');
             }}
             style={styles.secondary}>
             <Text style={styles.body}>Send a test reminder</Text>
@@ -284,7 +284,7 @@ function ProfileForm({ settings }: { settings: MySettings }) {
   const preview = settings.chat_color ?? DEFAULT_BUBBLE_COLOR;
   return (
     <View style={styles.gap}>
-      <Header title="Profile" subtitle="How you appear throughout Weekend League." />
+      <Header title="Profile" subtitle="How you appear throughout The Weekend." />
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Panel
@@ -430,7 +430,7 @@ export function NotificationSettings() {
 
   return (
     <View style={styles.gap}>
-      <Header title="Notifications" subtitle="What Weekend League lets you know about, and when." saved={saved} />
+      <Header title="Notifications" subtitle="What The Weekend lets you know about, and when." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Panel title="Sunday Mode" description="A quick preset instead of tuning every toggle by hand — pick one, or keep customizing below.">
@@ -456,7 +456,7 @@ export function NotificationSettings() {
         ))}
       </Panel>
 
-      <Panel title="Push Notifications" description="Real-time alerts on this device, even when Weekend League isn't open.">
+      <Panel title="Push Notifications" description="Real-time alerts on this device, even when The Weekend isn't open.">
         <Text style={styles.small}>
           {prefs.push_enabled
             ? '✓ Push is on for your account (set up from the website or the iOS web app).'
@@ -570,7 +570,7 @@ export function AppearanceSettings() {
 
   return (
     <View style={styles.gap}>
-      <Header title="Appearance" subtitle="Weekend League's look, tuned to your taste." saved={saved} />
+      <Header title="Appearance" subtitle="The Weekend's look, tuned to your taste." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Panel
@@ -578,7 +578,7 @@ export function AppearanceSettings() {
         description={
           direction
             ? 'Controlled by your Design Direction in Labs right now — a Direction sets its own palette. Switch back to Default there to choose Calm or Cosmic again.'
-            : "Calm is Weekend League's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch."
+            : "Calm is The Weekend's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch."
         }>
         <Segment
           options={[
@@ -594,11 +594,11 @@ export function AppearanceSettings() {
         />
       </Panel>
 
-      <Panel title="Theme" description="Weekend League's signature look is dark — Light mode isn't ready yet.">
+      <Panel title="Theme" description="The Weekend's signature look is dark — Light mode isn't ready yet.">
         <Segment options={[{ key: 'dark', label: 'Dark' }]} value="dark" onChange={() => {}} />
       </Panel>
 
-      <Panel title="Neon Intensity" description="How strong Weekend League's decorative glow reads — never affects text or contrast.">
+      <Panel title="Neon Intensity" description="How strong The Weekend's decorative glow reads — never affects text or contrast.">
         <Segment
           options={[
             { key: 'subtle', label: 'Subtle' },
@@ -704,7 +704,7 @@ function SeasonalIconSetting() {
     <Panel>
       <ToggleRow
         label="Seasonal app icon"
-        description="Dress up the home-screen icon for the season — spider webs in October. Your phone confirms each change."
+        description="Dress up the home-screen icon for the season — spider webs in October, snow in winter. Your phone confirms each change."
         value={enabled}
         onChange={(v) => {
           setEnabled(v);

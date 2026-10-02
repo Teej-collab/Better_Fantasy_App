@@ -136,7 +136,7 @@ export function BetsApp() {
       {settled.length > 0 && <BetList title="Settled" bets={settled} onChange={replace} onRemove={(id) => setBets((all) => (all ?? []).filter((b) => b.id !== id))} run={run} setNotice={setNotice} />}
 
       <p className="text-center text-xs text-black/40 dark:text-white/40">
-        Weekend League only tracks bets — it never places them or touches money. 21+. If gambling stops being fun, call or text 1-800-GAMBLER.
+        The Weekend only tracks bets — it never places them or touches money. 21+. If gambling stops being fun, call or text 1-800-GAMBLER.
       </p>
     </div>
   );

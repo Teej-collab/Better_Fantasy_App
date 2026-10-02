@@ -14,7 +14,9 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
+import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { haptics } from '@/lib/haptics';
+import { currentSeason } from '@/lib/seasonal';
 import { Text } from '@/components/Text';
 import { Colors } from '@/constants/theme';
 
@@ -22,7 +24,7 @@ import { Colors } from '@/constants/theme';
 // + useWeekendIntro.ts + useIntroSound.ts + the .wl-* rules in
 // globals.css), played on a cold launch: a dark beat, then WELCOME / TO /
 // THE igniting one at a time like stadium lights (a light-switch click
-// each), then the WEEKEND neon and the "League" script with a can
+// each), then the WEEKEND neon with "The" in script above it, a can
 // cracking open and a pour, "Welcome Back", and finally the scene
 // rushing away into a bloom of light that reveals the app.
 //
@@ -42,7 +44,7 @@ const REVEAL_MS = 900;
 const CAN_OPENING_MS = 1100;
 
 const ACCENT = Colors.accent;
-const LEAGUE_BLUE = '#5cc6ff';
+const THE_BLUE = '#5cc6ff';
 
 type Stage = 'dark' | 'word' | 'final';
 
@@ -164,7 +166,7 @@ export function IntroOverlay({
   function showFinal(fast: boolean) {
     setStage('final');
     weekend.set(fast ? withTiming(1, { duration: 200 }) : weekendPowerOn());
-    league.set(withTiming(1, { duration: fast ? 200 : 1600, easing: Easing.out(Easing.quad) }));
+    league.set(withDelay(fast ? 0 : 500, withTiming(1, { duration: fast ? 200 : 1200, easing: Easing.out(Easing.quad) })));
     welcome.set(withDelay(fast ? 0 : 600, withTiming(1, { duration: fast ? 200 : 900 })));
     if (!fast) sounds.playCanThenPour();
     if (mode === 'enter') {
@@ -252,10 +254,13 @@ export function IntroOverlay({
   const ambientStyle = useAnimatedStyle(() => ({ opacity: ambient.get() }));
   const wordStyle = useAnimatedStyle(() => ({ opacity: word.get(), transform: [{ scale: 0.97 + 0.03 * Math.min(1, word.get()) }] }));
   const weekendStyle = useAnimatedStyle(() => ({ opacity: weekend.get() }));
-  const leagueStyle = useAnimatedStyle(() => ({
+  const theStyle = useAnimatedStyle(() => ({
     opacity: league.get(),
-    transform: [{ translateY: 4 * (1 - league.get()) }, { rotate: `${-1.4 + 0.4 * league.get()}deg` }],
+    transform: [{ translateY: 8 * (1 - league.get()) }, { rotate: `${-10 + 3 * league.get()}deg` }],
   }));
+  // Orange in October, red in winter, like the logo.
+  const season = currentSeason();
+  const seasonTint = season === 'Halloween' ? styles.theHalloween : season === 'Winter' ? styles.theWinter : null;
   const welcomeStyle = useAnimatedStyle(() => ({
     opacity: welcome.get(),
     transform: [{ translateY: 10 * (1 - welcome.get()) }],
@@ -297,6 +302,8 @@ export function IntroOverlay({
         </Svg>
       </Animated.View>
 
+      <IntroSeasonDecor />
+
       {!revealing && (mode === 'welcome' || stage === 'word') && (
         <Pressable onPress={skip} hitSlop={12} style={[styles.skip, { top: insets.top + 8 }]}>
           <Text style={styles.skipText}>{mode === 'enter' ? 'Skip intro →' : 'Skip →'}</Text>
@@ -311,11 +318,13 @@ export function IntroOverlay({
         )}
         {stage === 'final' && (
           <>
+            {/* The Weekend: "The" in script settles in above the WEEKEND neon,
+                just after it lights — the lit THE word turning into it. */}
+            <Animated.View style={[styles.theWrap, theStyle]}>
+              <Text style={[styles.the, seasonTint]}>The</Text>
+            </Animated.View>
             <Animated.View style={weekendStyle}>
               <Text style={styles.weekend}>WEEKEND</Text>
-            </Animated.View>
-            <Animated.View style={leagueStyle}>
-              <Text style={styles.league}>League</Text>
             </Animated.View>
             {mode === 'welcome' ? (
               <Animated.View style={welcomeStyle}>
@@ -324,7 +333,7 @@ export function IntroOverlay({
             ) : (
               <>
                 <Animated.View style={welcomeStyle}>
-                  <Text style={styles.tagline}>Sit back. Relax. Dive into the League.</Text>
+                  <Text style={styles.tagline}>Sit back. Relax. Dive into The Weekend.</Text>
                 </Animated.View>
                 <Animated.View style={[styles.signWrap, signStyle]}>
                   <Animated.View pointerEvents="none" style={[styles.signGlow, glowStyle]} />
@@ -389,15 +398,17 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(57,255,20,0.9)',
     textShadowRadius: 22,
   },
-  league: {
+  theWrap: { alignSelf: 'center', marginLeft: -150, marginBottom: -22 },
+  the: {
     fontFamily: 'Satisfy_400Regular',
-    fontSize: 46,
-    lineHeight: 58,
-    marginTop: -10,
+    fontSize: 52,
+    lineHeight: 64,
     color: '#eaf6ff',
-    textShadowColor: LEAGUE_BLUE,
+    textShadowColor: THE_BLUE,
     textShadowRadius: 18,
   },
+  theHalloween: { color: '#ffd2a6', textShadowColor: '#ff7a1a' },
+  theWinter: { color: '#ffe3e6', textShadowColor: '#ff4d5a' },
   welcome: {
     fontFamily: 'Anton_400Regular',
     fontSize: 26,

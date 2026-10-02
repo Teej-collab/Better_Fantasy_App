@@ -4,7 +4,7 @@ import { getMe } from "@/lib/api";
 import { SignInCard } from "@/components/SignInCard";
 import { BetsApp } from "@/components/bets/BetsApp";
 
-export const metadata: Metadata = { title: "My Bets — Weekend League" };
+export const metadata: Metadata = { title: "My Bets — The Weekend" };
 
 // Bet tracking — tracking only; nothing here places a bet. Private to
 // the signed-in user unless they share a bet to league chat.

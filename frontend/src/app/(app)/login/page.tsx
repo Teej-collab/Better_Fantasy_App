@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Sign In — Weekend League" };
+export const metadata: Metadata = { title: "Sign In — The Weekend" };
 
 // Direct-linked entry point — Discord's own OAuth redirects here on
 // ?error=not_a_league_member (app/routers/auth.py) when someone

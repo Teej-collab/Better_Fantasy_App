@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminLeagueDetailServer } from "@/lib/api";
 import { AdminLeagueDetail } from "@/components/admin/AdminLeagueDetail";
 
-export const metadata: Metadata = { title: "League — Admin — Weekend League" };
+export const metadata: Metadata = { title: "League — Admin — The Weekend" };
 
 export default async function AdminLeagueDetailPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;

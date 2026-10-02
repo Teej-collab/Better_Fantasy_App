@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminErrorsServer } from "@/lib/api";
 import { AdminErrors } from "@/components/admin/AdminErrors";
 
-export const metadata: Metadata = { title: "Errors — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Errors — Admin — The Weekend" };
 
 export default async function AdminErrorsPage({ searchParams }: { searchParams: Promise<{ fp?: string }> }) {
   const cookieStore = await cookies();

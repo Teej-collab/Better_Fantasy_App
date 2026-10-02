@@ -102,7 +102,7 @@ export default function BetsScreen() {
       ))}
 
       <Text style={styles.disclaimer}>
-        Weekend League only tracks bets — it never places them or touches money. 21+. If gambling stops being fun, call or text
+        The Weekend only tracks bets — it never places them or touches money. 21+. If gambling stops being fun, call or text
         1-800-GAMBLER.
       </Text>
     </ScrollView>

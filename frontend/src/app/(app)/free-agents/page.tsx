@@ -18,7 +18,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { PlayerSearchInput } from "@/components/PlayerSearchInput";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Free Agents — Weekend League" };
+export const metadata: Metadata = { title: "Free Agents — The Weekend" };
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "D/ST", "K"];
 

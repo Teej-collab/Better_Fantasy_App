@@ -36,7 +36,7 @@ export default function GlobalError({
         <p style={{ fontSize: "0.875rem", fontWeight: 600, letterSpacing: "0.1em", color: "#39ff14", textTransform: "uppercase" }}>
           Error
         </p>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>Weekend League hit a snag</h1>
+        <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>The Weekend hit a snag</h1>
         <p style={{ maxWidth: 384, fontSize: "0.875rem", color: "rgba(236,238,241,0.6)" }}>
           Something went wrong loading the app. Try again in a moment.
         </p>

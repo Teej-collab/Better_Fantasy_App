@@ -22,7 +22,7 @@ export default function NotFound() {
         href="/"
         className="mt-2 rounded-full bg-[var(--wl-accent-dim)] px-5 py-2 text-sm font-medium text-white hover:brightness-110"
       >
-        Back to Weekend League
+        Back to The Weekend
       </Link>
     </div>
   );

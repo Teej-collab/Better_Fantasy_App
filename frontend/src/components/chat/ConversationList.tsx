@@ -112,7 +112,7 @@ function ConversationRow({
   const c = conversation;
   const isGroup = c.type === "league" || c.type === "commish_corner";
   const title =
-    c.type === "league" ? "Weekend League" : c.type === "commish_corner" ? "Commish's Corner" : (c.other_owner_name ?? "Direct Message");
+    c.type === "league" ? "League Chat" : c.type === "commish_corner" ? "Commish's Corner" : (c.other_owner_name ?? "Direct Message");
   const subtitle = isGroup
     ? `${c.member_count} managers`
     : c.last_message && messagePreviewsEnabled

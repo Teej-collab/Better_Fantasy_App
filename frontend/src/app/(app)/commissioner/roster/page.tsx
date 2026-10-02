@@ -8,7 +8,7 @@ import { KeeperRulesSection } from "@/components/commissioner/KeeperRulesSection
 import { RosterSlotsSection } from "@/components/commissioner/RosterSlotsSection";
 import { ForceEditRosterSection } from "@/components/commissioner/ForceEditRosterSection";
 
-export const metadata: Metadata = { title: "Roster & Keepers — Weekend League" };
+export const metadata: Metadata = { title: "Roster & Keepers — The Weekend" };
 
 export default async function CommissionerRosterPage() {
   const cookieStore = await cookies();

@@ -13,7 +13,7 @@ import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "League Activity — Weekend League" };
+export const metadata: Metadata = { title: "League Activity — The Weekend" };
 
 export default async function ActivityPage() {
   const cookieStore = await cookies();

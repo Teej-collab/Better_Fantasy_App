@@ -5,7 +5,8 @@ import { Anton, Satisfy } from "next/font/google";
 import { AuthScreen } from "@/components/AuthScreen";
 import { EntryChoiceStage, type EntryChoice } from "@/components/EntryChoiceStage";
 import { LiveTicker } from "@/components/LiveTicker";
-import { LeagueWordmark } from "@/components/LeagueWordmark";
+import { IntroSeasonDecor } from "@/components/IntroSeasonDecor";
+import { TheWordmark } from "@/components/TheWordmark";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { WORDS, useWeekendIntro } from "@/lib/useWeekendIntro";
 import { markBootedThisPageLoad } from "@/lib/appBoot";
@@ -98,6 +99,7 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: Tic
     // can never overlap; the browser lays them out, nothing is guessed.
     <div className="wl-gate flex flex-col">
       <div className={`wl-ambient ${stage !== "dark" ? "wl-ambient--lit" : ""}`} aria-hidden />
+      <IntroSeasonDecor />
 
       {/* Light-spill bloom that ignites from the sign on Enter and
           overtakes the frame — the "walking through the door" beat. */}
@@ -134,12 +136,11 @@ export function OpeningExperience({ tickerItems, isGameDay }: { tickerItems: Tic
 
         {showFinal && (
           <>
+            {/* The Weekend: "The" in script settles in above the WEEKEND neon. */}
+            <TheWordmark className={satisfy.className} />
             <h1 className={`wl-weekend text-5xl sm:text-8xl ${anton.className}`}>WEEKEND</h1>
-            <div className="wl-league-wrap -mt-1 sm:-mt-2">
-              <LeagueWordmark className={satisfy.className} />
-            </div>
             <p className="wl-tagline max-w-[16rem] text-sm sm:max-w-sm sm:text-base">
-              Sit back. Relax. Dive into the League.
+              Sit back. Relax. Dive into The Weekend.
             </p>
             <button
               onClick={enter}

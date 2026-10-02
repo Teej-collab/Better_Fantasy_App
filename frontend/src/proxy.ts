@@ -15,6 +15,10 @@ const SEASONAL: Record<string, Record<string, string>> = {
     "/manifest.json": "/manifest-halloween.json",
     "/apple-icon.png": "/images/apple-icon-halloween.png",
   },
+  winter: {
+    "/manifest.json": "/manifest-winter.json",
+    "/apple-icon.png": "/images/apple-icon-winter.png",
+  },
 };
 
 export function proxy(request: NextRequest) {

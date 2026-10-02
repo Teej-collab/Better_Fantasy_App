@@ -6,7 +6,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 
-export const metadata: Metadata = { title: "More — Weekend League" };
+export const metadata: Metadata = { title: "More — The Weekend" };
 
 /**
  * The beta nav's catch-all tab (Documentation/UX/02_Information_

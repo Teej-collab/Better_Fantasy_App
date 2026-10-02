@@ -16,7 +16,7 @@ export async function generateMetadata({
   params: Promise<{ season: string }>;
 }): Promise<Metadata> {
   const { season } = await params;
-  return { title: `${season} Draft — Weekend League` };
+  return { title: `${season} Draft — The Weekend` };
 }
 
 export default async function SeasonDraftPage({

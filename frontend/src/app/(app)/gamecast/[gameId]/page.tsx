@@ -15,8 +15,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { gameId } = await params;
   const game = await getGameState(gameId);
-  if (!game) return { title: "Game not found — Weekend League" };
-  return { title: `${game.away_team.abbr} @ ${game.home_team.abbr} — Gamecast — Weekend League` };
+  if (!game) return { title: "Game not found — The Weekend" };
+  return { title: `${game.away_team.abbr} @ ${game.home_team.abbr} — Gamecast — The Weekend` };
 }
 
 export default async function GamecastPage({ params }: { params: Promise<{ gameId: string }> }) {

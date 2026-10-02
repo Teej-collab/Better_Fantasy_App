@@ -11,7 +11,7 @@ import { panelGlowStyle } from "@/lib/sectionColors";
 
 export async function generateMetadata({ params }: { params: Promise<{ week: string }> }): Promise<Metadata> {
   const { week } = await params;
-  return { title: `Week ${week} Recap — Weekend League` };
+  return { title: `Week ${week} Recap — The Weekend` };
 }
 
 /**

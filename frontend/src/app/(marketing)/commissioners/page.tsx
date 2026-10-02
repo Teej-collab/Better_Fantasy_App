@@ -5,16 +5,16 @@ const DESCRIPTION =
   "Real commissioner tools — trade review, force-edit, league polls, granular scoring — plus the recap/power-ranking busywork done for you. Free.";
 
 export const metadata: Metadata = {
-  title: "Weekend League for Commissioners",
+  title: "The Weekend for Commissioners",
   description: DESCRIPTION,
   openGraph: {
-    title: "Weekend League for Commissioners",
+    title: "The Weekend for Commissioners",
     description: DESCRIPTION,
     images: ["/images/weekend-league-emblem.png"],
   },
   twitter: {
     card: "summary",
-    title: "Weekend League for Commissioners",
+    title: "The Weekend for Commissioners",
     description: DESCRIPTION,
     images: ["/images/weekend-league-emblem.png"],
   },
@@ -67,7 +67,7 @@ export default function CommissionersPage() {
         </h1>
         <p className="text-lg text-[color:var(--wl-text-secondary)]">
           You&apos;re the one who explains the rules, settles the disputes, and keeps the league alive year over
-          year. Weekend League gives you real commissioner tools, and it does the thankless part for you: it
+          year. The Weekend gives you real commissioner tools, and it does the thankless part for you: it
           computes your power rankings, writes your weekly recaps, and keeps a running record book, so you&apos;re
           not the one manually posting &ldquo;nice job this week&rdquo; in the group chat every Monday.
         </p>

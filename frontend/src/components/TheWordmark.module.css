@@ -1,0 +1,61 @@
+/* "The" — the handwritten script above the WEEKEND neon (The Weekend's
+   wordmark). It settles in just after WEEKEND powers on, so the lit
+   "THE" word of WELCOME / TO / THE reads as turning into it. Plain text
+   + text-shadow, same reliable technique the old "League" script used
+   (see git history of LeagueWordmark.tsx for why not SVG). */
+.wrap {
+  align-self: center;
+  margin-left: -7.5rem;
+  margin-bottom: -1.1rem;
+}
+@media (min-width: 640px) {
+  .wrap {
+    margin-left: -14rem;
+    margin-bottom: -1.9rem;
+  }
+}
+.the {
+  display: inline-block;
+  font-size: 3.25rem;
+  line-height: 1.1;
+  color: #eaf6ff;
+  text-shadow:
+    0 0 6px rgba(92, 198, 255, 0.9),
+    0 0 18px rgba(92, 198, 255, 0.7),
+    0 0 42px rgba(92, 198, 255, 0.45);
+  animation: settle 1.2s ease-out 0.5s both;
+}
+@media (min-width: 640px) {
+  .the {
+    font-size: 5rem;
+  }
+}
+@keyframes settle {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) rotate(-10deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(-7deg);
+  }
+}
+.halloween {
+  color: #ffd2a6;
+  text-shadow:
+    0 0 6px rgba(255, 122, 26, 0.9),
+    0 0 18px rgba(255, 122, 26, 0.65),
+    0 0 42px rgba(255, 122, 26, 0.4);
+}
+.winter {
+  color: #ffe3e6;
+  text-shadow:
+    0 0 6px rgba(255, 77, 90, 0.9),
+    0 0 18px rgba(255, 77, 90, 0.65),
+    0 0 42px rgba(255, 77, 90, 0.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .the {
+    animation: none;
+  }
+}

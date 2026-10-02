@@ -3,7 +3,7 @@ import { getNflScoreboard, type NflGame } from "@/lib/api";
 import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { findGamecastId, getLiveGames } from "@/lib/gamecastApi";
 
-export const metadata: Metadata = { title: "Gamecast — Weekend League" };
+export const metadata: Metadata = { title: "Gamecast — The Weekend" };
 
 type AnnotatedGame = NflGame & { gamecastId: string | null };
 type Group = { title: string; games: AnnotatedGame[] };

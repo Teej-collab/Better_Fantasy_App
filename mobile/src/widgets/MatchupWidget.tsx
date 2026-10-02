@@ -53,13 +53,13 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
   const time = `${hours % 12 === 0 ? 12 : hours % 12}:${String(updated.getMinutes()).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`;
 
   const header =
-    props.state === 'live' ? '● LIVE' : props.state === 'final' ? 'FINAL' : props.week ? `WEEK ${props.week}` : 'WEEKEND LEAGUE';
+    props.state === 'live' ? '● LIVE' : props.state === 'final' ? 'FINAL' : props.week ? `WEEK ${props.week}` : 'THE WEEKEND';
   const headerColor = props.state === 'live' && fullColor ? live : accent;
 
   if (props.state === 'none') {
     return (
       <VStack alignment="leading" spacing={6} modifiers={[containerBackground(bg, 'widget'), widgetURL(props.url)]}>
-        <Text modifiers={[font({ size: 11, weight: 'heavy' }), foregroundStyle(accent)]}>WEEKEND LEAGUE</Text>
+        <Text modifiers={[font({ size: 11, weight: 'heavy' }), foregroundStyle(accent)]}>THE WEEKEND</Text>
         <Spacer />
         <Text modifiers={[font({ size: 15, weight: 'bold' }), foregroundStyle(text)]}>No matchup this week</Text>
         <Text modifiers={[font({ size: 11 }), foregroundStyle(muted)]}>Open the app to refresh</Text>

@@ -29,7 +29,7 @@ export function MarketingHeader() {
 export function MarketingFooter() {
   return (
     <footer className="mt-16 flex flex-col items-center gap-2 px-4 pb-10 text-center text-xs text-[color:var(--wl-text-secondary)]">
-      <p>Weekend League is free. No ads, no paid tier, no catch.</p>
+      <p>The Weekend is free. No ads, no paid tier, no catch.</p>
       <p>
         <Link href="/welcome" className="hover:text-[color:var(--wl-text)]">
           What is this?

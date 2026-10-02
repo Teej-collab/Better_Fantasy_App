@@ -7,7 +7,7 @@ import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Draft — Weekend League" };
+export const metadata: Metadata = { title: "Draft — The Weekend" };
 
 export default async function DraftPage() {
   const cookieStore = await cookies();

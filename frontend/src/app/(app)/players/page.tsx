@@ -16,7 +16,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Player Cards — Weekend League" };
+export const metadata: Metadata = { title: "Player Cards — The Weekend" };
 
 export default async function PlayersPage() {
   const cookieStore = await cookies();

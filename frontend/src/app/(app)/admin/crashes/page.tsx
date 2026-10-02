@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCrashReportsServer } from "@/lib/api";
 import { AdminCrashes } from "@/components/admin/AdminCrashes";
 
-export const metadata: Metadata = { title: "Crashes — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Crashes — Admin — The Weekend" };
 
 export default async function AdminCrashesPage() {
   const cookieStore = await cookies();

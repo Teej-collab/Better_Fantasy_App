@@ -5,7 +5,7 @@ import { ChatApp } from "@/components/chat/ChatApp";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Chat — Weekend League" };
+export const metadata: Metadata = { title: "Chat — The Weekend" };
 
 export default async function ChatPage({
   searchParams,

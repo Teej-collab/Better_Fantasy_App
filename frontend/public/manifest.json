@@ -1,6 +1,6 @@
 {
-  "name": "Weekend League",
-  "short_name": "Weekend Lg",
+  "name": "The Weekend",
+  "short_name": "The Weekend",
   "description": "League standings, matchups, and rosters.",
   "start_url": "/",
   "display": "standalone",

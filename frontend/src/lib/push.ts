@@ -77,7 +77,7 @@ export async function subscribeToPush(): Promise<void> {
     throw new Error("Push notifications aren't available in this browser.");
   }
   if (isIosDevice() && !isInstalledStandalone()) {
-    throw new Error("Add Weekend League to your Home Screen first — iPhone/iPad only deliver notifications to an installed app.");
+    throw new Error("Add The Weekend to your Home Screen first — iPhone/iPad only deliver notifications to an installed app.");
   }
 
   const permission = await Notification.requestPermission();

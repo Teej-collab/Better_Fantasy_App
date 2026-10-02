@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { PollsManagementSection } from "@/components/commissioner/PollsManagementSection";
 
-export const metadata: Metadata = { title: "Polls — Weekend League" };
+export const metadata: Metadata = { title: "Polls — The Weekend" };
 
 export default async function CommissionerPollsPage() {
   const cookieStore = await cookies();

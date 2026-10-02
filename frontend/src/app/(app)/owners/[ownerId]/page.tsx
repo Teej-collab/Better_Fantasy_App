@@ -30,7 +30,7 @@ export async function generateMetadata({
   const { ownerId } = await params;
   const sessionCookie = (await cookies()).get("session")?.value;
   const career = await getCareerProfile(Number(ownerId), sessionCookie);
-  return { title: career ? `${career.team_name} — Weekend League` : "Owner not found — Weekend League" };
+  return { title: career ? `${career.team_name} — The Weekend` : "Owner not found — The Weekend" };
 }
 
 export default async function OwnerProfilePage({

@@ -6,19 +6,22 @@ import type { ImageSourcePropType } from 'react-native';
 // in step with the web's frontend/src/lib/seasonal.ts. Each season names
 // a date window, its own copy of the in-app emblem, and an alternate
 // home-screen icon (the expo-alternate-app-icons entry of the same name
-// in app.json).
+// in app.json). A window may cross New Year (winter).
 
-export type Season = 'Halloween';
+export type Season = 'Halloween' | 'Winter';
 
 const SEASONS: { season: Season; from: [number, number]; to: [number, number]; emblem: ImageSourcePropType }[] = [
-  // Oct 1 – Nov 1 (month is 1-based here).
-  { season: 'Halloween', from: [10, 1], to: [11, 1], emblem: require('@/assets/images/weekend-league-emblem-halloween.png') },
+  // Month is 1-based here.
+  { season: 'Halloween', from: [10, 1], to: [11, 1], emblem: require('@/assets/images/the-weekend-emblem-halloween.png') },
+  { season: 'Winter', from: [12, 1], to: [1, 2], emblem: require('@/assets/images/the-weekend-emblem-winter.png') },
 ];
-const DEFAULT_EMBLEM: ImageSourcePropType = require('@/assets/images/weekend-league-emblem.png');
+const DEFAULT_EMBLEM: ImageSourcePropType = require('@/assets/images/the-weekend-emblem.png');
 
 function inWindow(date: Date, from: [number, number], to: [number, number]): boolean {
   const md = (date.getMonth() + 1) * 100 + date.getDate();
-  return md >= from[0] * 100 + from[1] && md <= to[0] * 100 + to[1];
+  const start = from[0] * 100 + from[1];
+  const end = to[0] * 100 + to[1];
+  return start <= end ? md >= start && md <= end : md >= start || md <= end;
 }
 
 export function currentSeason(now: Date = new Date()): Season | null {

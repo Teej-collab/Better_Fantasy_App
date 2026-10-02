@@ -27,7 +27,7 @@ const DESIGN_DIRECTIONS: {
   description: string;
   swatches: string[];
 }[] = [
-  { key: "default", label: "Default", description: "Weekend League's current look.", swatches: ["#39ff14", "#0d1016"] },
+  { key: "default", label: "Default", description: "The Weekend's current look.", swatches: ["#39ff14", "#0d1016"] },
   {
     key: "broadcast",
     label: "Broadcast Desk",

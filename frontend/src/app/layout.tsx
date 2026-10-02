@@ -94,7 +94,7 @@ export const metadata: Metadata = {
   // production domain (capacitor.config.ts's own server.url) when the
   // env var isn't set, e.g. in local dev.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://weekend-league-web.vercel.app"),
-  title: "Weekend League",
+  title: "The Weekend",
   description: "League standings, matchups, and rosters.",
   manifest: "/manifest.json",
   // Lets iOS treat a Home Screen install as a standalone app (own
@@ -104,7 +104,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Weekend League",
+    title: "The Weekend",
   },
 };
 

@@ -22,7 +22,7 @@ export function GroupInfoModal({ conversation, onClose }: { conversation: ChatCo
     };
   }, [conversation.id]);
 
-  const title = conversation.type === "commish_corner" ? "Commish's Corner" : "Weekend League";
+  const title = conversation.type === "commish_corner" ? "Commish's Corner" : "League Chat";
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 px-4 pt-20" onClick={onClose}>

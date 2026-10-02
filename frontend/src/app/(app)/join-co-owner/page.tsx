@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { JoinCoOwnerForm } from "@/components/JoinCoOwnerForm";
 
-export const metadata: Metadata = { title: "Join as Co-Owner — Weekend League" };
+export const metadata: Metadata = { title: "Join as Co-Owner — The Weekend" };
 
 // The link an owner shares (POST /leagues/co-owner-invite) points here
 // with ?code=... — read server-side, same shape as reset-password's

@@ -148,7 +148,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Profile</h1>
-        <p className="text-sm text-black/50 dark:text-white/50">How you appear throughout Weekend League.</p>
+        <p className="text-sm text-black/50 dark:text-white/50">How you appear throughout The Weekend.</p>
       </div>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">

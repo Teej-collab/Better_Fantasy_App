@@ -22,9 +22,9 @@ export async function generateMetadata({
   const { matchupId } = await params;
   const sessionCookie = (await cookies()).get("session")?.value;
   const matchup = await getMatchup(Number(matchupId), sessionCookie);
-  if (!matchup) return { title: "Matchup not found — Weekend League" };
+  if (!matchup) return { title: "Matchup not found — The Weekend" };
   return {
-    title: `${matchup.home.team_name} vs ${matchup.away.team_name} — Wk ${matchup.week} — Weekend League`,
+    title: `${matchup.home.team_name} vs ${matchup.away.team_name} — Wk ${matchup.week} — The Weekend`,
   };
 }
 

@@ -11,16 +11,16 @@ const DESCRIPTION =
   "Real drafts, real scoring, real waivers — plus AI-written recaps, real power rankings, and a record book that writes itself. Free.";
 
 export const metadata: Metadata = {
-  title: "Weekend League — Fantasy Football, With a Memory",
+  title: "The Weekend — Fantasy Football, With a Memory",
   description: DESCRIPTION,
   openGraph: {
-    title: "Weekend League",
+    title: "The Weekend",
     description: DESCRIPTION,
     images: ["/images/weekend-league-emblem.png"],
   },
   twitter: {
     card: "summary",
-    title: "Weekend League",
+    title: "The Weekend",
     description: DESCRIPTION,
     images: ["/images/weekend-league-emblem.png"],
   },
@@ -58,7 +58,7 @@ export default function WelcomePage() {
       <section className="mx-auto max-w-3xl px-4 pb-8 sm:px-8">
         <p className="text-sm text-[color:var(--wl-text-secondary)]">
           Sleeper, ESPN, and Yahoo are built for a hundred million users, so your league is just twelve rows in a
-          database to them. Weekend League is built the way a league actually experiences a season — draft night,
+          database to them. The Weekend is built the way a league actually experiences a season — draft night,
           waiver drama, a rivalry that&apos;s been going for years, the guy who always chokes in Week 12. It&apos;s
           free, and it was built by someone who plays in the league it was built for.
         </p>

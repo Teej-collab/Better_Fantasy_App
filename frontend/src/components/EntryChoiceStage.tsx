@@ -20,7 +20,7 @@ export function EntryChoiceStage({
     <div className="wl-auth-enter relative z-10 flex w-full max-w-sm flex-col items-center gap-6 px-6 text-center">
       <div className="flex flex-col items-center gap-1">
         <span className="text-xs font-semibold tracking-[0.25em] text-[color:var(--wl-text-secondary)] uppercase">
-          Weekend League
+          The Weekend
         </span>
         <h1 className="font-display text-2xl font-semibold tracking-wide text-[color:var(--wl-text)] uppercase sm:text-3xl">
           Get Started

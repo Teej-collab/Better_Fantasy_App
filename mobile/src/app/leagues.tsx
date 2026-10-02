@@ -118,7 +118,7 @@ export default function LeaguesScreen() {
     };
     const result = await scanInvite(onInvite);
     if (result === 'denied') {
-      Alert.alert('Camera is off', 'Allow camera access for Weekend League in Settings to scan a league QR code.');
+      Alert.alert('Camera is off', 'Allow camera access for The Weekend in Settings to scan a league QR code.');
     } else if (result === 'unavailable') {
       Alert.alert("Can't scan here", 'Type the invite code instead.');
     }
@@ -346,7 +346,7 @@ function LeagueBlock(props: {
         </Text>
         <Pressable
           onPress={() =>
-            void Share.share({ message: `Join my Weekend League "${league.name}" with invite code ${league.invite_code}: ${joinLink}` })
+            void Share.share({ message: `Join my league "${league.name}" on The Weekend with invite code ${league.invite_code}: ${joinLink}` })
           }
           style={styles.smallPill}>
           <Text style={styles.smallPillText}>Share</Text>

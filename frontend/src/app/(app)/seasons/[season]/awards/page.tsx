@@ -15,7 +15,7 @@ export async function generateMetadata({
   params: Promise<{ season: string }>;
 }): Promise<Metadata> {
   const { season } = await params;
-  return { title: `${season} Awards — Weekend League` };
+  return { title: `${season} Awards — The Weekend` };
 }
 
 export default async function SeasonAwardsPage({

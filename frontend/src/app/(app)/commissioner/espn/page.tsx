@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { EspnConnectionSection } from "@/components/commissioner/EspnConnectionSection";
 
-export const metadata: Metadata = { title: "ESPN Connection — Weekend League" };
+export const metadata: Metadata = { title: "ESPN Connection — The Weekend" };
 
 export default async function CommissionerEspnPage() {
   const cookieStore = await cookies();

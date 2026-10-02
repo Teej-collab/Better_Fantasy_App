@@ -44,9 +44,9 @@ async def send_password_reset_email(to_email: str, reset_url: str) -> None:
     try:
         await _send(
             to_email,
-            subject="Reset your Weekend League password",
+            subject="Reset your password for The Weekend",
             html_body=(
-                f'<p>Someone asked to reset the password on this Weekend League account.</p>'
+                f'<p>Someone asked to reset the password on your account for The Weekend.</p>'
                 f'<p><a href="{reset_url}">Choose a new password</a> — this link works once and expires in an hour.</p>'
                 f"<p>If this wasn't you, you can ignore this email.</p>"
             ),

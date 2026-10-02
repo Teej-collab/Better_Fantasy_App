@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminPathsServer, getFeatureUsageServer, getNavigationHeatmapServer } from "@/lib/api";
 import { AdminNavigationHeatmap } from "@/components/admin/AdminNavigationHeatmap";
 
-export const metadata: Metadata = { title: "Navigation — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Navigation — Admin — The Weekend" };
 
 export default async function AdminNavigationPage() {
   const cookieStore = await cookies();

@@ -42,7 +42,7 @@ export function ShareableCard({
         {children}
         {capturing && (
           <View style={styles.signature}>
-            <Text style={styles.signatureText}>WEEKEND LEAGUE</Text>
+            <Text style={styles.signatureText}>THE WEEKEND</Text>
           </View>
         )}
       </View>

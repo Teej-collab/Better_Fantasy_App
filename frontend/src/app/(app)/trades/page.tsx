@@ -6,7 +6,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { TradesApp } from "@/components/TradesApp";
 
-export const metadata: Metadata = { title: "Trades — Weekend League" };
+export const metadata: Metadata = { title: "Trades — The Weekend" };
 
 export default async function TradesPage() {
   const cookieStore = await cookies();

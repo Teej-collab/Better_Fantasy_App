@@ -9,7 +9,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { RecordBook } from "@/components/RecordBook";
 import { BackButton } from "@/components/BackButton";
 
-export const metadata: Metadata = { title: "All-Time Records — Weekend League" };
+export const metadata: Metadata = { title: "All-Time Records — The Weekend" };
 
 /**
  * The All-Time Records tab of Awards — a pinned tab in SeasonTabs

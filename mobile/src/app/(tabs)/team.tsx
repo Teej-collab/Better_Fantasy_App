@@ -122,7 +122,7 @@ function InviteCoOwner() {
       const code = await api.createCoOwnerInvite();
       const link = `${WEB_BASE_URL}/join-co-owner?code=${code}`;
       await Share.share({
-        message: `Help me run my Weekend League team — open this after you sign up and you'll be able to manage it with me: ${link}`,
+        message: `Help me run my team on The Weekend — open this after you sign up and you'll be able to manage it with me: ${link}`,
       });
     } catch (e) {
       Alert.alert("Couldn't generate an invite link", e instanceof Error ? e.message : undefined);

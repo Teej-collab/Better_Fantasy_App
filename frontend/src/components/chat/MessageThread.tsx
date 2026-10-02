@@ -132,7 +132,7 @@ export function MessageThread({
 
   const title =
     conversation.type === "league"
-      ? "Weekend League"
+      ? "League Chat"
       : conversation.type === "commish_corner"
         ? "Commish's Corner"
         : conversation.other_owner_name ?? "Direct Message";

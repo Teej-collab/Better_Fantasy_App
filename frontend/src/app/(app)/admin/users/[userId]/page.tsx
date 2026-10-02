@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminUserDetailServer } from "@/lib/api";
 import { AdminUserDetail } from "@/components/admin/AdminUserDetail";
 
-export const metadata: Metadata = { title: "User — Admin — Weekend League" };
+export const metadata: Metadata = { title: "User — Admin — The Weekend" };
 
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = await params;

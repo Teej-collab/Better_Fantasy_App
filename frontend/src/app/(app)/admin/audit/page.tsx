@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getAdminAuditLogServer } from "@/lib/api";
 import { AdminAuditLog } from "@/components/admin/AdminAuditLog";
 
-export const metadata: Metadata = { title: "Audit Log — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Audit Log — Admin — The Weekend" };
 
 export default async function AdminAuditPage() {
   const cookieStore = await cookies();

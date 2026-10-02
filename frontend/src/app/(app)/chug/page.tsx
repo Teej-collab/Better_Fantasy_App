@@ -10,7 +10,7 @@ import { ChugCommishActions } from "@/components/ChugCommishActions";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Chug — Weekend League" };
+export const metadata: Metadata = { title: "Chug — The Weekend" };
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";

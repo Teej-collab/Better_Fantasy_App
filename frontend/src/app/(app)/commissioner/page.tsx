@@ -7,7 +7,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 import { panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "Commissioner Tools — Weekend League" };
+export const metadata: Metadata = { title: "Commissioner Tools — The Weekend" };
 
 /**
  * A hub, not a mega-page — same pattern as /history (see that page's

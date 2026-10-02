@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { listAdminUsersServer } from "@/lib/api";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 
-export const metadata: Metadata = { title: "Users — Admin — Weekend League" };
+export const metadata: Metadata = { title: "Users — Admin — The Weekend" };
 
 export default async function AdminUsersPage() {
   const cookieStore = await cookies();

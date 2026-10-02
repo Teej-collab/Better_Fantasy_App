@@ -5,7 +5,7 @@ import { awardsHrefFor, listSeasons, safeLatestSeason } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NAV_ACCENT } from "@/lib/navDestinations";
 
-export const metadata: Metadata = { title: "Rules — Weekend League" };
+export const metadata: Metadata = { title: "Rules — The Weekend" };
 
 // The app's single accent (lib/navDestinations.ts's NAV_ACCENT — same
 // value the nav bar and every other content panel now read) — every

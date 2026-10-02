@@ -232,7 +232,7 @@ export function AppearanceSection() {
       <div className="flex items-baseline justify-between">
         <div>
           <h1 className="text-xl font-semibold">Appearance</h1>
-          <p className="text-sm text-black/50 dark:text-white/50">Weekend League&apos;s look, tuned to your taste.</p>
+          <p className="text-sm text-black/50 dark:text-white/50">The Weekend&apos;s look, tuned to your taste.</p>
         </div>
         <SavedIndicator show={saved} />
       </div>
@@ -254,7 +254,7 @@ export function AppearanceSection() {
               </>
             ) : (
               <>
-                Calm is Weekend League&apos;s current look. Cosmic brings back the starfield background and a
+                Calm is The Weekend&apos;s current look. Cosmic brings back the starfield background and a
                 brighter accent — everything else (layout, pages, features) stays exactly the same either way.
               </>
             )}
@@ -301,7 +301,7 @@ export function AppearanceSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Theme</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Weekend League&apos;s signature look is dark — Light mode isn&apos;t ready yet.
+            The Weekend&apos;s signature look is dark — Light mode isn&apos;t ready yet.
           </p>
         </div>
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
@@ -327,7 +327,7 @@ export function AppearanceSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Neon Intensity</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            How strong Weekend League&apos;s decorative glow reads — never affects text or contrast.
+            How strong The Weekend&apos;s decorative glow reads — never affects text or contrast.
           </p>
         </div>
         {/* Each pill carries .glass-surface (globals.css, ToggleRow.tsx's

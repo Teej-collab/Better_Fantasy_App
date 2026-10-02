@@ -199,7 +199,7 @@ export function NotificationsSection() {
         <div>
           <h1 className="text-xl font-semibold">Notifications</h1>
           <p className="text-sm text-black/50 dark:text-white/50">
-            What Weekend League lets you know about, and when.
+            What The Weekend lets you know about, and when.
           </p>
         </div>
         <SavedIndicator show={saved} />
@@ -264,7 +264,7 @@ export function NotificationsSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Push Notifications</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            Real-time alerts on this device, even when Weekend League isn&apos;t open.
+            Real-time alerts on this device, even when The Weekend isn&apos;t open.
           </p>
         </div>
 
@@ -278,7 +278,7 @@ export function NotificationsSection() {
 
         {push && push.iosNeedsInstall && (
           <p className="text-xs text-black/50 dark:text-white/50">
-            On iPhone/iPad, add Weekend League to your Home Screen first (Share → Add to Home Screen) — iOS only
+            On iPhone/iPad, add The Weekend to your Home Screen first (Share → Add to Home Screen) — iOS only
             delivers push notifications to an installed app, not a browser tab.
           </p>
         )}

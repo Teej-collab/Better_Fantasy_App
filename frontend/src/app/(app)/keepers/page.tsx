@@ -5,7 +5,7 @@ import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { KeepersPanel } from "@/components/KeepersPanel";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 
-export const metadata: Metadata = { title: "Keepers — Weekend League" };
+export const metadata: Metadata = { title: "Keepers — The Weekend" };
 
 export default async function KeepersPage() {
   const cookieStore = await cookies();

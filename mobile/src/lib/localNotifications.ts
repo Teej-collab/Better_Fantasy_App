@@ -91,7 +91,7 @@ export async function sendTestReminder(): Promise<boolean> {
   if (!n || !(await ensurePermission(n))) return false;
   await n.scheduleNotificationAsync({
     identifier: `${ID_PREFIX}test-${Date.now()}`,
-    content: { title: '🏈 Kickoff in 1 hour — check your lineup', body: 'This is a test reminder from Weekend League.', data: { url: '/team' } },
+    content: { title: '🏈 Kickoff in 1 hour — check your lineup', body: 'This is a test reminder from The Weekend.', data: { url: '/team' } },
     trigger: { type: n.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
   });
   return true;

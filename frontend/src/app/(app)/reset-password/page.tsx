@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ResetPasswordForm } from "@/components/ResetPasswordForm";
 
-export const metadata: Metadata = { title: "Choose a New Password — Weekend League" };
+export const metadata: Metadata = { title: "Choose a New Password — The Weekend" };
 
 // The link in the reset email (POST /auth/forgot-password) points
 // here with ?token=... — read server-side, same shape as

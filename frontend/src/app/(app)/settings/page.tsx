@@ -4,7 +4,7 @@ import { getMe, getMySettings } from "@/lib/api";
 import { SettingsShell } from "@/components/settings/SettingsShell";
 import { SignInCard } from "@/components/SignInCard";
 
-export const metadata: Metadata = { title: "Settings — Weekend League" };
+export const metadata: Metadata = { title: "Settings — The Weekend" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ section?: string }> }) {
   const { section } = await searchParams;

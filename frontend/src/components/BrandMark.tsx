@@ -3,8 +3,9 @@ import Link from "next/link";
 import { currentSeason, seasonalEmblem } from "@/lib/seasonal";
 
 // The header brand mark — the real emblem now (public/images/
-// weekend-league-emblem.png): neon-green "WEEKEND" arced over a blue
-// cursive "League", ringed in a green-to-blue halo on a starfield,
+// the-weekend-emblem.png, seasonal copies via lib/seasonal.ts): "The" in
+// blue script over a neon-green "WEEKEND", ringed in a green-to-blue halo
+// on a starfield,
 // pre-cropped to a transparent circle so it sits directly on the
 // Cosmic header instead of carrying its own square backing. Replaces
 // the earlier plain-text "W" monogram badge (see git history) — this
@@ -21,7 +22,7 @@ export function BrandMark({ href }: { href: string }) {
     <Link href={href} className="flex shrink-0 items-center gap-2 text-[color:var(--foreground)]">
       <Image
         src={seasonalEmblem()}
-        alt="Weekend League"
+        alt="The Weekend"
         width={40}
         height={40}
         priority
@@ -31,7 +32,7 @@ export function BrandMark({ href }: { href: string }) {
           full wordmark returns once there's room, same breakpoint the
           old bare-text brand mark used. */}
       <span className="font-display hidden text-base font-semibold tracking-wide uppercase sm:inline">
-        Weekend League
+        The Weekend
       </span>
     </Link>
   );

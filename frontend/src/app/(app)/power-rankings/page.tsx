@@ -23,7 +23,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { PowerRankingsAllTime } from "@/components/PowerRankingsAllTime";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "Power Rankings — Weekend League" };
+export const metadata: Metadata = { title: "Power Rankings — The Weekend" };
 
 type View = "week" | "trend" | "all-time";
 

@@ -27,8 +27,8 @@ export async function generateMetadata({
   const { teamId } = await params;
   const sessionCookie = (await cookies()).get("session")?.value;
   const team = await getTeam(Number(teamId), sessionCookie);
-  if (!team) return { title: "Team not found — Weekend League" };
-  return { title: `${team.team_name} — Weekend League` };
+  if (!team) return { title: "Team not found — The Weekend" };
+  return { title: `${team.team_name} — The Weekend` };
 }
 
 export default async function TeamPage({

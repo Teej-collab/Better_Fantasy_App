@@ -72,7 +72,7 @@ export function JoinCoOwnerForm({ code }: { code: string | undefined }) {
     >
       <div className="flex flex-col items-center gap-1">
         <span className="text-xs font-semibold tracking-[0.25em] text-[color:var(--wl-text-secondary)] uppercase">
-          Weekend League
+          The Weekend
         </span>
         <h1 className="font-display text-2xl font-semibold tracking-wide text-[color:var(--wl-text)] uppercase">
           Join as Co-Owner

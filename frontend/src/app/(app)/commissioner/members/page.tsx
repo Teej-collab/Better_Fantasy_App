@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { MembersSection } from "@/components/commissioner/MembersSection";
 
-export const metadata: Metadata = { title: "Members — Weekend League" };
+export const metadata: Metadata = { title: "Members — The Weekend" };
 
 export default async function CommissionerMembersPage() {
   const cookieStore = await cookies();

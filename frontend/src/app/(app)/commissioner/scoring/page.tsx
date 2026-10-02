@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { ScoringRulesSection } from "@/components/commissioner/ScoringRulesSection";
 
-export const metadata: Metadata = { title: "Scoring Rules — Weekend League" };
+export const metadata: Metadata = { title: "Scoring Rules — The Weekend" };
 
 export default async function CommissionerScoringPage() {
   const cookieStore = await cookies();

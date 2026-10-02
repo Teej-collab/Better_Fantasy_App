@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Weekend League",
+    "name": "The Weekend",
     "slug": "weekend-league",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,7 +31,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0d1016",
-          "image": "./assets/images/weekend-league-emblem.png",
+          "image": "./assets/images/the-weekend-emblem.png",
           "imageWidth": 200
         }
       ],
@@ -39,8 +39,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Weekend League uses your photos so you can share them in league chat.",
-          "cameraPermission": "Weekend League uses your camera so you can snap photos for league chat."
+          "photosPermission": "The Weekend uses your photos so you can share them in league chat.",
+          "cameraPermission": "The Weekend uses your camera so you can snap photos for league chat."
         }
       ],
       "expo-video",
@@ -68,7 +68,7 @@
             {
               "name": "MatchupWidget",
               "displayName": "Matchup",
-              "description": "Your Weekend League matchup score.",
+              "description": "Your matchup score on The Weekend.",
               "ios": {
                 "supportedFamilies": [
                   "systemSmall",
@@ -82,7 +82,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Weekend League uses your camera to scan league invite QR codes.",
+          "cameraPermission": "The Weekend uses your camera to scan league invite QR codes.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -95,6 +95,14 @@
             "ios": "./assets/images/app-icon-halloween.png",
             "android": {
               "foregroundImage": "./assets/images/android-icon-foreground-halloween.png",
+              "backgroundColor": "#0d1016"
+            }
+          },
+          {
+            "name": "Winter",
+            "ios": "./assets/images/app-icon-winter.png",
+            "android": {
+              "foregroundImage": "./assets/images/android-icon-foreground-winter.png",
               "backgroundColor": "#0d1016"
             }
           }

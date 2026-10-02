@@ -18,7 +18,7 @@ import { SignInCard } from "@/components/SignInCard";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 
-export const metadata: Metadata = { title: "League — Weekend League" };
+export const metadata: Metadata = { title: "League — The Weekend" };
 
 export default async function LeaguePage({
   searchParams,
