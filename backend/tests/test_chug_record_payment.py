@@ -97,10 +97,17 @@ async def test_commissioner_can_record_a_payment(pool, monkeypatch):
         outstanding = await conn.fetchval(
             "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2", TEST_SEASON, owner_id
         )
+        # Logged, so the chug history shows it as a "Paid" line.
+        logged = await conn.fetch(
+            "SELECT kind, amount, recorded_by_user_id FROM chug_adjustments WHERE season = $1 AND owner_id = $2",
+            TEST_SEASON, owner_id,
+        )
+        await conn.execute("DELETE FROM chug_adjustments WHERE owner_id = $1", owner_id)
 
     assert resp.status_code == 200
     assert resp.json() == {"owner_id": owner_id, "applied": 1}
     assert outstanding == 1
+    assert [(r["kind"], r["amount"]) for r in logged] == [("paid", 1)] and logged[0]["recorded_by_user_id"] is not None
 
 
 async def test_record_payment_clamps_to_what_was_actually_owed(pool, monkeypatch):
@@ -120,3 +127,51 @@ async def test_record_payment_clamps_to_what_was_actually_owed(pool, monkeypatch
     assert resp.status_code == 200
     assert resp.json() == {"owner_id": owner_id, "applied": 1}
     assert outstanding == 0
+
+
+async def _put_on_team(pool, owner_id):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, 'Test Team', $4)",
+            TEST_SEASON, 900000 + owner_id % 100000, owner_id, DEFAULT_LEAGUE_ID,
+        )
+
+
+async def test_commissioner_correction_adds_and_removes_and_is_recorded(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id = await _seed_owner(pool, 7, outstanding_owed=1)
+    await _put_on_team(pool, owner_id)
+
+    async with _client() as client:
+        client.cookies.update(await _commissioner_cookies(pool, "commish-corr"))
+        up = await client.post(f"/chug/standing/{owner_id}/correction", json={"amount": 2, "note": "Missed Week 3"})
+        down = await client.post(f"/chug/standing/{owner_id}/correction", json={"amount": -5})
+        zero = await client.post(f"/chug/standing/{owner_id}/correction", json={"amount": 0})
+
+    async with pool.acquire() as conn:
+        outstanding = await conn.fetchval(
+            "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2", TEST_SEASON, owner_id
+        )
+        logged = await conn.fetch(
+            "SELECT kind, amount, note FROM chug_adjustments WHERE season = $1 AND owner_id = $2 ORDER BY id",
+            TEST_SEASON, owner_id,
+        )
+        await conn.execute("DELETE FROM chug_adjustments WHERE owner_id = $1", owner_id)
+
+    assert up.json() == {"owner_id": owner_id, "applied": 2}
+    # Can't remove more than is owed.
+    assert down.json() == {"owner_id": owner_id, "applied": -3}
+    assert zero.status_code == 422
+    assert outstanding == 0
+    assert [(r["kind"], r["amount"], r["note"]) for r in logged] == [("correction", 2, "Missed Week 3"), ("correction", -3, None)]
+
+
+async def test_correction_rejects_non_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id = await _seed_owner(pool, 8, outstanding_owed=1)
+    async with _client() as client:
+        client.cookies.update(await _member_cookies(pool, "member-corr"))
+        resp = await client.post(f"/chug/standing/{owner_id}/correction", json={"amount": 1})
+    assert resp.status_code == 403

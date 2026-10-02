@@ -42,9 +42,34 @@ def test_fine_converts_and_for_fun_chugs_change_nothing():
     assert fine["fine_amount"] == 80 and fine["balance"] == 0
 
 
-def test_unrecorded_payments_show_as_an_adjustment():
+def test_payments_from_before_the_log_show_as_paid():
     events = replay(earned={1: 3}, reasons={}, settlements=[], chugs=[], actual_outstanding=1, week_deadlines={1: at(0)})
-    assert events[-1] == {"kind": "adjustment", "change": -2, "balance": 1}
+    assert events[-1] == {"kind": "paid", "at": None, "amount": 2, "dollars": 20, "change": -2, "balance": 1}
+
+
+def test_logged_payments_and_cleared_fines():
+    events = replay(
+        earned={1: 2},
+        reasons={},
+        settlements=[],
+        chugs=[],
+        actual_outstanding=1,
+        week_deadlines={1: at(0)},
+        payments=[
+            {"kind": "paid", "amount": 1, "created_at": at(2)},
+            {"kind": "fine_paid", "amount": 3, "created_at": at(3)},
+            {"kind": "correction", "amount": 2, "note": "Missed Week 3 chug", "created_at": at(4)},
+            {"kind": "correction", "amount": -2, "note": "Wrong owner", "created_at": at(5)},
+        ],
+    )
+    kinds = [(e["kind"], e["change"], e["balance"]) for e in events]
+    assert kinds == [("earned", 2, 2), ("paid", -1, 1), ("fine_paid", 0, 1), ("correction", 2, 3), ("correction", -2, 1)]
+    assert events[1]["dollars"] == 10 and events[2]["dollars"] == 30 and events[3]["note"] == "Missed Week 3 chug"
+
+
+def test_a_balance_above_the_replay_is_an_adjustment():
+    events = replay(earned={1: 1}, reasons={}, settlements=[], chugs=[], actual_outstanding=3, week_deadlines={1: at(0)})
+    assert events[-1] == {"kind": "adjustment", "change": 2, "balance": 3}
 
 
 def test_past_season_has_no_reconciliation():

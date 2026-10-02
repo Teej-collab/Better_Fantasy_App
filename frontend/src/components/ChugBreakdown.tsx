@@ -14,6 +14,10 @@ function playerLabel(r: { player_name: string; position: string | null; points: 
   return `${name} (${pts})`;
 }
 
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function describeChugEvent(e: ChugLedgerEvent): { label: string; detail: string } {
   switch (e.kind) {
     case "earned":
@@ -32,6 +36,15 @@ export function describeChugEvent(e: ChugLedgerEvent): { label: string; detail: 
         label: new Date(e.at).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
         detail: `Chug posted${e.score !== null ? ` · ${e.score.toFixed(1)}/10` : ""}${e.change === 0 ? " · nothing owed, just for fun" : ""}`,
       };
+    case "paid":
+      return {
+        label: "Paid",
+        detail: `Paid Commissioner $${e.dollars}${e.amount > 1 ? ` (${e.amount} chugs)` : ""}${e.at ? ` · ${shortDate(e.at)}` : ""}`,
+      };
+    case "fine_paid":
+      return { label: "Fine paid", detail: `Paid Commissioner $${e.dollars} fine${e.at ? ` · ${shortDate(e.at)}` : ""}` };
+    case "correction":
+      return { label: "Correction", detail: `${e.note || "Commissioner correction"} · ${shortDate(e.at)}` };
     case "adjustment":
       return { label: "Adjustment", detail: "Commissioner correction" };
   }

@@ -12,9 +12,13 @@ rows for which starters earned it — app/domain/chug_debt.py's rule),
 chug_deadline_settlements for each Monday deadline's doubling, fine or
 waiver, and chug_scores for chugs posted. Nothing here changes a balance.
 
-Commissioner payments made outside the app aren't recorded anywhere, so
-when the replay doesn't land on the real balance the gap shows as one
-"adjustment" line rather than being hidden.
+Everything a commissioner or admin does by hand comes from
+chug_adjustments: chugs marked "Paid" ($10 a chug, or done in person),
+fines paid off, and "Correction"s with their note. Payments from before
+that log existed (migration e9c4a1b7d3f2) were never recorded, so when
+the replay lands above the real balance, the gap shows as one "Paid"
+line — the only way a balance went down outside these records back
+then. A gap the other way is a plain "adjustment".
 """
 from __future__ import annotations
 
@@ -34,6 +38,7 @@ def replay(
     chugs: list[dict],
     actual_outstanding: int | None,
     week_deadlines: dict[int, datetime] | None = None,
+    payments: list[dict] | None = None,
 ) -> list[dict]:
     """One owner's events in order. `earned`: week → chugs owed that
     week. `settlements`: {week, action, owed_before, owed_after,
@@ -61,6 +66,13 @@ def replay(
         if s["action"] == "no_debt":
             continue
         events.append((s.get("settled_at") or _FAR_FUTURE, 0, {"kind": s["action"], "week": s["week"], "owed_before": s["owed_before"], "owed_after": s["owed_after"]}))
+    for p in payments or []:
+        e = {"kind": p["kind"], "at": p["created_at"].isoformat(), "amount": p["amount"]}
+        if p["kind"] in ("paid", "fine_paid"):
+            e["dollars"] = p["amount"] * FINE_PER_CHUG
+        else:
+            e["note"] = p.get("note")
+        events.append((p["created_at"], 3, e))
     for c in chugs:
         events.append((c["created_at"], 2, {"kind": "chug", "at": c["created_at"].isoformat(), "score": float(c["final_score"]) if c.get("final_score") is not None else None}))
     events.sort(key=lambda e: (e[0], e[1]))
@@ -81,6 +93,15 @@ def replay(
             balance -= e["owed_before"]
         elif e["kind"] == "waived":
             e["change"] = 0
+        elif e["kind"] == "paid":
+            e["change"] = -min(e["amount"], balance)
+            balance += e["change"]
+        elif e["kind"] == "correction":
+            e["change"] = max(e["amount"], -balance)
+            balance += e["change"]
+        elif e["kind"] == "fine_paid":
+            # Clears the fine, not the chug balance.
+            e["change"] = 0
         elif e["kind"] == "chug":
             # A chug only pays something down when something's owed.
             e["change"] = -1 if balance > 0 else 0
@@ -89,7 +110,10 @@ def replay(
         e["balance"] = balance
         out.append(e)
 
-    if actual_outstanding is not None and actual_outstanding != balance:
+    if actual_outstanding is not None and actual_outstanding < balance:
+        paid = balance - actual_outstanding
+        out.append({"kind": "paid", "at": None, "amount": paid, "dollars": paid * FINE_PER_CHUG, "change": -paid, "balance": actual_outstanding})
+    elif actual_outstanding is not None and actual_outstanding > balance:
         out.append({"kind": "adjustment", "change": actual_outstanding - balance, "balance": actual_outstanding})
     return out
 
@@ -167,6 +191,10 @@ async def build_chug_ledger(conn, season: int, active_season: int, league_id: in
         if season == active_season
         else None
     )
+    payments = await conn.fetch(
+        "SELECT owner_id, kind, amount, note, created_at FROM chug_adjustments WHERE season = $1 AND league_id = $2",
+        season, league_id,
+    )
     reasons = await _reasons_by_owner_week(conn, season, league_id)
 
     week_deadlines: dict[int, datetime] = {}
@@ -174,7 +202,12 @@ async def build_chug_ledger(conn, season: int, active_season: int, league_id: in
         if s["settled_at"] and (s["week"] not in week_deadlines or s["settled_at"] < week_deadlines[s["week"]]):
             week_deadlines[s["week"]] = s["settled_at"]
 
-    owners = {r["owner_id"] for r in debts} | {r["owner_id"] for r in settlements} | {r["owner_id"] for r in chugs}
+    owners = (
+        {r["owner_id"] for r in debts}
+        | {r["owner_id"] for r in settlements}
+        | {r["owner_id"] for r in chugs}
+        | {r["owner_id"] for r in payments}
+    )
     out: dict[int, list[dict]] = {}
     for owner_id in owners:
         earned = {r["week"]: r["chugs_owed"] for r in debts if r["owner_id"] == owner_id}
@@ -185,5 +218,6 @@ async def build_chug_ledger(conn, season: int, active_season: int, league_id: in
             [dict(c) for c in chugs if c["owner_id"] == owner_id],
             (standing or {}).get(owner_id, 0) if standing is not None else None,
             week_deadlines,
+            [dict(p) for p in payments if p["owner_id"] == owner_id],
         )
     return out

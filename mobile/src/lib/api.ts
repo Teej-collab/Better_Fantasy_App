@@ -266,7 +266,9 @@ export const api = {
     request<{ season: number | null; leaderboard: ChugLeaderboardRow[] }>(
       season !== undefined ? `/chug/leaderboard?season=${season}` : '/chug/leaderboard',
     ),
-  // Commissioner only.
+  // Commissioner or site admin only.
+  correctChugBalance: (ownerId: number, amount: number, note: string | null) =>
+    request<{ applied: number }>(`/chug/standing/${ownerId}/correction`, { method: 'POST', body: JSON.stringify({ amount, note }) }),
   recordChugPayment: (ownerId: number, amount = 1) =>
     request<{ applied: number }>(`/chug/standing/${ownerId}/record-payment?amount=${amount}`, { method: 'POST' }),
   clearChugFine: (ownerId: number) => request<{ cleared: number }>(`/chug/standing/${ownerId}/clear-fine`, { method: 'POST' }),

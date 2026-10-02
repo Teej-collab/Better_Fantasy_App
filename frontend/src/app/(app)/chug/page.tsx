@@ -47,6 +47,8 @@ export default async function ChugLeaderboardPage({
     getChugLedger(sessionCookie, season).catch(() => ({ season: season ?? 0, owners: {} as Record<string, never[]> })),
   ]);
   const latestSeason = safeLatestSeason(allSeasons);
+  // Chug balance tools (Paid, Correction, Remove doubling): commissioner or site admin.
+  const canManage = me.is_commissioner || me.is_site_owner;
 
   return (
     <div className="flex flex-col gap-4">
@@ -114,10 +116,10 @@ export default async function ChugLeaderboardPage({
                   {row.fined_owed > 0 && (
                     <span className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-0.5 font-medium text-red-600 dark:text-red-400">
                       ${row.fine_amount} fine ({row.fined_owed} chugs)
-                      {me?.is_commissioner && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
+                      {canManage && <ChugFineButton ownerId={row.owner_id} fineAmount={row.fine_amount} />}
                     </span>
                   )}
-                  {me.is_commissioner && (
+                  {canManage && (
                     <ChugCommishActions
                       ownerId={row.owner_id}
                       ownerName={row.owner_name}

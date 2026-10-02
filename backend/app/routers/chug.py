@@ -18,11 +18,13 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import (
     require_active_league_id,
     require_league_access,
+    is_site_admin,
     require_league_commissioner,
     resolve_owner_id,
 )
@@ -35,6 +37,7 @@ from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_ledger import build_chug_ledger
 from app.domain.chug_standing import (
     FINE_PER_CHUG,
+    apply_correction,
     clear_fine,
     record_completed_chug,
     record_manual_payment,
@@ -453,6 +456,49 @@ async def upload_chug(
     return StreamingResponse(stream(), media_type="text/plain")
 
 
+async def _require_chug_manager(conn, payload: dict) -> int:
+    """The chug balance tools (Paid, Correction, Remove doubling, fine
+    clearing, undo week) are for the active league's commissioner or a
+    site admin. Returns the active league."""
+    league_id = await require_active_league_id(conn, payload)
+    if await is_site_admin(conn, payload["user_id"]):
+        return league_id
+    return await require_league_commissioner(conn, payload)
+
+
+class CorrectionIn(BaseModel):
+    # Chugs to add (+) or remove (-).
+    amount: int = Field(ge=-50, le=50)
+    note: str | None = Field(default=None, max_length=200)
+
+
+@router.post("/standing/{owner_id}/correction")
+async def correct_chug_balance(owner_id: int, body: CorrectionIn, request: Request, pool=Depends(get_pool)):
+    """Commissioner/admin-only: a straight fix to an owner's chug balance
+    (app/domain/chug_standing.py's apply_correction), recorded in the
+    chug history as a "Correction" with its note — kept apart from a
+    real payment, which is POST /standing/{owner_id}/record-payment
+    ("Paid")."""
+    payload = _decode_session(get_session_token(request))
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    if body.amount == 0:
+        raise HTTPException(status_code=422, detail="Add or remove at least one chug")
+
+    active_season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await _require_chug_manager(conn, payload)
+        on_team = await conn.fetchval(
+            "SELECT 1 FROM teams_by_season WHERE owner_id = $1 AND league_id = $2 LIMIT 1", owner_id, league_id
+        )
+        if not on_team:
+            raise HTTPException(status_code=404, detail="That owner isn't in this league")
+        applied = await apply_correction(
+            conn, active_season, owner_id, body.amount, (body.note or "").strip() or None, league_id, payload["user_id"]
+        )
+    return {"owner_id": owner_id, "applied": applied}
+
+
 @router.post("/standing/{owner_id}/clear-fine")
 async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = None, pool=Depends(get_pool)):
     """Commissioner-only: marks a real-life fine payment by reducing
@@ -465,8 +511,8 @@ async def clear_chug_fine(owner_id: int, request: Request, amount: int | None = 
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        league_id = await require_league_commissioner(conn, payload)
-        cleared = await clear_fine(conn, active_season, owner_id, amount, league_id)
+        league_id = await _require_chug_manager(conn, payload)
+        cleared = await clear_fine(conn, active_season, owner_id, amount, league_id, payload["user_id"])
 
     return {"owner_id": owner_id, "cleared": cleared}
 
@@ -488,8 +534,8 @@ async def record_chug_payment(owner_id: int, request: Request, amount: int = 1, 
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        league_id = await require_league_commissioner(conn, payload)
-        applied = await record_manual_payment(conn, active_season, owner_id, amount, league_id)
+        league_id = await _require_chug_manager(conn, payload)
+        applied = await record_manual_payment(conn, active_season, owner_id, amount, league_id, payload["user_id"])
 
     return {"owner_id": owner_id, "applied": applied}
 
@@ -505,7 +551,7 @@ async def waive_chug_doubling(owner_id: int, week: int, request: Request, pool=D
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        league_id = await require_league_commissioner(conn, payload)
+        league_id = await _require_chug_manager(conn, payload)
         waived = await waive_deadline_doubling(conn, active_season, week, owner_id, league_id)
 
     return {"owner_id": owner_id, "week": week, "waived": waived}
@@ -528,7 +574,7 @@ async def undo_chug_week(week: int, request: Request, pool=Depends(get_pool)):
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
-        league_id = await require_league_commissioner(conn, payload)
+        league_id = await _require_chug_manager(conn, payload)
         reverted = await undo_week(conn, active_season, week, league_id)
 
     return {"season": active_season, "week": week, "owners_reverted": reverted}

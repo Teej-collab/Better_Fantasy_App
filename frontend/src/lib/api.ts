@@ -1187,6 +1187,11 @@ export type ChugLedgerEvent =
   | { kind: "earned"; week: number; chugs: number; change: number; balance: number; reasons: { player_name: string; position: string | null; points: number }[] }
   | { kind: "doubled" | "fined" | "waived"; week: number; owed_before: number; owed_after: number; change: number; balance: number; fine_amount?: number }
   | { kind: "chug"; at: string; score: number | null; change: number; balance: number }
+  // A chug a commissioner marked paid ($10 each, or done in person), or a
+  // fine they cleared. `at` is null for one from before payments were logged.
+  | { kind: "paid" | "fine_paid"; at: string | null; amount: number; dollars: number; change: number; balance: number }
+  // A commissioner/admin fix to the balance (+ added, − removed), with its note.
+  | { kind: "correction"; at: string; amount: number; note: string | null; change: number; balance: number }
   | { kind: "adjustment"; change: number; balance: number };
 
 export function getChugLedger(sessionCookie: string | undefined, season?: number) {
@@ -1300,6 +1305,19 @@ export async function recordChugPayment(ownerId: number, amount = 1): Promise<{ 
     method: "POST",
   });
   if (!res.ok) throw new Error(`Failed to record payment: ${res.status}`);
+  return res.json();
+}
+
+// Commissioner/admin-only — a straight fix to an owner's chug balance
+// (+ adds chugs, − removes them), recorded in the chug history as a
+// "Correction" with its note, apart from a real payment ("Paid").
+export async function correctChugBalance(ownerId: number, amount: number, note: string | null): Promise<{ applied: number }> {
+  const res = await fetch(`/api/backend/chug/standing/${ownerId}/correction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount, note }),
+  });
+  if (!res.ok) throw new Error(`Failed to save correction: ${res.status}`);
   return res.json();
 }
 

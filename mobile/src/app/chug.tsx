@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { ChugFeedCard } from '@/components/home/FeedCards';
 import { ChugBreakdown } from '@/components/ChugBreakdown';
@@ -34,7 +34,8 @@ export default function ChugScreen() {
   }
 
   const rows = leaderboard.data ?? [];
-  const isCommissioner = me?.is_commissioner ?? false;
+  // Chug balance tools (Paid, Correction, Remove doubling): commissioner or site admin.
+  const isCommissioner = (me?.is_commissioner || me?.is_site_owner) ?? false;
 
   return (
     <ScrollView
@@ -209,15 +210,18 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided:
     }
   }
 
-  // The web's ChugCommishActions and ChugFineButton, as one menu.
+  const [correcting, setCorrecting] = useState(false);
+
+  // The web's ChugCommishActions and ChugFineButton, as one menu. Each
+  // is recorded as what it was in the owner's "Why?" history.
   function commishMenu() {
     const actions: { label: string; run: () => void }[] = [];
-    if (row.outstanding_owed > 0) actions.push({ label: 'Record a paid chug', run: () => run(() => api.recordChugPayment(row.owner_id)) });
-    if (row.fined_owed > 0) actions.push({ label: `Clear $${row.fine_amount} fine`, run: () => run(() => api.clearChugFine(row.owner_id)) });
+    if (row.outstanding_owed > 0) actions.push({ label: 'Paid', run: () => run(() => api.recordChugPayment(row.owner_id)) });
+    actions.push({ label: 'Correction…', run: () => setCorrecting(true) });
     for (const d of row.doubled_weeks) {
-      actions.push({ label: `Waive week ${d.week} doubling`, run: () => run(() => api.waiveChugDoubling(row.owner_id, d.week)) });
+      actions.push({ label: `Remove week ${d.week} doubling`, run: () => run(() => api.waiveChugDoubling(row.owner_id, d.week)) });
     }
-    if (actions.length === 0) return;
+    if (row.fined_owed > 0) actions.push({ label: `Clear $${row.fine_amount} fine`, run: () => run(() => api.clearChugFine(row.owner_id)) });
     Alert.alert(row.owner_name, undefined, [
       ...actions.map((a) => ({ text: a.label, onPress: a.run })),
       { text: 'Cancel', style: 'cancel' as const },
@@ -255,18 +259,95 @@ function LeaderboardRow(props: { row: ChugLeaderboardRow; rank: number; divided:
           </View>
         )}
         <Text style={styles.small}>Lifetime: {row.lifetime_completed}</Text>
-        {props.isCommissioner && (row.outstanding_owed > 0 || row.fined_owed > 0 || row.doubled_weeks.length > 0) && (
+        {props.isCommissioner && (
           <Pressable onPress={commishMenu} hitSlop={6}>
             <Text style={styles.link}>Manage</Text>
           </Pressable>
         )}
       </View>
       <ChugBreakdown events={props.history} />
+      {correcting && (
+        <CorrectionSheet
+          ownerName={row.owner_name}
+          onClose={() => setCorrecting(false)}
+          onSave={async (amount, note) => {
+            await run(() => api.correctChugBalance(row.owner_id, amount, note));
+            void queryClient.invalidateQueries({ queryKey: ['chug-ledger'] });
+            setCorrecting(false);
+          }}
+        />
+      )}
     </Pressable>
   );
 }
 
+// "Correction": add or remove chugs from someone's balance, with a note
+// that shows in their history — kept apart from a real payment ("Paid").
+function CorrectionSheet(props: { ownerName: string; onClose: () => void; onSave: (amount: number, note: string | null) => Promise<void> }) {
+  const [amount, setAmount] = useState(1);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={props.onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={props.onClose}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
+          <Text style={styles.sheetTitle}>Correction · {props.ownerName}</Text>
+          <Text style={styles.small}>Add or remove chugs. This shows as a Correction in their history.</Text>
+          <View style={styles.stepper}>
+            <Pressable onPress={() => setAmount((a) => Math.max(-50, a - 1))} style={styles.stepButton} accessibilityRole="button" accessibilityLabel="One fewer">
+              <Text style={styles.stepText}>−</Text>
+            </Pressable>
+            <Text style={styles.stepValue} accessibilityLabel={`${amount} chugs`}>
+              {amount > 0 ? `+${amount}` : amount}
+            </Text>
+            <Pressable onPress={() => setAmount((a) => Math.min(50, a + 1))} style={styles.stepButton} accessibilityRole="button" accessibilityLabel="One more">
+              <Text style={styles.stepText}>+</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            maxLength={200}
+            placeholder="Why? (shows in their history)"
+            placeholderTextColor={Colors.textSecondary}
+            style={styles.noteInput}
+          />
+          <View style={styles.sheetButtons}>
+            <Pressable onPress={props.onClose} style={styles.sheetCancel} accessibilityRole="button">
+              <Text style={styles.small}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              disabled={saving || amount === 0}
+              onPress={async () => {
+                setSaving(true);
+                await props.onSave(amount, note.trim() || null);
+                setSaving(false);
+              }}
+              style={[styles.sheetSave, (saving || amount === 0) && styles.dimmed]}
+              accessibilityRole="button">
+              <Text style={styles.sheetSaveText}>{saving ? 'Saving…' : 'Save'}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: Spacing.lg },
+  sheet: { backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: Spacing.md },
+  sheetTitle: { color: Colors.text, fontSize: 17, fontWeight: '700' },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg },
+  stepButton: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  stepText: { color: Colors.text, fontSize: 22, fontWeight: '600' },
+  stepValue: { color: Colors.text, fontSize: 28, fontWeight: '800', minWidth: 56, textAlign: 'center' },
+  noteInput: { backgroundColor: Colors.tile, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, color: Colors.text, fontSize: 15, paddingHorizontal: Spacing.md, paddingVertical: 10 },
+  sheetButtons: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: Spacing.md },
+  sheetCancel: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  sheetSave: { backgroundColor: '#fbbf24', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: 10 },
+  sheetSaveText: { color: '#1a1205', fontSize: 15, fontWeight: '700' },
+  dimmed: { opacity: 0.5 },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   titleRow: { flexDirection: 'row', alignItems: 'center' },

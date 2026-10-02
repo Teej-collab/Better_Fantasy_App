@@ -241,7 +241,9 @@ async def record_completed_chug(conn, season: int, owner_id: int, league_id: int
     )
 
 
-async def record_manual_payment(conn, season: int, owner_id: int, amount: int = 1, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+async def record_manual_payment(
+    conn, season: int, owner_id: int, amount: int = 1, league_id: int = DEFAULT_LEAGUE_ID, recorded_by_user_id: int | None = None
+) -> int:
     """Commissioner-only correction for a real chug debt settled outside
     the app -- paid in cash, or done in person with no video kept (see
     app/routers/chug.py's /standing/{owner_id}/record-payment). The
@@ -266,7 +268,53 @@ async def record_manual_payment(conn, season: int, owner_id: int, amount: int = 
         "WHERE season = $1 AND owner_id = $2 AND league_id = $4",
         season, owner_id, to_apply, league_id,
     )
+    await _log_adjustment(conn, season, owner_id, league_id, "paid", to_apply, recorded_by_user_id)
     return to_apply
+
+
+async def _log_adjustment(
+    conn, season: int, owner_id: int, league_id: int, kind: str, amount: int, recorded_by_user_id: int | None, note: str | None = None
+) -> None:
+    """chug_adjustments (migration e9c4a1b7d3f2): what the chug history
+    shows as a "Paid", "Fine paid" or "Correction" line."""
+    await conn.execute(
+        "INSERT INTO chug_adjustments (season, owner_id, league_id, kind, amount, note, recorded_by_user_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        season, owner_id, league_id, kind, amount, note, recorded_by_user_id,
+    )
+
+
+async def apply_correction(
+    conn, season: int, owner_id: int, amount: int, note: str | None = None,
+    league_id: int = DEFAULT_LEAGUE_ID, recorded_by_user_id: int | None = None,
+) -> int:
+    """Commissioner/admin-only straight fix to someone's chug balance —
+    `amount` chugs added (+) or removed (-), never going below zero —
+    recorded as a "Correction" (with the note) in the chug history,
+    separate from a real payment ("Paid"). Returns the change actually
+    applied (smaller than asked when removing more than is owed)."""
+    if amount == 0:
+        return 0
+    current = await conn.fetchval(
+        "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+        season, owner_id, league_id,
+    )
+    current = current or 0
+    applied = max(amount, -current)
+    if applied == 0:
+        return 0
+    await conn.execute(
+        """
+        INSERT INTO chug_standing (season, owner_id, outstanding_owed, league_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (season, owner_id, league_id) DO UPDATE SET
+            outstanding_owed = GREATEST(chug_standing.outstanding_owed + $3, 0),
+            updated_at = now()
+        """,
+        season, owner_id, applied, league_id,
+    )
+    await _log_adjustment(conn, season, owner_id, league_id, "correction", applied, recorded_by_user_id, note)
+    return applied
 
 
 async def waive_deadline_doubling(conn, season: int, week: int, owner_id: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
@@ -308,7 +356,9 @@ async def waive_deadline_doubling(conn, season: int, week: int, owner_id: int, l
     return added
 
 
-async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+async def clear_fine(
+    conn, season: int, owner_id: int, amount: int | None = None, league_id: int = DEFAULT_LEAGUE_ID, recorded_by_user_id: int | None = None
+) -> int:
     """Commissioner-only (enforced at the router level) — marks a real-
     life fine payment by reducing fined_owed. amount=None clears it
     entirely; otherwise clears exactly that many (clamped so it can
@@ -330,4 +380,5 @@ async def clear_fine(conn, season: int, owner_id: int, amount: int | None = None
         "WHERE season = $1 AND owner_id = $2 AND league_id = $4",
         season, owner_id, to_clear, league_id,
     )
+    await _log_adjustment(conn, season, owner_id, league_id, "fine_paid", to_clear, recorded_by_user_id)
     return to_clear
