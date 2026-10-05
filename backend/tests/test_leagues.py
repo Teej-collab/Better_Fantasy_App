@@ -219,6 +219,18 @@ async def test_select_league_switches_active_league_for_a_real_member(pool):
         assert mine_after.json()["active_league_id"] == second_id
 
 
+async def test_auth_me_reports_how_many_leagues_the_account_is_in(pool):
+    """Drives whether the apps open on the league picker: shown for 0
+    or 2+ leagues, skipped for exactly 1."""
+    async with _client() as client:
+        await _sign_up(client, "test-leagues-me-count@example.com")
+        assert (await client.get("/auth/me")).json()["league_count"] == 0
+        await client.post("/leagues", json={"name": "Test League Me Count First"})
+        assert (await client.get("/auth/me")).json()["league_count"] == 1
+        await client.post("/leagues", json={"name": "Test League Me Count Second"})
+        assert (await client.get("/auth/me")).json()["league_count"] == 2
+
+
 async def test_unclaimed_owners_lists_only_this_leagues_unlinked_owners(pool, monkeypatch):
     monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
     async with _client() as client:

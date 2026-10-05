@@ -72,15 +72,19 @@ function RootStack() {
   // once the saved session is known; signing in later doesn't replay it.
   const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>('pending');
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
-  const displayName = useMe(Boolean(token)).data?.display_name ?? null;
+  const me = useMe(Boolean(token)).data;
+  const displayName = me?.display_name ?? null;
   // A cold open's intro reveals the league picker (components/LaunchPicker.tsx),
   // drawn over the tabs from the start so the bloom opens onto it, not a
   // league — unless a notification or link already opened something
-  // specific.
+  // specific. Only when there's a choice to make: no league yet
+  // (Join/Create) or two or more. In exactly one, the intro opens
+  // straight onto its Home. Waits for /auth/me (the intro is still
+  // playing over it) so the picker never flashes up and away.
   const [picker, setPicker] = useState(false);
   if (intro === 'pending' && token) setPicker(true);
   const pathname = usePathname();
-  if (picker && pathname !== '/') setPicker(false);
+  if (picker && (pathname !== '/' || me?.league_count === 1)) setPicker(false);
   const [fontsLoaded] = useFonts({
     Oswald_500Medium,
     Oswald_600SemiBold,
@@ -171,7 +175,7 @@ function RootStack() {
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
         </Stack.Protected>
       </Stack>
-      {picker && token && <LaunchPicker onDismiss={() => setPicker(false)} />}
+      {picker && token && me && <LaunchPicker onDismiss={() => setPicker(false)} />}
       {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={() => setIntro('done')} />}
     </>
   );

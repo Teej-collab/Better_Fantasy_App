@@ -16,6 +16,7 @@ import {
   getWeeklyAwards,
   getWeeklyRecap,
   isNflGameLive,
+  opensOnLeaguePicker,
   buildLeagueTickerItems,
   getActiveLeagueName,
   getChugDeadline,
@@ -624,7 +625,11 @@ export default async function HomePage() {
 
   if (betaLayout) {
     return (
-      <HomeWelcomeBackEntry displayName={me.display_name} needsLeague={me.active_league_id === null}>
+      <HomeWelcomeBackEntry
+        displayName={me.display_name}
+        needsLeague={me.active_league_id === null}
+        pickLeague={opensOnLeaguePicker(me)}
+      >
         <HomePageBeta
           myWeek={myWeek}
           isGameDay={isGameDay}
@@ -654,7 +659,11 @@ export default async function HomePage() {
   }
 
   return (
-    <HomeWelcomeBackEntry displayName={me.display_name} needsLeague={me.active_league_id === null}>
+    <HomeWelcomeBackEntry
+        displayName={me.display_name}
+        needsLeague={me.active_league_id === null}
+        pickLeague={opensOnLeaguePicker(me)}
+      >
       <div className="flex flex-col gap-6">
         {/* Fixed behind everything, ignores PageShell's centered column so
             it washes the full viewport — three soft brand-colored glows,

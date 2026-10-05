@@ -1342,7 +1342,19 @@ export type Me = {
   // /admin/* itself enforces. Drives AccountMenu.tsx's Admin link.
   is_site_owner: boolean;
   active_league_id: number | null;
+  // How many leagues this account is in. Optional only so an older
+  // backend without the field still type-checks — read it through
+  // opensOnLeaguePicker below.
+  league_count?: number;
 };
+
+/** Whether a fresh launch opens on the league picker after the intro:
+ * only when there's a real choice to make — no league yet (Join/Create)
+ * or two or more (pick one). With exactly one, the intro goes straight
+ * to that league's Home. */
+export function opensOnLeaguePicker(me: Pick<Me, "league_count">): boolean {
+  return me.league_count !== 1;
+}
 
 // Server-side counterpart to AuthStatus's client-side /auth/me fetch —
 // used by pages that need to know who's signed in during SSR (e.g. to

@@ -74,10 +74,15 @@ const MAX_BOOT_MS = 12000;
 export function HomeWelcomeBackEntry({
   displayName,
   needsLeague = false,
+  pickLeague = true,
   children,
 }: {
   displayName: string | null;
   needsLeague?: boolean;
+  // Open on the league picker after the intro (opensOnLeaguePicker,
+  // lib/api.ts) — off for someone in exactly one league, whose intro
+  // reveals that league's Home directly.
+  pickLeague?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -86,16 +91,21 @@ export function HomeWelcomeBackEntry({
   const [revealedAfterBoot, setRevealedAfterBoot] = useState(false);
   // A fresh visit's intro opens onto the league picker (/start), like the
   // app's cold open — the splash stays up until it loads, so the
-  // dashboard never flashes in between.
+  // dashboard never flashes in between. Without a choice to make
+  // (pickLeague false) it reveals the dashboard underneath instead.
   const [leaving, setLeaving] = useState(false);
-  function openPicker() {
-    setLeaving(true);
+  function finishIntro() {
     markBootedThisPageLoad();
+    if (!pickLeague) {
+      setRevealedAfterBoot(true);
+      return;
+    }
+    setLeaving(true);
     router.push("/start");
   }
   useEffect(() => {
-    router.prefetch("/start");
-  }, [router]);
+    if (pickLeague) router.prefetch("/start");
+  }, [router, pickLeague]);
 
   // Already booted this JS runtime (an ordinary soft navigation back to
   // '/', not a fresh page load) — see appBoot.ts for why this is a
@@ -120,7 +130,7 @@ export function HomeWelcomeBackEntry({
         // the real reason the 2026-09-01 re-audit measured 8.45s on
         // Home on *every* load, not just first-time onboarding.
         markSeen();
-        openPicker();
+        finishIntro();
       }, REVEAL_TRANSITION_MS);
       return () => clearTimeout(revealTimeout);
     }, holdMs);
@@ -162,7 +172,7 @@ export function HomeWelcomeBackEntry({
     skip();
     setRevealing(true);
     setTimeout(() => {
-      if (!needsLeague) return openPicker();
+      if (!needsLeague) return finishIntro();
       setRevealedAfterBoot(true);
       markBootedThisPageLoad();
     }, REVEAL_TRANSITION_MS);
