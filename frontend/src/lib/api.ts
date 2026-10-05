@@ -2275,6 +2275,13 @@ export type WatchPartyRoom = {
   // Real occupancy (Phase 4) — is anyone actually connected right now,
   // not the same thing as member_count (who COULD join).
   is_live: boolean;
+  // The game on the room's TV (ESPN event id) and how far behind the
+  // live data it runs — the room holds that game back this long so
+  // nothing spoils the stream (lib/loungeLive.ts). Optional for an
+  // older backend.
+  tv_game_id?: string | null;
+  tv_delay_seconds?: number;
+  watchers?: { owner_id: number; display_name: string }[];
 };
 
 export type WatchPartyRoomsResponse = {
