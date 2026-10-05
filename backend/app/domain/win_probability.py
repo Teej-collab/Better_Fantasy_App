@@ -29,14 +29,31 @@ import math
 _DEFAULT_STDEV = 25.0
 
 
+# A matchup that isn't mathematically over never shows 100% (or 0%) —
+# ESPN does the same with its ">99.9%".
+_UNDECIDED_CAP = 99.9
+
+
 def estimate_win_probability(
     my_score: float,
     my_projected_total: float,
     opp_score: float,
     opp_projected_total: float,
     score_stdev: float | None,
+    my_remaining_share: float = 1.0,
+    opp_remaining_share: float = 1.0,
 ) -> float:
-    """Returns my probability of winning, as a percentage (0-100)."""
+    """Returns my probability of winning, as a percentage (0-100).
+
+    *_remaining_share (live_projection.remaining_share) is how much of
+    each team's week is still to be played, 0..1. A team's uncertainty
+    is the league's full-week spread scaled by the square root of that
+    — the variance of points still to come shrinks with the playing
+    time left — so the odds tighten as games finish. Real report,
+    2026-10-05: both teams had nobody left, the leader was shown short
+    of 100% because the full-week spread was applied to a finished
+    matchup. With nothing left on either side the result is exact:
+    100 / 0, or 50 for a tie."""
     my_expected_final = max(my_score, my_projected_total)
     opp_expected_final = max(opp_score, opp_projected_total)
 
@@ -44,8 +61,16 @@ def estimate_win_probability(
     # returns a Decimal, not a float — float() up front so the math
     # below doesn't hit "unsupported operand type(s)" against math.sqrt.
     stdev = float(score_stdev) if score_stdev and score_stdev > 0 else _DEFAULT_STDEV
-    combined_stdev = stdev * math.sqrt(2)  # two independent teams' variance
+    my_left = min(max(float(my_remaining_share), 0.0), 1.0)
+    opp_left = min(max(float(opp_remaining_share), 0.0), 1.0)
+    # Two independent teams: variances add. Each team's variance is the
+    # full-week variance times its share of the week still to play.
+    combined_stdev = stdev * math.sqrt(my_left + opp_left)
 
-    z = (my_expected_final - opp_expected_final) / combined_stdev
-    probability = 0.5 * (1 + math.erf(z / math.sqrt(2)))
-    return round(probability * 100, 1)
+    diff = my_expected_final - opp_expected_final
+    if combined_stdev == 0:
+        return 100.0 if diff > 0 else 0.0 if diff < 0 else 50.0
+
+    z = diff / combined_stdev
+    probability = round(0.5 * (1 + math.erf(z / math.sqrt(2))) * 100, 1)
+    return min(max(probability, 100 - _UNDECIDED_CAP), _UNDECIDED_CAP)

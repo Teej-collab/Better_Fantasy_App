@@ -38,7 +38,7 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool, on_own_conn
 from app.domain import narrative_engine
 from app.domain.live_injuries import get_injury_states
-from app.domain.live_projection import game_clock_by_pro_team, live_projection, live_team_total
+from app.domain.live_projection import game_clock_by_pro_team, live_projection, live_team_total, remaining_share
 from app.domain.nfl_schedule import (
     game_status_by_pro_team,
     live_status_by_pro_team,
@@ -249,6 +249,8 @@ def _matchup_entry(
         float(home_score or 0), live_team_total(home_roster, game_clock or {}, injury_states),
         float(away_score or 0), live_team_total(away_roster, game_clock or {}, injury_states),
         score_stdev,
+        remaining_share(home_roster, game_clock or {}, injury_states),
+        remaining_share(away_roster, game_clock or {}, injury_states),
     )
     away_win_probability = round(100 - home_win_probability, 1)
 

@@ -132,3 +132,39 @@ def live_team_total(roster_rows, game_clock: dict[str, dict], injuries: dict[str
             game_clock.get(r["pro_team"]), injuries.get(r.get("player_id")),
         )
     return round(total, 2)
+
+
+def remaining_share(roster_rows, game_clock: dict[str, dict], injuries: dict[str, str] | None = None) -> float:
+    """How much of a team's week is still to be played, 0..1 — each
+    starter's share of their game left (0 once final, 0 on a bye, cut
+    by an in-game injury the same way live_projection cuts their
+    points), weighted by their pregame projection so a QB's game left
+    counts for more than a kicker's. Win probability (win_probability.py)
+    scales a team's scoring uncertainty by this, so a team with nobody
+    left to play has none at all."""
+    injuries = injuries or {}
+    weighted_left = 0.0
+    weight = 0.0
+    starters = 0
+    games_left = 0.0
+    for r in roster_rows:
+        if r["lineup_slot"] in _NON_STARTER_SLOTS:
+            continue
+        game = game_clock.get(r["pro_team"])
+        status = (game or {}).get("status")
+        if game is None or status == "final":
+            left = 0.0  # bye week, or the game is over
+        elif status == "in_progress":
+            left = game.get("share_left", 1.0)
+        else:
+            left = 1.0
+        left *= INJURY_REMAINING_FACTOR.get(injuries.get(r.get("player_id")), 1.0)
+        projected = float(r["points_projected"] or 0)
+        weighted_left += projected * left
+        weight += projected
+        starters += 1
+        games_left += left
+    if weight > 0:
+        return round(weighted_left / weight, 4)
+    # No projections at all (rare) — fall back to a plain share of starters.
+    return round(games_left / starters, 4) if starters else 0.0

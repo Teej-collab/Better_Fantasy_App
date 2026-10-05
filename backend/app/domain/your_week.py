@@ -19,7 +19,7 @@ import asyncio
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import on_own_conn
 from app.domain.live_injuries import get_injury_states
-from app.domain.live_projection import game_clock_by_pro_team, live_team_total
+from app.domain.live_projection import game_clock_by_pro_team, live_team_total, remaining_share
 from app.domain.streaks import get_result_streaks
 from app.domain.win_probability import estimate_win_probability
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
@@ -181,6 +181,8 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
         float(my_score or 0), my_projected,
         float(opp_score or 0), opp_projected,
         stdev,
+        remaining_share(my_roster, game_clock, injuries) if my_roster else 1.0,
+        remaining_share(opp_roster, game_clock, injuries) if opp_roster else 1.0,
     )
 
     base["matchup"] = {
