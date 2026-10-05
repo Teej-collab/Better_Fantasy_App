@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 import { useMe } from '@/lib/queries';
@@ -264,7 +264,8 @@ const styles = StyleSheet.create({
   hint: { color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 16 },
   primary: { alignSelf: 'flex-start', borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, minWidth: 120, alignItems: 'center' },
   primaryText: { color: '#000', fontSize: 14, fontWeight: '600' },
-  outline: { alignSelf: 'flex-start', borderRadius: Radius.pill, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
+  // Filled, not see-through, so the label reads over the honeycomb.
+  outline: { alignSelf: 'flex-start', backgroundColor: withAlpha(Colors.surface, 0.94), borderRadius: Radius.pill, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
   outlineSmall: { paddingHorizontal: 10, paddingVertical: 4 },
   outlineText: { fontSize: 12, fontWeight: '500' },
   disabled: { opacity: 0.4 },

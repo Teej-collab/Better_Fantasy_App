@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   CommishScreen,
@@ -21,6 +21,7 @@ import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
+import { Colors, Radius, withAlpha } from '@/constants/theme';
 import { queryClient, usePendingTrades, useTradeSettings, useTradeTeams } from '@/lib/queries';
 import type { TradeReviewMode, TradeSettings } from '@/lib/types';
 
@@ -104,7 +105,7 @@ function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
                 onPress={() => setMode(m.value)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
-                style={[s.item, { borderRadius: 10, borderWidth: 1, borderColor: on ? accent : 'rgba(255,255,255,0.1)' }]}>
+                style={[s.item, styles.option, { borderColor: on ? accent : 'rgba(255,255,255,0.1)' }]}>
                 <Text style={[s.medium, on && { color: accent }]}>{m.label}</Text>
                 <Text style={s.small}>{m.help}</Text>
               </Pressable>
@@ -115,13 +116,19 @@ function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
           <View style={s.gapSm}>
             <Text style={s.bodySoft}>Review period</Text>
             <View style={s.row}>
-              {REVIEW_HOURS.map((h) =>
-                hours === h ? (
-                  <PrimaryButton key={h} label={hoursLabel(h)} onPress={() => setHours(h)} />
-                ) : (
-                  <OutlineButton key={h} label={hoursLabel(h)} onPress={() => setHours(h)} />
-                ),
-              )}
+              {REVIEW_HOURS.map((h) => {
+                const on = hours === h;
+                return (
+                  <Pressable
+                    key={h}
+                    onPress={() => setHours(h)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    style={[styles.chip, on && { backgroundColor: accent, borderColor: accent }]}>
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{hoursLabel(h)}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         )}
@@ -212,3 +219,18 @@ function PendingReview() {
     </View>
   );
 }
+
+// Filled backgrounds so the text reads over the honeycomb behind the screen.
+const styles = StyleSheet.create({
+  option: { backgroundColor: withAlpha(Colors.surface, 0.94), borderRadius: 10, borderWidth: 1 },
+  chip: {
+    backgroundColor: withAlpha(Colors.surface, 0.94),
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  chipText: { color: Colors.text, fontSize: 13, fontWeight: '500' },
+  chipTextOn: { color: '#000', fontWeight: '700' },
+});
