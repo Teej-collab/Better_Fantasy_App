@@ -521,6 +521,10 @@ export function useMyTrades() {
   return useQuery({ queryKey: ['my-trades'], queryFn: async () => (await api.myTrades()).trades });
 }
 
+export function useLeagueTrades() {
+  return useQuery({ queryKey: ['league-trades'], queryFn: () => api.leagueTrades() });
+}
+
 export function useMyKeepers() {
   return useQuery({ queryKey: ['my-keepers'], queryFn: api.myKeepers });
 }

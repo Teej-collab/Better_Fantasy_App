@@ -5,11 +5,14 @@ import {
   acceptTrade,
   cancelTrade,
   getLeagueTeamsForTrades,
+  getLeagueTrades,
   getMyTrades,
   getTeamRosterForTrade,
   proposeTrade,
   rejectTrade,
+  voteToVeto,
   type Trade,
+  type TradeSettings,
   type TradeRosterPlayer,
   type TradeStatus,
   type TradeTeam,
@@ -19,20 +22,49 @@ type ProposePanel = { status: "idle" } | { status: "submitting" } | { status: "e
 
 const STATUS_LABEL: Record<TradeStatus, string> = {
   pending: "Pending",
-  awaiting_review: "Awaiting commissioner review",
-  accepted: "Accepted",
-  rejected: "Rejected",
-  cancelled: "Cancelled",
+  awaiting_review: "Awaiting commissioner approval",
+  in_review: "Under review",
+  accepted: "Processed",
+  rejected: "Declined",
+  cancelled: "Withdrawn",
   vetoed: "Vetoed",
+  expired: "Expired",
+  failed: "Couldn't process",
 };
 
 const STATUS_COLOR: Record<TradeStatus, string> = {
   pending: "text-amber-600 dark:text-amber-400",
   awaiting_review: "text-amber-600 dark:text-amber-400",
+  in_review: "text-sky-600 dark:text-sky-400",
   accepted: "text-emerald-600 dark:text-emerald-400",
   rejected: "text-black/50 dark:text-white/50",
   cancelled: "text-black/50 dark:text-white/50",
   vetoed: "text-red-500",
+  expired: "text-black/50 dark:text-white/50",
+  failed: "text-red-500",
+};
+
+function when(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** The one line under a trade that says what happens next. */
+function timingLine(trade: Trade): string | null {
+  if (trade.status === "pending" && trade.expires_at) return `Offer expires ${when(trade.expires_at)}`;
+  if (trade.status === "in_review" && trade.review_ends_at) return `Processes ${when(trade.review_ends_at)} unless vetoed`;
+  if (trade.status === "awaiting_review") return "Waiting on the commissioner";
+  if (trade.status === "failed") return "A player in it moved before it processed";
+  return null;
+}
+
+const REVIEW_EXPLAINER: Record<TradeSettings["review_mode"], (s: TradeSettings) => string> = {
+  none: () => "Trades in this league process as soon as they're accepted.",
+  commissioner: (s) =>
+    `Accepted trades are reviewed for ${s.review_hours} hour${s.review_hours === 1 ? "" : "s"} — the commissioner can veto — then process.`,
+  league_vote: (s) =>
+    `Accepted trades are reviewed for ${s.review_hours} hour${s.review_hours === 1 ? "" : "s"}. ${s.effective_veto_votes_needed} veto vote${s.effective_veto_votes_needed === 1 ? "" : "s"} from other teams stops one.`,
+  approval: () => "Accepted trades wait for the commissioner's approval.",
 };
 
 /**
@@ -47,6 +79,9 @@ export function TradesApp() {
   const [myOwnerId, setMyOwnerId] = useState<number | null>(null);
   const [teams, setTeams] = useState<TradeTeam[] | null>(null);
   const [myTrades, setMyTrades] = useState<Trade[] | null>(null);
+  const [leagueTrades, setLeagueTrades] = useState<Trade[]>([]);
+  const [settings, setSettings] = useState<TradeSettings | null>(null);
+  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
@@ -67,9 +102,17 @@ export function TradesApp() {
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
       setMyOwnerId(me?.owner_id ?? null);
-      const [teamList, trades] = await Promise.all([getLeagueTeamsForTrades(), getMyTrades()]);
+      const [teamList, trades, league] = await Promise.all([
+        getLeagueTeamsForTrades(),
+        getMyTrades(),
+        getLeagueTrades().catch(() => null),
+      ]);
       setTeams(teamList);
       setMyTrades(trades);
+      if (league) {
+        setLeagueTrades(league.trades);
+        setSettings(league.settings);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load trades.");
     }
@@ -124,7 +167,8 @@ export function TradesApp() {
     if (selectedTeamId === null || give.size === 0 || receive.size === 0) return;
     setProposePanel({ status: "submitting" });
     try {
-      await proposeTrade(selectedTeamId, [...give], [...receive]);
+      await proposeTrade(selectedTeamId, [...give], [...receive], note.trim());
+      setNote("");
       setGive(new Set());
       setReceive(new Set());
       setSelectedTeamId(null);
@@ -160,6 +204,8 @@ export function TradesApp() {
           {error}
         </p>
       )}
+
+      {settings && <p className="text-sm text-black/60 dark:text-white/60">{REVIEW_EXPLAINER[settings.review_mode](settings)}</p>}
 
       <section className="neon-panel flex flex-col gap-4 rounded-lg bg-black/[0.015] p-4 dark:bg-white/[0.03]">
         <h2 className="font-medium">Propose a trade</h2>
@@ -202,6 +248,13 @@ export function TradesApp() {
                 </div>
 
                 <div className="flex flex-col gap-2">
+                  <input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={280}
+                    placeholder="Add a note (optional)"
+                    className="rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
+                  />
                   {proposePanel.status === "error" && (
                     <p className="text-sm text-red-500">{proposePanel.message}</p>
                   )}
@@ -240,7 +293,84 @@ export function TradesApp() {
           </ul>
         )}
       </section>
+
+      <LeagueTrades
+        trades={leagueTrades.filter((t) => t.proposing_team_id !== myTeamId && t.receiving_team_id !== myTeamId)}
+        canVote={settings?.review_mode === "league_vote"}
+        votesNeeded={settings?.effective_veto_votes_needed ?? null}
+        teamNameById={teamNameById}
+        busyId={actionBusyId}
+        onVote={(trade) => runAction(trade.id, (id) => voteToVeto(id, !trade.my_veto_vote))}
+      />
     </div>
+  );
+}
+
+/** Other teams' trades under review (with a veto vote in a league-vote
+ *  league) and the last two weeks of finished ones — the ESPN/Sleeper
+ *  "everyone can see a deal before it lands" part. */
+function LeagueTrades({
+  trades,
+  canVote,
+  votesNeeded,
+  teamNameById,
+  busyId,
+  onVote,
+}: {
+  trades: Trade[];
+  canVote: boolean;
+  votesNeeded: number | null;
+  teamNameById: Map<number, string>;
+  busyId: number | null;
+  onVote: (trade: Trade) => void;
+}) {
+  if (trades.length === 0) return null;
+  const name = (id: number, fallback?: string | null) => fallback ?? teamNameById.get(id) ?? "—";
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="font-medium">League trades</h2>
+      <ul className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]">
+        {trades.map((trade) => {
+          const timing = timingLine(trade);
+          return (
+            <li key={trade.id} className="flex flex-col gap-2 px-4 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">
+                  {name(trade.proposing_team_id, trade.proposing_team_name)} ↔ {name(trade.receiving_team_id, trade.receiving_team_name)}
+                </span>
+                <span className={`text-xs font-semibold ${STATUS_COLOR[trade.status]}`}>{STATUS_LABEL[trade.status]}</span>
+              </div>
+              <p className="text-black/70 dark:text-white/70">
+                {name(trade.proposing_team_id, trade.proposing_team_name)} get{" "}
+                {trade.assets.filter((a) => a.to_team_id === trade.proposing_team_id).map((a) => a.player_name).join(", ")} ·{" "}
+                {name(trade.receiving_team_id, trade.receiving_team_name)} get{" "}
+                {trade.assets.filter((a) => a.to_team_id === trade.receiving_team_id).map((a) => a.player_name).join(", ")}
+              </p>
+              {timing && <p className="text-xs text-black/50 dark:text-white/50">{timing}</p>}
+              {trade.status === "in_review" && canVote && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => onVote(trade)}
+                    disabled={busyId === trade.id}
+                    className={
+                      trade.my_veto_vote
+                        ? "rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-500 disabled:opacity-40"
+                        : "rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/10"
+                    }
+                  >
+                    {busyId === trade.id ? "Working…" : trade.my_veto_vote ? "Remove veto vote" : "Vote to veto"}
+                  </button>
+                  <span className="text-xs text-black/50 dark:text-white/50">
+                    {trade.veto_votes ?? 0}
+                    {votesNeeded ? ` of ${votesNeeded}` : ""} veto votes
+                  </span>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -324,6 +454,9 @@ function TradeRow({
           <p>{receive.map((a) => a.player_name).join(", ") || "—"}</p>
         </div>
       </div>
+
+      {trade.note && <p className="text-xs text-black/60 italic dark:text-white/60">“{trade.note}”</p>}
+      {timingLine(trade) && <p className="text-xs text-black/50 dark:text-white/50">{timingLine(trade)}</p>}
 
       {trade.status === "pending" && isReceiver && (
         <div className="flex gap-2">

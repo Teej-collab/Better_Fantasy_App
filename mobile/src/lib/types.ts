@@ -10,6 +10,8 @@ export type Me = {
   is_commissioner: boolean;
   is_site_owner: boolean;
   active_league_id: number | null;
+  // How many leagues this account is in (optional for an older backend).
+  league_count?: number;
 };
 
 export type YourWeekMatchup = {
@@ -391,6 +393,12 @@ export type GamecastPlay = {
   // Yards to the end zone before the snap (0–100); 0 on bookkeeping
   // entries like "END GAME".
   yard_line: number | null;
+  // Who had the ball at the snap and at the whistle, and the end spot as
+  // yards to THAT team's goal (lib/fieldGeometry.ts draws kicks and
+  // turnovers with them). Only the ESPN provider fills these in.
+  start_team_abbr?: string | null;
+  end_team_abbr?: string | null;
+  end_yard_line?: number | null;
   is_scoring_play: boolean;
   is_turnover: boolean;
   is_first_down: boolean;
@@ -816,7 +824,18 @@ export type DraftGrade = {
 export type TeamDetail = { team_id: number; season: number; team_name: string; owner_id: number; owner_name: string };
 
 // Trades (backend/app/routers/trades.py; web types in frontend/src/lib/tradesApi.ts).
-export type TradeStatus = 'pending' | 'awaiting_review' | 'accepted' | 'rejected' | 'cancelled' | 'vetoed';
+export type TradeStatus =
+  | 'pending'
+  | 'awaiting_review'
+  | 'in_review'
+  | 'accepted'
+  | 'rejected'
+  | 'cancelled'
+  | 'vetoed'
+  | 'expired'
+  | 'failed';
+
+export type TradeReviewMode = 'none' | 'commissioner' | 'league_vote' | 'approval';
 
 export type Trade = {
   id: number;
@@ -825,6 +844,13 @@ export type Trade = {
   status: TradeStatus;
   proposed_at: string;
   resolved_at: string | null;
+  review_ends_at?: string | null;
+  expires_at?: string | null;
+  note?: string | null;
+  proposing_team_name?: string | null;
+  receiving_team_name?: string | null;
+  veto_votes?: number;
+  my_veto_vote?: boolean;
   assets: { sleeper_player_id: string; player_name: string; position: string; from_team_id: number; to_team_id: number }[];
 };
 
@@ -947,7 +973,15 @@ export type EspnConnectionStatus =
   | { connected: false }
   | { connected: true; espn_league_id: number; last_synced_at: string | null; last_sync_error: string | null };
 
-export type TradeSettings = { season: number; trade_deadline: string | null; review_required: boolean };
+export type TradeSettings = {
+  season: number;
+  trade_deadline: string | null;
+  review_required: boolean;
+  review_mode: TradeReviewMode;
+  review_hours: number;
+  veto_votes_needed: number | null;
+  effective_veto_votes_needed: number;
+};
 
 export type CommissionerAddResult =
   | { status: 'ok'; roster: RosterEntry[] }

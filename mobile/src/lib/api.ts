@@ -18,6 +18,7 @@ import type {
   PlayerViewKey,
   PlayoffSettings,
   ScoringRule,
+  TradeReviewMode,
   TradeSettings,
   LoungeRoom,
   WatchPartyRoomMember,
@@ -370,8 +371,14 @@ export const api = {
   tradeTeams: () => request<{ teams: Team[] }>('/trades/teams'),
   tradeRoster: (teamId: number) => request<{ roster: TradeRosterPlayer[] }>(`/trades/teams/${teamId}/roster`),
   myTrades: () => request<{ trades: Trade[] }>('/trades/mine'),
-  proposeTrade: (receivingTeamId: number, give: string[], receive: string[]) =>
-    request<Trade>('/trades', { method: 'POST', body: JSON.stringify({ receiving_team_id: receivingTeamId, give, receive }) }),
+  proposeTrade: (receivingTeamId: number, give: string[], receive: string[], note?: string) =>
+    request<Trade>('/trades', {
+      method: 'POST',
+      body: JSON.stringify({ receiving_team_id: receivingTeamId, give, receive, note: note || null }),
+    }),
+  leagueTrades: () => request<{ trades: Trade[]; settings: TradeSettings }>('/trades/league'),
+  vetoVote: (tradeId: number, voting: boolean) =>
+    request<Trade>(`/trades/${tradeId}/veto-vote`, { method: voting ? 'POST' : 'DELETE', body: voting ? '{}' : undefined }),
   tradeAction: (tradeId: number, action: 'accept' | 'reject' | 'cancel') =>
     request<Trade>(`/trades/${tradeId}/${action}`, { method: 'POST', body: '{}' }),
   myKeepers: () => request<MyKeepers>('/keepers/me'),
@@ -495,10 +502,21 @@ export const api = {
     }
   },
   tradeSettings: () => request<TradeSettings>('/trades/settings'),
-  updateTradeSettings: (season: number, tradeDeadline: string | null, reviewRequired: boolean) =>
+  updateTradeSettings: (
+    season: number,
+    tradeDeadline: string | null,
+    review: { mode: TradeReviewMode; hours: number; vetoVotesNeeded: number | null },
+  ) =>
     request<TradeSettings>('/trades/settings', {
       method: 'PUT',
-      body: JSON.stringify({ season, trade_deadline: tradeDeadline, review_required: reviewRequired }),
+      body: JSON.stringify({
+        season,
+        trade_deadline: tradeDeadline,
+        review_required: review.mode === 'approval',
+        review_mode: review.mode,
+        review_hours: review.hours,
+        veto_votes_needed: review.vetoVotesNeeded,
+      }),
     }),
   pendingTrades: async () => (await request<{ trades: Trade[] }>('/trades/pending')).trades,
   reviewTrade: (tradeId: number, approve: boolean) =>

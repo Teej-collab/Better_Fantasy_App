@@ -290,3 +290,17 @@ def admin_feedback_alert(submitted_by: str, message: str, has_image: bool) -> di
     return _payload(
         f"💬 New feedback from {submitted_by}", body, "/settings?section=feedback", "admin_feedback",
     )
+
+
+def _trade_tag(trade_id: int) -> str:
+    return f"trade-{trade_id}"
+
+
+def trade_offer(from_team: str, summary: str, trade_id: int) -> dict:
+    return _payload(f"🤝 Trade offer from {from_team}", summary, "/trades", "trade", _trade_tag(trade_id))
+
+
+def trade_update(title: str, body: str, trade_id: int) -> dict:
+    """Every later step of a trade (accepted, under review, vetoed,
+    processed…) — same tag, so each replaces the last on the lock screen."""
+    return _payload(title, body, "/trades", "trade", _trade_tag(trade_id))

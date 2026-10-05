@@ -945,6 +945,25 @@ async def _run_waiver_processing_job():
     record_job_run("waiver_processing")
 
 
+async def _run_trade_processing_job():
+    """Puts through every trade whose review period ended (or fails it,
+    if a player moved), and expires unanswered offers — then tells the
+    people involved (app/domain/trades.py's process_due_trades). Rides
+    the waiver-processing flag: both are "roster moves that clear on a
+    timer". Reading trades also catches anything due (routers/trades.py's
+    _catch_up), so this only decides how promptly pushes go out."""
+    from app.domain import trades as trades_domain
+    from app.notifications import trade_events
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        changed = await trades_domain.process_due_trades(conn)
+        if changed:
+            logger.info("Trade processing: %s", [(t["id"], t["status"]) for t in changed])
+            await trade_events.notify_processed_batch(conn, changed)
+    record_job_run("trade_processing")
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -1073,6 +1092,7 @@ def start_scheduler():
     if os.getenv("ENABLE_WAIVER_PROCESSING_SCHEDULER", "").lower() in ("1", "true", "yes"):
         interval_seconds = int(os.getenv("WAIVER_PROCESSING_INTERVAL_SECONDS", "3600"))
         _scheduler.add_job(_run_waiver_processing_job, "interval", seconds=interval_seconds, id="waiver_processing")
+        _scheduler.add_job(_run_trade_processing_job, "interval", seconds=60, id="trade_processing")
         logger.info("Waiver processing scheduler started (every %d seconds)", interval_seconds)
         started_any = True
 

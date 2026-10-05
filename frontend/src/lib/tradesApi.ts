@@ -11,7 +11,22 @@ export type TradeAsset = {
   to_team_id: number;
 };
 
-export type TradeStatus = "pending" | "awaiting_review" | "accepted" | "rejected" | "cancelled" | "vetoed";
+export type TradeStatus =
+  | "pending"
+  | "awaiting_review"
+  | "in_review"
+  | "accepted"
+  | "rejected"
+  | "cancelled"
+  | "vetoed"
+  | "expired"
+  | "failed";
+
+// How an accepted trade is reviewed (Commissioner Tools > Trades):
+// none — goes through on accept; commissioner — a review period the
+// commissioner can veto during; league_vote — the same, and the other
+// teams can vote to veto; approval — waits for the commissioner.
+export type TradeReviewMode = "none" | "commissioner" | "league_vote" | "approval";
 
 export type Trade = {
   id: number;
@@ -22,6 +37,17 @@ export type Trade = {
   status: TradeStatus;
   proposed_at: string;
   resolved_at: string | null;
+  accepted_at?: string | null;
+  // in_review only: when it processes if nobody vetoes it.
+  review_ends_at?: string | null;
+  // pending only: when the offer lapses.
+  expires_at?: string | null;
+  note?: string | null;
+  proposing_team_name?: string | null;
+  receiving_team_name?: string | null;
+  veto_votes?: number;
+  // /trades/league only: whether the viewer has voted to veto it.
+  my_veto_vote?: boolean;
   assets: TradeAsset[];
 };
 
@@ -29,7 +55,16 @@ export type TradeTeam = { team_id: number; team_name: string; owner_id: number; 
 
 export type TradeRosterPlayer = { sleeper_player_id: string; player_name: string; position: string };
 
-export type TradeSettings = { season: number; trade_deadline: string | null; review_required: boolean };
+export type TradeSettings = {
+  season: number;
+  trade_deadline: string | null;
+  review_required: boolean;
+  review_mode: TradeReviewMode;
+  review_hours: number;
+  // null = the default, a third of the league rounded up (effective_…).
+  veto_votes_needed: number | null;
+  effective_veto_votes_needed: number;
+};
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api/backend${path}`, { cache: "no-store" });
@@ -86,8 +121,27 @@ export async function getPendingTradesForReview(): Promise<Trade[]> {
   return trades;
 }
 
-export async function proposeTrade(receivingTeamId: number, give: string[], receive: string[]): Promise<Trade> {
-  return post<Trade>("/trades", { receiving_team_id: receivingTeamId, give, receive });
+export async function getLeagueTrades(): Promise<{ trades: Trade[]; settings: TradeSettings }> {
+  return get<{ trades: Trade[]; settings: TradeSettings }>("/trades/league");
+}
+
+export async function proposeTrade(
+  receivingTeamId: number,
+  give: string[],
+  receive: string[],
+  note?: string
+): Promise<Trade> {
+  return post<Trade>("/trades", { receiving_team_id: receivingTeamId, give, receive, note: note || null });
+}
+
+export async function voteToVeto(tradeId: number, voting: boolean): Promise<Trade> {
+  if (voting) return post<Trade>(`/trades/${tradeId}/veto-vote`, {});
+  const res = await fetch(`/api/backend/trades/${tradeId}/veto-vote`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't remove your vote: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function acceptTrade(tradeId: number): Promise<Trade> {
@@ -113,11 +167,14 @@ export async function getTradeSettings(): Promise<TradeSettings> {
 export async function updateTradeSettings(
   season: number,
   tradeDeadline: string | null,
-  reviewRequired: boolean
+  review: { mode: TradeReviewMode; hours: number; vetoVotesNeeded: number | null }
 ): Promise<TradeSettings> {
   return put<TradeSettings>("/trades/settings", {
     season,
     trade_deadline: tradeDeadline,
-    review_required: reviewRequired,
+    review_required: review.mode === "approval",
+    review_mode: review.mode,
+    review_hours: review.hours,
+    veto_votes_needed: review.vetoVotesNeeded,
   });
 }

@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   CommishScreen,
@@ -22,10 +22,22 @@ import { LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, usePendingTrades, useTradeSettings, useTradeTeams } from '@/lib/queries';
-import type { TradeSettings } from '@/lib/types';
+import type { TradeReviewMode, TradeSettings } from '@/lib/types';
 
-// Port of the web's TradeSettingsAndReview: deadline, review
-// requirement, and the trades waiting on the commissioner.
+const REVIEW_MODES: { value: TradeReviewMode; label: string; help: string }[] = [
+  { value: 'commissioner', label: 'Commissioner review', help: 'Accepted trades wait out the review period, then process. You can veto or push one through early.' },
+  { value: 'league_vote', label: 'League vote', help: 'Accepted trades wait out the review period while the other teams can vote to veto. You can still veto or approve.' },
+  { value: 'approval', label: 'Commissioner approval', help: 'Accepted trades wait until you approve them.' },
+  { value: 'none', label: 'No review', help: "Trades process the moment they're accepted." },
+];
+const REVIEW_HOURS = [0, 12, 24, 48, 72];
+
+function hoursLabel(h: number): string {
+  return h === 0 ? 'None' : h < 24 ? `${h}h` : `${h / 24} day${h === 24 ? '' : 's'}`;
+}
+
+// Port of the web's TradeSettingsAndReview: deadline, how accepted
+// trades are reviewed, and the trades waiting on the commissioner.
 export default function TradeSettingsScreen() {
   const q = useTradeSettings();
   return (
@@ -45,7 +57,9 @@ export default function TradeSettingsScreen() {
 function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
   const accent = useAppearance().accent;
   const [deadline, setDeadline] = useState(toLocalInput(settings.trade_deadline));
-  const [reviewRequired, setReviewRequired] = useState(settings.review_required);
+  const [mode, setMode] = useState<TradeReviewMode>(settings.review_mode ?? (settings.review_required ? 'approval' : 'none'));
+  const [hours, setHours] = useState(settings.review_hours ?? 24);
+  const [votes, setVotes] = useState(settings.veto_votes_needed ? String(settings.veto_votes_needed) : '');
   const [panel, setPanel] = useState<SaveStatus>({ status: 'idle' });
 
   async function save() {
@@ -56,7 +70,8 @@ function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
     }
     setPanel({ status: 'saving' });
     try {
-      await api.updateTradeSettings(settings.season, iso, reviewRequired);
+      const n = parseInt(votes, 10);
+      await api.updateTradeSettings(settings.season, iso, { mode, hours, vetoVotesNeeded: Number.isFinite(n) && n >= 1 ? n : null });
       setPanel({ status: 'saved' });
       void queryClient.invalidateQueries({ queryKey: ['trade-settings'] });
     } catch (e) {
@@ -79,16 +94,55 @@ function TradeSettingsForm({ settings }: { settings: TradeSettings }) {
             )}
           </View>
         </View>
-        <View style={[s.row, { flexWrap: 'nowrap' }]}>
-          <Switch value={reviewRequired} onValueChange={setReviewRequired} accessibilityLabel="Require commissioner review before a trade applies" trackColor={{ true: accent }} />
-          <Text style={[s.bodySoft, s.flex]}>Require commissioner review before a trade applies</Text>
+        <View style={s.gapSm}>
+          <Text style={s.bodySoft}>When a trade is accepted</Text>
+          {REVIEW_MODES.map((m) => {
+            const on = mode === m.value;
+            return (
+              <Pressable
+                key={m.value}
+                onPress={() => setMode(m.value)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={[s.item, { borderRadius: 10, borderWidth: 1, borderColor: on ? accent : 'rgba(255,255,255,0.1)' }]}>
+                <Text style={[s.medium, on && { color: accent }]}>{m.label}</Text>
+                <Text style={s.small}>{m.help}</Text>
+              </Pressable>
+            );
+          })}
         </View>
+        {(mode === 'commissioner' || mode === 'league_vote') && (
+          <View style={s.gapSm}>
+            <Text style={s.bodySoft}>Review period</Text>
+            <View style={s.row}>
+              {REVIEW_HOURS.map((h) =>
+                hours === h ? (
+                  <PrimaryButton key={h} label={hoursLabel(h)} onPress={() => setHours(h)} />
+                ) : (
+                  <OutlineButton key={h} label={hoursLabel(h)} onPress={() => setHours(h)} />
+                ),
+              )}
+            </View>
+          </View>
+        )}
+        {mode === 'league_vote' && (
+          <View style={s.gapSm}>
+            <Text style={s.bodySoft}>Veto votes needed</Text>
+            <Input
+              value={votes}
+              onChangeText={setVotes}
+              numeric
+              placeholder={`${settings.effective_veto_votes_needed} (a third of the league)`}
+              style={{ minWidth: 170 }}
+            />
+          </View>
+        )}
         <View style={s.row}>
           <PrimaryButton label="Save trade settings" busyLabel="Saving…" busy={panel.status === 'saving'} onPress={save} />
           <StatusText panel={panel} />
         </View>
       </View>
-      {reviewRequired && <PendingReview />}
+      {mode !== 'none' && <PendingReview />}
     </>
   );
 }
@@ -134,8 +188,21 @@ function PendingReview() {
                 <Text style={s.bold}>{name(trade.receiving_team_id)}</Text> for{' '}
                 {trade.assets.filter((a) => a.from_team_id === trade.receiving_team_id).map((a) => a.player_name).join(', ')}
               </Text>
+              {trade.status === 'in_review' && trade.review_ends_at && (
+                <Text style={s.small}>
+                  Processes{' '}
+                  {new Date(trade.review_ends_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}{' '}
+                  unless vetoed
+                  {(trade.veto_votes ?? 0) > 0 ? ` · ${trade.veto_votes} veto vote${trade.veto_votes === 1 ? '' : 's'}` : ''}
+                </Text>
+              )}
               <View style={s.row}>
-                <PrimaryButton label="Approve" busyLabel="Working…" busy={busyId === trade.id} onPress={() => respond(trade.id, true)} />
+                <PrimaryButton
+                  label={trade.status === 'in_review' ? 'Process now' : 'Approve'}
+                  busyLabel="Working…"
+                  busy={busyId === trade.id}
+                  onPress={() => respond(trade.id, true)}
+                />
                 <OutlineButton label="Veto" disabled={busyId === trade.id} onPress={() => respond(trade.id, false)} />
               </View>
             </View>

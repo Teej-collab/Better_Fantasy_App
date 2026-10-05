@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
@@ -9,26 +9,60 @@ import { LoadingState } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
-import { invalidateRosterMoves, queryClient, useMe, useMyTrades, useTradeRoster, useTradeTeams } from '@/lib/queries';
-import type { Trade, TradeRosterPlayer, TradeStatus } from '@/lib/types';
+import { invalidateRosterMoves, queryClient, useLeagueTrades, useMe, useMyTrades, useTradeRoster, useTradeTeams } from '@/lib/queries';
+import type { Trade, TradeRosterPlayer, TradeSettings, TradeStatus } from '@/lib/types';
 
 const STATUS_LABEL: Record<TradeStatus, string> = {
   pending: 'Pending',
-  awaiting_review: 'Awaiting commissioner review',
-  accepted: 'Accepted',
-  rejected: 'Rejected',
-  cancelled: 'Cancelled',
+  awaiting_review: 'Awaiting commissioner approval',
+  in_review: 'Under review',
+  accepted: 'Processed',
+  rejected: 'Declined',
+  cancelled: 'Withdrawn',
   vetoed: 'Vetoed',
+  expired: 'Expired',
+  failed: "Couldn't process",
 };
 
 const STATUS_COLOR: Record<TradeStatus, string> = {
   pending: '#fbbf24',
   awaiting_review: '#fbbf24',
+  in_review: '#38bdf8',
   accepted: '#34d399',
   rejected: 'rgba(255,255,255,0.5)',
   cancelled: 'rgba(255,255,255,0.5)',
   vetoed: '#ef4444',
+  expired: 'rgba(255,255,255,0.5)',
+  failed: '#ef4444',
 };
+
+function when(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// The one line under a trade that says what happens next (same as the web).
+function timingLine(trade: Trade): string | null {
+  if (trade.status === 'pending' && trade.expires_at) return `Offer expires ${when(trade.expires_at)}`;
+  if (trade.status === 'in_review' && trade.review_ends_at) return `Processes ${when(trade.review_ends_at)} unless vetoed`;
+  if (trade.status === 'awaiting_review') return 'Waiting on the commissioner';
+  if (trade.status === 'failed') return 'A player in it moved before it processed';
+  return null;
+}
+
+function reviewExplainer(s: TradeSettings): string {
+  const hrs = `${s.review_hours} hour${s.review_hours === 1 ? '' : 's'}`;
+  switch (s.review_mode) {
+    case 'none':
+      return "Trades in this league process as soon as they're accepted.";
+    case 'commissioner':
+      return `Accepted trades are reviewed for ${hrs} — the commissioner can veto — then process.`;
+    case 'league_vote':
+      return `Accepted trades are reviewed for ${hrs}. ${s.effective_veto_votes_needed} veto vote${s.effective_veto_votes_needed === 1 ? '' : 's'} from other teams stops one.`;
+    default:
+      return "Accepted trades wait for the commissioner's approval.";
+  }
+}
 
 // Port of the web's /trades (TradesApp.tsx): propose a trade to another
 // team, then accept / reject / cancel from your trade list.
@@ -37,6 +71,8 @@ export default function TradesScreen() {
   const me = useMe().data;
   const teams = useTradeTeams();
   const trades = useMyTrades();
+  const league = useLeagueTrades();
+  const [note, setNote] = useState('');
   const [partnerId, setPartnerId] = useState<number | null>(null);
   const [give, setGive] = useState<Set<string>>(new Set());
   const [receive, setReceive] = useState<Set<string>>(new Set());
@@ -70,7 +106,8 @@ export default function TradesScreen() {
     setProposing(true);
     setProposeError(null);
     try {
-      await api.proposeTrade(partnerId, [...give], [...receive]);
+      await api.proposeTrade(partnerId, [...give], [...receive], note.trim());
+      setNote('');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setGive(new Set());
       setReceive(new Set());
@@ -90,7 +127,8 @@ export default function TradesScreen() {
       await api.tradeAction(trade.id, action);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void queryClient.invalidateQueries({ queryKey: ['my-trades'] });
-      // An accepted trade moves players between rosters.
+      void queryClient.invalidateQueries({ queryKey: ['league-trades'] });
+      // An accepted trade can move players between rosters.
       if (action === 'accept') {
         invalidateRosterMoves();
         void queryClient.invalidateQueries({ queryKey: ['trade-roster'] });
@@ -102,11 +140,31 @@ export default function TradesScreen() {
     }
   }
 
+  async function vote(trade: Trade) {
+    setBusyId(trade.id);
+    setError(null);
+    try {
+      await api.vetoVote(trade.id, !trade.my_veto_vote);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void queryClient.invalidateQueries({ queryKey: ['league-trades'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That action failed.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([teams.refetch(), trades.refetch()]);
+    await Promise.all([teams.refetch(), trades.refetch(), league.refetch()]);
     setRefreshing(false);
   }
+
+  const myTeamId = myTeam?.team_id ?? null;
+  const settings = league.data?.settings ?? null;
+  const leagueTrades = (league.data?.trades ?? []).filter(
+    (t) => t.proposing_team_id !== myTeamId && t.receiving_team_id !== myTeamId,
+  );
 
   if (teams.isPending) return <LoadingState />;
 
@@ -120,6 +178,7 @@ export default function TradesScreen() {
       <Stack.Screen options={{ title: 'Trades' }} />
       <Display style={styles.title}>Trades</Display>
       {error && <Text style={styles.error}>{error}</Text>}
+      {settings && <Text style={styles.soft}>{reviewExplainer(settings)}</Text>}
 
       <NeonPanel color={SectionColors.trades} contentStyle={styles.gap}>
         <Text style={styles.heading}>Propose a trade</Text>
@@ -148,6 +207,14 @@ export default function TradesScreen() {
                   players={theirRoster}
                   selected={receive}
                   onToggle={(id) => toggle(receive, setReceive, id)}
+                />
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  maxLength={280}
+                  placeholder="Add a note (optional)"
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  style={styles.note}
                 />
                 {proposeError && <Text style={styles.error}>{proposeError}</Text>}
                 <Pressable
@@ -184,6 +251,50 @@ export default function TradesScreen() {
           </NeonPanel>
         )}
       </View>
+
+      {leagueTrades.length > 0 && (
+        <View style={styles.gap}>
+          <Text style={styles.heading}>League trades</Text>
+          <NeonPanel color={SectionColors.trades} contentStyle={styles.list}>
+            {leagueTrades.map((t, i) => {
+              const pName = t.proposing_team_name ?? teamNameById.get(t.proposing_team_id) ?? '—';
+              const rName = t.receiving_team_name ?? teamNameById.get(t.receiving_team_id) ?? '—';
+              const timing = timingLine(t);
+              const canVote = t.status === 'in_review' && settings?.review_mode === 'league_vote';
+              return (
+                <View key={t.id} style={[styles.trade, i > 0 && styles.divided]}>
+                  <View style={styles.tradeHead}>
+                    <Text style={styles.tradeTitle}>
+                      {pName} ↔ {rName}
+                    </Text>
+                    <Text style={[styles.status, { color: STATUS_COLOR[t.status] }]}>{STATUS_LABEL[t.status]}</Text>
+                  </View>
+                  <Text style={styles.soft}>
+                    {pName} get {t.assets.filter((a) => a.to_team_id === t.proposing_team_id).map((a) => a.player_name).join(', ')} ·{' '}
+                    {rName} get {t.assets.filter((a) => a.to_team_id === t.receiving_team_id).map((a) => a.player_name).join(', ')}
+                  </Text>
+                  {timing && <Text style={styles.timing}>{timing}</Text>}
+                  {canVote && (
+                    <View style={styles.actions}>
+                      <Pressable
+                        disabled={busyId === t.id}
+                        onPress={() => vote(t)}
+                        style={[styles.action, t.my_veto_vote && styles.voted]}>
+                        <Text style={[styles.actionText, t.my_veto_vote && styles.votedText]}>
+                          {busyId === t.id ? 'Working…' : t.my_veto_vote ? 'Remove veto vote' : 'Vote to veto'}
+                        </Text>
+                      </Pressable>
+                      <Text style={styles.timing}>
+                        {t.veto_votes ?? 0} of {settings?.effective_veto_votes_needed} veto votes
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </NeonPanel>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -245,6 +356,8 @@ function TradeRow(props: {
           <Text style={styles.soft}>{receive.map((a) => a.player_name).join(', ') || '—'}</Text>
         </View>
       </View>
+      {trade.note ? <Text style={styles.noteText}>“{trade.note}”</Text> : null}
+      {timingLine(trade) && <Text style={styles.timing}>{timingLine(trade)}</Text>}
       {trade.status === 'pending' && isReceiver && (
         <View style={styles.actions}>
           <Pressable disabled={props.busy} onPress={() => props.onAction('accept')} style={[styles.action, { backgroundColor: accent, borderColor: accent }]}>
@@ -306,4 +419,18 @@ const styles = StyleSheet.create({
   action: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6 },
   actionText: { color: Colors.text, fontSize: 12 },
   actionTextDark: { color: '#06110a', fontSize: 12, fontWeight: '600' },
+  note: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    color: Colors.text,
+    fontSize: 14,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  noteText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontStyle: 'italic' },
+  timing: { color: 'rgba(255,255,255,0.5)', fontSize: 12, alignSelf: 'center' },
+  voted: { backgroundColor: 'rgba(239,68,68,0.2)', borderColor: '#ef4444' },
+  votedText: { color: '#ef4444', fontWeight: '600' },
 });

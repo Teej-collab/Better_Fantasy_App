@@ -81,6 +81,11 @@ async def _seed_roster_entry(pool, team_id, sleeper_player_id, lineup_slot="BE")
         )
 
 
+async def _set_review_mode(pool, mode, hours=24, votes=None):
+    async with pool.acquire() as conn:
+        await trades_domain.upsert_trade_settings(conn, DEFAULT_LEAGUE_ID, TEST_SEASON, None, False, mode, hours, votes)
+
+
 async def _setup_two_teams(pool, suffix, a_commissioner=False, b_commissioner=False):
     await _ensure_roster_config(pool)
     a = await _seed_owner_with_team(pool, f"{suffix}a", is_commissioner=a_commissioner)
@@ -203,6 +208,7 @@ async def test_propose_trade_blocked_after_deadline(pool, monkeypatch):
 
 async def test_accept_trade_applies_roster_swap_when_review_not_required(pool, monkeypatch):
     _set_env(monkeypatch)
+    await _set_review_mode(pool, "none")
     a, b, give_player, receive_player = await _setup_two_teams(pool, "accept")
 
     async with _client() as client:
@@ -259,6 +265,7 @@ async def test_accept_trade_succeeds_for_a_co_owner_not_just_the_original_owner(
     owners.user_id value, so only one of the two linked accounts could
     ever pass it."""
     _set_env(monkeypatch)
+    await _set_review_mode(pool, "none")
     a, b, give_player, receive_player = await _setup_two_teams(pool, "coowner")
 
     co_owner_user_id = await make_safe_session_user_id(pool)
@@ -456,3 +463,61 @@ async def test_accept_revalidates_roster_capacity(pool, monkeypatch):
         )
     assert resp.status_code == 400
     assert "capacity" in resp.json()["detail"].lower()
+
+
+async def test_accepted_trade_waits_out_the_review_period_by_default(pool, monkeypatch):
+    """The 2026-10-04 report: a trade went through the instant it was
+    accepted. Now (with no settings saved) it sits in review and only
+    moves rosters when the period ends."""
+    _set_env(monkeypatch)
+    a, b, give_player, receive_player = await _setup_two_teams(pool, "inreview")
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        trade_id = (await client.post(
+            "/trades", json={"receiving_team_id": b["team_id"], "give": [give_player], "receive": [receive_player]}
+        )).json()["id"]
+        client.cookies.update(b["cookies"])
+        accept_resp = await client.post(f"/trades/{trade_id}/accept")
+        assert accept_resp.json()["status"] == "in_review"
+        assert accept_resp.json()["review_ends_at"] is not None
+
+    async with pool.acquire() as conn:
+        owner = await conn.fetchval(
+            "SELECT team_id FROM current_rosters WHERE season = $1 AND sleeper_player_id = $2", TEST_SEASON, give_player
+        )
+        assert owner == a["team_id"]  # not moved yet
+        await conn.execute("UPDATE trades SET review_ends_at = now() - interval '1 minute' WHERE id = $1", trade_id)
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        mine = (await client.get("/trades/mine")).json()["trades"]  # reading catches up on due trades
+    assert next(t for t in mine if t["id"] == trade_id)["status"] == "accepted"
+    async with pool.acquire() as conn:
+        owner = await conn.fetchval(
+            "SELECT team_id FROM current_rosters WHERE season = $1 AND sleeper_player_id = $2", TEST_SEASON, give_player
+        )
+    assert owner == b["team_id"]
+
+
+async def test_league_vote_vetoes_once_enough_other_teams_vote(pool, monkeypatch):
+    _set_env(monkeypatch)
+    a, b, give_player, receive_player = await _setup_two_teams(pool, "vote")
+    c = await _seed_owner_with_team(pool, "votec")
+    await _set_review_mode(pool, "league_vote", votes=1)
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        trade_id = (await client.post(
+            "/trades", json={"receiving_team_id": b["team_id"], "give": [give_player], "receive": [receive_player]}
+        )).json()["id"]
+        client.cookies.update(b["cookies"])
+        await client.post(f"/trades/{trade_id}/accept")
+
+        party_vote = await client.post(f"/trades/{trade_id}/veto-vote")
+        assert party_vote.status_code == 403
+
+        client.cookies.update(c["cookies"])
+        vote = await client.post(f"/trades/{trade_id}/veto-vote")
+        assert vote.status_code == 200, vote.text
+        assert vote.json()["status"] == "vetoed"

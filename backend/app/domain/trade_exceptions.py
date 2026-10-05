@@ -48,3 +48,10 @@ class IRSlotViolationTradeError(TradeError):
     trades until they're moved off IR (see app/domain/ir_rules.py)."""
 
     pass
+
+
+class VetoVoteNotAllowedError(TradeError):
+    """Veto voting isn't open to this caller for this trade — the league
+    doesn't vote on trades, or the voter is one of the two teams in it."""
+
+    pass
