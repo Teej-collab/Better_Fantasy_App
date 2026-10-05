@@ -50,7 +50,7 @@ const theme = {
 // Home, Chat and the signed-out pages. Tabs pin their own
 // (components/TabFrame.tsx); every other screen gets it here, pinned
 // under the header.
-const NO_TICKER = /^(\(tabs\)|sign-in|chat\/|watch-party\/)/;
+const NO_TICKER = /^(\(tabs\)|sign-in|chat\/|watch-party\/|lounge-room\/|lounge-lobby)/;
 
 function withTickerBar({ route, children }: { route: { name: string }; children: ReactNode }) {
   // The tabs draw their own banner and ticker (components/TabFrame.tsx).
@@ -148,6 +148,8 @@ function RootStack() {
           <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />
           <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
           <Stack.Screen name="lounge" options={{ title: 'Lounge', headerBackTitle: 'Chat' }} />
+          <Stack.Screen name="lounge-lobby" options={{ headerShown: false }} />
+          <Stack.Screen name="lounge-room/[slug]" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
           <Stack.Screen name="commissioner/index" options={{ title: 'Commissioner Tools', headerBackTitle: 'Back' }} />
           <Stack.Screen name="commissioner/league" options={{ title: 'League Settings', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/scoring" options={{ title: 'Scoring Rules', headerBackTitle: 'Tools' }} />

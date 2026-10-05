@@ -20,6 +20,7 @@ import type {
   ScoringRule,
   TradeReviewMode,
   TradeSettings,
+  LoungeLobby,
   LoungeRoom,
   WatchPartyRoomMember,
   WatchPartyRoomsResponse,
@@ -284,6 +285,18 @@ export const api = {
   // Every game this week that has a Gamecast (live, upcoming or final).
   gamecastGames: () => request<{ games: GamecastGameSummary[] }>('/nfl/live-games'),
   gamecastGame: (gameId: string) => request<LiveGame>(`/nfl/games/${encodeURIComponent(gameId)}`),
+  // The Lounge: the TV game's recent history (it plays on a delay), the
+  // room's TV settings, and the lobby's games ranked by your stakes.
+  gamecastTimeline: (gameId: string, since?: number) =>
+    request<{ server_now: number; snapshots: { at: number; game: LiveGame }[] }>(
+      `/nfl/games/${encodeURIComponent(gameId)}/timeline${since !== undefined ? `?since=${since}` : ''}`,
+    ),
+  setRoomTv: (roomId: number, body: { game_id?: string | null; delay_seconds?: number }) =>
+    request<{ tv_game_id: string | null; tv_delay_seconds: number }>(`/watch-party/rooms/${roomId}/tv`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  loungeLobby: () => request<LoungeLobby>('/watch-party/lobby'),
   fantasyImpact: (gameId: string) => request<FantasyImpact>(`/nfl/games/${encodeURIComponent(gameId)}/fantasy-impact`),
   playFantasy: (gameId: string, playId: string) =>
     request<{ players: PlayFantasyPlayer[] }>(
@@ -431,11 +444,21 @@ export const api = {
   removeWatchPartyMember: (roomId: number, ownerId: number) =>
     request<unknown>(`/watch-party/rooms/${roomId}/members/${ownerId}`, { method: 'DELETE' }),
   // Long-lived (one sitting) ticket for the fantasy-digest socket.
+  // A LiveKit token for a Watch Party's video call (League Lounge included).
+  watchPartyToken: (roomId: number) =>
+    request<{ token: string; url: string; room_name: string }>(`/watch-party/rooms/${roomId}/token`, { method: 'POST', body: '{}' }),
   watchPartySocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=watch_party_ws', { method: 'POST' }),
   loungeRooms: async () => (await request<{ rooms: LoungeRoom[] }>('/lounge/rooms')).rooms,
   createLoungeRoom: (name: string, password: string) =>
     request<{ id: number; slug: string; name: string }>('/lounge/rooms', { method: 'POST', body: JSON.stringify({ name, password }) }),
   closeLoungeRoom: (roomId: number) => request<unknown>(`/lounge/rooms/${roomId}`, { method: 'DELETE' }),
+  // A LiveKit token for the native Lounge room. The room's creator gets
+  // in without the password; everyone else needs it.
+  joinLounge: (slug: string, password?: string, displayName?: string) =>
+    request<{ token: string; url: string; room_name: string; display_name: string }>(`/lounge/rooms/${encodeURIComponent(slug)}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ password: password || '', display_name: displayName || '' }),
+    }),
   // ---- Commissioner tools (backend enforces commissioner-only) ----
   leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
   renameLeague: (leagueId: number, name: string) =>

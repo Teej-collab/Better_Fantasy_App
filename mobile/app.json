@@ -9,7 +9,11 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "appleTeamId": "5K8V6776KS"
+      "appleTeamId": "5K8V6776KS",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
+        "NSCameraUsageDescription": "The Weekend uses your camera for photos in league chat, scanning invite QR codes, and video in the Lounge."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +44,7 @@
         "expo-image-picker",
         {
           "photosPermission": "The Weekend uses your photos so you can share them in league chat.",
-          "cameraPermission": "The Weekend uses your camera so you can snap photos for league chat."
+          "cameraPermission": "The Weekend uses your camera for photos in league chat, scanning invite QR codes, and video in the Lounge."
         }
       ],
       "expo-video",
@@ -48,7 +52,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false
+          "microphonePermission": "The Weekend uses your microphone so you can talk with friends in the Lounge."
         }
       ],
       "expo-quick-actions",
@@ -82,8 +86,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "The Weekend uses your camera to scan league invite QR codes.",
-          "microphonePermission": false,
+          "cameraPermission": "The Weekend uses your camera for photos in league chat, scanning invite QR codes, and video in the Lounge.",
+          "microphonePermission": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
           "recordAudioAndroid": false
         }
       ],
@@ -107,7 +111,9 @@
             }
           }
         ]
-      ]
+      ],
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ],
     "experiments": {
       "typedRoutes": true,

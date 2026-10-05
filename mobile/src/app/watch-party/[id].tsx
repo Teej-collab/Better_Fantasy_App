@@ -1,6 +1,6 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -8,62 +8,16 @@ import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { LiveDot } from '@/components/watchparty/WatchPartyBar';
 import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
-import { api, watchPartySocketUrl } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useMe, useWatchPartyRooms } from '@/lib/queries';
-import type { FantasyDigest, WatchPartyRoom } from '@/lib/types';
+import type { WatchPartyRoom } from '@/lib/types';
+import { nativeLoungeAvailable, partySlug, setLoungeTicket } from '@/lib/loungeSession';
+import { useWatchPartySocket } from '@/lib/watchPartySocket';
 import { openSignedInWeb } from '@/lib/webHandoff';
 
-const RECONNECT_DELAY_MS = 3000;
-
-// Same socket as the web's FantasyTicker: the league's close/live
-// matchups, pushed by the backend's watch-party poll job. Being
-// connected is also what lights up this room's live dot for everyone
-// else, and it makes you a participant in the room's chat.
 function useFantasyDigest(roomId: number) {
-  const [digest, setDigest] = useState<FantasyDigest | null>(null);
-  const [connected, setConnected] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    let socket: WebSocket | null = null;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-
-    async function connect() {
-      let ticket: string;
-      try {
-        ({ ticket } = await api.watchPartySocketTicket());
-      } catch {
-        if (!cancelled) retry = setTimeout(connect, RECONNECT_DELAY_MS);
-        return;
-      }
-      if (cancelled) return;
-      socket = new WebSocket(watchPartySocketUrl(ticket, roomId));
-      socket.onopen = () => {
-        setConnected(true);
-        void queryClient.invalidateQueries({ queryKey: ['watch-party-rooms'] });
-      };
-      socket.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'fantasy_digest') setDigest(data);
-        } catch {
-          // ignore malformed frames
-        }
-      };
-      socket.onclose = (e) => {
-        setConnected(false);
-        // 4401: not signed in. 4404: no such room (or not invited). 4409: no league.
-        if (!cancelled && ![4401, 4404, 4409].includes(e.code)) retry = setTimeout(connect, RECONNECT_DELAY_MS);
-      };
-    }
-
-    void connect();
-    return () => {
-      cancelled = true;
-      clearTimeout(retry);
-      socket?.close();
-    };
-  }, [roomId]);
+  const { digest, connected } = useWatchPartySocket(roomId);
   return { digest, connected };
 }
 
@@ -93,7 +47,17 @@ function RoomBody({ room }: { room: WatchPartyRoom }) {
   async function joinVideo() {
     setOpening(true);
     try {
+      if (nativeLoungeAvailable()) {
+        // In our own app builds the call runs natively (app/lounge-room/[slug].tsx).
+        const r = await api.watchPartyToken(room.id);
+        const slug = partySlug(room.id);
+        setLoungeTicket({ token: r.token, url: r.url, roomName: title, slug });
+        router.push(`/lounge-room/${slug}` as Href);
+        return;
+      }
       await openSignedInWeb(`/chat?party=${room.id}`);
+    } catch (e) {
+      Alert.alert("Couldn't join the call", e instanceof Error ? e.message : 'Try again in a moment.');
     } finally {
       setOpening(false);
       void queryClient.invalidateQueries({ queryKey: ['watch-party-rooms'] });
@@ -125,7 +89,9 @@ function RoomBody({ room }: { room: WatchPartyRoom }) {
       <NeonPanel color={SectionColors.gamecast} contentStyle={styles.gap}>
         <Text style={styles.heading}>🎥 Video call</Text>
         <Text style={styles.soft}>
-          Opens in the in-app browser with your camera and mic. Tap Done to come back here.
+          {nativeLoungeAvailable()
+            ? 'Joins the call right here with your camera and mic. Tap Leave to come back.'
+            : 'Opens in the in-app browser with your camera and mic. Tap Done to come back here.'}
         </Text>
         <Pressable onPress={joinVideo} disabled={opening} style={[styles.primary, { backgroundColor: accent }, opening && styles.disabled]}>
           {opening ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryText}>Join video</Text>}

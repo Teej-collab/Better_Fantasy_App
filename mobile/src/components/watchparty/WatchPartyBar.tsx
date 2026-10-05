@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
@@ -28,7 +28,9 @@ export function WatchPartyBar() {
 
   return (
     <View style={styles.bar}>
-      <Pressable onPress={() => openRoom(open)} style={styles.openRoom}>
+      {/* The League Lounge opens the Lounge lobby: who's watching what,
+          and the games that matter to you right now. */}
+      <Pressable onPress={() => router.push('/lounge-lobby' as Href)} style={styles.openRoom}>
         <View style={styles.icon}>
           <Text style={styles.iconText}>🎥</Text>
         </View>

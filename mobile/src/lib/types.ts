@@ -894,6 +894,13 @@ export type WatchPartyRoom = {
   conversation_id: number;
   // Someone's in the room right now.
   is_live: boolean;
+  // The game on the room's TV (ESPN event id) and how far behind the
+  // live data it runs — the room holds that game back this long so
+  // nothing spoils the stream. Optional for an older backend.
+  tv_game_id?: string | null;
+  tv_delay_seconds?: number;
+  // Who has the room open right now.
+  watchers?: { owner_id: number; display_name: string }[];
 };
 
 export type WatchPartyRoomsResponse = { open_room: WatchPartyRoom; private_rooms: WatchPartyRoom[] };
@@ -1097,3 +1104,25 @@ export type DraftBet = {
   payout: number | null;
   legs: DraftLeg[];
 };
+
+// GET /watch-party/lobby (backend/app/routers/watch_party.py): this
+// week's games, ranked by what's riding on them for you.
+export type LoungeLobbyGame = {
+  game_id: string;
+  home_team: string;
+  away_team: string;
+  home_score: string | null;
+  away_score: string | null;
+  state: 'pre' | 'in' | 'post' | null;
+  status_detail: string | null;
+  date: string | null;
+  is_redzone: boolean;
+  possession_team_abbr: string | null;
+  my_players: string[];
+  opponent_players: string[];
+  opponent_team_name: string | null;
+  open_bet_legs: number;
+  stakes: number;
+};
+
+export type LoungeLobby = { week: number | null; games: LoungeLobbyGame[] };

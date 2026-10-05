@@ -1,4 +1,4 @@
-import { router, Stack } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -10,11 +10,14 @@ import { useAppearance } from '@/lib/appearance';
 import { queryClient, useChatMembers } from '@/lib/queries';
 
 // Port of the web's NewPartyModal: name the party, pick who's invited
-// from your league, then land in the new room.
+// from your league, then land in the new room. From the Lounge lobby's
+// "Start a room" the name comes filled in and the game goes on the new
+// room's TV.
 export default function NewPartyScreen() {
   const accent = useAppearance().accent;
   const members = useChatMembers();
-  const [name, setName] = useState('');
+  const params = useLocalSearchParams<{ name?: string; game?: string }>();
+  const [name, setName] = useState(params.name ?? '');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +40,7 @@ export default function NewPartyScreen() {
     setError(null);
     try {
       const { id } = await api.createWatchPartyRoom(name.trim(), Array.from(selected));
+      if (params.game) await api.setRoomTv(id, { game_id: params.game }).catch(() => undefined);
       await queryClient.invalidateQueries({ queryKey: ['watch-party-rooms'] });
       router.replace({ pathname: '/watch-party/[id]', params: { id: String(id) } });
     } catch (e) {

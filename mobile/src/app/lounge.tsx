@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 
@@ -10,6 +10,7 @@ import { api, WEB_BASE_URL } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useLoungeRooms } from '@/lib/queries';
 import type { LoungeRoom } from '@/lib/types';
+import { loungeSlugFrom, nativeLoungeAvailable, setLoungeTicket } from '@/lib/loungeSession';
 import { openSignedInWeb } from '@/lib/webHandoff';
 
 function shareUrl(slug: string) {
@@ -17,9 +18,11 @@ function shareUrl(slug: string) {
 }
 
 // Port of the web's /lounge: start a password-protected video room
-// anyone can join from the link (no league or account needed), and
-// manage the ones you've made. The call itself opens in the in-app
-// browser; as the room's creator you go straight in, no password.
+// anyone can join from the link (no league or account needed), join
+// someone else's from their link, and manage the ones you've made. In
+// our own app builds the call runs natively (app/lounge-room/[slug].tsx);
+// in Expo Go, which can't load LiveKit, it opens in the in-app browser.
+// As the room's creator you go straight in, no password.
 export default function LoungeScreen() {
   const accent = useAppearance().accent;
   const rooms = useLoungeRooms();
@@ -31,11 +34,37 @@ export default function LoungeScreen() {
   const [error, setError] = useState<string | null>(null);
   const canCreate = !busy && !!name.trim() && !!password;
 
-  function enter(slug: string) {
+  const [joinLink, setJoinLink] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  const [joining, setJoining] = useState(false);
+  const joinSlug = loungeSlugFrom(joinLink);
+
+  async function enter(slug: string, roomName: string, roomPassword?: string) {
+    if (nativeLoungeAvailable()) {
+      // Joined here so a wrong password shows on this screen.
+      const r = await api.joinLounge(slug, roomPassword, displayName.trim());
+      setLoungeTicket({ token: r.token, url: r.url, roomName, slug });
+      router.push(`/lounge-room/${slug}` as Href);
+      return;
+    }
     const nameParam = displayName.trim() ? `&name=${encodeURIComponent(displayName.trim())}` : '';
     return openSignedInWeb(`/lounge/${slug}?join=1${nameParam}`).finally(() => {
       void queryClient.invalidateQueries({ queryKey: ['lounge-rooms'] });
     });
+  }
+
+  async function joinByLink() {
+    if (!joinSlug || joining) return;
+    setJoining(true);
+    setError(null);
+    try {
+      await enter(joinSlug, 'Lounge', joinPassword);
+      setJoinPassword('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't join that lounge.");
+    } finally {
+      setJoining(false);
+    }
   }
 
   async function create() {
@@ -47,7 +76,7 @@ export default function LoungeScreen() {
       setName('');
       setPassword('');
       void queryClient.invalidateQueries({ queryKey: ['lounge-rooms'] });
-      await enter(room.slug);
+      await enter(room.slug, room.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't create the lounge.");
     } finally {
@@ -59,7 +88,9 @@ export default function LoungeScreen() {
     setJoiningRoomId(room.id);
     setError(null);
     try {
-      await enter(room.slug);
+      await enter(room.slug, room.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't join the lounge.");
     } finally {
       setJoiningRoomId(null);
     }
@@ -116,6 +147,36 @@ export default function LoungeScreen() {
           {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryText}>Create & enter lounge</Text>}
         </Pressable>
       </NeonPanel>
+
+      {nativeLoungeAvailable() && (
+        <NeonPanel color={SectionColors.chat} contentStyle={styles.gap}>
+          <Text style={styles.heading}>Join a lounge</Text>
+          <TextInput
+            value={joinLink}
+            onChangeText={setJoinLink}
+            placeholder="Paste the invite link"
+            placeholderTextColor="rgba(255,255,255,0.4)"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.input}
+          />
+          <TextInput
+            value={joinPassword}
+            onChangeText={setJoinPassword}
+            placeholder="Password"
+            placeholderTextColor="rgba(255,255,255,0.4)"
+            secureTextEntry
+            autoCapitalize="none"
+            style={styles.input}
+          />
+          <Pressable
+            onPress={joinByLink}
+            disabled={!joinSlug || joining}
+            style={[styles.primary, { backgroundColor: accent }, (!joinSlug || joining) && styles.disabled]}>
+            {joining ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryText}>Join lounge</Text>}
+          </Pressable>
+        </NeonPanel>
+      )}
 
       {!!rooms.data?.length && (
         <View style={styles.gap}>

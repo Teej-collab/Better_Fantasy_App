@@ -541,6 +541,12 @@ export function useChatMembers() {
   return useQuery({ queryKey: ['chat-members'], queryFn: api.chatMembers });
 }
 
+// The Lounge lobby's games, ranked by your fantasy and bet stakes.
+export function useLoungeLobby() {
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({ queryKey: ['lounge-lobby'], queryFn: api.loungeLobby, refetchInterval });
+}
+
 export function useWatchPartyRooms() {
   // Live dots and member counts change as people come and go.
   return useQuery({ queryKey: ['watch-party-rooms'], queryFn: api.watchPartyRooms, refetchInterval: 30_000 });
