@@ -113,7 +113,7 @@ export function WatchPartyBar({
           where a visitor already thinks to look for "video room"
           functionality (2026-09, reported hard to find otherwise). */}
       <Link
-        href="/lounge"
+        href="/lounge/private"
         className="rounded-lg px-2 py-1.5 text-left text-xs font-semibold"
         style={{ color: "var(--wl-text-secondary)" }}
       >

@@ -72,6 +72,7 @@ export function ChatApp({
   myOwnerId,
   initialConversationId,
   initialPartyId,
+  initialNewParty = false,
 }: {
   initialConversations: ChatConversation[];
   myOwnerId: number;
@@ -88,6 +89,9 @@ export function ChatApp({
   // room once the room list loads, but only if it's actually in it —
   // a stale or inaccessible id just shows the normal chat screen.
   initialPartyId?: number | null;
+  // ?newParty=1 (the Lounge lobby's "Start a watch party") opens the
+  // new-party dialog straight away.
+  initialNewParty?: boolean;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
   // Opens to the conversation list, like iMessage does, rather than
@@ -182,7 +186,7 @@ export function ChatApp({
 
   const [watchPartyRooms, setWatchPartyRooms] = useState<WatchPartyRoomsResponse | null>(null);
   const [activeWatchPartyRoom, setActiveWatchPartyRoom] = useState<WatchPartyRoomInfo | null>(null);
-  const [showNewParty, setShowNewParty] = useState(false);
+  const [showNewParty, setShowNewParty] = useState(initialNewParty);
   const [managingRoom, setManagingRoom] = useState<WatchPartyRoomInfo | null>(null);
 
   useEffect(() => {
