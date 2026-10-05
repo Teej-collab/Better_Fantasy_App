@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -12,6 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
+import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { MatchupDetail } from '@/components/matchup/MatchupDetail';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
@@ -169,9 +169,7 @@ export default function MatchupScreen() {
               <ScrollView
                 style={{ width }}
                 contentContainerStyle={styles.page}
-                refreshControl={
-                  <RefreshControl refreshing={context.isRefetching} onRefresh={() => context.refetch()} tintColor={appearance.accent} />
-                }>
+                refreshControl={<AppRefreshControl />}>
                 <MatchupDetail matchup={item} />
               </ScrollView>
             )}
