@@ -11,31 +11,34 @@ type Props = {
   /** Overrides the owner's Settings > Appearance > Background choice
    *  (--honeycomb-color, set on <html> by app/layout.tsx). */
   color?: string;
-  /** Where the glow and the breathing wave center, as viewport
-   *  percentages. Slightly above center reads best behind page headings. */
+  /** Where the lights wander around, as viewport percentages. Slightly
+   *  above center reads best behind page headings. */
   focal?: { x: number; y: number };
-  /** Average seconds per breath (dim → bright → dim). Each cell's own
-   *  period varies ±35% around this. */
+  /** Sets the pace: each light pulses about once per `duration`
+   *  seconds and takes several times that to loop its path. */
   duration?: number;
 };
 
 const DEFAULT_COLOR = "#dc143c";
 const SQRT3 = Math.sqrt(3);
-// Breathing is slow, so 30fps is visually identical to 60 at half the
-// work. The canvas is also capped at 2x density — 3x phones gain
-// nothing visible on a line this faint, and it's 44% less to fill.
+// The light moves slowly, so 30fps is visually identical to 60 at half
+// the work. The canvas is also capped at 2x density — 3x phones gain
+// nothing visible on soft light, and it's 44% less to fill.
 const FRAME_MS = 1000 / 30;
 const MAX_DPR = 2;
-// The grid's line alpha at the focal point (it fades toward the edges),
-// and a cell's own light at the top of its breath. Every line always
-// shows at least GRID_ALPHA, so the pattern never fully disappears.
-const GRID_ALPHA = 0.3;
-const LIGHT_MAX = 0.75;
+// How strong the backlight gets at the center of a light (0-1), and the
+// faint light every gap always has, so the grid never fully disappears.
+const LIGHT_MAX = 1;
+const AMBIENT = 0.035;
+// How far the whole grid drifts per second, in px — barely perceptible,
+// it just keeps the surface from ever looking frozen.
+const DRIFT_PX_PER_S = 4;
 
+// Flat-top hexagon (two horizontal edges), as in the reference look.
 function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30);
+    const a = (Math.PI / 3) * i;
     const x = cx + r * Math.cos(a);
     const y = cy + r * Math.sin(a);
     if (i === 0) ctx.moveTo(x, y);
@@ -44,91 +47,69 @@ function hexPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numbe
   ctx.closePath();
 }
 
-// Two sprites, rendered once per color/size: the crisp line with its
-// soft glow (drawn once per layout into a static grid, since lines never
-// change), and the light inside a cell (drawn every frame, one
-// drawImage per cell at that cell's own alpha). The light is inset from
-// the edges, so neighboring cells never add up on a shared line — that's
-// what lets each cell read as breathing on its own.
-function buildSprites(r: number, dpr: number, color: string) {
-  const pad = 6;
-  const w = SQRT3 * r + pad * 2;
-  const h = 2 * r + pad * 2;
-  const make = () => {
-    const c = document.createElement("canvas");
-    c.width = Math.ceil(w * dpr);
-    c.height = Math.ceil(h * dpr);
-    const ctx = c.getContext("2d")!;
-    ctx.scale(dpr, dpr);
-    return { c, ctx };
-  };
+// One cell, rendered once per size: a charcoal plate a few px smaller
+// than its slot, so the backlight shows through the gap around it as a
+// neon edge. Lit slightly from the top, like a raised tile, and its rim
+// turns translucent so light near a bright edge bleeds onto the plate.
+function buildCell(r: number, gap: number, dpr: number) {
+  const plate = r - gap / SQRT3;
+  const w = 2 * r;
+  const h = SQRT3 * r;
+  const c = document.createElement("canvas");
+  c.width = Math.ceil(w * dpr);
+  c.height = Math.ceil(h * dpr);
+  const ctx = c.getContext("2d")!;
+  ctx.scale(dpr, dpr);
   const cx = w / 2;
   const cy = h / 2;
-
-  const line = make();
-  line.ctx.strokeStyle = color;
-  line.ctx.lineJoin = "round";
-  for (const [width, alpha] of [
-    [6, 0.06],
-    [3, 0.14],
-    [1, 1],
-  ]) {
-    hexPath(line.ctx, cx, cy, r);
-    line.ctx.lineWidth = width;
-    line.ctx.globalAlpha = alpha;
-    line.ctx.stroke();
-  }
-
-  // The light coming through the cell: brightest just inside the rim,
-  // fading toward the center, so it reads as the edges glowing inward
-  // rather than a filled blob.
-  const light = make();
-  const inner = r * 0.9;
-  hexPath(light.ctx, cx, cy, inner);
-  const fill = light.ctx.createRadialGradient(cx, cy, 0, cx, cy, inner);
-  fill.addColorStop(0, color + "00");
-  fill.addColorStop(0.6, color + "10");
-  fill.addColorStop(1, color + "38");
-  light.ctx.fillStyle = fill;
-  light.ctx.fill();
-  light.ctx.strokeStyle = color;
-  light.ctx.lineJoin = "round";
-  for (const [width, alpha] of [
-    [4, 0.16],
-    [1.2, 0.55],
-  ]) {
-    hexPath(light.ctx, cx, cy, inner);
-    light.ctx.lineWidth = width;
-    light.ctx.globalAlpha = alpha;
-    light.ctx.stroke();
-  }
-
-  return { line: line.c, light: light.c, w, h };
+  // Flat charcoal, opaque through the middle, going see-through over
+  // the outer quarter so a bright edge washes onto the plate beside it.
+  hexPath(ctx, cx, cy, plate);
+  const body = ctx.createRadialGradient(cx, cy, 0, cx, cy, plate);
+  body.addColorStop(0, "rgba(19,19,23,1)");
+  body.addColorStop(0.62, "rgba(16,16,19,1)");
+  body.addColorStop(0.8, "rgba(13,13,16,0.9)");
+  body.addColorStop(0.93, "rgba(11,11,13,0.6)");
+  body.addColorStop(1, "rgba(10,10,12,0.3)");
+  ctx.fillStyle = body;
+  ctx.fill();
+  // A faint top-down sheen, so the plates read as raised tiles.
+  hexPath(ctx, cx, cy, plate);
+  const sheen = ctx.createLinearGradient(0, cy - plate, 0, cy + plate);
+  sheen.addColorStop(0, "rgba(255,255,255,0.035)");
+  sheen.addColorStop(0.5, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  ctx.fill();
+  return { c, w, h };
 }
 
-// Cheap deterministic per-cell randomness, so a resize doesn't reshuffle
-// which cells are in which phase.
+// Cheap deterministic per-light randomness, so a resize doesn't reshuffle
+// the lights' paths.
 function hash(a: number, b: number) {
   const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
   return s - Math.floor(s);
 }
 
+type Light = { ax: number; ay: number; fx: number; fy: number; px: number; py: number; pulse: number; phase: number; size: number };
+
 /**
- * The breathing honeycomb behind every page — mounted once in
- * RootLayout, same fixed/negative-z/pointer-events:none pattern as
- * .cosmic-ambient (globals.css's .hc-* rules handle the layering).
+ * The neon hex wall behind every page — mounted once in RootLayout,
+ * same fixed/negative-z/pointer-events:none pattern as .cosmic-ambient
+ * (globals.css's .hc-* rules handle the layering).
  *
- * Every cell breathes on its own: a random phase and a period that
- * varies around `duration`, blended with a slow wave that rolls outward
- * from the focal point, so the light drifts across the surface cell by
- * cell instead of the whole screen pulsing together. A radial vignette
- * keeps the focal area strongest and the corners near black.
+ * Big charcoal hex plates with a red light behind them: the light only
+ * shows through the gaps between plates (the neon edges) and bleeds a
+ * little onto their rims. A few soft lights wander slowly behind the
+ * wall on their own looping paths and pulse, so different edges flare
+ * up and fade as a light passes — never the whole screen at once — and
+ * the wall itself drifts a few px a second.
  *
- * One canvas, one requestAnimationFrame loop capped at 30fps, no React
- * state (it never re-renders). The loop stops when the tab is hidden,
- * when the background is turned off, and under reduced motion (Settings
- * > Appearance > Animations or the OS setting), which draws a single
- * still frame instead.
+ * Per frame that's a handful of radial gradients and one drawImage of
+ * the pre-rendered plate sheet: one canvas, one requestAnimationFrame
+ * loop capped at 30fps, no React state (it never re-renders). The loop
+ * stops when the tab is hidden, when the background is turned off, and
+ * under reduced motion (Settings > Appearance > Animations or the OS
+ * setting), which draws a single still frame instead.
  */
 export function CinematicHoneycombBackground({
   intensity = 1,
@@ -153,13 +134,13 @@ export function CinematicHoneycombBackground({
     let dpr = 1;
     let width = 0;
     let height = 0;
-    let sprites: ReturnType<typeof buildSprites> | null = null;
-    // The static grid of lines, pre-rendered once per layout.
-    const grid = document.createElement("canvas");
-    // Per-cell data, flat arrays: x, y, vignette, angular speed, phase,
-    // wave offset.
-    let cells = new Float32Array(0);
-    let count = 0;
+    let r = 0;
+    let lightColor = DEFAULT_COLOR;
+    let lights: Light[] = [];
+    let cell: ReturnType<typeof buildCell> | null = null;
+    // Every plate, pre-rendered once per layout — one tile period larger
+    // than the screen each way, so drifting it wraps seamlessly.
+    const sheet = document.createElement("canvas");
 
     const isOff = () => root.getAttribute("data-honeycomb") === "off";
     const isStill = () => !animated || osReduced.matches || root.classList.contains("motion-reduced");
@@ -171,12 +152,11 @@ export function CinematicHoneycombBackground({
     // iOS WebKit keeps a canvas's pixel buffer until garbage collection
     // gets around to it, and counts every one toward a hard per-page
     // canvas memory cap — so each rebuild (resize, color change) would
-    // otherwise stack up old sprites. Zeroing the size frees it now.
-    function releaseSprites() {
-      if (!sprites) return;
-      sprites.line.width = sprites.line.height = 0;
-      sprites.light.width = sprites.light.height = 0;
-      sprites = null;
+    // otherwise stack up old buffers. Zeroing the size frees it now.
+    function releaseBuffers() {
+      if (cell) cell.c.width = cell.c.height = 0;
+      cell = null;
+      sheet.width = sheet.height = 0;
     }
 
     function layout() {
@@ -186,84 +166,85 @@ export function CinematicHoneycombBackground({
       dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
       canvas!.width = Math.round(width * dpr);
       canvas!.height = Math.round(height * dpr);
+      lightColor = currentColor();
 
-      // Hex size tracks the viewport's long side, clamped, so it's
-      // never dense on a phone or huge on a tablet/desktop.
-      const r = Math.min(44, Math.max(22, 0.03 * Math.max(window.innerWidth, window.innerHeight)));
-      releaseSprites();
-      sprites = buildSprites(r, dpr, currentColor());
+      // Big plates — about three and a half across a desktop screen,
+      // two and a half across a phone — clamped at both ends.
+      r = Math.min(200, Math.max(70, 0.12 * Math.max(window.innerWidth, window.innerHeight)));
+      const gap = Math.max(3, r * 0.045);
+      releaseBuffers();
+      cell = buildCell(r, gap, dpr);
 
-      const colW = SQRT3 * r;
-      const rowH = 1.5 * r;
-      const cols = Math.ceil(width / colW) + 2;
-      const rows = Math.ceil(height / rowH) + 2;
-      const fx = (focalX / 100) * width;
-      const fy = (focalY / 100) * height;
-      // Vignette reach: the distance from the focal point to the
-      // farthest corner, so corners land at ~0 on any aspect ratio.
-      const reach = Math.hypot(Math.max(fx, width - fx), Math.max(fy, height - fy));
-
-      count = cols * rows;
-      cells = new Float32Array(count * 6);
-      let i = 0;
-      for (let row = -1; row < rows - 1; row++) {
-        for (let col = -1; col < cols - 1; col++) {
-          const x = col * colW + (row & 1 ? colW / 2 : 0);
-          const y = row * rowH;
-          const d = Math.hypot(x - fx, y - fy) / reach;
-          const v = Math.max(0, 1 - d);
-          const period = duration * (0.65 + 0.7 * hash(col, row));
-          cells[i++] = x;
-          cells[i++] = y;
-          cells[i++] = v * v * (3 - 2 * v);
-          cells[i++] = (Math.PI * 2) / (period * 1000);
-          cells[i++] = hash(row + 17, col - 5) * Math.PI * 2;
-          cells[i++] = d * Math.PI * 2 * 1.4;
+      const colStep = 1.5 * r;
+      const rowStep = SQRT3 * r;
+      sheet.width = Math.ceil((width + 3 * r) * dpr);
+      sheet.height = Math.ceil((height + rowStep) * dpr);
+      const g = sheet.getContext("2d")!;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const cols = Math.ceil((width + 3 * r) / colStep) + 2;
+      const rows = Math.ceil((height + rowStep) / rowStep) + 2;
+      for (let col = -1; col < cols; col++) {
+        for (let row = -1; row < rows; row++) {
+          const x = col * colStep;
+          const y = row * rowStep + (col & 1 ? rowStep / 2 : 0);
+          g.drawImage(cell.c, x - cell.w / 2, y - cell.h / 2, cell.w, cell.h);
         }
       }
 
-      grid.width = canvas!.width;
-      grid.height = canvas!.height;
-      const g = grid.getContext("2d")!;
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      for (let j = 0; j < count * 6; j += 6) {
-        if (cells[j + 2] < 0.01) continue;
-        g.globalAlpha = cells[j + 2] * GRID_ALPHA;
-        g.drawImage(sprites.line, cells[j] - sprites.w / 2, cells[j + 1] - sprites.h / 2, sprites.w, sprites.h);
-      }
+      // Three lights, each on its own slow looping path, biased toward
+      // the focal point so the strongest light sits behind page headings.
+      const span = duration * 1000;
+      lights = [0, 1, 2].map((k) => ({
+        ax: 0.3 + 0.25 * hash(k, 1),
+        ay: 0.3 + 0.25 * hash(k, 2),
+        fx: (Math.PI * 2) / (span * (3.5 + 3 * hash(k, 3))),
+        fy: (Math.PI * 2) / (span * (4 + 3 * hash(k, 4))),
+        px: hash(k, 5) * Math.PI * 2,
+        py: hash(k, 6) * Math.PI * 2,
+        pulse: (Math.PI * 2) / (span * (0.9 + 0.6 * hash(k, 7))),
+        phase: hash(k, 8) * Math.PI * 2,
+        size: r * (2.2 + 1.0 * hash(k, 9)),
+      }));
     }
 
     function draw(now: number) {
-      if (!sprites) return;
-      const { light, w, h } = sprites;
-      const still = isStill();
-      const waveSpeed = (Math.PI * 2) / (duration * 1000 * 1.6);
-      ctx!.setTransform(1, 0, 0, 1, 0, 0);
-      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
-      ctx!.globalAlpha = 1;
-      ctx!.drawImage(grid, 0, 0);
+      if (!cell) return;
+      const t = isStill() ? 0 : now;
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-      for (let i = 0; i < count * 6; i += 6) {
-        const vignette = cells[i + 2];
-        if (vignette < 0.01) continue;
-        let breath: number;
-        if (still) {
-          // A fixed, varied still frame — same design, no movement.
-          breath = 0.25 + 0.2 * Math.sin(cells[i + 4]);
-        } else {
-          const own = 0.5 + 0.5 * Math.sin(now * cells[i + 3] + cells[i + 4]);
-          const wave = 0.5 + 0.5 * Math.sin(now * waveSpeed - cells[i + 5]);
-          const b = 0.75 * own + 0.25 * wave;
-          // Cubing the curve keeps most cells near dark at any moment,
-          // so the ones mid-breath stand out individually instead of
-          // everything sitting at the same middling brightness.
-          breath = b * b * b;
-        }
-        if (breath < 0.02) continue;
-        ctx!.globalAlpha = vignette * LIGHT_MAX * breath;
-        ctx!.drawImage(light, cells[i] - w / 2, cells[i + 1] - h / 2, w, h);
+      ctx!.clearRect(0, 0, width, height);
+
+      // The backlight: a faint wash so every gap shows a little, then
+      // each light added on top.
+      ctx!.globalCompositeOperation = "source-over";
+      ctx!.globalAlpha = AMBIENT;
+      ctx!.fillStyle = lightColor;
+      ctx!.fillRect(0, 0, width, height);
+      ctx!.globalCompositeOperation = "lighter";
+      const fx = (focalX / 100) * width;
+      const fy = (focalY / 100) * height;
+      for (const l of lights) {
+        const x = fx + Math.sin(t * l.fx + l.px) * l.ax * width;
+        const y = fy + Math.sin(t * l.fy + l.py) * l.ay * height;
+        const strength = LIGHT_MAX * (0.55 + 0.45 * Math.sin(t * l.pulse + l.phase));
+        const glow = ctx!.createRadialGradient(x, y, 0, x, y, l.size);
+        glow.addColorStop(0, lightColor);
+        glow.addColorStop(0.3, lightColor + "cc");
+        glow.addColorStop(0.65, lightColor + "33");
+        glow.addColorStop(1, lightColor + "00");
+        ctx!.globalAlpha = strength;
+        ctx!.fillStyle = glow;
+        ctx!.fillRect(x - l.size, y - l.size, l.size * 2, l.size * 2);
       }
+
+      // The plates over it, drifting diagonally and wrapping by one tile
+      // period (3r across, √3·r down) so the seam never shows.
+      ctx!.globalCompositeOperation = "source-over";
       ctx!.globalAlpha = 1;
+      const drift = (t / 1000) * DRIFT_PX_PER_S;
+      const ox = drift % (3 * r);
+      const oy = (drift * 0.6) % (SQRT3 * r);
+      ctx!.setTransform(1, 0, 0, 1, 0, 0);
+      ctx!.drawImage(sheet, -Math.round(ox * dpr), -Math.round(oy * dpr));
     }
 
     function frame(now: number) {
@@ -278,8 +259,7 @@ export function CinematicHoneycombBackground({
       raf = 0;
       if (isOff()) {
         // Turned off — free every canvas buffer, not just the loop.
-        releaseSprites();
-        grid.width = grid.height = 0;
+        releaseBuffers();
         canvas!.width = canvas!.height = 0;
         return;
       }
@@ -297,6 +277,16 @@ export function CinematicHoneycombBackground({
     };
     window.addEventListener("resize", onResize);
     osReduced.addEventListener("change", restart);
+    // Background tabs don't need a running loop.
+    const onVisibility = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (!raf && !isOff() && !isStill()) {
+        raf = requestAnimationFrame(frame);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     // Settings > Appearance changes the color, "off", and reduced motion
     // by editing <html>'s style/attributes — pick those up immediately.
     // Other code sets unrelated properties there too (ChatApp's
@@ -317,9 +307,9 @@ export function CinematicHoneycombBackground({
       clearTimeout(resizeTimer);
       window.removeEventListener("resize", onResize);
       osReduced.removeEventListener("change", restart);
+      document.removeEventListener("visibilitychange", onVisibility);
       observer.disconnect();
-      releaseSprites();
-      grid.width = grid.height = 0;
+      releaseBuffers();
     };
   }, [animated, color, focalX, focalY, duration]);
 
