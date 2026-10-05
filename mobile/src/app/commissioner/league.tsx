@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   CommishScreen,
@@ -18,6 +18,7 @@ import { Fonts } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { queryClient, useActiveLeague, usePlayoffSettings } from '@/lib/queries';
 import type { LeagueInfo, PlayoffSettings } from '@/lib/types';
+import { InviteSheet } from '@/components/league/InviteSheet';
 
 // Port of the web's LeagueSettingsSection: name, invite code, playoff format.
 export default function LeagueSettingsScreen() {
@@ -34,7 +35,7 @@ export default function LeagueSettingsScreen() {
       ) : (
         <View style={s.gap}>
           <NameRow league={league.data} />
-          <InviteRow code={league.data.invite_code} />
+          <InviteRow league={league.data} />
           {playoff.data && <PlayoffForm key={playoff.data.season} settings={playoff.data} />}
         </View>
       )}
@@ -95,14 +96,17 @@ function NameRow({ league }: { league: LeagueInfo }) {
   );
 }
 
-function InviteRow({ code }: { code: string }) {
+function InviteRow({ league }: { league: LeagueInfo }) {
+  const [open, setOpen] = useState(false);
   return (
     <View style={s.row}>
       <Text style={s.label}>Invite code</Text>
       <View style={[s.box, { paddingVertical: 4, paddingHorizontal: 8 }]}>
-        <Text style={[s.body, { fontFamily: Fonts.mono }]}>{code}</Text>
+        <Text style={[s.body, { fontFamily: Fonts.mono }]}>{league.invite_code}</Text>
       </View>
-      <OutlineButton label="Share" onPress={() => void Share.share({ message: code })} />
+      {/* The full invite — link, QR, and share — not just the code. */}
+      <OutlineButton label="Invite" onPress={() => setOpen(true)} />
+      <InviteSheet league={open ? league : null} onClose={() => setOpen(false)} />
     </View>
   );
 }

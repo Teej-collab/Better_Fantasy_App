@@ -37,7 +37,7 @@ export function LeaguePicker({ onOpened, onLeave }: { onOpened: () => void; onLe
     onOpened();
   }
 
-  function go(href: '/start/join' | '/start/create', params?: { from: string }) {
+  function go(href: '/start/join' | '/start/create' | '/leagues', params?: { from: string }) {
     onLeave?.();
     router.push(params ? { pathname: href, params } : href);
   }
@@ -46,9 +46,14 @@ export function LeaguePicker({ onOpened, onLeave }: { onOpened: () => void; onLe
     return (
       <StartScreen
         footer={
-          <View style={styles.row}>
-            <GhostButton label="Join another" onPress={() => go('/start/join')} flex />
-            <GhostButton label="Create new" onPress={() => go('/start/create')} flex />
+          <View style={styles.footerCol}>
+            <View style={styles.row}>
+              <GhostButton label="Join another" onPress={() => go('/start/join')} flex />
+              <GhostButton label="Create new" onPress={() => go('/start/create')} flex />
+            </View>
+            <Pressable onPress={() => go('/leagues')} accessibilityRole="button" style={styles.manageLink}>
+              <Text style={styles.manageText}>Manage leagues &amp; invites →</Text>
+            </Pressable>
           </View>
         }>
         <View style={styles.welcomeRow}>
@@ -142,6 +147,9 @@ function statusChip(l: LeagueInfo): string | null {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   row: { flexDirection: 'row', gap: Spacing.sm },
+  footerCol: { gap: Spacing.sm },
+  manageLink: { alignItems: 'center', paddingVertical: 6 },
+  manageText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
   pressed: { opacity: 0.8 },
   hero: { alignItems: 'center', gap: Spacing.md, paddingTop: Spacing.md },
   emblem: { width: 120, height: 120 },

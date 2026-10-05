@@ -76,7 +76,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
     { label: 'Settings', href: '/settings' },
     { label: 'Notifications', href: { pathname: '/settings', params: { section: 'notifications' } } },
     { label: 'My Bets', href: '/bets' },
-    { label: 'Leagues', href: '/leagues' },
+    { label: 'Leagues & invites', href: '/leagues' },
     ...(isCommissioner ? [{ label: 'Commissioner Tools', href: '/commissioner' as Href }] : []),
     ...(isSiteOwner ? [{ label: 'Admin', href: '/admin' as Href }] : []),
     { label: 'Send feedback', href: { pathname: '/settings', params: { section: 'feedback' } } },

@@ -52,7 +52,18 @@ export function LeagueOverview({ season }: { season: number | null }) {
   const rankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
   return (
     <View style={styles.gap}>
-      <PageTitle>League</PageTitle>
+      <View style={styles.titleRow}>
+        <PageTitle>League</PageTitle>
+        {me?.active_league_id ? (
+          <Pressable
+            onPress={() => router.push({ pathname: '/leagues', params: { invite: String(me.active_league_id) } })}
+            style={({ pressed }) => [styles.inviteButton, pressed && { opacity: 0.8 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Invite friends to this league">
+            <Text style={styles.inviteText}>+ Invite friends</Text>
+          </Pressable>
+        ) : null}
+      </View>
       {me?.active_league_id != null && <ActivePolls leagueId={me.active_league_id} />}
       <ListPanel color={SectionColors.league}>
         {teams.map((t, i) => (
@@ -663,6 +674,9 @@ export function ActivitySection({ season }: { season: number | null }) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  inviteButton: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(57,255,20,0.5)', backgroundColor: 'rgba(57,255,20,0.08)', paddingHorizontal: 12, paddingVertical: 6 },
+  inviteText: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
   gap: { gap: Spacing.lg },
   gapSm: { gap: Spacing.sm },
   body: { color: Colors.text, fontSize: 14 },

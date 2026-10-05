@@ -1,69 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { AppRefreshControl } from '@/components/AppRefreshControl';
-import { NeonPanel } from '@/components/NeonPanel';
-import { Display, Text } from '@/components/Text';
+import { InviteSheet } from '@/components/league/InviteSheet';
+import { Door, Kicker, StartScreen, startStyles, Sub, Title } from '@/components/start/StartUI';
+import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
-import { haptics } from '@/lib/haptics';
 import { api } from '@/lib/api';
-import { useAppearance } from '@/lib/appearance';
 import { useAuth } from '@/lib/auth';
-import { canScanQr, joinLinkFor, scanInvite, type ScannedInvite } from '@/lib/qrJoin';
-import { queryClient, useMe } from '@/lib/queries';
+import { haptics } from '@/lib/haptics';
+import { queryClient } from '@/lib/queries';
 import type { LeagueInfo } from '@/lib/types';
 
-// Everything a league's data depends on changes when the active league
-// or your owner link does — refetch it all.
-async function refreshEverything() {
-  await queryClient.invalidateQueries();
-}
-
-function useMyLeagues() {
-  return useQuery({
-    queryKey: ['leagues-detail'],
-    queryFn: async () => {
-      const { leagues, active_league_id } = await api.leaguesMine();
-      const details = await Promise.all(
-        leagues.map(async (l) => {
-          const [teams, unclaimed, members] = await Promise.all([
-            api.leagueTeams(l.id).catch(() => []),
-            api.unclaimedOwners(l.id).catch(() => []),
-            api.leagueMembers(l.id).catch(() => []),
-          ]);
-          return { league: l, teams, unclaimed, members };
-        }),
-      );
-      return { activeLeagueId: active_league_id, details };
-    },
-  });
-}
-
-// Port of the web's /leagues: your leagues (switch, invite code, create
-// your team, claim your history, commissioner rename and roles), then
-// create a league and join one by invite code. Plus a co-owner invite
-// code box — a co-owner link opens the website, so it can be pasted here.
+// Leagues & invites (rebuilt 2026-10 in the league picker's look): your
+// leagues as cards — open or switch, invite people, and (commissioner)
+// manage — then the same Join / Create doors as the picker, and a
+// co-owner code box. Setting up your team in a league you've joined
+// without one stays here too.
+//
+// ?invite=<league id> opens that league's invite sheet straight away
+// (the League tab's "Invite friends"); ?join=CODE (an older app link)
+// goes to the join screen.
 export default function LeaguesScreen() {
-  // ?join=CODE: a scanned league QR opened as an app link.
-  const params = useLocalSearchParams<{ focus?: string; join?: string }>();
-  const focus = params.join ? 'join' : params.focus;
-  const accent = useAppearance().accent;
+  const params = useLocalSearchParams<{ invite?: string; join?: string }>();
   const { signInWithToken } = useAuth();
-  const myUserId = useMe().data?.user_id;
-  const q = useMyLeagues();
-  const [error, setError] = useState<string | null>(null);
+  const q = useQuery({ queryKey: ['leagues-mine'], queryFn: api.leaguesMine });
+  const [inviting, setInviting] = useState<LeagueInfo | null>(null);
+  const [inviteParamUsed, setInviteParamUsed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [newLeagueName, setNewLeagueName] = useState('');
-  const [inviteCode, setInviteCode] = useState(params.join ?? '');
-  const [coOwnerCode, setCoOwnerCode] = useState('');
-  const [teamNames, setTeamNames] = useState<Record<number, string>>({});
-  const [renaming, setRenaming] = useState<number | null>(null);
-  const [renameValue, setRenameValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [coOwnerCode, setCoOwnerCode] = useState('');
+
+  if (params.join) return <Redirect href={{ pathname: '/start/join', params: { code: params.join } }} />;
+  if (q.isPending) return <LoadingState />;
+  const leagues = q.data?.leagues ?? [];
+  const activeId = q.data?.active_league_id ?? null;
+  const fromParam = !inviteParamUsed && params.invite ? (leagues.find((l) => String(l.id) === params.invite) ?? null) : null;
+  const sheetLeague = inviting ?? fromParam;
 
   async function run(key: string, action: () => Promise<unknown>, fallback: string) {
     setBusy(key);
@@ -71,7 +47,7 @@ export default function LeaguesScreen() {
     setNotice(null);
     try {
       await action();
-      await refreshEverything();
+      await queryClient.invalidateQueries();
       haptics.success();
       return true;
     } catch (e) {
@@ -83,14 +59,22 @@ export default function LeaguesScreen() {
     }
   }
 
-  async function joinLeague(code: string) {
-    if (await run('join', () => api.joinLeague(code), "Couldn't join that league")) {
-      setInviteCode('');
-      setNotice("You're in — welcome to the league.");
+  async function open(l: LeagueInfo) {
+    haptics.tap();
+    if (l.id !== activeId) {
+      if (!(await run(`switch-${l.id}`, () => api.selectLeague(l.id), "Couldn't switch leagues"))) return;
     }
+    router.navigate('/');
   }
 
-  async function joinAsCoOwner(code: string) {
+  async function manage(l: LeagueInfo) {
+    // Commissioner Tools work on the active league — switch first.
+    if (l.id !== activeId && !(await run(`switch-${l.id}`, () => api.selectLeague(l.id), "Couldn't switch leagues"))) return;
+    router.push('/commissioner');
+  }
+
+  async function joinAsCoOwner() {
+    const code = coOwnerCode.trim().replace(/^.*[?&]code=/, '');
     const ok = await run(
       'coowner',
       async () => {
@@ -105,372 +89,192 @@ export default function LeaguesScreen() {
     }
   }
 
-  async function scan() {
-    const onInvite = (invite: ScannedInvite) => {
-      haptics.success();
-      if (invite.kind === 'league') {
-        setInviteCode(invite.code);
-        void joinLeague(invite.code);
-      } else {
-        setCoOwnerCode(invite.code);
-        void joinAsCoOwner(invite.code);
-      }
-    };
-    const result = await scanInvite(onInvite);
-    if (result === 'denied') {
-      Alert.alert('Camera is off', 'Allow camera access for The Weekend in Settings to scan a league QR code.');
-    } else if (result === 'unavailable') {
-      Alert.alert("Can't scan here", 'Type the invite code instead.');
-    }
-  }
-
-  if (q.isPending) return <LoadingState />;
-  const details = q.data?.details ?? [];
-  const activeId = q.data?.activeLeagueId ?? null;
-
-  const createSection = (
-    <NeonPanel key="create" color={accent} contentStyle={styles.gap}>
-      <Text style={styles.sectionTitle}>Create a league</Text>
-      <View style={styles.row}>
-        <TextInput
-          value={newLeagueName}
-          onChangeText={setNewLeagueName}
-          placeholder="League name"
-          placeholderTextColor={Colors.textSecondary}
-          autoFocus={focus === 'create'}
-          style={[styles.input, styles.flex]}
-        />
-        <Pressable
-          onPress={async () => {
-            if (await run('create', () => api.createLeague(newLeagueName.trim()), "Couldn't create the league")) setNewLeagueName('');
-          }}
-          disabled={busy !== null || !newLeagueName.trim()}
-          style={[styles.primary, { backgroundColor: accent }, (busy !== null || !newLeagueName.trim()) && styles.dim]}>
-          {busy === 'create' ? <ActivityIndicator color="#06110a" /> : <Text style={styles.primaryText}>Create</Text>}
-        </Pressable>
-      </View>
-    </NeonPanel>
-  );
-
-  const joinSection = (
-    <NeonPanel key="join" color={accent} contentStyle={styles.gap}>
-      <Text style={styles.sectionTitle}>Join a league</Text>
-      <View style={styles.row}>
-        <TextInput
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          placeholder="Invite code"
-          placeholderTextColor={Colors.textSecondary}
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoFocus={focus === 'join' && !params.join}
-          style={[styles.input, styles.flex]}
-        />
-        <Pressable
-          onPress={() => void joinLeague(inviteCode.trim())}
-          disabled={busy !== null || !inviteCode.trim()}
-          style={[styles.outline, (busy !== null || !inviteCode.trim()) && styles.dim]}>
-          {busy === 'join' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.outlineText}>Join</Text>}
-        </Pressable>
-      </View>
-      {canScanQr && (
-        <Pressable onPress={() => void scan()} disabled={busy !== null} accessibilityRole="button" style={[styles.outline, styles.scanButton]}>
-          <Text style={styles.outlineText}>Scan a league QR code</Text>
-        </Pressable>
-      )}
-    </NeonPanel>
-  );
-
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
-      <Stack.Screen options={{ title: 'Leagues' }} />
-      <View style={{ gap: 4 }}>
-        <Display style={styles.title}>Leagues</Display>
-        <Text style={styles.soft}>Join an existing league with the invite code your commissioner shares, or start a new one of your own.</Text>
+    <StartScreen>
+      <Stack.Screen options={{ title: 'Leagues & Invites' }} />
+      <View style={styles.hero}>
+        <Kicker>Your leagues</Kicker>
+        <Title>Leagues &amp; invites</Title>
+        <Sub>Switch leagues, bring friends in with an invite, or start something new.</Sub>
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && <Text style={startStyles.error}>{error}</Text>}
       {notice && <Text style={styles.notice}>{notice}</Text>}
 
-      {/* Someone who came here to join or create sees that step first. */}
-      {focus === 'join' && joinSection}
-      {focus === 'create' && createSection}
+      <View style={styles.list}>
+        {leagues.length === 0 && <Text style={startStyles.muted}>You&apos;re not in any leagues yet — join one or start your own below.</Text>}
+        {leagues.map((l) => {
+          const active = l.id === activeId;
+          const noTeam = !l.summary?.team_name;
+          return (
+            <View key={l.id} style={[startStyles.card, active && startStyles.cardLit]}>
+              <View style={styles.cardTop}>
+                <Text style={[startStyles.cardTitle, styles.flex]} numberOfLines={1}>
+                  {l.name}
+                </Text>
+                {active && (
+                  <View style={styles.activePill}>
+                    <Text style={styles.activeText}>Active</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={startStyles.muted}>{cardLine(l)}</Text>
+              {noTeam && <TeamSetup league={l} busy={busy} run={run} onSignIn={signInWithToken} />}
+              <View style={styles.actions}>
+                <ActionButton label={active ? 'Open' : busy === `switch-${l.id}` ? 'Switching…' : 'Switch'} primary={!active} onPress={() => void open(l)} />
+                <ActionButton
+                  label="Invite"
+                  onPress={() => {
+                    haptics.tap();
+                    setInviting(l);
+                  }}
+                />
+                {l.role === 'commissioner' && <ActionButton label="Manage" onPress={() => void manage(l)} />}
+              </View>
+            </View>
+          );
+        })}
+      </View>
 
-      <NeonPanel color={accent} contentStyle={styles.gap}>
-        <Text style={styles.sectionTitle}>Your leagues</Text>
-        {details.length === 0 ? (
-          <Text style={styles.soft}>You&apos;re not in any leagues yet — create one or join with an invite code below.</Text>
-        ) : (
-          details.map(({ league, teams, unclaimed, members }) => (
-            <LeagueBlock
-              key={league.id}
-              league={league}
-              active={league.id === activeId}
-              teams={teams}
-              unclaimed={unclaimed}
-              members={members}
-              myUserId={myUserId}
-              busy={busy}
-              renaming={renaming === league.id}
-              renameValue={renameValue}
-              teamName={teamNames[league.id] ?? ''}
-              onTeamName={(v) => setTeamNames((prev) => ({ ...prev, [league.id]: v }))}
-              onStartRename={() => {
-                setRenaming(league.id);
-                setRenameValue(league.name);
-              }}
-              onRenameValue={setRenameValue}
-              onCancelRename={() => setRenaming(null)}
-              onSaveRename={async () => {
-                if (await run(`rename-${league.id}`, () => api.renameLeague(league.id, renameValue.trim()), "Couldn't rename that league")) setRenaming(null);
-              }}
-              onSwitch={() => run(`switch-${league.id}`, () => api.selectLeague(league.id), "Couldn't switch leagues")}
-              onCreateTeam={async () => {
-                const name = (teamNames[league.id] ?? '').trim();
-                if (!name) return;
-                if (await run(`team-${league.id}`, () => api.createTeam(league.id, name), "Couldn't create your team")) {
-                  setTeamNames((prev) => ({ ...prev, [league.id]: '' }));
-                }
-              }}
-              onClaim={(ownerId) =>
-                run(
-                  `claim-${ownerId}`,
-                  async () => {
-                    const { token } = await api.claimOwner(league.id, ownerId);
-                    await signInWithToken(token);
-                  },
-                  "Couldn't claim that history — someone may have already claimed it.",
-                )
-              }
-              onRole={(userId, role) => run(`role-${userId}`, () => api.setMemberRole(league.id, userId, role), "Couldn't change that member's role")}
-            />
-          ))
-        )}
-      </NeonPanel>
+      <View style={styles.list}>
+        <Kicker>Add a league</Kicker>
+        <Door title="Join a league" text="Got an invite link, code or QR from your commissioner?" accent="#39ff14" icon="users" onPress={() => router.push('/start/join')} />
+        <Door title="Create a league" text="Start your own and run it as commissioner." accent="#2fd0ff" icon="plus" onPress={() => router.push('/start/create')} />
+      </View>
 
-      {focus !== 'create' && createSection}
-      {focus !== 'join' && joinSection}
-
-      <NeonPanel color={accent} contentStyle={styles.gap}>
-        <Text style={styles.sectionTitle}>Join as a co-owner</Text>
-        <Text style={styles.small}>
-          Got a co-owner invite? Paste its code (the part after code= in the link) to manage that team with its owner.
-        </Text>
+      <View style={styles.coOwner}>
+        <Text style={styles.coOwnerTitle}>Got a co-owner invite?</Text>
+        <Text style={startStyles.muted}>Paste the link or code to manage that team alongside its owner.</Text>
         <View style={styles.row}>
           <TextInput
             value={coOwnerCode}
             onChangeText={setCoOwnerCode}
-            placeholder="Co-owner code"
+            placeholder="Co-owner link or code"
             placeholderTextColor={Colors.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
             style={[styles.input, styles.flex]}
           />
-          <Pressable
-            onPress={() => void joinAsCoOwner(coOwnerCode.trim().replace(/^.*[?&]code=/, ''))}
-            disabled={busy !== null || !coOwnerCode.trim()}
-            style={[styles.outline, (busy !== null || !coOwnerCode.trim()) && styles.dim]}>
-            {busy === 'coowner' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.outlineText}>Join</Text>}
+          <Pressable onPress={() => void joinAsCoOwner()} disabled={busy !== null || !coOwnerCode.trim()} style={[styles.ghost, (busy !== null || !coOwnerCode.trim()) && styles.dim]} accessibilityRole="button">
+            {busy === 'coowner' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.ghostText}>Join</Text>}
           </Pressable>
         </View>
-      </NeonPanel>
-    </ScrollView>
+      </View>
+
+      <InviteSheet
+        league={sheetLeague}
+        onClose={() => {
+          setInviting(null);
+          setInviteParamUsed(true);
+        }}
+      />
+    </StartScreen>
   );
 }
 
-function LeagueBlock(props: {
-  league: LeagueInfo;
-  active: boolean;
-  teams: { team_id: number; team_name: string; owner_name: string }[];
-  unclaimed: { owner_id: number; display_name: string }[];
-  members: { user_id: number; display_name: string; role: 'commissioner' | 'member' }[];
-  myUserId: number | undefined;
-  busy: string | null;
-  renaming: boolean;
-  renameValue: string;
-  teamName: string;
-  onTeamName: (v: string) => void;
-  onStartRename: () => void;
-  onRenameValue: (v: string) => void;
-  onCancelRename: () => void;
-  onSaveRename: () => void;
-  onSwitch: () => void;
-  onCreateTeam: () => void;
-  onClaim: (ownerId: number) => void;
-  onRole: (userId: number, role: 'commissioner' | 'member') => void;
-}) {
-  const { league } = props;
-  const accent = useAppearance().accent;
-  const isCommish = league.role === 'commissioner';
-  const [showQr, setShowQr] = useState(false);
-  const joinLink = joinLinkFor(league.invite_code);
+// "Bucky'd Up · 2–1 · Week 4 · Commissioner", like the league picker.
+function cardLine(l: LeagueInfo): string {
+  const s = l.summary;
+  const role = l.role === 'commissioner' ? 'Commissioner' : 'Member';
+  if (!s?.team_name) return s && s.team_count ? `${s.teams} of ${s.team_count} teams in · ${role}` : role;
+  const bits = [s.team_name];
+  if (s.record && s.draft_status === 'complete') bits.push(s.record.replace('-', '–'));
+  if (s.week && s.draft_status === 'complete') bits.push(`Week ${s.week}`);
+  bits.push(role);
+  return bits.join(' · ');
+}
+
+function ActionButton({ label, onPress, primary }: { label: string; onPress: () => void; primary?: boolean }) {
   return (
-    <View style={styles.block}>
-      <View style={styles.blockHead}>
-        {props.renaming ? (
-          <View style={[styles.row, styles.flex]}>
-            <TextInput value={props.renameValue} onChangeText={props.onRenameValue} maxLength={40} autoFocus accessibilityLabel="League name" style={[styles.input, styles.flex]} />
-            <Pressable onPress={props.onSaveRename} disabled={!props.renameValue.trim()} style={[styles.smallPill, { backgroundColor: accent }]}>
-              <Text style={styles.smallPillDark}>{props.busy === `rename-${league.id}` ? 'Saving…' : 'Save'}</Text>
-            </Pressable>
-            <Pressable onPress={props.onCancelRename}>
-              <Text style={styles.small}>Cancel</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={[styles.row, styles.flex, { flexWrap: 'wrap' }]}>
-            <Text style={styles.leagueName}>{league.name}</Text>
-            <View style={styles.rolePill}>
-              <Text style={styles.small}>{league.role}</Text>
-            </View>
-            {isCommish && (
-              <Pressable onPress={props.onStartRename} hitSlop={6}>
-                <Text style={styles.small}>Rename</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-        {props.active ? (
-          <View style={[styles.smallPill, { backgroundColor: accent }]}>
-            <Text style={styles.smallPillDark}>Active</Text>
-          </View>
-        ) : (
-          <Pressable onPress={props.onSwitch} disabled={props.busy !== null} style={styles.smallPill}>
-            <Text style={styles.smallPillText}>{props.busy === `switch-${league.id}` ? 'Switching…' : 'Switch to this league'}</Text>
-          </Pressable>
-        )}
-      </View>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.action, primary && styles.actionPrimary, pressed && styles.pressed]} accessibilityRole="button">
+      <Text style={[styles.actionText, primary && styles.actionTextPrimary]}>{label}</Text>
+    </Pressable>
+  );
+}
 
-      <View style={[styles.row, { flexWrap: 'wrap' }]}>
-        <Text style={styles.small}>
-          Invite code: <Text style={[styles.small, { fontFamily: Fonts.mono }]}>{league.invite_code}</Text>
-        </Text>
-        <Pressable
-          onPress={() =>
-            void Share.share({ message: `Join my league "${league.name}" on The Weekend with invite code ${league.invite_code}: ${joinLink}` })
-          }
-          style={styles.smallPill}>
-          <Text style={styles.smallPillText}>Share</Text>
-        </Pressable>
-        <Pressable onPress={() => setShowQr((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: showQr }} style={styles.smallPill}>
-          <Text style={styles.smallPillText}>{showQr ? 'Hide QR' : 'Show QR'}</Text>
-        </Pressable>
-      </View>
-
-      {showQr && (
-        <View style={styles.qrBlock}>
-          {/* Dark on white with a quiet zone: what every scanner reads best. */}
-          <View style={styles.qrCard} accessible accessibilityRole="image" accessibilityLabel={`QR code to join ${league.name}`}>
-            <QRCode value={joinLink} size={200} color="#000000" backgroundColor="#ffffff" ecl="M" />
-          </View>
-          <Text style={[styles.small, styles.qrCaption]}>
-            Have a friend scan this in Leagues → Join a league, or with their phone&apos;s camera.
-          </Text>
-        </View>
-      )}
-
-      {props.teams.length > 0 && (
-        <View>
-          {props.teams.map((t) => (
-            <Text key={t.team_id} style={styles.small}>
-              {t.team_name} — {t.owner_name}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.row}>
-        <TextInput
-          value={props.teamName}
-          onChangeText={props.onTeamName}
-          placeholder="Your team name"
-          placeholderTextColor={Colors.textSecondary}
-          style={[styles.input, styles.flex]}
-        />
-        <Pressable onPress={props.onCreateTeam} disabled={props.busy !== null || !props.teamName.trim()} style={[styles.smallPill, { backgroundColor: accent }, !props.teamName.trim() && styles.dim]}>
-          <Text style={styles.smallPillDark}>{props.busy === `team-${league.id}` ? 'Creating…' : 'Create my team'}</Text>
-        </Pressable>
-      </View>
-
-      {isCommish && props.members.length > 0 && (
-        <View style={styles.sub}>
-          <Text style={styles.small}>Members</Text>
-          {props.members.map((m) => (
-            <View key={m.user_id} style={[styles.row, { justifyContent: 'space-between' }]}>
-              <Text style={styles.body}>
-                {m.display_name} <Text style={styles.small}>· {m.role}</Text>
-              </Text>
-              {m.user_id !== props.myUserId && (
-                <Pressable
-                  onPress={() => props.onRole(m.user_id, m.role === 'commissioner' ? 'member' : 'commissioner')}
-                  disabled={props.busy !== null}
-                  style={styles.smallPill}>
-                  <Text style={styles.smallPillText}>
-                    {props.busy === `role-${m.user_id}` ? 'Saving…' : m.role === 'commissioner' ? 'Remove commissioner' : 'Make commissioner'}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          ))}
-        </View>
-      )}
-
-      {props.unclaimed.length > 0 && (
-        <View style={styles.sub}>
-          <Text style={styles.small}>
-            Already played in this league before? Claim your existing team&apos;s history — chug debts, keeper picks, past seasons, and awards
-            all come with it.
-          </Text>
+// In a league without a team of your own: claim the history of a team
+// you played as before, or start a new one.
+function TeamSetup({
+  league,
+  busy,
+  run,
+  onSignIn,
+}: {
+  league: LeagueInfo;
+  busy: string | null;
+  run: (key: string, action: () => Promise<unknown>, fallback: string) => Promise<boolean>;
+  onSignIn: (token: string) => Promise<void>;
+}) {
+  const unclaimed = useQuery({ queryKey: ['unclaimed-owners', league.id], queryFn: () => api.unclaimedOwners(league.id) }).data ?? [];
+  const [name, setName] = useState('');
+  return (
+    <View style={styles.setup}>
+      <Text style={styles.setupTitle}>Set up your team</Text>
+      {unclaimed.length > 0 && (
+        <>
+          <Text style={styles.small}>Played here before? Claim your team — its history, chug debts and keepers come with it.</Text>
           <View style={[styles.row, { flexWrap: 'wrap' }]}>
-            {props.unclaimed.map((o) => (
-              <Pressable key={o.owner_id} onPress={() => props.onClaim(o.owner_id)} disabled={props.busy !== null} style={styles.smallPill}>
-                <Text style={styles.smallPillText}>{props.busy === `claim-${o.owner_id}` ? 'Claiming…' : `This is me: ${o.display_name}`}</Text>
+            {unclaimed.map((o) => (
+              <Pressable
+                key={o.owner_id}
+                disabled={busy !== null}
+                onPress={() =>
+                  void run(
+                    `claim-${o.owner_id}`,
+                    async () => {
+                      const { token } = await api.claimOwner(league.id, o.owner_id);
+                      await onSignIn(token);
+                    },
+                    "Couldn't claim that team — someone may have already claimed it.",
+                  )
+                }
+                style={styles.chip}
+                accessibilityRole="button">
+                <Text style={styles.chipText}>{busy === `claim-${o.owner_id}` ? 'Claiming…' : `I'm ${o.display_name}`}</Text>
               </Pressable>
             ))}
           </View>
-        </View>
+        </>
       )}
+      <View style={styles.row}>
+        <TextInput value={name} onChangeText={setName} placeholder="New team name" placeholderTextColor={Colors.textSecondary} style={[styles.input, styles.flex]} />
+        <Pressable
+          disabled={busy !== null || !name.trim()}
+          onPress={async () => {
+            if (await run(`team-${league.id}`, () => api.createTeam(league.id, name.trim()), "Couldn't create your team")) setName('');
+          }}
+          style={[styles.ghost, (busy !== null || !name.trim()) && styles.dim]}
+          accessibilityRole="button">
+          <Text style={styles.ghostText}>{busy === `team-${league.id}` ? 'Creating…' : 'Create'}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   flex: { flex: 1, minWidth: 0 },
-  gap: { gap: Spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  dim: { opacity: 0.4 },
-  title: { fontSize: 26 },
-  soft: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20 },
-  small: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 17 },
-  body: { color: Colors.text, fontSize: 13 },
-  error: { color: Colors.loss, fontSize: 14 },
+  dim: { opacity: 0.45 },
+  pressed: { opacity: 0.8 },
+  hero: { gap: Spacing.sm, paddingTop: Spacing.sm },
+  list: { gap: Spacing.md },
   notice: { color: '#34d399', fontSize: 14 },
-  sectionTitle: { color: Colors.text, fontSize: 15, fontWeight: '600' },
-  input: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    color: Colors.text,
-    fontSize: 15,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 9,
-  },
-  primary: { borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: 10, minWidth: 80, alignItems: 'center' },
-  primaryText: { color: '#06110a', fontSize: 14, fontWeight: '600' },
-  outline: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: Spacing.lg, paddingVertical: 10, minWidth: 70, alignItems: 'center' },
-  outlineText: { color: Colors.text, fontSize: 14, fontWeight: '500' },
-  block: { gap: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.tile, padding: Spacing.md },
-  blockHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
-  leagueName: { color: Colors.text, fontSize: 15, fontWeight: '600' },
-  rolePill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 8, paddingVertical: 1 },
-  smallPill: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 5 },
-  smallPillText: { color: Colors.text, fontSize: 12, fontWeight: '500' },
-  scanButton: { alignSelf: 'stretch' },
-  qrBlock: { alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
-  qrCard: { backgroundColor: '#ffffff', padding: 16, borderRadius: Radius.md },
-  qrCaption: { textAlign: 'center' },
-  smallPillDark: { color: '#06110a', fontSize: 12, fontWeight: '600' },
-  sub: { gap: 6, borderRadius: 8, backgroundColor: Colors.tileRaised, padding: Spacing.sm },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  activePill: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: 'rgba(57,255,20,0.14)' },
+  activeText: { color: Colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  actions: { flexDirection: 'row', gap: Spacing.sm },
+  action: { flex: 1, height: 42, borderRadius: 12, borderWidth: 1, borderColor: '#2a303a', backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
+  actionPrimary: { borderColor: Colors.accent, backgroundColor: 'rgba(57,255,20,0.1)' },
+  actionText: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+  actionTextPrimary: { color: Colors.accent },
+  setup: { gap: Spacing.sm, padding: Spacing.md, borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(251,191,36,0.35)', backgroundColor: 'rgba(251,191,36,0.06)' },
+  setupTitle: { color: '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  small: { color: '#aab2bf', fontSize: 12, lineHeight: 17 },
+  chip: { borderRadius: Radius.pill, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.surface, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
+  input: { borderRadius: 12, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.surface, color: Colors.text, fontSize: 15, paddingHorizontal: Spacing.md, height: 44 },
+  ghost: { height: 44, minWidth: 80, borderRadius: 12, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
+  ghostText: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+  coOwner: { gap: Spacing.sm, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },
+  coOwnerTitle: { color: Colors.text, fontSize: 15, fontWeight: '700', fontFamily: Fonts.body },
 });
