@@ -9,9 +9,11 @@ import {
   VideoTrack,
   ParticipantTile,
   Chat,
+  StartAudio,
   useMediaDeviceSelect,
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { Track, type Participant, type RemoteParticipant } from "livekit-client";
+import { LIVEKIT_ROOM_OPTIONS, toggleGameShare } from "@/lib/livekitMedia";
 import "@livekit/components-styles";
 import { buildNflTickerItems, getNflScoreboard, type TickerItem } from "@/lib/api";
 import { LiveTicker } from "@/components/LiveTicker";
@@ -58,6 +60,46 @@ function TvScreen() {
   return (
     <div className="relative min-h-0 flex-1 bg-black">
       <VideoTrack trackRef={track} className="h-full w-full object-contain" />
+      {!track.participant.isLocal && <TvVolume participant={track.participant} />}
+    </div>
+  );
+}
+
+/** The game's volume right on the TV — the one thing everyone reaches
+ *  for — so it doesn't take opening the Volume panel. Same setting as
+ *  the panel's "shared video" row: only what YOU hear, nobody else. */
+function TvVolume({ participant }: { participant: Participant }) {
+  const remote = participant as RemoteParticipant;
+  const [volume, setVolume] = useState(() => remote.getVolume(Track.Source.ScreenShareAudio) ?? 1);
+  const [restore, setRestore] = useState(1);
+  function change(next: number) {
+    setVolume(next);
+    remote.setVolume(next, Track.Source.ScreenShareAudio);
+  }
+  return (
+    <div className="absolute right-2 bottom-2 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 backdrop-blur">
+      <button
+        onClick={() => {
+          if (volume > 0) {
+            setRestore(volume);
+            change(0);
+          } else change(restore || 1);
+        }}
+        aria-label={volume > 0 ? "Mute the game for you" : "Unmute the game for you"}
+        className="text-sm"
+      >
+        {volume > 0 ? "🔊" : "🔇"}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.05}
+        value={volume}
+        onChange={(e) => change(Number(e.target.value))}
+        aria-label="Game volume, only for you"
+        className="h-1.5 w-24 accent-[var(--wl-accent)] sm:w-32"
+      />
     </div>
   );
 }
@@ -170,14 +212,9 @@ function ControlsBar({
   async function toggleShare() {
     setShareError(null);
     try {
-      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled, {
-        audio: true,
-        // Hints Chrome to actually offer a system/tab audio source in
-        // its picker — without this some browsers only surface the
-        // video-only path even with audio: true set (same fix as
-        // components/watchparty/WatchPartyRoom.tsx's own share button).
-        systemAudio: "include",
-      });
+      // Broadcast-quality settings (30fps, full game audio) — see
+      // lib/livekitMedia.ts.
+      await toggleGameShare(localParticipant, !isScreenShareEnabled);
     } catch (e) {
       // A cancelled picker is a normal, expected outcome (someone
       // opened the dialog and backed out) — still surfaced, briefly,
@@ -316,6 +353,7 @@ export function LoungeVideoRoom({
         serverUrl={url}
         video
         audio
+        options={LIVEKIT_ROOM_OPTIONS}
         style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative" }}
         onDisconnected={handleDisconnected}
         onError={(err) => setConnectError(err.message || "Couldn't connect to the video call.")}
@@ -387,6 +425,12 @@ export function LoungeVideoRoom({
             reported "no control over video volume" — there was nothing
             for that control to adjust). */}
         <RoomAudioRenderer />
+        {/* iPhone Safari won't play call audio until a tap — shows only
+            when the browser actually blocked it. */}
+        <StartAudio
+          label="Tap to turn on sound"
+          className="absolute top-1/2 left-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white px-5 py-3 text-sm font-bold text-black shadow-lg"
+        />
         <ParticipantVolumePanel open={volumeOpen} onClose={() => setVolumeOpen(false)} />
 
         {mobilePanel === "chat" && (

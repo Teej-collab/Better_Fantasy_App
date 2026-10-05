@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveKitRoom, VideoConference, useLocalParticipant } from "@livekit/components-react";
+import { LIVEKIT_ROOM_OPTIONS, toggleGameShare } from "@/lib/livekitMedia";
 import type { LocalParticipant } from "livekit-client";
 import "@livekit/components-styles";
 import { getWatchPartyToken, type ChatMember, type ChatMessage, type WatchPartyRoom as WatchPartyRoomInfo } from "@/lib/api";
@@ -149,13 +150,9 @@ export function WatchPartyRoom({
     if (!localInfo) return;
     setShareError(null);
     try {
-      await localInfo.localParticipant.setScreenShareEnabled(!localInfo.isScreenShareEnabled, {
-        audio: true,
-        // Hints Chrome to actually offer a system/tab audio source in
-        // its picker — without this some browsers only surface the
-        // video-only path even with audio: true set.
-        systemAudio: "include",
-      });
+      // Broadcast-quality settings (30fps, full game audio) — see
+      // lib/livekitMedia.ts.
+      await toggleGameShare(localInfo.localParticipant, !localInfo.isScreenShareEnabled);
     } catch (e) {
       // A cancelled picker is a normal, expected outcome (someone
       // opened the dialog and backed out) — still surfaced, briefly,
@@ -306,6 +303,7 @@ export function WatchPartyRoom({
           serverUrl={tokenData.url}
           video
           audio
+          options={LIVEKIT_ROOM_OPTIONS}
           data-lk-theme="default"
           style={{ flex: 1, minHeight: 0, position: "relative" }}
           onDisconnected={handleDisconnected}
