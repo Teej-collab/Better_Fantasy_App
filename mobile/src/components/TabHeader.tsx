@@ -11,7 +11,8 @@ import { haptics } from '@/lib/haptics';
 import { useActiveLeagueName, useMe } from '@/lib/queries';
 
 // The bar across the top of every tab (2026-10 navigation pass): your
-// league on the left — tap to switch, join, or start one — and you on
+// league on the left — tap for the league picker (switch, join, or
+// start one) — and you on
 // the right, opening the same account menu as the web's (Settings,
 // Notifications, Bets, Leagues, Commissioner Tools, Admin, Feedback).
 // Replaces the lone ⚙︎ that only Home had, so none of those were more
@@ -34,7 +35,9 @@ export function TabHeader() {
       <Pressable
         onPress={() => {
           haptics.tap();
-          router.push('/leagues');
+          // The league picker everyone sees on launch (new, or in 2+
+          // leagues): your leagues as cards, plus Join and Create.
+          router.push('/start');
         }}
         style={styles.league}
         accessibilityRole="button"

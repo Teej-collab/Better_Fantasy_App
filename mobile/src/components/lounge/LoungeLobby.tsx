@@ -81,7 +81,9 @@ export function LoungeLobby() {
   return (
     <View style={styles.screen}>
       <LoungeTickers tvGame={null} delaySeconds={0} />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 90 }]}>
+      {/* automatic insets keep the end of the list clear of iOS's
+          floating tab bar, which was covering the button below. */}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 }]} contentInsetAdjustmentBehavior="automatic">
         <View style={styles.header}>
           <Text style={styles.title} accessibilityRole="header">
             THE LOUNGE
@@ -135,13 +137,10 @@ export function LoungeLobby() {
             </View>
           );
         })}
-      </ScrollView>
-
-      <View style={[styles.footer, { paddingBottom: 12 }]}>
         <Pressable onPress={() => router.push('/watch-party/new')} style={[styles.cta, { backgroundColor: accent }]} accessibilityRole="button">
           <Text style={styles.ctaText}>Start a watch party</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -209,7 +208,6 @@ const styles = StyleSheet.create({
   gameClock: { color: '#9aa3b2', fontSize: 12 },
   bold: { fontFamily: Fonts.monoBold },
   stakes: { fontSize: 12, marginTop: 2 },
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, backgroundColor: '#0b0d14' },
-  cta: { height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  cta: { height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   ctaText: { color: '#06110a', fontSize: 15, fontWeight: '800' },
 });
