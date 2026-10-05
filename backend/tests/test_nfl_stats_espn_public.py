@@ -644,3 +644,141 @@ def test_points_allowed_excludes_the_opponents_defensive_touchdowns():
     assert "pts_allow_28_34" not in lines["LAR"]
     # DEN's own points allowed (LAR's 26) is untouched.
     assert "pts_allow_18_27" in lines["DEN"]
+
+
+# ---- 2026-10 D/ST audit against ESPN's own fantasy lines, weeks 1-4 ---------
+
+def _two_team_summary(home: tuple[str, str], away: tuple[str, str], plays: list[dict], teams: list[dict] | None = None) -> dict:
+    return {
+        "header": {"competitions": [{"competitors": [
+            {"team": {"id": home[0], "abbreviation": home[1]}, "homeAway": "home", "score": "0"},
+            {"team": {"id": away[0], "abbreviation": away[1]}, "homeAway": "away", "score": "0"},
+        ]}]},
+        "boxscore": {"teams": teams or [], "players": []},
+        "drives": {"previous": [{"plays": plays}]},
+    }
+
+
+def test_fum_rec_credits_the_kicking_team_for_a_kickoff_return_fumble():
+    """The reported miss (KC @ LV week 4, event 401872976): KC recovered
+    LV's kickoff-return fumble, but ESPN tags the play just "Kickoff"
+    with isTurnover=False. ESPN's fantasy line credits KC with it."""
+    summary = _two_team_summary(("13", "LV"), ("12", "KC"), [{
+        "type": {"text": "Kickoff", "abbreviation": "K"},
+        "text": "H.Butker kicks 59 yards from KC 35 to LV 6. D.Young to LV 21 for 15 yards (X.Nwankpa, "
+                "J.Bassa). FUMBLES (J.Bassa), RECOVERED by KC-J.Cochrane at LV 22.",
+        "isTurnover": False,
+        "start": {"team": {"id": "12"}}, "end": {"team": {"id": "12"}},
+    }])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {"KC": 1}
+
+
+def test_fum_rec_ignores_a_returner_recovering_his_own_teams_muff():
+    """NO @ DET week 1: DET muffed a kickoff and DET recovered it."""
+    summary = _two_team_summary(("8", "DET"), ("18", "NO"), [{
+        "type": {"text": "Kickoff", "abbreviation": "K"},
+        "text": "D.Carlson kicks 60 yards from NO 35 to DET 5. T.Kennedy MUFFS catch, recovered by DET-J.Saylors at DET 18.",
+        "isTurnover": False,
+        "start": {"team": {"id": "18"}}, "end": {"team": {"id": "8"}},
+    }])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {}
+
+
+def test_fum_rec_credits_a_muffed_punt_recovered_by_the_punting_team():
+    """CHI @ CAR week 1 — ESPN counts it as CHI's fumble recovery."""
+    summary = _two_team_summary(("29", "CAR"), ("3", "CHI"), [{
+        "type": {"text": "Muffed Punt Recovery (Opponent)"},
+        "text": "T.Taylor punts 48 yards to CAR 22, Center-B.Gardner. Ji.Horn MUFFS catch, RECOVERED by CHI-K.Davis at CAR 28.",
+        "isTurnover": False,
+        "start": {"team": {"id": "3"}}, "end": {"team": {"id": "3"}},
+    }])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {"CHI": 1}
+
+
+def test_fum_rec_reads_a_takeaway_hidden_under_an_own_recovery_tag():
+    """IND @ HOU week 3: HOU recovered a strip-sack, fumbled the return
+    and fell on it again — tagged "Fumble Recovery (Own)". Uses the
+    play text's older code (HST) for Houston."""
+    summary = _two_team_summary(("34", "HOU"), ("11", "IND"), [{
+        "type": {"text": "Fumble Recovery (Own)"},
+        "text": "D.Jones sacked at IND 39 for -8 yards (W.Anderson). FUMBLES (W.Anderson), touched at IND 44, "
+                "RECOVERED by HST-W.Anderson at IND 42. W.Anderson to IND 40 for 2 yards (M.Alie-Cox). "
+                "FUMBLES (M.Alie-Cox), recovered by HST-K.Lassiter at IND 40.",
+        "isTurnover": False,
+        "start": {"team": {"id": "11"}}, "end": {"team": {"id": "34"}},
+    }])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {"HOU": 1}
+
+
+def test_fum_rec_skips_a_no_play_and_counts_only_the_final_replay_ruling():
+    summary = _two_team_summary(("7", "DEN"), ("30", "JAX"), [
+        {   # JAX @ DEN week 2 — wiped out by penalty
+            "type": {"text": "Sack Opp Fumble Recovery", "abbreviation": "SFOP"},
+            "text": "T.Lawrence sacked at JAX 34 for -9 yards (N.Bonitto). FUMBLES (N.Bonitto), RECOVERED by "
+                    "DEN-A.Singleton at JAX 30.PENALTY on DEN-R.Moss, Illegal Contact, 5 yards, enforced at JAX 43 - No Play.",
+            "isTurnover": False,
+            "start": {"team": {"id": "30"}}, "end": {"team": {"id": "30"}},
+        },
+        {   # shaped on NO @ BAL week 2 — replay gave the ball back
+            "type": {"text": "Kickoff", "abbreviation": "K"},
+            "text": "W.Lutz kicks 65 yards from DEN 35 to JAX 0. P.Washington to JAX 33 for 33 yards. FUMBLES, "
+                    "RECOVERED by DEN-J.Smith at JAX 33.The Replay Official reviewed the runner was not down by contact "
+                    "ruling, and the play was REVERSED.W.Lutz kicks 65 yards from DEN 35 to JAX 0. P.Washington to JAX 32 for 32 yards.",
+            "isTurnover": False,
+            "start": {"team": {"id": "7"}}, "end": {"team": {"id": "30"}},
+        },
+    ])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {}
+
+
+def test_fum_rec_does_not_count_falling_on_a_blocked_kick():
+    """SF @ DEN week 4: DEN blocked a FG and recovered the loose ball —
+    a block, not a fumble recovery (ESPN credited no recovery)."""
+    summary = _two_team_summary(("7", "DEN"), ("25", "SF"), [{
+        "type": {"text": "Blocked Field Goal", "abbreviation": "BFG"},
+        "text": "E.Pineiro 54 yard field goal is BLOCKED (Z.Allen), Center-J.Weeks, Holder-C.Waitman, RECOVERED by "
+                "DEN-T.Hufanga at DEN 37. T.Hufanga to DEN 42 for 5 yards (L.Farrell). FUMBLES (L.Farrell), "
+                "recovered by DEN-D.Key at DEN 42.",
+        "isTurnover": True,
+        "start": {"team": {"id": "25"}}, "end": {"team": {"id": "7"}},
+        "teamParticipants": [{"id": "7", "type": "defense"}, {"id": "25", "type": "offense"}],
+    }])
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {}
+    assert espn_public._parse_def_block_by_team(summary) == {"DEN": 1}
+
+
+def test_def_block_credits_blocked_punts_and_blocked_pats():
+    summary = _two_team_summary(("22", "ARI"), ("24", "LAC"), [
+        {   # LAC @ ARI week 1
+            "type": {"text": "Blocked Punt", "abbreviation": "BP"},
+            "text": "J.Scott punt is BLOCKED by S.Fehoko, Center-J.Harris, recovered by LAC-A.Ingold at LAC 3.",
+            "isTurnover": True,
+            "start": {"team": {"id": "24"}}, "end": {"team": {"id": "22"}},
+            "teamParticipants": [{"id": "22", "type": "defense"}, {"id": "24", "type": "offense"}],
+        },
+        {   # shaped on CHI @ CAR week 1 — PAT blocked on the TD play
+            "type": {"text": "Passing Touchdown", "abbreviation": "TD"},
+            "text": "J.Herbert pass short left to L.McConkey for 8 yards, TOUCHDOWN. C.Dicker extra point is Blocked "
+                    "(D.Robinson), Center-J.Harris, Holder-J.Scott.",
+            "isTurnover": False,
+            "start": {"team": {"id": "24"}}, "end": {"team": {"id": "24"}},
+        },
+    ])
+    assert espn_public._parse_def_block_by_team(summary) == {"ARI": 2}
+    assert espn_public._parse_def_fum_rec_by_team(summary) == {}
+
+
+def test_def_sack_uses_the_opponents_team_sacks_taken():
+    """NE @ JAX week 3: Maye was sacked 3 times, one with no defender
+    named, so JAX's players' sacks only added up to 2. ESPN's D/ST
+    line has 3 — the opponent's team-level sacksYardsLost."""
+    summary = _two_team_summary(("30", "JAX"), ("17", "NE"), [], teams=[
+        {"team": {"abbreviation": "JAX"}, "statistics": [{"name": "sacksYardsLost", "displayValue": "1-4"}]},
+        {"team": {"abbreviation": "NE"}, "statistics": [{"name": "sacksYardsLost", "displayValue": "3-11"}]},
+    ])
+    summary["boxscore"]["players"] = [{"team": {"abbreviation": "JAX"}, "statistics": [
+        {"name": "defensive", "keys": ["sacks"], "athletes": [{"athlete": {"id": "1"}, "stats": ["2"]}]},
+    ]}]
+    stat_lines = espn_public.parse_team_dst_stats(summary)
+    assert stat_lines["JAX"]["def_sack"] == 3
+    assert stat_lines["NE"]["def_sack"] == 1

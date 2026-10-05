@@ -300,27 +300,33 @@ def _parse_def_block_by_team(data: dict) -> dict[str, int]:
     `type == "offense"` (id "33", Baltimore — the team that got
     blocked); the defense entry is what this credits.
 
-    Only covers a blocked FIELD GOAL (type.abbreviation == "BFG") —
-    this league's own scoring-rules comment describes def_block as
-    "blocked punt/PAT/FG", but a blocked punt or blocked PAT wasn't
-    available in any real game to confirm ESPN's play-type tag for
-    either against (unlike BFG, verified live) — deliberately not
-    guessed at, same "safer to undercount than guess wrong" rule the
-    rest of this file already follows. A real blocked punt/PAT should
-    surface as an undercount here, not a miscredit, until whoever hits
-    one confirms the real type tag and this gets extended the same way."""
+    Blocked punts and blocked PATs count too (2026-10 audit against
+    ESPN's own fantasy D/ST lines, weeks 1-4): a blocked punt is tagged
+    "Blocked Punt" (abbreviation BP, ARI over LAC, week 1 — the same
+    defense/offense teamParticipants shape as BFG), and ESPN credits
+    the blocking D/ST for it. A blocked PAT has no play of its own — it
+    rides on the touchdown play's text ("extra point is Blocked (D.
+    Odeyingbo)", CHI/PHI week 1, LV week 3) — so it's credited to the
+    team that did NOT score, i.e. not play.end.team. All four matched
+    ESPN's blocked-kick stat exactly."""
     team_abbr_by_id = _team_abbr_by_id(data)
 
     counts: dict[str, int] = {}
     for drive in data.get("drives", {}).get("previous", []):
         for play in drive.get("plays", []):
-            if play.get("type", {}).get("abbreviation") != "BFG":
+            text = _effective_play_text(play)
+            if _is_no_play(text):
                 continue
-            defense_team_id = next(
-                (p.get("id") for p in play.get("teamParticipants", []) if p.get("type") == "defense"),
-                None,
-            )
-            abbr = team_abbr_by_id.get(str(defense_team_id)) if defense_team_id else None
+            abbr = None
+            if play.get("type", {}).get("abbreviation") in ("BFG", "BP"):
+                defense_team_id = next(
+                    (p.get("id") for p in play.get("teamParticipants", []) if p.get("type") == "defense"),
+                    None,
+                )
+                abbr = team_abbr_by_id.get(str(defense_team_id)) if defense_team_id else None
+            elif _BLOCKED_PAT_RE.search(text):
+                scoring_team = team_abbr_by_id.get(str(play.get("end", {}).get("team", {}).get("id")))
+                abbr = _other_team(scoring_team, team_abbr_by_id)
             if abbr:
                 counts[abbr] = counts.get(abbr, 0) + 1
 
@@ -334,11 +340,140 @@ def _parse_def_block_by_team(data: dict) -> dict[str, int]:
 # Wonnum recovered) is tagged "Sack Opp Fumble Recovery" (abbreviation
 # SFOP, isTurnover=True), so Detroit's D/ST was 2 points short. Only
 # tags seen in a real game belong here — see this file's "safer to
-# undercount than guess" rule.
+# undercount than guess" rule. Now only the fallback for a play whose
+# text names no recovering team (see _opponent_recoveries_in_play).
 _OPPONENT_FUMBLE_RECOVERY_TYPES = frozenset({
     "Fumble Recovery (Opponent)",
     "Sack Opp Fumble Recovery",
 })
+
+# Play text names teams by ESPN's older codes in a few places — every
+# alias seen across the 2026 season's real play-by-play (weeks 1-4).
+# An abbreviation that's neither a header code nor in here skips the
+# play rather than guessing which team it means.
+_PLAY_TEXT_TEAM_ALIASES = {"ARZ": "ARI", "BLT": "BAL", "CLV": "CLE", "HST": "HOU", "LA": "LAR", "WAS": "WSH"}
+
+_RECOVERED_BY_RE = re.compile(r"recovered by ([A-Z]{2,3})\b", re.IGNORECASE)
+_INTERCEPTED_RE = re.compile(r"INTERCEPTED by", re.IGNORECASE)
+_KICKED_RE = re.compile(r"\b(?:kicks|punts) -?\d+ yards?", re.IGNORECASE)
+_BLOCKED_KICK_RE = re.compile(r"\bis BLOCKED\b", re.IGNORECASE)
+_BLOCKED_PAT_RE = re.compile(r"extra point is blocked", re.IGNORECASE)
+
+
+def _effective_play_text(play: dict) -> str:
+    """The play as it finally stood. A replay reversal keeps the
+    overturned description and appends the corrected one after "...the
+    play was REVERSED." (NO @ BAL week 2: a kickoff fumble "RECOVERED
+    by NO" that replay gave back to Baltimore) — only the part after
+    the last reversal happened."""
+    text = play.get("text", "") or ""
+    marker = text.upper().rfind("REVERSED.")
+    return text[marker + len("REVERSED."):] if marker != -1 else text
+
+
+def _is_no_play(text: str) -> bool:
+    """A penalty that wipes out the whole play (JAX @ DEN week 2: a
+    strip-sack "RECOVERED by DEN" with "Illegal Contact ... - No Play")
+    — nothing in it counts."""
+    return "no play" in text.lower()
+
+
+def _other_team(abbr: str | None, team_abbr_by_id: dict[str, str]) -> str | None:
+    if abbr is None:
+        return None
+    others = [a for a in team_abbr_by_id.values() if a != abbr]
+    return others[0] if len(others) == 1 else None
+
+
+def _opponent_recoveries_in_play(play: dict, team_abbr_by_id: dict[str, str]) -> list[str]:
+    """Every team that recovered a fumble the OTHER team lost on this
+    play, in order — the real takeaways, which is what ESPN's D/ST
+    "fumbles recovered" counts.
+
+    ESPN's play-type tag alone can't answer this. The 2026-10 audit
+    against ESPN's own fantasy D/ST lines (weeks 1-4) found real
+    takeaways under tags that say nothing about one: a kickoff return
+    fumbled and recovered by the kicking team is tagged just "Kickoff"
+    (KC @ LV week 4, KC's Cochrane recovering D.Young's fumble — the
+    reported miss; NYJ, CAR, NO, NYG the same way), a muffed punt the
+    punting team recovers is "Muffed Punt Recovery (Opponent)" (CHI,
+    PIT, ARI, SEA — ESPN counts those too), and a sack-fumble the
+    defense recovered and then fumbled back to itself is tagged
+    "Fumble Recovery (Own)" (HOU vs IND week 3). So this walks the play
+    text instead, tracking who holds the ball: the offense at the
+    snap, the receiving team once the ball is kicked or punted, the
+    defense after an interception, and whoever last recovered it. Each
+    "recovered by X" where X isn't holding the ball is a takeaway.
+
+    A blocked kick's loose ball isn't a fumble — whoever falls on it
+    just takes possession, with no recovery credited (a blocked FG
+    recovered by the defense was never a fumble recovery in ESPN's
+    line either). A play wiped out by penalty counts for nothing, and a
+    replay reversal counts only as finally ruled.
+
+    The text names no recovering team on a handful of plays ("Fumble
+    Devin Bush 0 Yd Fumble Recovery", CHI @ CAR week 1); those fall back
+    to the play-type tag, crediting the team that didn't start with
+    the ball, same as before this walker existed."""
+    text = _effective_play_text(play)
+    if _is_no_play(text):
+        return []
+
+    known = set(team_abbr_by_id.values())
+
+    def resolve(raw: str) -> str | None:
+        raw = raw.upper()
+        abbr = raw if raw in known else _PLAY_TEXT_TEAM_ALIASES.get(raw)
+        return abbr if abbr in known else None
+
+    start_abbr = team_abbr_by_id.get(str(play.get("start", {}).get("team", {}).get("id")))
+    end_abbr = team_abbr_by_id.get(str(play.get("end", {}).get("team", {}).get("id")))
+
+    events: list[tuple[int, str, str | None]] = []
+    for m in _RECOVERED_BY_RE.finditer(text):
+        events.append((m.start(), "recover", m.group(1)))
+    for m in _INTERCEPTED_RE.finditer(text):
+        events.append((m.start(), "intercept", None))
+    for m in _KICKED_RE.finditer(text):
+        events.append((m.start(), "kick", None))
+    for m in _BLOCKED_KICK_RE.finditer(text):
+        events.append((m.start(), "blocked", None))
+    events.sort()
+
+    if not any(kind == "recover" for _, kind, _ in events):
+        if play.get("type", {}).get("text") in _OPPONENT_FUMBLE_RECOVERY_TYPES:
+            recoverer = end_abbr if end_abbr and end_abbr != start_abbr else _other_team(start_abbr, team_abbr_by_id)
+            return [recoverer] if recoverer else []
+        return []
+
+    if start_abbr is None:
+        # No way to tell who held the ball — only a tag that already
+        # says "opponent recovery" is safe to credit, to the team in
+        # possession after it.
+        if play.get("type", {}).get("text") in _OPPONENT_FUMBLE_RECOVERY_TYPES and end_abbr:
+            return [end_abbr]
+        return []
+
+    holder = start_abbr
+    loose_kick = False
+    recoveries: list[str] = []
+    for _, kind, raw in events:
+        if kind in ("kick", "intercept"):
+            holder = _other_team(holder, team_abbr_by_id)
+            if holder is None:
+                return []
+        elif kind == "blocked":
+            loose_kick = True
+        else:
+            team = resolve(raw)
+            if team is None:
+                return []  # unrecognised team code — skip rather than guess
+            if loose_kick:
+                loose_kick = False
+            elif team != holder:
+                recoveries.append(team)
+            holder = team
+    return recoveries
 
 
 def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
@@ -348,16 +483,10 @@ def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     returner's own teammate falling on a muffed return, or a QB falling
     on his own bad snap), which isn't a defensive stat at all.
     boxscore.players[]'s "fumblesRecovered" total (what _TEAM_DST_STAT_MAP
-    used to source this from) can't tell the two apart. ESPN's own
-    play-by-play can: confirmed against a real 2026-09-10 incident (LAR's
-    kickoff-return fumble, recovered by LAR themselves, is tagged just
-    "Kickoff" with isTurnover=False; SF's real recovery of a Stafford
-    fumble later the same game is tagged
-    type.text == "Fumble Recovery (Opponent)" with isTurnover=True) —
-    that type text is the one reliable signal ESPN gives for "this team
-    recovered someone ELSE's fumble," so that's what this reads instead.
-    Credited to play.end.team.id, the team left in possession after the
-    play — i.e. the team that recovered it.
+    used to source this from) can't tell the two apart (real 2026-09-10
+    incident: LAR recovering its own kickoff-return fumble was credited
+    as a takeaway). See _opponent_recoveries_in_play for how each play
+    is read.
 
     Same "safer to skip than guess" rule as _parse_fg_yards_by_player:
     a live/in-progress game's summary can lack a `drives` key entirely,
@@ -368,14 +497,32 @@ def _parse_def_fum_rec_by_team(data: dict) -> dict[str, int]:
     counts: dict[str, int] = {}
     for drive in data.get("drives", {}).get("previous", []):
         for play in drive.get("plays", []):
-            if play.get("type", {}).get("text") not in _OPPONENT_FUMBLE_RECOVERY_TYPES:
-                continue
-            recovering_team_id = play.get("end", {}).get("team", {}).get("id")
-            abbr = team_abbr_by_id.get(str(recovering_team_id)) if recovering_team_id else None
-            if abbr:
+            for abbr in _opponent_recoveries_in_play(play, team_abbr_by_id):
                 counts[abbr] = counts.get(abbr, 0) + 1
 
     return counts
+
+
+def _sacks_taken_by_team(data: dict) -> dict[str, int]:
+    """{team_abbreviation: times this team's QB was sacked}, from the
+    team box score's "sacksYardsLost" ("4-16"). A D/ST's sacks are its
+    opponent's number here, not the sum of its players' individual
+    sacks: a sack the play-by-play credits to no defender ("D.Maye
+    sacked at JAX 42 for -7 yards. FUMBLES") never reaches any player's
+    line, so the player sum came up one short for KC week 1 and JAX
+    week 3, where this matched ESPN's D/ST sack count on every team
+    week of 2026 weeks 1-4."""
+    taken: dict[str, int] = {}
+    for team_entry in data.get("boxscore", {}).get("teams", []):
+        abbr = team_entry.get("team", {}).get("abbreviation")
+        stat = next((s for s in team_entry.get("statistics", []) if s.get("name") == "sacksYardsLost"), None)
+        if not abbr or not stat:
+            continue
+        try:
+            taken[abbr] = int(str(stat.get("displayValue", "")).split("-")[0])
+        except ValueError:
+            pass
+    return taken
 
 
 def _parse_defensive_tds_by_team(data: dict) -> dict[str, int]:
@@ -646,6 +793,12 @@ def parse_team_dst_stats(data: dict) -> dict[str, dict]:
                         stat_lines[abbr][mapped] = stat_lines[abbr].get(mapped, 0) + float(raw_value)
                     except ValueError:
                         pass
+
+    sacks_taken = _sacks_taken_by_team(data)
+    for abbr in list(stat_lines):
+        opponents = [a for a in sacks_taken if a != abbr]
+        if abbr in sacks_taken and len(opponents) == 1:
+            stat_lines[abbr]["def_sack"] = float(sacks_taken[opponents[0]])
 
     for abbr, count in _parse_def_fum_rec_by_team(data).items():
         stat_lines.setdefault(abbr, {})

@@ -165,3 +165,33 @@ around:
 Still not built: 2pt conversions and safeties (`def_safety`) — see the
 "Still NOT captured" note above; `def_block` (also a D/ST-specific
 category in this league's rules) is no longer in this gap, see above.
+
+## D/ST audit against ESPN's fantasy lines — weeks 1-4 (2026-10)
+
+Reported: KC D/ST week 4 scored -1 here, +1 on ESPN. Every team-week of
+weeks 1-4 (126) was then checked against ESPN's own fantasy D/ST stat
+lines (public `kona_player_info` view, stat ids 95 INT, 96 FR, 97
+blocked kick, 99 sacks, 120 points allowed, 127 yards allowed). Points
+and yards allowed already matched everywhere. Fixed:
+
+- **Fumble recoveries** are read from the play text now, not the
+  play-type tag (`_opponent_recoveries_in_play`). Real takeaways were
+  hiding under tags that don't say so: kickoff-return fumbles
+  recovered by the kicking team ("Kickoff" — the KC miss), muffed punts
+  recovered by the punting team ("Muffed Punt Recovery (Opponent)",
+  which ESPN counts), and a recover-then-fumble-back tagged "Fumble
+  Recovery (Own)". Penalty "No Play"s now count for nothing (JAX had
+  been given one), and replay reversals count only as finally ruled.
+  The old "summed as-is, a small possible overcount" simplification
+  above no longer applies.
+- **`def_block`** now also covers blocked punts (type `BP`) and
+  blocked PATs (in the TD play's text), each confirmed against a real
+  ESPN-credited block — this supersedes the "ONLY blocked field goals"
+  note above.
+- **Sacks** come from the opponent's team-level `sacksYardsLost`, not
+  the sum of individual players' sacks, which misses a sack credited to
+  no defender.
+
+Result: 125/126 team-weeks match ESPN on every D/ST stat. The one left
+(CAR week 2, sacks 3 here vs 2 on ESPN) is ESPN dropping a no-defender
+sack it counts in other games; the NFL team stat says 3.
