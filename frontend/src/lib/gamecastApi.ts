@@ -36,6 +36,15 @@ export type GamecastPlay = {
   team_abbr: string | null;
   down: number | null;
   distance: number | null;
+  // Yards to the offense's goal at the snap. start_/end_team_abbr are who
+  // had the ball at the snap and at the whistle, and end_yard_line is the
+  // end spot as yards to THAT team's goal — the field (lib/fieldGeometry.ts)
+  // uses them to draw kicks and turnovers the right way. Optional: only
+  // the ESPN provider fills them in.
+  yard_line?: number | null;
+  start_team_abbr?: string | null;
+  end_team_abbr?: string | null;
+  end_yard_line?: number | null;
   description: string;
   play_type: string;
   yards_gained: number | null;

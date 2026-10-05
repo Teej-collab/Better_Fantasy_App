@@ -67,6 +67,12 @@ class Play(BaseModel):
     down: int | None = None
     distance: int | None = None
     yard_line: int | None = None  # yards to goal at the START of this play
+    # Who had the ball at the snap and at the whistle, and the end spot as
+    # yards to THAT team's goal — lets the field draw a punt, a pick, or a
+    # kickoff the right way even when possession flips mid-play.
+    start_team_abbr: str | None = None
+    end_team_abbr: str | None = None
+    end_yard_line: int | None = None
     description: str
     play_type: str  # "pass" | "rush" | "punt" | "field_goal" | "kickoff" | "penalty" | "timeout" | "extra_point"
     yards_gained: int | None = None

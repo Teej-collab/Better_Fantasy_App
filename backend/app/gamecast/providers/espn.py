@@ -229,6 +229,11 @@ class ESPNNFLDataProvider(NFLDataProvider):
         home, away = pair
         home_abbr = home.get("team", {}).get("abbreviation", "")
         away_abbr = away.get("team", {}).get("abbreviation", "")
+        abbr_by_team_id = {
+            str(c.get("team", {}).get("id")): c.get("team", {}).get("abbreviation")
+            for c in (home, away)
+            if c.get("team", {}).get("id")
+        }
 
         status = competition.get("status", {})
         status_type = status.get("type", {})
@@ -277,6 +282,9 @@ class ESPNNFLDataProvider(NFLDataProvider):
                     down=start.get("down"),
                     distance=start.get("distance"),
                     yard_line=start.get("yardsToEndzone"),
+                    start_team_abbr=abbr_by_team_id.get(str((start.get("team") or {}).get("id"))),
+                    end_team_abbr=abbr_by_team_id.get(str((end.get("team") or {}).get("id"))),
+                    end_yard_line=end.get("yardsToEndzone"),
                     description=p.get("text") or "",
                     play_type=play_type,
                     yards_gained=p.get("statYardage"),
