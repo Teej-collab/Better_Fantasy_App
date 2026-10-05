@@ -31,7 +31,30 @@ export default function RecapScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
       <Stack.Screen options={{ title: `Week ${week} Recap` }} />
-      <Text style={[styles.kicker, { color }]}>📰 Week {week} Recap</Text>
+      <View style={styles.weekRow}>
+        <Text style={[styles.kicker, { color }]}>📰 Week {week} Recap</Text>
+        {/* Step through the season's recaps (2026-10 navigation pass). */}
+        <View style={styles.weekNav}>
+          {week > 1 && (
+            <Pressable
+              onPress={() => router.setParams({ week: String(week - 1) })}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Week ${week - 1} recap`}>
+              <Text style={[styles.link, { color }]}>← Wk {week - 1}</Text>
+            </Pressable>
+          )}
+          {week < 17 && (
+            <Pressable
+              onPress={() => router.setParams({ week: String(week + 1) })}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Week ${week + 1} recap`}>
+              <Text style={[styles.link, { color }]}>Wk {week + 1} →</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
       {q.isPending ? (
         <LoadingState />
       ) : !recap ? (
@@ -67,6 +90,8 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
   gap: { gap: Spacing.md },
   kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  weekRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  weekNav: { flexDirection: 'row', gap: Spacing.lg },
   heading: { color: '#eceef1', fontSize: 18, fontWeight: '600' },
   soft: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20 },
   link: { fontSize: 14, fontWeight: '500' },

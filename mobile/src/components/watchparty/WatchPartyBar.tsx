@@ -1,9 +1,10 @@
 import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
+import { enterPartyRoom } from '@/lib/loungeSession';
 import { useMe, useWatchPartyRooms } from '@/lib/queries';
 import type { WatchPartyRoom } from '@/lib/types';
 
@@ -13,7 +14,7 @@ export function LiveDot() {
 }
 
 function openRoom(room: WatchPartyRoom) {
-  router.push({ pathname: '/watch-party/[id]', params: { id: String(room.id) } });
+  enterPartyRoom(room).catch((e) => Alert.alert("Couldn't join the room", e instanceof Error ? e.message : 'Try again in a moment.'));
 }
 
 // Port of the web's WatchPartyBar (above the conversation list in
@@ -30,7 +31,7 @@ export function WatchPartyBar() {
     <View style={styles.bar}>
       {/* The League Lounge opens the Lounge lobby: who's watching what,
           and the games that matter to you right now. */}
-      <Pressable onPress={() => router.push('/lounge-lobby' as Href)} style={styles.openRoom}>
+      <Pressable onPress={() => router.navigate('/lounge' as Href)} style={styles.openRoom}>
         <View style={styles.icon}>
           <Text style={styles.iconText}>🎥</Text>
         </View>
@@ -73,7 +74,7 @@ export function WatchPartyBar() {
       <Pressable onPress={() => router.push('/watch-party/new')} style={styles.link}>
         <Text style={[styles.linkText, { color: accent }]}>+ Start a Party</Text>
       </Pressable>
-      <Pressable onPress={() => router.push('/lounge')} style={styles.link}>
+      <Pressable onPress={() => router.push('/lounge-private' as Href)} style={styles.link}>
         <Text style={[styles.linkText, styles.secondaryLink]}>+ Start a Lounge (no league needed)</Text>
       </Pressable>
     </View>

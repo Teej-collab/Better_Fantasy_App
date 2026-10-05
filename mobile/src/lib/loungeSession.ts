@@ -1,4 +1,7 @@
+import { router } from 'expo-router';
 import { NativeModules } from 'react-native';
+
+import { api } from '@/lib/api';
 
 // The native Lounge (components/lounge/LeagueLoungeRoom.tsx) needs
 // LiveKit's WebRTC module, which only exists in our own Xcode builds —
@@ -44,4 +47,23 @@ export function loungeSlugFrom(input: string): string | null {
   const match = trimmed.match(/\/lounge\/([A-Za-z0-9_-]+)/);
   if (match) return match[1];
   return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Into a Watch Party room (League Lounge included): the native room in
+ * our own builds, the room's page (which opens the web call) in Expo Go.
+ * `gameId` first puts that game on the room's TV (the lobby's "Start a
+ * room"). Shared by the Lounge lobby and Chat's Watch Party bar so both
+ * go straight in the same way.
+ */
+export async function enterPartyRoom(room: { id: number; kind: 'open' | 'private'; name: string }, gameId?: string): Promise<void> {
+  if (gameId) await api.setRoomTv(room.id, { game_id: gameId }).catch(() => undefined);
+  if (!nativeLoungeAvailable()) {
+    router.push({ pathname: '/watch-party/[id]', params: { id: String(room.id) } });
+    return;
+  }
+  const r = await api.watchPartyToken(room.id);
+  const slug = partySlug(room.id);
+  setLoungeTicket({ token: r.token, url: r.url, roomName: room.kind === 'open' ? 'League Lounge' : room.name, slug });
+  router.push(`/lounge-room/${slug}` as never);
 }

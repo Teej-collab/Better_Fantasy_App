@@ -112,7 +112,7 @@ export function setUpReminderHandling(): () => void {
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
   const open = (url: unknown) => {
-    if (typeof url === 'string' && url.startsWith('/')) router.push(url as Href);
+    if (typeof url === 'string' && url.startsWith('/')) router.push(toNativePath(url) as Href);
   };
   const initial = n.getLastNotificationResponse();
   if (initial) {
@@ -122,4 +122,21 @@ export function setUpReminderHandling(): () => void {
   }
   const sub = n.addNotificationResponseReceivedListener((r) => open(r.notification.request.content.data?.url));
   return () => sub.remove();
+}
+
+/**
+ * Pushes from the backend carry the web's paths (app/notifications/
+ * formatter.py). Most match a native screen as is; these four don't, so a
+ * tap would land on a list instead of the thing the push was about.
+ */
+export function toNativePath(url: string): string {
+  let m = url.match(/^\/chat\?conversation=(\d+)/);
+  if (m) return `/chat/${m[1]}`;
+  m = url.match(/^\/matchups\/(\d+)/);
+  if (m) return `/matchup/${m[1]}`;
+  m = url.match(/^\/seasons\/(\d+)\/weeks\/(\d+)\/recap/);
+  if (m) return `/recap/${m[1]}/${m[2]}`;
+  m = url.match(/^\/admin\/errors\?fp=([^&]+)/);
+  if (m) return `/admin/errors/${m[1]}`;
+  return url;
 }

@@ -166,9 +166,6 @@ function HomeScreenContent() {
               <Text style={styles.gameDayText}>Game Day</Text>
             </View>
           )}
-          <Pressable onPress={() => router.push('/settings')} hitSlop={10} style={styles.settingsButton} accessibilityLabel="Settings">
-            <Text style={styles.settingsIcon}>⚙︎</Text>
-          </Pressable>
         </View>
         <View style={styles.tickers}>
           <LiveTicker items={tickerItems} fast={isGameDay} />
@@ -240,8 +237,6 @@ const styles = StyleSheet.create({
   gameDay: { backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   gameDayText: { color: '#ef4444', fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   tickers: { marginTop: Spacing.sm, gap: 6 },
-  settingsButton: { marginLeft: 'auto' },
-  settingsIcon: { color: 'rgba(255,255,255,0.6)', fontSize: 20 },
   emptyHero: { gap: Spacing.sm },
   emptyTitle: { fontSize: 20 },
   emptyText: { color: Colors.textSecondary, fontSize: 14 },

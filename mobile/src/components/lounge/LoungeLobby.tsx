@@ -1,15 +1,13 @@
-import { router, Stack, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
-import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
-import { nativeLoungeAvailable, partySlug, setLoungeTicket } from '@/lib/loungeSession';
+import { enterPartyRoom } from '@/lib/loungeSession';
 import { lastName } from '@/lib/loungeSweat';
 import { queryClient, useLoungeLobby, useWatchPartyRooms } from '@/lib/queries';
 import type { LoungeLobbyGame, WatchPartyRoom } from '@/lib/types';
@@ -42,11 +40,10 @@ function stakesLine(g: LoungeLobbyGame): { text: string; tone: 'mine' | 'theirs'
   return { text: parts.join(' · '), tone: g.my_players.length ? 'mine' : 'theirs' };
 }
 
-// The Lounge lobby (mockup 4): who's watching what, the games that
-// matter to you right now, and one tap to start a room for one.
-export default function LoungeLobbyScreen() {
+// The Lounge lobby (mockup 4) — the Lounge tab: who's watching what, the
+// games that matter to you right now, and one tap to start a room for one.
+export function LoungeLobby() {
   const accent = useAppearance().accent;
-  const insets = useSafeAreaInsets();
   const rooms = useWatchPartyRooms().data;
   const lobby = useLoungeLobby().data;
   const [joining, setJoining] = useState<number | null>(null);
@@ -61,15 +58,7 @@ export default function LoungeLobbyScreen() {
     if (joining !== null) return;
     setJoining(room.id);
     try {
-      if (gameId) await api.setRoomTv(room.id, { game_id: gameId });
-      if (!nativeLoungeAvailable()) {
-        router.push({ pathname: '/watch-party/[id]', params: { id: String(room.id) } });
-        return;
-      }
-      const r = await api.watchPartyToken(room.id);
-      const slug = partySlug(room.id);
-      setLoungeTicket({ token: r.token, url: r.url, roomName: room.kind === 'open' ? 'League Lounge' : room.name, slug });
-      router.push(`/lounge-room/${slug}` as Href);
+      await enterPartyRoom(room, gameId);
     } catch (e) {
       Alert.alert("Couldn't join the room", e instanceof Error ? e.message : 'Try again in a moment.');
     } finally {
@@ -90,16 +79,10 @@ export default function LoungeLobbyScreen() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <Stack.Screen options={{ headerShown: false }} />
+    <View style={styles.screen}>
       <LoungeTickers tvGame={null} delaySeconds={0} />
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 90 }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 90 }]}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={10} accessibilityRole="button" accessibilityLabel="Back" style={styles.back}>
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-              <Path d="M15 18l-6-6 6-6" />
-            </Svg>
-          </Pressable>
           <Text style={styles.title} accessibilityRole="header">
             THE LOUNGE
           </Text>
@@ -154,7 +137,7 @@ export default function LoungeLobbyScreen() {
         })}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+      <View style={[styles.footer, { paddingBottom: 12 }]}>
         <Pressable onPress={() => router.push('/watch-party/new')} style={[styles.cta, { backgroundColor: accent }]} accessibilityRole="button">
           <Text style={styles.ctaText}>Start a watch party</Text>
         </Pressable>
@@ -196,10 +179,9 @@ function LoungeCard({ room, game, accent, busy, onPress }: { room: WatchPartyRoo
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0b0d14' },
+  screen: { flex: 1 },
   content: { paddingHorizontal: 16 },
   header: { paddingTop: 12, paddingBottom: 8, gap: 4 },
-  back: { width: 32, height: 32, marginBottom: 4, justifyContent: 'center' },
   title: { color: '#f3f4f6', fontFamily: Fonts.displayBold, fontSize: 30, letterSpacing: 0.5 },
   tagline: { color: '#9aa3b2', fontSize: 13 },
   section: { color: '#9aa3b2', fontFamily: Fonts.display, fontSize: 11, letterSpacing: 1.2, marginTop: 8, marginBottom: 10 },

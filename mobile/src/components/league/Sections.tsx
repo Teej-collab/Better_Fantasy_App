@@ -588,7 +588,18 @@ export function RivalriesSection() {
 
 export function HistorySection({ latestSeason }: { latestSeason: number | null }) {
   const accent = useAppearance().accent;
+  const currentWeek = useSeasonWeek().data?.week ?? null;
+  // The last finished week's recap — each recap page steps to the others.
+  const recapWeek = currentWeek !== null ? Math.max(1, currentWeek - 1) : null;
   const tiles = [
+    {
+      title: 'Weekly Recaps',
+      description: "Every week's story of the league, written up after the Tuesday flip",
+      onPress: () =>
+        latestSeason !== null &&
+        recapWeek !== null &&
+        router.push({ pathname: '/recap/[season]/[week]', params: { season: String(latestSeason), week: String(recapWeek) } }),
+    },
     {
       title: 'Awards',
       description: "Every season's champion and awards, plus the all-time record book and leaderboards",

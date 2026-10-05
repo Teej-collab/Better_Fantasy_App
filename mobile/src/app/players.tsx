@@ -1,10 +1,9 @@
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
-import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
@@ -67,8 +66,7 @@ function PlayersScreenContent() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
         ListHeaderComponent={
           <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>Players</Text>
+            <View style={[styles.titleRow, { justifyContent: 'flex-end' }]}>
               <Pressable onPress={() => router.push('/waivers')} hitSlop={12}>
                 <Text style={styles.link}>My claims</Text>
               </Pressable>
@@ -299,10 +297,13 @@ const styles = StyleSheet.create({
   viewName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
 });
 
+// Free Agents — reached from My Team's sub-nav (it was a tab of its own
+// until the 2026-10 navigation pass gave that slot to the Lounge).
 export default function PlayersScreen() {
   return (
-    <TabFrame ticker>
+    <>
+      <Stack.Screen options={{ title: 'Free Agents', headerBackTitle: 'Team' }} />
       <PlayersScreenContent />
-    </TabFrame>
+    </>
   );
 }

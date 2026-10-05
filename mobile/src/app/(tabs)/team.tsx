@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 
@@ -11,7 +11,7 @@ import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui'
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
-import { openPlayer, useLineupChange, useMyTeam, type LineupChange } from '@/lib/queries';
+import { openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
 import {
   BENCH_SLOT_LABEL,
   IR_SLOT_LABEL,
@@ -138,12 +138,17 @@ function InviteCoOwner() {
 }
 
 // The web's MyTeamSubNav (MY_TEAM_SUBNAV_ORDER): My Team, then Draft,
-// Keepers, Free Agents and Trades.
+// Keepers, Free Agents and Trades — plus this week's Matchup up front,
+// which on the web is a nav item of its own (2026-10 navigation pass).
 function TeamSubNav() {
+  const matchupId = useMyWeek().data?.matchup?.matchup_id ?? null;
   const links = [
+    ...(matchupId !== null
+      ? [{ label: 'Matchup', go: () => router.push({ pathname: '/matchup/[id]', params: { id: String(matchupId) } }) }]
+      : []),
     { label: 'Draft', go: () => router.push('/draft') },
     { label: 'Keepers', go: () => router.push('/keepers') },
-    { label: 'Free Agents', go: () => router.navigate('/players') },
+    { label: 'Free Agents', go: () => router.push('/players' as Href) },
     { label: 'Trades', go: () => router.push('/trades') },
   ];
   return (
