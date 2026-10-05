@@ -149,6 +149,7 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   weekly compute job instead, right after it records them.
 """
 import logging
+import time
 import os
 from datetime import datetime, timezone
 
@@ -485,11 +486,18 @@ async def _run_gamecast_poll_job():
     if not is_nfl_game_live(games):
         return
 
-    game_ids = gamecast_manager.live_game_ids()
+    pool = await get_pool()
+    # Plus every game on a Lounge room's TV: the room shows that game on
+    # a delay, so its recent history has to keep building even before
+    # anyone walks in (app/gamecast/service.py's timeline).
+    live_ids = {g["id"] for g in games if g.get("state") == "in"}
+    async with pool.acquire() as conn:
+        tv_ids = await conn.fetch(
+            "SELECT DISTINCT tv_game_id FROM watch_party_rooms WHERE tv_game_id IS NOT NULL AND closed_at IS NULL"
+        )
+    game_ids = sorted(set(gamecast_manager.live_game_ids()) | ({r["tv_game_id"] for r in tv_ids} & live_ids))
     if not game_ids:
         return  # nobody's actually watching a Gamecast right now
-
-    pool = await get_pool()
     for game_id in game_ids:
         async with pool.acquire() as conn:
             try:
@@ -497,7 +505,11 @@ async def _run_gamecast_poll_job():
             except Exception:
                 logger.exception("Gamecast poll failed for game_id=%s", game_id)
                 continue
-        await gamecast_manager.broadcast_to_game(game_id, {"type": "game_state", "game": game.model_dump(mode="json")})
+        # "at" (server time) lets a Lounge room hold this update back
+        # until its TV — which runs behind the live data — catches up.
+        await gamecast_manager.broadcast_to_game(
+            game_id, {"type": "game_state", "game": game.model_dump(mode="json"), "at": time.time()}
+        )
         for event in fantasy_events:
             await gamecast_manager.broadcast_to_game(game_id, event)
     logger.info("Gamecast poll finished for %d live game(s)", len(game_ids))

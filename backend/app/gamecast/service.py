@@ -17,6 +17,9 @@ the very next poll even if a redeploy loses the in-memory cache, so
 persisting every tick would just be writes for data with no lasting
 value.
 """
+import time
+from collections import deque
+
 from app.auth.league_context import resolve_active_league_id, resolve_owner_id
 from app.domain.scoring_engine import rules_dict_from_rows
 from app.gamecast import last_play
@@ -35,6 +38,49 @@ _current_state: dict[str, LiveGame] = {}
 _last_points: dict[str, dict[str, float]] = {}
 
 
+# The last few minutes of each game's state, (server time, state json),
+# one entry per real change. A Lounge room shows its TV's game on a
+# delay to match the stream (a TV feed runs 30-90s behind the data), so
+# someone walking into the room needs the game as it stood `delay`
+# seconds ago, not now — see timeline() and the /nfl/games/{id}/timeline
+# route. In memory for the same reason as _current_state.
+HISTORY_SECONDS = 300
+_history: dict[str, deque] = {}
+# When each game was last fetched from the provider (server epoch secs).
+_last_refresh: dict[str, float] = {}
+
+
+def _signature(game: LiveGame) -> tuple:
+    last_play = game.plays[0].play_id if game.plays else None
+    return (
+        game.status, game.period, game.clock, game.home_team.score, game.away_team.score,
+        game.possession_team_abbr, game.down, game.distance, game.yards_to_goal, last_play,
+    )
+
+
+def _record_history(game: LiveGame, now: float | None = None) -> None:
+    now = now if now is not None else time.time()
+    entries = _history.setdefault(game.game_id, deque())
+    if not entries or entries[-1][2] != _signature(game):
+        entries.append((now, game.model_dump(mode="json"), _signature(game)))
+    while entries and entries[0][0] < now - HISTORY_SECONDS:
+        entries.popleft()
+
+
+def is_stale(game_id: str, max_age_seconds: float) -> bool:
+    """True when this game hasn't been fetched in max_age_seconds (or
+    ever). The Lounge polls the timeline rather than holding a socket,
+    so the route refreshes a live game itself when it's gone stale —
+    at most one provider fetch per game per max_age_seconds no matter
+    how many people are watching."""
+    return time.time() - _last_refresh.get(game_id, 0.0) > max_age_seconds
+
+
+def timeline(game_id: str) -> list[dict]:
+    """[{"at": server epoch seconds, "game": state}] oldest first."""
+    return [{"at": at, "game": game} for at, game, _sig in _history.get(game_id, ())]
+
+
 def get_cached_state(game_id: str) -> LiveGame | None:
     return _current_state.get(game_id)
 
@@ -51,6 +97,8 @@ async def refresh_game(conn, game_id: str) -> tuple[LiveGame, list[dict]]:
     provider = get_nfl_data_provider()
     game = await provider.get_game_state(game_id)
     _current_state[game_id] = game
+    _last_refresh[game_id] = time.time()
+    _record_history(game)
     events = await _diff_fantasy_impact(conn, game)
     return game, events
 

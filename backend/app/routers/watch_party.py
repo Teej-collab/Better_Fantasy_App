@@ -25,7 +25,9 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_t
 from app.config import _require, require_livekit_configured
 from app.db import get_pool
 from app.domain import watch_party as watch_party_domain
+from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chat as chat_queries
+from app.queries import league as league_queries
 from app.queries import watch_party as watch_party_queries
 from app.watch_party.manager import manager as watch_party_manager
 
@@ -55,7 +57,7 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
-def _room_dict(row, member_count: int, is_live: bool) -> dict:
+def _room_dict(row, member_count: int, is_live: bool, watchers: list[dict] | None = None) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -68,6 +70,28 @@ def _room_dict(row, member_count: int, is_live: bool) -> dict:
         # thing as member_count, which is "how many COULD join," a
         # static number. Phase 4's "someone's in League Lounge" signal.
         "is_live": is_live,
+        # What's on the room's TV and how far behind the live data it
+        # runs (migration b3e9f2a6c8d1) — the room holds everything about
+        # that game back by tv_delay_seconds so nothing spoils the stream.
+        "tv_game_id": row["tv_game_id"],
+        "tv_delay_seconds": row["tv_delay_seconds"],
+        # Who has the room open right now, for the lobby's faces.
+        "watchers": watchers or [],
+    }
+
+
+async def _watchers_by_room(conn, room_ids: list[int]) -> dict[int, list[dict]]:
+    owners_by_room = {rid: watch_party_manager.owners_in_room(rid) for rid in room_ids}
+    all_ids = sorted({o for ids in owners_by_room.values() for o in ids})
+    if not all_ids:
+        return {rid: [] for rid in room_ids}
+    rows = await conn.fetch(
+        "SELECT owner_id, display_name FROM owners WHERE owner_id = ANY($1::int[])", all_ids
+    )
+    names = {r["owner_id"]: r["display_name"] for r in rows}
+    return {
+        rid: [{"owner_id": o, "display_name": names.get(o) or "Owner"} for o in ids]
+        for rid, ids in owners_by_room.items()
     }
 
 
@@ -85,13 +109,125 @@ async def list_rooms(request: Request, pool=Depends(get_pool)):
         # count reads as "everyone", not "everyone but you".
         eligible = await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
         private_rooms = await watch_party_queries.list_private_rooms_for_owner(conn, league_id, owner_id)
+        watchers = await _watchers_by_room(conn, [open_room["id"], *[r["id"] for r in private_rooms]])
 
     live_room_ids = set(watch_party_manager.live_room_ids())
 
     return {
-        "open_room": _room_dict(open_room, len(eligible) + 1, open_room["id"] in live_room_ids),
-        "private_rooms": [_room_dict(r, r["member_count"], r["id"] in live_room_ids) for r in private_rooms],
+        "open_room": _room_dict(
+            open_room, len(eligible) + 1, open_room["id"] in live_room_ids, watchers.get(open_room["id"])
+        ),
+        "private_rooms": [
+            _room_dict(r, r["member_count"], r["id"] in live_room_ids, watchers.get(r["id"])) for r in private_rooms
+        ],
     }
+
+
+@router.put("/rooms/{room_id}/tv")
+async def set_room_tv(room_id: int, request: Request, pool=Depends(get_pool)):
+    """Sets what's on the room's TV and/or its delay. The apps only show
+    these controls to whoever is sharing their screen (the room picks
+    "whoever's sharing" as the one who knows what's on it), but any
+    member may call this — sharing happens in the video call, which this
+    server doesn't see. Everyone in the room gets the change at once
+    over the room's socket."""
+    payload = _require_session(request)
+    body = await request.json()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        room = await _room_if_accessible(conn, room_id, league_id, owner_id)
+        if room is None:
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        game_id = room["tv_game_id"]
+        if "game_id" in body:
+            raw = body.get("game_id")
+            game_id = str(raw).strip() if raw else None
+            if game_id is not None and not game_id.isdigit():
+                raise HTTPException(status_code=400, detail="game_id must be an ESPN event id")
+        delay = room["tv_delay_seconds"]
+        if "delay_seconds" in body:
+            try:
+                delay = int(body.get("delay_seconds"))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="delay_seconds must be a number")
+            delay = max(0, min(180, delay))
+
+        await conn.execute(
+            "UPDATE watch_party_rooms SET tv_game_id = $1, tv_delay_seconds = $2, tv_set_by_owner_id = $3, "
+            "tv_updated_at = now() WHERE id = $4",
+            game_id, delay, owner_id, room_id,
+        )
+
+    message = {"type": "tv", "room_id": room_id, "tv_game_id": game_id, "tv_delay_seconds": delay, "set_by_owner_id": owner_id}
+    await watch_party_manager.broadcast_to_room(room_id, message)
+    return message
+
+
+@router.get("/lobby")
+async def lobby(request: Request, pool=Depends(get_pool)):
+    """The Lounge lobby: this week's games ranked by what's riding on
+    them for you — your starters, your opponent's starters, and your open
+    bets — so "games that matter to you" leads. Rooms come from /rooms."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    games = await get_nfl_scoreboard()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        week = await league_queries.get_cached_current_week(conn, season)
+        my_team_id = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE season = $1 AND owner_id = $2 AND league_id = $3",
+            season, owner_id, league_id,
+        )
+        opp_team_id = None
+        if my_team_id is not None and week is not None:
+            opp_team_id = await conn.fetchval(
+                "SELECT CASE WHEN home_team_id = $1 THEN away_team_id ELSE home_team_id END FROM matchups "
+                "WHERE season = $2 AND week = $3 AND league_id = $4 AND $1 IN (home_team_id, away_team_id)",
+                my_team_id, season, week, league_id,
+            )
+        mine = await league_queries.get_current_roster(conn, season, my_team_id, week) if my_team_id and week else []
+        theirs = await league_queries.get_current_roster(conn, season, opp_team_id, week) if opp_team_id and week else []
+        opp_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", opp_team_id) if opp_team_id else None
+        bet_rows = await conn.fetch(
+            """
+            SELECT bl.espn_event_id, bl.team_abbr FROM bet_legs bl JOIN bets b ON b.id = bl.bet_id
+            WHERE b.user_id = $1 AND b.status = 'open' AND bl.status = 'open'
+            """,
+            payload["user_id"],
+        )
+
+    def starters_on(roster, teams):
+        return [r for r in roster if r["lineup_slot"] not in ("BE", "IR") and r["pro_team"] in teams]
+
+    out = []
+    for g in games:
+        teams = {g.get("home_team"), g.get("away_team")}
+        my_players = starters_on(mine, teams)
+        their_players = starters_on(theirs, teams)
+        bets = sum(1 for b in bet_rows if b["espn_event_id"] == g.get("id") or b["team_abbr"] in teams)
+        out.append({
+            "game_id": g.get("id"),
+            "home_team": g.get("home_team"),
+            "away_team": g.get("away_team"),
+            "home_score": g.get("home_score"),
+            "away_score": g.get("away_score"),
+            "state": g.get("state"),
+            "status_detail": g.get("status_detail"),
+            "date": g.get("date"),
+            "is_redzone": g.get("is_redzone"),
+            "possession_team_abbr": g.get("possession_team_abbr"),
+            "my_players": [r["player_name"] for r in my_players],
+            "opponent_players": [r["player_name"] for r in their_players],
+            "opponent_team_name": opp_name,
+            "open_bet_legs": bets,
+            "stakes": len(my_players) * 3 + len(their_players) * 2 + bets * 2,
+        })
+    order = {"in": 0, "pre": 1, "post": 2}
+    out.sort(key=lambda g: (order.get(g["state"], 3), -g["stakes"], g["date"] or ""))
+    return {"week": week, "games": out}
 
 
 @router.post("/rooms")
@@ -281,12 +417,18 @@ async def watch_party_ws(websocket: WebSocket, room_id: int, ticket: str | None 
         await websocket.close(code=4404)
         return
 
-    await watch_party_manager.connect(room_id, websocket)
+    await watch_party_manager.connect(room_id, websocket, owner_id)
     try:
         async with pool.acquire() as conn:
             digest = await watch_party_domain.build_fantasy_digest(conn, league_id)
         if digest is not None:
             await websocket.send_json(digest)
+        # Where the room's TV is right now, so a newcomer delays the
+        # game the same as everyone already in the room.
+        await websocket.send_json({
+            "type": "tv", "room_id": room_id, "tv_game_id": room["tv_game_id"],
+            "tv_delay_seconds": room["tv_delay_seconds"], "set_by_owner_id": room["tv_set_by_owner_id"],
+        })
 
         while True:
             await websocket.receive_text()

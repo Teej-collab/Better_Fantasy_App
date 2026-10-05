@@ -12,6 +12,7 @@ only ever proves "this is a real signed-in session for a websocket
 handshake," nothing about its purpose string is chat-specific.
 """
 import json
+import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -57,6 +58,37 @@ async def game_state(game_id: str):
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown game_id")
     return game.model_dump(mode="json")
+
+
+# How old a live game's data may get before the timeline route fetches
+# it again itself (the Lounge polls this route every few seconds).
+_TIMELINE_MAX_AGE_SECONDS = 8
+
+
+@router.get("/games/{game_id}/timeline")
+async def game_timeline(game_id: str, since: float | None = None):
+    """The last few minutes of this game's state, for a Lounge room
+    whose TV runs behind the live data (app/gamecast/service.py's
+    timeline): the client shows the newest snapshot at least `delay`
+    seconds old, measured on server_now's clock. `since` (a server
+    time from an earlier response) returns only newer snapshots."""
+    cached = service.get_cached_state(game_id)
+    live = cached is None or cached.status.value in ("in_progress", "halftime", "scheduled")
+    if cached is None or (live and service.is_stale(game_id, _TIMELINE_MAX_AGE_SECONDS)):
+        pool = await get_pool()
+        try:
+            async with pool.acquire() as conn:
+                await service.refresh_game(conn, game_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown game_id")
+        except Exception:
+            if cached is None:
+                raise
+            # A failed refresh still serves what's already cached.
+    snapshots = service.timeline(game_id)
+    if since is not None:
+        snapshots = [s for s in snapshots if s["at"] > since]
+    return {"server_now": time.time(), "snapshots": snapshots}
 
 
 @router.get("/games/{game_id}/fantasy-impact")
@@ -133,7 +165,7 @@ async def gamecast_ws(websocket: WebSocket, game_id: str, ticket: str | None = N
                 await websocket.send_json({"type": "error", "detail": "Unknown game_id"})
                 await websocket.close(code=4404)
                 return
-        await websocket.send_json({"type": "game_state", "game": cached.model_dump(mode="json")})
+        await websocket.send_json({"type": "game_state", "game": cached.model_dump(mode="json"), "at": time.time()})
 
         # This socket only ever receives — there's nothing a client
         # needs to send Gamecast (unlike chat's typing indicators/
