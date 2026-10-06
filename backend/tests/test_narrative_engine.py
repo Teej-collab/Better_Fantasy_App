@@ -425,3 +425,24 @@ async def test_generate_weekly_recap_becomes_eligible_from_real_completion_even_
 
     assert result["status"] == "generated"
     assert result["weekly_narrative"] == {"text": "Real recap text.", "kind": "recap"}
+
+
+def test_first_names_use_the_owner_first_name_and_last_initial_on_a_clash():
+    from app.domain.narrative_engine import _first_names
+
+    names = _first_names([
+        {"team_name": "McConkey Hurts", "owner_name": "Jeff Horak"},
+        {"team_name": "Mile High Cooking", "owner_name": "Ryan Horak"},
+        {"team_name": "Kyren of the Lamb", "owner_name": "Lorenzo  Cachia"},
+        {"team_name": "Baby~Back Gibbs", "owner_name": "Niko"},
+        {"team_name": "Ryan's Other Team", "owner_name": "Ryan Smith"},
+        {"team_name": "No Owner Name", "owner_name": None},
+    ])
+    assert names == {
+        "McConkey Hurts": "Jeff",
+        "Mile High Cooking": "Ryan H.",
+        "Kyren of the Lamb": "Lorenzo",
+        "Baby~Back Gibbs": "Niko",
+        "Ryan's Other Team": "Ryan S.",
+        "No Owner Name": "No Owner Name",
+    }

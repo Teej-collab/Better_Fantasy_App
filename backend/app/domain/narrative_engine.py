@@ -125,7 +125,8 @@ present in the data — every line must be traceable to a specific fact you were
 
 Cover the week as one story, not a boring list: open with the week's headline moment, move through \
 the results that matter (upsets, blowouts, the closest game), call out the real award-winners by \
-name, and close by setting up where the league actually stands now. Roast freely — nobody is \
+name, and close by setting up where the league actually stands now. Every manager is named by first \
+name only, exactly as given in the facts — never by team name, never by full name. Roast freely — nobody is \
 off-limits, everybody's real numbers are fair game. Tone: brutal, sharp, genuinely funny, like a beat \
 writer with zero patience for anyone's excuses. Three to five short paragraphs. No hedging, no \
 disclaimers, no "great week everyone" softening. Plain prose paragraphs only — no title, no headline, no markdown formatting of any kind."""
@@ -403,6 +404,30 @@ async def _resolve_weekly_kind(season: int, week: int) -> str | None:
     return None  # in progress
 
 
+def _first_names(sides: list[dict]) -> dict[str, str]:
+    """team_name -> the owner's first name, for the weekly recap (2026-10,
+    the commissioner's call: team names read impersonal). Two owners
+    with the same first name get their last initial too ("Ryan H.")."""
+    def split(name: str | None) -> list[str]:
+        return (name or "").split()
+
+    firsts: dict[str, int] = {}
+    for side in sides:
+        parts = split(side["owner_name"])
+        if parts:
+            firsts[parts[0]] = firsts.get(parts[0], 0) + 1
+    names: dict[str, str] = {}
+    for side in sides:
+        parts = split(side["owner_name"])
+        if not parts:
+            names[side["team_name"]] = side["team_name"]
+        elif firsts[parts[0]] > 1 and len(parts) > 1:
+            names[side["team_name"]] = f"{parts[0]} {parts[-1][0]}."
+        else:
+            names[side["team_name"]] = parts[0]
+    return names
+
+
 def _standings_record_str(row) -> str:
     return f"{row['wins']}-{row['losses']}" + (f"-{row['ties']}" if row["ties"] else "")
 
@@ -418,6 +443,11 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
     season, week = week_context["season"], week_context["week"]
     gow_matchup_id = week_context["game_of_the_week_matchup_id"]
     matchups = week_context["matchups"]
+    # Everyone's named by their owner's first name, not their team name.
+    first_names = _first_names([side for m in matchups for side in (m["home"], m["away"])])
+
+    def who(team_name: str) -> str:
+        return first_names.get(team_name, team_name)
 
     # Stated explicitly rather than left for the model to infer — an
     # early-season week with few results otherwise reads exactly like
@@ -432,52 +462,52 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
         tag = " (Game of the Week)" if m["matchup_id"] == gow_matchup_id else ""
         if kind == "recap" and home["score"] is not None and away["score"] is not None:
             if home["score"] == away["score"]:
-                facts.append(f"{home['team_name']} tied {away['team_name']} {home['score']}-{away['score']}{tag}")
+                facts.append(f"{who(home['team_name'])} tied {who(away['team_name'])} {home['score']}-{away['score']}{tag}")
             else:
                 winner, loser = (home, away) if home["score"] > away["score"] else (away, home)
-                facts.append(f"{winner['team_name']} defeated {loser['team_name']} {winner['score']}-{loser['score']}{tag}")
+                facts.append(f"{who(winner['team_name'])} defeated {who(loser['team_name'])} {winner['score']}-{loser['score']}{tag}")
         else:
             facts.append(
-                f"{home['team_name']} ({home['record'] or '0-0'}) vs "
-                f"{away['team_name']} ({away['record'] or '0-0'}){tag}"
+                f"{who(home['team_name'])} ({home['record'] or '0-0'}) vs "
+                f"{who(away['team_name'])} ({away['record'] or '0-0'}){tag}"
             )
 
     if kind == "recap":
         overachiever, meltdown = await weekly_awards.get_overachiever_and_meltdown(conn, season, week, league_id)
         if overachiever:
             facts.append(
-                f"Overachiever of the week: {overachiever['team_name']} beat their projection by "
+                f"Overachiever of the week: {who(overachiever['team_name'])} beat their projection by "
                 f"{overachiever['diff']:.1f} points"
             )
         if meltdown:
             facts.append(
-                f"Meltdown of the week: {meltdown['team_name']} missed their projection by "
+                f"Meltdown of the week: {who(meltdown['team_name'])} missed their projection by "
                 f"{abs(meltdown['diff']):.1f} points"
             )
 
         bench_crime = await weekly_awards.get_biggest_bench_crime(conn, season, week, league_id)
         if bench_crime:
             facts.append(
-                f"Biggest bench crime: {bench_crime['team_name']} benched {bench_crime['bench_player']}, who "
+                f"Biggest bench crime: {who(bench_crime['team_name'])} benched {bench_crime['bench_player']}, who "
                 f"outscored started player {bench_crime['started_player']} by {bench_crime['points_diff']} points"
             )
 
         clutch, choke = await weekly_awards.get_clutch_choke_of_week(conn, season, week, league_id)
         if clutch:
-            facts.append(f"Clutch performance of the week: {clutch['team_name']} ({clutch['reason']})")
+            facts.append(f"Clutch performance of the week: {who(clutch['team_name'])} ({clutch['reason']})")
         if choke:
-            facts.append(f"Choke of the week: {choke['team_name']} ({choke['reason']})")
+            facts.append(f"Choke of the week: {who(choke['team_name'])} ({choke['reason']})")
 
         booms, busts = await weekly_awards.get_boom_bust_leaders(conn, season, week, limit=3, league_id=league_id)
         if booms:
             facts.append(
                 "Boom performances: "
-                + ", ".join(f"{b['player_name']} ({b['team_name']}, {b['points_scored']} pts)" for b in booms)
+                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {b['points_scored']} pts)" for b in booms)
             )
         if busts:
             facts.append(
                 "Bust performances: "
-                + ", ".join(f"{b['player_name']} ({b['team_name']}, {b['points_scored']} pts)" for b in busts)
+                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {b['points_scored']} pts)" for b in busts)
             )
 
         gow_matchup = next((m for m in matchups if m["matchup_id"] == gow_matchup_id), None)
@@ -488,8 +518,12 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
                 league_id,
             )
             if gow_result:
+                if gow_result.get("tie"):
+                    gow_who = f"{who(gow_matchup['home']['team_name'])} and {who(gow_matchup['away']['team_name'])}"
+                else:
+                    gow_who = who(gow_result["winner"])
                 verb = "tied" if gow_result.get("tie") else "won"
-                facts.append(f"Game of the Week result: {gow_result['winner']} {verb} {gow_result['score']}")
+                facts.append(f"Game of the Week result: {gow_who} {verb} {gow_result['score']}")
 
     # Right-now league context, same as _build_facts: current standings
     # (leader + last place) and real Jeffrey's Rule chug debts — applies
@@ -497,10 +531,10 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
     standings = await league_queries.get_standings(conn, season, league_id)
     if standings:
         leader = standings[0]
-        facts.append(f"League leader right now: {leader['team_name']} ({_standings_record_str(leader)})")
+        facts.append(f"League leader right now: {who(leader['team_name'])} ({_standings_record_str(leader)})")
         trailer = standings[-1]
         if trailer["team_id"] != leader["team_id"]:
-            facts.append(f"Currently in last place: {trailer['team_name']} ({_standings_record_str(trailer)})")
+            facts.append(f"Currently in last place: {who(trailer['team_name'])} ({_standings_record_str(trailer)})")
 
     chug_by_owner = await chug_queries.get_chug_standing_by_owner(conn, season, league_id)
     if chug_by_owner:
@@ -514,7 +548,7 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
                 continue
             owed = float(chug["outstanding_owed"] or 0) + float(chug["fined_owed"] or 0)
             if owed > 0:
-                facts.append(f"{team_name}'s owner currently owes {owed:g} under Jeffrey's Rule this season")
+                facts.append(f"{who(team_name)} currently owes {owed:g} under Jeffrey's Rule this season")
 
     return "; ".join(facts)
 
