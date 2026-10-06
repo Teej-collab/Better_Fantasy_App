@@ -151,10 +151,13 @@ been eliminated, and what the bubble teams need ("Clay's in with a win; Jeff nee
 scenarios the facts give, never your own math. \
 Then who owes chugs.
 
-You don't have to use every fact — pick the best storylines. Names: call every manager only by the name \
+You'll be handed far more facts than fit — leave most of them out. Pick the four or five best \
+storylines and tell those well; skip games that weren't interesting. End on a real line, not filler \
+like "drink up, gentlemen". Names: call every manager only by the name \
 the facts use for them — never by team name, never by full name. Players can be named normally.
 
-Three to five short paragraphs, 350-420 words — never longer. Plain prose paragraphs only: no title, \
+Three to five short paragraphs, 350-420 words. 420 words is a hard limit — the recap must never \
+be longer than it used to be. Plain prose paragraphs only: no title, \
 no headline, no lists, no markdown of any kind."""
 
 # 2026-09-15 fix, real report: a full week's recap for a real

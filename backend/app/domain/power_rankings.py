@@ -87,11 +87,11 @@ async def get_season_context(conn, season: int, week: int, league_id: int = DEFA
         elif t["games"] >= 3 and form_rank[tid] == n:
             notes.append("Coldest team over the last 3 weeks")
         if sos_past_rank.get(tid) == 1:
-            notes.append("Toughest schedule so far")
+            notes.append("Has already faced the toughest schedule (past games)")
         if sos_future_rank.get(tid) == 1:
-            notes.append("Toughest road ahead")
+            notes.append("Toughest remaining schedule (games still to play)")
         elif sos_future_rank.get(tid) == len(sos_future_rank) and sos_future_rank:
-            notes.append("Easiest road ahead")
+            notes.append("Easiest remaining schedule (games still to play)")
         record = f"{t['wins']}-{t['losses']}" + (f"-{t['ties']}" if t["ties"] else "")
         out[tid] = {
             "record": record,
