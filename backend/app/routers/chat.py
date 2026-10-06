@@ -84,12 +84,14 @@ async def _require_participant(conn, payload: dict, conversation_id: int, owner_
     except HTTPException:
         league_id = None
     if league_id is not None:
-        open_room = await watch_party_queries.get_open_room(conn, league_id)
-        if (
-            open_room is not None
-            and open_room["closed_at"] is None
-            and open_room["conversation_id"] == conversation_id
-        ):
+        # The League Lounge, or any open watch party in the league
+        # (2026-10) — open to every member, joined on first touch.
+        room = await conn.fetchrow(
+            "SELECT id FROM watch_party_rooms WHERE league_id = $1 AND conversation_id = $2 "
+            "AND kind IN ('open', 'party') AND closed_at IS NULL",
+            league_id, conversation_id,
+        )
+        if room is not None:
             await watch_party_queries.ensure_conversation_participant(conn, conversation_id, owner_id)
             return
     raise HTTPException(status_code=403, detail="Not a participant in this conversation")

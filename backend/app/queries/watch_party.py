@@ -183,3 +183,49 @@ async def remove_private_room_member(conn, room_id: int, conversation_id: int, o
     await conn.execute(
         "DELETE FROM conversation_participants WHERE conversation_id = $1 AND owner_id = $2", conversation_id, owner_id
     )
+
+
+async def create_party_room(conn, league_id: int, name: str, created_by_owner_id: int) -> int:
+    """An open watch party (2026-10): anyone in the league can walk in,
+    like the League Lounge, but any number can run at once. Its chat
+    starts with the host; everyone else joins it lazily on entry, the
+    same way the League Lounge's does (ensure_conversation_participant)."""
+    conversation_id = await chat_queries.create_conversation_for_league(
+        conn, league_id, "watch_party", [created_by_owner_id]
+    )
+    return await conn.fetchval(
+        """
+        INSERT INTO watch_party_rooms (league_id, name, kind, created_by_owner_id, conversation_id)
+        VALUES ($1, $2, 'party', $3, $4)
+        RETURNING id
+        """,
+        league_id, name, created_by_owner_id, conversation_id,
+    )
+
+
+async def list_party_rooms(conn, league_id: int):
+    """The league's open parties, newest first, with the host's name."""
+    return await conn.fetch(
+        """
+        SELECT r.*, o.display_name AS host_name
+        FROM watch_party_rooms r
+        LEFT JOIN owners o ON o.owner_id = r.created_by_owner_id
+        WHERE r.league_id = $1 AND r.kind = 'party' AND r.closed_at IS NULL
+        ORDER BY r.created_at DESC
+        """,
+        league_id,
+    )
+
+
+async def touch_room(conn, room_id: int) -> None:
+    await conn.execute("UPDATE watch_party_rooms SET last_active_at = now() WHERE id = $1", room_id)
+
+
+async def close_room(conn, room_id: int) -> None:
+    await conn.execute("UPDATE watch_party_rooms SET closed_at = now() WHERE id = $1 AND closed_at IS NULL", room_id)
+
+
+async def clear_room_tv(conn, room_id: int) -> None:
+    await conn.execute(
+        "UPDATE watch_party_rooms SET tv_game_id = NULL, tv_updated_at = now() WHERE id = $1", room_id
+    )

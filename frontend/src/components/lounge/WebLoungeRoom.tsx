@@ -17,7 +17,7 @@ import { Track, type Participant, type RemoteParticipant } from "livekit-client"
 import { TickerStrip } from "@/components/LiveTicker";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
-import { buildLeagueTickerItems, buildNflTickerItems, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
+import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
 import {
@@ -82,6 +82,11 @@ export function WebLoungeRoom({
 }) {
   const accent = "var(--user-accent, var(--wl-accent))";
   const tv = useRoomTv(room.id, { gameId: room.tv_game_id ?? null, delaySeconds: room.tv_delay_seconds ?? 45 });
+  // The party ended (host, or it emptied out): back to the lobby.
+  useEffect(() => {
+    if (tv.closed) onLeave();
+  }, [tv.closed, onLeave]);
+  const isHost = room.kind === "party" && room.created_by_owner_id === myOwnerId;
   const participants = useParticipants();
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
   const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
@@ -271,6 +276,17 @@ export function WebLoungeRoom({
           <button onClick={toggleShare} className={`h-[38px] rounded-full px-4 text-[13px] font-semibold ${isScreenShareEnabled ? "bg-[#b91c3c] text-white" : "border border-white/[0.12] bg-[#12151d]"}`}>
             {isScreenShareEnabled ? "Stop sharing" : "Share screen"}
           </button>
+          {isHost && (
+            <button
+              onClick={() => {
+                if (!window.confirm("End this watch party for everyone?")) return;
+                void endWatchParty(room.id).finally(onLeave);
+              }}
+              className="h-[38px] rounded-full border border-[#b91c3c] px-4 text-[13px] font-bold text-[#fca5a5]"
+            >
+              End party
+            </button>
+          )}
           <button onClick={onLeave} className="h-[38px] rounded-full bg-[#b91c3c] px-4 text-[13px] font-bold text-white">
             Leave
           </button>

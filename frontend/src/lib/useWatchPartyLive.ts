@@ -13,7 +13,7 @@ export function useWatchPartyLive(): boolean {
 
   useEffect(() => {
     getWatchPartyRooms()
-      .then((rooms) => setLive(rooms.open_room.is_live))
+      .then((rooms) => setLive(rooms.open_room.is_live || (rooms.party_rooms ?? []).some((r) => r.is_live)))
       .catch(() => {});
   }, []);
 

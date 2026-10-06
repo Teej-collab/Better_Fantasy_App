@@ -194,7 +194,7 @@ export function ChatApp({
       .then((rooms) => {
         setWatchPartyRooms(rooms);
         if (initialPartyId == null) return;
-        const room = [rooms.open_room, ...rooms.private_rooms].find((r) => r.id === initialPartyId);
+        const room = [rooms.open_room, ...(rooms.party_rooms ?? []), ...rooms.private_rooms].find((r) => r.id === initialPartyId);
         if (room) setActiveWatchPartyRoom(room);
       })
       .catch(() => {});

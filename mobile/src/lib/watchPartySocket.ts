@@ -6,7 +6,9 @@ import type { FantasyDigest } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 3000;
 
-export type RoomTv = { gameId: string | null; delaySeconds: number; setByOwnerId: number | null };
+// known: a tv message has arrived (so a null gameId means "cleared", not
+// "not loaded yet"). closed: the party ended — the room leaves.
+export type RoomTv = { gameId: string | null; delaySeconds: number; setByOwnerId: number | null; known?: boolean; closed?: boolean };
 
 // A Watch Party room's socket — the same one as the web's FantasyTicker.
 // It brings the league's close/live matchups (fantasy_digest) and the
@@ -46,8 +48,15 @@ export function useWatchPartySocket(roomId: number, initialTv?: Partial<RoomTv>)
           const data = JSON.parse(e.data);
           if (data.type === 'fantasy_digest') setDigest(data);
           if (data.type === 'tv') {
-            setTv({ gameId: data.tv_game_id ?? null, delaySeconds: data.tv_delay_seconds ?? 45, setByOwnerId: data.set_by_owner_id ?? null });
+            setTv((t) => ({
+              ...t,
+              gameId: data.tv_game_id ?? null,
+              delaySeconds: data.tv_delay_seconds ?? t.delaySeconds,
+              setByOwnerId: data.set_by_owner_id ?? null,
+              known: true,
+            }));
           }
+          if (data.type === 'closed') setTv((t) => ({ ...t, closed: true }));
         } catch {
           // ignore malformed frames
         }

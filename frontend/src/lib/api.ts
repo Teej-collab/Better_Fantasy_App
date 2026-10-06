@@ -2319,8 +2319,10 @@ export async function getChatWsTicket(): Promise<string | null> {
 export type WatchPartyRoom = {
   id: number;
   name: string;
-  kind: "open" | "private";
+  // "party": an open watch party anyone in the league can join (2026-10).
+  kind: "open" | "private" | "party";
   created_by_owner_id: number;
+  host_name?: string | null;
   member_count: number;
   // The real chat conversation this room's text chat reuses (Phase 3)
   // — see backend/app/queries/watch_party.py's own docstring.
@@ -2339,8 +2341,31 @@ export type WatchPartyRoom = {
 
 export type WatchPartyRoomsResponse = {
   open_room: WatchPartyRoom;
+  // Open watch parties (optional for an older backend).
+  party_rooms?: WatchPartyRoom[];
   private_rooms: WatchPartyRoom[];
 };
+
+/** "Start a watch party": an open room anyone in the league can join,
+ *  optionally with a game already on its TV. Returns the room id. */
+export async function createWatchParty(gameId?: string | null): Promise<number> {
+  const res = await fetch(`/api/backend/watch-party/rooms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "party", game_id: gameId ?? null }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't start the party: ${res.status}`);
+  }
+  return (await res.json()).id;
+}
+
+/** Ends an open watch party (its host or the commissioner). */
+export async function endWatchParty(roomId: number): Promise<void> {
+  const res = await fetch(`/api/backend/watch-party/rooms/${roomId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Couldn't end the party: ${res.status}`);
+}
 
 export async function getWatchPartyRooms(): Promise<WatchPartyRoomsResponse> {
   return authedGet<WatchPartyRoomsResponse>("/watch-party/rooms");

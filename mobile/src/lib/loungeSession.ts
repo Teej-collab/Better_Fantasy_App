@@ -56,7 +56,7 @@ export function loungeSlugFrom(input: string): string | null {
  * room"). Shared by the Lounge lobby and Chat's Watch Party bar so both
  * go straight in the same way.
  */
-export async function enterPartyRoom(room: { id: number; kind: 'open' | 'private'; name: string }, gameId?: string): Promise<void> {
+export async function enterPartyRoom(room: { id: number; kind: 'open' | 'private' | 'party'; name: string }, gameId?: string): Promise<void> {
   if (gameId) await api.setRoomTv(room.id, { game_id: gameId }).catch(() => undefined);
   if (!nativeLoungeAvailable()) {
     router.push({ pathname: '/watch-party/[id]', params: { id: String(room.id) } });

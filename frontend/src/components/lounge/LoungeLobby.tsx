@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getWatchPartyRooms, type WatchPartyRoom, type WatchPartyRoomsResponse } from "@/lib/api";
+import { createWatchParty, getWatchPartyRooms, type WatchPartyRoom, type WatchPartyRoomsResponse } from "@/lib/api";
 import { lastName, loungeApi } from "@/lib/loungeLive";
 
 // The Lounge lobby on the web — the same screen as the native app's
@@ -89,7 +89,23 @@ export function LoungeLobby() {
   const gameById = new Map(games.map((g) => [g.game_id, g]));
   const open = rooms?.open_room ?? null;
   const privateRooms = rooms?.private_rooms ?? [];
-  const anyLive = !!open?.is_live || privateRooms.some((r) => r.is_live);
+  const parties = rooms?.party_rooms ?? [];
+  const anyLive = !!open?.is_live || parties.some((r) => r.is_live) || privateRooms.some((r) => r.is_live);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
+  /** A new open room for the whole league, with this game on its TV. */
+  async function startParty(gameId?: string) {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const id = await createWatchParty(gameId);
+      router.push(`/chat?party=${id}`);
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : "Couldn't start the party");
+      setStarting(false);
+    }
+  }
   const mattering = games.filter((g) => g.state !== "post").slice(0, 4);
 
   async function enter(room: WatchPartyRoom, gameId?: string) {
@@ -107,7 +123,7 @@ export function LoungeLobby() {
     // The League Lounge takes the game unless it's already watching a
     // different one with people in it — then start a party for it.
     if (!open.is_live || !open.tv_game_id || open.tv_game_id === g.game_id) void enter(open, g.game_id);
-    else router.push("/chat?newParty=1");
+    else void startParty(g.game_id);
   }
 
   return (
@@ -129,6 +145,34 @@ export function LoungeLobby() {
           <LoungeCard room={open} game={open.tv_game_id ? gameById.get(open.tv_game_id) : undefined} busy={busy === open.id} onJoin={() => void enter(open)} />
         </>
       )}
+      {parties.length > 0 && (
+        <span className="font-display mt-2 text-[11px] font-semibold tracking-[1.2px] text-[#9aa3b2]">WATCH PARTIES — OPEN TO THE LEAGUE</span>
+      )}
+      {parties.map((r) => {
+        const g = r.tv_game_id ? gameById.get(r.tv_game_id) : undefined;
+        return (
+          <div
+            key={r.id}
+            className="flex items-center gap-3 rounded-[14px] border px-3.5 py-3"
+            style={r.is_live ? { background: "rgba(220,20,60,0.08)", borderColor: "rgba(220,20,60,0.4)" } : { background: "#12151d", borderColor: "rgba(255,255,255,0.08)" }}
+          >
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="flex items-center gap-2">
+                {r.is_live && <span className="rounded bg-[#dc143c] px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-white">LIVE</span>}
+                <b className="truncate text-sm">{r.name}</b>
+              </span>
+              <span className="truncate text-xs text-[#9aa3b2]">
+                {g ? `${scoreLine(g)} ${g.status_detail} on the TV` : "Nothing on the TV yet"}
+                {r.is_live ? ` · ${r.watchers?.length ?? 0} watching` : ""}
+              </span>
+            </div>
+            <button onClick={() => void enter(r)} className="h-9 rounded-full px-3.5 text-[13px] font-bold" style={{ background: ACCENT, color: "#06110a" }}>
+              {busy === r.id ? "…" : "Join"}
+            </button>
+          </div>
+        );
+      })}
+
       {privateRooms.map((r) => {
         const g = r.tv_game_id ? gameById.get(r.tv_game_id) : undefined;
         return (
@@ -174,13 +218,18 @@ export function LoungeLobby() {
       })}
 
       {!noLeague && (
-        <Link
-          href="/chat?newParty=1"
-          className="mt-4 flex h-[50px] items-center justify-center rounded-full text-[15px] font-extrabold"
-          style={{ background: ACCENT, color: "#06110a" }}
-        >
-          Start a watch party
-        </Link>
+        <>
+          <button
+            onClick={() => void startParty()}
+            disabled={starting}
+            className="mt-4 flex h-[50px] items-center justify-center rounded-full text-[15px] font-extrabold disabled:opacity-60"
+            style={{ background: ACCENT, color: "#06110a" }}
+          >
+            {starting ? "Starting…" : "Start a watch party"}
+          </button>
+          <p className="m-0 text-center text-xs text-[#9aa3b2]">Opens a new room the whole league can join, with its own TV. It closes itself once everyone&apos;s gone.</p>
+          {startError && <p className="m-0 text-center text-xs text-red-400">{startError}</p>}
+        </>
       )}
       <Link href="/lounge/private" className="text-center text-xs font-semibold text-[#9aa3b2] hover:underline">
         Private lounge with a password — no league needed →

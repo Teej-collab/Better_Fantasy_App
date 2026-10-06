@@ -1,13 +1,13 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { nativeLoungeAvailable, partyIdFromSlug, takeLoungeTicket, type LoungeTicket } from '@/lib/loungeSession';
-import { useWatchPartyRooms } from '@/lib/queries';
+import { useMe, useWatchPartyRooms } from '@/lib/queries';
 import { useWatchPartySocket } from '@/lib/watchPartySocket';
 
 // The native video room, full screen — Watch Parties (League Lounge
@@ -72,16 +72,33 @@ export default function LoungeRoomScreen() {
  *  and delay live on the room (changed by whoever's sharing, live). */
 function PartyRoom({ roomId, ticket, onLeave }: { roomId: number; ticket: LoungeTicket; onLeave: () => void }) {
   const rooms = useWatchPartyRooms().data;
-  const room = rooms ? [rooms.open_room, ...rooms.private_rooms].find((r) => r.id === roomId) : undefined;
+  const me = useMe().data;
+  const room = rooms ? [rooms.open_room, ...(rooms.party_rooms ?? []), ...rooms.private_rooms].find((r) => r.id === roomId) : undefined;
   const { tv } = useWatchPartySocket(roomId, { gameId: room?.tv_game_id ?? null, delaySeconds: room?.tv_delay_seconds ?? 45 });
+  // The party ended (its host, or it emptied out): back to the lobby.
+  useEffect(() => {
+    if (tv.closed) onLeave();
+  }, [tv.closed, onLeave]);
   if (!room) return <LoadingState />;
+  const isHost = room.kind === 'party' && room.created_by_owner_id === me?.owner_id;
   return (
     <Room
       ticket={ticket}
       party={{ roomId, conversationId: room.conversation_id }}
-      tvGameId={tv.gameId ?? room.tv_game_id ?? null}
+      // Once the room's socket has spoken, its TV wins — a null then
+      // means the game ended and the TV cleared.
+      tvGameId={tv.known ? tv.gameId : (room.tv_game_id ?? null)}
       delaySeconds={tv.delaySeconds}
       onLeave={onLeave}
+      onEndParty={
+        isHost
+          ? () =>
+              Alert.alert('End this watch party?', 'Everyone in it goes back to the lobby.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'End party', style: 'destructive', onPress: () => void api.endWatchParty(roomId).finally(onLeave) },
+              ])
+          : undefined
+      }
     />
   );
 }
@@ -92,12 +109,14 @@ function Room({
   tvGameId,
   delaySeconds,
   onLeave,
+  onEndParty,
 }: {
   ticket: LoungeTicket;
   party: { roomId: number; conversationId: number } | null;
   tvGameId: string | null;
   delaySeconds: number;
   onLeave: () => void;
+  onEndParty?: () => void;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { LeagueLoungeRoom } = require('@/components/lounge/LeagueLoungeRoom') as typeof import('@/components/lounge/LeagueLoungeRoom');
@@ -110,6 +129,7 @@ function Room({
       tvGameId={tvGameId}
       delaySeconds={delaySeconds}
       onLeave={onLeave}
+      onEndParty={onEndParty}
     />
   );
 }

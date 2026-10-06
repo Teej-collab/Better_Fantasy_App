@@ -458,6 +458,12 @@ export const api = {
   // (backend/app/routers/auth.py's native_web_handoff) — see lib/webHandoff.ts.
   webHandoff: () => request<{ ticket: string }>('/auth/native/web-handoff', { method: 'POST' }),
   watchPartyRooms: () => request<WatchPartyRoomsResponse>('/watch-party/rooms'),
+  // "Start a watch party": an open room the whole league can join, with
+  // its own TV (optionally starting on a game).
+  createWatchParty: (gameId?: string | null) =>
+    request<{ id: number }>('/watch-party/rooms', { method: 'POST', body: JSON.stringify({ kind: 'party', game_id: gameId ?? null }) }),
+  // Ends an open watch party (its host or the commissioner).
+  endWatchParty: (roomId: number) => request<unknown>(`/watch-party/rooms/${roomId}`, { method: 'DELETE' }),
   createWatchPartyRoom: (name: string, invitedOwnerIds: number[]) =>
     request<{ id: number }>('/watch-party/rooms', { method: 'POST', body: JSON.stringify({ name, invited_owner_ids: invitedOwnerIds }) }),
   watchPartyMembers: (roomId: number) =>

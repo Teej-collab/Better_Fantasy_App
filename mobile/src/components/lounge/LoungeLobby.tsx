@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
@@ -6,7 +5,9 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
+import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
+import { haptics } from '@/lib/haptics';
 import { enterPartyRoom } from '@/lib/loungeSession';
 import { lastName } from '@/lib/loungeSweat';
 import { queryClient, useLoungeLobby, useWatchPartyRooms } from '@/lib/queries';
@@ -51,7 +52,25 @@ export function LoungeLobby() {
   const gameById = new Map(games.map((g) => [g.game_id, g]));
   const open = rooms?.open_room ?? null;
   const privateRooms = rooms?.private_rooms ?? [];
-  const anyLive = !!open?.is_live || privateRooms.some((r) => r.is_live);
+  const parties = rooms?.party_rooms ?? [];
+  const anyLive = !!open?.is_live || parties.some((r) => r.is_live) || privateRooms.some((r) => r.is_live);
+  const [starting, setStarting] = useState(false);
+
+  /** A new open room for the whole league, optionally on this game. */
+  async function startParty(gameId?: string) {
+    if (starting) return;
+    haptics.tap();
+    setStarting(true);
+    try {
+      const { id } = await api.createWatchParty(gameId);
+      await enterPartyRoom({ id, kind: 'party', name: 'Watch party' });
+    } catch (e) {
+      Alert.alert("Couldn't start the party", e instanceof Error ? e.message : 'Try again in a moment.');
+    } finally {
+      setStarting(false);
+      void queryClient.invalidateQueries({ queryKey: ['watch-party-rooms'] });
+    }
+  }
   const mattering = games.filter((g) => g.state !== 'post').slice(0, 4);
 
   async function enter(room: WatchPartyRoom, gameId?: string) {
@@ -75,7 +94,7 @@ export function LoungeLobby() {
       void enter(open, g.game_id);
       return;
     }
-    router.push({ pathname: '/watch-party/new', params: { name: `${g.away_team} @ ${g.home_team}`, game: g.game_id } });
+    void startParty(g.game_id);
   }
 
   return (
@@ -93,6 +112,28 @@ export function LoungeLobby() {
 
         <Text style={styles.section}>{anyLive ? 'LIVE NOW' : 'ROOMS'}</Text>
         {open && <LoungeCard room={open} game={open.tv_game_id ? gameById.get(open.tv_game_id) : undefined} accent={accent} busy={joining === open.id} onPress={() => void enter(open)} />}
+        {parties.length > 0 && <Text style={[styles.section, { marginTop: 8 }]}>WATCH PARTIES — OPEN TO THE LEAGUE</Text>}
+        {parties.map((r) => {
+          const g = r.tv_game_id ? gameById.get(r.tv_game_id) : undefined;
+          return (
+            <View key={r.id} style={[styles.privateRow, r.is_live && styles.partyLive]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.privateName} numberOfLines={1}>
+                  {r.is_live ? '● ' : ''}
+                  {r.name}
+                </Text>
+                <Text style={styles.privateSub} numberOfLines={1}>
+                  {g ? `${scoreLine(g)} on the TV` : 'Nothing on the TV yet'}
+                  {r.is_live ? ` · ${r.watchers?.length ?? 0} watching` : ''}
+                </Text>
+              </View>
+              <Pressable onPress={() => void enter(r)} style={[styles.joinOutline, { backgroundColor: accent, borderColor: accent }]} accessibilityRole="button" accessibilityLabel={`Join ${r.name}`}>
+                <Text style={[styles.joinOutlineText, { color: '#06110a' }]}>{joining === r.id ? '…' : 'Join'}</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+
         {privateRooms.map((r) => {
           const g = r.tv_game_id ? gameById.get(r.tv_game_id) : undefined;
           const watching = r.watchers?.length ?? 0;
@@ -137,9 +178,10 @@ export function LoungeLobby() {
             </View>
           );
         })}
-        <Pressable onPress={() => router.push('/watch-party/new')} style={[styles.cta, { backgroundColor: accent }]} accessibilityRole="button">
-          <Text style={styles.ctaText}>Start a watch party</Text>
+        <Pressable onPress={() => void startParty()} disabled={starting} style={[styles.cta, { backgroundColor: accent }, starting && { opacity: 0.6 }]} accessibilityRole="button">
+          <Text style={styles.ctaText}>{starting ? 'Starting…' : 'Start a watch party'}</Text>
         </Pressable>
+        <Text style={styles.ctaHint}>Opens a new room the whole league can join, with its own TV. It closes itself once everyone’s gone.</Text>
       </ScrollView>
     </View>
   );
@@ -200,6 +242,8 @@ const styles = StyleSheet.create({
   jumpText: { color: '#06110a', fontSize: 13, fontWeight: '800' },
   privateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: '#12151d', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 10 },
   privateName: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
+  partyLive: { backgroundColor: 'rgba(220,20,60,0.08)', borderColor: 'rgba(220,20,60,0.4)' },
+  ctaHint: { color: '#9aa3b2', fontSize: 12, textAlign: 'center', marginTop: 8 },
   privateSub: { color: '#9aa3b2', fontSize: 12 },
   joinOutline: { height: 36, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
   joinOutlineText: { color: '#f3f4f6', fontSize: 12, fontWeight: '700' },

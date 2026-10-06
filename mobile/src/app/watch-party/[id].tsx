@@ -29,7 +29,7 @@ export default function WatchPartyScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const roomId = Number(id);
   const rooms = useWatchPartyRooms();
-  const room = rooms.data && [rooms.data.open_room, ...rooms.data.private_rooms].find((r) => r.id === roomId);
+  const room = rooms.data && [rooms.data.open_room, ...(rooms.data.party_rooms ?? []), ...rooms.data.private_rooms].find((r) => r.id === roomId);
 
   if (rooms.isPending) return <LoadingState />;
   if (!room) return <MessageState message="This party isn't available — it may have ended, or you weren't invited." />;

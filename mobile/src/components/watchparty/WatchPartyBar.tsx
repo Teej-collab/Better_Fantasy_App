@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { enterPartyRoom } from '@/lib/loungeSession';
 import { useMe, useWatchPartyRooms } from '@/lib/queries';
@@ -15,6 +16,16 @@ export function LiveDot() {
 
 function openRoom(room: WatchPartyRoom) {
   enterPartyRoom(room).catch((e) => Alert.alert("Couldn't join the room", e instanceof Error ? e.message : 'Try again in a moment.'));
+}
+
+/** An open watch party the whole league can join (2026-10). */
+async function startParty() {
+  try {
+    const { id } = await api.createWatchParty();
+    await enterPartyRoom({ id, kind: 'party', name: 'Watch party' });
+  } catch (e) {
+    Alert.alert("Couldn't start the party", e instanceof Error ? e.message : 'Try again in a moment.');
+  }
 }
 
 // Port of the web's WatchPartyBar (above the conversation list in
@@ -49,6 +60,17 @@ export function WatchPartyBar() {
         </View>
       </Pressable>
 
+      {(rooms.party_rooms ?? []).map((r) => (
+        <Pressable key={r.id} onPress={() => openRoom(r)} style={styles.privateRoom}>
+          <Text style={styles.lock}>📺</Text>
+          <Text style={styles.privateName} numberOfLines={1}>
+            {r.name}
+          </Text>
+          {r.is_live && <LiveDot />}
+          <Text style={[styles.secondary, styles.count]}>{r.is_live ? `${r.watchers?.length ?? 0} watching` : 'open'}</Text>
+        </Pressable>
+      ))}
+
       {rooms.private_rooms.map((r) => (
         <View key={r.id} style={styles.privateRow}>
           <Pressable onPress={() => openRoom(r)} style={styles.privateRoom}>
@@ -71,8 +93,8 @@ export function WatchPartyBar() {
         </View>
       ))}
 
-      <Pressable onPress={() => router.push('/watch-party/new')} style={styles.link}>
-        <Text style={[styles.linkText, { color: accent }]}>+ Start a Party</Text>
+      <Pressable onPress={() => void startParty()} style={styles.link}>
+        <Text style={[styles.linkText, { color: accent }]}>+ Start a watch party</Text>
       </Pressable>
       <Pressable onPress={() => router.push('/lounge-private' as Href)} style={styles.link}>
         <Text style={[styles.linkText, styles.secondaryLink]}>+ Start a Lounge (no league needed)</Text>

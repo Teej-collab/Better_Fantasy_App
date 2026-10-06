@@ -258,7 +258,9 @@ export function lastName(name: string): string {
   return parts.length > 1 ? parts.slice(1).join(" ") : name;
 }
 
-export type RoomTv = { gameId: string | null; delaySeconds: number };
+// closed: the party ended (its host, or it emptied out) — the room
+// sends everyone back to the lobby.
+export type RoomTv = { gameId: string | null; delaySeconds: number; closed?: boolean };
 
 /**
  * A Watch Party room's socket: the room's TV (which game, how far
@@ -283,7 +285,9 @@ export function useRoomTv(roomId: number, initial: RoomTv): RoomTv {
       socket.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          if (data.type === "tv") setTv({ gameId: data.tv_game_id ?? null, delaySeconds: data.tv_delay_seconds ?? 45 });
+          // A game that ended clears the TV (tv_game_id null, delay kept).
+          if (data.type === "tv") setTv((t) => ({ ...t, gameId: data.tv_game_id ?? null, delaySeconds: data.tv_delay_seconds ?? t.delaySeconds }));
+          if (data.type === "closed") setTv((t) => ({ ...t, closed: true }));
         } catch {
           // ignore malformed frames
         }

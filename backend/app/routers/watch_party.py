@@ -25,6 +25,7 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, decode_t
 from app.config import _require, require_livekit_configured
 from app.db import get_pool
 from app.domain import watch_party as watch_party_domain
+from app.domain import watch_party_rooms
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chat as chat_queries
 from app.queries import league as league_queries
@@ -63,6 +64,8 @@ def _room_dict(row, member_count: int, is_live: bool, watchers: list[dict] | Non
         "name": row["name"],
         "kind": row["kind"],
         "created_by_owner_id": row["created_by_owner_id"],
+        # An open party's host, for the lobby ("TJ's party").
+        "host_name": row["host_name"] if "host_name" in row.keys() else None,
         "member_count": member_count,
         "conversation_id": row["conversation_id"],
         # Real occupancy (is anyone's FantasyTicker socket currently
@@ -104,23 +107,45 @@ async def list_rooms(request: Request, pool=Depends(get_pool)):
         active_season = int(_require("ACTIVE_SEASON"))
 
         open_room = await watch_party_queries.get_or_create_open_room(conn, league_id, owner_id)
+        # Clear finished games off TVs and close empty parties first, so
+        # the lobby never shows a game that's over or a dead room.
+        swept = await watch_party_rooms.sweep_rooms(conn, set(watch_party_manager.live_room_ids()), league_id)
+        if swept["cleared"]:
+            open_room = await watch_party_queries.get_open_room(conn, league_id)
+        party_rooms = await watch_party_queries.list_party_rooms(conn, league_id)
         # list_eligible_members excludes the requester themselves (see
         # its own docstring) — +1 accounts for that so the open room's
         # count reads as "everyone", not "everyone but you".
         eligible = await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
         private_rooms = await watch_party_queries.list_private_rooms_for_owner(conn, league_id, owner_id)
-        watchers = await _watchers_by_room(conn, [open_room["id"], *[r["id"] for r in private_rooms]])
+        watchers = await _watchers_by_room(
+            conn, [open_room["id"], *[r["id"] for r in party_rooms], *[r["id"] for r in private_rooms]]
+        )
 
     live_room_ids = set(watch_party_manager.live_room_ids())
+    await _announce_sweep(swept)
 
     return {
         "open_room": _room_dict(
             open_room, len(eligible) + 1, open_room["id"] in live_room_ids, watchers.get(open_room["id"])
         ),
+        # Open watch parties anyone in the league can join (2026-10).
+        "party_rooms": [
+            _room_dict(r, len(eligible) + 1, r["id"] in live_room_ids, watchers.get(r["id"])) for r in party_rooms
+        ],
         "private_rooms": [
             _room_dict(r, r["member_count"], r["id"] in live_room_ids, watchers.get(r["id"])) for r in private_rooms
         ],
     }
+
+
+async def _announce_sweep(swept: dict) -> None:
+    """Tells anyone sitting in a room that its TV cleared or the party
+    closed (app/domain/watch_party_rooms.py)."""
+    for room_id in swept["cleared"]:
+        await watch_party_manager.broadcast_to_room(room_id, {"type": "tv", "room_id": room_id, "tv_game_id": None})
+    for room_id in swept["closed"]:
+        await watch_party_manager.broadcast_to_room(room_id, {"type": "closed", "room_id": room_id})
 
 
 @router.put("/rooms/{room_id}/tv")
@@ -236,6 +261,28 @@ async def create_room(request: Request, pool=Depends(get_pool)):
     body = await request.json()
     name = (body.get("name") or "").strip()
     invited_owner_ids = body.get("invited_owner_ids") or []
+
+    # "Start a watch party" (2026-10): an open room the whole league can
+    # walk into, with its own TV — no invites. Optionally starts with a
+    # game on the TV.
+    if body.get("kind") == "party":
+        game_id = str(body.get("game_id") or "").strip() or None
+        if game_id is not None and not game_id.isdigit():
+            raise HTTPException(status_code=400, detail="game_id must be an ESPN event id")
+        async with pool.acquire() as conn:
+            league_id = await require_active_league_id(conn, payload)
+            owner_id = await resolve_owner_id(conn, payload)
+            if not name:
+                host = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+                name = f"{(host or 'Someone').split()[0]}'s watch party"
+            room_id = await watch_party_queries.create_party_room(conn, league_id, name[:60], owner_id)
+            if game_id:
+                await conn.execute(
+                    "UPDATE watch_party_rooms SET tv_game_id = $1, tv_set_by_owner_id = $2, tv_updated_at = now() WHERE id = $3",
+                    game_id, owner_id, room_id,
+                )
+        return {"id": room_id}
+
     if not name:
         raise HTTPException(status_code=400, detail="Party name is required")
     if not isinstance(invited_owner_ids, list) or not all(isinstance(i, int) for i in invited_owner_ids):
@@ -259,6 +306,25 @@ async def create_room(request: Request, pool=Depends(get_pool)):
         room_id = await watch_party_queries.create_private_room(conn, league_id, name, owner_id, invited_owner_ids)
 
     return {"id": room_id}
+
+
+@router.delete("/rooms/{room_id}")
+async def end_party(room_id: int, request: Request, pool=Depends(get_pool)):
+    """Ends an open watch party — its host or the commissioner. (Empty
+    parties also close on their own; the League Lounge never does.)"""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        room = await watch_party_queries.get_room(conn, room_id)
+        if room is None or room["league_id"] != league_id or room["kind"] != "party" or room["closed_at"] is not None:
+            raise HTTPException(status_code=404, detail="Party not found")
+        is_commissioner = await chat_queries.is_owner_commissioner_of_league(conn, owner_id, league_id)
+        if room["created_by_owner_id"] != owner_id and not is_commissioner:
+            raise HTTPException(status_code=403, detail="Only the host or your commissioner can end this party")
+        await watch_party_queries.close_room(conn, room_id)
+    await watch_party_manager.broadcast_to_room(room_id, {"type": "closed", "room_id": room_id})
+    return {"status": "closed"}
 
 
 @router.get("/rooms/{room_id}/members")
@@ -347,6 +413,7 @@ async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool))
         # room's invitees are already participants from creation) — see
         # ensure_conversation_participant's own docstring.
         await watch_party_queries.ensure_conversation_participant(conn, room["conversation_id"], owner_id)
+        await watch_party_queries.touch_room(conn, room_id)
 
         display_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
 

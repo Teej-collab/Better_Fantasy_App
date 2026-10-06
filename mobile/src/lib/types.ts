@@ -896,7 +896,9 @@ export type ChatMember = { owner_id: number; display_name: string; team_name: st
 export type WatchPartyRoom = {
   id: number;
   name: string;
-  kind: 'open' | 'private';
+  // 'party': an open watch party anyone in the league can join (2026-10).
+  kind: 'open' | 'private' | 'party';
+  host_name?: string | null;
   created_by_owner_id: number;
   member_count: number;
   conversation_id: number;
@@ -911,7 +913,7 @@ export type WatchPartyRoom = {
   watchers?: { owner_id: number; display_name: string }[];
 };
 
-export type WatchPartyRoomsResponse = { open_room: WatchPartyRoom; private_rooms: WatchPartyRoom[] };
+export type WatchPartyRoomsResponse = { open_room: WatchPartyRoom; party_rooms?: WatchPartyRoom[]; private_rooms: WatchPartyRoom[] };
 
 export type WatchPartyRoomMember = { owner_id: number; display_name: string };
 

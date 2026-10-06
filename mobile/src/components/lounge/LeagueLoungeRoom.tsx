@@ -60,6 +60,8 @@ export type LoungeRoomProps = {
   tvGameId: string | null;
   delaySeconds: number;
   onLeave: () => void;
+  // Set for an open watch party's host: ends it for everyone.
+  onEndParty?: () => void;
 };
 
 const REACTIONS = [
@@ -122,7 +124,7 @@ type FeedItem =
   | { kind: 'message'; id: string; name: string; color: string; body: string; plus: number }
   | { kind: 'moment'; id: string; text: string; points: string; team: string; odds: string | null };
 
-function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave }: LoungeRoomProps & { error: string | null }) {
+function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndParty }: LoungeRoomProps & { error: string | null }) {
   const accent = useAppearance().accent;
   const insets = useSafeAreaInsets();
   const participants = useParticipants();
@@ -243,6 +245,11 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave }: Loung
             </Text>
           </View>
         </View>
+        {onEndParty && (
+          <Pressable onPress={onEndParty} style={styles.endParty} accessibilityRole="button">
+            <Text style={styles.endPartyText}>End</Text>
+          </Pressable>
+        )}
         <Pressable onPress={onLeave} style={styles.leave} accessibilityRole="button">
           <Text style={styles.leaveText}>Leave</Text>
         </Pressable>
@@ -520,6 +527,8 @@ const styles = StyleSheet.create({
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#dc143c' },
   sub: { color: '#9aa3b2', fontSize: 11, flexShrink: 1 },
   leave: { borderRadius: 999, backgroundColor: '#b91c3c', paddingHorizontal: 14, paddingVertical: 8 },
+  endParty: { borderRadius: 999, borderWidth: 1, borderColor: '#b91c3c', paddingHorizontal: 12, paddingVertical: 7, marginRight: 6 },
+  endPartyText: { color: '#fca5a5', fontSize: 13, fontWeight: '700' },
   leaveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   error: { color: '#f87171', fontSize: 12, paddingHorizontal: 14 },
   burst: { position: 'absolute', top: 18, right: 18, backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },

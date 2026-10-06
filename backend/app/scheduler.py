@@ -549,6 +549,19 @@ async def _run_watch_party_poll_job():
     logger.info("Watch Party poll finished for %d room(s)", len(room_ids))
 
 
+async def _run_watch_party_sweep_job():
+    from app.domain.watch_party_rooms import sweep_rooms
+    from app.routers.watch_party import _announce_sweep
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            swept = await sweep_rooms(conn, set(watch_party_manager.live_room_ids()))
+        await _announce_sweep(swept)
+    except Exception:
+        logger.exception("Watch Party sweep failed")
+
+
 async def _run_sleeper_player_sync_job():
     count = await sync_players(await get_pool())
     logger.info("Sleeper player sync finished: %d players upserted", count)
@@ -1034,6 +1047,10 @@ def start_scheduler():
     if os.getenv("ENABLE_WATCH_PARTY_SCHEDULER", "").lower() in ("1", "true", "yes"):
         interval_seconds = int(os.getenv("WATCH_PARTY_POLL_INTERVAL_SECONDS", "30"))
         _scheduler.add_job(_run_watch_party_poll_job, "interval", seconds=interval_seconds, id="watch_party_poll")
+        # Clears finished games off Lounge TVs and closes empty parties
+        # (app/domain/watch_party_rooms.py) — not gated on a live game,
+        # since a game ending is exactly when it's needed.
+        _scheduler.add_job(_run_watch_party_sweep_job, "interval", seconds=120, id="watch_party_sweep")
         logger.info(
             "Watch Party poll scheduler started (every %d seconds, only during NFL game windows with active rooms)",
             interval_seconds,

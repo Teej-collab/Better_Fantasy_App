@@ -70,6 +70,26 @@ export function WatchPartyBar({
         </span>
       </button>
 
+      {/* Open watch parties (2026-10) — anyone in the league can join. */}
+      {(rooms.party_rooms ?? []).map((r) => (
+        <button
+          key={r.id}
+          onClick={() => onJoin(r)}
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          <span className="text-sm" aria-hidden>
+            📺
+          </span>
+          <span className="min-w-0 wrap-break-word text-sm font-medium" style={{ color: "var(--wl-text)" }}>
+            {r.name}
+          </span>
+          {r.is_live && <LiveDot />}
+          <span className="ml-auto shrink-0 text-xs" style={{ color: "var(--wl-text-secondary)" }}>
+            {r.is_live ? `${r.watchers?.length ?? 0} watching` : "open"}
+          </span>
+        </button>
+      ))}
+
       {rooms.private_rooms.map((r) => (
         <div key={r.id} className="flex items-center gap-1">
           <button
