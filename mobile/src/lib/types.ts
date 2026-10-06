@@ -547,6 +547,14 @@ export type WeekPowerRanking = {
   luck_score: number | null;
   sos: number | null;
   movement: number | null;
+  // What's behind the rank (2026-10 overhaul) — see the web's
+  // WeekPowerRanking (frontend/src/lib/api.ts).
+  record?: string;
+  points_per_game?: number;
+  luck_wins?: number;
+  sos_rank?: number | null;
+  sos_remaining_rank?: number | null;
+  note?: string | null;
 };
 
 // deadline is null until week 1 finishes and there's a chug owed.

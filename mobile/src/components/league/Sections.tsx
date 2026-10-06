@@ -416,7 +416,7 @@ export function PowerRankingsSection({ season }: { season: number | null }) {
   const [view, setView] = useState<PowerView>('week');
   return (
     <View style={styles.gap}>
-      <PageTitle subtitle="Who's actually good — combined record, scoring, and recent form — plus each team's Luck Index and Strength of Schedule alongside it.">
+      <PageTitle subtitle="Who's actually good: record, all-play record, scoring, recent form and margin. Luck is wins above what your scores earned; SoS ranks your schedule so far and what's ahead (1st = hardest).">
         Power Rankings
       </PageTitle>
       <Segmented
@@ -445,6 +445,13 @@ function Movement({ movement }: { movement: number | null }) {
   );
 }
 
+// 1st, 2nd, 11th — schedule-strength ranks (1st = hardest).
+function rankLabel(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
 function PowerWeek({ season }: { season: number | null }) {
   const q = useWeekPowerRankings(season);
   if (q.isPending) return <LoadingState />;
@@ -457,7 +464,8 @@ function PowerWeek({ season }: { season: number | null }) {
         <Text style={styles.headText}>Week {q.data.week}</Text>
         <View style={styles.powerCols}>
           <Text style={[styles.headText, styles.col]}>Luck</Text>
-          <Text style={[styles.headText, styles.col]}>SOS</Text>
+          <Text style={[styles.headText, styles.col]}>SoS</Text>
+          <Text style={[styles.headText, styles.col]}>Ahead</Text>
           <Text style={[styles.headText, styles.col]}>Trend</Text>
         </View>
       </View>
@@ -467,12 +475,17 @@ function PowerWeek({ season }: { season: number | null }) {
             <Text style={styles.powerRank}>{r.power_rank}</Text>
             <View style={ls.flex}>
               <Text style={ls.name}>{r.team_name}</Text>
-              <Text style={ls.owner}>{r.owner_name}</Text>
+              <Text style={ls.owner}>
+                {r.owner_name}
+                {r.record ? ` · ${r.record}` : ''}
+              </Text>
+              {r.note && <Text style={styles.powerNote}>{r.note}</Text>}
             </View>
           </View>
           <View style={styles.powerCols}>
-            <Text style={[styles.colValue, styles.col]}>{r.luck_score !== null ? r.luck_score.toFixed(1) : '—'}</Text>
-            <Text style={[styles.colValue, styles.col]}>{r.sos !== null ? r.sos.toFixed(2) : '—'}</Text>
+            <Text style={[styles.colValue, styles.col]}>{r.luck_wins !== undefined ? `${r.luck_wins > 0 ? '+' : ''}${r.luck_wins.toFixed(1)}` : '—'}</Text>
+            <Text style={[styles.colValue, styles.col]}>{r.sos_rank ? rankLabel(r.sos_rank) : '—'}</Text>
+            <Text style={[styles.colValue, styles.col]}>{r.sos_remaining_rank ? rankLabel(r.sos_remaining_rank) : '—'}</Text>
             <View style={styles.col}>
               <Movement movement={r.movement} />
             </View>
@@ -736,7 +749,8 @@ const styles = StyleSheet.create({
   powerHead: { paddingVertical: Spacing.sm },
   headText: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
   powerCols: { flexDirection: 'row', gap: Spacing.sm },
-  col: { width: 44, textAlign: 'right', alignItems: 'flex-end' },
+  col: { width: 38, textAlign: 'right', alignItems: 'flex-end' },
+  powerNote: { color: '#fbbf24', fontSize: 11, marginTop: 1 },
   colValue: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontVariant: ['tabular-nums'] },
   powerTeam: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
   powerRank: { width: 24, textAlign: 'center', color: Colors.text, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },

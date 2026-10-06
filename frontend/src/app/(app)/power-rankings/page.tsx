@@ -78,8 +78,9 @@ export default async function PowerRankingsPage({
       <div>
         <h1 className="text-2xl font-semibold">Power Rankings</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
-          Who&apos;s actually good — combined record, scoring, and recent form — plus each team&apos;s Luck
-          Index and Strength of Schedule alongside it.
+          Who&apos;s actually good: record, all-play record (how you&apos;d do against every team, every week),
+          scoring, recent form and scoring margin. Luck is wins above what your scores earned. SoS ranks how hard
+          your schedule has been and how hard what&apos;s left is (1st = hardest).
         </p>
       </div>
 
@@ -165,7 +166,8 @@ async function WeekView({
             <span>Week {week}</span>
             <span className="flex shrink-0 gap-2">
               <span className="w-10 text-right">Luck</span>
-              <span className="w-10 text-right">SOS</span>
+              <span className="w-10 text-right">SoS</span>
+              <span className="w-10 text-right" title="Remaining schedule">Ahead</span>
               <span className="w-10 text-right">Trend</span>
             </span>
           </div>
@@ -175,15 +177,26 @@ async function WeekView({
                 <span className="w-6 shrink-0 text-center font-bold tabular-nums">{r.power_rank}</span>
                 <div className="min-w-0">
                   <p className="min-w-0 wrap-break-word font-medium">{r.team_name}</p>
-                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{r.owner_name}</p>
+                  <p className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">
+                    {r.owner_name}
+                    {r.record && ` · ${r.record}`}
+                    {r.points_per_game !== undefined && ` · ${r.points_per_game.toFixed(1)} ppg`}
+                  </p>
+                  {r.note && <p className="min-w-0 wrap-break-word text-xs text-amber-600 dark:text-amber-400">{r.note}</p>}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2 tabular-nums">
-                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
-                  {r.luck_score !== null ? r.luck_score.toFixed(1) : "—"}
+                <span
+                  className="w-10 text-right text-xs text-black/60 dark:text-white/60"
+                  title="Wins above (or below) what their scores earned this season"
+                >
+                  {r.luck_wins !== undefined ? `${r.luck_wins > 0 ? "+" : ""}${r.luck_wins.toFixed(1)}` : "—"}
                 </span>
-                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60">
-                  {r.sos !== null ? r.sos.toFixed(2) : "—"}
+                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60" title="Schedule so far (1st = hardest)">
+                  {r.sos_rank ? ordinal(r.sos_rank) : "—"}
+                </span>
+                <span className="w-10 text-right text-xs text-black/60 dark:text-white/60" title="Remaining schedule (1st = hardest)">
+                  {r.sos_remaining_rank ? ordinal(r.sos_remaining_rank) : "—"}
                 </span>
                 <span className="w-10 text-right text-xs">
                   <MovementBadge movement={r.movement} />
@@ -299,4 +312,10 @@ async function TrendView({
       </table>
     </div>
   );
+}
+
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }

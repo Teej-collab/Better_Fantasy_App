@@ -1,31 +1,34 @@
 from app.domain.weekly_team_stats import (
+    all_play_pcts,
     compute_chaos_score,
     compute_luck_score,
     compute_power_ranks,
     compute_sos_for_week,
     compute_weekly_team_stats_for_season,
     compute_weekly_team_stats_for_week,
+    recent_form,
+    team_season_stats,
 )
 from tests.conftest import TEST_SEASON
 
 
-def test_compute_luck_score_lucky_win():
-    # team scored below the median but still won -> positive (lucky)
-    assert compute_luck_score(50, [50, 60, 70, 40], won=True) > 0
+def test_compute_luck_score_is_result_minus_all_play():
+    # Won with a score that beat only a quarter of the league: lucky.
+    assert compute_luck_score(1.0, 0.25) == 37.5
+    # Lost with the league's best score: as unlucky as it gets.
+    assert compute_luck_score(0.0, 1.0) == -50.0
+    # Won with the best score / lost with the worst: no luck either way.
+    assert compute_luck_score(1.0, 1.0) == 0.0
+    assert compute_luck_score(0.0, 0.0) == 0.0
 
 
-def test_compute_luck_score_unlucky_loss():
-    # team scored above the median but still lost -> negative (unlucky)
-    assert compute_luck_score(70, [70, 60, 50, 40], won=False) < 0
+def test_all_play_pcts_counts_ties_as_half():
+    assert all_play_pcts({1: 100.0, 2: 90.0, 3: 90.0}) == {1: 1.0, 2: 0.25, 3: 0.25}
 
 
-def test_compute_luck_score_result_matched_score():
-    assert compute_luck_score(70, [70, 60, 50, 40], won=True) == 0.0
-    assert compute_luck_score(40, [70, 60, 50, 40], won=False) == 0.0
-
-
-def test_compute_luck_score_no_other_teams():
-    assert compute_luck_score(50, [50], won=True) == 0.0
+def test_recent_form_weights_the_newest_week_heaviest():
+    assert recent_form([100.0, 100.0, 160.0]) == 100 * 0.2 + 100 * 0.3 + 160 * 0.5
+    assert recent_form([120.0]) == 120.0
 
 
 def test_compute_chaos_score_scales_with_swung_starters():
@@ -34,14 +37,38 @@ def test_compute_chaos_score_scales_with_swung_starters():
     assert compute_chaos_score(0, 0, 0) == 0.0
 
 
+def _stats(team_id, win_pct, all_play_pct, avg_points, recent, margin):
+    return {"team_id": team_id, "win_pct": win_pct, "all_play_pct": all_play_pct, "avg_points": avg_points,
+            "recent_form": recent, "avg_margin": margin}
+
+
 def test_compute_power_ranks_orders_best_first():
-    stats = [
-        {"team_id": 1, "win_pct": 1.0, "avg_points": 120.0, "recent_form": 130.0},
-        {"team_id": 2, "win_pct": 0.0, "avg_points": 80.0, "recent_form": 70.0},
+    ranks = compute_power_ranks([_stats(1, 1.0, 0.9, 120.0, 130.0, 20.0), _stats(2, 0.0, 0.1, 80.0, 70.0, -20.0)])
+    assert ranks == {1: 1, 2: 2}
+
+
+def test_power_ranks_do_not_just_follow_the_standings():
+    # 3-1 on luck (worst scorer in the league) vs 1-3 on bad luck (best
+    # scorer): the better team ranks higher despite the record.
+    lucky = _stats(1, 0.75, 0.30, 98.0, 95.0, -2.0)
+    unlucky = _stats(2, 0.25, 0.80, 131.0, 135.0, 6.0)
+    middle = _stats(3, 0.5, 0.5, 115.0, 115.0, 0.0)
+    ranks = compute_power_ranks([lucky, unlucky, middle])
+    assert ranks[2] < ranks[1]
+
+
+def test_team_season_stats_expected_wins_and_luck():
+    games = [
+        {"week": 1, "home_team_id": 1, "away_team_id": 2, "home_score": 90, "away_score": 80},
+        {"week": 1, "home_team_id": 3, "away_team_id": 4, "home_score": 150, "away_score": 140},
     ]
-    ranks = compute_power_ranks(stats)
-    assert ranks[1] == 1
-    assert ranks[2] == 2
+    stats = team_season_stats(games)
+    # Team 1 won with the 3rd-best of 4 scores: 1/3 all-play, lucky.
+    assert stats[1]["all_play_pct"] == 1 / 3
+    assert round(stats[1]["luck_wins"], 3) == round(1 - 1 / 3, 3)
+    # Team 4 lost with the 2nd-best: unlucky.
+    assert round(stats[4]["luck_wins"], 3) == round(0 - 2 / 3, 3)
+    assert stats[3]["opponents"] == [4]
 
 
 async def _seed_team(pool, suffix):

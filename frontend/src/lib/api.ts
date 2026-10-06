@@ -783,6 +783,20 @@ export type WeekPowerRanking = {
   // Positive = moved up vs. last week, negative = moved down, null if
   // there's no prior week to compare against (e.g. week 1).
   movement: number | null;
+  // What's behind the rank (2026-10 overhaul, app/domain/power_rankings.py
+  // get_season_context) — through this week, regular season.
+  record?: string;
+  standings_rank?: number;
+  points_per_game?: number;
+  all_play_pct?: number;
+  expected_wins?: number;
+  // The season's luck in wins: actual wins minus what the scores earned.
+  luck_wins?: number;
+  // Schedule strength so far / still to come; rank 1 = hardest.
+  sos_rank?: number | null;
+  sos_remaining?: number | null;
+  sos_remaining_rank?: number | null;
+  note?: string | null;
 };
 
 export function getWeekPowerRankings(season: number, week: number, sessionCookie: string | undefined) {

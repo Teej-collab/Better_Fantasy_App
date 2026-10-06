@@ -1,6 +1,8 @@
 """
-Ported from Fantasy_Helper's bot/stats_engine/power_rank.py, luck.py,
-chaos.py, and team_projections.py (calculation logic unchanged) plus
+Originally ported from Fantasy_Helper's bot/stats_engine/power_rank.py,
+luck.py, chaos.py, and team_projections.py; power rank, luck and SoS
+were rebuilt in 2026-10 (see POWER_WEIGHTS and compute_luck_score) —
+plus
 scripts/compute_power_ranks.py, compute_luck_scores.py,
 compute_chaos_scores.py, compute_team_projections.py (the write-side
 scripts, combined here into one per-week compute step instead of four
@@ -31,66 +33,88 @@ from app.domain.roster_source import uses_in_app_rosters
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 
 
-def _normalize(values: list[float]) -> list[float]:
-    """Scales a list of numbers to 0-1, so different metrics can be
-    combined fairly even though they're on different scales."""
+# 2026-10 overhaul (the commissioner's call: power rankings "just
+# follow the standings"). Rankings now blend five results-based signals,
+# each as a z-score across the league so none dominates by scale:
+#   - actual win %                     30%  (wins still matter — "balanced")
+#   - all-play win %                   25%  (how you'd do vs EVERY team, every week)
+#   - points per game                  20%
+#   - recent form (last 3, weighted)   15%
+#   - average scoring margin           10%
+# Results only — no projections or roster strength (also the
+# commissioner's call). Ties in the composite go to points per game.
+POWER_WEIGHTS = {
+    "win_pct": 0.30,
+    "all_play_pct": 0.25,
+    "avg_points": 0.20,
+    "recent_form": 0.15,
+    "avg_margin": 0.10,
+}
+# Most recent week first.
+RECENT_FORM_WEIGHTS = (0.5, 0.3, 0.2)
+
+
+def _zscores(values: list[float]) -> list[float]:
     if not values:
         return []
-    lo, hi = min(values), max(values)
-    if hi == lo:
-        return [0.5 for _ in values]  # everyone tied, treat as equal
-    return [(v - lo) / (hi - lo) for v in values]
+    mean = sum(values) / len(values)
+    sd = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
+    if sd == 0:
+        return [0.0 for _ in values]
+    return [(v - mean) / sd for v in values]
+
+
+def compute_power_scores(team_stats: list[dict]) -> dict[int, float]:
+    """team_stats: one dict per team with team_id plus every
+    POWER_WEIGHTS key. Returns {team_id: composite} (higher = better,
+    centered on 0)."""
+    scores = {t["team_id"]: 0.0 for t in team_stats}
+    for key, weight in POWER_WEIGHTS.items():
+        for t, z in zip(team_stats, _zscores([float(t[key]) for t in team_stats])):
+            scores[t["team_id"]] += weight * z
+    return scores
 
 
 def compute_power_ranks(team_stats: list[dict]) -> dict:
-    """
-    team_stats: list of dicts, one per team, each with:
-        team_id, win_pct, avg_points, recent_form
-    Returns: {team_id: rank} where rank 1 = best.
-    """
-    win_pcts = [t["win_pct"] for t in team_stats]
-    avg_points = [t["avg_points"] for t in team_stats]
-    recent_forms = [t["recent_form"] for t in team_stats]
-
-    norm_win = _normalize(win_pcts)
-    norm_avg = _normalize(avg_points)
-    norm_recent = _normalize(recent_forms)
-
-    composites = []
-    for i, t in enumerate(team_stats):
-        composite = (norm_win[i] * 0.5) + (norm_avg[i] * 0.3) + (norm_recent[i] * 0.2)
-        composites.append((t["team_id"], composite))
-
-    composites.sort(key=lambda x: x[1], reverse=True)
-    return {team_id: rank + 1 for rank, (team_id, _) in enumerate(composites)}
+    """{team_id: rank}, rank 1 = best (see POWER_WEIGHTS)."""
+    scores = compute_power_scores(team_stats)
+    avg_points = {t["team_id"]: t["avg_points"] for t in team_stats}
+    ordered = sorted(scores, key=lambda tid: (scores[tid], avg_points[tid]), reverse=True)
+    return {team_id: rank + 1 for rank, team_id in enumerate(ordered)}
 
 
-def compute_luck_score(team_score: float, all_scores_this_week: list[float], won: bool) -> float:
-    """
-    all_scores_this_week: every team's score in the league that week,
-    including this team's own score.
-    won: whether this team won their actual matchup.
-
-    Returns a score from -50 to 50. Positive = lucky (won despite a
-    below-average score). Negative = unlucky (lost despite an
-    above-average score). Near 0 = the result matched what the score
-    deserved relative to the rest of the league.
-    """
-    others = [s for s in all_scores_this_week if s != team_score]
-    if not others:
+def recent_form(scores_oldest_first: list[float]) -> float:
+    """Weighted average of the last three scores, newest heaviest."""
+    recent = list(reversed(scores_oldest_first))[: len(RECENT_FORM_WEIGHTS)]
+    if not recent:
         return 0.0
+    weights = RECENT_FORM_WEIGHTS[: len(recent)]
+    return sum(s * w for s, w in zip(recent, weights)) / sum(weights)
 
-    beat_count = sum(1 for s in others if team_score > s)
-    percentile = (beat_count / len(others)) * 100  # 0-100, how many teams you outscored
 
-    deserved_to_win = percentile > 50  # you outscored more than half the league
+def all_play_pcts(week_scores: dict[int, float]) -> dict[int, float]:
+    """One week's {team_id: score} -> {team_id: share of the rest of the
+    league that team outscored} (ties count half) — its odds of winning
+    that week against a random opponent."""
+    out = {}
+    for team_id, score in week_scores.items():
+        others = [s for tid, s in week_scores.items() if tid != team_id]
+        if not others:
+            out[team_id] = 0.5
+            continue
+        beat = sum(1 for s in others if score > s) + 0.5 * sum(1 for s in others if score == s)
+        out[team_id] = beat / len(others)
+    return out
 
-    if won and not deserved_to_win:
-        return round(50 - percentile, 2)       # lucky win, positive
-    elif not won and deserved_to_win:
-        return round(-(percentile - 50), 2)     # unlucky loss, negative
-    else:
-        return 0.0                               # result matched the score, no luck involved
+
+def compute_luck_score(result: float, all_play_pct: float) -> float:
+    """One week's luck on the same -50..50 scale the old Luck Index used
+    (so all-time averages stay comparable): 50 x (actual result -
+    expected result), where the actual result is 1 / 0.5 / 0 and the
+    expected one is the week's all-play win %. Winning with the 3rd-
+    worst score in a 12-team league = +45 (very lucky); losing with the
+    2nd-best = -45. A season's luck in wins is the sum / 50."""
+    return round(50 * (result - all_play_pct), 2)
 
 
 def compute_chaos_score(boom_count: int, bust_count: int, total_starters: int) -> float:
@@ -103,6 +127,61 @@ def compute_chaos_score(boom_count: int, bust_count: int, total_starters: int) -
         return 0.0
     swung_count = boom_count + bust_count
     return round((swung_count / total_starters) * 100, 2)
+
+
+async def regular_season_games(conn, season: int, through_week: int, league_id: int) -> list:
+    """Every decided regular-season game through `through_week`."""
+    return await conn.fetch(
+        """
+        SELECT week, home_team_id, away_team_id, home_score, away_score FROM matchups
+        WHERE season = $1 AND league_id = $2 AND week <= $3 AND is_playoff = FALSE AND home_score > 0
+        ORDER BY week
+        """,
+        season, league_id, through_week,
+    )
+
+
+def team_season_stats(games) -> dict[int, dict]:
+    """Per-team season stats from regular-season games: record, points,
+    margin, all-play, recent form, expected wins (sum of weekly all-play
+    win %) and the opponents faced. The one place every power-rank /
+    luck / SoS number comes from."""
+    by_week: dict[int, dict[int, float]] = {}
+    for g in games:
+        wk = by_week.setdefault(g["week"], {})
+        wk[g["home_team_id"]] = float(g["home_score"])
+        wk[g["away_team_id"]] = float(g["away_score"])
+    all_play = {week: all_play_pcts(scores) for week, scores in by_week.items()}
+
+    stats: dict[int, dict] = {}
+    for g in games:
+        for me, opp, my_score, opp_score in (
+            (g["home_team_id"], g["away_team_id"], float(g["home_score"]), float(g["away_score"])),
+            (g["away_team_id"], g["home_team_id"], float(g["away_score"]), float(g["home_score"])),
+        ):
+            t = stats.setdefault(
+                me,
+                {"team_id": me, "wins": 0, "losses": 0, "ties": 0, "scores": [], "margins": [], "all_play": [], "opponents": []},
+            )
+            result = 1.0 if my_score > opp_score else 0.5 if my_score == opp_score else 0.0
+            t["wins"] += result == 1.0
+            t["losses"] += result == 0.0
+            t["ties"] += result == 0.5
+            t["scores"].append(my_score)
+            t["margins"].append(my_score - opp_score)
+            t["all_play"].append(all_play[g["week"]][me])
+            t["opponents"].append(opp)
+    for t in stats.values():
+        n = len(t["scores"])
+        t["games"] = n
+        t["win_pct"] = (t["wins"] + 0.5 * t["ties"]) / n
+        t["all_play_pct"] = sum(t["all_play"]) / n
+        t["expected_wins"] = sum(t["all_play"])
+        t["luck_wins"] = t["wins"] + 0.5 * t["ties"] - t["expected_wins"]
+        t["avg_points"] = sum(t["scores"]) / n
+        t["avg_margin"] = sum(t["margins"]) / n
+        t["recent_form"] = recent_form(t["scores"])
+    return stats
 
 
 async def _upsert_stat(
@@ -131,43 +210,10 @@ async def _upsert_stat(
 
 
 async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    team_rows = await conn.fetch(
-        "SELECT id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
-    )
-
-    team_stats = []
-    for t in team_rows:
-        team_id = t["id"]
-        games = await conn.fetch(
-            """
-            SELECT
-                CASE WHEN home_team_id = $1 THEN home_score ELSE away_score END AS my_score,
-                CASE WHEN home_team_id = $1 THEN away_score ELSE home_score END AS opp_score
-            FROM matchups
-            WHERE season = $2 AND week <= $3
-              AND (home_team_id = $1 OR away_team_id = $1)
-              AND home_score > 0
-            ORDER BY week
-            """,
-            team_id, season, week,
-        )
-        if not games:
-            continue
-
-        # A tie counts as half a win (2026-09-24, commissioner's call).
-        wins = sum(1 for g in games if g["my_score"] > g["opp_score"])
-        ties = sum(1 for g in games if g["my_score"] == g["opp_score"])
-        win_pct = (wins + 0.5 * ties) / len(games)
-        avg_points = sum(float(g["my_score"]) for g in games) / len(games)
-        recent = games[-3:] if len(games) >= 3 else games
-        recent_form = sum(float(g["my_score"]) for g in recent) / len(recent)
-        team_stats.append(
-            {"team_id": team_id, "win_pct": win_pct, "avg_points": avg_points, "recent_form": recent_form}
-        )
-
-    if not team_stats:
+    stats = team_season_stats(await regular_season_games(conn, season, week, league_id))
+    if not stats:
         return 0
-
+    team_stats = list(stats.values())
     ranks = compute_power_ranks(team_stats)
     for t in team_stats:
         await _upsert_stat(conn, season, week, t["team_id"], "power_rank", ranks[t["team_id"]], league_id)
@@ -175,8 +221,9 @@ async def compute_power_ranks_for_week(conn, season: int, week: int, league_id: 
 
 
 async def lock_power_ranks_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    """Power ranks are decided once, when the week flips (app/domain/
-    week_flip.py — Tuesday 2 PM Central), and never rewritten after
+    """Power ranks are decided once, as soon as the week's last game is
+    final (2026-10: moved up from the Tuesday flip so Monday night's
+    recap can talk about the new rankings), and never rewritten after
     that (2026-09-25, commissioner's call: rankings shouldn't shift
     mid-week). Every sync path used to recompute every past week's rank
     on every run, so a later score change (a stat correction, a re-sync)
@@ -192,38 +239,24 @@ async def lock_power_ranks_for_week(conn, season: int, week: int, league_id: int
     return await compute_power_ranks_for_week(conn, season, week, league_id)
 
 
-async def _week_has_flipped(conn, season: int, week: int) -> bool:
-    """True once league_state.current_week has moved past `week` — only
-    the week-settlement job advances it, at the Tuesday flip. A season
-    with no league_state row (old backfilled seasons) counts as done."""
-    current_week = await conn.fetchval("SELECT current_week FROM league_state WHERE season = $1", season)
-    return current_week is None or week < current_week
-
-
 async def compute_luck_scores_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
+    """Each team's luck this week: its actual result vs its all-play win
+    % (see compute_luck_score)."""
     matchups = await conn.fetch(
         "SELECT * FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 AND home_score > 0",
         season, week, league_id,
     )
     if not matchups:
         return 0
-
-    all_scores = []
+    scores = {}
     for m in matchups:
-        all_scores.append(float(m["home_score"]))
-        all_scores.append(float(m["away_score"]))
-
+        scores[m["home_team_id"]] = float(m["home_score"])
+        scores[m["away_team_id"]] = float(m["away_score"])
+    expected = all_play_pcts(scores)
     for m in matchups:
-        if m["home_score"] == m["away_score"]:
-            # A tie is neither a lucky win nor an unlucky loss.
-            home_luck = away_luck = 0.0
-        else:
-            home_won = m["home_score"] > m["away_score"]
-            home_luck = round(compute_luck_score(float(m["home_score"]), all_scores, home_won), 2)
-            away_luck = round(compute_luck_score(float(m["away_score"]), all_scores, not home_won), 2)
-        await _upsert_stat(conn, season, week, m["home_team_id"], "luck_score", home_luck, league_id)
-        await _upsert_stat(conn, season, week, m["away_team_id"], "luck_score", away_luck, league_id)
-
+        for me, opp in ((m["home_team_id"], m["away_team_id"]), (m["away_team_id"], m["home_team_id"])):
+            result = 1.0 if scores[me] > scores[opp] else 0.5 if scores[me] == scores[opp] else 0.0
+            await _upsert_stat(conn, season, week, me, "luck_score", compute_luck_score(result, expected[me]), league_id)
     return len(matchups) * 2
 
 
@@ -263,58 +296,21 @@ async def compute_chaos_scores_for_week(conn, season: int, week: int, league_id:
 
 
 async def compute_sos_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    """Strength of schedule through this week, regular season only
-    (same convention the record book/all-time pages use) — for each
-    team, the average win percentage of every opponent it's actually
-    played so far. Higher = the team's opponents have collectively won
-    more of their own games, i.e. a harder schedule. A team's own
-    win_pct (needed as "the opponent's win_pct" when scoring everyone
-    else) is computed the same regular-season/played-games-only way
-    compute_power_ranks_for_week computes it, just filtered to
-    non-playoff games to match the record-book convention."""
-    team_rows = await conn.fetch(
-        "SELECT id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
-    )
-    team_ids = [t["id"] for t in team_rows]
-
-    win_pct_by_team: dict[int, float] = {}
-    for team_id in team_ids:
-        games = await conn.fetch(
-            """
-            SELECT
-                CASE WHEN home_team_id = $1 THEN home_score ELSE away_score END AS my_score,
-                CASE WHEN home_team_id = $1 THEN away_score ELSE home_score END AS opp_score
-            FROM matchups
-            WHERE season = $2 AND week <= $3
-              AND (home_team_id = $1 OR away_team_id = $1)
-              AND is_playoff = FALSE
-              AND home_score > 0
-            """,
-            team_id, season, week,
-        )
-        if games:
-            wins = sum(1 for g in games if g["my_score"] > g["opp_score"])
-            ties = sum(1 for g in games if g["my_score"] == g["opp_score"])
-            win_pct_by_team[team_id] = (wins + 0.5 * ties) / len(games)
-
+    """Strength of schedule through this week, regular season only: the
+    average all-play win % of every opponent a team has played (2026-10
+    overhaul — was their actual win %, so a schedule full of lucky
+    teams looked hard). All-play is how good a team really is: how often
+    it would beat any team in the league, week by week. Same 0-1 scale
+    as before (higher = harder), so all-time averages stay comparable.
+    Remaining schedule strength is computed on read (app/domain/
+    power_rankings.py), from the same numbers."""
+    stats = team_season_stats(await regular_season_games(conn, season, week, league_id))
     count = 0
-    for team_id in team_ids:
-        opponents = await conn.fetch(
-            """
-            SELECT CASE WHEN home_team_id = $1 THEN away_team_id ELSE home_team_id END AS opponent_id
-            FROM matchups
-            WHERE season = $2 AND week <= $3
-              AND (home_team_id = $1 OR away_team_id = $1)
-              AND is_playoff = FALSE
-              AND home_score > 0
-            """,
-            team_id, season, week,
-        )
-        opp_win_pcts = [win_pct_by_team[o["opponent_id"]] for o in opponents if o["opponent_id"] in win_pct_by_team]
-        if not opp_win_pcts:
+    for t in stats.values():
+        opp_strength = [stats[o]["all_play_pct"] for o in t["opponents"] if o in stats]
+        if not opp_strength:
             continue
-        sos = round(sum(opp_win_pcts) / len(opp_win_pcts), 3)
-        await _upsert_stat(conn, season, week, team_id, "sos", sos, league_id)
+        await _upsert_stat(conn, season, week, t["team_id"], "sos", round(sum(opp_strength) / len(opp_strength), 3), league_id)
         count += 1
     return count
 
@@ -373,11 +369,9 @@ async def compute_weekly_team_stats_for_week(conn, season: int, week: int, leagu
     games = await get_week_scoreboard(week=week, year=season)
     final = is_week_final(games)
     counts = [
-        # Only at/after the Tuesday flip, and only once per week — see
+        # Once the week is final, and only once — see
         # lock_power_ranks_for_week.
-        await lock_power_ranks_for_week(conn, season, week, league_id)
-        if final and await _week_has_flipped(conn, season, week)
-        else 0,
+        await lock_power_ranks_for_week(conn, season, week, league_id) if final else 0,
         await compute_luck_scores_for_week(conn, season, week, league_id) if final else 0,
         await compute_chaos_scores_for_week(conn, season, week, league_id) if final else 0,
         await compute_team_projected_for_week(conn, season, week, league_id),
