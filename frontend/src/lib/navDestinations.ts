@@ -37,7 +37,8 @@ export type DestinationKey =
   | "awardsAllTime"
   | "history"
   | "trades"
-  | "activity";
+  | "activity"
+  | "bracket";
 
 export type Destination = {
   key: DestinationKey;
@@ -125,6 +126,8 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // plain add/drop each already have their own color story elsewhere)
   // — this destination is the ledger, not a topic of its own.
   activity: { key: "activity", label: "Activity", color: "#64748b" },
+  // 2026-10: the 3D bracket, Your Path and the What-If Lab. Trophy gold.
+  bracket: { key: "bracket", label: "Bracket", color: "#f5c542" },
 };
 
 // Static hrefs shared by every nav surface that needs one — the single
@@ -155,6 +158,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   history: "/history",
   trades: "/trades",
   activity: "/activity",
+  bracket: "/bracket",
 };
 
 // The app's one accent color, everywhere something used to instead pick
@@ -239,6 +243,7 @@ export function isValidNavOrder(order: string[]): order is DestinationKey[] {
 export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
   "league",
   "standings",
+  "bracket",
   "powerRankings",
   "rivalries",
   "rules",
@@ -255,9 +260,12 @@ export const LEAGUE_SUBNAV_ORDER: DestinationKey[] = [
 // for the two rows to come out even; changing it requires updating
 // LeagueSubNav's grid-cols count to match. Primary = "what's the
 // current state of my league" (checked often, no extra tap).
+// 2026-10: the Bracket joined the primary row — 4 now, and
+// LeagueSubNav's primary grid sizes itself to the count.
 export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
   "league",
   "standings",
+  "bracket",
   "powerRankings",
 ]);
 

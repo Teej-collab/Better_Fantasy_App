@@ -1,4 +1,4 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -74,15 +74,31 @@ function LeagueScreenContent() {
         {LEAGUE_SECTIONS.map((s) => {
           const active = s.key === section;
           return (
-            <Pressable
-              key={s.key}
-              onPress={() => {
-                haptics.select();
-                setSection(s.key);
-              }}
-              style={[styles.pill, active && { borderColor: accent, backgroundColor: `${accent}22` }]}>
-              <Text style={[styles.pillText, active && { color: accent }]}>{s.label}</Text>
-            </Pressable>
+            <View key={s.key} style={styles.pillGroup}>
+              <Pressable
+                onPress={() => {
+                  haptics.select();
+                  setSection(s.key);
+                }}
+                style={[styles.pill, active && { borderColor: accent, backgroundColor: `${accent}22` }]}>
+                <Text style={[styles.pillText, active && { color: accent }]}>{s.label}</Text>
+              </Pressable>
+              {/* The Bracket is its own screen (3D cards, the full
+                  bracket, Your Path, What-If) — the web's sub-nav has
+                  it right after Standings too. */}
+              {s.key === 'standings' && (
+                <Pressable
+                  onPress={() => {
+                    haptics.tap();
+                    router.push('/bracket' as Href);
+                  }}
+                  style={[styles.pill, styles.bracketPill]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open the playoff bracket">
+                  <Text style={[styles.pillText, styles.bracketPillText]}>Bracket</Text>
+                </Pressable>
+              )}
+            </View>
           );
         })}
       </ScrollView>
@@ -109,6 +125,9 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.lg },
   leagueName: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   subnav: { gap: Spacing.sm },
+  pillGroup: { flexDirection: 'row', gap: Spacing.sm },
+  bracketPill: { borderColor: 'rgba(245,197,66,0.5)' },
+  bracketPillText: { color: '#f5c542' },
   pill: { backgroundColor: Colors.surface, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 7 },
   pillText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
 });

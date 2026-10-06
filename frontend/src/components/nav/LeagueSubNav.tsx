@@ -109,7 +109,7 @@ export function LeagueSubNav({
             until item count exceeds column count. Each pill fills its
             cell (w-full) and truncates as a safety net rather than
             sizing to its own content. */}
-        <div className="grid grid-cols-3 gap-1">{primaryTabs.map(tabLink)}</div>
+        <div className={`grid gap-1 ${primaryTabs.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>{primaryTabs.map(tabLink)}</div>
         <div className={`grid gap-1 ${secondaryTabs.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>
           {secondaryTabs.map(tabLink)}
         </div>

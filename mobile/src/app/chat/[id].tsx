@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -347,6 +347,7 @@ function MessageBubble(props: {
             </Pressable>
           )}
           {!!message.body && <Text style={[styles.body, mine && styles.textMine]}>{message.body}</Text>}
+          {!!message.body && <BracketLinkCard body={message.body} />}
           <Text style={[styles.time, mine && styles.timeMine]}>{formatMessageTime(message.created_at)}</Text>
         </View>
       </Pressable>
@@ -366,6 +367,9 @@ function MessageBubble(props: {
 }
 
 const styles = StyleSheet.create({
+  bracketLink: { marginTop: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#39ff14', backgroundColor: 'rgba(57,255,20,0.08)', gap: 2 },
+  bracketLinkTitle: { color: '#39ff14', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  bracketLinkSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   screen: { flex: 1 },
   list: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
   olderSpinner: { marginVertical: Spacing.lg },
@@ -475,3 +479,24 @@ const styles = StyleSheet.create({
   imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
   fullImage: { width: '100%', height: '80%' },
 });
+
+/** A shared What-If bracket (…/bracket?mode=whatif&w=…) opens in the
+ *  app's Bracket screen instead of the browser. */
+function BracketLinkCard({ body }: { body: string }) {
+  const m = body.match(/\/bracket\?([^\s]+)/);
+  if (!m) return null;
+  const query = new URLSearchParams(m[1]);
+  const w = query.get('w');
+  if (!w) return null;
+  return (
+    <Pressable
+      onPress={() => router.push({ pathname: '/bracket', params: { mode: 'whatif', w } } as unknown as Href)}
+      style={({ pressed }) => [styles.bracketLink, pressed && { opacity: 0.7 }]}
+      accessibilityRole="button"
+      accessibilityLabel="Open this what-if bracket">
+      <Text style={styles.bracketLinkTitle}>OPEN THIS WHAT-IF</Text>
+      <Text style={styles.bracketLinkSub}>See the standings and bracket in this world</Text>
+    </Pressable>
+  );
+}
+

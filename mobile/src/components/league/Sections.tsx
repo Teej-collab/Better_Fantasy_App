@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
@@ -164,6 +164,10 @@ export function StandingsSection({ season }: { season: number | null }) {
       {view === 'scoreboard' && season !== null && <WeekScoreboard season={season} />}
       {view === 'playoffs' && playoffs && (
         <View style={styles.gap}>
+          <Pressable onPress={() => router.push('/bracket' as Href)} style={styles.bracketCta} accessibilityRole="button">
+            <Text style={styles.bracketCtaTitle}>OPEN THE BRACKET</Text>
+            <Text style={styles.bracketCtaSub}>3D cards, the full bracket down to the Toilet Bowl, Your Path and the What-If Lab</Text>
+          </Pressable>
           <PlayoffBracket nodes={playoffs.nodes} />
           {playoffs.projected && playoffs.projected.length > 0 && <ProjectedPlayoffs matchups={playoffs.projected} />}
         </View>
@@ -735,6 +739,9 @@ const styles = StyleSheet.create({
   vsLine: { flex: 1, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   vs: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600', letterSpacing: 0.8 },
   bracket: { gap: Spacing.lg },
+  bracketCta: { padding: Spacing.md, borderRadius: 16, borderWidth: 1, borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.08)', gap: 4 },
+  bracketCtaTitle: { fontFamily: Fonts.displayBold, fontSize: 18, letterSpacing: 1, color: '#f5c542' },
+  bracketCtaSub: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
   bracketRound: { width: 200, gap: Spacing.sm },
   roundLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   bracketNodes: { flex: 1, justifyContent: 'space-around', gap: Spacing.md },

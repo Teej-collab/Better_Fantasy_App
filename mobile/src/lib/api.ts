@@ -1,4 +1,5 @@
 import type * as A from '@/lib/adminTypes';
+import type { PlayoffWorld } from '@/lib/bracketEngine';
 import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
 import type {
   AddFreeAgentResult,
@@ -244,6 +245,11 @@ export const api = {
   votePoll: (leagueId: number, pollId: number, optionIndex: number) =>
     request<Poll>(`/leagues/${leagueId}/polls/${pollId}/vote`, { method: 'POST', body: JSON.stringify({ option_index: optionIndex }) }),
   playoffBracket: (season: number) => request<{ nodes: PlayoffBracketNode[] }>(`/seasons/${season}/playoffs/bracket`),
+  // The bracket screens' and What-If engine's data (lib/bracketEngine.ts).
+  playoffWorld: (season: number) => request<{ world: PlayoffWorld | null }>(`/seasons/${season}/playoffs/world`),
+  // Posts a message to the active league's chat (sharing a What-If).
+  shareToLeagueChat: (body: string) =>
+    request<{ conversation_id: number; message_id: number }>('/chat/league/share', { method: 'POST', body: JSON.stringify({ body }) }),
   // "If the season ended today"; null once a real bracket exists.
   projectedPlayoffs: (season: number) =>
     request<{ matchups: ProjectedPlayoffMatchup[] | null }>(`/seasons/${season}/playoffs/projected`),

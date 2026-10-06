@@ -189,6 +189,32 @@ async def search_gifs(request: Request, search: str = Query(..., min_length=1, m
     return {"gifs": gifs}
 
 
+@router.post("/league/share")
+async def share_to_league_chat(request: Request, pool=Depends(get_pool)):
+    """Posts a message to the active league's chat from outside the chat
+    screen (2026-10: sharing a What-If bracket). Same insert, broadcast
+    and push as a message sent over the socket; plain text only."""
+    payload = _require_session(request)
+    data = await request.json()
+    body = str((data or {}).get("body", "")).strip()
+    if not body or len(body) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(status_code=400, detail="Message is empty or too long")
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        conversation_id = await chat_queries.get_league_conversation_id(conn, league_id)
+        if conversation_id is None:
+            raise HTTPException(status_code=404, detail="This league has no chat")
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        owner_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+        row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, None, None, None)
+        message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+    await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
+    await _push_notify_new_message(conversation_id, owner_id, owner_name or "Someone", body, None, [], participant_ids)
+    return {"conversation_id": conversation_id, "message_id": row["id"]}
+
+
 @router.post("/conversations/{conversation_id}/read")
 async def mark_conversation_read(conversation_id: int, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)

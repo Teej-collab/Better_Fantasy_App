@@ -425,6 +425,15 @@ export function usePlayoffs(season: number | null) {
   });
 }
 
+// Everything the Bracket screen rebuilds the season from (bracketEngine.ts).
+export function usePlayoffWorld(season: number | null) {
+  return useQuery({
+    queryKey: ['playoff-world', season],
+    enabled: season !== null,
+    queryFn: async () => (await api.playoffWorld(season!)).world,
+  });
+}
+
 export function useWeekPowerRankings(season: number | null) {
   return useQuery({
     queryKey: ['power-rankings-week', season],
