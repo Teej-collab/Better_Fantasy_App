@@ -11,7 +11,7 @@ import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { api, uploadChatImage } from '@/lib/api';
+import { api, uploadChatImage, WEB_BASE_URL } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
@@ -376,6 +376,31 @@ function MessageBubble(props: {
   );
 }
 
+/** A link to our own web app opens the matching screen here instead of
+ *  a browser sheet (which isn't signed in), e.g. the patch notes post's
+ *  /whats-new. Anything else → null, and it opens in the browser. */
+function nativeRouteFor(url: string): Href | null {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return null;
+  }
+  const ours = WEB_BASE_URL ? new URL(WEB_BASE_URL).host : 'weekend-league-web.vercel.app';
+  if (target.host !== ours) return null;
+  const path = target.pathname.replace(/\/$/, '') || '/';
+  if (path === '/') return '/' as Href;
+  if (path === '/whats-new') return '/whats-new' as Href;
+  if (path === '/lounge') return '/lounge' as Href;
+  if (path === '/chat') return '/chat' as Href;
+  if (path === '/standings' || path === '/bracket') {
+    const view = target.searchParams.get('view') ?? (path === '/bracket' ? 'playoffs' : undefined);
+    const w = target.searchParams.get('w') ?? undefined;
+    return { pathname: '/league', params: { section: 'standings', ...(view ? { view } : {}), ...(w ? { w } : {}) } } as unknown as Href;
+  }
+  return null;
+}
+
 const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g;
 
 /** Links in a Commish Corner post are tappable, and each tap is logged
@@ -393,7 +418,9 @@ function LinkedBody({ text, messageId, mine }: { text: string; messageId: number
         style={[styles.link, mine && styles.textMine]}
         onPress={() => {
           api.recordLinkOpen(messageId, url).catch(() => {});
-          void WebBrowser.openBrowserAsync(url);
+          const route = nativeRouteFor(url);
+          if (route) router.push(route);
+          else void WebBrowser.openBrowserAsync(url);
         }}>
         {url}
       </Text>,
