@@ -102,7 +102,7 @@ export function BracketExperience({
     setShareNote(null);
   };
   const share = async (to: 'chat' | 'sheet') => {
-    const link = `${WEB_BASE_URL}/bracket?mode=whatif&w=${encodeScenario(scenario, meId)}`;
+    const link = `${WEB_BASE_URL}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, meId)}`;
     const text = `What if… ${scenarioHeadline(world, alt, meId)}. See it: ${link}`;
     if (to === 'sheet') {
       await Share.share({ message: text });

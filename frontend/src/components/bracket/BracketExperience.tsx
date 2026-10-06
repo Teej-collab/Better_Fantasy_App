@@ -19,7 +19,7 @@ import { ArenaView } from "@/components/bracket/ArenaView";
 import { PathView } from "@/components/bracket/PathView";
 import { WhatIfView } from "@/components/bracket/WhatIfView";
 
-// The Bracket page (2026-10): one world — reality, or the what-if the
+// The Bracket (2026-10; Standings → Playoffs): one world — reality, or the what-if the
 // user is building — shown three ways. The pill top-left switches
 // between the Arena (the 3D bracket), Your Path (the Tower) and the
 // What-If Lab. The what-if rides in the URL (?w=), so a shared link
@@ -134,7 +134,7 @@ export function BracketExperience({
     setShareNote(null);
     syncUrl(mode, EMPTY_SCENARIO, t);
   };
-  const link = () => `${window.location.origin}/bracket?mode=whatif&w=${encodeScenario(scenario, me)}`;
+  const link = () => `${window.location.origin}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, me)}`;
   const shareLink = async () => {
     try {
       await navigator.clipboard.writeText(link());

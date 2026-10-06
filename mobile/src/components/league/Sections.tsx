@@ -146,9 +146,10 @@ function ActivePolls({ leagueId }: { leagueId: number }) {
 
 type StandingsView = 'standings' | 'scoreboard' | 'playoffs';
 
-export function StandingsSection({ season }: { season: number | null }) {
+export function StandingsSection({ season, initialView, whatIf }: { season: number | null; initialView?: string; whatIf?: string }) {
   const standingsQ = useStandings(season);
-  const [view, setView] = useState<StandingsView>('standings');
+  // A link (a shared what-if from chat) can open straight onto Playoffs.
+  const [view, setView] = useState<StandingsView>(initialView === 'playoffs' || whatIf ? 'playoffs' : 'standings');
   // Playoffs is the whole Bracket experience (2026-10), for the current
   // season — the bracket, Your Path and What-If, right in this tab.
   const latestSeason = useSeasons().data?.[0] ?? null;
@@ -165,7 +166,7 @@ export function StandingsSection({ season }: { season: number | null }) {
       <Segmented options={options} value={view} onChange={setView} />
       {view === 'standings' && <StandingsTable season={season} data={standingsQ.data} loading={standingsQ.isPending} />}
       {view === 'scoreboard' && season !== null && <WeekScoreboard season={season} />}
-      {view === 'playoffs' && hasPlayoffs && <BracketExperience embedded />}
+      {view === 'playoffs' && hasPlayoffs && <BracketExperience embedded initialMode={whatIf ? 'whatif' : undefined} initialW={whatIf} />}
     </View>
   );
 }

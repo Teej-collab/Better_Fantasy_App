@@ -480,17 +480,18 @@ const styles = StyleSheet.create({
   fullImage: { width: '100%', height: '80%' },
 });
 
-/** A shared What-If bracket (…/bracket?mode=whatif&w=…) opens in the
- *  app's Bracket screen instead of the browser. */
+/** A shared What-If bracket (…/standings?view=playoffs&w=…) opens in
+ *  League → Standings → Playoffs instead of the browser. */
 function BracketLinkCard({ body }: { body: string }) {
-  const m = body.match(/\/bracket\?([^\s]+)/);
+  // Old links (/bracket?…) and new ones (/standings?view=playoffs&…).
+  const m = body.match(/\/(?:bracket|standings)\?([^\s]+)/);
   if (!m) return null;
   const query = new URLSearchParams(m[1]);
   const w = query.get('w');
   if (!w) return null;
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/bracket', params: { mode: 'whatif', w } } as unknown as Href)}
+      onPress={() => router.navigate({ pathname: '/league', params: { section: 'standings', view: 'playoffs', w } } as unknown as Href)}
       style={({ pressed }) => [styles.bracketLink, pressed && { opacity: 0.7 }]}
       accessibilityRole="button"
       accessibilityLabel="Open this what-if bracket">
