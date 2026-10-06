@@ -77,8 +77,9 @@ export default function WhatsNewPage() {
         />
         <h3 className="text-sm font-semibold">How to get there</h3>
         <p className="text-sm leading-relaxed">
-          Tap <b>Lounge</b>: it&apos;s in the top bar on a computer and the bottom bar on your phone, and it lights up red with a count when anyone&apos;s
-          in a room. The Lounge banner on Home and the top of Chat get you there too. Inside, jump into the <b>League Lounge</b> or any{" "}
+          On your phone, tap the <b>☰ menu</b> at the top of the screen and choose <b>Lounge</b>, right under Chat. On a computer, it&apos;s{" "}
+          <b>Lounge</b> in the top bar. The Lounge banner at the top of Home gets you there too, and it goes red with who&apos;s watching when
+          anyone&apos;s in a room. Inside, jump into the <b>League Lounge</b> or any{" "}
           <b>watch party</b>, or start your own. Under &ldquo;Games that matter to you,&rdquo; <b>Start a room</b> puts that game on a TV.
         </p>
         <Link href="/lounge" className="self-start rounded-full px-4 py-2 text-sm font-bold" style={{ background: "var(--user-accent, var(--wl-accent))", color: "#06110a" }}>
