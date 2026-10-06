@@ -17,13 +17,14 @@ the very next poll even if a redeploy loses the in-memory cache, so
 persisting every tick would just be writes for data with no lasting
 value.
 """
+import asyncio
 import time
 from collections import deque
 
 from app.auth.league_context import resolve_active_league_id, resolve_owner_id
 from app.domain.scoring_engine import rules_dict_from_rows
 from app.gamecast import last_play
-from app.gamecast.models import LiveGame
+from app.gamecast.models import GameStatus, LiveGame
 from app.gamecast.providers import get_nfl_data_provider
 from app.providers.espn.config import ESPNConfig
 from app.queries import league as queries
@@ -89,6 +90,53 @@ def all_cached_states() -> list[LiveGame]:
     return list(_current_state.values())
 
 
+def _clock_seconds(clock: str | None) -> int | None:
+    try:
+        minutes, seconds = (clock or "").split(":")
+        return int(minutes) * 60 + int(seconds)
+    except ValueError:
+        return None
+
+
+def _is_behind(new: LiveGame, cached: LiveGame | None) -> bool:
+    """True when `new` is an older picture of a live game than what's
+    cached. ESPN's CDN sometimes serves a summary a few seconds older
+    than the last one (seen live, 2026-10-05: the newest play vanished
+    and came back on the next fetch), which made the Lounge's scorebug
+    and field jump backwards."""
+    if cached is None or new.status != GameStatus.IN_PROGRESS or cached.status != GameStatus.IN_PROGRESS:
+        return False
+    if new.home_team.score + new.away_team.score < cached.home_team.score + cached.away_team.score:
+        return True
+    if (new.period or 0) != (cached.period or 0):
+        return (new.period or 0) < (cached.period or 0)
+    new_clock, cached_clock = _clock_seconds(new.clock), _clock_seconds(cached.clock)
+    # (A few seconds' slack: officials do put time back on the clock.)
+    if new_clock is not None and cached_clock is not None and new_clock > cached_clock + 5:
+        return True
+    # Same moment on the clock, but the newest play we had is missing.
+    if cached.plays and new.plays and len(new.plays) < len(cached.plays) and not any(
+        p.play_id == cached.plays[0].play_id for p in new.plays
+    ):
+        return True
+    return False
+
+
+_refresh_locks: dict[str, asyncio.Lock] = {}
+
+
+async def refresh_if_stale(conn_factory, game_id: str, max_age_seconds: float) -> None:
+    """One provider fetch per game at a time: everyone polling a game in
+    the same moment waits on the one fetch instead of each making their
+    own."""
+    lock = _refresh_locks.setdefault(game_id, asyncio.Lock())
+    async with lock:
+        if not is_stale(game_id, max_age_seconds):
+            return
+        async with conn_factory() as conn:
+            await refresh_game(conn, game_id)
+
+
 async def refresh_game(conn, game_id: str) -> tuple[LiveGame, list[dict]]:
     """Fetches the latest state from the configured provider, updates
     the in-memory cache, and returns (new_state, fantasy_impact_events)
@@ -96,8 +144,11 @@ async def refresh_game(conn, game_id: str) -> tuple[LiveGame, list[dict]]:
     actually moved since the last time this was called for this game."""
     provider = get_nfl_data_provider()
     game = await provider.get_game_state(game_id)
-    _current_state[game_id] = game
     _last_refresh[game_id] = time.time()
+    cached = _current_state.get(game_id)
+    if _is_behind(game, cached):
+        return cached, []
+    _current_state[game_id] = game
     _record_history(game)
     events = await _diff_fantasy_impact(conn, game)
     return game, events

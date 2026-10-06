@@ -16,7 +16,7 @@ import type { LeagueTickerItem, NflGame, WeekMatchupContext, WeekMatchupContextI
 import type { Bet } from "@/lib/betsApi";
 import type { GamecastPlay, LiveGame } from "@/lib/gamecastApi";
 
-const POLL_MS = 4000;
+const POLL_MS = 2000;
 const TICK_MS = 1000;
 const KEEP_SECONDS = 300;
 

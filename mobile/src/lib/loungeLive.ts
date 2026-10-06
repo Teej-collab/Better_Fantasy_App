@@ -15,7 +15,7 @@ import type { GamecastPlay, LiveGame } from '@/lib/types';
 // at least `delay` seconds old, so someone walking in mid-game starts
 // already delayed instead of on a spoiler.
 
-const POLL_MS = 4000;
+const POLL_MS = 2000;
 const TICK_MS = 1000;
 const KEEP_SECONDS = 300;
 

@@ -61,8 +61,9 @@ async def game_state(game_id: str):
 
 
 # How old a live game's data may get before the timeline route fetches
-# it again itself (the Lounge polls this route every few seconds).
-_TIMELINE_MAX_AGE_SECONDS = 8
+# it again itself (the Lounge polls this route every 2s). Kept short:
+# every second here is a second the room's gamecast trails the TV.
+_TIMELINE_MAX_AGE_SECONDS = 2
 
 
 @router.get("/games/{game_id}/timeline")
@@ -77,8 +78,7 @@ async def game_timeline(game_id: str, since: float | None = None):
     if cached is None or (live and service.is_stale(game_id, _TIMELINE_MAX_AGE_SECONDS)):
         pool = await get_pool()
         try:
-            async with pool.acquire() as conn:
-                await service.refresh_game(conn, game_id)
+            await service.refresh_if_stale(pool.acquire, game_id, _TIMELINE_MAX_AGE_SECONDS if cached else -1)
         except KeyError:
             raise HTTPException(status_code=404, detail="Unknown game_id")
         except Exception:

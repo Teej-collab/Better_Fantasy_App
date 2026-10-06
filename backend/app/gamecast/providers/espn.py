@@ -16,7 +16,9 @@ and app/scheduler.py's gamecast poll job (ENABLE_GAMECAST_SCHEDULER)
 already rate-limits how often this runs in practice; the cost of an
 unauthenticated public GET is negligible either way.
 """
+import asyncio
 import re
+import time
 from datetime import datetime, timezone
 
 import httpx
@@ -171,6 +173,120 @@ def _team_ref(competitor: dict) -> TeamRef:
     )
 
 
+# The scoreboard is ESPN's fastest public feed: measured live (ATL @ NO,
+# 2026-10-05) its situation.lastPlay, score and clock were 0-22s ahead
+# of the per-game summary, which is all the gamecast read before. One
+# copy shared by every game for a moment, so a room polling every 2s
+# per game still makes one scoreboard request per moment, not one each.
+_SCOREBOARD_TTL_SECONDS = 1.5
+_scoreboard_cache: tuple[float, dict] | None = None
+_scoreboard_lock = asyncio.Lock()
+
+
+async def _scoreboard(client: httpx.AsyncClient) -> dict:
+    global _scoreboard_cache
+    async with _scoreboard_lock:
+        if _scoreboard_cache and time.monotonic() - _scoreboard_cache[0] < _SCOREBOARD_TTL_SECONDS:
+            return _scoreboard_cache[1]
+        response = await client.get(SCOREBOARD_URL)
+        response.raise_for_status()
+        _scoreboard_cache = (time.monotonic(), response.json())
+        return _scoreboard_cache[1]
+
+
+def _yards_to_goal(possession_text: str | None, offense_abbr: str | None) -> int | None:
+    """"NO 13" with ATL on offense -> 13; with NO on offense -> 87."""
+    if not possession_text or not offense_abbr:
+        return None
+    parts = possession_text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        return 50 if possession_text.strip() == "50" else None
+    side, yard = parts[0], int(parts[1])
+    return 100 - yard if side == offense_abbr else yard
+
+
+_TURNOVER_TYPES = ("interception", "fumble recovery (opponent)", "fumble return", "blocked")
+
+
+def _overlay_scoreboard(game: LiveGame, scoreboard: dict) -> LiveGame:
+    """When the scoreboard has a play the summary doesn't yet, lead with
+    it: the play itself, the score, clock, down and distance. The
+    summary catches up a few seconds later with the same play id and
+    its full detail, so nothing is announced twice."""
+    event = next((e for e in scoreboard.get("events") or [] if str(e.get("id")) == game.game_id), None)
+    if not event or game.status != GameStatus.IN_PROGRESS:
+        return game
+    competition = (event.get("competitions") or [{}])[0]
+    status = competition.get("status") or {}
+    if _game_status(status.get("type") or {}) != GameStatus.IN_PROGRESS:
+        return game
+    situation = competition.get("situation") or {}
+    last = situation.get("lastPlay") or {}
+    last_id = str(last.get("id") or "")
+    if not last_id or any(p.play_id == last_id for p in game.plays):
+        return game
+    pair = _competitors(competition)
+    if pair is None:
+        return game
+    home, away = pair
+    abbr_by_id = {str((c.get("team") or {}).get("id")): (c.get("team") or {}).get("abbreviation") for c in (home, away)}
+    home_score, away_score = int(home.get("score") or 0), int(away.get("score") or 0)
+    # Never step backwards: a scoreboard that's behind the summary on
+    # the score isn't the fresher of the two.
+    if home_score + away_score < game.home_team.score + game.away_team.score:
+        return game
+
+    type_text = (last.get("type") or {}).get("text") or ""
+    play_type = _play_type(type_text)
+    is_scoring = int(last.get("scoreValue") or 0) > 0
+    is_turnover = any(t in type_text.lower() for t in _TURNOVER_TYPES)
+    team_abbr = abbr_by_id.get(str((last.get("team") or {}).get("id")))
+    text = last.get("text") or ""
+    current = game.current_drive
+    play = Play(
+        play_id=last_id,
+        drive_id=current.drive_id if current and current.team_abbr == team_abbr else f"{game.game_id}-live",
+        period=status.get("period") or game.period or 1,
+        clock=status.get("displayClock") or "",
+        team_abbr=team_abbr,
+        down=None,
+        distance=None,
+        yard_line=None,
+        start_team_abbr=abbr_by_id.get(str(((last.get("start") or {}).get("team") or {}).get("id"))),
+        end_team_abbr=abbr_by_id.get(str(((last.get("end") or {}).get("team") or {}).get("id"))),
+        end_yard_line=None,
+        description=text,
+        play_type=play_type,
+        yards_gained=last.get("statYardage"),
+        is_scoring_play=is_scoring,
+        is_turnover=is_turnover,
+        is_first_down=False,
+        event_type=_event_type(play_type, is_scoring, is_turnover, False),
+        players_involved=_players_mentioned(text, team_abbr or ""),
+        timestamp=datetime.now(timezone.utc),
+    )
+    offense = abbr_by_id.get(str(situation.get("possession"))) if situation.get("possession") else None
+    down = situation.get("down")
+    live_down = offense is not None and isinstance(down, int) and down > 0
+    yards_to_goal = _yards_to_goal(situation.get("possessionText"), offense) if live_down else None
+    return game.model_copy(
+        update={
+            "home_team": game.home_team.model_copy(update={"score": home_score}),
+            "away_team": game.away_team.model_copy(update={"score": away_score}),
+            "period": status.get("period") or game.period,
+            "clock": status.get("displayClock") or game.clock,
+            "period_label": (status.get("type") or {}).get("shortDetail") or game.period_label,
+            "possession_team_abbr": offense if live_down else None,
+            "down": down if live_down else None,
+            "distance": situation.get("distance") if live_down else None,
+            "yards_to_goal": yards_to_goal,
+            "field_position_label": situation.get("possessionText") if live_down else None,
+            "is_redzone": bool(situation.get("isRedZone")) if live_down else False,
+            "plays": [play, *game.plays][:50],
+        }
+    )
+
+
 class ESPNNFLDataProvider(NFLDataProvider):
     async def list_live_games(self) -> list[LiveGameSummary]:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -212,12 +328,23 @@ class ESPNNFLDataProvider(NFLDataProvider):
 
     async def get_game_state(self, game_id: str) -> LiveGame:
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(SUMMARY_URL, params={"event": game_id})
+            response, scoreboard = await asyncio.gather(
+                client.get(SUMMARY_URL, params={"event": game_id}),
+                _scoreboard(client),
+                return_exceptions=True,
+            )
+            if isinstance(response, BaseException):
+                raise response
             if response.status_code == 404:
                 raise KeyError(f"Unknown ESPN game_id: {game_id!r}")
             response.raise_for_status()
             data = response.json()
+        game = self._parse_summary(game_id, data)
+        if isinstance(scoreboard, dict):
+            game = _overlay_scoreboard(game, scoreboard)
+        return game
 
+    def _parse_summary(self, game_id: str, data: dict) -> LiveGame:
         header = data.get("header", {})
         competitions = header.get("competitions") or []
         if not competitions:
