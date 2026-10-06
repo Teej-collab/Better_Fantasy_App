@@ -24,6 +24,10 @@ export function MyWaiverClaims() {
   const [claims, setClaims] = useState<WaiverClaim[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  // Collapsible (2026-10: some owners' lists got long) — starts closed
+  // once there are more than a few claims; the header always shows the
+  // count and how many are still pending.
+  const [open, setOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
     listMyWaiverClaims()
@@ -47,11 +51,25 @@ export function MyWaiverClaims() {
   if (claims === null) return <p className="text-xs text-black/50 dark:text-white/50">Loading your claims…</p>;
   if (claims.length === 0) return null;
 
+  const pending = claims.filter((c) => c.status === "pending").length;
+  const isOpen = open ?? claims.length <= 3;
   return (
     <div className="neon-panel flex flex-col rounded-lg bg-black/[0.015] dark:bg-white/[0.03]">
-      <div className="border-b border-black/5 px-4 py-2 text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:border-white/5 dark:text-white/40">
-        Your Waiver Claims
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(!isOpen)}
+        aria-expanded={isOpen}
+        className={`flex min-h-11 items-center justify-between gap-3 px-4 py-2 text-left text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50 ${isOpen ? "border-b border-black/5 dark:border-white/5" : ""}`}
+      >
+        <span>
+          Your Waiver Claims · {claims.length}
+          {pending > 0 && <span className="ml-2 normal-case text-sky-600 dark:text-sky-400">{pending} pending</span>}
+        </span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {isOpen && (
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
         {claims.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
@@ -83,6 +101,7 @@ export function MyWaiverClaims() {
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
 }

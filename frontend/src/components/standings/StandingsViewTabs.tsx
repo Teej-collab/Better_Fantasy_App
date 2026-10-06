@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
-const TABS = ["Standings", "Scoreboard", "Playoffs"] as const;
+const TABS = ["Scoreboard", "Standings", "Playoffs"] as const;
 type Tab = (typeof TABS)[number];
 
 // Real ESPN League tab's own segmented control (reference video,
@@ -16,12 +16,15 @@ export function StandingsViewTabs({
   standings,
   scoreboard,
   playoffs,
+  initialTab = "Standings",
 }: {
   standings: ReactNode;
   scoreboard: ReactNode;
   playoffs: ReactNode | null;
+  /** Standings unless a link asked for another (?view=playoffs). */
+  initialTab?: Tab;
 }) {
-  const [active, setActive] = useState<Tab>("Standings");
+  const [active, setActive] = useState<Tab>(initialTab);
   const tabs = playoffs !== null ? TABS : TABS.filter((t) => t !== "Playoffs");
 
   return (

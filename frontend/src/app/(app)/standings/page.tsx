@@ -9,9 +9,7 @@ import {
   getLatestPowerRankings,
   getMe,
   getMyPreferences,
-  getPlayoffBracket,
   getPlayoffOdds,
-  getProjectedPlayoffPicture,
   getStandings,
   getWeekMatchupContext,
   listSeasons,
@@ -21,7 +19,7 @@ import {
 } from "@/lib/api";
 import { LeagueSubNav } from "@/components/nav/LeagueSubNav";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
-import { PlayoffBracket, ProjectedPlayoffPicture } from "@/components/PlayoffBracket";
+import { BracketExperience } from "@/components/bracket/BracketExperience";
 import { SeasonTabs } from "@/components/nav/SeasonTabs";
 import { SignInCard } from "@/components/SignInCard";
 import { StandingsViewTabs } from "@/components/standings/StandingsViewTabs";
@@ -35,14 +33,14 @@ export const metadata: Metadata = { title: "Standings — The Weekend" };
 export default async function StandingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ season?: string }>;
+  searchParams: Promise<{ season?: string; view?: string; mode?: string; w?: string }>;
 }) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
   // listSeasons is public, so it runs alongside the auth check instead
   // of after it — every await below is a real round trip to the
   // backend, and they used to all run one after another (9 deep).
-  const [me, { seasons }, { season: seasonParam }] = await Promise.all([
+  const [me, { seasons }, { season: seasonParam, view, mode, w }] = await Promise.all([
     getMe(sessionCookie),
     listSeasons(),
     searchParams,
@@ -67,7 +65,6 @@ export default async function StandingsPage({
   const [
     [{ standings, playoff_team_count: playoffTeamCount }, myPreferences, activeLeagueName],
     { rankings: powerRankings },
-    { bracketNodes, projectedMatchups },
     { currentWeek, currentWeekMatchups },
     playoffOdds,
   ] = await Promise.all([
@@ -87,20 +84,6 @@ export default async function StandingsPage({
     // MovementBadge already existing and being wired into Power Rankings
     // — this is a pure reuse, not a new data source.
     season !== null ? getLatestPowerRankings(season, sessionCookie) : Promise.resolve({ rankings: [] }),
-    // The real in-app bracket (backend/app/domain/playoffs.py) — empty
-    // nodes before a commissioner has generated one for this season,
-    // in which case PlayoffBracket itself renders nothing. "If the
-    // season ended today" is only fetched/shown once the real bracket
-    // doesn't exist yet (the backend itself also returns null once a
-    // real one exists, so this is a pure optimization, not the only
-    // guard).
-    (async () => {
-      if (season === null) return { bracketNodes: [], projectedMatchups: null };
-      const { nodes } = await getPlayoffBracket(season, sessionCookie);
-      const { matchups } =
-        nodes.length === 0 ? await getProjectedPlayoffPicture(season, sessionCookie) : { matchups: null };
-      return { bracketNodes: nodes, projectedMatchups: matchups };
-    })(),
     // Scoreboard tab (real ESPN League > Scoreboard, reference video
     // 2026-09-15: prev/next arrows through every week's matchups, right
     // alongside Standings and Playoffs as sibling tabs of the same
@@ -145,7 +128,6 @@ export default async function StandingsPage({
   const toiletBowlCount = 4;
   const showToiletBowlLine = !isFinal && standings.length > toiletBowlCount;
 
-  const hasPlayoffsContent = bracketNodes.length > 0 || (projectedMatchups?.length ?? 0) > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -179,8 +161,8 @@ export default async function StandingsPage({
                 <span className="flex-1">Team</span>
                 {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
                 <span className="w-20 shrink-0 text-right">W-L-T</span>
-                <span className="w-16 shrink-0 text-right">PF</span>
                 <span className="w-16 shrink-0 text-right">PPG</span>
+                <span className="w-16 shrink-0 text-right">PF</span>
                 <span className="w-16 shrink-0 text-right">PA</span>
                 {playoffOdds && <span className="w-20 shrink-0 text-right">Playoff %</span>}
               </div>
@@ -213,14 +195,11 @@ export default async function StandingsPage({
             <p className="text-sm text-black/50 dark:text-white/50">No schedule yet.</p>
           )
         }
-        playoffs={
-          hasPlayoffsContent ? (
-            <div className="flex flex-col gap-4">
-              <PlayoffBracket nodes={bracketNodes} />
-              <ProjectedPlayoffPicture matchups={projectedMatchups} />
-            </div>
-          ) : null
-        }
+        // The whole Bracket experience, right in the tab (2026-10): the
+        // bracket, Your Path and the What-If Lab. ?view=playoffs (or a
+        // shared what-if's ?mode=/?w=) opens straight onto it.
+        playoffs={season !== null ? <BracketExperience season={season} myOwnerId={me.owner_id} initialMode={mode} initialW={w} /> : null}
+        initialTab={view === "playoffs" || mode || w ? "Playoffs" : view === "scoreboard" ? "Scoreboard" : "Standings"}
       />
     </div>
   );
@@ -339,11 +318,11 @@ function StandingsListRow({
         <StatCell label="W-L-T" className="font-medium sm:w-20">
           {row.wins}-{row.losses}-{row.ties}
         </StatCell>
-        <StatCell label="PF" className="text-black/60 sm:w-16 dark:text-white/60">
-          {Number(row.points_for).toFixed(1)}
-        </StatCell>
         <StatCell label="PPG" className="text-black/60 sm:w-16 dark:text-white/60">
           {ppg !== null ? ppg.toFixed(1) : "—"}
+        </StatCell>
+        <StatCell label="PF" className="text-black/60 sm:w-16 dark:text-white/60">
+          {Number(row.points_for).toFixed(1)}
         </StatCell>
         <StatCell label="PA" className="text-black/60 sm:w-16 dark:text-white/60">
           {Number(row.points_against).toFixed(1)}

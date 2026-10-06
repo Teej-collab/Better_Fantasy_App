@@ -95,8 +95,14 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
   );
 }
 
+// The newest few show; the rest wait behind "Show more" (2026-10 — the
+// list kept growing down the home page).
+const SHOWN = 4;
+
 export function ChugFeed({ chugs }: { chugs: ChugFeedEntry[] }) {
+  const [all, setAll] = useState(false);
   if (chugs.length === 0) return null;
+  const shown = all ? chugs : chugs.slice(0, SHOWN);
 
   return (
     <div className="flex flex-col gap-2">
@@ -105,10 +111,23 @@ export function ChugFeed({ chugs }: { chugs: ChugFeedEntry[] }) {
         className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
         style={panelGlowStyle(SECTION_COLORS.chug)}
       >
-        {chugs.map((chug) => (
+        {shown.map((chug) => (
           <ChugCard key={chug.id} chug={chug} />
         ))}
       </ol>
+      {chugs.length > SHOWN && (
+        <button
+          type="button"
+          onClick={() => setAll(!all)}
+          aria-expanded={all}
+          className="flex min-h-11 items-center justify-center gap-1.5 self-center rounded-full border border-black/10 px-4 text-sm font-medium text-black/60 hover:bg-black/5 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
+        >
+          {all ? "Show fewer" : `Show ${chugs.length - SHOWN} more`}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={all ? "rotate-180" : ""}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

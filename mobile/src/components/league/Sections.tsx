@@ -1,8 +1,9 @@
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { Fragment, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 
+import { BracketExperience } from '@/components/bracket/BracketExperience';
 import { PreviewLink } from '@/components/PreviewLink';
 import { ActivityRow } from '@/components/home/FeedCards';
 import { RankBadge } from '@/components/home/YourWeekCard';
@@ -14,7 +15,6 @@ import {
   PageTitle,
   RankedCategoryCard,
   Segmented,
-  SmallHeader,
 } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
@@ -30,7 +30,6 @@ import {
   useMatchupContext,
   useMe,
   usePlayoffOdds,
-  usePlayoffs,
   usePolls,
   usePowerRankingsTrend,
   useRivalries,
@@ -40,7 +39,7 @@ import {
   useStandings,
   useWeekPowerRankings,
 } from '@/lib/queries';
-import type { MatchupContextSide, PlayoffBracketNode, Poll, StandingsRow, WeekMatchupContextItem } from '@/lib/types';
+import type { MatchupContextSide, Poll, StandingsRow, WeekMatchupContextItem } from '@/lib/types';
 
 const ACTIVITY_COLOR = '#64748b';
 const MAX_WEEK = 17;
@@ -149,12 +148,14 @@ type StandingsView = 'standings' | 'scoreboard' | 'playoffs';
 
 export function StandingsSection({ season }: { season: number | null }) {
   const standingsQ = useStandings(season);
-  const playoffs = usePlayoffs(season).data;
   const [view, setView] = useState<StandingsView>('standings');
-  const hasPlayoffs = (playoffs?.nodes.length ?? 0) > 0 || (playoffs?.projected?.length ?? 0) > 0;
+  // Playoffs is the whole Bracket experience (2026-10), for the current
+  // season — the bracket, Your Path and What-If, right in this tab.
+  const latestSeason = useSeasons().data?.[0] ?? null;
+  const hasPlayoffs = season !== null && season === latestSeason;
   const options: { key: StandingsView; label: string }[] = [
-    { key: 'standings', label: 'Standings' },
     { key: 'scoreboard', label: 'Scoreboard' },
+    { key: 'standings', label: 'Standings' },
     ...(hasPlayoffs ? [{ key: 'playoffs' as const, label: 'Playoffs' }] : []),
   ];
 
@@ -164,16 +165,7 @@ export function StandingsSection({ season }: { season: number | null }) {
       <Segmented options={options} value={view} onChange={setView} />
       {view === 'standings' && <StandingsTable season={season} data={standingsQ.data} loading={standingsQ.isPending} />}
       {view === 'scoreboard' && season !== null && <WeekScoreboard season={season} />}
-      {view === 'playoffs' && playoffs && (
-        <View style={styles.gap}>
-          <Pressable onPress={() => router.push('/bracket' as Href)} style={styles.bracketCta} accessibilityRole="button">
-            <Text style={styles.bracketCtaTitle}>OPEN THE BRACKET</Text>
-            <Text style={styles.bracketCtaSub}>3D cards, the full bracket down to the Toilet Bowl, Your Path and the What-If Lab</Text>
-          </Pressable>
-          <PlayoffBracket nodes={playoffs.nodes} />
-          {playoffs.projected && playoffs.projected.length > 0 && <ProjectedPlayoffs matchups={playoffs.projected} />}
-        </View>
-      )}
+      {view === 'playoffs' && hasPlayoffs && <BracketExperience embedded />}
     </View>
   );
 }
@@ -237,8 +229,8 @@ function StandingsTable(props: {
                   <Text style={styles.record}>
                     {row.wins}-{row.losses}-{row.ties}
                   </Text>
-                  <Text style={ls.value}>PF {Number(row.points_for).toFixed(1)}</Text>
                   <Text style={ls.value}>PPG {games ? (Number(row.points_for) / games).toFixed(1) : '—'}</Text>
+                  <Text style={ls.value}>PF {Number(row.points_for).toFixed(1)}</Text>
                   <Text style={ls.value}>PA {Number(row.points_against).toFixed(1)}</Text>
                   {pct !== undefined && (
                     <Text style={[styles.oddsPct, pct >= 75 ? styles.oddsHigh : pct <= 10 ? styles.oddsLow : null]}>
@@ -349,80 +341,6 @@ function ScoreRow({ side, opponent, onPress }: { side: MatchupContextSide; oppon
         {side.projected_total !== null && <Text style={styles.smallMuted}>Proj {side.projected_total.toFixed(1)}</Text>}
       </View>
     </Pressable>
-  );
-}
-
-function roundLabel(round: number, max: number): string {
-  if (round === max) return 'Final';
-  if (round === max - 1) return 'Semifinals';
-  if (round === max - 2) return 'Quarterfinals';
-  return `Round ${round}`;
-}
-
-function PlayoffBracket({ nodes }: { nodes: PlayoffBracketNode[] }) {
-  if (nodes.length === 0) return null;
-  const rounds = Array.from(new Set(nodes.map((n) => n.round))).sort((a, b) => a - b);
-  const max = Math.max(...rounds);
-  return (
-    <NeonPanel contentStyle={styles.gapSm}>
-      <SmallHeader>Playoff Bracket</SmallHeader>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bracket}>
-        {rounds.map((round) => (
-          <View key={round} style={styles.bracketRound}>
-            <Text style={styles.roundLabel}>{roundLabel(round, max)}</Text>
-            <View style={styles.bracketNodes}>
-              {nodes
-                .filter((n) => n.round === round)
-                .sort((a, b) => a.slot - b.slot)
-                .map((n) => (
-                  <View key={n.id} style={styles.bracketNode}>
-                    <BracketTeam name={n.team_a_name} seed={n.team_a_seed} score={n.team_a_score} won={n.winner_team_id !== null && n.winner_team_id === n.team_a_id} />
-                    <View style={ls.divided} />
-                    <BracketTeam name={n.team_b_name} seed={n.team_b_seed} score={n.team_b_score} won={n.winner_team_id !== null && n.winner_team_id === n.team_b_id} />
-                  </View>
-                ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </NeonPanel>
-  );
-}
-
-function BracketTeam({ name, seed, score, won }: { name: string | null; seed: number | null; score: string | null; won: boolean }) {
-  return (
-    <View style={styles.bracketTeam}>
-      <View style={styles.nameWithBadge}>
-        {seed !== null && <Text style={styles.seed}>{seed}</Text>}
-        <Text style={[styles.bracketName, won && styles.bold]}>{name ?? 'TBD'}</Text>
-        {won && <Text style={styles.check}>✓</Text>}
-      </View>
-      {score !== null && <Text style={ls.value}>{Number(score).toFixed(1)}</Text>}
-    </View>
-  );
-}
-
-function ProjectedPlayoffs({ matchups }: { matchups: NonNullable<ReturnType<typeof usePlayoffs>['data']>['projected'] }) {
-  return (
-    <NeonPanel contentStyle={styles.gapSm}>
-      <SmallHeader>Projected Playoff Picture</SmallHeader>
-      <Text style={styles.smallMuted}>If the season ended today — recalculated every week from current standings. Not a guaranteed clinch.</Text>
-      {[...(matchups ?? [])]
-        .sort((a, b) => a.slot - b.slot)
-        .map((m) => (
-          <View key={m.slot} style={styles.projected}>
-            <View style={styles.bracketTeam}>
-              <Text style={styles.seed}>{m.team_a_seed}</Text>
-              <Text style={styles.bracketName}>{m.team_a_name}</Text>
-            </View>
-            <View style={ls.divided} />
-            <View style={styles.bracketTeam}>
-              <Text style={styles.seed}>{m.team_b_seed}</Text>
-              <Text style={styles.bracketName}>{m.team_b_name}</Text>
-            </View>
-          </View>
-        ))}
-    </NeonPanel>
   );
 }
 

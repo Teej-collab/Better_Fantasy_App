@@ -7,6 +7,7 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
+import { haptics } from '@/lib/haptics';
 import type { ChugFeedEntry, LeagueActivityItem } from '@/lib/types';
 
 // Section colors not in SectionColors' nav set (frontend/src/lib/
@@ -83,15 +84,33 @@ function ChugRow({ chug, divided }: { chug: ChugFeedEntry; divided: boolean }) {
   );
 }
 
+// The newest few show; the rest wait behind "Show more" (2026-10 — the
+// list kept growing down Home). Same as the web's ChugFeed.
+const CHUGS_SHOWN = 4;
+
 export function ChugFeedCard({ chugs }: { chugs: ChugFeedEntry[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? chugs : chugs.slice(0, CHUGS_SHOWN);
   return (
     <View style={styles.section}>
       <Display style={styles.title}>Recent Chugs</Display>
       <NeonPanel color={CHUG_COLOR} radius={Radius.md} contentStyle={styles.list}>
-        {chugs.map((c, i) => (
+        {shown.map((c, i) => (
           <ChugRow key={c.id} chug={c} divided={i > 0} />
         ))}
       </NeonPanel>
+      {chugs.length > CHUGS_SHOWN && (
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            setAll(!all);
+          }}
+          style={({ pressed }) => [styles.moreBtn, pressed && styles.morePressed]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: all }}>
+          <Text style={styles.moreText}>{all ? 'Show fewer' : `Show ${chugs.length - CHUGS_SHOWN} more`}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -149,6 +168,9 @@ export function ActivityCard({ items }: { items: LeagueActivityItem[] }) {
 }
 
 const styles = StyleSheet.create({
+  moreBtn: { alignSelf: 'center', minHeight: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', marginTop: 8 },
+  morePressed: { opacity: 0.6 },
+  moreText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
   section: { gap: Spacing.sm },
   title: { fontSize: 18, textTransform: 'none', letterSpacing: 0 },
   list: { padding: 0, backgroundColor: withAlpha(Colors.surface, 0.92) },
