@@ -159,10 +159,10 @@ export default async function StandingsPage({
         standings={
           <div className="flex flex-col gap-4">
             <p className="text-xs text-black/50 dark:text-white/50">
-              {isFinal ? "Final standings (ESPN)." : "Regular season record — season in progress."}
-              {showPlayoffLine &&
-                ` The line below the top ${playoffTeamCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
-              {showToiletBowlLine && ` The bottom ${toiletBowlCount} are headed for the toilet bowl.`}
+              {isFinal ? "Final standings." : "Season in progress."}
+              {showPlayoffLine && ` Top ${playoffTeamCount} make the playoffs.`}
+              {showToiletBowlLine && ` The bottom ${toiletBowlCount} risk the Toilet Bowl.`}
+              {playoffOdds && " Playoff % comes from 10,000 simulated seasons."}
             </p>
 
             <div
@@ -299,7 +299,14 @@ function StandingsListRow({
       }
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="w-6 shrink-0 tabular-nums text-black/50 dark:text-white/50">{rank}</span>
+        <span className="flex w-6 shrink-0 flex-col items-start tabular-nums text-black/50 dark:text-white/50">
+          {rank}
+          {movement !== undefined && (
+            <span className="text-[10px] sm:hidden">
+              <MovementBadge movement={movement} />
+            </span>
+          )}
+        </span>
         <div className="min-w-0">
           <Link href={`/teams/${row.team_id}`} className="font-medium hover:underline">
             {row.team_name}
@@ -318,36 +325,64 @@ function StandingsListRow({
           <div className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{row.owner_name}</div>
         </div>
       </div>
-      <div className="flex gap-4 pl-8 text-sm sm:gap-0 sm:pl-0">
+      {/* Phones: one row of labelled cells (2026-10 — the old inline
+          numbers wrapped into an unlabelled jumble). sm+: the table's
+          columns, labelled by the header row. */}
+      <div
+        className={`grid gap-1 pl-8 text-sm sm:flex sm:gap-0 sm:pl-0 ${playoffPct !== undefined ? "grid-cols-5" : "grid-cols-4"}`}
+      >
         {movement !== undefined && (
-          <span className="text-xs tabular-nums sm:w-14 sm:shrink-0 sm:text-right">
+          <span className="hidden text-xs tabular-nums sm:block sm:w-14 sm:shrink-0 sm:text-right">
             <MovementBadge movement={movement} />
           </span>
         )}
-        <span className="tabular-nums font-medium sm:w-20 sm:shrink-0 sm:text-right">
+        <StatCell label="W-L-T" className="font-medium sm:w-20">
           {row.wins}-{row.losses}-{row.ties}
-        </span>
-        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
+        </StatCell>
+        <StatCell label="PF" className="text-black/60 sm:w-16 dark:text-white/60">
           {Number(row.points_for).toFixed(1)}
-        </span>
-        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
-          <span className="sm:hidden">PPG </span>
+        </StatCell>
+        <StatCell label="PPG" className="text-black/60 sm:w-16 dark:text-white/60">
           {ppg !== null ? ppg.toFixed(1) : "—"}
-        </span>
-        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
+        </StatCell>
+        <StatCell label="PA" className="text-black/60 sm:w-16 dark:text-white/60">
           {Number(row.points_against).toFixed(1)}
-        </span>
+        </StatCell>
         {playoffPct !== undefined && (
-          <span
-            className="tabular-nums font-semibold sm:w-20 sm:shrink-0 sm:text-right"
+          <StatCell
+            label="PLAYOFFS"
+            className="font-semibold sm:w-20"
             style={{ color: playoffPct >= 75 ? "#16a34a" : playoffPct <= 10 ? "#b45309" : undefined }}
             title="Chance of making the playoffs, from simulating the rest of the season"
           >
-            <span className="font-normal text-black/50 sm:hidden dark:text-white/50">Playoffs </span>
             {playoffPct < 1 && playoffPct > 0 ? "<1" : Math.round(playoffPct)}%
-          </span>
+          </StatCell>
         )}
       </div>
     </li>
   );
 }
+
+/** One standings number: labelled on phones, a plain right-aligned
+ *  table cell from sm up (the header row labels it there). */
+function StatCell({
+  label,
+  className,
+  style,
+  title,
+  children,
+}: {
+  label: string;
+  className?: string;
+  style?: React.CSSProperties;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className={`flex min-w-0 flex-col tabular-nums sm:block sm:shrink-0 sm:text-right ${className ?? ""}`} style={style} title={title}>
+      <span className="text-[10px] font-normal tracking-wide text-black/45 sm:hidden dark:text-white/45">{label}</span>
+      <span className="whitespace-nowrap">{children}</span>
+    </span>
+  );
+}
+

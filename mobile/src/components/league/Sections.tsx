@@ -201,10 +201,10 @@ function StandingsTable(props: {
   return (
     <View style={styles.gapSm}>
       <Text style={styles.smallMuted}>
-        {isFinal ? 'Final standings (ESPN).' : 'Regular season record — season in progress.'}
-        {showPlayoffLine &&
-          ` The line below the top ${playoffCount} marks last season's real playoff cutoff — a preview, not a guaranteed clinch.`}
-        {showToilet && ` The bottom ${toiletBowl} are headed for the toilet bowl.`}
+        {isFinal ? 'Final standings.' : 'Season in progress.'}
+        {showPlayoffLine && ` Top ${playoffCount} make the playoffs.`}
+        {showToilet && ` The bottom ${toiletBowl} risk the Toilet Bowl.`}
+        {odds && ' Playoff % comes from 10,000 simulated seasons.'}
       </Text>
       <ListPanel color={SectionColors.standings}>
         {standings.map((row, i) => {
