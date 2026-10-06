@@ -247,10 +247,18 @@ class ESPNNFLDataProvider(NFLDataProvider):
         current_drive_dict = drives_payload.get("current")
         has_separate_current = bool(current_drive_dict) and game_status == GameStatus.IN_PROGRESS
         if current_drive_dict:
+            # ESPN also lists the drive in progress as the last of
+            # "previous" (confirmed live, ATL @ NO 2026-10-05) — keep only
+            # the "current" copy, or every play of it comes through twice
+            # (and the Lounge announced each one twice).
+            current_id = current_drive_dict.get("id")
+            if current_id is not None:
+                drive_dicts = [d for d in drive_dicts if d.get("id") != current_id]
             drive_dicts.append(current_drive_dict)
 
         drives: list[Drive] = []
         plays_out: list[Play] = []
+        seen_play_ids: set[str] = set()
         last_play_end: dict | None = None
         last_offense_abbr: str | None = None
 
@@ -295,6 +303,9 @@ class ESPNNFLDataProvider(NFLDataProvider):
                     players_involved=_players_mentioned(p.get("text") or "", drive_team_abbr or ""),
                     timestamp=now,
                 )
+                if play.play_id in seen_play_ids:
+                    continue
+                seen_play_ids.add(play.play_id)
                 drive.plays.append(play)
                 plays_out.append(play)
                 last_play_end = end or last_play_end

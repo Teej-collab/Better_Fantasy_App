@@ -8,6 +8,7 @@ import {
   useDataChannel,
   useIsSpeaking,
   useLocalParticipant,
+  useMediaDeviceSelect,
   useParticipants,
   useTracks,
   type TrackReference,
@@ -25,6 +26,8 @@ import {
   isTouchdown,
   lastName,
   loungeApi,
+  scoringHeadline,
+  shade,
   useDelayedGame,
   useDelayedValue,
   usePolled,
@@ -80,7 +83,8 @@ export function WebLoungeRoom({
   const tv = useRoomTv(room.id, { gameId: room.tv_game_id ?? null, delaySeconds: room.tv_delay_seconds ?? 45 });
   const participants = useParticipants();
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
-  const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
+  const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const [tab, setTab] = useState<"chat" | "sweat" | "plays">("chat");
   const [seenMessages, setSeenMessages] = useState(messages.length);
   const [moment, setMoment] = useState<Moment | null>(null);
@@ -105,7 +109,7 @@ export function WebLoungeRoom({
     const top = [...players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points))[0];
     if (!top || Math.abs(top.points) < 0.05) return;
     const yards = play.yards_gained ? `${Math.abs(play.yards_gained)}-yd ${play.play_type === "pass" ? "catch" : play.play_type === "rush" ? "run" : "play"}` : "big play";
-    setMoments((m) => [
+    setMoments((m) => m.some((x) => x.id === `moment-${play.play_id}`) ? m : [
       ...m.slice(-20),
       {
         kind: "moment",
@@ -227,6 +231,42 @@ export function WebLoungeRoom({
               )}
             </div>
           )}
+          <button
+            onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+            aria-pressed={isMicrophoneEnabled}
+            className={`h-[38px] rounded-full px-4 text-[13px] font-semibold ${isMicrophoneEnabled ? "border border-white/[0.12] bg-[#12151d]" : "bg-[#b91c3c] text-white"}`}
+          >
+            {isMicrophoneEnabled ? "Mic on" : "Mic off"}
+          </button>
+          <button
+            onClick={() => void localParticipant.setCameraEnabled(!isCameraEnabled)}
+            aria-pressed={isCameraEnabled}
+            className={`h-[38px] rounded-full px-4 text-[13px] font-semibold ${isCameraEnabled ? "border border-white/[0.12] bg-[#12151d]" : "bg-[#b91c3c] text-white"}`}
+          >
+            {isCameraEnabled ? "Camera on" : "Camera off"}
+          </button>
+          <div className="relative">
+            <button
+              onClick={() => setDevicesOpen((v) => !v)}
+              aria-expanded={devicesOpen}
+              className="h-[38px] rounded-full border border-white/[0.12] bg-[#12151d] px-4 text-[13px] font-semibold"
+            >
+              Devices
+            </button>
+            {devicesOpen && (
+              <div className="absolute top-full right-0 z-40 mt-2 max-h-[60vh] w-72 overflow-y-auto rounded-xl border border-white/10 bg-[#0f1420] p-3 text-[13px] shadow-2xl">
+                <p className="pb-1 text-xs text-[#9aa3b2]">Microphone</p>
+                <DeviceList kind="audioinput" />
+                <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">Camera</p>
+                <DeviceList kind="videoinput" />
+                <p className="pt-3 pb-1 text-xs text-[#9aa3b2]">Speakers</p>
+                <DeviceList kind="audiooutput" />
+                <button onClick={() => setDevicesOpen(false)} className="mt-3 w-full rounded-full bg-white/10 py-1.5 font-semibold">
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
           <button onClick={toggleShare} className={`h-[38px] rounded-full px-4 text-[13px] font-semibold ${isScreenShareEnabled ? "bg-[#b91c3c] text-white" : "border border-white/[0.12] bg-[#12151d]"}`}>
             {isScreenShareEnabled ? "Stop sharing" : "Share screen"}
           </button>
@@ -366,6 +406,8 @@ function Tv({
 }) {
   const sharer = share?.participant;
   const scorer = moment?.play.team_abbr ?? null;
+  // The takeover wears the scoring team's colors.
+  const teamColor = (scorer && nflTeamColor(scorer)) || "#e31837";
   const city = (() => {
     const name = nflTeamName(scorer) ?? scorer ?? "";
     const parts = name.split(" ");
@@ -378,9 +420,9 @@ function Tv({
       style={{
         aspectRatio: "16 / 9",
         maxHeight: 480,
-        borderColor: moment ? "rgba(227,24,55,0.6)" : "rgba(255,255,255,0.08)",
+        borderColor: moment ? `${teamColor}aa` : "rgba(255,255,255,0.08)",
         background: "radial-gradient(120% 90% at 50% 20%, #1d3a24 0%, #0f1f14 55%, #070b08 100%)",
-        boxShadow: moment ? "0 0 60px rgba(227,24,55,0.3)" : undefined,
+        boxShadow: moment ? `0 0 60px ${teamColor}55` : undefined,
       }}
     >
       {share ? (
@@ -393,13 +435,16 @@ function Tv({
       )}
       {moment ? (
         <>
-          <div className="absolute inset-0" style={{ background: "radial-gradient(120% 90% at 50% 30%, rgba(74,15,26,0.92) 0%, rgba(28,10,16,0.92) 60%, rgba(7,5,8,0.95) 100%)" }} />
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
-            <span className="font-display text-base tracking-[6px] text-[#fecaca]">{city}</span>
-            <span className="font-display text-5xl leading-none font-bold tracking-[3px] text-white sm:text-[88px]" style={{ textShadow: "0 0 32px rgba(227,24,55,0.9)" }}>
+          <div
+            className="absolute inset-0"
+            style={{ background: `radial-gradient(120% 90% at 50% 30%, ${shade(teamColor, 0.35)}eb 0%, ${shade(teamColor, 0.7)}eb 60%, ${shade(teamColor, 0.9)}f2 100%)` }}
+          />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+            <span className="font-display text-base tracking-[6px] text-white/80">{city}</span>
+            <span className="font-display text-5xl leading-none font-bold tracking-[3px] text-white sm:text-[88px]" style={{ textShadow: `0 0 32px ${teamColor}` }}>
               TOUCHDOWN
             </span>
-            <span className="text-base text-[#fde2e2]">{moment.play.description.split(".")[0]}</span>
+            <span className="text-base text-white/90 sm:text-lg">{scoringHeadline(moment.play, moment.game)}</span>
           </div>
           <div className="absolute right-3.5 bottom-3.5 left-3.5 flex flex-wrap gap-2">
             {counts.letsgo > 0 && <span className="rounded-full px-3 py-1.5 text-[13px] font-extrabold" style={{ background: "rgba(57,255,20,0.18)" }}>LET&apos;S GO ×{counts.letsgo}</span>}
@@ -415,22 +460,26 @@ function Tv({
               <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
             </div>
           )}
+          {sharer && !sharer.isLocal && <TvVolume participant={sharer as RemoteParticipant} accent={accent} />}
+          {/* A compact score block in the corner (not a full-width bar over
+              the picture): scores, and the quarter and clock under them. */}
           {game && (
-            <div className="absolute right-3.5 bottom-3.5 left-3.5 flex min-h-12 flex-wrap items-stretch overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.9)] font-mono">
-              <div className="flex items-center gap-2 px-3.5" style={{ background: nflTeamColor(game.away_team.abbr) ?? "#2b2d31" }}>
-                <b className="font-display text-base">{game.away_team.abbr}</b>
-                <b className="text-[22px]">{game.away_team.score}</b>
+            <div className="absolute bottom-3.5 left-3.5 overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.85)] font-mono shadow-lg">
+              <div className="flex">
+                <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: nflTeamColor(game.away_team.abbr) ?? "#2b2d31" }}>
+                  <b className="font-display text-sm">{game.away_team.abbr}</b>
+                  <b className="text-lg">{game.away_team.score}</b>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: nflTeamColor(game.home_team.abbr) ?? "#2b2d31" }}>
+                  <b className="font-display text-sm">{game.home_team.abbr}</b>
+                  <b className="text-lg">{game.home_team.score}</b>
+                </div>
               </div>
-              <div className="flex items-center gap-2 px-3.5" style={{ background: nflTeamColor(game.home_team.abbr) ?? "#2b2d31" }}>
-                <b className="font-display text-base">{game.home_team.abbr}</b>
-                <b className="text-[22px]">{game.home_team.score}</b>
-              </div>
-              <div className="flex items-center gap-3.5 px-3.5 text-[13px]">
+              <div className="flex items-center gap-2 px-3 py-1 text-[12px]">
                 <span>{clockLabel(game)}</span>
                 {downLabel(game) && <span className="text-[#facc15]">{downLabel(game)}</span>}
-                {catchingUp && <span className="text-[#9aa3b2]">syncing to the TV…</span>}
+                {catchingUp && <span className="text-[#9aa3b2]">syncing…</span>}
               </div>
-              {sharer && !sharer.isLocal && <TvVolume participant={sharer as RemoteParticipant} accent={accent} />}
             </div>
           )}
         </>
@@ -439,11 +488,34 @@ function Tv({
   );
 }
 
+// Pick which mic, camera or speakers the call uses (the browser's own
+// device list; built on the hook rather than LiveKit's <MediaDeviceSelect/>,
+// see LoungeVideoRoom.tsx's DeviceList for why).
+function DeviceList({ kind }: { kind: MediaDeviceKind }) {
+  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind });
+  if (devices.length === 0) return <p className="py-1 text-white/40">None found</p>;
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {devices.map((d) => (
+        <li key={d.deviceId}>
+          <button
+            onClick={() => void setActiveMediaDevice(d.deviceId)}
+            className={`w-full rounded px-2 py-1.5 text-left break-words ${d.deviceId === activeDeviceId ? "bg-white/15 font-semibold" : "hover:bg-white/5"}`}
+          >
+            {d.deviceId === activeDeviceId ? "✓ " : ""}
+            {d.label || kind}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function TvVolume({ participant, accent }: { participant: RemoteParticipant; accent: string }) {
   const [volume, setVolume] = useState(() => participant.getVolume(Track.Source.ScreenShareAudio) ?? 1);
   return (
-    <label className="ml-auto flex items-center gap-2 border-l border-white/10 px-3.5">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <label className="absolute top-3.5 right-3.5 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M11 5L6 9H2v6h4l5 4V5z" />
         {volume > 0 ? <path d="M15.5 8.5a5 5 0 010 7" /> : <path d="M22 9l-6 6M16 9l6 6" />}
       </svg>
@@ -459,7 +531,7 @@ function TvVolume({ participant, accent }: { participant: RemoteParticipant; acc
           setVolume(v);
           participant.setVolume(v, Track.Source.ScreenShareAudio);
         }}
-        className="w-[110px]"
+        className="w-[96px]"
         style={{ accentColor: accent }}
       />
     </label>

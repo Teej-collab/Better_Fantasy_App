@@ -95,6 +95,9 @@ export function useDelayedGame(
   const firstSeen = useRef<Map<string, number>>(new Map());
   const offset = useRef(0);
   const shownPlays = useRef<Set<string> | null>(null);
+  // Every play already announced for this game — once each, even if a
+  // re-sync moves the delay back and the same plays come around again.
+  const announced = useRef<Set<string>>(new Set());
   const onPlayRef = useRef(onPlay);
   const delayRef = useRef(delaySeconds);
   useEffect(() => {
@@ -112,6 +115,7 @@ export function useDelayedGame(
     snapshots.current = [];
     firstSeen.current = new Map();
     shownPlays.current = null;
+    announced.current = new Set();
     if (!gameId) return;
     let cancelled = false;
     let lastAt: number | undefined;
@@ -128,7 +132,10 @@ export function useDelayedGame(
       }
       const catchingUp = snaps[0].at > target;
       if (shownPlays.current) {
-        const fresh = shown.game.plays.filter((p) => !shownPlays.current!.has(p.play_id) && isSnap(p)).reverse();
+        const fresh = shown.game.plays
+          .filter((p) => !shownPlays.current!.has(p.play_id) && !announced.current.has(p.play_id) && isSnap(p))
+          .reverse();
+        for (const p of fresh) announced.current.add(p.play_id);
         for (const p of fresh) onPlayRef.current?.(p, shown.game);
       }
       shownPlays.current = new Set(shown.game.plays.map((p) => p.play_id));
@@ -293,4 +300,28 @@ export function useRoomTv(roomId: number, initial: RoomTv): RoomTv {
     };
   }, [roomId]);
   return tv;
+}
+
+/**
+ * A scoring play's headline with full names. The play-by-play shortens
+ * names ("Bi.Robinson left end for 59 yards"), but ESPN's scoring summary
+ * for the same play has them in full ("Bijan Robinson 59 Yd Run (Nick
+ * Folk Kick)") — use that, without the kick in parentheses.
+ */
+export function scoringHeadline(play: GamecastPlay, game: LiveGame): string {
+  const sp =
+    game.scoring_plays.find((s) => s.play_id === play.play_id) ??
+    game.scoring_plays.find((s) => s.period === play.period && s.clock === play.clock);
+  if (sp?.description) return sp.description.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  // No summary yet: the play text up to its first sentence break, without
+  // splitting on an initial ("Bi." in "Bi.Robinson").
+  const m = play.description.match(/^(.*?[a-z0-9]{2,}[.!])(\s|$)/);
+  return (m ? m[1] : play.description).replace(/\.$/, "");
+}
+
+/** A team color darkened toward black (factor 0..1), for backgrounds. */
+export function shade(hex: string, factor: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const f = (c: number) => Math.round(c * (1 - factor)).toString(16).padStart(2, "0");
+  return `#${f((n >> 16) & 255)}${f((n >> 8) & 255)}${f(n & 255)}`;
 }
