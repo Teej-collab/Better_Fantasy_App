@@ -1,3 +1,4 @@
+import { LoungeNavItem } from "@/components/nav/LoungeNavItem";
 import { NavLink } from "@/components/nav/NavLink";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
 
@@ -142,6 +143,8 @@ export function PrimaryNav({
             return null;
         }
       })}
+      {/* Always there, not part of the reorderable set (2026-10). */}
+      {signedIn && <LoungeNavItem variant="desktop" />}
     </div>
   );
 }

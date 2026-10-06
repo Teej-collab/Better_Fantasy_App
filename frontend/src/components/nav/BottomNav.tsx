@@ -1,5 +1,6 @@
 "use client";
 
+import { LoungeNavItem } from "@/components/nav/LoungeNavItem";
 import { NavLink } from "@/components/nav/NavLink";
 import { GamecastIcon, HomeIcon, LeagueIcon, MatchupsIcon, TeamIcon } from "@/components/nav/icons";
 import { DESTINATIONS, MOBILE_NAV_ORDER, NAV_ACCENT, isValidNavOrder } from "@/lib/navDestinations";
@@ -180,6 +181,9 @@ export function BottomNav({
             return null;
         }
       })}
+      {/* The Lounge, always in the bar (2026-10) — not part of the
+          reorderable five, so saved orders stay valid. */}
+      {signedIn && <LoungeNavItem variant="bottom" />}
     </nav>
   );
 }

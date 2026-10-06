@@ -49,6 +49,7 @@ import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { HomePageBeta } from "@/components/HomePageBeta";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
 import { TickerStrips } from "@/components/LiveTicker";
+import { LoungeBanner } from "@/components/nav/LoungeNavItem";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
@@ -705,6 +706,10 @@ export default async function HomePage() {
             then stays relevant every week for the rest of the season.
             Earning the top slot while it's relevant beats sitting below
             the fold underneath cards that are still there every week. */}
+        {/* The Lounge, highlighted (2026-10): LIVE with who's watching
+            when anyone's in a room, otherwise the one-line pitch. */}
+        <LoungeBanner />
+
         {cards.draftCountdown}
         {cards.gamecast}
 
