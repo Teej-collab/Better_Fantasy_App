@@ -231,7 +231,7 @@ export function scoringHeadline(play: GamecastPlay, game: LiveGame): string {
 
 /** A team color darkened toward black (factor 0..1), for backgrounds. */
 export function shade(hex: string, factor: number): string {
-  const n = parseInt(hex.replace("#", ""), 16);
-  const f = (c: number) => Math.round(c * (1 - factor)).toString(16).padStart(2, "0");
+  const n = parseInt(hex.replace('#', ''), 16);
+  const f = (c: number) => Math.round(c * (1 - factor)).toString(16).padStart(2, '0');
   return `#${f((n >> 16) & 255)}${f((n >> 8) & 255)}${f(n & 255)}`;
 }
