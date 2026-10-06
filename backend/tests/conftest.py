@@ -468,6 +468,10 @@ async def cleanup_test_season(pool):
             "DELETE FROM league_espn_connections WHERE league_id IN "
             "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        await conn.execute(
+            "DELETE FROM analytics_events WHERE league_id IN "
+            "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owner_users.owner_id -> owners.owner_id, so capture which
         # users are linked to test owners *before* deleting those

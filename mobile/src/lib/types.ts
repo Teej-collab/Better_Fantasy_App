@@ -196,6 +196,16 @@ export type MyTeam = {
 };
 
 // Chat (backend/app/routers/chat.py; web types in frontend/src/lib/api.ts).
+// GET /chat/messages/{id}/receipts — a Commish Corner post's reach.
+export type ReceiptPerson = { owner_id: number; name: string; opened_at: string | null };
+export type AnnouncementReceipts = {
+  total: number;
+  seen: ReceiptPerson[];
+  not_seen: ReceiptPerson[];
+  receipts_off: number;
+  opened: ReceiptPerson[];
+  has_link: boolean;
+};
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean; reactor_names: string[] };
 
 export type ChatMessage = {

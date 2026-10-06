@@ -1487,3 +1487,44 @@ async def test_connection_manager_drops_dead_connections():
     await manager.broadcast_to_owners([1], {"type": "ping"})  # must not raise
 
     assert 1 not in manager._connections  # cleaned up after the failed send
+
+
+# ---- Commish Corner read tracking (2026-10) --------------------------------
+
+
+async def test_announcement_receipts_show_seen_and_link_opens_to_the_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    commish_user, commish_owner, league_id = await _seed_league_owner(pool, "receipts-commish", role="commissioner")
+    reader_user, reader_owner, _ = await _seed_league_owner(pool, "receipts-reader", league_id=league_id)
+    lurker_user, lurker_owner, _ = await _seed_league_owner(pool, "receipts-lurker", league_id=league_id)
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.create_conversation_for_league(
+            conn, league_id, "commish_corner", [commish_owner, reader_owner, lurker_owner]
+        )
+        message = await chat_queries.insert_message(
+            conn, conversation_id, commish_owner, "Patch notes: https://example.com/whats-new", None, title="New stuff"
+        )
+        await chat_queries.mark_read(conn, conversation_id, reader_owner, message["id"])
+
+    async with _client() as client:
+        opened = await client.post(
+            f"/chat/messages/{message['id']}/link-open",
+            json={"url": "https://example.com/whats-new"},
+            cookies=_league_session_cookie(reader_user, reader_owner),
+        )
+        forbidden = await client.get(
+            f"/chat/messages/{message['id']}/receipts", cookies=_league_session_cookie(lurker_user, lurker_owner)
+        )
+        resp = await client.get(
+            f"/chat/messages/{message['id']}/receipts", cookies=_league_session_cookie(commish_user, commish_owner)
+        )
+
+    assert opened.status_code == 200
+    assert forbidden.status_code == 403
+    data = resp.json()
+    assert data["total"] == 2
+    assert [p["owner_id"] for p in data["seen"]] == [reader_owner]
+    assert [p["owner_id"] for p in data["not_seen"]] == [lurker_owner]
+    assert [p["owner_id"] for p in data["opened"]] == [reader_owner]
+    assert data["has_link"] is True

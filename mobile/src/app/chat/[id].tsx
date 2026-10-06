@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,7 +16,7 @@ import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
 import { queryClient, useChatConversations, useChatMessages, useMe } from '@/lib/queries';
-import type { ChatGif, ChatMessage } from '@/lib/types';
+import type { AnnouncementReceipts, ChatGif, ChatMessage } from '@/lib/types';
 
 // backend/app/routers/chat.py's ALLOWED_REACTIONS and DEFAULT_PAGE_SIZE.
 const REACTIONS = ['😂', '🔥', '💀', '👍', '❤️', '😭'];
@@ -187,6 +188,8 @@ export default function ConversationScreen() {
               message={item}
               mine={item.owner_id === myOwnerId}
               showName={showName}
+              announcement={isAnnouncements}
+              canSeeReceipts={isAnnouncements && (canPost || item.owner_id === myOwnerId)}
               onLongPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setActionsFor(item);
@@ -316,6 +319,8 @@ function MessageBubble(props: {
   message: ChatMessage;
   mine: boolean;
   showName: boolean;
+  announcement: boolean;
+  canSeeReceipts: boolean;
   onLongPress: () => void;
   onOpenImage: (url: string) => void;
 }) {
@@ -346,7 +351,11 @@ function MessageBubble(props: {
               <Image source={{ uri: message.image_url }} style={styles.image} contentFit="cover" transition={150} />
             </Pressable>
           )}
-          {!!message.body && <Text style={[styles.body, mine && styles.textMine]}>{message.body}</Text>}
+          {!!message.body && (
+            <Text style={[styles.body, mine && styles.textMine]}>
+              {props.announcement ? <LinkedBody text={message.body} messageId={message.id} mine={mine} /> : message.body}
+            </Text>
+          )}
           {!!message.body && <BracketLinkCard body={message.body} />}
           <Text style={[styles.time, mine && styles.timeMine]}>{formatMessageTime(message.created_at)}</Text>
         </View>
@@ -362,11 +371,100 @@ function MessageBubble(props: {
           ))}
         </View>
       )}
+      {props.canSeeReceipts && !message.deleted && <ReceiptsLine messageId={message.id} mine={mine} />}
     </View>
   );
 }
 
+const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g;
+
+/** Links in a Commish Corner post are tappable, and each tap is logged
+ *  so the commissioner can see who actually followed it. */
+function LinkedBody({ text, messageId, mine }: { text: string; messageId: number; mine: boolean }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(URL_RE)) {
+    const url = match[0];
+    const at = match.index ?? 0;
+    if (at > last) parts.push(text.slice(last, at));
+    parts.push(
+      <Text
+        key={at}
+        style={[styles.link, mine && styles.textMine]}
+        onPress={() => {
+          api.recordLinkOpen(messageId, url).catch(() => {});
+          void WebBrowser.openBrowserAsync(url);
+        }}>
+        {url}
+      </Text>,
+    );
+    last = at + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+/** "Seen by 7 of 11 · 4 opened" under a Commish Corner post, for the
+ *  commissioner and the poster; tap for names. */
+function ReceiptsLine({ messageId, mine }: { messageId: number; mine: boolean }) {
+  const [data, setData] = useState<AnnouncementReceipts | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .announcementReceipts(messageId)
+      .then((r) => !cancelled && setData(r))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId]);
+  if (!data) return null;
+  const names = (list: { name: string }[]) => (list.length ? list.map((p) => p.name).join(', ') : 'nobody yet');
+  const summary = [`Seen by ${data.seen.length} of ${data.total}`, data.has_link ? `${data.opened.length} opened` : null]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Pressable onPress={() => setOpen((v) => !v)} style={[styles.receipts, mine && styles.alignEnd]} accessibilityRole="button">
+      <Text style={styles.receiptsSummary}>
+        {summary} {open ? '▴' : '▾'}
+      </Text>
+      {open && (
+        <View style={styles.receiptsDetail}>
+          {data.has_link && (
+            <Text style={styles.receiptsText}>
+              <Text style={styles.receiptsLabel}>Opened: </Text>
+              {names(data.opened)}
+            </Text>
+          )}
+          <Text style={styles.receiptsText}>
+            <Text style={styles.receiptsLabel}>Seen: </Text>
+            {names(data.seen)}
+          </Text>
+          {data.not_seen.length > 0 && (
+            <Text style={styles.receiptsText}>
+              <Text style={styles.receiptsLabel}>Not yet: </Text>
+              {names(data.not_seen)}
+            </Text>
+          )}
+          {data.receipts_off > 0 && (
+            <Text style={styles.receiptsText}>
+              {data.receipts_off} {data.receipts_off === 1 ? 'member has' : 'members have'} read receipts off
+            </Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  link: { textDecorationLine: 'underline', fontWeight: '700' },
+  receipts: { marginTop: 3, paddingHorizontal: 4 },
+  receiptsSummary: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  receiptsDetail: { marginTop: 4, padding: 8, borderRadius: Radius.md, backgroundColor: Colors.surface, gap: 3 },
+  receiptsText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 16 },
+  receiptsLabel: { color: Colors.text, fontWeight: '700' },
   bracketLink: { marginTop: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#39ff14', backgroundColor: 'rgba(57,255,20,0.08)', gap: 2 },
   bracketLinkTitle: { color: '#39ff14', fontSize: 13, fontWeight: '800', letterSpacing: 1 },
   bracketLinkSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },

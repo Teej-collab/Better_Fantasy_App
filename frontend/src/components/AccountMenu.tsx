@@ -110,6 +110,7 @@ export function AccountMenu({ me }: { me: Me }) {
     // a bug or an idea a one-tap action from anywhere, not a multi-step
     // trip through Settings first.
     { key: "feedback", label: "Feedback", href: "/settings?section=feedback" },
+    { key: "whats-new", label: "What's New", href: "/whats-new" },
     { key: "notifications", label: "Notifications", href: "/settings?section=notifications" },
     // Site-owner-only (2026-09) — who's currently in the app, usage
     // stats. Not a per-league commissioner tool, so it lives here

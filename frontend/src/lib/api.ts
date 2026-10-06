@@ -2288,6 +2288,34 @@ export async function markConversationRead(conversationId: number): Promise<void
   });
 }
 
+export type ReceiptPerson = { owner_id: number; name: string; opened_at: string | null };
+export type AnnouncementReceipts = {
+  total: number;
+  seen: ReceiptPerson[];
+  not_seen: ReceiptPerson[];
+  receipts_off: number;
+  opened: ReceiptPerson[];
+  has_link: boolean;
+};
+
+// Commish Corner read tracking (2026-10): who has seen a post, who
+// hasn't, and who opened its link. Commissioner / poster only.
+export async function getAnnouncementReceipts(messageId: number): Promise<AnnouncementReceipts | null> {
+  const res = await fetch(`/api/backend/chat/messages/${messageId}/receipts`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// Fire-and-forget; keepalive so it survives the tab navigating away.
+export function recordAnnouncementLinkOpen(messageId: number, url: string): void {
+  void fetch(`/api/backend/chat/messages/${messageId}/link-open`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export async function reactToMessage(messageId: number, emoji: string): Promise<void> {
   await fetch(`/api/backend/chat/messages/${messageId}/react`, {
     method: "POST",

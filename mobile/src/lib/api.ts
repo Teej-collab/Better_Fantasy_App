@@ -64,6 +64,7 @@ import type {
   ChatConversation,
   FreeAgent,
   ChatMessage,
+  AnnouncementReceipts,
   DraftPick,
   DraftPoolPlayer,
   DraftState,
@@ -434,6 +435,11 @@ export const api = {
   // Toggles; the server broadcasts the result to everyone over the socket.
   reactToMessage: (messageId: number, emoji: string) =>
     request<{ added: boolean }>(`/chat/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
+  // Commish Corner read tracking (2026-10): who has seen a post, who
+  // hasn't, who opened its link — commissioner / poster only.
+  announcementReceipts: (messageId: number) => request<AnnouncementReceipts>(`/chat/messages/${messageId}/receipts`),
+  recordLinkOpen: (messageId: number, url: string) =>
+    request<{ status: string }>(`/chat/messages/${messageId}/link-open`, { method: 'POST', body: JSON.stringify({ url }) }),
   // Short-lived ticket for the chat WebSocket handshake, which can't
   // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
   chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),

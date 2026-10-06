@@ -191,6 +191,123 @@ async def search_gifs(request: Request, search: str = Query(..., min_length=1, m
     return {"gifs": gifs}
 
 
+# Pages an announcement can point at inside the app, whose own visits
+# count as "read it" (2026-10: the patch notes live at /whats-new).
+_TRACKED_PAGES = ("/whats-new",)
+
+
+@router.post("/messages/{message_id}/link-open")
+async def record_announcement_link_open(message_id: int, request: Request, pool=Depends(get_pool)):
+    """Logs that this person opened a link in a Commish Corner post, so
+    the commissioner can see who actually followed it (GET .../receipts).
+    Fire-and-forget from the apps; never blocks the link opening."""
+    payload = _require_session(request)
+    data = await request.json()
+    url = str((data or {}).get("url", ""))[:500]
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        message = await conn.fetchrow("SELECT conversation_id FROM messages WHERE id = $1", message_id)
+        if message is None or not await chat_queries.is_participant(conn, message["conversation_id"], owner_id):
+            raise HTTPException(status_code=404, detail="Message not found")
+        conversation = await chat_queries.get_conversation_type_and_league(conn, message["conversation_id"])
+        await conn.execute(
+            """
+            INSERT INTO analytics_events (owner_id, session_id, event_name, event_type, route, league_id, metadata, platform)
+            VALUES ($1, 'server', 'announcement_link_open', 'feature', NULL, $2, $3::jsonb, NULL)
+            """,
+            owner_id, conversation["league_id"] if conversation else None,
+            json.dumps({"message_id": message_id, "url": url}),
+        )
+    return {"status": "ok"}
+
+
+@router.get("/messages/{message_id}/receipts")
+async def announcement_receipts(message_id: int, request: Request, pool=Depends(get_pool)):
+    """Who has seen a Commish Corner post, who hasn't, and who opened its
+    link (or the in-app page it points at) — for the league's
+    commissioner and the post's author (2026-10). "Seen" = read past it
+    in the conversation (conversation_participants.last_read_message_id);
+    members who turned read receipts off are counted, not named."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        message = await conn.fetchrow(
+            "SELECT id, conversation_id, owner_id, body, created_at FROM messages WHERE id = $1 AND deleted_at IS NULL",
+            message_id,
+        )
+        if message is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        conversation = await chat_queries.get_conversation_type_and_league(conn, message["conversation_id"])
+        if not conversation or conversation["type"] != "commish_corner":
+            raise HTTPException(status_code=404, detail="Receipts are only kept for Commish Corner posts")
+        allowed = message["owner_id"] == owner_id or await chat_queries.is_owner_commissioner_of_league(
+            conn, owner_id, conversation["league_id"]
+        )
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Only the commissioner or the poster can see who read this")
+
+        members = await conn.fetch(
+            """
+            SELECT cp.owner_id, o.display_name, cp.last_read_message_id,
+                   COALESCE(op.read_receipts_enabled, true) AS receipts_on
+            FROM conversation_participants cp
+            JOIN owners o ON o.owner_id = cp.owner_id
+            LEFT JOIN owner_preferences op ON op.owner_id = cp.owner_id
+            WHERE cp.conversation_id = $1 AND cp.owner_id != $2
+            ORDER BY o.display_name
+            """,
+            message["conversation_id"], message["owner_id"],
+        )
+        opens = await conn.fetch(
+            """
+            SELECT e.owner_id, MIN(e.created_at) AS first_at
+            FROM analytics_events e
+            WHERE e.event_name = 'announcement_link_open' AND (e.metadata->>'message_id')::int = $1
+            GROUP BY e.owner_id
+            """,
+            message_id,
+        )
+        body = message["body"] or ""
+        page_views = []
+        tracked = [p for p in _TRACKED_PAGES if p in body]
+        if tracked:
+            page_views = await conn.fetch(
+                """
+                SELECT owner_id, MIN(created_at) AS first_at FROM analytics_events
+                WHERE event_type = 'page_view' AND route = ANY($1::text[]) AND created_at >= $2
+                GROUP BY owner_id
+                """,
+                tracked, message["created_at"],
+            )
+
+    opened_at: dict[int, object] = {}
+    for r in [*opens, *page_views]:
+        if r["owner_id"] is not None and (r["owner_id"] not in opened_at or r["first_at"] < opened_at[r["owner_id"]]):
+            opened_at[r["owner_id"]] = r["first_at"]
+    seen, not_seen, hidden = [], [], 0
+    for m in members:
+        name = m["display_name"] or "Member"
+        read = m["last_read_message_id"] is not None and m["last_read_message_id"] >= message_id
+        if not m["receipts_on"]:
+            hidden += 1
+            continue
+        (seen if read else not_seen).append({"owner_id": m["owner_id"], "name": name, "opened_at": None})
+    names = {m["owner_id"]: m["display_name"] or "Member" for m in members if m["receipts_on"]}
+    opened = [
+        {"owner_id": oid, "name": names.get(oid, "Member"), "opened_at": at.isoformat()}
+        for oid, at in sorted(opened_at.items(), key=lambda kv: kv[1])
+        if oid in names
+    ]
+    return {
+        "total": len(members),
+        "seen": seen,
+        "not_seen": not_seen,
+        "receipts_off": hidden,
+        "opened": opened,
+        "has_link": "http" in body or bool(tracked),
+    }
+
+
 @router.post("/league/share")
 async def share_to_league_chat(request: Request, pool=Depends(get_pool)):
     """Posts a message to the active league's chat from outside the chat

@@ -11,12 +11,14 @@ export function AnnouncementFeed({
   messages,
   myOwnerId,
   beta = false,
+  canSeeReceipts = false,
   onReact,
   onDelete,
 }: {
   messages: ChatMessage[];
   myOwnerId: number;
   beta?: boolean;
+  canSeeReceipts?: boolean;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
 }) {
@@ -60,6 +62,7 @@ export function AnnouncementFeed({
               mine={m.owner_id === myOwnerId}
               expanded={expandedIds.has(m.id)}
               beta={beta}
+              canSeeReceipts={canSeeReceipts}
               onToggle={() => toggle(m.id)}
               onReact={onReact}
               onDelete={onDelete}

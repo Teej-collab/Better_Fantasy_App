@@ -233,6 +233,7 @@ export function MobileNavDrawer({
         { key: "settings", href: "/settings", label: "Settings" },
         { key: "notifications", href: "/settings?section=notifications", label: "Notifications" },
         { key: "feedback", href: "/settings?section=feedback", label: "Feedback" },
+        { key: "whats-new", href: "/whats-new", label: "What's New" },
         ...(isCommissioner ? [{ key: "commissioner", href: "/commissioner", label: "Commissioner Tools" }] : []),
         ...(isSiteOwner ? [{ key: "admin", href: "/admin", label: "Admin" }] : []),
       ]

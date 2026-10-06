@@ -216,7 +216,12 @@ export function MessageThread({
       {showGroupInfo && <GroupInfoModal conversation={conversation} onClose={() => setShowGroupInfo(false)} />}
 
       {isAnnouncementFeed ? (
-        <AnnouncementFeed messages={messages} myOwnerId={myOwnerId} beta={beta} onReact={onReact} onDelete={onDelete} />
+        <AnnouncementFeed
+          messages={messages}
+          myOwnerId={myOwnerId}
+          beta={beta}
+          canSeeReceipts={conversation.can_post}
+          onReact={onReact} onDelete={onDelete} />
       ) : (
         <div
           ref={listRef}

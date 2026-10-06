@@ -1,10 +1,120 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ChatMessage } from "@/lib/api";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import {
+  getAnnouncementReceipts,
+  recordAnnouncementLinkOpen,
+  type AnnouncementReceipts,
+  type ChatMessage,
+} from "@/lib/api";
 import { REACTION_CHOICES } from "@/components/chat/MessageBubble";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+
+const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g;
+
+// Links in a post are tappable, and each tap is logged (link-open) so
+// the commissioner can see who actually followed it. Links back into
+// this app open in place; anything else opens a new tab.
+function LinkedBody({ text, messageId }: { text: string; messageId: number }) {
+  const router = useRouter();
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(URL_RE)) {
+    const url = match[0];
+    const at = match.index ?? 0;
+    if (at > last) parts.push(text.slice(last, at));
+    parts.push(
+      <a
+        key={at}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-sky-600 underline underline-offset-2 dark:text-sky-400"
+        onClick={(e) => {
+          e.stopPropagation();
+          recordAnnouncementLinkOpen(messageId, url);
+          try {
+            const target = new URL(url);
+            if (target.host === window.location.host) {
+              e.preventDefault();
+              router.push(`${target.pathname}${target.search}${target.hash}`);
+            }
+          } catch {
+            // Not a parseable URL — let the browser handle it.
+          }
+        }}
+      >
+        {url}
+      </a>,
+    );
+    last = at + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
+
+// "Seen by 7 of 11 · 4 opened the link" under a Commish Corner post,
+// for the commissioner and the poster — tap for names (2026-10).
+function ReceiptsLine({ messageId }: { messageId: number }) {
+  const [data, setData] = useState<AnnouncementReceipts | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAnnouncementReceipts(messageId).then((r) => {
+      if (!cancelled) setData(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId]);
+
+  if (!data) return null;
+  const summary = [
+    `Seen by ${data.seen.length} of ${data.total}`,
+    data.has_link ? `${data.opened.length} opened the link` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="flex flex-col gap-1.5 text-xs text-black/50 dark:text-white/50">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="flex w-fit items-center gap-1 font-medium hover:text-black/70 dark:hover:text-white/70"
+      >
+        👁 {summary} <span aria-hidden>{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1 rounded-lg bg-black/[0.03] p-2.5 dark:bg-white/[0.04]">
+          {data.has_link && (
+            <p>
+              <b>Opened:</b> {data.opened.length ? data.opened.map((p) => p.name).join(", ") : "nobody yet"}
+            </p>
+          )}
+          <p>
+            <b>Seen:</b> {data.seen.length ? data.seen.map((p) => p.name).join(", ") : "nobody yet"}
+          </p>
+          {data.not_seen.length > 0 && (
+            <p>
+              <b>Not yet:</b> {data.not_seen.map((p) => p.name).join(", ")}
+            </p>
+          )}
+          {data.receipts_off > 0 && (
+            <p>
+              {data.receipts_off} {data.receipts_off === 1 ? "member has" : "members have"} read receipts off
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Commish's Corner reads as a feed of tappable announcement cards
 // (matching History's own card list — see app/(app)/history/page.tsx)
@@ -19,6 +129,7 @@ export function AnnouncementCard({
   mine,
   expanded,
   beta = false,
+  canSeeReceipts = false,
   onToggle,
   onReact,
   onDelete,
@@ -30,6 +141,9 @@ export function AnnouncementCard({
   // in the feed carried its own glow ring, multiplying with feed
   // length; flat under beta, same as the rest of Chat.
   beta?: boolean;
+  // The league's commissioner (Commish Corner's can_post); the poster
+  // always sees their own post's receipts.
+  canSeeReceipts?: boolean;
   onToggle: () => void;
   onReact: (messageId: number, emoji: string) => void;
   onDelete: (messageId: number) => void;
@@ -60,7 +174,18 @@ export function AnnouncementCard({
       }
       style={beta ? undefined : panelGlowStyle(accent)}
     >
-      <button onClick={onToggle} className="flex flex-col gap-1 text-left active:scale-[0.99]">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex cursor-pointer flex-col gap-1 text-left active:scale-[0.99]"
+      >
         <span className="flex items-center gap-1.5 font-medium">
           <span
             className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -72,12 +197,12 @@ export function AnnouncementCard({
         <span
           className={`text-sm text-black/60 dark:text-white/60 break-words ${expanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}
         >
-          {expanded && !message.deleted ? message.body : previewBody}
+          {expanded && !message.deleted ? <LinkedBody text={message.body ?? ""} messageId={message.id} /> : previewBody}
         </span>
         <span className="text-xs text-black/40 dark:text-white/40">
           {message.owner_name} · {formatMessageTimestamp(message.created_at)}
         </span>
-      </button>
+      </div>
 
       {!message.deleted && message.reactions.length > 0 && (
         // Visible whether or not the card is expanded — real request:
@@ -119,7 +244,7 @@ export function AnnouncementCard({
         <div className="mt-1 flex flex-col gap-2">
           {message.image_url && (
             // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL, not a static/known-at-build-time asset next/image can optimize
-            <img src={message.image_url} alt="" className="h-auto max-h-72 w-auto max-w-full rounded-xl" />
+            <img src={message.image_url} alt="Image attached to announcement" className="h-auto max-h-72 w-auto max-w-full rounded-xl" />
           )}
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -165,8 +290,12 @@ export function AnnouncementCard({
             </div>
           )}
 
-          {message.seen_by.length > 0 && (
-            <p className="text-xs text-black/40 dark:text-white/40">Seen by {message.seen_by.join(", ")}</p>
+          {mine || canSeeReceipts ? (
+            <ReceiptsLine messageId={message.id} />
+          ) : (
+            message.seen_by.length > 0 && (
+              <p className="text-xs text-black/40 dark:text-white/40">Seen by {message.seen_by.join(", ")}</p>
+            )
           )}
         </div>
       )}
