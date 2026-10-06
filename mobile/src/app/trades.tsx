@@ -9,6 +9,7 @@ import { LoadingState } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
+import { positionColor } from '@/lib/positionColors';
 import { invalidateRosterMoves, queryClient, useLeagueTrades, useMe, useMyTrades, useTradeRoster, useTradeTeams } from '@/lib/queries';
 import type { Trade, TradeRosterPlayer, TradeSettings, TradeStatus } from '@/lib/types';
 
@@ -313,7 +314,7 @@ function PlayerPicker(props: { title: string; players: TradeRosterPlayer[]; sele
             <Pressable
               key={p.sleeper_player_id}
               onPress={() => props.onToggle(p.sleeper_player_id)}
-              style={[styles.pickRow, on && { backgroundColor: `${accent}33`, borderColor: accent }]}>
+              style={[styles.pickRow, on && { backgroundColor: `${accent}33`, borderColor: accent }, { borderLeftWidth: 4, borderLeftColor: positionColor(p.position) }]}>
               <Text style={styles.body}>{p.player_name}</Text>
               <Text style={on ? styles.body : styles.muted}>{p.position === 'DEF' ? 'D/ST' : p.position}</Text>
             </Pressable>

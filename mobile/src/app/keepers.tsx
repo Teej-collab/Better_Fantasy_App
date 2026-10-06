@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View }
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { NeonPanel } from '@/components/NeonPanel';
+import { PositionStripe } from '@/components/PositionStripe';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
@@ -131,6 +132,7 @@ function KeeperPicker({ data }: { data: MyKeepers }) {
                   accessibilityLabel={`${p.player_name}, ${p.position ?? 'no position'}${p.pro_team ? `, ${p.pro_team}` : ''}${!p.eligible ? ', max years kept reached' : ''}`}
                   accessibilityState={{ checked: on, disabled }}
                   style={[styles.row, i > 0 && styles.divided, disabled && !on && styles.dimmed]}>
+                  <PositionStripe position={p.position} />
                   <View style={styles.flex}>
                     <Text style={styles.name}>{p.player_name}</Text>
                     <Text style={styles.small}>

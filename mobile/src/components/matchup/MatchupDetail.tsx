@@ -25,6 +25,7 @@ import {
   type ComparisonRow,
 } from '@/lib/matchups';
 import { nflTeamName, sleeperHeadshotUrl, teamLogoUrl } from '@/lib/nflTeams';
+import { positionColor } from '@/lib/positionColors';
 import { openPlayer, useScoringRates } from '@/lib/queries';
 import { starterSortIndex } from '@/lib/rosterSlots';
 import type { MatchupContextSide, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
@@ -213,7 +214,13 @@ function PlayerCell({ player, onBreakdown, right }: { player: RosterPlayer | nul
   const canOpen = typeof player.player_id === 'string';
 
   return (
-    <View style={[styles.cell, player.is_redzone ? styles.redzone : player.on_offense ? styles.onOffense : null]}>
+    <View
+      style={[
+        styles.cell,
+        player.is_redzone ? styles.redzone : player.on_offense ? styles.onOffense : null,
+        // The position stripe on each side's outer edge, like the web lineup.
+        right ? { borderRightWidth: 3, borderRightColor: positionColor(player.position) } : { borderLeftWidth: 3, borderLeftColor: positionColor(player.position) },
+      ]}>
       <View style={[styles.cellTop, right && styles.reverse]}>
         <Pressable disabled={!canOpen} onPress={() => openPlayer(player.player_id)} style={styles.cellName}>
           <View style={[styles.nameLine, right && styles.reverse]}>

@@ -4,11 +4,13 @@ import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
+import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api, draftSocketUrl } from '@/lib/api';
 import { formatPoints } from '@/lib/format';
+import { positionColor } from '@/lib/positionColors';
 import { openPlayer, queryClient, useDraftPool, useDraftQueue, useDraftState, useMe } from '@/lib/queries';
 import type { DraftChatMessage, DraftPick, DraftPoolPlayer, DraftState } from '@/lib/types';
 
@@ -356,6 +358,7 @@ function PlayersView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Dr
       ListEmptyComponent={pool.isPending ? <LoadingState /> : <MessageState message="No players match." />}
       renderItem={({ item }) => (
         <PlayerRow
+          position={item.position}
           name={item.full_name}
           detail={`${positionLabel(item.position)}${item.pro_team ? ` · ${item.pro_team}` : ''}${item.bye_week ? ` · Bye ${item.bye_week}` : ''}`}
           value={formatPoints(item.projected_points)}
@@ -423,6 +426,7 @@ function QueueView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Draf
         const player = byId.get(id);
         return (
           <PlayerRow
+            position={player?.position ?? null}
             rank={index + 1}
             name={player?.full_name ?? 'Loading…'}
             detail={player ? `${positionLabel(player.position)}${player.pro_team ? ` · ${player.pro_team}` : ''}` : ''}
@@ -472,6 +476,8 @@ function BoardView({ picks, currentPickNumber, myOwnerId }: { picks: DraftPick[]
                   styles.boardRow,
                   p.pick_number === currentPickNumber && styles.boardCurrent,
                   p.owner_id === myOwnerId && styles.boardMine,
+                  // The web board's position colors, as a stripe.
+                  p.player_position ? { borderLeftWidth: 4, borderLeftColor: positionColor(p.player_position) } : null,
                 ]}>
                 <Text style={styles.boardNumber}>
                   {p.round}.{String(p.round_pick).padStart(2, '0')}
@@ -541,6 +547,7 @@ function ChatView(props: { messages: DraftChatMessage[]; myOwnerId: number | nul
 }
 
 function PlayerRow(props: {
+  position: string | null;
   rank?: number;
   name: string;
   detail: string;
@@ -550,6 +557,7 @@ function PlayerRow(props: {
 }) {
   return (
     <View style={styles.row}>
+      <PositionStripe position={props.position} />
       {props.rank !== undefined && <Text style={styles.rank}>{props.rank}</Text>}
       <Pressable onPress={props.onOpen} style={({ pressed }) => [styles.rowText, pressed && styles.pressed]}>
         <Text style={styles.rowName} numberOfLines={1}>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
+import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
@@ -163,6 +164,7 @@ function ViewCell({ player, onPress, onAdd }: { player: FreeAgent; onPress: () =
   const onWaivers = !!player.waiver_clears_at || player.game_locked;
   return (
     <View style={styles.viewCell}>
+      <PositionStripe position={player.position} />
       <AddButton onWaivers={onWaivers} onPress={onAdd} />
       <Pressable onPress={onPress} style={styles.flex}>
         <Text style={styles.viewName} numberOfLines={1}>
@@ -194,6 +196,7 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
       ]}
       style={styles.row}
       pressedStyle={styles.rowPressed}>
+      <PositionStripe position={player.position} />
       <AddButton onWaivers={onWaivers} onPress={onAdd} />
       <View style={styles.flex}>
         <View style={styles.nameLine}>

@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { Card } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -148,6 +149,7 @@ export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onCl
                         <DropRow
                           key={entry.player_id}
                           divided={i > 0}
+                          position={entry.position}
                           label={entry.player_name}
                           detail={`${slotDisplayLabel(entry.lineup_slot)} · ${entry.position}${entry.pro_team ? ` · ${entry.pro_team}` : ''}${locked ? ' · Game started' : ''}`}
                           disabled={busy || locked}
@@ -180,12 +182,13 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DropRow(props: { label: string; detail: string; onPress: () => void; disabled: boolean; divided?: boolean; unavailable?: boolean }) {
+function DropRow(props: { label: string; detail: string; onPress: () => void; disabled: boolean; divided?: boolean; unavailable?: boolean; position?: string | null }) {
   return (
     <Pressable
       disabled={props.disabled}
       onPress={props.onPress}
       style={({ pressed }) => [styles.dropRow, props.divided && styles.divided, pressed && styles.dropPressed, props.unavailable && styles.dropDisabled]}>
+      {props.position !== undefined && <PositionStripe position={props.position} />}
       <View style={styles.dropText}>
         <Text style={styles.dropName}>{props.label}</Text>
         <Text style={styles.muted}>{props.detail}</Text>

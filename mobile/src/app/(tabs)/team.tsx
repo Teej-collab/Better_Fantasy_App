@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView,
 import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
+import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -83,6 +84,7 @@ function TeamScreenContent() {
               position: e.position,
               cell: (
                 <View style={styles.viewCell}>
+                  <PositionStripe position={e.position} />
                   <View style={styles.viewSlot}>
                     <Text style={styles.viewSlotText}>{slotDisplayLabel(e.lineup_slot)}</Text>
                   </View>
@@ -199,6 +201,7 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
 
   return (
     <View style={[styles.row, props.divided && styles.divided]}>
+      <PositionStripe position={entry.position} />
       <Pressable
         disabled={!canEdit}
         onPress={() => {

@@ -10,6 +10,7 @@ import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatPoints } from '@/lib/format';
+import { positionColor } from '@/lib/positionColors';
 import { usePlayerCard } from '@/lib/queries';
 import type { FreeAgent, PlayerCard } from '@/lib/types';
 
@@ -79,7 +80,7 @@ export default function PlayerScreen() {
           <View style={styles.heroText}>
             <Text style={styles.name}>{p.full_name}</Text>
             <Text style={styles.muted}>
-              {positionLabel(p.position)}
+              <Text style={{ color: positionColor(p.position), fontWeight: '700' }}>{positionLabel(p.position)}</Text>
               {p.pro_team ? ` · ${p.pro_team}` : ''}
             </Text>
             {!!bio && <Text style={styles.muted}>{bio}</Text>}
