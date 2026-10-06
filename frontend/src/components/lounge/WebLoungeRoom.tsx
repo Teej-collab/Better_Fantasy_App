@@ -461,25 +461,28 @@ function Tv({
             </div>
           )}
           {sharer && !sharer.isLocal && <TvVolume participant={sharer as RemoteParticipant} accent={accent} />}
-          {/* A compact score block in the corner (not a full-width bar over
-              the picture): scores, and the quarter and clock under them. */}
+          {/* A broadcast-style bug in the corner, only as wide as the
+              scores: quarter and clock on top, the score (a dot for who has
+              the ball), down and distance underneath. */}
           {game && (
-            <div className="absolute bottom-3.5 left-3.5 overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.85)] font-mono shadow-lg">
-              <div className="flex">
-                <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: nflTeamColor(game.away_team.abbr) ?? "#2b2d31" }}>
-                  <b className="font-display text-sm">{game.away_team.abbr}</b>
-                  <b className="text-lg">{game.away_team.score}</b>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: nflTeamColor(game.home_team.abbr) ?? "#2b2d31" }}>
-                  <b className="font-display text-sm">{game.home_team.abbr}</b>
-                  <b className="text-lg">{game.home_team.score}</b>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1 text-[12px]">
+            <div className="absolute bottom-3.5 left-3.5 flex flex-col overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.85)] font-mono whitespace-nowrap shadow-lg">
+              <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 text-[11px] text-white/85">
                 <span>{clockLabel(game)}</span>
-                {downLabel(game) && <span className="text-[#facc15]">{downLabel(game)}</span>}
-                {catchingUp && <span className="text-[#9aa3b2]">syncing…</span>}
+                {catchingUp && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#9aa3b2]" title="Syncing to the TV" />}
               </div>
+              <div className="flex">
+                {[game.away_team, game.home_team].map((t) => (
+                  <div key={t.abbr} className="flex flex-1 items-center gap-1.5 px-2.5 py-1" style={{ background: nflTeamColor(t.abbr) ?? "#2b2d31" }}>
+                    <b className="font-display text-sm">{t.abbr}</b>
+                    <b className="text-lg leading-none">{t.score}</b>
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${game.status === "in_progress" && game.possession_team_abbr === t.abbr ? "bg-[#facc15] shadow-[0_0_4px_#facc15]" : "bg-transparent"}`}
+                      aria-label={game.status === "in_progress" && game.possession_team_abbr === t.abbr ? `${t.abbr} has the ball` : undefined}
+                    />
+                  </div>
+                ))}
+              </div>
+              {downLabel(game) && <div className="px-2 py-0.5 text-center text-[11px] text-[#facc15]">{downLabel(game)}</div>}
             </div>
           )}
         </>

@@ -72,8 +72,9 @@ export function LoungeTv({
       {!compact && sharer && !sharer.isLocal && (
         <GameVolume participant={sharer as RemoteParticipant} />
       )}
-      {/* A compact score block in the corner (not a full-width bar over the
-          picture): scores, and the quarter and clock under them. */}
+      {/* A broadcast-style bug in the corner, only as wide as the scores:
+          quarter and clock on top, the score (a dot for who has the ball),
+          down and distance underneath. */}
       {game && (
         <Pressable
           style={[styles.bug, compact && styles.bugCompact]}
@@ -81,44 +82,48 @@ export function LoungeTv({
           disabled={!onPressScorebug}
           accessibilityRole={onPressScorebug ? "button" : undefined}
         >
-          <View style={styles.bugScores}>
-            <View
-              style={[
-                styles.team,
-                {
-                  backgroundColor:
-                    nflTeamColor(game.away_team.abbr) ?? "#2b2d31",
-                },
-              ]}
-            >
-              <Text style={styles.teamAbbr}>{game.away_team.abbr}</Text>
-              <Text style={styles.teamScore}>{game.away_team.score}</Text>
-            </View>
-            <View
-              style={[
-                styles.team,
-                {
-                  backgroundColor:
-                    nflTeamColor(game.home_team.abbr) ?? "#2b2d31",
-                },
-              ]}
-            >
-              <Text style={styles.teamAbbr}>{game.home_team.abbr}</Text>
-              <Text style={styles.teamScore}>{game.home_team.score}</Text>
-            </View>
-          </View>
           {!compact && (
-            <View style={styles.situation}>
-              <Text style={styles.situationText} numberOfLines={1}>
+            <View style={styles.clockRow}>
+              <Text style={styles.clockText} numberOfLines={1}>
                 {clockLabel(game)}
-                {catchingUp ? " · syncing" : ""}
               </Text>
-              {downLabel(game) && (
-                <Text style={styles.down} numberOfLines={1}>
-                  {downLabel(game)}
-                </Text>
+              {catchingUp && (
+                <View
+                  style={styles.syncDot}
+                  accessibilityLabel="Syncing to the TV"
+                />
               )}
             </View>
+          )}
+          <View style={styles.bugScores}>
+            {[game.away_team, game.home_team].map((t) => {
+              const ball =
+                game.status === "in_progress" &&
+                game.possession_team_abbr === t.abbr;
+              return (
+                <View
+                  key={t.abbr}
+                  style={[
+                    styles.team,
+                    { backgroundColor: nflTeamColor(t.abbr) ?? "#2b2d31" },
+                  ]}
+                >
+                  <Text style={styles.teamAbbr}>{t.abbr}</Text>
+                  <Text style={styles.teamScore}>{t.score}</Text>
+                  <View
+                    style={[styles.ball, ball && styles.ballOn]}
+                    accessibilityLabel={
+                      ball ? `${t.abbr} has the ball` : undefined
+                    }
+                  />
+                </View>
+              );
+            })}
+          </View>
+          {!compact && downLabel(game) && (
+            <Text style={styles.down} numberOfLines={1}>
+              {downLabel(game)}
+            </Text>
           )}
         </Pressable>
       )}
@@ -247,22 +252,38 @@ const styles = StyleSheet.create({
   bugCompact: { left: 8, bottom: 8 },
   bugScores: { flexDirection: "row" },
   team: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   teamAbbr: { color: "#fff", fontFamily: Fonts.displayBold, fontSize: 13 },
   teamScore: { color: "#fff", fontFamily: Fonts.monoBold, fontSize: 16 },
-  situation: {
+  ball: { width: 6, height: 6, borderRadius: 3 },
+  ballOn: { backgroundColor: "#facc15" },
+  clockRow: {
     flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 2,
   },
-  situationText: { color: "#f3f4f6", fontFamily: Fonts.mono, fontSize: 11 },
-  down: { color: "#facc15", fontFamily: Fonts.mono, fontSize: 11 },
+  clockText: {
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+  },
+  syncDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#9aa3b2" },
+  down: {
+    color: "#facc15",
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    textAlign: "center",
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
   volume: {
     position: "absolute",
     top: 10,
