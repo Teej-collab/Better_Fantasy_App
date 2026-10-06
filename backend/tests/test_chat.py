@@ -12,7 +12,7 @@ from app.queries import chat as chat_queries
 from app.queries import leagues as league_queries
 from app.queries import owner_preferences as preferences_queries
 from app.queries import teams as team_queries
-from tests.conftest import make_safe_session_user_id
+from tests.conftest import make_safe_session_user_id_for_owner
 from tests.conftest import TEST_SEASON
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -24,7 +24,13 @@ def _client():
 
 async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+        _SESSION_SECRET,
+        # Linked to the owner (owner_users): the server resolves the
+        # caller's owner from that link, not the token's claim (0eca20b).
+        user_id=await make_safe_session_user_id_for_owner(pool, owner_id),
+        owner_id=owner_id,
+        discord_user_id=100000 + owner_id,
+        is_commissioner=False,
     )
     return {"session": token}
 
@@ -42,7 +48,7 @@ def _league_session_cookie(user_id: int, owner_id: int):
 
 async def _ws_ticket(pool, owner_id: int):
     return create_ticket_token(
-        _SESSION_SECRET, purpose="ws", user_id=await make_safe_session_user_id(pool), owner_id=owner_id,
+        _SESSION_SECRET, purpose="ws", user_id=await make_safe_session_user_id_for_owner(pool, owner_id), owner_id=owner_id,
         discord_user_id=100000 + owner_id, is_commissioner=False,
     )
 
