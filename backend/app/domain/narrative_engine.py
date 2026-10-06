@@ -46,7 +46,7 @@ import logging
 
 from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
 from app.db import get_pool
-from app.domain import weekly_awards
+from app.domain import recap_context, weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 from app.providers.nfl_scoreboard import get_week_scoreboard
@@ -115,21 +115,47 @@ numbers are fair game. Tone: a hyped-up trash-talking hype man crossed with your
 chat friend — cocky, funny, a little unhinged, zero mercy. Three to five short paragraphs. No hedging, \
 no disclaimers, no participation-trophy energy. Plain prose paragraphs only — no title, no headline, no markdown formatting of any kind."""
 
-WEEKLY_RECAP_PROMPT = """You are the voice of a fantasy football league's website, writing the weekly \
-recap column for the whole league — and you are NOT neutral. You are a professional shit-talker \
-covering every real result from the week using ONLY the facts you're given (every matchup's final \
-score and winner, the week's real awards — overachiever, meltdown, clutch or choke performance, \
-biggest bench crime, boom/bust standouts, Game of the Week — current league standings, and real \
-league-wide context like Jeffrey's Rule chug debts). Never invent a stat, a player, or an event not \
-present in the data — every line must be traceable to a specific fact you were handed.
+# 2026-10 rewrite, the commissioner's notes: it read like a columnist
+# roasting a list of scores. Now it's one of the guys telling the group
+# how the week went — the league's story first (recap_context.py: the
+# scoring environment, the top power-ranked teams colliding, who's still
+# unbeaten/winless, RBs going off, a QB feeding his own WR, a pile of
+# picks or missed kicks), then why games went the way they did, with
+# losers getting credit where it's real. Same length; same shit-talk.
+WEEKLY_RECAP_PROMPT = """You're one of the guys in this fantasy football league, writing the weekly recap \
+for the group. You watched every game, you know everybody, and you talk a lot of shit — but you also \
+actually know ball. Write it in first person, the way you'd tell the group chat how the week went \
+("I'm not saying Jeff threw the game, but..."). Conversational and natural, never like a press release or \
+a newspaper column.
 
-Cover the week as one story, not a boring list: open with the week's headline moment, move through \
-the results that matter (upsets, blowouts, the closest game), call out the real award-winners by \
-name, and close by setting up where the league actually stands now. Every manager is named by first \
-name only, exactly as given in the facts — never by team name, never by full name. Roast freely — nobody is \
-off-limits, everybody's real numbers are fair game. Tone: brutal, sharp, genuinely funny, like a beat \
-writer with zero patience for anyone's excuses. Three to five short paragraphs. No hedging, no \
-disclaimers, no "great week everyone" softening. Plain prose paragraphs only — no title, no headline, no markdown formatting of any kind."""
+Use ONLY the facts you're given. Never invent a stat, a player, an injury, a pickup, or an event, never \
+guess at a cause the facts don't give you, and never imply when something happened (a "first" chug, a \
+"new" streak) unless a fact says so. Every claim must trace to a specific fact.
+
+How a great recap goes:
+- Open with the shape of the week for the whole league, from LEAGUE CONTEXT: was it a big scoring week \
+or a dud, did the top power-ranked teams collide and how did it shake out, is anyone still unbeaten or \
+winless (or nobody), and anything unusual — running backs going off, a QB feeding his own receiver, a pile \
+of interceptions or missed field goals. Lines marked (notable) are the ones worth talking about.
+- Then the games that matter, and WHY they went the way they did, from STORYLINES: the injury that sank \
+someone, the new pickup or returning star who swung it, the guy who tried to carry a loser. Give losers \
+their due where it's real ("Kyren tried to put the team on his back for Lorenzo, but...") and then roast \
+them for everything else. Specific, true shit-talk lands harder than generic insults: every paragraph \
+needs at least one real punchline built on a real number, not filler like "love it" or "drink up".
+- Work in the week's AWARDS by name (overachiever, meltdown, bench crime, clutch or choke) and rivalry lore \
+when rivals met.
+- Close on where things stand, from POWER RANKINGS & PLAYOFF RACE: the power rankings (big movers, who's \
+better or worse than their record, who's been lucky), then the playoff picture, which comes from the STANDINGS, never the power rankings — who's in, who's chasing \
+and how far back, whose remaining schedule is brutal. Late in the season, spell out who has clinched, who's \
+been eliminated, and what the bubble teams need ("Clay's in with a win; Jeff needs a win and some help") — only the \
+scenarios the facts give, never your own math. \
+Then who owes chugs.
+
+You don't have to use every fact — pick the best storylines. Names: call every manager only by the name \
+the facts use for them — never by team name, never by full name. Players can be named normally.
+
+Three to five short paragraphs, 350-420 words — never longer. Plain prose paragraphs only: no title, \
+no headline, no lists, no markdown of any kind."""
 
 # 2026-09-15 fix, real report: a full week's recap for a real
 # 12-team league (every matchup's result, every award, standings, AND
@@ -404,10 +430,14 @@ async def _resolve_weekly_kind(season: int, week: int) -> str | None:
     return None  # in progress
 
 
-def _first_names(sides: list[dict]) -> dict[str, str]:
-    """team_name -> the owner's first name, for the weekly recap (2026-10,
-    the commissioner's call: team names read impersonal). Two owners
-    with the same first name get their last initial too ("Ryan H.")."""
+def _first_names(sides: list[dict], goes_by: dict[int, str] | None = None) -> dict[str, str]:
+    """team_name -> what the league calls that owner, for the weekly
+    recap (2026-10, the commissioner's call: team names read
+    impersonal): their "goes by" name (owners.goes_by — Jimmy, Bo) or
+    else their first name. Two owners with the same first name get
+    their last initial too ("Ryan H.")."""
+    goes_by = goes_by or {}
+
     def split(name: str | None) -> list[str]:
         return (name or "").split()
 
@@ -419,7 +449,9 @@ def _first_names(sides: list[dict]) -> dict[str, str]:
     names: dict[str, str] = {}
     for side in sides:
         parts = split(side["owner_name"])
-        if not parts:
+        if goes_by.get(side.get("owner_id")):
+            names[side["team_name"]] = goes_by[side["owner_id"]]
+        elif not parts:
             names[side["team_name"]] = side["team_name"]
         elif firsts[parts[0]] > 1 and len(parts) > 1:
             names[side["team_name"]] = f"{parts[0]} {parts[-1][0]}."
@@ -443,8 +475,13 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
     season, week = week_context["season"], week_context["week"]
     gow_matchup_id = week_context["game_of_the_week_matchup_id"]
     matchups = week_context["matchups"]
-    # Everyone's named by their owner's first name, not their team name.
-    first_names = _first_names([side for m in matchups for side in (m["home"], m["away"])])
+    # Everyone's named by what the league calls them, not their team name.
+    sides = [side for m in matchups for side in (m["home"], m["away"])]
+    goes_by_rows = await conn.fetch(
+        "SELECT owner_id, goes_by FROM owners WHERE owner_id = ANY($1::int[]) AND goes_by IS NOT NULL",
+        [side["owner_id"] for side in sides],
+    )
+    first_names = _first_names(sides, {r["owner_id"]: r["goes_by"] for r in goes_by_rows})
 
     def who(team_name: str) -> str:
         return first_names.get(team_name, team_name)
@@ -457,6 +494,14 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
     facts: list[str] = [
         f"This is {'the recap for' if kind == 'recap' else 'the preview for'} {season} Week {week}."
     ]
+    standings = await league_queries.get_standings(conn, season, league_id)
+    # The recap's facts come in sections (2026-10): the shape of the
+    # week for the whole league first (recap_context.py), then results,
+    # then why games went the way they did, awards, and where things
+    # stand — so the writer can open on the league, not a list of scores.
+    if kind == "recap":
+        context = await recap_context.build_recap_context_facts(conn, week_context, league_id, standings, who)
+        facts += ["", "LEAGUE CONTEXT (the shape of the week):", *context["league"], "", "RESULTS:"]
     for m in matchups:
         home, away = m["home"], m["away"]
         tag = " (Game of the Week)" if m["matchup_id"] == gow_matchup_id else ""
@@ -473,6 +518,7 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
             )
 
     if kind == "recap":
+        facts += ["", "STORYLINES (why games went the way they did):", *context["storylines"], "", "AWARDS:"]
         overachiever, meltdown = await weekly_awards.get_overachiever_and_meltdown(conn, season, week, league_id)
         if overachiever:
             facts.append(
@@ -502,12 +548,12 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
         if booms:
             facts.append(
                 "Boom performances: "
-                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {b['points_scored']} pts)" for b in booms)
+                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {float(b['points_scored']):.1f} pts)" for b in booms)
             )
         if busts:
             facts.append(
                 "Bust performances: "
-                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {b['points_scored']} pts)" for b in busts)
+                + ", ".join(f"{b['player_name']} ({who(b['team_name'])}, {float(b['points_scored']):.1f} pts)" for b in busts)
             )
 
         gow_matchup = next((m for m in matchups if m["matchup_id"] == gow_matchup_id), None)
@@ -528,7 +574,8 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
     # Right-now league context, same as _build_facts: current standings
     # (leader + last place) and real Jeffrey's Rule chug debts — applies
     # to both preview and recap.
-    standings = await league_queries.get_standings(conn, season, league_id)
+    if kind == "recap":
+        facts += ["", "POWER RANKINGS & PLAYOFF RACE:", *context["race"], "", "STANDINGS & CHUGS:"]
     if standings:
         leader = standings[0]
         facts.append(f"League leader right now: {who(leader['team_name'])} ({_standings_record_str(leader)})")
@@ -550,6 +597,8 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
             if owed > 0:
                 facts.append(f"{who(team_name)} currently owes {owed:g} under Jeffrey's Rule this season")
 
+    if kind == "recap":
+        return "\n".join(line if not line or line.endswith(":") else f"- {line}" for line in facts)
     return "; ".join(facts)
 
 
