@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -25,7 +25,7 @@ import {
   type WorldTeam,
 } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
-import { useMe, usePlayoffWorld, useSeasons } from '@/lib/queries';
+import { useMe, usePlayoffOdds, usePlayoffWorld, useSeasons } from '@/lib/queries';
 
 // The Bracket (2026-10): one world — reality or the user's what-if —
 // shown four ways, switched from the pill in the top left: Cards (the
@@ -54,6 +54,19 @@ export default function BracketScreen() {
   const [meChoice, setMeChoice] = useState<number | null>(shared.me);
   const [pathChoice, setPathChoice] = useState<number | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+
+  // Playoff chances for "me": reality, and the what-if world (its
+  // request waits until the taps settle).
+  const myTeamId = world?.teams.find((t) => t.owner_id === me?.owner_id)?.team_id ?? null;
+  const focusTeam = meChoice ?? myTeamId;
+  const encoded = isEmpty(scenario) ? '' : encodeScenario(scenario);
+  const [settled, setSettled] = useState(encoded);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(encoded), 450);
+    return () => clearTimeout(t);
+  }, [encoded]);
+  const realOdds = usePlayoffOdds(world ? season : null, focusTeam).data ?? null;
+  const altOdds = usePlayoffOdds(world && settled ? season : null, focusTeam, settled).data ?? null;
 
   const base = useMemo(() => (world ? buildWorld(world) : null), [world]);
   const alt = useMemo(() => (world ? buildWorld(world, scenario) : null), [world, scenario]);
@@ -163,6 +176,8 @@ export default function BracketScreen() {
             }}
             onShare={(to) => void share(to)}
             shareNote={shareNote}
+            realOdds={realOdds}
+            altOdds={encoded && settled === encoded ? altOdds : null}
           />
         )}
       </ScrollView>

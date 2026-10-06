@@ -73,7 +73,7 @@ export function PathView({
 
   return (
     <div className="flex flex-col gap-5 rounded-3xl border border-white/10 p-4 text-[#eceef1] md:flex-row md:p-6" style={{ background: "linear-gradient(180deg,#1a1608 0%,#0d1016 30%,#0d1016 70%,#1a120b 100%)" }}>
-      <div className="flex min-w-0 flex-1 gap-3 md:gap-4" style={{ perspective: 1400 }}>
+      <div className="flex min-w-0 flex-1 gap-3 md:gap-4">
         <div className="relative w-12 shrink-0" aria-hidden>
           <div className="absolute top-0 bottom-0 left-[20px] w-2 rounded" style={{ background: "linear-gradient(180deg,#f5c542,#39ff14 40%,#2b3340 55%,#a8743c)" }} />
           <div
@@ -99,7 +99,7 @@ export function PathView({
               </div>
               <div
                 className="flex min-w-0 flex-1 flex-wrap gap-2 rounded-2xl border p-3"
-                style={{ background: f.slab, borderColor: f.edge, transform: "rotateX(24deg)", transformOrigin: "50% 100%", boxShadow: "0 18px 26px rgba(0,0,0,0.5)" }}
+                style={{ background: f.slab, borderColor: f.edge, boxShadow: "0 10px 22px rgba(0,0,0,0.45)" }}
               >
                 {f.lobby ? (
                   <div className="flex w-full justify-between font-mono text-xs tracking-wider text-[#39ff14]">

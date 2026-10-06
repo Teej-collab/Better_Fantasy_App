@@ -10,6 +10,7 @@ import {
   getMe,
   getMyPreferences,
   getPlayoffBracket,
+  getPlayoffOdds,
   getProjectedPlayoffPicture,
   getStandings,
   getWeekMatchupContext,
@@ -68,6 +69,7 @@ export default async function StandingsPage({
     { rankings: powerRankings },
     { bracketNodes, projectedMatchups },
     { currentWeek, currentWeekMatchups },
+    playoffOdds,
   ] = await Promise.all([
     Promise.all([
       season !== null ? getStandings(season, sessionCookie) : Promise.resolve({ standings: [], playoff_team_count: null }),
@@ -113,7 +115,15 @@ export default async function StandingsPage({
       const { matchups } = await getWeekMatchupContext(season, week, sessionCookie);
       return { currentWeek: week, currentWeekMatchups: matchups };
     })(),
+    // Playoff chances (2026-10) — this season only, and never allowed to
+    // break the page.
+    season !== null && season === latestSeason
+      ? getPlayoffOdds(season, sessionCookie)
+          .then((r) => r.odds)
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
+  const playoffPctByTeam = new Map((playoffOdds?.teams ?? []).map((t) => [t.team_id, t.playoff_pct]));
   const betaLayout = Boolean(myPreferences?.beta_layout);
   const powerRankByTeam = new Map(powerRankings.map((r) => [r.team_id, r.power_rank]));
   const movementByTeam = new Map(powerRankings.map((r) => [r.team_id, r.movement]));
@@ -170,7 +180,9 @@ export default async function StandingsPage({
                 {betaLayout && <span className="w-14 shrink-0 text-right">Trend</span>}
                 <span className="w-20 shrink-0 text-right">W-L-T</span>
                 <span className="w-16 shrink-0 text-right">PF</span>
+                <span className="w-16 shrink-0 text-right">PPG</span>
                 <span className="w-16 shrink-0 text-right">PA</span>
+                {playoffOdds && <span className="w-20 shrink-0 text-right">Playoff %</span>}
               </div>
 
               <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
@@ -182,6 +194,7 @@ export default async function StandingsPage({
                       teamCount={standings.length}
                       powerRank={powerRankByTeam.get(row.team_id)}
                       movement={betaLayout ? movementByTeam.get(row.team_id) : undefined}
+                      playoffPct={playoffOdds ? playoffPctByTeam.get(row.team_id) : undefined}
                     />
                     {showPlayoffLine && i + 1 === playoffTeamCount && <PlayoffLine count={playoffTeamCount!} />}
                     {showToiletBowlLine && i + 1 === standings.length - toiletBowlCount && (
@@ -258,6 +271,7 @@ function StandingsListRow({
   teamCount,
   powerRank,
   movement,
+  playoffPct,
 }: {
   row: StandingsRow;
   rank: number;
@@ -267,7 +281,11 @@ function StandingsListRow({
   // when the beta layout is off, so the column never renders at all
   // for the legacy page rather than showing an empty dash everywhere.
   movement?: number | null;
+  // Simulated playoff chance (undefined when there are no odds to show).
+  playoffPct?: number;
 }) {
+  const games = row.wins + row.losses + row.ties;
+  const ppg = games ? Number(row.points_for) / games : null;
   const isChampion = row.final_rank === 1;
   // Symmetric with the champion above — only lit up once a season is
   // actually final (final_rank populated for every row), same as
@@ -313,8 +331,22 @@ function StandingsListRow({
           {Number(row.points_for).toFixed(1)}
         </span>
         <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
+          <span className="sm:hidden">PPG </span>
+          {ppg !== null ? ppg.toFixed(1) : "—"}
+        </span>
+        <span className="tabular-nums text-black/60 sm:w-16 sm:shrink-0 sm:text-right dark:text-white/60">
           {Number(row.points_against).toFixed(1)}
         </span>
+        {playoffPct !== undefined && (
+          <span
+            className="tabular-nums font-semibold sm:w-20 sm:shrink-0 sm:text-right"
+            style={{ color: playoffPct >= 75 ? "#16a34a" : playoffPct <= 10 ? "#b45309" : undefined }}
+            title="Chance of making the playoffs, from simulating the rest of the season"
+          >
+            <span className="font-normal text-black/50 sm:hidden dark:text-white/50">Playoffs </span>
+            {playoffPct < 1 && playoffPct > 0 ? "<1" : Math.round(playoffPct)}%
+          </span>
+        )}
       </div>
     </li>
   );

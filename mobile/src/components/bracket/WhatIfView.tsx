@@ -6,6 +6,7 @@ import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { changeCount, isEmpty, ordinal, recordOf, type PlayoffWorld, type Scenario, type World, type WorldGame, type WorldTeam } from '@/lib/bracketEngine';
+import type { PlayoffOdds } from '@/lib/types';
 
 // The What-If Lab on a phone (the web's components/bracket/
 // WhatIfView.tsx): flip any result, pick any game still to play, pick
@@ -22,6 +23,8 @@ export function WhatIfView({
   onMe,
   onShare,
   shareNote,
+  realOdds,
+  altOdds,
 }: {
   world: PlayoffWorld;
   base: World;
@@ -33,6 +36,8 @@ export function WhatIfView({
   onMe: (teamId: number) => void;
   onShare: (to: 'chat' | 'sheet') => void;
   shareNote: string | null;
+  realOdds: PlayoffOdds | null;
+  altOdds: PlayoffOdds | null;
 }) {
   const [view, setView] = useState<'mine' | number>('mine');
   const weeks = [...new Set(world.schedule.map((g) => g.week))].sort((a, b) => a - b);
@@ -79,6 +84,18 @@ export function WhatIfView({
     else playoff[code] = team;
     onScenario({ ...scenario, playoff });
   };
+  const shownOdds = isEmpty(scenario) ? realOdds : (altOdds ?? null);
+  const focus = shownOdds?.focus ?? null;
+  const pctFor = (o: PlayoffOdds | null, key: 'playoff_pct' | 'title_pct' | 'toilet_bowl_pct') => o?.teams.find((t) => t.team_id === me)?.[key] ?? null;
+  const rootFor = new Map((focus?.root_for ?? []).map((r) => [r.matchup_id, r]));
+  const bestPath = () => {
+    haptics.tap();
+    const picks = { ...scenario.picks };
+    for (const g of world.schedule) if (!g.played && (g.home_team_id === me || g.away_team_id === me)) picks[g.id] = me;
+    for (const r of focus?.root_for ?? []) picks[r.matchup_id] = r.root_for_team_id;
+    onScenario({ ...scenario, picks });
+  };
+
   const games = view === 'mine' ? world.schedule.filter((g) => g.home_team_id === me || g.away_team_id === me) : world.schedule.filter((g) => g.week === view);
   const tone = inPlayoffs ? '#39ff14' : bowlZone ? '#d9a066' : '#eceef1';
 
@@ -125,6 +142,64 @@ export function WhatIfView({
         {shareNote && <Text style={styles.note}>{shareNote}</Text>}
       </View>
 
+      <View style={styles.odds}>
+        <View style={styles.oddsTop}>
+          <View>
+            <Text style={styles.stat}>PLAYOFF CHANCE{altOdds && !isEmpty(scenario) ? ' · WHAT IF' : ''}</Text>
+            <Text style={[styles.oddsBig, { color: oddsColor(pctFor(shownOdds, 'playoff_pct')) }]}>
+              {!isEmpty(scenario) && realOdds ? `${pctText(pctFor(realOdds, 'playoff_pct'))} → ` : ''}
+              {shownOdds ? pctText(pctFor(shownOdds, 'playoff_pct')) : '…'}
+            </Text>
+          </View>
+          <View>
+            <Text style={[styles.stat, styles.gold]}>TITLE</Text>
+            <Text style={[styles.oddsSmall, styles.gold]}>{pctText(pctFor(shownOdds, 'title_pct'))}</Text>
+          </View>
+          <View>
+            <Text style={[styles.stat, styles.bowl]}>BOWL</Text>
+            <Text style={[styles.oddsSmall, styles.bowl]}>{pctText(pctFor(shownOdds, 'toilet_bowl_pct'))}</Text>
+          </View>
+        </View>
+        <Pressable onPress={bestPath} style={styles.bestBtn} accessibilityRole="button">
+          <Text style={styles.bestText}>LIGHT UP THE BEST PATH</Text>
+        </Pressable>
+        {focus && (
+          <>
+            <Text style={styles.stat}>BY WINS LEFT ({focus.games_left} GAMES)</Text>
+            {focus.by_wins.slice(0, 6).map((r) => (
+              <View key={r.wins} style={styles.barRow}>
+                <Text style={styles.barLabel}>{r.wins === r.games_left ? 'Win out' : `Win ${r.wins}`}</Text>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, { width: `${r.pct}%`, backgroundColor: r.pct >= 75 ? '#39ff14' : r.pct >= 25 ? '#f5c542' : '#d9a066' }]} />
+                </View>
+                <Text style={styles.barPct}>{pctText(r.pct)}</Text>
+              </View>
+            ))}
+            {focus.next_game && (
+              <Text style={styles.oddsLine}>
+                Week {focus.next_game.week} vs {teams[focus.next_game.opponent_team_id].name}: <Text style={styles.win}>win → {pctText(focus.next_game.if_win_pct)}</Text>,{' '}
+                <Text style={styles.loss}>lose → {pctText(focus.next_game.if_loss_pct)}</Text>
+              </Text>
+            )}
+            {focus.root_for.map((r) => (
+              <View key={r.matchup_id} style={styles.root}>
+                <Text style={styles.rootText}>
+                  Root for <Text style={styles.gold}>{teams[r.root_for_team_id].name}</Text> over {teams[r.against_team_id].name} ({pctText(r.pct_if_root)} vs {pctText(r.pct_if_other)})
+                </Text>
+                <Pressable onPress={() => onScenario({ ...scenario, picks: { ...scenario.picks, [r.matchup_id]: r.root_for_team_id } })} style={styles.rootBtn} accessibilityRole="button">
+                  <Text style={styles.rootBtnText}>Add</Text>
+                </Pressable>
+              </View>
+            ))}
+            <Text style={styles.help}>
+              {focus.tiebreak.tied_at_cut_pct >= 1
+                ? `Points for decides your spot in ${pctText(focus.tiebreak.tied_at_cut_pct)} of seasons, and you win ${pctText(focus.tiebreak.won_on_points_pct)} of those. Every point counts.`
+                : 'Points for almost never decides your spot — it comes down to wins.'}
+            </Text>
+          </>
+        )}
+      </View>
+
       <View style={styles.section}>
         <View style={styles.sectionHead}>
           <Text style={styles.h2}>{view === 'mine' ? `${teams[me].name.toUpperCase()}'S SEASON` : `WEEK ${view}`}</Text>
@@ -153,9 +228,10 @@ export function WhatIfView({
         {games.map((g) => {
           const winner = alt.results[g.id];
           const changed = g.played ? scenario.flips.includes(g.id) : scenario.picks[g.id] !== undefined;
+          const root = changed ? undefined : rootFor.get(g.id);
           return (
-            <View key={g.id} style={[styles.game, changed && styles.gameChanged]}>
-              <Text style={styles.gameWeek}>WK {g.week}</Text>
+            <View key={g.id} style={[styles.game, changed && styles.gameChanged, root && styles.gameRoot]}>
+              <Text style={[styles.gameWeek, root && styles.gameWeekRoot]} numberOfLines={2}>{root ? `ROOT ${teams[root.root_for_team_id].name.toUpperCase()}` : `WK ${g.week}`}</Text>
               {[g.home_team_id, g.away_team_id].map((t, i) => (
                 <Pressable
                   key={t}
@@ -205,8 +281,42 @@ export function WhatIfView({
   );
 }
 
+function pctText(p: number | null | undefined): string {
+  if (p === null || p === undefined) return '—';
+  if (p > 0 && p < 1) return '<1%';
+  if (p < 100 && p > 99) return '>99%';
+  return `${Math.round(p)}%`;
+}
+
+function oddsColor(p: number | null): string {
+  if (p === null) return '#eceef1';
+  return p >= 75 ? '#39ff14' : p <= 10 ? '#d9a066' : '#eceef1';
+}
+
 const styles = StyleSheet.create({
   wrap: { gap: 16 },
+  odds: { marginHorizontal: 16, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#1c2027', backgroundColor: '#12161c', gap: 10 },
+  oddsTop: { flexDirection: 'row', alignItems: 'flex-end', gap: 20 },
+  oddsBig: { fontFamily: Fonts.displayBold, fontSize: 30 },
+  oddsSmall: { fontFamily: Fonts.display, fontSize: 22 },
+  gold: { color: '#f5c542' },
+  bowl: { color: '#d9a066' },
+  bestBtn: { height: 40, borderRadius: 20, borderWidth: 1, borderColor: '#f5c542', alignItems: 'center', justifyContent: 'center' },
+  bestText: { fontFamily: Fonts.display, fontSize: 13, letterSpacing: 1, color: '#f5c542' },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLabel: { width: 64, fontSize: 13, color: '#c9cfd8' },
+  barTrack: { flex: 1, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  barFill: { height: 10, borderRadius: 5 },
+  barPct: { width: 44, textAlign: 'right', fontFamily: Fonts.mono, fontSize: 12, color: '#eceef1' },
+  oddsLine: { fontSize: 14, color: '#dfe3ea' },
+  win: { color: '#39ff14' },
+  loss: { color: '#f87171' },
+  root: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(245,197,66,0.4)', backgroundColor: 'rgba(245,197,66,0.06)' },
+  rootText: { flex: 1, fontSize: 13, color: '#dfe3ea' },
+  rootBtn: { height: 34, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(245,197,66,0.6)', justifyContent: 'center' },
+  rootBtnText: { fontSize: 12, color: '#f5c542', fontWeight: '700' },
+  gameRoot: { borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.07)' },
+  gameWeekRoot: { width: 58, fontSize: 9, color: '#f5c542' },
   chips: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },
   as: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 2, color: '#9aa3b2', marginRight: 4 },
   chip: { height: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: '#2b3340', justifyContent: 'center' },

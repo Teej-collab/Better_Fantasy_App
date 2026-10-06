@@ -17,6 +17,7 @@ import type {
   LeagueTeam,
   PlayerViewData,
   PlayerViewKey,
+  PlayoffOdds,
   PlayoffSettings,
   ScoringRule,
   TradeReviewMode,
@@ -247,6 +248,12 @@ export const api = {
   playoffBracket: (season: number) => request<{ nodes: PlayoffBracketNode[] }>(`/seasons/${season}/playoffs/bracket`),
   // The bracket screens' and What-If engine's data (lib/bracketEngine.ts).
   playoffWorld: (season: number) => request<{ world: PlayoffWorld | null }>(`/seasons/${season}/playoffs/world`),
+  // Playoff chances — reality, or a What-If world (w, the share format);
+  // with team, that team's paths too.
+  playoffOdds: (season: number, team?: number | null, w?: string) =>
+    request<{ odds: PlayoffOdds | null }>(
+      `/seasons/${season}/playoffs/odds?${[team ? `team=${team}` : '', w ? `w=${encodeURIComponent(w)}` : ''].filter(Boolean).join('&')}`,
+    ),
   // Posts a message to the active league's chat (sharing a What-If).
   shareToLeagueChat: (body: string) =>
     request<{ conversation_id: number; message_id: number }>('/chat/league/share', { method: 'POST', body: JSON.stringify({ body }) }),

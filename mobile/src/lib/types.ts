@@ -1134,3 +1134,30 @@ export type LoungeLobbyGame = {
 };
 
 export type LoungeLobby = { week: number | null; games: LoungeLobbyGame[] };
+
+// Playoff chances from simulating the rest of the season and the
+// playoffs (backend/app/domain/playoff_odds.py) — see the web's
+// PlayoffOdds (frontend/src/lib/api.ts).
+export type PlayoffOddsTeam = {
+  team_id: number;
+  playoff_pct: number;
+  title_pct: number;
+  first_seed_pct: number;
+  toilet_bowl_pct: number;
+  last_place_pct: number;
+  avg_seed: number;
+  projected_wins: number;
+  expected_score: number;
+  ppg: number | null;
+};
+export type PlayoffOddsFocus = {
+  team_id: number;
+  games_left: number;
+  win_out_pct: number | null;
+  by_wins: { wins: number; games_left: number; pct: number; share: number }[];
+  next_game: { matchup_id: number; week: number; opponent_team_id: number; if_win_pct: number | null; if_loss_pct: number | null } | null;
+  root_for: { matchup_id: number; week: number; root_for_team_id: number; against_team_id: number; pct_if_root: number; pct_if_other: number; swing: number }[];
+  tiebreak: { tied_at_cut_pct: number; won_on_points_pct: number | null };
+};
+export type PlayoffOdds = { sims: number; status: 'projected' | 'live'; teams: PlayoffOddsTeam[]; focus: PlayoffOddsFocus | null };
+

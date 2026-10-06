@@ -425,6 +425,17 @@ export function usePlayoffs(season: number | null) {
   });
 }
 
+// Simulated playoff chances (reality, or a What-If world `w`).
+export function usePlayoffOdds(season: number | null, team?: number | null, w?: string) {
+  return useQuery({
+    queryKey: ['playoff-odds', season, team ?? null, w ?? ''],
+    enabled: season !== null,
+    queryFn: async () => (await api.playoffOdds(season!, team, w)).odds,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
 // Everything the Bracket screen rebuilds the season from (bracketEngine.ts).
 export function usePlayoffWorld(season: number | null) {
   return useQuery({

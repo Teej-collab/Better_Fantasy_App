@@ -18,7 +18,7 @@ carry no league-private information (no team/owner/score/roster data),
 so gating them would just add friction to genuinely non-sensitive
 lookups without closing any real exposure.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.league_context import require_league_access
 from app.db import get_pool
@@ -26,6 +26,7 @@ from app.domain import league_activity as league_activity_domain
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_matchup_detail, build_week_matchup_context
 from app.domain.records import get_record_book
+from app.domain import playoff_odds as playoff_odds_domain
 from app.domain import playoffs
 from app.domain import power_rankings
 from app.domain import waivers
@@ -97,6 +98,27 @@ async def playoff_world(season: int, league_id: int = Depends(require_league_acc
     async with pool.acquire() as conn:
         world = await playoffs.get_playoff_world(conn, season, league_id)
     return {"season": season, "world": world}
+
+
+@router.get("/seasons/{season}/playoffs/odds")
+async def playoff_odds(
+    season: int,
+    w: str | None = Query(None, max_length=2000),
+    team: int | None = None,
+    league_id: int = Depends(require_league_access),
+    pool=Depends(get_pool),
+):
+    """Playoff chances from simulating the rest of the season and the
+    playoffs (app/domain/playoff_odds.py): every team's playoff, title,
+    #1-seed, Toilet Bowl and last-place odds and points per game, for
+    reality or a What-If world (`w`, the clients' share format). With
+    `team`, also that team's paths: odds by wins left, the next game's
+    swing, games to root for, and the points-for tiebreak."""
+    async with pool.acquire() as conn:
+        odds = await playoff_odds_domain.get_playoff_odds(
+            conn, season, league_id, w, team, sims=5000 if w else playoff_odds_domain.DEFAULT_SIMS
+        )
+    return {"season": season, "odds": odds}
 
 
 @router.get("/seasons/{season}/playoffs/projected")

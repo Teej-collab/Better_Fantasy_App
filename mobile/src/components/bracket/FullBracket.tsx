@@ -1,15 +1,13 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { GameCard } from '@/components/bracket/GameCard';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
-import { haptics } from '@/lib/haptics';
 import type { BracketGame, PlayoffWorld, World, WorldTeam } from '@/lib/bracketEngine';
 
 // The whole bracket at once on a phone: the winners' bracket on top and
-// the ladder below, two games a row, each round labelled — and a "Tilt"
-// toggle that lays it back like the web's Arena floor.
+// the ladder below, two games a row, each round labelled. Flat, like the
+// web's board.
 
 export function FullBracket({
   world,
@@ -24,7 +22,6 @@ export function FullBracket({
   records: Record<number, string>;
   me: number | null;
 }) {
-  const [tilt, setTilt] = useState(false);
   const rounds = (bracket: 'winners' | 'consolation') => {
     const games = w.games.filter((g) => g.bracket === bracket);
     return [...new Set(games.map((g) => g.round))].sort().map((r) => games.filter((g) => g.round === r));
@@ -34,20 +31,8 @@ export function FullBracket({
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.head}>
-        <Text style={styles.sub}>Every game, top to bottom</Text>
-        <Pressable
-          onPress={() => {
-            haptics.tap();
-            setTilt(!tilt);
-          }}
-          style={[styles.toggle, tilt && styles.toggleOn]}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: tilt }}>
-          <Text style={[styles.toggleText, tilt && styles.toggleTextOn]}>{tilt ? 'FLAT' : 'TILT 3D'}</Text>
-        </Pressable>
-      </View>
-      <View style={tilt ? styles.tilted : undefined}>
+      <Text style={styles.sub}>Every game, top to bottom</Text>
+      <View>
         {(['winners', 'consolation'] as const).map((bracket) =>
           rounds(bracket).length === 0 ? null : (
             <View key={bracket} style={styles.section}>
@@ -79,13 +64,7 @@ export function FullBracket({
 
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 16, gap: 10 },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sub: { fontSize: 12, color: '#9aa3b2' },
-  toggle: { height: 36, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: '#39ff14', justifyContent: 'center' },
-  toggleOn: { backgroundColor: '#39ff14' },
-  toggleText: { fontFamily: Fonts.display, fontSize: 13, letterSpacing: 1, color: '#39ff14' },
-  toggleTextOn: { color: '#0d1016' },
-  tilted: { transform: [{ perspective: 1200 }, { rotateX: '14deg' }] },
   section: { gap: 10, marginBottom: 14 },
   sectionTitle: { fontFamily: Fonts.displayBold, fontSize: 20, letterSpacing: 1 },
   goldText: { color: '#f5c542' },

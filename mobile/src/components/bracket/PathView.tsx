@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   car: { width: 38, height: 38, borderRadius: 11, backgroundColor: '#eceef1', shadowColor: '#ffffff', shadowOpacity: 0.6, shadowRadius: 12 },
   carText: { color: '#0d1016', fontSize: 12 },
   floors: { flex: 1, gap: 10 },
-  slab: { borderRadius: 16, borderWidth: 1, padding: 10, gap: 8, overflow: 'hidden', transform: [{ perspective: 900 }, { rotateX: '16deg' }] },
+  slab: { borderRadius: 16, borderWidth: 1, padding: 10, gap: 8, overflow: 'hidden' },
   slabHead: { flexDirection: 'row', justifyContent: 'space-between' },
   slabName: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5 },
   slabWeeks: { fontFamily: Fonts.mono, fontSize: 10, color: '#7f8a99' },

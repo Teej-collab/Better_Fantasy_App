@@ -29,10 +29,12 @@ import {
   useLeagueActivity,
   useMatchupContext,
   useMe,
+  usePlayoffOdds,
   usePlayoffs,
   usePolls,
   usePowerRankingsTrend,
   useRivalries,
+  useSeasons,
   useSeasonTeams,
   useSeasonWeek,
   useStandings,
@@ -184,6 +186,10 @@ function StandingsTable(props: {
   const accent = useAppearance().accent;
   const rankings = useLatestPowerRankings(props.season).data?.rankings ?? [];
   const rankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
+  // Simulated playoff chances, this season only (2026-10).
+  const latestSeason = useSeasons().data?.[0] ?? null;
+  const odds = usePlayoffOdds(props.season !== null && props.season === latestSeason ? props.season : null).data;
+  const oddsByTeam = new Map((odds?.teams ?? []).map((t) => [t.team_id, t.playoff_pct]));
   if (props.loading) return <LoadingState />;
   const standings = props.data?.standings ?? [];
   const playoffCount = props.data?.playoff_team_count ?? null;
@@ -204,6 +210,8 @@ function StandingsTable(props: {
         {standings.map((row, i) => {
           const champion = row.final_rank === 1;
           const loser = row.final_rank !== null && row.final_rank === standings.length;
+          const games = row.wins + row.losses + row.ties;
+          const pct = oddsByTeam.get(row.team_id);
           return (
             <Fragment key={row.team_id}>
               <View
@@ -230,7 +238,13 @@ function StandingsTable(props: {
                     {row.wins}-{row.losses}-{row.ties}
                   </Text>
                   <Text style={ls.value}>PF {Number(row.points_for).toFixed(1)}</Text>
+                  <Text style={ls.value}>PPG {games ? (Number(row.points_for) / games).toFixed(1) : '—'}</Text>
                   <Text style={ls.value}>PA {Number(row.points_against).toFixed(1)}</Text>
+                  {pct !== undefined && (
+                    <Text style={[styles.oddsPct, pct >= 75 ? styles.oddsHigh : pct <= 10 ? styles.oddsLow : null]}>
+                      {pct > 0 && pct < 1 ? '<1' : Math.round(pct)}% playoffs
+                    </Text>
+                  )}
                 </View>
               </View>
               {showPlayoffLine && i + 1 === playoffCount && <Divider label={`Playoff line — top ${playoffCount}`} color={accent} dark />}
@@ -739,6 +753,9 @@ const styles = StyleSheet.create({
   vsLine: { flex: 1, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   vs: { color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600', letterSpacing: 0.8 },
   bracket: { gap: Spacing.lg },
+  oddsPct: { fontSize: 12, fontWeight: '700', color: Colors.text },
+  oddsHigh: { color: '#39ff14' },
+  oddsLow: { color: '#d9a066' },
   bracketCta: { padding: Spacing.md, borderRadius: 16, borderWidth: 1, borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.08)', gap: 4 },
   bracketCtaTitle: { fontFamily: Fonts.displayBold, fontSize: 18, letterSpacing: 1, color: '#f5c542' },
   bracketCtaSub: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },

@@ -14,6 +14,7 @@ import {
   type Scenario,
   type WorldTeam,
 } from "@/lib/bracketEngine";
+import type { PlayoffOdds } from "@/lib/api";
 import { ArenaView } from "@/components/bracket/ArenaView";
 import { PathView } from "@/components/bracket/PathView";
 import { WhatIfView } from "@/components/bracket/WhatIfView";
@@ -49,6 +50,7 @@ export function BracketExperience({
   const [meChoice, setMeChoice] = useState<number | null>(shared.me);
   const [pathChoice, setPathChoice] = useState<number | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [odds, setOdds] = useState<{ key: string; real: PlayoffOdds | null; alt: PlayoffOdds | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +66,31 @@ export function BracketExperience({
       cancelled = true;
     };
   }, [season]);
+
+  // Playoff chances for whoever "me" is — reality, plus the what-if
+  // world while one is being built (debounced: a flurry of taps is one
+  // request). Simulated server-side (backend/app/domain/playoff_odds.py).
+  const myTeamId = world ? (world.teams.find((t) => t.owner_id === myOwnerId)?.team_id ?? null) : null;
+  const focusTeam = meChoice ?? myTeamId;
+  const encoded = isEmpty(scenario) ? "" : encodeScenario(scenario);
+  const oddsKey = `${focusTeam}|${encoded}`;
+  useEffect(() => {
+    if (!world || focusTeam === null) return;
+    let cancelled = false;
+    const get = (w: string) =>
+      fetch(`/api/backend/seasons/${season}/playoffs/odds?team=${focusTeam}${w ? `&w=${encodeURIComponent(w)}` : ""}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : { odds: null }))
+        .then((b: { odds: PlayoffOdds | null }) => b.odds)
+        .catch(() => null);
+    const timer = setTimeout(async () => {
+      const [real, alt] = await Promise.all([get(""), encoded ? get(encoded) : Promise.resolve(null)]);
+      if (!cancelled) setOdds({ key: oddsKey, real, alt });
+    }, encoded ? 450 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [world, season, focusTeam, encoded, oddsKey]);
 
   const base = useMemo(() => (world ? buildWorld(world) : null), [world]);
   const alt = useMemo(() => (world ? buildWorld(world, scenario) : null), [world, scenario]);
@@ -183,6 +210,7 @@ export function BracketExperience({
           onShareLink={shareLink}
           onShareChat={shareChat}
           shareNote={shareNote}
+          odds={odds?.key === oddsKey ? odds : null}
         />
       )}
     </div>

@@ -4,14 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import type { BracketGame, PlayoffWorld, World, WorldTeam } from "@/lib/bracketEngine";
 import { GameTile, TONES, routeLabel, toneFor, weeksLabel } from "@/components/bracket/GameTile";
 
-// The Arena (mockup A): the whole bracket as a floor tilted away from
-// you. The title game sits raised at the far end on a gold pedestal,
-// the semis below it, the glowing playoff line across the middle, and
-// the consolation ladder nearer — sinking toward the Toilet Bowl.
-// CSS 3D only (no WebGL): cheap on battery, smooth on phones. The stage
-// clips to its own box and is its own stacking context, so the tilted
-// floor never draws over the nav. Under 640px wide it's a plain stacked
-// list instead.
+// The Arena: the whole bracket on one board — the title game at the
+// top, the semis below it, the glowing playoff line across the middle,
+// and the consolation ladder below that down to the Toilet Bowl. Flat
+// (2026-10: the tilted-3D version didn't read well); the board scales
+// to its width and clips to its own box so it never draws over the
+// nav. Under 640px wide it's a plain stacked list instead. The What-If
+// Lab reuses the board (BracketBoard) with picking turned on.
 
 const PLANE_W = 1200;
 const PLANE_H = 1080;
@@ -45,7 +44,6 @@ export function ArenaView({
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const [flat, setFlat] = useState(false);
   const [selected, setSelected] = useState<string>("F");
 
   useEffect(() => {
@@ -68,7 +66,6 @@ export function ArenaView({
         ) : (
           <Stage
             width={width}
-            flat={flat}
             world={world}
             w={w}
             teams={teams}
@@ -89,14 +86,6 @@ export function ArenaView({
             {routeLabel(sel, w.games, world.toilet_bowl_punishment)}.
             {sel.decided === "favorite" && sel.winner !== null && ` Favored on points per game: ${teams[sel.winner].name}.`}
           </span>
-          <button
-            type="button"
-            onClick={() => setFlat(!flat)}
-            className="font-display h-11 rounded-full border border-[#39ff14] px-5 tracking-wide"
-            style={{ background: flat ? "#39ff14" : "transparent", color: flat ? "#0d1016" : "#39ff14" }}
-          >
-            {flat ? "VIEW IN 3D" : "FLAT VIEW"}
-          </button>
         </div>
       )}
     </div>
@@ -110,7 +99,6 @@ function nameFor(team: number | null, seed: number | null, teams: Record<number,
 
 function Stage({
   width,
-  flat,
   world,
   w,
   teams,
@@ -118,49 +106,44 @@ function Stage({
   me,
   selected,
   onSelect,
+  onPick,
 }: {
   width: number;
-  flat: boolean;
   world: PlayoffWorld;
   w: World;
   teams: Record<number, WorldTeam>;
   records: Record<number, string>;
   me: number | null;
-  selected: string;
-  onSelect: (code: string) => void;
+  selected?: string;
+  onSelect?: (code: string) => void;
+  onPick?: (code: string, teamId: number) => void;
 }) {
   const scale = Math.min(1, width / (PLANE_W + 40));
-  const height = Math.round((flat ? PLANE_H + 40 : 780) * scale);
   return (
     <div
       className="relative w-full overflow-hidden rounded-3xl border border-white/10"
       style={{
-        height,
+        height: Math.round((PLANE_H + 30) * scale),
         isolation: "isolate",
         background: "radial-gradient(1200px 700px at 50% 25%, #16202a 0%, #0d1016 70%)",
-        perspective: flat ? undefined : 1700 * scale,
-        perspectiveOrigin: "50% 12%",
-        transition: "height 500ms ease",
       }}
     >
       <div
         style={{
           position: "absolute",
           left: "50%",
-          top: flat ? 20 * scale : 60 * scale,
+          top: 10 * scale,
           width: PLANE_W,
           height: PLANE_H,
-          transformStyle: "preserve-3d",
           transformOrigin: "0 0",
-          transform: `scale(${scale}) translateX(-50%) ${flat ? "" : "rotateX(48deg)"}`,
-          transition: "transform 700ms cubic-bezier(.2,.8,.2,1)",
+          transform: `scale(${scale}) translateX(-50%)`,
         }}
       >
         <div
           className="absolute inset-0 rounded-[28px] border border-[#1c2027]"
           style={{
             background:
-              "repeating-linear-gradient(90deg, rgba(57,255,20,0.04) 0 1px, transparent 1px 100px), repeating-linear-gradient(0deg, rgba(57,255,20,0.04) 0 1px, transparent 1px 100px), linear-gradient(180deg, #121a20 0%, #0f1418 55%, #1a1410 100%)",
+              "repeating-linear-gradient(90deg, rgba(57,255,20,0.03) 0 1px, transparent 1px 100px), repeating-linear-gradient(0deg, rgba(57,255,20,0.03) 0 1px, transparent 1px 100px), linear-gradient(180deg, #121a20 0%, #0f1418 55%, #1a1410 100%)",
           }}
         />
         <div className="absolute right-0 left-0" style={{ top: 515, height: 2, background: "linear-gradient(90deg, transparent, #39ff14, transparent)", boxShadow: "0 0 18px #39ff14" }} />
@@ -172,8 +155,6 @@ function Stage({
         </div>
         {w.games.map((g) => {
           const slot = SLOTS[g.code];
-          const sel = g.code === selected;
-          const z = flat ? 0 : slot.z + (sel ? 36 : 0);
           return (
             <GameTile
               key={g.code}
@@ -183,29 +164,52 @@ function Stage({
               records={records}
               punishment={world.toilet_bowl_punishment}
               me={me}
-              selected={sel}
-              onSelect={() => onSelect(g.code)}
-              style={{
-                position: "absolute",
-                left: slot.x,
-                top: slot.y,
-                width: slot.w,
-                boxSizing: "border-box",
-                transform: `translateZ(${z}px)`,
-                transition: "transform 400ms cubic-bezier(.2,.8,.2,1)",
-              }}
+              selected={g.code === selected}
+              onSelect={onSelect && !onPick ? () => onSelect(g.code) : undefined}
+              onPick={onPick ? (t) => onPick(g.code, t) : undefined}
+              style={{ position: "absolute", left: slot.x, top: slot.y, width: slot.w, boxSizing: "border-box" }}
             />
           );
         })}
-        {!flat && (
-          <div
-            className="font-display absolute text-center text-[22px] tracking-[0.3em] text-[#f5c542]"
-            style={{ left: 450, top: -48, width: 300, transform: "translateZ(120px)", textShadow: "0 0 24px rgba(245,197,66,0.6)" }}
-          >
-            CHAMPIONSHIP
-          </div>
-        )}
       </div>
+    </div>
+  );
+}
+
+/** The flat board on its own, for the What-If Lab: tap a team to pick
+ *  them. Stacks into a list on narrow screens. */
+export function BracketBoard({
+  world,
+  w,
+  teams,
+  records,
+  me,
+  onPick,
+}: {
+  world: PlayoffWorld;
+  w: World;
+  teams: Record<number, WorldTeam>;
+  records: Record<number, string>;
+  me: number | null;
+  onPick: (code: string, teamId: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const placed = w.games.every((g) => SLOTS[g.code]);
+  return (
+    <div ref={ref} className="w-full">
+      {width > 0 && width < 640 || !placed ? (
+        <StackedBracket world={world} w={w} teams={teams} records={records} me={me} onPick={onPick} />
+      ) : (
+        <Stage width={width} world={world} w={w} teams={teams} records={records} me={me} onPick={onPick} />
+      )}
     </div>
   );
 }
@@ -217,12 +221,14 @@ function StackedBracket({
   teams,
   records,
   me,
+  onPick,
 }: {
   world: PlayoffWorld;
   w: World;
   teams: Record<number, WorldTeam>;
   records: Record<number, string>;
   me: number | null;
+  onPick?: (code: string, teamId: number) => void;
 }) {
   const sections: [string, BracketGame[]][] = [
     ["Winners' bracket", w.games.filter((g) => g.bracket === "winners")],
@@ -244,6 +250,7 @@ function StackedBracket({
                 records={records}
                 punishment={world.toilet_bowl_punishment}
                 me={me}
+                onPick={onPick ? (t) => onPick(g.code, t) : undefined}
               />
             ))}
           </section>

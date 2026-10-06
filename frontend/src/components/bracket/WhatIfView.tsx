@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { PlayoffOdds } from "@/lib/api";
 import type { PlayoffWorld, Scenario, World, WorldGame, WorldTeam } from "@/lib/bracketEngine";
 import { changeCount, isEmpty, ordinal, recordOf } from "@/lib/bracketEngine";
-import { GameTile } from "@/components/bracket/GameTile";
+import { BracketBoard } from "@/components/bracket/ArenaView";
 
 // The What-If Lab (mockup C): flip any result, pick any game still to
 // play, pick playoff winners on the bracket itself — and watch the
@@ -22,6 +23,7 @@ export function WhatIfView({
   onShareLink,
   onShareChat,
   shareNote,
+  odds,
 }: {
   world: PlayoffWorld;
   base: World;
@@ -34,6 +36,7 @@ export function WhatIfView({
   onShareLink: () => void;
   onShareChat: () => void;
   shareNote: string | null;
+  odds: { real: PlayoffOdds | null; alt: PlayoffOdds | null } | null;
 }) {
   const [view, setView] = useState<"mine" | number>("mine");
   const weeks = [...new Set(world.schedule.map((g) => g.week))].sort((a, b) => a - b);
@@ -83,6 +86,22 @@ export function WhatIfView({
     if (playoff[code] === team) delete playoff[code];
     else playoff[code] = team;
     onScenario({ ...scenario, playoff });
+  };
+
+  // Playoff chances: the world being shown (what-if if there is one).
+  const shownOdds = odds ? (isEmpty(scenario) ? odds.real : (odds.alt ?? odds.real)) : null;
+  const focus = shownOdds?.focus ?? null;
+  const pctOf = (o: PlayoffOdds | null | undefined, key: "playoff_pct" | "title_pct" | "toilet_bowl_pct") =>
+    o?.teams.find((t) => t.team_id === me)?.[key] ?? null;
+  const rootFor = new Map((focus?.root_for ?? []).map((r) => [r.matchup_id, r]));
+  /** Win every game left, and every game worth rooting for goes your way. */
+  const bestPath = () => {
+    const picks = { ...scenario.picks };
+    for (const g of world.schedule) {
+      if (!g.played && (g.home_team_id === me || g.away_team_id === me)) picks[g.id] = me;
+    }
+    for (const r of focus?.root_for ?? []) picks[r.matchup_id] = r.root_for_team_id;
+    onScenario({ ...scenario, picks });
   };
 
   const games = view === "mine" ? world.schedule.filter((g) => g.home_team_id === me || g.away_team_id === me) : world.schedule.filter((g) => g.week === view);
@@ -136,7 +155,20 @@ export function WhatIfView({
         {shareNote && <p className="w-full text-sm text-[#39ff14]">{shareNote}</p>}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,420px)_minmax(0,320px)_minmax(0,1fr)]">
+      <OddsPanel
+        world={world}
+        teams={teams}
+        realPct={pctOf(odds?.real, "playoff_pct")}
+        altPct={isEmpty(scenario) ? null : pctOf(odds?.alt, "playoff_pct")}
+        titlePct={pctOf(shownOdds, "title_pct")}
+        bowlPct={pctOf(shownOdds, "toilet_bowl_pct")}
+        focus={focus}
+        loading={odds === null}
+        onBestPath={bestPath}
+        onRoot={(matchupId, teamId) => onScenario({ ...scenario, picks: { ...scenario.picks, [matchupId]: teamId } })}
+      />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         <section className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-xl tracking-wide">{view === "mine" ? `${teams[me].name.toUpperCase()}'S SEASON` : `WEEK ${view}`}</h2>
@@ -163,11 +195,16 @@ export function WhatIfView({
             {games.map((g) => {
               const winner = alt.results[g.id];
               const changed = g.played ? scenario.flips.includes(g.id) : scenario.picks[g.id] !== undefined;
+              const root = !changed ? rootFor.get(g.id) : undefined;
               return (
                 <div
                   key={g.id}
                   className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5"
-                  style={{ background: changed ? "rgba(57,255,20,0.07)" : "#12161c", borderColor: changed ? "#39ff14" : "#1c2027" }}
+                  style={{
+                    background: changed ? "rgba(57,255,20,0.07)" : root ? "rgba(245,197,66,0.07)" : "#12161c",
+                    borderColor: changed ? "#39ff14" : root ? "#f5c542" : "#1c2027",
+                  }}
+                  title={root ? `Root for ${teams[root.root_for_team_id].name}: ${root.pct_if_root}% vs ${root.pct_if_other}%` : undefined}
                 >
                   <span className="w-11 font-mono text-[11px] text-[#9aa3b2]">WK {g.week}</span>
                   {[g.home_team_id, g.away_team_id].map((t, i) => (
@@ -186,7 +223,9 @@ export function WhatIfView({
                       {g.played && <span className="font-mono text-[11px]">{(i === 0 ? g.home_score : g.away_score).toFixed(1)}</span>}
                     </button>
                   ))}
-                  <span className="w-12 text-right font-mono text-[10px] text-[#7f8a99]">{g.played ? (changed ? "FLIPPED" : "FINAL") : changed ? "PICK" : "FAV"}</span>
+                  <span className="w-12 text-right font-mono text-[10px]" style={{ color: root ? "#f5c542" : "#7f8a99" }}>
+                    {g.played ? (changed ? "FLIPPED" : "FINAL") : changed ? "PICK" : root ? `ROOT ${teams[root.root_for_team_id].name.toUpperCase()}` : "FAV"}
+                  </span>
                 </div>
               );
             })}
@@ -218,26 +257,14 @@ export function WhatIfView({
           </div>
         </section>
 
-        <section className="flex min-w-0 flex-col gap-2">
-          <h2 className="font-display text-xl tracking-wide">THE BRACKET, IN THIS WORLD</h2>
-          <p className="text-xs text-[#9aa3b2]">Tap a team to pick them; tap again to go back to the favorite.</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {alt.games.map((g) => (
-              <GameTile
-                key={g.code}
-                game={g}
-                all={alt.games}
-                teams={teams}
-                records={altRecords}
-                punishment={world.toilet_bowl_punishment}
-                me={me}
-                compact
-                onPick={(t) => pickPlayoff(g.code, t)}
-              />
-            ))}
-          </div>
-        </section>
+
       </div>
+
+      <section className="flex min-w-0 flex-col gap-2">
+        <h2 className="font-display text-xl tracking-wide">THE BRACKET, IN THIS WORLD</h2>
+        <p className="text-xs text-[#9aa3b2]">Tap a team to pick them to win; tap again to go back to the favorite.</p>
+        <BracketBoard world={world} w={alt} teams={teams} records={altRecords} me={me} onPick={pickPlayoff} />
+      </section>
     </div>
   );
 }
@@ -275,3 +302,125 @@ function WeekChip({ on, onClick, children }: { on: boolean; onClick: () => void;
     </button>
   );
 }
+
+function pctText(p: number | null): string {
+  if (p === null) return "—";
+  if (p > 0 && p < 1) return "<1%";
+  if (p < 100 && p > 99) return ">99%";
+  return `${Math.round(p)}%`;
+}
+
+/** Playoff chances and the paths to get there. */
+function OddsPanel({
+  world,
+  teams,
+  realPct,
+  altPct,
+  titlePct,
+  bowlPct,
+  focus,
+  loading,
+  onBestPath,
+  onRoot,
+}: {
+  world: PlayoffWorld;
+  teams: Record<number, WorldTeam>;
+  realPct: number | null;
+  altPct: number | null;
+  titlePct: number | null;
+  bowlPct: number | null;
+  focus: PlayoffOdds["focus"];
+  loading: boolean;
+  onBestPath: () => void;
+  onRoot: (matchupId: number, teamId: number) => void;
+}) {
+  const shown = altPct ?? realPct;
+  const color = shown === null ? "#eceef1" : shown >= 75 ? "#39ff14" : shown <= 10 ? "#d9a066" : "#eceef1";
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-[#1c2027] bg-[#12161c] p-5" aria-busy={loading}>
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+        <div className="flex flex-col">
+          <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">PLAYOFF CHANCE{altPct !== null ? " · REALITY → WHAT IF" : ""}</span>
+          <span className="font-display text-4xl" style={{ color }}>
+            {altPct !== null ? `${pctText(realPct)} → ${pctText(altPct)}` : pctText(realPct)}
+          </span>
+        </div>
+        <Small label="TITLE" value={pctText(titlePct)} color="#f5c542" />
+        <Small label="TOILET BOWL" value={pctText(bowlPct)} color="#d9a066" />
+        <span className="min-w-[200px] flex-1 text-xs text-[#7f8a99]">
+          {loading ? "Simulating…" : "From 10,000 simulated seasons: scoring average, recent form and power ranking, with real scores so points-for tiebreaks count."}
+        </span>
+        <button type="button" onClick={onBestPath} className="font-display h-10 rounded-full border border-[#f5c542] px-4 text-sm text-[#f5c542]">
+          LIGHT UP THE BEST PATH
+        </button>
+      </div>
+
+      {focus && (
+        <div className="grid gap-5 md:grid-cols-3">
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">BY WINS LEFT ({focus.games_left} GAMES)</span>
+            {focus.by_wins.slice(0, 7).map((r) => (
+              <div key={r.wins} className="flex items-center gap-2 text-sm">
+                <span className="w-24 shrink-0 text-[#c9cfd8]">{r.wins === r.games_left ? "Win out" : `Win ${r.wins} of ${r.games_left}`}</span>
+                <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/5">
+                  <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${r.pct}%`, background: r.pct >= 75 ? "#39ff14" : r.pct >= 25 ? "#f5c542" : "#d9a066" }} />
+                </span>
+                <span className="w-12 text-right font-mono text-xs">{pctText(r.pct)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 text-sm">
+            <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">NEXT GAME</span>
+            {focus.next_game ? (
+              <p className="text-[#dfe3ea]">
+                Week {focus.next_game.week} vs {teams[focus.next_game.opponent_team_id].name}:{" "}
+                <span className="text-[#39ff14]">win → {pctText(focus.next_game.if_win_pct)}</span>,{" "}
+                <span className="text-[#f87171]">lose → {pctText(focus.next_game.if_loss_pct)}</span>.
+              </p>
+            ) : (
+              <p className="text-[#9aa3b2]">No regular-season games left.</p>
+            )}
+            <span className="mt-2 font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">THE TIEBREAKER</span>
+            <p className="text-[#dfe3ea]">
+              {focus.tiebreak.tied_at_cut_pct >= 1
+                ? `Points for decides your spot in ${pctText(focus.tiebreak.tied_at_cut_pct)} of seasons — tied on record at the playoff line — and you come out on top in ${pctText(focus.tiebreak.won_on_points_pct)} of those. Every point counts.`
+                : "Points for almost never decides your spot — it comes down to wins."}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 text-sm">
+            <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">ROOT FOR (WEEK {focus.next_game?.week ?? "—"})</span>
+            {focus.root_for.length === 0 && <p className="text-[#9aa3b2]">No other game moves your odds much this week.</p>}
+            {focus.root_for.map((r) => (
+              <div key={r.matchup_id} className="flex items-center gap-2 rounded-xl border border-[#f5c542]/40 bg-[rgba(245,197,66,0.06)] px-3 py-2">
+                <span className="flex-1 text-[#dfe3ea]">
+                  <b className="text-[#f5c542]">{teams[r.root_for_team_id].name}</b> over {teams[r.against_team_id].name}{" "}
+                  <span className="text-[#9aa3b2]">
+                    ({pctText(r.pct_if_root)} vs {pctText(r.pct_if_other)})
+                  </span>
+                </span>
+                <button type="button" onClick={() => onRoot(r.matchup_id, r.root_for_team_id)} className="h-9 rounded-full border border-[#f5c542]/60 px-3 text-xs text-[#f5c542]">
+                  Add
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <span className="sr-only">{world.playoff_team_count} teams make the playoffs.</span>
+    </section>
+  );
+}
+
+function Small({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-mono text-[11px] tracking-[0.15em]" style={{ color }}>
+        {label}
+      </span>
+      <span className="font-display text-2xl" style={{ color }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
