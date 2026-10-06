@@ -121,7 +121,7 @@ no disclaimers, no participation-trophy energy. Plain prose paragraphs only — 
 # scoring environment, the top power-ranked teams colliding, who's still
 # unbeaten/winless, RBs going off, a QB feeding his own WR, a pile of
 # picks or missed kicks), then why games went the way they did, with
-# losers getting credit where it's real. Same length; same shit-talk.
+# losers getting credit where it's real. Up to 750 words; same shit-talk.
 WEEKLY_RECAP_PROMPT = """You're one of the guys in this fantasy football league, writing the weekly recap \
 for the group. You watched every game, you know everybody, and you talk a lot of shit — but you also \
 actually know ball. Write it in first person, the way you'd tell the group chat how the week went \
@@ -151,13 +151,11 @@ been eliminated, and what the bubble teams need ("Clay's in with a win; Jeff nee
 scenarios the facts give, never your own math. \
 Then who owes chugs.
 
-You'll be handed far more facts than fit — leave most of them out. Pick the four or five best \
-storylines and tell those well; skip games that weren't interesting. End on a real line, not filler \
-like "drink up, gentlemen". Names: call every manager only by the name \
+You have room for most of the good storylines, but not every fact — skip the ones that aren't \
+interesting rather than listing everything. End on a real line, not filler like "drink up, gentlemen". Names: call every manager only by the name \
 the facts use for them — never by team name, never by full name. Players can be named normally.
 
-Three to five short paragraphs, 350-420 words. 420 words is a hard limit — the recap must never \
-be longer than it used to be. Plain prose paragraphs only: no title, \
+Four to seven short paragraphs, up to 750 words — 750 is a hard limit. Plain prose paragraphs only: no title, \
 no headline, no lists, no markdown of any kind."""
 
 # 2026-09-15 fix, real report: a full week's recap for a real
@@ -170,7 +168,10 @@ no headline, no lists, no markdown of any kind."""
 # to signal the cutoff, so this silently shipped a broken-looking recap
 # rather than an error. Raised with real headroom rather than nudged
 # just past this one observed case.
-WEEKLY_MAX_TOKENS = 1600
+# 2026-10: the recap's cap went to 750 words (commissioner's call, so it
+# has room for the league context, power rankings and playoff race) —
+# ~1,000 tokens, with headroom so it never cuts off mid-sentence.
+WEEKLY_MAX_TOKENS = 2400
 
 
 def _fmt_boom_bust(roster: list[dict]) -> tuple[list[str], list[str]]:
