@@ -93,14 +93,24 @@ export function WhatIfView({
   const focus = shownOdds?.focus ?? null;
   const pctOf = (o: PlayoffOdds | null | undefined, key: "playoff_pct" | "title_pct" | "toilet_bowl_pct") =>
     o?.teams.find((t) => t.team_id === me)?.[key] ?? null;
-  const rootFor = new Map((focus?.root_for ?? []).map((r) => [r.matchup_id, r]));
-  /** Win every game left, and every game worth rooting for goes your way. */
+  const rootFor = new Map((odds?.real?.focus?.root_for ?? focus?.root_for ?? []).map((r) => [r.matchup_id, r]));
+  // Root-for games come from reality, so the list stays put as games
+  // are added (a picked game can't swing anything in its own world).
+  const rootList = (odds?.real?.focus ?? focus)?.root_for ?? [];
+  const path = focus?.best_path ?? null;
+  /** The realistic path (backend playoff_odds._best_path): win the
+   *  winnable games it needs, and the results that help most go your way. */
   const bestPath = () => {
+    if (!path) return;
     const picks = { ...scenario.picks };
-    for (const g of world.schedule) {
-      if (!g.played && (g.home_team_id === me || g.away_team_id === me)) picks[g.id] = me;
-    }
-    for (const r of focus?.root_for ?? []) picks[r.matchup_id] = r.root_for_team_id;
+    for (const g of path.win_games) picks[g.matchup_id] = me;
+    for (const r of path.root_for) picks[r.matchup_id] = r.root_for_team_id;
+    onScenario({ ...scenario, picks });
+  };
+  const toggleRoot = (matchupId: number, teamId: number) => {
+    const picks = { ...scenario.picks };
+    if (picks[matchupId] === teamId) delete picks[matchupId];
+    else picks[matchupId] = teamId;
     onScenario({ ...scenario, picks });
   };
 
@@ -164,8 +174,11 @@ export function WhatIfView({
         bowlPct={pctOf(shownOdds, "toilet_bowl_pct")}
         focus={focus}
         loading={odds === null}
+        path={path}
+        rootList={rootList}
+        picked={scenario.picks}
         onBestPath={bestPath}
-        onRoot={(matchupId, teamId) => onScenario({ ...scenario, picks: { ...scenario.picks, [matchupId]: teamId } })}
+        onRoot={toggleRoot}
       />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
@@ -320,6 +333,9 @@ function OddsPanel({
   bowlPct,
   focus,
   loading,
+  path,
+  rootList,
+  picked,
   onBestPath,
   onRoot,
 }: {
@@ -331,6 +347,9 @@ function OddsPanel({
   bowlPct: number | null;
   focus: PlayoffOdds["focus"];
   loading: boolean;
+  path: NonNullable<PlayoffOdds["focus"]>["best_path"];
+  rootList: NonNullable<PlayoffOdds["focus"]>["root_for"];
+  picked: Record<number, number>;
   onBestPath: () => void;
   onRoot: (matchupId: number, teamId: number) => void;
 }) {
@@ -350,13 +369,43 @@ function OddsPanel({
         <span className="min-w-[200px] flex-1 text-xs text-[#7f8a99]">
           {loading ? "Simulating…" : "From 10,000 simulated seasons: scoring average, recent form and power ranking, with real scores so points-for tiebreaks count."}
         </span>
-        <button type="button" onClick={onBestPath} className="font-display h-10 rounded-full border border-[#f5c542] px-4 text-sm text-[#f5c542]">
-          LIGHT UP THE BEST PATH
-        </button>
       </div>
 
+      {path && (
+        <div className="flex flex-col gap-3 rounded-xl border border-[#f5c542]/50 bg-[rgba(245,197,66,0.05)] p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-display text-lg tracking-wide text-[#f5c542]">YOUR BEST PATH</span>
+            <span className="text-sm text-[#dfe3ea]">
+              {path.target_wins >= path.games_left
+                ? `You need to win out (${path.games_left})`
+                : `Win ${path.target_wins} of your ${path.games_left} — not all of them`}
+              {path.root_for.length > 0 && ", with a little help"} → <b className="text-[#f5c542]">{pctText(path.path_pct)}</b>
+            </span>
+            <button type="button" onClick={onBestPath} className="font-display ml-auto h-10 rounded-full bg-[#f5c542] px-4 text-sm text-[#0d1016]">
+              LIGHT IT UP
+            </button>
+          </div>
+          <p className="text-xs text-[#9aa3b2]">
+            The target is the fewest wins that got you in 75%+ of simulated seasons, taken from the games you&apos;re most likely to win; the help is the
+            other results that moved your odds most. Then it&apos;s simulated again with all of it locked in.
+          </p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {path.win_games.map((g) => (
+              <span key={g.matchup_id} className="rounded-full border border-[#39ff14]/40 px-2.5 py-1 text-[#dfe3ea]">
+                Wk {g.week}: beat {teams[g.opponent_team_id].name} <span className="text-[#9aa3b2]">({pctText(g.win_pct)} likely)</span>
+              </span>
+            ))}
+            {path.root_for.map((r) => (
+              <span key={r.matchup_id} className="rounded-full border border-[#f5c542]/40 px-2.5 py-1 text-[#dfe3ea]">
+                Wk {r.week}: {teams[r.root_for_team_id].name} over {teams[r.against_team_id].name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {focus && (
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">BY WINS LEFT ({focus.games_left} GAMES)</span>
             {focus.by_wins.slice(0, 7).map((r) => (
@@ -387,22 +436,32 @@ function OddsPanel({
                 : "Points for almost never decides your spot — it comes down to wins."}
             </p>
           </div>
-          <div className="flex flex-col gap-2 text-sm">
-            <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">ROOT FOR (WEEK {focus.next_game?.week ?? "—"})</span>
-            {focus.root_for.length === 0 && <p className="text-[#9aa3b2]">No other game moves your odds much this week.</p>}
-            {focus.root_for.map((r) => (
-              <div key={r.matchup_id} className="flex items-center gap-2 rounded-xl border border-[#f5c542]/40 bg-[rgba(245,197,66,0.06)] px-3 py-2">
-                <span className="flex-1 text-[#dfe3ea]">
-                  <b className="text-[#f5c542]">{teams[r.root_for_team_id].name}</b> over {teams[r.against_team_id].name}{" "}
-                  <span className="text-[#9aa3b2]">
-                    ({pctText(r.pct_if_root)} vs {pctText(r.pct_if_other)})
+          <div className="flex flex-col gap-2 text-sm md:col-span-2">
+            <span className="font-mono text-[11px] tracking-[0.15em] text-[#9aa3b2]">ROOT FOR — THE GAMES THAT MOVE YOUR ODDS MOST</span>
+            {rootList.length === 0 && <p className="text-[#9aa3b2]">No other game moves your odds much.</p>}
+            {rootList.slice(0, 6).map((r) => {
+              const added = picked[r.matchup_id] === r.root_for_team_id;
+              return (
+                <div key={r.matchup_id} className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: added ? "#f5c542" : "rgba(245,197,66,0.3)", background: added ? "rgba(245,197,66,0.12)" : "rgba(245,197,66,0.04)" }}>
+                  <span className="w-11 shrink-0 font-mono text-[11px] text-[#9aa3b2]">WK {r.week}</span>
+                  <span className="flex-1 text-[#dfe3ea]">
+                    <b className="text-[#f5c542]">{teams[r.root_for_team_id].name}</b> over {teams[r.against_team_id].name}
+                    <span className="block text-xs text-[#9aa3b2]">
+                      {pctText(r.pct_if_root)} if they win, {pctText(r.pct_if_other)} if not
+                    </span>
                   </span>
-                </span>
-                <button type="button" onClick={() => onRoot(r.matchup_id, r.root_for_team_id)} className="h-9 rounded-full border border-[#f5c542]/60 px-3 text-xs text-[#f5c542]">
-                  Add
-                </button>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => onRoot(r.matchup_id, r.root_for_team_id)}
+                    aria-pressed={added}
+                    className="h-9 shrink-0 rounded-full border px-3 text-xs"
+                    style={{ borderColor: "#f5c542", background: added ? "#f5c542" : "transparent", color: added ? "#0d1016" : "#f5c542" }}
+                  >
+                    {added ? "Added ✓" : "Add"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

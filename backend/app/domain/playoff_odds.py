@@ -160,7 +160,15 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
     next_week = min((g["week"] for g in remaining), default=None)
     focus_games = [g for g in remaining if focus_team in (g["home_team_id"], g["away_team_id"])]
     focus_next = next((g for g in focus_games if g["week"] == next_week), None)
-    watch = [g for g in remaining if g["week"] == next_week and focus_team not in (g["home_team_id"], g["away_team_id"])]
+    # Every other game still to play (not just next week's) — what each
+    # result does to the focus team's chances, with the rest of the
+    # league varying around it in every simulated season. Games the
+    # scenario already decided can't swing anything, so they're skipped.
+    watch = [
+        g for g in remaining
+        if focus_team not in (g["home_team_id"], g["away_team_id"]) and g["id"] not in scenario["picks"]
+    ]
+    my_game_wins = {g["id"]: 0 for g in focus_games}
     live = world["status"] == "live" and not scenario["flips"] and not scenario["picks"]
     real_nodes = {g["code"]: g for g in world["games"]}
 
@@ -192,6 +200,8 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
             outcome[g["id"]] = winner
             if winner == focus_team:
                 focus_wins += 1
+                if g["id"] in my_game_wins:
+                    my_game_wins[g["id"]] += 1
         order = sorted(team_ids, key=lambda t: (wins[t], pf[t]), reverse=True)
         seed_of = {t: i + 1 for i, t in enumerate(order)}
 
@@ -313,19 +323,76 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
                 "pct_if_root": round(p_good, 1), "pct_if_other": round(p_bad, 1), "swing": round(p_good - p_bad, 1),
             })
         root_for.sort(key=lambda r: r["swing"], reverse=True)
+        root_for = [r for r in root_for if r["swing"] >= 1.0]
         focus = {
             "team_id": focus_team,
             "games_left": left,
             "win_out_pct": win_out,
             "by_wins": rows,
             "next_game": next_game,
-            "root_for": [r for r in root_for if r["swing"] >= 0.5][:3],
+            "root_for": root_for[:8],
+            "best_path": _best_path(world, scenario, focus_team, focus_games, my_game_wins, rows, root_for, sims, seed),
             "tiebreak": {
                 "tied_at_cut_pct": pct(tie_at_cut),
                 "won_on_points_pct": round(100 * tie_won / tie_at_cut, 1) if tie_at_cut else None,
             },
         }
     return {"sims": sims, "teams": teams, "focus": focus}
+
+
+# The best path's target: the fewest wins that make the playoffs this
+# likely (in the simulated seasons where the team won exactly that many).
+PATH_TARGET_PCT = 75.0
+PATH_ROOT_GAMES = 4
+
+
+def _best_path(world, scenario, team, my_games, my_game_wins, by_wins, root_for, sims, seed) -> dict | None:
+    """The realistic way in — not "win out" (everyone's best path).
+
+    1. A win target: the fewest of the remaining games that gets the team
+       in PATH_TARGET_PCT of the time (from the simulated seasons).
+    2. Which games: the ones it's most likely to win (its simulated win
+       rate in each), so the path asks for the winnable ones.
+    3. Help: the other games across the rest of the season that move its
+       chances most, each with the result to root for.
+    Then the path is simulated again with all of that locked in, so its
+    chance is a real number, not a guess."""
+    open_games = [g for g in my_games if g["id"] not in scenario["picks"]]
+    already_won = sum(1 for g in my_games if scenario["picks"].get(g["id"]) == team)
+    left = len(my_games)
+    if left == 0:
+        return None
+    target = next(
+        (r["wins"] for r in sorted(by_wins, key=lambda r: r["wins"]) if r["pct"] >= PATH_TARGET_PCT and r["share"] > 0),
+        left,
+    )
+    needed = max(0, target - already_won)
+    ranked = sorted(open_games, key=lambda g: my_game_wins.get(g["id"], 0), reverse=True)
+    to_win = ranked[:needed]
+    help_games = root_for[:PATH_ROOT_GAMES]
+
+    path = {
+        "flips": set(scenario["flips"]),
+        "picks": {**scenario["picks"], **{g["id"]: team for g in to_win}, **{r["matchup_id"]: r["root_for_team_id"] for r in help_games}},
+        "playoff": dict(scenario["playoff"]),
+    }
+    rerun = simulate(world, path, None, max(2000, sims // 4), seed ^ 0x5A5A)
+    path_pct = next(t["playoff_pct"] for t in rerun["teams"] if t["team_id"] == team)
+    return {
+        "target_wins": target,
+        "games_left": left,
+        "win_games": [
+            {
+                "matchup_id": g["id"],
+                "week": g["week"],
+                "opponent_team_id": g["away_team_id"] if g["home_team_id"] == team else g["home_team_id"],
+                "win_pct": round(100 * my_game_wins.get(g["id"], 0) / sims, 1),
+            }
+            for g in sorted(to_win, key=lambda g: g["week"])
+        ],
+        "root_for": help_games,
+        "path_pct": path_pct,
+    }
 
 
 async def get_playoff_odds(

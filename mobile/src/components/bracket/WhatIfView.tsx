@@ -87,12 +87,24 @@ export function WhatIfView({
   const shownOdds = isEmpty(scenario) ? realOdds : (altOdds ?? null);
   const focus = shownOdds?.focus ?? null;
   const pctFor = (o: PlayoffOdds | null, key: 'playoff_pct' | 'title_pct' | 'toilet_bowl_pct') => o?.teams.find((t) => t.team_id === me)?.[key] ?? null;
-  const rootFor = new Map((focus?.root_for ?? []).map((r) => [r.matchup_id, r]));
+  // Root-for games come from reality so the list stays put as games are
+  // added; the best path is the server's realistic one, not "win out".
+  const rootList = (realOdds?.focus ?? focus)?.root_for ?? [];
+  const rootFor = new Map(rootList.map((r) => [r.matchup_id, r]));
+  const path = focus?.best_path ?? null;
   const bestPath = () => {
+    if (!path) return;
     haptics.tap();
     const picks = { ...scenario.picks };
-    for (const g of world.schedule) if (!g.played && (g.home_team_id === me || g.away_team_id === me)) picks[g.id] = me;
-    for (const r of focus?.root_for ?? []) picks[r.matchup_id] = r.root_for_team_id;
+    for (const g of path.win_games) picks[g.matchup_id] = me;
+    for (const r of path.root_for) picks[r.matchup_id] = r.root_for_team_id;
+    onScenario({ ...scenario, picks });
+  };
+  const toggleRoot = (matchupId: number, teamId: number) => {
+    haptics.tap();
+    const picks = { ...scenario.picks };
+    if (picks[matchupId] === teamId) delete picks[matchupId];
+    else picks[matchupId] = teamId;
     onScenario({ ...scenario, picks });
   };
 
@@ -160,9 +172,29 @@ export function WhatIfView({
             <Text style={[styles.oddsSmall, styles.bowl]}>{pctText(pctFor(shownOdds, 'toilet_bowl_pct'))}</Text>
           </View>
         </View>
-        <Pressable onPress={bestPath} style={styles.bestBtn} accessibilityRole="button">
-          <Text style={styles.bestText}>LIGHT UP THE BEST PATH</Text>
-        </Pressable>
+        {path && (
+          <View style={styles.path}>
+            <Text style={styles.pathTitle}>YOUR BEST PATH</Text>
+            <Text style={styles.oddsLine}>
+              {path.target_wins >= path.games_left ? `Win out (${path.games_left})` : `Win ${path.target_wins} of your ${path.games_left} — not all of them`}
+              {path.root_for.length > 0 ? ', with a little help' : ''} → <Text style={styles.gold}>{pctText(path.path_pct)}</Text>
+            </Text>
+            <Text style={styles.help}>The fewest wins that got you in 75%+ of simulated seasons, from the games you’re most likely to win, plus the results that help most — then simulated again with it all locked in.</Text>
+            {path.win_games.map((g) => (
+              <Text key={g.matchup_id} style={styles.pathItem}>
+                Wk {g.week}: beat {teams[g.opponent_team_id].name} <Text style={styles.muted}>({pctText(g.win_pct)} likely)</Text>
+              </Text>
+            ))}
+            {path.root_for.map((r) => (
+              <Text key={r.matchup_id} style={[styles.pathItem, styles.gold]}>
+                Wk {r.week}: {teams[r.root_for_team_id].name} over {teams[r.against_team_id].name}
+              </Text>
+            ))}
+            <Pressable onPress={bestPath} style={styles.bestBtn} accessibilityRole="button">
+              <Text style={styles.bestText}>LIGHT IT UP</Text>
+            </Pressable>
+          </View>
+        )}
         {focus && (
           <>
             <Text style={styles.stat}>BY WINS LEFT ({focus.games_left} GAMES)</Text>
@@ -181,16 +213,28 @@ export function WhatIfView({
                 <Text style={styles.loss}>lose → {pctText(focus.next_game.if_loss_pct)}</Text>
               </Text>
             )}
-            {focus.root_for.map((r) => (
-              <View key={r.matchup_id} style={styles.root}>
-                <Text style={styles.rootText}>
-                  Root for <Text style={styles.gold}>{teams[r.root_for_team_id].name}</Text> over {teams[r.against_team_id].name} ({pctText(r.pct_if_root)} vs {pctText(r.pct_if_other)})
-                </Text>
-                <Pressable onPress={() => onScenario({ ...scenario, picks: { ...scenario.picks, [r.matchup_id]: r.root_for_team_id } })} style={styles.rootBtn} accessibilityRole="button">
-                  <Text style={styles.rootBtnText}>Add</Text>
-                </Pressable>
-              </View>
-            ))}
+            <Text style={styles.stat}>ROOT FOR — THE GAMES THAT MOVE YOUR ODDS MOST</Text>
+            {rootList.slice(0, 6).map((r) => {
+              const added = scenario.picks[r.matchup_id] === r.root_for_team_id;
+              return (
+                <View key={r.matchup_id} style={[styles.root, added && styles.rootAdded]}>
+                  <Text style={styles.rootText}>
+                    Wk {r.week}: <Text style={styles.gold}>{teams[r.root_for_team_id].name}</Text> over {teams[r.against_team_id].name}
+                    {'\n'}
+                    <Text style={styles.muted}>
+                      {pctText(r.pct_if_root)} if they win, {pctText(r.pct_if_other)} if not
+                    </Text>
+                  </Text>
+                  <Pressable
+                    onPress={() => toggleRoot(r.matchup_id, r.root_for_team_id)}
+                    style={[styles.rootBtn, added && styles.rootBtnOn]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: added }}>
+                    <Text style={[styles.rootBtnText, added && styles.rootBtnTextOn]}>{added ? 'Added ✓' : 'Add'}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
             <Text style={styles.help}>
               {focus.tiebreak.tied_at_cut_pct >= 1
                 ? `Points for decides your spot in ${pctText(focus.tiebreak.tied_at_cut_pct)} of seasons, and you win ${pctText(focus.tiebreak.won_on_points_pct)} of those. Every point counts.`
@@ -315,6 +359,13 @@ const styles = StyleSheet.create({
   rootText: { flex: 1, fontSize: 13, color: '#dfe3ea' },
   rootBtn: { height: 34, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(245,197,66,0.6)', justifyContent: 'center' },
   rootBtnText: { fontSize: 12, color: '#f5c542', fontWeight: '700' },
+  path: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(245,197,66,0.5)', backgroundColor: 'rgba(245,197,66,0.05)', gap: 6 },
+  pathTitle: { fontFamily: Fonts.display, fontSize: 15, letterSpacing: 1, color: '#f5c542' },
+  pathItem: { fontSize: 13, color: '#dfe3ea' },
+  muted: { color: '#9aa3b2' },
+  rootAdded: { borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.14)' },
+  rootBtnOn: { backgroundColor: '#f5c542' },
+  rootBtnTextOn: { color: '#0d1016' },
   gameRoot: { borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.07)' },
   gameWeekRoot: { width: 58, fontSize: 9, color: '#f5c542' },
   chips: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },

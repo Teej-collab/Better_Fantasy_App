@@ -1158,6 +1158,14 @@ export type PlayoffOddsFocus = {
   next_game: { matchup_id: number; week: number; opponent_team_id: number; if_win_pct: number | null; if_loss_pct: number | null } | null;
   root_for: { matchup_id: number; week: number; root_for_team_id: number; against_team_id: number; pct_if_root: number; pct_if_other: number; swing: number }[];
   tiebreak: { tied_at_cut_pct: number; won_on_points_pct: number | null };
+  // The realistic way in (backend playoff_odds._best_path).
+  best_path: {
+    target_wins: number;
+    games_left: number;
+    win_games: { matchup_id: number; week: number; opponent_team_id: number; win_pct: number }[];
+    root_for: PlayoffOddsFocus['root_for'];
+    path_pct: number;
+  } | null;
 };
 export type PlayoffOdds = { sims: number; status: 'projected' | 'live'; teams: PlayoffOddsTeam[]; focus: PlayoffOddsFocus | null };
 
