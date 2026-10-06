@@ -25,6 +25,15 @@ gap — see UnsupportedPlayoffTeamCountError — deliberately out of scope
 for this first version, matching the audit's own "even a simple
 version is far better than none" scoping standard.
 
+2026-10: the whole bracket is now described by bracket_spec — every
+game's code (SF1, F, 3RD, C1..C8), which bracket it's in, where each
+team comes from (a seed, or the winner/loser of an earlier game) and
+what place each result earns. Alongside the winners' bracket it adds a
+3rd-place game and, for this league's shape (4 playoff teams, 8 more),
+ESPN's consolation ladder: every team plays for a real final place,
+down to the Toilet Bowl (GmC8, 11th vs 12th). Generation, resolution,
+the projection and the clients' what-if engine all read the same spec.
+
 Two entry points:
 
 - generate_playoff_bracket: called once, when the regular season is
@@ -78,14 +87,84 @@ async def _infer_start_week(conn, season: int, league_id: int) -> int:
     return last_regular_week + 1
 
 
-async def generate_playoff_bracket(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
-    existing = await conn.fetchval(
-        "SELECT 1 FROM playoff_bracket_matchups WHERE season = $1 AND league_id = $2 LIMIT 1",
-        season, league_id,
-    )
-    if existing:
-        raise PlayoffAlreadyGeneratedError(f"A playoff bracket already exists for season {season}")
+# The commissioner's punishment for losing the Toilet Bowl. "TBD" until
+# the league decides (2026-10).
+TOILET_BOWL_PUNISHMENT = "TBD"
 
+
+def bracket_spec(team_count: int, total_teams: int) -> list[dict]:
+    """Every game in the bracket, in play order. Each game:
+    code, bracket ("winners" | "consolation"), round, slot, label,
+    sources — two of {"kind": "seed", "seed": n} or {"kind": "winner" |
+    "loser", "code": c} — and places: [winner's place, loser's place]
+    for a game that decides final places, else None.
+
+    Winners: a single-elimination bracket for team_count (a power of 2)
+    plus a 3rd-place game in the final round. Consolation: ESPN's
+    two-round ladder for exactly 8 more teams when the playoffs are two
+    rounds long (this league): GmC1-4 pair adjacent seeds, then GmC5
+    (5th), GmC6 (7th), GmC7 (9th) and GmC8 — the Toilet Bowl, for 11th
+    and 12th. Any other shape gets no consolation games."""
+    rounds = int(math.log2(team_count))
+    games: list[dict] = []
+
+    def code_for(r: int, slot: int) -> str:
+        if r == rounds:
+            return "F"
+        if r == rounds - 1:
+            return f"SF{slot + 1}"
+        return f"R{r}-{slot + 1}"
+
+    def label_for(r: int, slot: int) -> str:
+        if r == rounds:
+            return "Championship"
+        if r == rounds - 1:
+            return f"Semifinal {slot + 1}"
+        return f"Round {r} · Game {slot + 1}"
+
+    for r in range(1, rounds + 1):
+        for slot in range(team_count // (2 ** r)):
+            if r == 1:
+                sources = [{"kind": "seed", "seed": slot + 1}, {"kind": "seed", "seed": team_count - slot}]
+            else:
+                sources = [
+                    {"kind": "winner", "code": code_for(r - 1, 2 * slot)},
+                    {"kind": "winner", "code": code_for(r - 1, 2 * slot + 1)},
+                ]
+            games.append({
+                "code": code_for(r, slot), "bracket": "winners", "round": r, "slot": slot,
+                "label": label_for(r, slot), "sources": sources, "places": [1, 2] if r == rounds else None,
+            })
+    if rounds >= 2:
+        games.append({
+            "code": "3RD", "bracket": "winners", "round": rounds, "slot": 1, "label": "3rd Place",
+            "sources": [{"kind": "loser", "code": "SF1"}, {"kind": "loser", "code": "SF2"}], "places": [3, 4],
+        })
+
+    if rounds == 2 and total_teams - team_count == 8:
+        base = team_count  # seeds team_count+1 .. team_count+8
+        seed = lambda n: {"kind": "seed", "seed": base + n}  # noqa: E731
+        w = lambda c: {"kind": "winner", "code": c}  # noqa: E731
+        lo = lambda c: {"kind": "loser", "code": c}  # noqa: E731
+        ladder = [
+            ("C1", 1, 0, "GmC1", [seed(1), seed(2)], None),
+            ("C2", 1, 1, "GmC2", [seed(3), seed(4)], None),
+            ("C3", 1, 2, "GmC3", [seed(5), seed(6)], None),
+            ("C4", 1, 3, "GmC4", [seed(7), seed(8)], None),
+            ("C5", 2, 0, f"GmC5 · {base + 1}th Place", [w("C1"), w("C2")], [base + 1, base + 2]),
+            ("C6", 2, 1, f"GmC6 · {base + 3}th Place", [lo("C1"), w("C3")], [base + 3, base + 4]),
+            ("C7", 2, 2, f"GmC7 · {base + 5}th Place", [lo("C2"), w("C4")], [base + 5, base + 6]),
+            ("C8", 2, 3, "Toilet Bowl", [lo("C3"), lo("C4")], [base + 7, base + 8]),
+        ]
+        for code, r, slot, label, sources, places in ladder:
+            games.append({
+                "code": code, "bracket": "consolation", "round": r, "slot": slot, "label": label,
+                "sources": sources, "places": places,
+            })
+    return games
+
+
+async def _bracket_shape(conn, season: int, league_id: int) -> tuple[dict, int, list]:
     settings = await get_playoff_settings(conn, season, league_id)
     team_count = settings["playoff_team_count"]
     if team_count is None:
@@ -97,65 +176,59 @@ async def generate_playoff_bracket(conn, season: int, league_id: int = DEFAULT_L
         raise UnsupportedPlayoffTeamCountError(
             f"playoff_team_count={team_count} isn't a power of 2 — this bracket engine doesn't support byes yet"
         )
+    standings = await get_standings(conn, season, league_id)
+    return settings, team_count, standings
 
+
+async def generate_playoff_bracket(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
+    existing = await conn.fetchval(
+        "SELECT 1 FROM playoff_bracket_matchups WHERE season = $1 AND league_id = $2 LIMIT 1",
+        season, league_id,
+    )
+    if existing:
+        raise PlayoffAlreadyGeneratedError(f"A playoff bracket already exists for season {season}")
+
+    settings, team_count, standings = await _bracket_shape(conn, season, league_id)
     weeks_per_matchup = settings["weeks_per_matchup"]
     start_week = settings["start_week"] or await _infer_start_week(conn, season, league_id)
-    rounds = int(math.log2(team_count))
-
-    standings = await get_standings(conn, season, league_id)
     if len(standings) < team_count:
         raise PlayoffTeamCountUnknownError(
             f"playoff_team_count={team_count} but only {len(standings)} teams have real standings this season"
         )
-    seeds = [dict(row) for row in standings[:team_count]]
+    seeds = [dict(row) for row in standings]
 
     created_nodes = []
     async with conn.transaction():
-        # Every round's skeleton row exists up front (round 1 seeded,
-        # later rounds' teams NULL until their inputs resolve) so the
-        # bracket's real shape — how many rounds, who could meet whom —
-        # is visible immediately, not built up piecemeal as rounds
-        # complete.
-        node_id_by_round_slot: dict[tuple[int, int], int] = {}
-        for round_num in range(1, rounds + 1):
-            slots_this_round = team_count // (2 ** round_num)
-            for slot in range(slots_this_round):
-                team_a_id = team_a_seed = team_b_id = team_b_seed = None
-                if round_num == 1:
-                    seed_a = seeds[slot]
-                    seed_b = seeds[team_count - 1 - slot]
-                    team_a_id, team_a_seed = seed_a["team_id"], slot + 1
-                    team_b_id, team_b_seed = seed_b["team_id"], team_count - slot
-                node_id = await conn.fetchval(
-                    """
-                    INSERT INTO playoff_bracket_matchups
-                        (season, league_id, round, slot, team_a_id, team_a_seed, team_b_id, team_b_seed)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id
-                    """,
-                    season, league_id, round_num, slot, team_a_id, team_a_seed, team_b_id, team_b_seed,
-                )
-                node_id_by_round_slot[(round_num, slot)] = node_id
-                created_nodes.append({
-                    "id": node_id, "round": round_num, "slot": slot,
-                    "team_a_id": team_a_id, "team_a_seed": team_a_seed,
-                    "team_b_id": team_b_id, "team_b_seed": team_b_seed,
-                })
-
-        # Round 1 is the only round with both teams known right now —
-        # write its real per-week matchups immediately. Later rounds get
-        # theirs from resolve_ready_playoff_matchups once their inputs
-        # are known.
-        round_1_slots = team_count // 2
-        for slot in range(round_1_slots):
-            node_id = node_id_by_round_slot[(1, slot)]
-            seed_a = seeds[slot]
-            seed_b = seeds[team_count - 1 - slot]
-            await _create_matchup_weeks(
-                conn, season, league_id, node_id, seed_a["team_id"], seed_b["team_id"],
-                start_week, weeks_per_matchup,
+        # Every game's row exists up front (round-1 games seeded, later
+        # games' teams NULL until their sources resolve), so the
+        # bracket's whole shape is visible immediately.
+        for game in bracket_spec(team_count, len(seeds)):
+            team_a_id = team_a_seed = team_b_id = team_b_seed = None
+            if all(src["kind"] == "seed" for src in game["sources"]):
+                (sa, sb) = (src["seed"] for src in game["sources"])
+                team_a_id, team_a_seed = seeds[sa - 1]["team_id"], sa
+                team_b_id, team_b_seed = seeds[sb - 1]["team_id"], sb
+            node_id = await conn.fetchval(
+                """
+                INSERT INTO playoff_bracket_matchups
+                    (season, league_id, round, slot, code, bracket, team_a_id, team_a_seed, team_b_id, team_b_seed)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING id
+                """,
+                season, league_id, game["round"], game["slot"], game["code"], game["bracket"],
+                team_a_id, team_a_seed, team_b_id, team_b_seed,
             )
-
+            if team_a_id is not None:
+                await _create_matchup_weeks(
+                    conn, season, league_id, node_id, team_a_id, team_b_id,
+                    start_week + (game["round"] - 1) * weeks_per_matchup, weeks_per_matchup,
+                )
+            created_nodes.append({
+                "id": node_id, "round": game["round"], "slot": game["slot"], "code": game["code"],
+                "bracket": game["bracket"],
+                "team_a_id": team_a_id, "team_a_seed": team_a_seed,
+                "team_b_id": team_b_id, "team_b_seed": team_b_seed,
+            })
     return created_nodes
 
 
@@ -175,15 +248,24 @@ async def _create_matchup_weeks(
 
 
 async def resolve_ready_playoff_matchups(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
+    """Decides every game whose weeks are all scored, then fills each
+    game fed by its winner or loser (bracket_spec's sources), writing
+    that game's matchup weeks once both its teams are known."""
     settings = await get_playoff_settings(conn, season, league_id)
     weeks_per_matchup = settings["weeks_per_matchup"]
+    team_count = settings["playoff_team_count"]
+    total_teams = await conn.fetchval(
+        "SELECT COUNT(*) FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    spec = bracket_spec(team_count, total_teams) if team_count and _is_power_of_two(team_count) else []
 
     pending = await conn.fetch(
         """
-        SELECT id, round, slot, team_a_id, team_b_id
+        SELECT id, round, slot, code, team_a_id, team_a_seed, team_b_id, team_b_seed
         FROM playoff_bracket_matchups
         WHERE season = $1 AND league_id = $2 AND winner_team_id IS NULL
           AND team_a_id IS NOT NULL AND team_b_id IS NOT NULL
+        ORDER BY round, slot
         """,
         season, league_id,
     )
@@ -199,53 +281,51 @@ async def resolve_ready_playoff_matchups(conn, season: int, league_id: int = DEF
 
         team_a_total = sum(r["home_score"] for r in scores)
         team_b_total = sum(r["away_score"] for r in scores)
-        # A tie is real-world astronomically unlikely over an aggregate
-        # of real fantasy scores, but not impossible — the better seed
-        # (team_a, by construction: see generate_playoff_bracket's own
-        # seed_a/seed_b pairing) wins it, a real disclosed tiebreak
-        # rather than a silently-wrong or unhandled state.
-        winner_id = node["team_a_id"] if team_a_total >= team_b_total else node["team_b_id"]
+        # A tie over an aggregate of real fantasy scores is very unlikely
+        # but possible — the better seed wins it, a real disclosed
+        # tiebreak rather than an unhandled state.
+        if team_a_total != team_b_total:
+            a_wins = team_a_total > team_b_total
+        else:
+            a_wins = (node["team_a_seed"] or 99) <= (node["team_b_seed"] or 99)
+        winner = (node["team_a_id"], node["team_a_seed"]) if a_wins else (node["team_b_id"], node["team_b_seed"])
+        loser = (node["team_b_id"], node["team_b_seed"]) if a_wins else (node["team_a_id"], node["team_a_seed"])
 
         async with conn.transaction():
             await conn.execute(
-                "UPDATE playoff_bracket_matchups SET winner_team_id = $1 WHERE id = $2", winner_id, node["id"],
+                "UPDATE playoff_bracket_matchups SET winner_team_id = $1 WHERE id = $2", winner[0], node["id"],
             )
             resolved.append({
-                "id": node["id"], "round": node["round"], "slot": node["slot"], "winner_team_id": winner_id,
+                "id": node["id"], "round": node["round"], "slot": node["slot"], "code": node["code"],
+                "winner_team_id": winner[0],
             })
-
-            next_round = node["round"] + 1
-            next_slot = node["slot"] // 2
-            next_node = await conn.fetchrow(
-                "SELECT id, team_a_id, team_b_id FROM playoff_bracket_matchups "
-                "WHERE season = $1 AND league_id = $2 AND round = $3 AND slot = $4",
-                season, league_id, next_round, next_slot,
-            )
-            if next_node is None:
-                continue  # node["round"] was the final — nothing advances further
-
-            column = "team_a_id" if node["slot"] % 2 == 0 else "team_b_id"
-            await conn.execute(
-                f"UPDATE playoff_bracket_matchups SET {column} = $1 WHERE id = $2", winner_id, next_node["id"],
-            )
-
-            other_team_id = next_node["team_b_id"] if column == "team_a_id" else next_node["team_a_id"]
-            if other_team_id is not None:
-                # Both feeders of next_node are now known — its real
-                # per-week matchups can finally be written. start_week
-                # is computed fresh (not stored per-round) since it's a
-                # pure function of the season's own start_week/
-                # weeks_per_matchup and this round number.
-                start_week = settings["start_week"] or await _infer_start_week(conn, season, league_id)
-                round_start_week = start_week + (next_round - 1) * weeks_per_matchup
-                team_a_id = winner_id if column == "team_a_id" else other_team_id
-                team_b_id = other_team_id if column == "team_a_id" else winner_id
-                await _create_matchup_weeks(
-                    conn, season, league_id, next_node["id"], team_a_id, team_b_id,
-                    round_start_week, weeks_per_matchup,
-                )
-
+            for game in spec:
+                for side, src in enumerate(game["sources"]):
+                    if src.get("code") != node["code"]:
+                        continue
+                    team_id, seed = winner if src["kind"] == "winner" else loser
+                    await _fill_and_schedule(
+                        conn, season, league_id, settings, game, side, team_id, seed, weeks_per_matchup,
+                    )
     return resolved
+
+
+async def _fill_and_schedule(conn, season, league_id, settings, game, side, team_id, seed, weeks_per_matchup):
+    team_col, seed_col = ("team_a_id", "team_a_seed") if side == 0 else ("team_b_id", "team_b_seed")
+    target = await conn.fetchrow(
+        f"UPDATE playoff_bracket_matchups SET {team_col} = $1, {seed_col} = $2 "
+        "WHERE season = $3 AND league_id = $4 AND code = $5 "
+        "RETURNING id, round, team_a_id, team_b_id",
+        team_id, seed, season, league_id, game["code"],
+    )
+    if target is None or target["team_a_id"] is None or target["team_b_id"] is None:
+        return
+    # Both sides known: this game's real weeks can be written now.
+    start_week = settings["start_week"] or await _infer_start_week(conn, season, league_id)
+    await _create_matchup_weeks(
+        conn, season, league_id, target["id"], target["team_a_id"], target["team_b_id"],
+        start_week + (target["round"] - 1) * weeks_per_matchup, weeks_per_matchup,
+    )
 
 
 async def get_bracket_view(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> list[dict]:
@@ -256,7 +336,7 @@ async def get_bracket_view(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID
     bracket has ever run for this season."""
     rows = await conn.fetch(
         """
-        SELECT b.id, b.round, b.slot,
+        SELECT b.id, b.round, b.slot, b.code, b.bracket,
                b.team_a_id, ta.team_name AS team_a_name, b.team_a_seed,
                b.team_b_id, tb.team_name AS team_b_name, b.team_b_seed,
                b.winner_team_id, tw.team_name AS winner_team_name,
@@ -321,3 +401,96 @@ async def get_projected_playoff_picture(conn, season: int, league_id: int = DEFA
         }
         for i in range(team_count // 2)
     ]
+
+
+async def get_playoff_world(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict | None:
+    """Everything the bracket screens and the what-if engine need to
+    rebuild the season on the device (2026-10): the teams, every
+    regular-season game (with whether it's final), the bracket spec,
+    and — once a real bracket exists — each game's real teams, scores
+    and winner. Standings and seeds are computed on the client the same
+    way get_standings orders them (wins, ties as half, then points for)
+    so flipping a game reseeds instantly. None when the league has no
+    playoff settings or a shape this engine can't build."""
+    from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
+
+    settings = await get_playoff_settings(conn, season, league_id)
+    team_count = settings["playoff_team_count"]
+    if team_count is None or not _is_power_of_two(team_count):
+        return None
+
+    teams = await conn.fetch(
+        """
+        SELECT t.id AS team_id, t.team_name, o.owner_id, o.logo_url,
+               COALESCE(o.goes_by, split_part(o.display_name, ' ', 1)) AS name
+        FROM teams_by_season t JOIN owners o ON o.owner_id = t.owner_id
+        WHERE t.season = $1 AND t.league_id = $2
+        ORDER BY t.id
+        """,
+        season, league_id,
+    )
+    if len(teams) < team_count:
+        return None
+
+    current_week = await conn.fetchval("SELECT current_week FROM league_state WHERE season = $1", season)
+    current_final = False
+    if current_week is not None:
+        current_final = is_week_final(await get_week_scoreboard(week=current_week, year=season))
+    games = await conn.fetch(
+        """
+        SELECT id, week, home_team_id, away_team_id, home_score, away_score FROM matchups
+        WHERE season = $1 AND league_id = $2 AND is_playoff = FALSE
+        ORDER BY week, id
+        """,
+        season, league_id,
+    )
+
+    def played(g) -> bool:
+        if g["home_score"] is None or g["away_score"] is None or (g["home_score"] == 0 and g["away_score"] == 0):
+            return False
+        if current_week is not None and g["week"] == current_week:
+            return current_final
+        return current_week is None or g["week"] < current_week
+
+    schedule = [
+        {
+            "id": g["id"], "week": g["week"], "home_team_id": g["home_team_id"], "away_team_id": g["away_team_id"],
+            "home_score": float(g["home_score"] or 0), "away_score": float(g["away_score"] or 0), "played": played(g),
+        }
+        for g in games
+    ]
+    last_regular_week = max((g["week"] for g in games), default=None)
+    start_week = settings["start_week"] or ((last_regular_week or 0) + 1)
+    weeks_per_matchup = settings["weeks_per_matchup"]
+
+    live = {n["code"]: n for n in await get_bracket_view(conn, season, league_id) if n.get("code")}
+    spec_games = []
+    for game in bracket_spec(team_count, len(teams)):
+        first = start_week + (game["round"] - 1) * weeks_per_matchup
+        node = live.get(game["code"])
+        spec_games.append({
+            **game,
+            "weeks": list(range(first, first + weeks_per_matchup)),
+            "toilet_bowl": game["code"] == "C8",
+            "team_a_id": node["team_a_id"] if node else None,
+            "team_b_id": node["team_b_id"] if node else None,
+            "team_a_seed": node["team_a_seed"] if node else None,
+            "team_b_seed": node["team_b_seed"] if node else None,
+            "score_a": float(node["team_a_score"]) if node and node["team_a_score"] is not None else None,
+            "score_b": float(node["team_b_score"]) if node and node["team_b_score"] is not None else None,
+            "winner_team_id": node["winner_team_id"] if node else None,
+        })
+
+    return {
+        "season": season,
+        "status": "live" if live else "projected",
+        "playoff_team_count": team_count,
+        "weeks_per_matchup": weeks_per_matchup,
+        "start_week": start_week,
+        "regular_season_last_week": last_regular_week,
+        "toilet_bowl_punishment": TOILET_BOWL_PUNISHMENT,
+        "teams": [dict(t) for t in teams],
+        "schedule": schedule,
+        "games": spec_games,
+    }
+

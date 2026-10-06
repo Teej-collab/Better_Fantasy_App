@@ -87,6 +87,18 @@ async def playoff_bracket(season: int, league_id: int = Depends(require_league_a
     return {"season": season, "nodes": nodes}
 
 
+@router.get("/seasons/{season}/playoffs/world")
+async def playoff_world(season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """The bracket screens' and what-if engine's data (app/domain/
+    playoffs.py get_playoff_world): teams, the regular-season schedule,
+    the whole bracket spec (winners, 3rd place, the consolation ladder
+    and Toilet Bowl) and any real playoff results. `world` is null when
+    the league's playoff settings can't make a bracket yet."""
+    async with pool.acquire() as conn:
+        world = await playoffs.get_playoff_world(conn, season, league_id)
+    return {"season": season, "world": world}
+
+
 @router.get("/seasons/{season}/playoffs/projected")
 async def projected_playoff_picture(season: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
     """"If the season ended today" — round 1's real seeded matchups,

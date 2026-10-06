@@ -69,9 +69,10 @@ async def test_generate_playoff_bracket_seeds_round_1_from_standings(pool):
     assert round_1[1]["team_a_id"] == team_2 and round_1[1]["team_a_seed"] == 2
     assert round_1[1]["team_b_id"] == team_3 and round_1[1]["team_b_seed"] == 3
 
-    round_2 = [n for n in nodes if n["round"] == 2]
-    assert len(round_2) == 1
-    assert round_2[0]["team_a_id"] is None and round_2[0]["team_b_id"] is None
+    # Round 2: the championship and the 3rd-place game, both waiting on the semis.
+    round_2 = {n["code"]: n for n in nodes if n["round"] == 2}
+    assert set(round_2) == {"F", "3RD"}
+    assert all(n["team_a_id"] is None and n["team_b_id"] is None for n in round_2.values())
 
 
 async def test_generate_playoff_bracket_creates_real_matchup_weeks_for_round_1(pool):
@@ -223,7 +224,7 @@ async def test_resolve_ready_playoff_matchups_advances_winner_to_next_round(pool
     async with pool.acquire() as conn:
         await playoffs.resolve_ready_playoff_matchups(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
         final_after_one_semi = await conn.fetchrow(
-            "SELECT team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND round = 2",
+            "SELECT team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND code = 'F'",
             TEST_SEASON,
         )
     assert final_after_one_semi["team_a_id"] == team_1
@@ -233,7 +234,7 @@ async def test_resolve_ready_playoff_matchups_advances_winner_to_next_round(pool
     async with pool.acquire() as conn:
         round_2_weeks = await conn.fetchval(
             "SELECT count(*) FROM matchups m JOIN playoff_bracket_matchups b ON m.playoff_bracket_matchup_id = b.id "
-            "WHERE b.season = $1 AND b.round = 2",
+            "WHERE b.season = $1 AND b.code = 'F'",
             TEST_SEASON,
         )
     assert round_2_weeks == 0
@@ -243,13 +244,13 @@ async def test_resolve_ready_playoff_matchups_advances_winner_to_next_round(pool
     async with pool.acquire() as conn:
         resolved = await playoffs.resolve_ready_playoff_matchups(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
         final_after_both = await conn.fetchrow(
-            "SELECT team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND round = 2",
+            "SELECT team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND code = 'F'",
             TEST_SEASON,
         )
         final_week_row = await conn.fetchrow(
             "SELECT week, home_team_id, away_team_id FROM matchups m "
             "JOIN playoff_bracket_matchups b ON m.playoff_bracket_matchup_id = b.id "
-            "WHERE b.season = $1 AND b.round = 2",
+            "WHERE b.season = $1 AND b.code = 'F'",
             TEST_SEASON,
         )
     assert len(resolved) == 1  # only semifinal 2 resolved this call
@@ -304,3 +305,82 @@ async def test_projected_playoff_picture_none_once_a_real_bracket_exists(pool):
         await playoffs.generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
         projected = await playoffs.get_projected_playoff_picture(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
     assert projected is None
+
+
+def test_bracket_spec_for_this_leagues_shape():
+    spec = {g["code"]: g for g in playoffs.bracket_spec(4, 12)}
+    assert list(spec) == ["SF1", "SF2", "F", "3RD", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
+    assert spec["SF1"]["sources"] == [{"kind": "seed", "seed": 1}, {"kind": "seed", "seed": 4}]
+    assert spec["3RD"]["sources"] == [{"kind": "loser", "code": "SF1"}, {"kind": "loser", "code": "SF2"}]
+    # ESPN's ladder: adjacent seeds, then losers cross over.
+    assert spec["C1"]["sources"] == [{"kind": "seed", "seed": 5}, {"kind": "seed", "seed": 6}]
+    assert spec["C6"]["sources"] == [{"kind": "loser", "code": "C1"}, {"kind": "winner", "code": "C3"}]
+    assert spec["C8"]["label"] == "Toilet Bowl"
+    assert spec["C8"]["places"] == [11, 12]
+    # A 4-team league has no consolation games.
+    assert [g["code"] for g in playoffs.bracket_spec(4, 4)] == ["SF1", "SF2", "F", "3RD"]
+
+
+async def _twelve_team_fixture(pool):
+    """12 teams, one regular-season week, scores 200 down to 90 by team
+    number so the seeds are team 1..12 in order (all 1-0 or 0-1; points
+    break the tie)."""
+    teams = [await _seed_team(pool, f"twelve-{n}", 400 + n) for n in range(1, 13)]
+    for i in range(6):
+        hi, lo = teams[i], teams[11 - i]
+        await _seed_regular_season_matchup(pool, 1, hi, lo, 200 - 10 * i, 90 + 10 * i)
+    return teams
+
+
+async def test_generate_playoff_bracket_builds_the_consolation_ladder(pool):
+    teams = await _twelve_team_fixture(pool)
+    await _set_playoff_settings(pool, playoff_team_count=4, weeks_per_matchup=2)
+    async with pool.acquire() as conn:
+        nodes = await playoffs.generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+        round_1_weeks = await conn.fetch(
+            "SELECT b.code, m.week FROM matchups m JOIN playoff_bracket_matchups b ON b.id = m.playoff_bracket_matchup_id "
+            "WHERE b.season = $1 ORDER BY b.code, m.week",
+            TEST_SEASON,
+        )
+    by_code = {n["code"]: n for n in nodes}
+    assert len(nodes) == 12
+    assert by_code["C1"]["bracket"] == "consolation"
+    seeds = await _seeds(pool)
+    assert (by_code["C1"]["team_a_id"], by_code["C1"]["team_b_id"]) == (seeds[5], seeds[6])
+    assert (by_code["C4"]["team_a_id"], by_code["C4"]["team_b_id"]) == (seeds[11], seeds[12])
+    assert by_code["C8"]["team_a_id"] is None
+    # Every round-1 game (2 semis + 4 ladder games) gets both weeks.
+    assert {(r["code"], r["week"]) for r in round_1_weeks} == {
+        (c, w) for c in ("SF1", "SF2", "C1", "C2", "C3", "C4") for w in (2, 3)
+    }
+
+
+async def _seeds(pool) -> dict[int, int]:
+    async with pool.acquire() as conn:
+        standings = await playoffs.get_standings(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+    return {i + 1: r["team_id"] for i, r in enumerate(standings)}
+
+
+async def test_ladder_sends_losers_to_the_toilet_bowl(pool):
+    await _twelve_team_fixture(pool)
+    await _set_playoff_settings(pool, playoff_team_count=4, weeks_per_matchup=1)
+    seeds = await _seeds(pool)
+    async with pool.acquire() as conn:
+        await playoffs.generate_playoff_bracket(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+    # GmC3: 9 beats 10. GmC4: 12 upsets 11.
+    await _score_playoff_week(pool, 2, seeds[9], seeds[10], 120, 100)
+    await _score_playoff_week(pool, 2, seeds[11], seeds[12], 90, 110)
+    async with pool.acquire() as conn:
+        await playoffs.resolve_ready_playoff_matchups(conn, TEST_SEASON, DEFAULT_LEAGUE_ID)
+        bowl = await conn.fetchrow(
+            "SELECT id, team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND code = 'C8'", TEST_SEASON
+        )
+        bowl_weeks = await conn.fetchval("SELECT COUNT(*) FROM matchups WHERE playoff_bracket_matchup_id = $1", bowl["id"])
+        c7 = await conn.fetchrow(
+            "SELECT team_a_id, team_b_id FROM playoff_bracket_matchups WHERE season = $1 AND code = 'C7'", TEST_SEASON
+        )
+    # The two losers meet in the Toilet Bowl, and its week is scheduled.
+    assert (bowl["team_a_id"], bowl["team_b_id"]) == (seeds[10], seeds[11])
+    assert bowl_weeks == 1
+    # GmC4's winner waits in GmC7 for GmC2's loser.
+    assert (c7["team_a_id"], c7["team_b_id"]) == (None, seeds[12])
