@@ -4,7 +4,6 @@ import { Modal, Pressable, ScrollView, Share, StyleSheet, View } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { Carousel } from '@/components/bracket/Carousel';
 import { FullBracket } from '@/components/bracket/FullBracket';
 import { PathView } from '@/components/bracket/PathView';
 import { WhatIfView } from '@/components/bracket/WhatIfView';
@@ -28,14 +27,13 @@ import { haptics } from '@/lib/haptics';
 import { useMe, usePlayoffOdds, usePlayoffWorld, useSeasons } from '@/lib/queries';
 
 // The Bracket (2026-10): one world — reality or the user's what-if —
-// shown four ways, switched from the pill in the top left: Cards (the
-// 3D carousel), Full bracket, Your Path (the Tower) and What-If. A
+// shown three ways, switched from the pill in the top left: the Bracket
+// (Round 1, swipe to Round 2), Your Path (the Tower) and What-If. A
 // shared what-if opens straight into its world (?w=, the web's format).
 
-type Mode = 'cards' | 'full' | 'path' | 'whatif';
+type Mode = 'full' | 'path' | 'whatif';
 const MODES: { key: Mode; label: string; hint: string }[] = [
-  { key: 'cards', label: 'Cards', hint: 'Swipe through every game' },
-  { key: 'full', label: 'Full bracket', hint: 'The whole bracket at once' },
+  { key: 'full', label: 'Bracket', hint: 'Round 1, then swipe to Round 2' },
   { key: 'path', label: 'Your Path', hint: 'Ride the elevator to where a team finishes' },
   { key: 'whatif', label: 'What-If', hint: 'Flip results, pick winners, share it' },
 ];
@@ -48,7 +46,7 @@ export default function BracketScreen() {
   const me = useMe().data;
   const q = usePlayoffWorld(season);
   const world = q.data;
-  const [mode, setMode] = useState<Mode>(params.mode === 'whatif' || params.mode === 'path' || params.mode === 'full' ? params.mode : isEmpty(shared.scenario) ? 'cards' : 'whatif');
+  const [mode, setMode] = useState<Mode>(params.mode === 'whatif' || params.mode === 'path' ? params.mode : isEmpty(shared.scenario) ? 'full' : 'whatif');
   const [menuOpen, setMenuOpen] = useState(false);
   const [scenario, setScenario] = useState<Scenario>(shared.scenario);
   const [meChoice, setMeChoice] = useState<number | null>(shared.me);
@@ -162,7 +160,6 @@ export default function BracketScreen() {
           </View>
         )}
 
-        {mode === 'cards' && <Carousel world={world} w={shown} teams={teams} records={records} me={meId} />}
         {mode === 'full' && <FullBracket world={world} w={shown} teams={teams} records={records} me={meId} />}
         {mode === 'path' && (
           <PathView world={world} w={shown} teams={teams} records={records} team={pathChoice !== null && teams[pathChoice] ? pathChoice : meId} onTeam={setPathChoice} />

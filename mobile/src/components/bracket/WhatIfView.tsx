@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { GameCard } from '@/components/bracket/GameCard';
+import { FullBracket } from '@/components/bracket/FullBracket';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -328,10 +328,8 @@ export function WhatIfView({
       <View style={styles.section}>
         <Text style={styles.h2}>THE BRACKET, IN THIS WORLD</Text>
         <Text style={styles.help}>Tap a team to pick them; tap again to go back to the favorite.</Text>
-        {alt.games.map((g) => (
-          <GameCard key={g.code} game={g} all={alt.games} teams={teams} records={altRecords} punishment={world.toilet_bowl_punishment} me={me} compact onPick={(t) => pickPlayoff(g.code, t)} />
-        ))}
       </View>
+      <FullBracket world={world} w={alt} teams={teams} records={altRecords} me={me} onPick={pickPlayoff} />
     </View>
   );
 }
