@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ShareableCard } from '@/components/ShareableCard';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
@@ -11,6 +11,8 @@ import { LoadingState } from '@/components/ui';
 import { SectionColors, Spacing } from '@/constants/theme';
 import { trackRecapOpened } from '@/lib/analytics';
 import { api } from '@/lib/api';
+import { haptics } from '@/lib/haptics';
+import { useMe } from '@/lib/queries';
 
 // One week's recap in full — the web's /seasons/[season]/weeks/[week]/
 // recap, where the Tuesday-flip "Week N Recap LIVE NOW" push lands
@@ -23,6 +25,38 @@ export default function RecapScreen() {
   const recap = q.data?.narrative?.kind === 'recap' ? q.data.narrative : null;
   const source = params.from === 'push' ? 'push' : 'page';
   const color = SectionColors.awards;
+  const isCommissioner = !!useMe().data?.is_commissioner;
+  const [note, setNote] = useState<string | null>(null);
+  // The web's Generate / Regenerate, for commissioners proofing the
+  // recap before the Tuesday flip.
+  const generate = useMutation({
+    mutationFn: () => api.generateWeeklyRecap(season, week, !!recap),
+    onSuccess: async (result) => {
+      setNote(
+        result.status === 'not_eligible'
+          ? "This week isn't over yet — the recap unlocks once its last game is final."
+          : result.status === 'not_configured'
+            ? "The AI recap isn't set up on the server (missing API key)."
+            : result.status === 'no_matchups'
+              ? 'Nothing was scheduled this week, so there is no recap to write.'
+              : null,
+      );
+      if (result.status === 'generated') haptics.success();
+      await q.refetch();
+    },
+    onError: (e) => setNote(e instanceof Error ? e.message : "Couldn't generate the recap."),
+  });
+
+  function confirmGenerate() {
+    if (!recap) {
+      generate.mutate();
+      return;
+    }
+    Alert.alert('Regenerate this recap?', 'The AI writes a fresh one from the same results. The current text is replaced.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Regenerate', onPress: () => generate.mutate() },
+    ]);
+  }
 
   useEffect(() => {
     if (recap) trackRecapOpened(season, week, source);
@@ -55,6 +89,19 @@ export default function RecapScreen() {
           )}
         </View>
       </View>
+      {isCommissioner && !q.isPending && (
+        <View style={styles.adminRow}>
+          <Pressable
+            onPress={confirmGenerate}
+            disabled={generate.isPending}
+            style={({ pressed }) => [styles.adminBtn, { borderColor: color }, (pressed || generate.isPending) && styles.pressed]}
+            accessibilityRole="button">
+            {generate.isPending ? <ActivityIndicator color={color} size="small" /> : <Text style={[styles.adminBtnText, { color }]}>{recap ? 'Regenerate' : 'Generate recap'}</Text>}
+          </Pressable>
+          {generate.isPending && <Text style={styles.soft}>Writing it… this takes about 30 seconds.</Text>}
+        </View>
+      )}
+      {note && <Text style={styles.note}>{note}</Text>}
       {q.isPending ? (
         <LoadingState />
       ) : !recap ? (
@@ -98,4 +145,9 @@ const styles = StyleSheet.create({
   body: { color: 'rgba(255,255,255,0.85)', fontSize: 16, lineHeight: 25 },
   preview: { borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.1)', paddingHorizontal: 10, paddingVertical: 6 },
   previewText: { color: '#fbbf24', fontSize: 12 },
+  adminRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  adminBtn: { minWidth: 120, height: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  adminBtnText: { fontSize: 14, fontWeight: '700' },
+  pressed: { opacity: 0.6 },
+  note: { color: '#fca5a5', fontSize: 13 },
 });

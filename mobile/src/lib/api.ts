@@ -219,6 +219,14 @@ export const api = {
   weeklyAwards: (season: number, week: number) => request<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`),
   weeklyRecap: (season: number, week: number) =>
     request<{ narrative: WeeklyNarrative | null }>(`/seasons/${season}/weeks/${week}/recap`),
+  // Commissioner only: writes the week's recap (and any missing matchup
+  // stories). `force` rewrites one that already exists — the web's
+  // Regenerate (frontend/src/lib/api.ts generateWeeklyRecap).
+  generateWeeklyRecap: (season: number, week: number, force: boolean) =>
+    request<{ status: 'generated' | 'not_eligible' | 'not_configured' | 'no_matchups' }>(
+      `/seasons/${season}/weeks/${week}/recap/generate${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
   leagueTicker: (season: number, week: number) =>
     request<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`),
   // The most recent locked week, not the one in progress.
