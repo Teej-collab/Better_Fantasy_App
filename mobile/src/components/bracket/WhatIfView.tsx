@@ -25,6 +25,7 @@ export function WhatIfView({
   shareNote,
   realOdds,
   altOdds,
+  oddsUpdating,
 }: {
   world: PlayoffWorld;
   base: World;
@@ -38,6 +39,7 @@ export function WhatIfView({
   shareNote: string | null;
   realOdds: PlayoffOdds | null;
   altOdds: PlayoffOdds | null;
+  oddsUpdating: boolean;
 }) {
   const [view, setView] = useState<'mine' | number>('mine');
   const weeks = [...new Set(world.schedule.map((g) => g.week))].sort((a, b) => a - b);
@@ -84,7 +86,7 @@ export function WhatIfView({
     else playoff[code] = team;
     onScenario({ ...scenario, playoff });
   };
-  const shownOdds = isEmpty(scenario) ? realOdds : (altOdds ?? null);
+  const shownOdds = isEmpty(scenario) ? realOdds : (altOdds ?? realOdds);
   const focus = shownOdds?.focus ?? null;
   const pctFor = (o: PlayoffOdds | null, key: 'playoff_pct' | 'title_pct' | 'toilet_bowl_pct') => o?.teams.find((t) => t.team_id === me)?.[key] ?? null;
   // Root-for games come from reality so the list stays put as games are
@@ -157,7 +159,10 @@ export function WhatIfView({
       <View style={styles.odds}>
         <View style={styles.oddsTop}>
           <View>
-            <Text style={styles.stat}>PLAYOFF CHANCE{altOdds && !isEmpty(scenario) ? ' · WHAT IF' : ''}</Text>
+            <Text style={styles.stat}>
+              PLAYOFF CHANCE{!isEmpty(scenario) ? ' · WHAT IF' : ''}
+              {oddsUpdating ? '  ·  updating…' : ''}
+            </Text>
             <Text style={[styles.oddsBig, { color: oddsColor(pctFor(shownOdds, 'playoff_pct')) }]}>
               {!isEmpty(scenario) && realOdds ? `${pctText(pctFor(realOdds, 'playoff_pct'))} → ` : ''}
               {shownOdds ? pctText(pctFor(shownOdds, 'playoff_pct')) : '…'}
@@ -172,6 +177,12 @@ export function WhatIfView({
             <Text style={[styles.oddsSmall, styles.bowl]}>{pctText(pctFor(shownOdds, 'toilet_bowl_pct'))}</Text>
           </View>
         </View>
+        {!path && (
+          <View style={styles.path}>
+            <Text style={styles.pathTitle}>YOUR BEST PATH</Text>
+            <Text style={styles.help}>{shownOdds ? 'No regular-season games left to plan around.' : 'Finding your best path…'}</Text>
+          </View>
+        )}
         {path && (
           <View style={styles.path}>
             <Text style={styles.pathTitle}>YOUR BEST PATH</Text>

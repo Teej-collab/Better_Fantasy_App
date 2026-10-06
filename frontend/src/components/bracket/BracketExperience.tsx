@@ -210,7 +210,9 @@ export function BracketExperience({
           onShareLink={shareLink}
           onShareChat={shareChat}
           shareNote={shareNote}
-          odds={odds?.key === oddsKey ? odds : null}
+          // The last numbers stay up while new ones simulate (no jump).
+          odds={odds && odds.key.split("|")[0] === String(focusTeam) ? odds : null}
+          oddsUpdating={odds?.key !== oddsKey}
         />
       )}
     </div>

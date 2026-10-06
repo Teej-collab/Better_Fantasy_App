@@ -24,6 +24,7 @@ export function WhatIfView({
   onShareChat,
   shareNote,
   odds,
+  oddsUpdating,
 }: {
   world: PlayoffWorld;
   base: World;
@@ -37,6 +38,7 @@ export function WhatIfView({
   onShareChat: () => void;
   shareNote: string | null;
   odds: { real: PlayoffOdds | null; alt: PlayoffOdds | null } | null;
+  oddsUpdating: boolean;
 }) {
   const [view, setView] = useState<"mine" | number>("mine");
   const weeks = [...new Set(world.schedule.map((g) => g.week))].sort((a, b) => a - b);
@@ -173,7 +175,7 @@ export function WhatIfView({
         titlePct={pctOf(shownOdds, "title_pct")}
         bowlPct={pctOf(shownOdds, "toilet_bowl_pct")}
         focus={focus}
-        loading={odds === null}
+        loading={odds === null || oddsUpdating}
         path={path}
         rootList={rootList}
         picked={scenario.picks}
@@ -367,10 +369,16 @@ function OddsPanel({
         <Small label="TITLE" value={pctText(titlePct)} color="#f5c542" />
         <Small label="TOILET BOWL" value={pctText(bowlPct)} color="#d9a066" />
         <span className="min-w-[200px] flex-1 text-xs text-[#7f8a99]">
-          {loading ? "Simulating…" : "From 10,000 simulated seasons: scoring average, recent form and power ranking, with real scores so points-for tiebreaks count."}
+          {loading ? "Updating…" : "From 10,000 simulated seasons: scoring average, recent form and power ranking, with real scores so points-for tiebreaks count."}
         </span>
       </div>
 
+      {!path && (
+        <div className="rounded-xl border border-[#f5c542]/30 p-4 text-sm text-[#9aa3b2]">
+          <span className="font-display mr-3 text-lg tracking-wide text-[#f5c542]">YOUR BEST PATH</span>
+          {focus ? "No regular-season games left to plan around." : "Finding your best path…"}
+        </div>
+      )}
       {path && (
         <div className="flex flex-col gap-3 rounded-xl border border-[#f5c542]/50 bg-[rgba(245,197,66,0.05)] p-4">
           <div className="flex flex-wrap items-center gap-3">

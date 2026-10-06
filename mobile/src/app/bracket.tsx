@@ -65,8 +65,14 @@ export default function BracketScreen() {
     const t = setTimeout(() => setSettled(encoded), 450);
     return () => clearTimeout(t);
   }, [encoded]);
-  const realOdds = usePlayoffOdds(world ? season : null, focusTeam).data ?? null;
-  const altOdds = usePlayoffOdds(world && settled ? season : null, focusTeam, settled).data ?? null;
+  const realQ = usePlayoffOdds(world ? season : null, focusTeam);
+  const altQ = usePlayoffOdds(world && settled ? season : null, focusTeam, settled);
+  const realOdds = realQ.data ?? null;
+  // While a new what-if is simulating, the last numbers stay on screen
+  // (marked "updating") — blanking them collapsed the page and made it
+  // jump on every tap.
+  const altOdds = altQ.data ?? null;
+  const oddsUpdating = (encoded !== '' && (settled !== encoded || altQ.isFetching)) || realQ.isFetching;
 
   const base = useMemo(() => (world ? buildWorld(world) : null), [world]);
   const alt = useMemo(() => (world ? buildWorld(world, scenario) : null), [world, scenario]);
@@ -177,7 +183,8 @@ export default function BracketScreen() {
             onShare={(to) => void share(to)}
             shareNote={shareNote}
             realOdds={realOdds}
-            altOdds={encoded && settled === encoded ? altOdds : null}
+            altOdds={encoded ? altOdds : null}
+            oddsUpdating={oddsUpdating}
           />
         )}
       </ScrollView>
