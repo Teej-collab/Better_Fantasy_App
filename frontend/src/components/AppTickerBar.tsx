@@ -12,7 +12,7 @@ import {
   safeLatestSeason,
 } from "@/lib/api";
 import { getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
-import { LiveTicker } from "@/components/LiveTicker";
+import { TickerStrip } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { LeagueTickerSlot } from "@/components/LeagueTickerSlot";
 
@@ -53,14 +53,15 @@ export async function AppTickerBar() {
   const latestSeason = safeLatestSeason(seasons);
   const nflTickerItems = withGamecastLinks(buildNflTickerItems(nflGames), nflGames, gamecastGames);
 
-  let leagueTicker = null;
+  let leagueItems: ReturnType<typeof buildLeagueTickerItems> = [];
+  let leagueFast = isGameDay;
   if (latestSeason !== null) {
     const { current_week } = await getCurrentWeek(latestSeason);
     const week = resolveWeek(current_week);
     const ticker = await getWeekLeagueTicker(latestSeason, week, sessionCookie);
     const items = buildLeagueTickerItems(ticker);
     if (items.length > 0) {
-      leagueTicker = <LiveTicker items={items} fast={isGameDay} />;
+      leagueItems = items;
     } else {
       // No matchup has started yet — real NFL kickoff is still the
       // more honest "second ticker" than nothing at all, so the strip
@@ -69,31 +70,33 @@ export async function AppTickerBar() {
       // week (2026-09 reported).
       const countdownItem = buildKickoffCountdownItem(nflGames, week);
       if (countdownItem) {
-        leagueTicker = <LiveTicker items={[countdownItem]} fast={false} />;
+        leagueItems = [countdownItem];
+        leagueFast = false;
       }
     }
   }
 
   return (
     <div className="wl-ticker-bar safe-px mx-auto flex w-full max-w-4xl flex-col gap-1.5 pt-3">
-      {/* This ticker used to carry no label at all anywhere it's shown
-          (every (app) page except Home, which has its own richer,
-          labeled version) — confusing on its own, and a real, specific
-          problem on the matchup detail page: the league ticker's
-          current-week scores can share a team name with a *past* week's
-          matchup being viewed right below it, reading as "the score is
-          stuck at 0" rather than "this is an unrelated, current game"
-          (2026-08-31 audit). A small "This Week, Live" label makes the
-          ticker legible as its own thing on every page it appears on,
-          not just the one where the collision was actually noticed. */}
-      <div className="flex items-center gap-1.5">
-        <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
-        <span className="text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-          This Week, Live
-        </span>
+      {/* The Lounge's look (2026-10): two slim strips labelled NFL and
+          LEAGUE. The labels also do what the old "This Week, Live"
+          header did — make the league strip read as this week's
+          games, not the matchup a page below might be showing. Both
+          still auto-scroll, drag to find a game, and stay tappable. */}
+      <div className={`overflow-hidden rounded-xl border bg-[#0d1016] ${isGameDay ? "border-red-500/50" : "border-white/10"}`}>
+        <TickerStrip label="NFL" labelColor="#9aa3b2" items={nflTickerItems} fast={isGameDay} tint="rgba(255,255,255,0.03)" />
+        {leagueItems.length > 0 && (
+          <LeagueTickerSlot>
+            <TickerStrip
+              label="LEAGUE"
+              labelColor="var(--user-accent, var(--wl-accent))"
+              items={leagueItems}
+              fast={leagueFast}
+              tint="rgba(57,255,20,0.04)"
+            />
+          </LeagueTickerSlot>
+        )}
       </div>
-      <LiveTicker items={nflTickerItems} fast={isGameDay} />
-      {leagueTicker && <LeagueTickerSlot>{leagueTicker}</LeagueTickerSlot>}
       {isGameDay && <GameDayRefresher />}
     </div>
   );

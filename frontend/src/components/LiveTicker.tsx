@@ -34,7 +34,7 @@ const RESUME_AFTER_IDLE_MS = 2000;
  * instead of nearly disappearing into it — the team's color stays the
  * fill, the white is purely an outline around it.
  */
-export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?: boolean }) {
+export function LiveTicker({ items, fast = false, bare = false }: { items: TickerItem[]; fast?: boolean; bare?: boolean }) {
   const [paused, setPaused] = useState(false);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -54,9 +54,13 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
 
   return (
     <div
-      className={`ticker-shell overflow-x-auto overflow-y-hidden rounded-lg border border-black/10 bg-black [scrollbar-width:none] dark:border-white/10 [&::-webkit-scrollbar]:hidden ${
-        fast ? "ticker-shell--live" : ""
-      }`}
+      className={
+        bare
+          ? "min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : `ticker-shell overflow-x-auto overflow-y-hidden rounded-lg border border-black/10 bg-black [scrollbar-width:none] dark:border-white/10 [&::-webkit-scrollbar]:hidden ${
+              fast ? "ticker-shell--live" : ""
+            }`
+      }
       onPointerDown={pauseThenScheduleResume}
       onTouchStart={pauseThenScheduleResume}
       onScroll={pauseThenScheduleResume}
@@ -80,12 +84,15 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
             <Link
               key={`${item.key}-${i}`}
               href={item.href}
-              className="mx-6 shrink-0 text-[13px] whitespace-nowrap text-white/90 hover:text-white"
+              className={`shrink-0 whitespace-nowrap text-white/90 hover:text-white ${bare ? "mx-4 text-[12.5px]" : "mx-6 text-[13px]"}`}
             >
               {content}
             </Link>
           ) : (
-            <span key={`${item.key}-${i}`} className="mx-6 shrink-0 text-[13px] whitespace-nowrap text-white/90">
+            <span
+              key={`${item.key}-${i}`}
+              className={`shrink-0 whitespace-nowrap text-white/90 ${bare ? "mx-4 text-[12.5px]" : "mx-6 text-[13px]"}`}
+            >
               {content}
             </span>
           );
@@ -94,3 +101,57 @@ export function LiveTicker({ items, fast = false }: { items: TickerItem[]; fast?
     </div>
   );
 }
+
+/**
+ * The Lounge's look, everywhere (2026-10): slim strips labelled NFL and
+ * LEAGUE, one above the other — each still the full LiveTicker
+ * underneath, so it auto-scrolls, can be dragged to find a game, and
+ * its items stay tappable.
+ */
+export function TickerStrip({
+  label,
+  labelColor,
+  items,
+  fast = false,
+  tint,
+}: {
+  label: string;
+  labelColor: string;
+  items: TickerItem[];
+  fast?: boolean;
+  tint: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex min-h-[34px] items-center gap-3 border-t border-white/[0.06] pl-3.5 first:border-t-0" style={{ background: tint }}>
+      <span className="font-display shrink-0 text-[11px] font-bold tracking-[1.4px]" style={{ color: labelColor }}>
+        {label}
+      </span>
+      <LiveTicker items={items} fast={fast} bare />
+    </div>
+  );
+}
+
+/** NFL above, this week's league games below, in one dark box. */
+export function TickerStrips({
+  nfl,
+  league,
+  fast = false,
+  leagueFast = fast,
+}: {
+  nfl: TickerItem[];
+  league: TickerItem[] | null;
+  fast?: boolean;
+  leagueFast?: boolean;
+}) {
+  if (nfl.length === 0 && !league?.length) return null;
+  return (
+    <div className={`overflow-hidden rounded-xl border bg-[#0d1016] ${fast ? "border-red-500/50" : "border-white/10"}`}>
+      <TickerStrip label="NFL" labelColor="#9aa3b2" items={nfl} fast={fast} tint="rgba(255,255,255,0.03)" />
+      {league && league.length > 0 && (
+        <TickerStrip label="LEAGUE" labelColor="var(--user-accent, var(--wl-accent))" items={league} fast={leagueFast} tint="rgba(57,255,20,0.04)" />
+      )}
+    </div>
+  );
+}
+

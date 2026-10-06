@@ -18,7 +18,7 @@ import { ChugFeed } from "@/components/ChugFeed";
 import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
 import { MovementBadge } from "@/components/MovementBadge";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
-import { LiveTicker } from "@/components/LiveTicker";
+import { TickerStrips } from "@/components/LiveTicker";
 import { GameDayRefresher } from "@/components/GameDayRefresher";
 import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
@@ -107,8 +107,7 @@ export function HomePageBeta({
             {activeLeagueName}
           </span>
         )}
-        <LiveTicker items={tickerItems} fast={isGameDay} />
-        {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+        <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={isGameDay} />
       </div>
 
       {/* Pinned, not reorderable, not out-ranked by anything else on

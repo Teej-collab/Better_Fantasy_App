@@ -34,7 +34,19 @@ const FAST_SPEED = 70;
 // restart, and a label changing width (a countdown ticking down) doesn't
 // jump it back to the start.
 // `interactive` false (the signed-out front door) leaves items untappable.
-export function LiveTicker({ items, fast = false, interactive = true }: { items: TickerItem[]; fast?: boolean; interactive?: boolean }) {
+// `bare` (TickerStrips): no card of its own and smaller text, for the
+// Lounge-style labelled strips.
+export function LiveTicker({
+  items,
+  fast = false,
+  interactive = true,
+  bare = false,
+}: {
+  items: TickerItem[];
+  fast?: boolean;
+  interactive?: boolean;
+  bare?: boolean;
+}) {
   const reduceMotion = useReducedMotion();
   const findGamecastId = useGamecastIdFinder();
   const [stripWidth, setStripWidth] = useState(0);
@@ -145,11 +157,11 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
               key={i}
               numberOfLines={1}
               maxFontSizeMultiplier={TICKER_FONT_SCALE}
-              style={[styles.item, seg.color ? [styles.team, { color: lighten(seg.color) }] : null]}>
+              style={[styles.item, bare && styles.itemBare, seg.color ? [styles.team, { color: lighten(seg.color) }] : null]}>
               {seg.text}
             </Text>
           ))}
-          <Text style={[styles.item, styles.separator]} maxFontSizeMultiplier={TICKER_FONT_SCALE}>
+          <Text style={[styles.item, bare && styles.itemBare, styles.separator]} maxFontSizeMultiplier={TICKER_FONT_SCALE}>
             {'   •   '}
           </Text>
         </Pressable>
@@ -158,7 +170,7 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
   );
 
   return (
-    <View style={[styles.shell, fast && styles.shellLive]} onLayout={(e) => setStripWidth(e.nativeEvent.layout.width)}>
+    <View style={bare ? styles.shellBare : [styles.shell, fast && styles.shellLive]} onLayout={(e) => setStripWidth(e.nativeEvent.layout.width)}>
       {/* A horizontal ScrollView (never scrolled — the pan below moves the
           line) only to give the line unlimited width: inside a plain View
           the item crossing the strip's right edge was measured to fit the
@@ -166,7 +178,7 @@ export function LiveTicker({ items, fast = false, interactive = true }: { items:
           over it. */}
       <ScrollView horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false}>
         <GestureDetector gesture={pan}>
-          <Animated.View style={[styles.track, lineStyle]}>{Array.from({ length: sets }, (_, i) => line(i))}</Animated.View>
+          <Animated.View style={[styles.track, bare && styles.trackBare, lineStyle]}>{Array.from({ length: sets }, (_, i) => line(i))}</Animated.View>
         </GestureDetector>
       </ScrollView>
     </View>
@@ -196,6 +208,9 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.surface, 0.85),
   },
   shellLive: { borderColor: 'rgba(239,68,68,0.6)' },
+  shellBare: { flex: 1, overflow: 'hidden' },
+  trackBare: { paddingVertical: 8 },
+  itemBare: { fontSize: 13 },
   track: { flexDirection: 'row', alignSelf: 'flex-start', paddingVertical: 11 },
   // Never shrink to the screen width: the line runs as long as it needs.
   line: { flexDirection: 'row', flexShrink: 0 },

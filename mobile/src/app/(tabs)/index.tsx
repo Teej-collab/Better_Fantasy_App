@@ -2,12 +2,12 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { TickerStrips } from '@/components/TickerStrips';
 import { TabFrame } from '@/components/TabFrame';
 import { AwardsCard } from '@/components/home/AwardsCard';
 import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
 import { DiscoverCard, LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
-import { LiveTicker } from '@/components/home/LiveTicker';
 import { YourWeekCard } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
@@ -168,8 +168,7 @@ function HomeScreenContent() {
           )}
         </View>
         <View style={styles.tickers}>
-          <LiveTicker items={tickerItems} fast={isGameDay} />
-          {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+          <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={isGameDay} />
         </View>
       </View>
 

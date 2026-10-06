@@ -14,6 +14,7 @@ import {
   type TrackReference,
 } from "@livekit/components-react";
 import { Track, type Participant, type RemoteParticipant } from "livekit-client";
+import { TickerStrip } from "@/components/LiveTicker";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
 import { buildLeagueTickerItems, buildNflTickerItems, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
@@ -277,8 +278,11 @@ export function WebLoungeRoom({
         {shareError && <p className="w-full text-xs text-red-400">{shareError}</p>}
       </header>
 
-      <TickerRow label="NFL" labelColor="#9aa3b2" items={nflItems} tint="rgba(255,255,255,0.03)" mono />
-      {leagueItems.length > 0 && <TickerRow label="LEAGUE" labelColor={accent} items={leagueItems} tint="rgba(57,255,20,0.04)" />}
+      {/* The same strips as every other page (components/LiveTicker.tsx),
+          so they can be dragged too — links off, so a tap doesn't pull
+          you out of the room. */}
+      <TickerStrip label="NFL" labelColor="#9aa3b2" items={noLinks(nflItems)} fast tint="rgba(255,255,255,0.03)" />
+      {leagueItems.length > 0 && <TickerStrip label="LEAGUE" labelColor={accent} items={noLinks(leagueItems)} fast tint="rgba(57,255,20,0.04)" />}
 
       <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-wrap gap-5 px-4 py-5 sm:px-6">
         <div className="flex min-w-0 flex-col gap-3.5" style={{ flex: "999 1 640px" }}>
@@ -361,32 +365,8 @@ function withTvScore(g: NflGame, tv: LiveGame | null): NflGame {
   };
 }
 
-function TickerRow({ label, labelColor, items, tint, mono }: { label: string; labelColor: string; items: TickerItem[]; tint: string; mono?: boolean }) {
-  if (items.length === 0) return null;
-  const line = (copy: number) =>
-    items.map((item) => (
-      <span key={`${copy}-${item.key}`} className="flex shrink-0 items-center whitespace-nowrap">
-        {item.segments.map((seg, i) => (
-          <span key={i} style={seg.color ? { color: seg.color, fontWeight: 700 } : undefined}>
-            {seg.text}
-          </span>
-        ))}
-        <span className="px-3 text-[#4b5263]">•</span>
-      </span>
-    ));
-  return (
-    <div className="flex min-h-[34px] items-center gap-3.5 overflow-hidden px-4 text-[13px] sm:px-6" style={{ background: tint }}>
-      <span className="font-display shrink-0 text-[11px] font-bold tracking-[1.4px]" style={{ color: labelColor }}>
-        {label}
-      </span>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <div className={`live-ticker-track live-ticker-track--fast ${mono ? "font-mono" : ""}`}>
-          {line(0)}
-          {line(1)}
-        </div>
-      </div>
-    </div>
-  );
+function noLinks(items: TickerItem[]): TickerItem[] {
+  return items.map((item) => ({ ...item, href: undefined }));
 }
 
 function Tv({

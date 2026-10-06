@@ -1,8 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
-import { LiveTicker } from '@/components/home/LiveTicker';
-import { Text } from '@/components/Text';
-import { Colors, Spacing } from '@/constants/theme';
+import { TickerStrips } from '@/components/TickerStrips';
+import { Spacing } from '@/constants/theme';
 import { useLeagueTicker, useNflScoreboard, useSeasonWeek } from '@/lib/queries';
 import { buildKickoffCountdownItem, buildLeagueTickerItems, buildNflTickerItems } from '@/lib/ticker';
 
@@ -29,23 +28,14 @@ export function AppTickerBar({ nflOnly = false }: { nflOnly?: boolean }) {
   if (nflItems.length === 0 && leagueItems.length === 0) return null;
 
   return (
+    // The Lounge's look (2026-10): strips labelled NFL and LEAGUE —
+    // still swipeable and tappable (TickerStrips).
     <View style={styles.bar}>
-      <View style={styles.labelRow}>
-        <View style={[styles.dot, !isGameDay && styles.dotIdle]} />
-        <Text style={styles.label} maxFontSizeMultiplier={1.25}>
-          This Week, Live
-        </Text>
-      </View>
-      {nflItems.length > 0 && <LiveTicker items={nflItems} fast={isGameDay} />}
-      {leagueItems.length > 0 && <LiveTicker items={leagueItems} fast={leagueFast} />}
+      <TickerStrips nfl={nflItems} league={leagueItems} fast={isGameDay} leagueFast={leagueFast} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: { gap: 6, paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.xs },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.live },
-  dotIdle: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  label: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
+  bar: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.xs },
 });

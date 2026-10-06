@@ -48,7 +48,7 @@ import { NflGameRow } from "@/components/gamecast/NflGameRow";
 import { HomeCardDeck } from "@/components/HomeCardDeck";
 import { HomePageBeta } from "@/components/HomePageBeta";
 import { HomeWelcomeBackEntry } from "@/components/HomeWelcomeBackEntry";
-import { LiveTicker } from "@/components/LiveTicker";
+import { TickerStrips } from "@/components/LiveTicker";
 import { OpeningExperience } from "@/components/OpeningExperience";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
@@ -693,8 +693,7 @@ export default async function HomePage() {
           {/* League name lives in the label row above, not wedged between
               the two strips — keeps them stacked tight like AppTickerBar. */}
           <div className="mt-2 flex flex-col gap-1.5">
-            <LiveTicker items={tickerItems} fast={isGameDay} />
-            {leagueTickerItems.length > 0 && <LiveTicker items={leagueTickerItems} fast={isGameDay} />}
+            <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={isGameDay} />
           </div>
         </div>
 
