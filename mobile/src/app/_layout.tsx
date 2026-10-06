@@ -143,6 +143,7 @@ function RootStack() {
           <Stack.Screen name="trades" options={{ title: 'Trades', headerBackTitle: 'Team' }} />
           <Stack.Screen name="keepers" options={{ title: 'Keepers', headerBackTitle: 'Team' }} />
           <Stack.Screen name="leagues" options={{ title: 'Leagues' }} />
+          <Stack.Screen name="whats-new" options={{ title: "What's New", headerBackTitle: 'Back' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back' }} />
           <Stack.Screen name="watch-party/[id]" options={{ title: 'Watch Party', headerBackTitle: 'Chat' }} />
           <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />

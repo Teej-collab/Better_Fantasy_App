@@ -80,6 +80,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
     ...(isCommissioner ? [{ label: 'Commissioner Tools', href: '/commissioner' as Href }] : []),
     ...(isSiteOwner ? [{ label: 'Admin', href: '/admin' as Href }] : []),
     { label: 'Send feedback', href: { pathname: '/settings', params: { section: 'feedback' } } },
+    { label: "What's New", href: '/whats-new' as Href },
   ];
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
