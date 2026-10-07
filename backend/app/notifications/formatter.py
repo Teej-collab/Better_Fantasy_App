@@ -298,6 +298,46 @@ def admin_chat_report_alert(reporter: str, reported: str, reason: str) -> dict:
     )
 
 
+def waiver_results(won: list[dict], failed: list[dict]) -> dict:
+    """One push per team after the waiver run. won: [{player, dropped,
+    bid}], failed: [{player, reason}]."""
+    if won and not failed and len(won) == 1:
+        w = won[0]
+        extra = " · ".join(x for x in (f"${w['bid']}" if w["bid"] is not None else None, f"dropped {w['dropped']}" if w["dropped"] else None) if x)
+        return _payload(f"✅ You got {w['player']}", extra or "Off waivers and onto your bench.", "/team", "waiver_results")
+    if failed and not won and len(failed) == 1:
+        f = failed[0]
+        return _payload(f"❌ Waiver claim on {f['player']} failed", f["reason"], "/waivers", "waiver_results")
+    title = "🧾 Waivers: " + ", ".join(x for x in (f"{len(won)} won" if won else None, f"{len(failed)} failed" if failed else None) if x)
+    lines = [f"Got {w['player']}" for w in won] + [f"Missed {f['player']}" for f in failed]
+    return _payload(title, _preview("; ".join(lines)), "/waivers", "waiver_results")
+
+
+def matchup_final(result: str, opponent: str, mine: float, theirs: float, record: str | None, matchup_id: int) -> dict:
+    """result is 'win', 'loss' or 'tie'."""
+    score = f"{mine:.1f}–{theirs:.1f}"
+    tail = f" · now {record}" if record else ""
+    if result == "win":
+        title, body = f"🏆 You beat {opponent}", f"{score}{tail}"
+    elif result == "loss":
+        title, body = f"{opponent} beat you", f"{score}{tail}. Next week."
+    else:
+        title, body = f"🤝 Tie with {opponent}", f"{score}{tail}"
+    return _payload(title, body, _matchup_url(matchup_id), "matchup_final", f"final-{matchup_id}")
+
+
+def pregame_starter_out(player_name: str, status: str, kickoff: str, matchup_id: int | None, tag: str) -> dict:
+    return _payload(
+        f"🚨 {player_name} is {status} — he's in your lineup",
+        f"Kickoff {kickoff}. Swap him before his game locks.",
+        "/team", "pregame_lineup", tag,
+    )
+
+
+def close_game(title: str, body: str, matchup_id: int) -> dict:
+    return _payload(title, body, _matchup_url(matchup_id), "close_game", f"close-{matchup_id}")
+
+
 def _trade_tag(trade_id: int) -> str:
     return f"trade-{trade_id}"
 

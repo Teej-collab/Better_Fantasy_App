@@ -452,14 +452,18 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   {
     key: 'notify_injuries',
     label: 'Injuries',
-    description: 'One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game.',
+    description: 'One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game — and a heads-up before kickoff when a starter is Out.',
   },
   {
     key: 'notify_player_news',
     label: 'Player News',
     description: "Any other news about one of your players, like practice reports. Can get chatty — turn it off if it does.",
   },
-  { key: 'notify_fantasy_team', label: 'Lead Changes', description: 'You take the lead in your matchup, or lose it.' },
+  {
+    key: 'notify_fantasy_team',
+    label: 'My Matchup & Waivers',
+    description: 'Lead changes, a close game coming down to the wire, your final result, and what you won (or missed) on waivers.',
+  },
   { key: 'notify_league', label: 'League Activity', description: 'Someone in your league posts a graded chug.' },
 ];
 

@@ -151,7 +151,7 @@ provider and writing to whatever DATABASE_URL happens to be configured:
 import logging
 import time
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -160,6 +160,7 @@ from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain import auction_engine, guillotine, live_activity
+from app.notifications import game_alerts
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
@@ -337,6 +338,44 @@ async def _run_live_activity_job():
     record_job_run("live_activity")
 
 
+async def _run_game_alerts_job():
+    """Pre-kickoff "your starter is Out" and close-game pushes
+    (app/notifications/game_alerts.py). Only does real work on a game
+    day: when a game is underway or kicks off within the next 100 minutes."""
+    games = await get_nfl_scoreboard()
+    now = datetime.now(timezone.utc)
+
+    def soon(g):
+        if g.get("state") == "in":
+            return True
+        try:
+            start = datetime.fromisoformat((g.get("date") or "").replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        return g.get("state") == "pre" and timedelta(0) <= start - now <= timedelta(minutes=100)
+
+    if not any(soon(g) for g in games):
+        return
+    season = int(_require("ACTIVE_SEASON"))
+    week = await get_real_current_week()
+    if week is None:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_ids = [
+            r["league_id"]
+            for r in await conn.fetch("SELECT DISTINCT league_id FROM teams_by_season WHERE season = $1", season)
+        ]
+    for league_id in league_ids:
+        try:
+            async with pool.acquire() as conn:
+                await game_alerts.check_pregame_lineups(conn, season, week, league_id, now)
+                await game_alerts.check_close_games(conn, season, week, league_id, now)
+        except Exception:
+            logger.exception("Game alerts failed (league_id=%s)", league_id)
+    record_job_run("game_alerts")
+
+
 async def _run_red_zone_job():
     """Red zone alerts, on their own faster tick than the live sync
     (a trip inside the 20 often lasts under a minute). Only reads the
@@ -450,6 +489,12 @@ async def _run_week_settlement_job():
             # never a second real LLM call or cost.
             async with pool.acquire() as conn:
                 await narrative_engine.generate_weekly_recap(conn, season, settle_week, league_id)
+            # "You beat X 121.4–98.0 · now 5–1" — once per league-week.
+            try:
+                async with pool.acquire() as conn:
+                    await game_alerts.notify_matchup_finals(conn, season, settle_week, league_id)
+            except Exception:
+                logger.exception("Matchup final pushes failed (league_id=%s)", league_id)
             # Guillotine leagues cut the week's lowest score (a no-op
             # anywhere else, and after the first tick — app/domain/guillotine.py).
             async with pool.acquire() as conn:
@@ -1004,6 +1049,11 @@ async def _run_waiver_processing_job():
                     "Waiver processing: season=%s league_id=%s week=%s results=%s",
                     season, league_id, current_week, results,
                 )
+                # Tell each team what it won or why a claim failed.
+                try:
+                    await game_alerts.notify_waiver_results(conn, season, league_id, results)
+                except Exception:
+                    logger.exception("Waiver result pushes failed (league_id=%s)", league_id)
     record_job_run("waiver_processing")
 
 
@@ -1056,6 +1106,7 @@ def start_scheduler():
         # Lock-screen live scores: runs all the time (an "end" can come
         # after the last game), but does nothing without a Live Activity
         # running or a game on.
+        _scheduler.add_job(_run_game_alerts_job, "interval", minutes=5, id="game_alerts")
         live_activity_seconds = int(os.getenv("LIVE_ACTIVITY_INTERVAL_SECONDS", "30"))
         _scheduler.add_job(_run_live_activity_job, "interval", seconds=live_activity_seconds, id="live_activity")
         logger.info(
