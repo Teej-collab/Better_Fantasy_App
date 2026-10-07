@@ -160,7 +160,7 @@ from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain import auction_engine, guillotine, live_activity
-from app.notifications import game_alerts
+from app.notifications import game_alerts, inactives
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
@@ -373,6 +373,13 @@ async def _run_game_alerts_job():
                 await game_alerts.check_close_games(conn, season, week, league_id, now)
         except Exception:
             logger.exception("Game alerts failed (league_id=%s)", league_id)
+    # The 90-minute inactive lists (app/notifications/inactives.py) — after
+    # the pre-kickoff check above, so a starter already flagged Out isn't
+    # pinged twice.
+    try:
+        await inactives.check_inactives(pool, season, week, games, now)
+    except Exception:
+        logger.exception("Inactives check failed")
     record_job_run("game_alerts")
 
 

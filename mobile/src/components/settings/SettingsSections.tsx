@@ -452,7 +452,7 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   {
     key: 'notify_injuries',
     label: 'Injuries',
-    description: 'One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game — and a heads-up before kickoff when a starter is Out.',
+    description: 'One of your players is added to the injury report, upgraded, downgraded, cleared, or gets hurt in a game — and a heads-up before kickoff when a starter is Out or inactive.',
   },
   {
     key: 'notify_player_news',

@@ -334,6 +334,14 @@ def pregame_starter_out(player_name: str, status: str, kickoff: str, matchup_id:
     )
 
 
+def inactive_starter(player_name: str, kickoff: str, tag: str) -> dict:
+    return _payload(
+        f"🚫 {player_name} is INACTIVE",
+        f"He's in your lineup and won't play — kickoff {kickoff}. Swap him now.",
+        "/team", "inactive_starter", tag,
+    )
+
+
 def close_game(title: str, body: str, matchup_id: int) -> dict:
     return _payload(title, body, _matchup_url(matchup_id), "close_game", f"close-{matchup_id}")
 
