@@ -196,14 +196,22 @@ export const api = {
     request<{ token: string }>('/auth/native/redeem', { method: 'POST', body: JSON.stringify({ ticket }) }),
   // Sign in with Apple: the identity token from the system sheet, which
   // the backend verifies with Apple (backend/app/auth/apple_signin.py).
-  appleSignIn: (identityToken: string, fullName: string | null) =>
+  // authorizationCode lets the backend revoke the Apple sign-in if the
+  // account is ever deleted.
+  appleSignIn: (identityToken: string, fullName: string | null, authorizationCode: string | null) =>
     request<{ token: string }>('/auth/apple/native', {
       method: 'POST',
-      body: JSON.stringify({ identity_token: identityToken, full_name: fullName }),
+      body: JSON.stringify({ identity_token: identityToken, full_name: fullName, authorization_code: authorizationCode }),
     }),
   // This phone's APNs token, for real push (backend/app/routers/push.py).
   registerNativePush: (body: { device_id: string; platform: 'ios' | 'android'; push_token: string; app_version: string | null; os_version: string | null }) =>
     request<{ id: number; active: boolean }>('/push/native/register', { method: 'POST', body: JSON.stringify(body) }),
+  // Live Activity tokens (the lock-screen score): 'activity' for a running
+  // one, 'start' for the device's push-to-start token.
+  registerLiveActivityToken: (body: { kind: 'activity' | 'start'; token: string; device_id: string; activity_id?: string; matchup_id?: number }) =>
+    request<{ ok: boolean }>('/push/live-activity', { method: 'POST', body: JSON.stringify(body) }),
+  endLiveActivity: (body: { activity_id?: string; device_id?: string }) =>
+    request<{ ok: boolean }>('/push/live-activity/end', { method: 'POST', body: JSON.stringify(body) }),
   unregisterNativePush: (deviceId: string) =>
     request<void>(`/push/native/register/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }),
   seasons: () => request<{ seasons: number[] }>('/seasons'),

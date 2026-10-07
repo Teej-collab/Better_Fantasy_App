@@ -17,7 +17,7 @@ import { ensurePermission, load } from '@/lib/localNotifications';
 
 let registered: string | null = null;
 
-async function deviceId(): Promise<string | null> {
+export async function deviceId(): Promise<string | null> {
   if (Platform.OS !== 'ios') return null;
   return Application.getIosIdForVendorAsync().catch(() => null);
 }

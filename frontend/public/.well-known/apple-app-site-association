@@ -3,6 +3,18 @@
     "apps": [],
     "details": [
       {
+        "appIDs": ["5K8V6776KS.com.weekendleague.native"],
+        "components": [
+          { "/": "/start", "?": { "join": "?*" }, "comment": "League invite" },
+          { "/": "/join-co-owner", "?": { "code": "?*" }, "comment": "Co-owner invite" },
+          { "/": "/lounge/*", "comment": "Lounge room" }
+        ]
+      },
+      {
+        "appID": "5K8V6776KS.com.weekendleague.native",
+        "paths": ["/start", "/join-co-owner", "/lounge/*"]
+      },
+      {
         "appID": "5K8V6776KS.com.weekendleague.app",
         "paths": ["/auth/native-complete*"]
       }

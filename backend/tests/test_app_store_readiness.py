@@ -205,3 +205,60 @@ async def test_chug_deadline_is_off_when_the_house_rule_is_off(pool, monkeypatch
         resp = await client.get("/chug/deadline")
     assert resp.status_code == 200
     assert resp.json()["deadline"] is None
+
+
+async def test_apple_sign_in_stores_refresh_token_and_delete_revokes_it(pool, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ESPN_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    sub = f"test-apple-{uuid.uuid4().hex}"
+    monkeypatch.setattr(apple_signin, "verify_identity_token", lambda token: {"sub": sub})
+    exchanged, revoked = [], []
+
+    async def fake_exchange(code):
+        exchanged.append(code)
+        return "apple-refresh-123"
+
+    async def fake_revoke(token):
+        revoked.append(token)
+        return True
+
+    monkeypatch.setattr(apple_signin, "exchange_code_for_refresh_token", fake_exchange)
+    monkeypatch.setattr(apple_signin, "revoke_refresh_token", fake_revoke)
+    try:
+        async with _client() as client:
+            signed_in = await client.post("/auth/apple/native", json={"identity_token": "x", "authorization_code": "code-1"})
+            token = signed_in.json()["token"]
+            async with pool.acquire() as conn:
+                stored = await conn.fetchval("SELECT apple_refresh_token FROM users WHERE apple_user_id = $1", sub)
+            deleted = await client.delete("/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert exchanged == ["code-1"]
+        assert stored and stored != "apple-refresh-123"  # encrypted at rest
+        assert deleted.status_code == 204
+        assert revoked == ["apple-refresh-123"]
+    finally:
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM users WHERE apple_user_id = $1", sub)
+
+
+def test_revocation_not_configured_without_a_key(monkeypatch):
+    monkeypatch.delenv("APPLE_SIGNIN_KEY_ID", raising=False)
+    monkeypatch.delenv("APPLE_SIGNIN_KEY_CONTENT", raising=False)
+    assert apple_signin.revocation_configured() is False
+
+
+def test_client_secret_is_a_valid_es256_jwt(monkeypatch):
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    private = ec.generate_private_key(ec.SECP256R1())
+    pem = private.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    monkeypatch.setenv("APPLE_SIGNIN_KEY_ID", "KEY1234567")
+    monkeypatch.setenv("APPLE_SIGNIN_KEY_CONTENT", pem.replace("\n", ""))  # pasted as one line
+    monkeypatch.setenv("APNS_TEAM_ID", "5K8V6776KS")
+    secret = apple_signin._client_secret()
+    claims = pyjwt.decode(secret, private.public_key(), algorithms=["ES256"], audience="https://appleid.apple.com")
+    assert claims["iss"] == "5K8V6776KS" and claims["sub"] == "com.weekendleague.native"
+    assert pyjwt.get_unverified_header(secret)["kid"] == "KEY1234567"

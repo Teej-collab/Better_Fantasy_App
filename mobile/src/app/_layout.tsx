@@ -9,7 +9,7 @@ import {
 import { Oswald_500Medium, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Satisfy_400Regular } from '@expo-google-fonts/satisfy';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { DarkTheme, Stack, ThemeProvider, usePathname } from 'expo-router';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +26,7 @@ import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ChatSocketProvider } from '@/lib/chatSocket';
+import { takeLinkForAfterSignIn } from '@/lib/inviteLinks';
 import { queryClient, queryPersister, useMe } from '@/lib/queries';
 
 SplashScreen.preventAutoHideAsync();
@@ -99,6 +100,18 @@ function RootStack() {
     Satisfy_400Regular,
   });
   const ready = token !== undefined && fontsLoaded;
+
+  // An invite link tapped while signed out opens once you've signed in
+  // (lib/inviteLinks.ts); one tapped while signed in already opened.
+  const [wasSignedIn, setWasSignedIn] = useState<boolean | null>(null);
+  if (token !== undefined && wasSignedIn !== Boolean(token)) setWasSignedIn(Boolean(token));
+  useEffect(() => {
+    if (wasSignedIn === null) return;
+    const link = takeLinkForAfterSignIn();
+    if (wasSignedIn && link && link !== pathname) router.push(link as Href);
+    // Only on sign-in/out, not on every navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wasSignedIn]);
 
   useEffect(() => {
     // Keep the splash up until the fonts are in and we know whether

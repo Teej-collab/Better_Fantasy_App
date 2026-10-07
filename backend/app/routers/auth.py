@@ -6,6 +6,7 @@ consent screen, but won't get a session unless their Discord ID is
 already linked to an owner.
 """
 import asyncio
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,7 @@ from app.auth.session import (
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool, on_own_conn
+from app.encryption import decrypt_secret, encrypt_secret
 from app.domain import league_format
 from app.monitoring import record_failed_login
 from app.notifications.email import send_password_reset_email
@@ -41,6 +43,7 @@ from app.queries import leagues as league_queries
 from app.queries import used_oauth_tickets as used_oauth_tickets_queries
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 STATE_COOKIE_NAME = "oauth_state"
 STATE_COOKIE_MAX_AGE_SECONDS = 600  # just needs to survive the round trip to Discord and back
@@ -275,6 +278,9 @@ class AppleNativeSignInRequest(BaseModel):
     # Apple shares the name only on the very first authorization, and
     # only to the app (it isn't in the token) — the app passes it along.
     full_name: str | None = None
+    # Exchanged for a refresh token so account deletion can revoke the
+    # Apple sign-in (app/auth/apple_signin.py). Optional.
+    authorization_code: str | None = None
 
 
 @router.post("/apple/native")
@@ -300,6 +306,15 @@ async def apple_native_sign_in(body: AppleNativeSignInRequest, request: Request)
         user_id = await auth_queries.get_or_create_user_for_apple(conn, claims["sub"], email, display_name)
         token_version = await auth_queries.get_token_version(conn, user_id)
         owner_id = await auth_queries.get_owner_id_for_user(conn, user_id)
+
+    refresh_token = await apple_signin.exchange_code_for_refresh_token(body.authorization_code or "")
+    if refresh_token:
+        try:
+            async with pool.acquire() as conn:
+                await auth_queries.set_apple_refresh_token(conn, user_id, encrypt_secret(refresh_token))
+        except Exception:
+            logger.warning("Couldn't store the Apple refresh token for user_id=%s", user_id, exc_info=True)
+
     token = create_session_token(config.session_secret, user_id=user_id, owner_id=owner_id, token_version=token_version)
     return {"token": token}
 
@@ -774,7 +789,16 @@ async def delete_my_account(request: Request):
                 status_code=409,
                 detail=f"You're the only commissioner of {names} — promote a co-commissioner first, in League → Members.",
             )
+        apple_refresh_token = await auth_queries.get_apple_refresh_token(conn, payload["user_id"])
         await auth_queries.delete_account(conn, payload["user_id"])
+
+    # Sign in with Apple accounts: tell Apple too, as App Review asks.
+    # Best effort — the account is already gone either way.
+    if apple_refresh_token:
+        try:
+            await apple_signin.revoke_refresh_token(decrypt_secret(apple_refresh_token))
+        except Exception:
+            logger.warning("Apple sign-in revoke failed for user_id=%s", payload["user_id"], exc_info=True)
 
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE_NAME, samesite=config.cookie_samesite, secure=config.cookie_secure)

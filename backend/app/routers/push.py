@@ -9,11 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import resolve_owner_id
+from app.auth.league_context import require_active_league_id, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import VAPID_PUBLIC_KEY
 from app.db import get_pool
 from app.notifications import dispatcher, formatter
+from app.queries import live_activities as live_activity_queries
 from app.queries import native_push_tokens as native_queries
 from app.queries import owner_preferences as preferences_queries
 from app.queries import push_subscriptions as queries
@@ -139,6 +140,59 @@ async def register_native_device(body: NativeRegisterBody, request: Request, poo
         # own push_enabled write above.
         await preferences_queries.update_preferences(conn, owner_id, {"push_enabled": True})
     return {"id": row["id"], "device_id": row["device_id"], "platform": row["platform"], "active": row["active"]}
+
+
+class LiveActivityTokenBody(BaseModel):
+    kind: str
+    token: str
+    device_id: str
+    activity_id: str | None = None
+    matchup_id: int | None = None
+
+
+@router.post("/live-activity")
+async def register_live_activity_token(body: LiveActivityTokenBody, request: Request, pool=Depends(get_pool)):
+    """The iOS app's Live Activity tokens (2026-10): 'activity' for a
+    running lock-screen score the backend keeps updated, 'start' for the
+    device's push-to-start token (app/domain/live_activity.py)."""
+    payload = _require_session(request)
+    if body.kind not in ("activity", "start"):
+        raise HTTPException(status_code=422, detail="kind must be activity or start")
+    if not body.token or not body.device_id or len(body.token) > 400:
+        raise HTTPException(status_code=400, detail="token and device_id are required")
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            raise HTTPException(status_code=409, detail="No league yet — join or create one first")
+        league_id = await require_active_league_id(conn, payload)
+        if body.kind == "activity":
+            await live_activity_queries.upsert_activity_token(
+                conn, owner_id, league_id, body.device_id, body.token, body.activity_id, body.matchup_id
+            )
+        else:
+            await live_activity_queries.upsert_start_token(conn, owner_id, league_id, body.device_id, body.token)
+    return {"ok": True}
+
+
+class LiveActivityEndBody(BaseModel):
+    activity_id: str | None = None
+    device_id: str | None = None
+
+
+@router.post("/live-activity/end")
+async def end_live_activity(body: LiveActivityEndBody, request: Request, pool=Depends(get_pool)):
+    """The app ended a Live Activity (or the person swiped it away), or —
+    with device_id only — signed out: stop pushing to it."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            return {"ok": True}
+        if body.activity_id:
+            await live_activity_queries.end_activity(conn, owner_id, body.activity_id)
+        elif body.device_id:
+            await live_activity_queries.deactivate_device(conn, owner_id, body.device_id)
+    return {"ok": True}
 
 
 @router.delete("/native/register/{device_id}")

@@ -159,7 +159,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
-from app.domain import auction_engine, guillotine
+from app.domain import auction_engine, guillotine, live_activity
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
@@ -321,6 +321,20 @@ async def _run_live_sync_job():
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
     record_job_run("live_sync")
+
+
+async def _run_live_activity_job():
+    """The lock-screen / Dynamic Island live score (app/domain/live_activity.py).
+    Cheap when nobody has one running and no game is on."""
+    pool = await get_pool()
+    try:
+        counts = await live_activity.run_tick(pool)
+    except Exception:
+        logger.exception("Live Activity tick failed")
+        return
+    if any(counts.values()):
+        logger.info("Live Activity tick: %s", counts)
+    record_job_run("live_activity")
 
 
 async def _run_red_zone_job():
@@ -1039,6 +1053,11 @@ def start_scheduler():
         _scheduler.add_job(_run_live_sync_job, "interval", seconds=interval_seconds, id="espn_live_sync")
         red_zone_seconds = int(os.getenv("RED_ZONE_POLL_INTERVAL_SECONDS", "20"))
         _scheduler.add_job(_run_red_zone_job, "interval", seconds=red_zone_seconds, id="red_zone_alerts")
+        # Lock-screen live scores: runs all the time (an "end" can come
+        # after the last game), but does nothing without a Live Activity
+        # running or a game on.
+        live_activity_seconds = int(os.getenv("LIVE_ACTIVITY_INTERVAL_SECONDS", "30"))
+        _scheduler.add_job(_run_live_activity_job, "interval", seconds=live_activity_seconds, id="live_activity")
         logger.info(
             "Live ESPN sync scheduler started (every %d seconds, only during NFL game windows)",
             interval_seconds,

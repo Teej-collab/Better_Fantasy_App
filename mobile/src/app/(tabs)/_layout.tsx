@@ -7,6 +7,7 @@ import { AppState, Platform } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useThemeSync } from '@/lib/appearance';
 import { updateMatchupWidget } from '@/lib/homeWidget';
+import { listenForPushToStart, syncLiveActivity } from '@/lib/liveActivity';
 import { syncSeasonalAppIcon } from '@/lib/seasonal';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
 import { registerForPush } from '@/lib/pushRegistration';
@@ -69,6 +70,12 @@ function useHomeWidget() {
   useEffect(() => {
     if (myWeek !== undefined) updateMatchupWidget(myWeek);
   }, [myWeek]);
+  // The Lock Screen / Dynamic Island live score follows the same data
+  // (lib/liveActivity.ts), and the backend can start one at kickoff.
+  useEffect(() => {
+    if (myWeek !== undefined) void syncLiveActivity(myWeek).catch(() => {});
+  }, [myWeek]);
+  useEffect(() => listenForPushToStart(), []);
   useEffect(() => () => updateMatchupWidget(null), []);
 }
 

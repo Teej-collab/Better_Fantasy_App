@@ -13,7 +13,7 @@ notification.
 """
 import logging
 
-from aioapns import APNs, NotificationRequest
+from aioapns import APNs, NotificationRequest, PushType
 
 from app.config import require_apns_configured
 
@@ -86,3 +86,56 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
             return True, False
     logger.warning("APNs delivery failed (status=%s, reason=%s)", result.status, result.description)
     return False, result.description in _PERMANENT_FAILURE_REASONS
+
+
+async def _send_with_sandbox_retry(request_for) -> tuple[bool, bool, str | None]:
+    """Shared by the two senders below: try production APNs, then the
+    sandbox for a BadDeviceToken (an Xcode build), the same as send_apns.
+    Returns (delivered, permanently_gone, reason)."""
+    result = await _get_client().send_notification(request_for())
+    if not result.is_successful and result.description == "BadDeviceToken":
+        result = await _get_client(sandbox=True).send_notification(request_for())
+    if result.is_successful:
+        return True, False, None
+    return False, result.description in _PERMANENT_FAILURE_REASONS, result.description
+
+
+async def send_live_activity(push_token: str, aps: dict, priority: int = 10) -> tuple[bool, bool]:
+    """A Live Activity start/update/end (2026-10). `aps` is the whole
+    "aps" dict — event, timestamp, content-state, and for a start the
+    attributes. Apple requires the `liveactivity` push type and the
+    bundle ID's `.push-type.liveactivity` topic for these."""
+    _, _, bundle_id, _ = require_apns_configured()
+
+    def request():
+        return NotificationRequest(
+            device_token=push_token,
+            message={"aps": aps},
+            priority=priority,
+            push_type=PushType.LIVEACTIVITY,
+            apns_topic=f"{bundle_id}.push-type.liveactivity",
+        )
+
+    delivered, gone, reason = await _send_with_sandbox_retry(request)
+    if not delivered:
+        logger.warning("Live Activity push failed (reason=%s)", reason)
+    return delivered, gone
+
+
+async def send_background_refresh(push_token: str, data: dict) -> tuple[bool, bool]:
+    """A silent push (content-available, no alert) that wakes the app in
+    the background so it can refresh the home-screen widget. iOS decides
+    whether and when it actually runs, and allows only a few an hour."""
+
+    def request():
+        return NotificationRequest(
+            device_token=push_token,
+            message={"aps": {"content-available": 1}, "data": data},
+            priority=5,
+            push_type=PushType.BACKGROUND,
+        )
+
+    delivered, gone, reason = await _send_with_sandbox_retry(request)
+    if not delivered:
+        logger.info("Background refresh push failed (reason=%s)", reason)
+    return delivered, gone

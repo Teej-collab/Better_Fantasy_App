@@ -118,3 +118,11 @@ async def mark_delivery_failed(conn, registration_id: int, *, permanent: bool):
             "UPDATE native_push_tokens SET last_failure_at = now() WHERE id = $1",
             registration_id,
         )
+
+
+async def list_active_ios_registrations(conn):
+    """Every active iOS device — the silent widget-refresh push on game
+    day (app/domain/live_activity.py) goes to all of them."""
+    return await conn.fetch(
+        "SELECT id, owner_id, device_id, push_token FROM native_push_tokens WHERE active AND platform = 'ios'"
+    )

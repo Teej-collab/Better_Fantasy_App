@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "appleTeamId": "5K8V6776KS",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
@@ -18,7 +18,10 @@
       "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": [
+        "applinks:weekend-league-web.vercel.app"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -66,7 +69,8 @@
       [
         "expo-notifications",
         {
-          "color": "#39ff14"
+          "color": "#39ff14",
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       [
@@ -84,7 +88,9 @@
                 ]
               }
             }
-          ]
+          ],
+          "enablePushNotifications": true,
+          "frequentUpdates": true
         }
       ],
       [

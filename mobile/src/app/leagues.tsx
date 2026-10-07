@@ -24,7 +24,8 @@ import type { LeagueInfo } from '@/lib/types';
 // (the League tab's "Invite friends"); ?join=CODE (an older app link)
 // goes to the join screen.
 export default function LeaguesScreen() {
-  const params = useLocalSearchParams<{ invite?: string; join?: string }>();
+  // coOwner: a co-owner invite link (lib/inviteLinks.ts) fills in the code.
+  const params = useLocalSearchParams<{ invite?: string; join?: string; coOwner?: string }>();
   const { signInWithToken } = useAuth();
   const q = useQuery({ queryKey: ['leagues-mine'], queryFn: api.leaguesMine });
   const [inviting, setInviting] = useState<LeagueInfo | null>(null);
@@ -32,7 +33,7 @@ export default function LeaguesScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [coOwnerCode, setCoOwnerCode] = useState('');
+  const [coOwnerCode, setCoOwnerCode] = useState(params.coOwner ?? '');
 
   if (params.join) return <Redirect href={{ pathname: '/start/join', params: { code: params.join } }} />;
   if (q.isPending) return <LoadingState />;

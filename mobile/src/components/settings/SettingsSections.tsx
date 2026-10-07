@@ -25,6 +25,7 @@ import { applyTheme, useAppearance } from '@/lib/appearance';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
+import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
 import { registerForPush } from '@/lib/pushRegistration';
 import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, usePreferences } from '@/lib/queries';
 import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
@@ -155,6 +156,29 @@ function PushPanel({ on }: { on: boolean }) {
         </Pressable>
       )}
       {note && <Text style={styles.small}>{note}</Text>}
+    </Panel>
+  );
+}
+
+// The Lock Screen / Dynamic Island live score (lib/liveActivity.ts).
+// Saved on this phone.
+function LiveActivityPanel() {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    liveActivityEnabled().then(setOn).catch(() => setOn(true));
+  }, []);
+  if (!canUseLiveActivities) return null;
+  return (
+    <Panel title="Live score on Lock Screen" description="On game day, your matchup's live score sits on your Lock Screen and in the Dynamic Island, and starts on its own at kickoff.">
+      <ToggleRow
+        label="Show my live matchup"
+        value={on ?? true}
+        disabled={on === null}
+        onChange={(v) => {
+          setOn(v);
+          void setLiveActivityEnabled(v);
+        }}
+      />
     </Panel>
   );
 }
@@ -495,6 +519,8 @@ export function NotificationSettings() {
       </Panel>
 
       <PushPanel on={prefs.push_enabled} />
+
+      <LiveActivityPanel />
 
       <PhoneReminders />
 

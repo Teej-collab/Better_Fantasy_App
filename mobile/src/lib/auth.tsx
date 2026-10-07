@@ -4,9 +4,21 @@ import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { API_BASE_URL, api, setSessionToken, setUnauthorizedHandler } from '@/lib/api';
+import { endAll as endAllLiveActivities } from '@/lib/liveActivity';
 import { unregisterForPush } from '@/lib/pushRegistration';
 
-const TOKEN_KEY = 'weekend-league.session';
+export const TOKEN_KEY = 'weekend-league.session';
+// Readable after the phone's first unlock since boot, not only while it's
+// unlocked: the background widget refresh (lib/backgroundTasks.ts) runs
+// with the phone locked. Still never leaves the device or its backups.
+export const TOKEN_STORE_OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
+
+// Saves the session with TOKEN_STORE_OPTIONS. iOS keeps an existing item's
+// accessibility on update, so the old entry is removed first.
+async function saveToken(token: string) {
+  await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+  await SecureStore.setItemAsync(TOKEN_KEY, token, TOKEN_STORE_OPTIONS);
+}
 
 // Must match app.json's "scheme" and the backend's
 // NATIVE_APP_CUSTOM_SCHEME (default "weekendleague"). The backend's
@@ -47,7 +59,7 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
   const applyToken = useCallback(async (next: string | null) => {
     setSessionToken(next);
     setToken(next);
-    if (next) await SecureStore.setItemAsync(TOKEN_KEY, next);
+    if (next) await saveToken(next);
     else await SecureStore.deleteItemAsync(TOKEN_KEY);
   }, []);
 
@@ -55,6 +67,7 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     // Ends the session server-side too; signing out locally still
     // happens if the network call fails. This phone's push token goes
     // first, while the session still works.
+    await endAllLiveActivities().catch(() => {});
     await unregisterForPush().catch(() => {});
     await api.logout().catch(() => {});
     await applyToken(null);
@@ -66,6 +79,8 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
       .then((saved) => {
         setSessionToken(saved);
         setToken(saved);
+        // Sessions saved before 2026-10 were locked with the phone; re-save them.
+        if (saved) void saveToken(saved).catch(() => {});
       })
       .catch(() => setToken(null));
   }, []);
@@ -124,7 +139,7 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     if (!credential.identityToken) return { ok: false, canceled: false, message: "Couldn't sign in with Apple. Try again." };
     const fullName = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ') || null;
     try {
-      const { token: sessionToken } = await api.appleSignIn(credential.identityToken, fullName);
+      const { token: sessionToken } = await api.appleSignIn(credential.identityToken, fullName, credential.authorizationCode);
       await applyToken(sessionToken);
       return { ok: true };
     } catch (e) {

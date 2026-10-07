@@ -175,6 +175,14 @@ async def get_or_create_user_for_apple(conn, apple_user_id: str, email: str | No
     )
 
 
+async def set_apple_refresh_token(conn, user_id: int, encrypted_token: str) -> None:
+    await conn.execute("UPDATE users SET apple_refresh_token = $2 WHERE id = $1", user_id, encrypted_token)
+
+
+async def get_apple_refresh_token(conn, user_id: int) -> str | None:
+    return await conn.fetchval("SELECT apple_refresh_token FROM users WHERE id = $1", user_id)
+
+
 async def delete_account(conn, user_id: int) -> None:
     """Deletes the login itself — never the shared league history it
     may be linked to. If this account has claimed a historical owner
