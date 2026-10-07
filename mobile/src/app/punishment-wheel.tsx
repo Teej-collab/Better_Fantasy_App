@@ -28,7 +28,7 @@ import type { PunishmentWheel } from '@/lib/types';
 // as a one-time replay for anyone opening it after the spin.
 
 const COLORS = ['#1f9e0b', '#6d28d9', '#ea580c', '#0e7490', '#be123c', '#ca8a04', '#4338ca', '#15803d', '#9d174d', '#0369a1', '#7c2d12', '#155e75'];
-const SIZE = 300;
+const SIZE = 330;
 const R = SIZE / 2;
 const SPIN_MS = 5200;
 const IDLE_LAP_MS = 45_000;
@@ -55,21 +55,76 @@ function restingAngle(index: number, count: number): number {
   return (360 - ((index * seg + seg / 2) % 360)) % 360;
 }
 
+// Labels run from the hub out to the rim, wrapped onto up to three lines
+// and sized by how many slices there are, so they stay readable.
+const HUB_CLEAR = 44;
+const RIM_CLEAR = 14;
+
+function labelStyle(n: number): { fontSize: number; maxLines: number } {
+  const fontSize = n <= 4 ? 14 : n <= 6 ? 13 : n <= 9 ? 12 : 11;
+  // As many lines as fit across the slice near the hub, where it's narrowest.
+  const chord = 2 * (HUB_CLEAR + 8) * Math.sin(Math.PI / Math.max(n, 2));
+  const maxLines = Math.max(1, Math.min(4, Math.floor(chord / (fontSize * 1.15))));
+  return { fontSize, maxLines };
+}
+
+function wrapLabel(text: string, maxChars: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.trim().split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxChars || !line) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  const clipped = lines.slice(0, maxLines).map((l) => (l.length > maxChars ? `${l.slice(0, maxChars - 1)}…` : l));
+  if (lines.length > maxLines) {
+    // Cut at a word break and drop trailing punctuation before the ellipsis.
+    let last = clipped[maxLines - 1].replace(/…$/, '').slice(0, maxChars - 1);
+    if (last.includes(' ')) last = last.slice(0, last.lastIndexOf(' '));
+    clipped[maxLines - 1] = `${last.replace(/[\s.,;:!?-]+$/, '')}…`;
+  }
+  return clipped;
+}
+
 function WheelFace({ items }: { items: string[] }) {
   const n = Math.max(items.length, 1);
+  const { fontSize, maxLines } = labelStyle(n);
+  const band = R - HUB_CLEAR - RIM_CLEAR;
+  const maxChars = Math.max(6, Math.floor(band / (fontSize * 0.6)));
+  const lineHeight = fontSize * 1.15;
+  const mid = HUB_CLEAR + band / 2;
   return (
     <Svg width={SIZE} height={SIZE}>
       {items.length === 0 ? <Circle cx={R} cy={R} r={R} fill="#191d23" /> : null}
       {items.map((text, i) => (
-        <Path key={`s-${i}`} d={slicePath(i, n)} fill={COLORS[i % COLORS.length]} />
+        <Path key={`s-${i}`} d={slicePath(i, n)} fill={COLORS[i % COLORS.length]} stroke="rgba(0,0,0,0.35)" strokeWidth={1.5} />
       ))}
-      {items.map((text, i) => (
-        <G key={`t-${i}`} rotation={(i * 360) / n + 180 / n - 90} origin={`${R}, ${R}`}>
-          <SvgText x={R * 2 - 16} y={R + 4} fill="#ffffff" fontSize={10} fontWeight="800" textAnchor="end">
-            {text.length > 22 ? `${text.slice(0, 21)}…` : text}
-          </SvgText>
-        </G>
-      ))}
+      {items.map((text, i) => {
+        const lines = wrapLabel(text, maxChars, maxLines);
+        return (
+          <G key={`t-${i}`} rotation={(i * 360) / n + 180 / n - 90} origin={`${R}, ${R}`}>
+            {lines.map((line, k) => {
+              const y = R + (k - (lines.length - 1) / 2) * lineHeight + fontSize * 0.35;
+              // A dark outline copy underneath keeps white text legible on every color.
+              return (
+                <G key={k}>
+                  <SvgText x={R + mid} y={y} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth={3} strokeLinejoin="round" fontSize={fontSize} fontWeight="800" textAnchor="middle">
+                    {line}
+                  </SvgText>
+                  <SvgText x={R + mid} y={y} fill="#ffffff" fontSize={fontSize} fontWeight="800" textAnchor="middle">
+                    {line}
+                  </SvgText>
+                </G>
+              );
+            })}
+          </G>
+        );
+      })}
     </Svg>
   );
 }
@@ -281,7 +336,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 8,
   },
-  tilt: { width: SIZE, height: SIZE, transform: [{ perspective: 900 }, { rotateX: '24deg' }] },
+  tilt: { width: SIZE, height: SIZE, transform: [{ perspective: 900 }, { rotateX: '16deg' }] },
   depth: { position: 'absolute', width: SIZE, height: SIZE, borderRadius: R, backgroundColor: '#05070a', top: 14, shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 24, shadowOffset: { width: 0, height: 20 } },
   face: {
     width: SIZE,

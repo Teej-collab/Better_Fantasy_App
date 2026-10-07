@@ -34,6 +34,42 @@ function restingAngle(index: number, count: number): number {
   return (360 - ((index * seg + seg / 2) % 360)) % 360;
 }
 
+// Labels run from the hub out to the rim, wrapped onto a few lines and
+// sized by slice count (same rules as the app's wheel).
+const R = 150;
+const HUB_CLEAR = 42;
+const RIM_CLEAR = 14;
+
+function labelStyle(n: number): { fontSize: number; maxLines: number } {
+  const fontSize = n <= 4 ? 14 : n <= 6 ? 13 : n <= 9 ? 12 : 11;
+  const chord = 2 * (HUB_CLEAR + 8) * Math.sin(Math.PI / Math.max(n, 2));
+  const maxLines = Math.max(1, Math.min(4, Math.floor(chord / (fontSize * 1.15))));
+  return { fontSize, maxLines };
+}
+
+function wrapLabel(text: string, maxChars: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.trim().split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxChars || !line) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  const clipped = lines.slice(0, maxLines).map((l) => (l.length > maxChars ? `${l.slice(0, maxChars - 1)}…` : l));
+  if (lines.length > maxLines) {
+    // Cut at a word break and drop trailing punctuation before the ellipsis.
+    let last = clipped[maxLines - 1].replace(/…$/, "").slice(0, maxChars - 1);
+    if (last.includes(" ")) last = last.slice(0, last.lastIndexOf(" "));
+    clipped[maxLines - 1] = `${last.replace(/[\s.,;:!?-]+$/, "")}…`;
+  }
+  return clipped;
+}
+
 async function call(path: string, init?: RequestInit): Promise<Wheel> {
   const res = await fetch(`/api/backend/punishment-wheel${path}`, {
     cache: "no-store",
@@ -162,8 +198,11 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
   const items = result ? result.items : wheel.items.map((i) => i.text);
   const n = Math.max(items.length, 1);
   const seg = 360 / n;
+  const label = labelStyle(n);
+  const band = R - HUB_CLEAR - RIM_CLEAR;
+  const maxChars = Math.max(6, Math.floor(band / (label.fontSize * 0.6)));
   const gradient = items.length
-    ? `conic-gradient(from 0deg, ${items.map((_, i) => `${COLORS[i % COLORS.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(", ")})`
+    ? `conic-gradient(from 0deg, ${items.map((_, i) => `rgba(0,0,0,0.35) ${i * seg}deg ${i * seg + 0.6}deg, ${COLORS[i % COLORS.length]} ${i * seg + 0.6}deg ${(i + 1) * seg}deg`).join(", ")})`
     : "#191d23";
   const spinning = phase === "spinning" || phase === "replaying";
   const transition = spinning ? `transform ${SPIN_MS}ms cubic-bezier(0.12, 0.62, 0.08, 1)` : "none";
@@ -177,7 +216,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
 
       <div className="relative flex h-[340px] items-center justify-center [perspective:900px]">
         <div className="absolute top-1 z-10 h-0 w-0 border-x-[14px] border-t-[26px] border-x-transparent border-t-[#39ff14] drop-shadow-[0_0_8px_rgba(57,255,20,0.8)]" />
-        <div className="relative h-[300px] w-[300px] [transform:rotateX(24deg)] [transform-style:preserve-3d]">
+        <div className="relative h-[300px] w-[300px] [transform:rotateX(16deg)] [transform-style:preserve-3d]">
           <div className="absolute inset-0 translate-y-4 rounded-full bg-[#05070a] shadow-[0_30px_60px_rgba(0,0,0,0.7)]" />
           <div
             className="absolute inset-0 overflow-hidden rounded-full border-[6px] border-[#39ff14] shadow-[0_0_24px_rgba(57,255,20,0.45),inset_0_0_30px_rgba(0,0,0,0.55)]"
@@ -186,10 +225,17 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
             {items.map((text, i) => (
               <span
                 key={i}
-                className="absolute left-1/2 top-1/2 -mt-2 w-[118px] origin-[0_50%] overflow-hidden text-ellipsis whitespace-nowrap text-right text-[10px] font-extrabold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.7)]"
-                style={{ transform: `rotate(${i * seg + seg / 2 - 90}deg) translateX(26px)` }}
+                className="absolute left-1/2 top-1/2 flex flex-col items-center font-extrabold leading-[1.15] text-white [text-shadow:0_0_3px_rgba(0,0,0,0.8),0_1px_2px_rgba(0,0,0,0.6)]"
+                style={{
+                  width: band,
+                  fontSize: label.fontSize,
+                  transformOrigin: "0 0",
+                  transform: `rotate(${i * seg + seg / 2 - 90}deg) translateX(${HUB_CLEAR}px) translateY(-50%)`,
+                }}
               >
-                {text}
+                {wrapLabel(text, maxChars, label.maxLines).map((line, k) => (
+                  <span key={k} className="whitespace-nowrap">{line}</span>
+                ))}
               </span>
             ))}
           </div>
