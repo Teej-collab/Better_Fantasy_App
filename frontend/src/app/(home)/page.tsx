@@ -22,14 +22,12 @@ import {
   getChugDeadline,
   getWeekLeagueTicker,
   getLatestPowerRankings,
-  listRivalries,
   listSeasons,
   resolveWeek,
   safeLatestSeason,
   type ChugDeadline,
   type ChugFeedEntry,
   type LeagueActivityItem,
-  type Rivalry,
   type StandingsRow,
   type TickerItem,
   type WeekMatchupContextItem,
@@ -62,10 +60,6 @@ import {
   LEAGUE_SUBNAV_ORDER,
   type DestinationKey,
 } from "@/lib/navDestinations";
-
-// Lower = shown first — same escalating hierarchy as the /weekend signs'
-// tier-colored badges (MatchupCard.tsx's TIER_BADGE_CLASS).
-const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
 
 // A week with nothing to award yet still comes back as a real
 // WeeklyAwards object, every field null/empty rather than the request
@@ -104,7 +98,6 @@ async function fetchLeagueBatch(season: number, week: number, sessionCookie: str
     awardsRes,
     prevWeekAwardsRes,
     matchupContextRes,
-    rivalriesRes,
     leagueTicker,
     powerRankingsRes,
     weekRecapRes,
@@ -125,7 +118,6 @@ async function fetchLeagueBatch(season: number, week: number, sessionCookie: str
     // award-worthy data, whenever that happens to land).
     week > 1 ? getWeeklyAwards(season, week - 1, sessionCookie) : Promise.resolve(EMPTY_WEEKLY_AWARDS),
     getWeekMatchupContext(season, week, sessionCookie),
-    listRivalries(sessionCookie),
     getWeekLeagueTicker(season, week, sessionCookie),
     // The most recent locked week, not the in-progress one — the card
     // used to go blank from the flip until the next one.
@@ -152,7 +144,6 @@ async function fetchLeagueBatch(season: number, week: number, sessionCookie: str
     awardsRes,
     prevWeekAwardsRes,
     matchupContextRes,
-    rivalriesRes,
     leagueTicker,
     powerRankingsRes,
     weekRecapRes,
@@ -236,7 +227,6 @@ export default async function HomePage() {
   let weeklyAwards: WeeklyAwards | null = null;
   let weekPlayed = false;
   let weekMatchups: WeekMatchupContextItem[] = [];
-  let topRivalries: Rivalry[] = [];
   let leagueTickerItems: TickerItem[] = [];
   let chugDeadline: ChugDeadline | null = null;
   let powerRankings: WeekPowerRanking[] = [];
@@ -259,8 +249,7 @@ export default async function HomePage() {
       awardsRes,
       prevWeekAwardsRes,
       matchupContextRes,
-      rivalriesRes,
-      leagueTicker,
+        leagueTicker,
       powerRankingsRes,
       weekRecapRes,
       prevWeekRecapRes,
@@ -292,9 +281,6 @@ export default async function HomePage() {
       weeklyRecapWeek = week !== null ? week - 1 : null;
     }
     weekPlayed = standings.some((r) => r.wins + r.losses + r.ties > 0);
-    topRivalries = [...rivalriesRes.rivalries]
-      .sort((a, b) => TIER_RANK[a.tier ?? ""] - TIER_RANK[b.tier ?? ""])
-      .slice(0, 3);
     leagueTickerItems = buildLeagueTickerItems(leagueTicker);
     if (leagueTickerItems.length === 0) {
       // No matchup has started yet — real NFL kickoff is still the more
@@ -533,11 +519,11 @@ export default async function HomePage() {
     );
   }
 
-  if (rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) {
+  // Only when a rivalry matchup is actually on this week's schedule.
+  if (rivalryGamesThisWeek.length > 0) {
     cards.rivalries = (
       <section className="flex flex-col gap-2">
         <SectionHeader title="Rivalries" href="/rivalries" />
-        {rivalryGamesThisWeek.length > 0 ? (
           <ul
             className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
             style={panelGlowStyle(SECTION_COLORS.rivalries)}
@@ -559,24 +545,6 @@ export default async function HomePage() {
               </li>
             ))}
           </ul>
-        ) : (
-          <ul
-            className="neon-panel flex flex-col divide-y divide-black/5 rounded-lg bg-black/[0.015] dark:divide-white/5 dark:bg-white/[0.03]"
-            style={panelGlowStyle(SECTION_COLORS.rivalries)}
-          >
-            {topRivalries.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span>{r.emoji ?? "⚔️"}</span>
-                  <span className="min-w-0 wrap-break-word font-medium">{r.name}</span>
-                </span>
-                <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                  {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
     );
   }
@@ -643,7 +611,6 @@ export default async function HomePage() {
           otherMatchups={otherMatchups}
           currentWeek={week}
           rivalryGamesThisWeek={rivalryGamesThisWeek}
-          topRivalries={topRivalries}
           weeklyAwards={weeklyAwards}
           weeklyAwardsWeek={weeklyAwardsWeek}
           weeklyRecap={weeklyRecap}

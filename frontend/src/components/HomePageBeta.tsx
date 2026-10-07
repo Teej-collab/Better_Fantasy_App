@@ -4,7 +4,6 @@ import {
   type ChugFeedEntry,
   type LeagueActivityItem,
   type NflGame,
-  type Rivalry,
   type StandingsRow,
   type TickerItem,
   type WeekMatchupContextItem,
@@ -59,7 +58,6 @@ export function HomePageBeta({
   otherMatchups,
   currentWeek,
   rivalryGamesThisWeek,
-  topRivalries,
   weeklyAwards,
   weeklyAwardsWeek,
   weeklyRecap,
@@ -82,7 +80,6 @@ export function HomePageBeta({
   otherMatchups: WeekMatchupContextItem[];
   currentWeek: number | null;
   rivalryGamesThisWeek: WeekMatchupContextItem[];
-  topRivalries: Rivalry[];
   weeklyAwards: WeeklyAwards | null;
   weeklyAwardsWeek: number | null;
   weeklyRecap: WeeklyNarrative | null;
@@ -237,10 +234,10 @@ export function HomePageBeta({
         </FlatSectionCard>
       )}
 
-      {(rivalryGamesThisWeek.length > 0 || topRivalries.length > 0) && (
+      {/* Only when a rivalry matchup is actually on this week's schedule. */}
+      {rivalryGamesThisWeek.length > 0 && (
         <FlatSectionCard title="Rivalries" href="/rivalries">
-          {rivalryGamesThisWeek.length > 0
-            ? rivalryGamesThisWeek.map((m) => (
+          {rivalryGamesThisWeek.map((m) => (
                 <FlatRow key={m.matchup_id} href={`/matchups/${m.matchup_id}`}>
                   <span className="flex min-w-0 items-center gap-2">
                     <span>{m.rivalry?.emoji ?? "⚔️"}</span>
@@ -248,17 +245,6 @@ export function HomePageBeta({
                   </span>
                   <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
                     {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
-                  </span>
-                </FlatRow>
-              ))
-            : topRivalries.map((r) => (
-                <FlatRow key={r.id}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span>{r.emoji ?? "⚔️"}</span>
-                    <span className="min-w-0 wrap-break-word font-medium">{r.name}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-black/50 dark:text-white/50">
-                    {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
                   </span>
                 </FlatRow>
               ))}

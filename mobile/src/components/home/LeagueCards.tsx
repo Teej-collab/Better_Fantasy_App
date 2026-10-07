@@ -6,7 +6,7 @@ import { RankBadge } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
-import type { NflGame, Rivalry, StandingsRow, WeekMatchupContextItem, WeekPowerRanking } from '@/lib/types';
+import type { NflGame, StandingsRow, WeekMatchupContextItem, WeekPowerRanking } from '@/lib/types';
 
 // The home page's list cards (frontend/src/app/(home)/page.tsx): a
 // small uppercase header that links through, over a neon list panel in
@@ -134,38 +134,27 @@ export function OtherMatchupsCard({ matchups, isGameDay }: { matchups: WeekMatch
 
 // This week's rivalry games if there are any, else the league's top
 // three rivalries by tier with their all-time records.
-export function RivalriesCard({ games, top }: { games: WeekMatchupContextItem[]; top: Rivalry[] }) {
+// Only shown when a rivalry matchup is on this week's schedule (2026-10).
+export function RivalriesCard({ games }: { games: WeekMatchupContextItem[] }) {
   return (
     <View style={styles.section}>
       <Header title="Rivalries" onPress={() => openLeague('rivalries')} />
       <ListPanel color={SectionColors.rivalries}>
-        {games.length > 0
-          ? games.map((m, i) => (
-              <PreviewLink
-                key={m.matchup_id}
-                href={{ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } }}
-                style={[styles.row, i > 0 && styles.divided]}
-                pressedStyle={styles.pressed}>
-                <View style={styles.rowLeft}>
-                  <Text>{m.rivalry?.emoji ?? '⚔️'}</Text>
-                  <Text style={[styles.name, styles.medium]}>{m.rivalry?.name}</Text>
-                </View>
-                <Text style={styles.valueMuted}>
-                  {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
-                </Text>
-              </PreviewLink>
-            ))
-          : top.map((r, i) => (
-              <View key={r.id} style={[styles.row, i > 0 && styles.divided]}>
-                <View style={styles.rowLeft}>
-                  <Text>{r.emoji ?? '⚔️'}</Text>
-                  <Text style={[styles.name, styles.medium]}>{r.name}</Text>
-                </View>
-                <Text style={styles.valueMuted}>
-                  {r.owner_a_name} {r.all_time_wins_a}-{r.all_time_wins_b} {r.owner_b_name}
-                </Text>
-              </View>
-            ))}
+        {games.map((m, i) => (
+          <PreviewLink
+            key={m.matchup_id}
+            href={{ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } }}
+            style={[styles.row, i > 0 && styles.divided]}
+            pressedStyle={styles.pressed}>
+            <View style={styles.rowLeft}>
+              <Text>{m.rivalry?.emoji ?? '⚔️'}</Text>
+              <Text style={[styles.name, styles.medium]}>{m.rivalry?.name}</Text>
+            </View>
+            <Text style={styles.valueMuted}>
+              {m.head_to_head.wins_home}-{m.head_to_head.wins_away}
+            </Text>
+          </PreviewLink>
+        ))}
       </ListPanel>
     </View>
   );

@@ -31,12 +31,11 @@ import {
   useMyWeek,
   useNflScoreboard,
   usePreferences,
-  useRivalries,
   useSeasonWeek,
   useStandings,
 } from '@/lib/queries';
 import { buildKickoffCountdownItem, buildLeagueTickerItems, buildTickerItems } from '@/lib/ticker';
-import type { Rivalry, YourWeek } from '@/lib/types';
+import type { YourWeek } from '@/lib/types';
 
 // The web's DEFAULT_HOME_CARD_ORDER (frontend/src/components/
 // HomeCardDeck.tsx). An owner's saved order (preferences.home_card_order,
@@ -87,7 +86,6 @@ function HomeScreenContent() {
   const recap = useHomeRecap(season, week).data ?? null;
   const leagueTicker = useLeagueTicker(season, week).data ?? [];
   const powerRankings = useLatestPowerRankings(season).data?.rankings ?? [];
-  const rivalries = useRivalries().data ?? [];
   const draftDone = myWeek.data?.draft?.status === 'complete';
   const chugDeadline = useChugDeadline(draftDone).data ?? null;
   const chugFeed = useChugFeed(season).data ?? [];
@@ -139,10 +137,8 @@ function HomeScreenContent() {
         <PowerRankingsCard rankings={powerRankings} waiting={powerRankings.length === 0} />
       ) : null,
     matchups: otherMatchups.length > 0 ? <OtherMatchupsCard matchups={otherMatchups} isGameDay={isGameDay} /> : null,
-    rivalries:
-      rivalryGames.length > 0 || rivalries.length > 0 ? (
-        <RivalriesCard games={rivalryGames} top={topRivalries(rivalries)} />
-      ) : null,
+    // Only when a rivalry matchup is actually on this week's schedule.
+    rivalries: rivalryGames.length > 0 ? <RivalriesCard games={rivalryGames} /> : null,
     chugFeed: houseRules?.chugEnabled && chugFeed.length > 0 ? <ChugFeedCard chugs={chugFeed} /> : null,
     activity: activity.length > 0 ? <ActivityCard items={activity} /> : null,
     discover: <DiscoverCard ringColor={appearance.ring} />,
@@ -197,13 +193,6 @@ function HomeScreenContent() {
       )}
     </ScrollView>
   );
-}
-
-// The web sorts by rivalry tier (frontend/src/app/(home)/page.tsx
-// TIER_RANK) and shows the top three.
-const TIER_RANK: Record<string, number> = { Legendary: 0, Historic: 1, Developing: 2 };
-function topRivalries(rivalries: Rivalry[]) {
-  return [...rivalries].sort((a, b) => (TIER_RANK[a.tier ?? ''] ?? 3) - (TIER_RANK[b.tier ?? ''] ?? 3)).slice(0, 3);
 }
 
 // The hero, or the web's EmptyHero when there's no matchup to show.
