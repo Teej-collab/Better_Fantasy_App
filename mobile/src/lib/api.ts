@@ -192,6 +192,12 @@ export type ReportReason = 'harassment' | 'hate' | 'sexual' | 'spam' | 'other';
 
 export const api = {
   me: () => request<Me>('/auth/me'),
+  // "Played here before with Discord?" (2026-10): a ticket naming this
+  // account for the Discord sign-in, then the confirmation that moves this
+  // login onto the original account and returns its session.
+  discordLinkTicket: () => request<{ ticket: string }>('/auth/link/discord-ticket', { method: 'POST' }),
+  confirmDiscordLink: (ticket: string) =>
+    request<{ token: string }>('/auth/link/confirm', { method: 'POST', body: JSON.stringify({ ticket }) }),
   redeemNativeTicket: (ticket: string) =>
     request<{ token: string }>('/auth/native/redeem', { method: 'POST', body: JSON.stringify({ ticket }) }),
   // Sign in with Apple: the identity token from the system sheet, which

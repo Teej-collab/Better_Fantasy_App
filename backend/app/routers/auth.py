@@ -11,11 +11,13 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.auth import apple_signin, discord_oauth, google_oauth
+from app.domain import account_link
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
 from app.auth.league_context import is_site_admin, resolve_owner_id
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
@@ -59,6 +61,13 @@ STATE_COOKIE_MAX_AGE_SECONDS = 600  # just needs to survive the round trip to Di
 # secrets.token_urlsafe() output is always letters/digits/-/_, never a
 # colon, so partitioning on ":" is unambiguous.
 NATIVE_OAUTH_TICKET_PURPOSE = "native_oauth"
+# "Played here before with Discord? Verify with Discord" (2026-10): a new
+# login (Apple/Google/email) proves it's the same person as a Discord
+# account, and gets moved onto it (app/domain/account_link.py).
+LINK_TICKET_PURPOSE = "link_discord"
+LINK_COOKIE_NAME = "oauth_link"
+LINK_TICKET_MAX_AGE_SECONDS = 600
+LINK_CONFIRM_PURPOSE = "link_confirm"
 
 
 def _resolve_client_type(state: str) -> str:
@@ -82,8 +91,63 @@ def _native_error_url(error_code: str) -> str:
     return f"{_native_callback_base()}/native-complete?error={error_code}"
 
 
+@router.post("/link/discord-ticket")
+async def discord_link_ticket(request: Request):
+    """A short-lived ticket naming the signed-in account, for
+    /auth/discord/login?link=… — so the Discord sign-in that follows can
+    move this login onto the person's original (Discord) account."""
+    token = get_session_token(request)
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token) if token else None
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    ticket = create_ticket_token(
+        config.session_secret,
+        purpose=LINK_TICKET_PURPOSE,
+        user_id=payload["user_id"],
+        owner_id=None,
+        discord_user_id=None,
+        is_commissioner=False,
+        max_age_seconds=LINK_TICKET_MAX_AGE_SECONDS,
+        jti=secrets.token_urlsafe(16),
+    )
+    return {"ticket": ticket}
+
+
+class LinkConfirmRequest(BaseModel):
+    ticket: str
+
+
+@router.post("/link/confirm")
+async def confirm_discord_link(body: LinkConfirmRequest, request: Request):
+    """Finishes "Verify with Discord": moves the signed-in (newer) login
+    onto the Discord account the person just proved is theirs, and returns
+    a session for that original account."""
+    config = SessionConfig()
+    token = get_session_token(request)
+    session = decode_session_token(config.session_secret, token) if token else None
+    if session is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    payload = decode_ticket_token(config.session_secret, body.ticket, LINK_CONFIRM_PURPOSE)
+    if payload is None:
+        raise HTTPException(status_code=400, detail="That Discord check expired. Try again.")
+    if payload["source_user_id"] != session["user_id"]:
+        raise HTTPException(status_code=403, detail="That Discord check was started from a different account.")
+    target_user_id = payload["target_user_id"]
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if target_user_id != session["user_id"]:
+            try:
+                await account_link.link_login_into(conn, session["user_id"], target_user_id)
+            except account_link.AccountLinkError as e:
+                raise HTTPException(status_code=409, detail=str(e))
+        token_version = await auth_queries.get_token_version(conn, target_user_id)
+        owner_id = await auth_queries.get_owner_id_for_user(conn, target_user_id)
+    return {"token": create_session_token(config.session_secret, user_id=target_user_id, owner_id=owner_id, token_version=token_version)}
+
+
 @router.get("/discord/login")
-async def discord_login(client: str = "web"):
+async def discord_login(client: str = "web", link: str | None = None):
     if client not in ("web", "native"):
         raise HTTPException(status_code=400, detail="client must be 'web' or 'native'")
     config = DiscordAuthConfig()
@@ -94,6 +158,14 @@ async def discord_login(client: str = "web"):
         httponly=True, max_age=STATE_COOKIE_MAX_AGE_SECONDS,
         samesite="lax", secure=config.cookie_secure,
     )
+    if link:
+        if decode_ticket_token(config.session_secret, link, LINK_TICKET_PURPOSE) is None:
+            raise HTTPException(status_code=400, detail="That link request expired. Try again.")
+        response.set_cookie(
+            LINK_COOKIE_NAME, link,
+            httponly=True, max_age=STATE_COOKIE_MAX_AGE_SECONDS,
+            samesite="lax", secure=config.cookie_secure,
+        )
     return response
 
 
@@ -125,7 +197,31 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         user_id = await auth_queries.get_or_create_user_for_owner(
             conn, owner["owner_id"], discord_user_id, discord_username
         )
+
         token_version = await auth_queries.get_token_version(conn, user_id)
+
+    # Verifying with Discord from a newer login (the app): nothing is
+    # merged here. The app gets a confirmation ticket naming both
+    # accounts and must hand it back to /auth/link/confirm while still
+    # signed in as the newer one — so a crafted link opened on someone
+    # else's phone can never attach a stranger's login to their account.
+    link_ticket = request.cookies.get(LINK_COOKIE_NAME)
+    link_payload = decode_ticket_token(config.session_secret, link_ticket, LINK_TICKET_PURPOSE) if link_ticket else None
+    if client_type == "native" and link_payload is not None:
+        confirm = jwt.encode(
+            {
+                "purpose": LINK_CONFIRM_PURPOSE,
+                "source_user_id": link_payload["user_id"],
+                "target_user_id": user_id,
+                "exp": datetime.now(timezone.utc) + timedelta(seconds=LINK_TICKET_MAX_AGE_SECONDS),
+            },
+            config.session_secret,
+            algorithm="HS256",
+        )
+        response = RedirectResponse(f"{_native_callback_base()}/native-complete?link={confirm}")
+        response.delete_cookie(STATE_COOKIE_NAME)
+        response.delete_cookie(LINK_COOKIE_NAME)
+        return response
 
     is_commissioner = (
         config.commissioner_discord_id is not None
@@ -149,6 +245,7 @@ async def discord_callback(request: Request, code: str | None = None, state: str
         )
         response = RedirectResponse(_native_completion_url(ticket))
         response.delete_cookie(STATE_COOKIE_NAME)
+        response.delete_cookie(LINK_COOKIE_NAME)
         return response
 
     token = create_session_token(

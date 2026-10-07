@@ -28,6 +28,7 @@ const CALLBACK_URL = 'weekendleague://auth';
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_a_league_member: "That Discord account isn't linked to a league member yet.",
+  link_failed: "Couldn't link your accounts. Ask your commissioner for help.",
 };
 
 type SignInResult = { ok: true } | { ok: false; canceled: boolean; message?: string };
@@ -38,6 +39,10 @@ type AuthState = {
   signInWithDiscord: () => Promise<SignInResult>;
   signInWithGoogle: () => Promise<SignInResult>;
   signInWithApple: () => Promise<SignInResult>;
+  // Signed in with a newer login (Apple/Google/email) but your history is on
+  // your original Discord account: verify with Discord and this login moves
+  // onto that account (backend/app/domain/account_link.py).
+  linkWithDiscord: () => Promise<SignInResult>;
   // For a session token from email sign-in/sign-up, or the refreshed one
   // claiming a team or redeeming a co-owner invite hands back.
   signInWithToken: (token: string) => Promise<void>;
@@ -147,11 +152,36 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     }
   }, [applyToken]);
 
+  const linkWithDiscord = useCallback(async (): Promise<SignInResult> => {
+    let ticket: string;
+    try {
+      ticket = (await api.discordLinkTicket()).ticket;
+    } catch {
+      return { ok: false, canceled: false, message: "Couldn't start the Discord check. Try again." };
+    }
+    const result = await WebBrowser.openAuthSessionAsync(
+      `${API_BASE_URL}/auth/discord/login?client=native&link=${encodeURIComponent(ticket)}`,
+      CALLBACK_URL,
+    );
+    if (result.type !== 'success') return { ok: false, canceled: true };
+    const error = queryParam(result.url, 'error');
+    if (error) return { ok: false, canceled: false, message: ERROR_MESSAGES[error] ?? 'Something went wrong with Discord.' };
+    const confirm = queryParam(result.url, 'link');
+    if (!confirm) return { ok: false, canceled: false, message: 'Something went wrong with Discord.' };
+    try {
+      const { token: sessionToken } = await api.confirmDiscordLink(confirm);
+      await applyToken(sessionToken);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, canceled: false, message: e instanceof Error ? e.message : "Couldn't link your accounts." };
+    }
+  }, [applyToken]);
+
   const signInWithToken = useCallback((next: string) => applyToken(next), [applyToken]);
 
   const value = useMemo(
-    () => ({ token, signInWithDiscord, signInWithGoogle, signInWithApple, signInWithToken, signOut }),
-    [token, signInWithDiscord, signInWithGoogle, signInWithApple, signInWithToken, signOut],
+    () => ({ token, signInWithDiscord, signInWithGoogle, signInWithApple, linkWithDiscord, signInWithToken, signOut }),
+    [token, signInWithDiscord, signInWithGoogle, signInWithApple, linkWithDiscord, signInWithToken, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

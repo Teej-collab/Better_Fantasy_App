@@ -127,6 +127,7 @@ export default function JoinScreen() {
           <Title>Who are you here?</Title>
           <Sub>Played here before? Claim your team and your whole history comes with it.</Sub>
         </View>
+        <VerifyWithDiscord />
         {unclaimed.length > 0 && (
           <View style={styles.list}>
             <Kicker>Claim your history</Kicker>
@@ -238,6 +239,10 @@ function initials(name: string): string {
 }
 
 const styles = StyleSheet.create({
+  discordBox: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: 14, borderWidth: 1, borderColor: '#5865F2', backgroundColor: 'rgba(88,101,242,0.12)' },
+  discordTitle: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  discordSub: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+  discordAction: { color: '#aab2ff', fontSize: 15, fontWeight: '700' },
   head: { gap: Spacing.sm },
   list: { gap: Spacing.sm },
   claim: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
@@ -246,3 +251,32 @@ const styles = StyleSheet.create({
   initialsText: { color: '#aab2bf', fontWeight: '700' },
   claimName: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
 });
+
+// Your history is on your original Discord account, so it isn't in the
+// list above (the real case: League #1 started on Discord). Verifying with
+// Discord moves this new login onto that account (lib/auth.tsx).
+function VerifyWithDiscord() {
+  const { linkWithDiscord } = useAuth();
+  const [busy, setBusy] = useState(false);
+  async function verify() {
+    setBusy(true);
+    const result = await linkWithDiscord();
+    setBusy(false);
+    if (result.ok) {
+      haptics.success();
+      await queryClient.invalidateQueries();
+      router.replace('/');
+    } else if (!result.canceled) {
+      Alert.alert("Couldn't verify with Discord", result.message);
+    }
+  }
+  return (
+    <Pressable onPress={() => void verify()} disabled={busy} style={({ pressed }) => [styles.discordBox, (pressed || busy) && { opacity: 0.6 }]} accessibilityRole="button">
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.discordTitle}>Played here before with Discord?</Text>
+        <Text style={styles.discordSub}>Don&apos;t see your name? Verify with Discord and your history comes with you.</Text>
+      </View>
+      <Text style={styles.discordAction}>{busy ? 'Checking…' : 'Verify'}</Text>
+    </Pressable>
+  );
+}
