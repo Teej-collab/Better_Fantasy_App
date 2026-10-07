@@ -123,7 +123,29 @@ def require_livekit_configured() -> tuple[str, str, str]:
 APNS_KEY_ID = os.getenv("APNS_KEY_ID")
 APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID")
-APNS_KEY_CONTENT = os.getenv("APNS_KEY_CONTENT")
+APNS_KEY_CONTENT_RAW = os.getenv("APNS_KEY_CONTENT")
+
+
+def normalize_pem_key(raw: str | None) -> str | None:
+    """The .p8 key as a proper PEM, however it was pasted into the host's
+    variables box (2026-10): real line breaks, literal "\\n" escapes,
+    surrounding quotes, everything on one line, or only the base64 body
+    without the BEGIN/END lines all work."""
+    if not raw:
+        return None
+    text = raw.strip().strip('"').strip("'").replace("\\n", "\n")
+    body = (
+        text.replace("-----BEGIN PRIVATE KEY-----", "")
+        .replace("-----END PRIVATE KEY-----", "")
+    )
+    body = "".join(body.split())
+    if not body:
+        return None
+    lines = [body[i:i + 64] for i in range(0, len(body), 64)]
+    return "-----BEGIN PRIVATE KEY-----\n" + "\n".join(lines) + "\n-----END PRIVATE KEY-----\n"
+
+
+APNS_KEY_CONTENT = normalize_pem_key(APNS_KEY_CONTENT_RAW)
 
 
 def require_apns_configured() -> tuple[str, str, str, str]:
