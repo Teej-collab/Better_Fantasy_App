@@ -674,6 +674,11 @@ export const api = {
         ...(options?.format ?? {}),
       }),
     }),
+  // Which sign-in buttons to show (Google once it's set up server-side).
+  signInProviders: () => request<{ google: boolean }>('/auth/providers'),
+  // The "Custom" option on Create a League: goes to the site admin.
+  requestCustomLeague: (message: string) =>
+    request<{ status: string }>('/leagues/custom-request', { method: 'POST', body: JSON.stringify({ message }) }),
   // Every league format option and whether a new league can pick it yet.
   leagueFormats: () => request<FormatOptions>('/leagues/formats'),
   // `inviteCode` may be a bare code or a pasted join link.

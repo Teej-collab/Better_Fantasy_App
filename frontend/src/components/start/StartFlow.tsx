@@ -28,6 +28,7 @@ import {
   createTeam,
   getLeagueFormats,
   getMyLeagues,
+  requestCustomLeague,
   getUnclaimedOwners,
   joinLeague,
   previewLeague,
@@ -56,7 +57,7 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 // Everything here is an existing endpoint (backend app/routers/
 // leagues.py); /leagues stays as the full management page.
 
-type View = "home" | "join" | "joinTeam" | "create1" | "createType" | "create2" | "create3" | "invite";
+type View = "home" | "join" | "joinTeam" | "create1" | "createType" | "createCustom" | "create2" | "create3" | "invite";
 
 const TEAM_COUNTS = [8, 10, 12, 14];
 const SCORING: { key: ScoringPreset; label: string }[] = [
@@ -102,6 +103,8 @@ export function StartFlow({
   const [draftType, setDraftType] = useState<DraftType>("snake");
   const [typeSettings, setTypeSettings] = useState<Record<string, number>>({});
   const [formats, setFormats] = useState<FormatOptions | null>(null);
+  const [customText, setCustomText] = useState("");
+  const [customSent, setCustomSent] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [created, setCreated] = useState<League | null>(null);
 
@@ -491,10 +494,77 @@ export function StartFlow({
             );
           })}
         </div>
+        <button
+          type="button"
+          onClick={() => go("createCustom")}
+          className="flex items-center gap-3 rounded-xl border border-dashed border-[#2a303a] p-4 text-left text-sm leading-snug text-[#aab2bf]"
+        >
+          <span className={styles.typeIcon}>
+            <PlusIcon />
+          </span>
+          <span>
+            <strong className="text-[color:var(--wl-text)]">Something custom?</strong> Tell us the league you want and we&apos;ll help
+            set it up.
+          </span>
+        </button>
         <p className="text-sm text-[color:var(--wl-text-secondary)]">You can&apos;t switch types once the draft starts.</p>
         <button type="button" className={`${styles.neon} mt-auto`} onClick={() => go("create2")}>
           Continue
         </button>
+      </>
+    );
+  }
+
+  if (view === "createCustom") {
+    content = (
+      <>
+        <Top onBack={() => go("createType")} step={2} />
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>Create a league · Custom</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Describe your league</h1>
+          <p className={styles.sub}>
+            Scoring quirks, a format we don&apos;t list, house rules — tell us and we&apos;ll get back to you to set it up.
+          </p>
+        </div>
+        {customSent ? (
+          <div className={styles.card} style={{ borderColor: "color-mix(in srgb, var(--wl-accent) 45%, transparent)" }}>
+            <span className="flex items-center gap-2 text-xs font-bold tracking-wider text-[color:var(--wl-accent)] uppercase">
+              <CheckIcon /> Sent
+            </span>
+            <span className="text-sm text-[#aab2bf]">We got it and will reach out. You can still create a league now and change it later.</span>
+          </div>
+        ) : (
+          <label className={styles.label}>
+            Your league
+            <textarea
+              className={`${styles.field} min-h-40 py-3`}
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              maxLength={2000}
+              placeholder="e.g. 14 teams, 2 divisions, 3-QB lineups, a bonus for every 50-yard field goal…"
+            />
+          </label>
+        )}
+        {error && <p className={styles.error}>{error}</p>}
+        {customSent ? (
+          <button type="button" className={`${styles.neon} mt-auto`} onClick={() => go("createType")}>
+            Back to league types
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`${styles.neon} mt-auto`}
+            disabled={!customText.trim() || busy}
+            onClick={() =>
+              run(async () => {
+                await requestCustomLeague(customText.trim());
+                setCustomSent(true);
+              })
+            }
+          >
+            {busy ? "Sending…" : "Send request"}
+          </button>
+        )}
       </>
     );
   }

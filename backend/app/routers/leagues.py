@@ -9,6 +9,7 @@ draft setup (POST /draft/setup) and scoring already work per-league as
 of Phase 4, so nothing else needs to change for a self-serve league to
 become fully playable once it has teams.
 """
+import html
 import re
 from urllib.parse import unquote
 
@@ -20,6 +21,9 @@ from app.auth.league_context import require_commissioner_of, resolve_owner_id
 from app.auth.session import create_session_token, decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
+from app import monitoring
+from app.notifications import admin_alerts
+from app.notifications import email as email_notifications
 from app.domain import league_format
 from app.queries import auth as auth_queries
 from app.queries import chat as chat_queries
@@ -56,6 +60,45 @@ def _league_dict(row, role: str | None = None) -> dict:
     if role is not None:
         d["role"] = role
     return d
+
+
+class CustomLeagueRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/custom-request")
+async def request_custom_league(body: CustomLeagueRequest, request: Request):
+    """The Create a League flow's "Custom" option (2026-10): someone
+    describes the league they want and it reaches the site admin — in
+    the feedback inbox, as an admin push, and by email."""
+    payload = _require_session(request)
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Tell us about the league you want")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow("SELECT display_name, email FROM users WHERE id = $1", payload["user_id"])
+        owner_id = await resolve_owner_id(conn, payload)
+        owner_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id) if owner_id else None
+        name = owner_name or (user["display_name"] if user else None) or "Someone"
+        email = user["email"] if user else None
+        await conn.execute(
+            "INSERT INTO feedback (user_id, submitted_by, message, page_url) VALUES ($1, $2, $3, $4)",
+            payload["user_id"], name, f"[Custom league request] {message}", "/start?create=custom",
+        )
+        if monitoring.is_test_request(request):
+            return {"status": "ok"}
+        try:
+            await admin_alerts.alert_feedback(conn, name, f"Custom league request: {message}", False, owner_id)
+        except Exception:
+            pass
+    safe = html.escape(message).replace("\n", "<br>")
+    await email_notifications.send_admin_alert(
+        f"Custom league request from {name}",
+        f"<p><b>{html.escape(name)}</b>{f' ({html.escape(email)})' if email else ''} wants a custom league:</p>"
+        f"<blockquote>{safe}</blockquote>",
+    )
+    return {"status": "ok"}
 
 
 @router.get("/formats")

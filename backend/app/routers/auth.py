@@ -184,6 +184,13 @@ async def discord_callback(request: Request, code: str | None = None, state: str
     return response
 
 
+@router.get("/providers")
+async def sign_in_providers():
+    """Which sign-in buttons the apps should show — Google only once its
+    OAuth keys are set on the server (2026-10)."""
+    return {"google": all(os.getenv(k) for k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"))}
+
+
 @router.get("/google/login")
 async def google_login(client: str = "web"):
     if client not in ("web", "native"):

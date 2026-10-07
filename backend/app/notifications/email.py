@@ -53,3 +53,20 @@ async def send_password_reset_email(to_email: str, reset_url: str) -> None:
         )
     except Exception:
         logger.exception("Password reset email failed to send to %s", to_email)
+
+
+async def send_admin_alert(subject: str, html_body: str) -> bool:
+    """A message for the site admin (ADMIN_ALERT_EMAIL) — e.g. a custom
+    league request from the Create a League flow (2026-10). Best-effort:
+    returns whether it went out, never raises."""
+    import os
+
+    to_email = os.getenv("ADMIN_ALERT_EMAIL")
+    if not to_email:
+        return False
+    try:
+        await _send(to_email, subject, html_body)
+        return True
+    except Exception:
+        logger.exception("Admin alert email failed: %s", subject)
+        return False

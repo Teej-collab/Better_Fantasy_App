@@ -1,5 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -97,7 +97,11 @@ function ChoiceStage({ onChoose, onBack }: { onChoose: (v: Variant) => void; onB
 
 // The web's SignInCard: Discord, or email (sign in / create account).
 function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: () => void; onForgot: () => void }) {
-  const { signInWithDiscord, signInWithToken } = useAuth();
+  const { signInWithDiscord, signInWithGoogle, signInWithToken } = useAuth();
+  const [googleOn, setGoogleOn] = useState(false);
+  useEffect(() => {
+    api.signInProviders().then((p) => setGoogleOn(p.google)).catch(() => {});
+  }, []);
   const intent = variant !== 'signin';
   const [showEmail, setShowEmail] = useState(intent);
   const [mode, setMode] = useState<'signin' | 'signup'>(intent ? 'signup' : 'signin');
@@ -108,10 +112,11 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onDiscord() {
+  async function onProvider(signIn: () => Promise<{ ok: boolean; canceled?: boolean; message?: string }>) {
     setBusy(true);
     setError(null);
-    const result = await signInWithDiscord();
+    if (intent) setPendingLeagueIntent(variant as 'join' | 'create');
+    const result = await signIn();
     // On success the root layout's guard swaps to the app; nothing to do.
     if (!result.ok && !result.canceled) {
       haptics.error();
@@ -155,7 +160,12 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
 
       {!showEmail ? (
         <>
-          <Pressable onPress={onDiscord} disabled={busy} style={({ pressed }) => [styles.discord, (pressed || busy) && styles.pressed]}>
+          {googleOn && (
+            <Pressable onPress={() => onProvider(signInWithGoogle)} disabled={busy} style={({ pressed }) => [styles.google, (pressed || busy) && styles.pressed]}>
+              <Text style={styles.googleText}>Continue with Google</Text>
+            </Pressable>
+          )}
+          <Pressable onPress={() => onProvider(signInWithDiscord)} disabled={busy} style={({ pressed }) => [styles.discord, (pressed || busy) && styles.pressed]}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.discordText}>Continue with Discord</Text>}
           </Pressable>
           <View style={styles.orRow}>
@@ -350,6 +360,8 @@ const styles = StyleSheet.create({
     padding: Spacing.xl + 4,
   },
   discord: { backgroundColor: Colors.discord, borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center' },
+  google: { backgroundColor: '#ffffff', borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center', marginBottom: Spacing.sm },
+  googleText: { color: '#1f1f1f', fontSize: 15, fontWeight: '600' },
   discordText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   orRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   orLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },

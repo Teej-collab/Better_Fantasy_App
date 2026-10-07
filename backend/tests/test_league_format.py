@@ -219,3 +219,20 @@ async def test_scoring_editor_adds_catalog_stats_and_lists_them(pool):
     assert request.status_code == 200
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM feedback WHERE message LIKE $1", f"%league {league['id']}]%")
+
+
+async def test_custom_league_request_lands_in_the_feedback_inbox(pool):
+    async with _client() as client:
+        await _sign_up(client, f"test-format-custom-{uuid.uuid4().hex[:8]}@example.com")
+        resp = await client.post("/leagues/custom-request", json={"message": "Test custom: 3-QB, two divisions"})
+        empty = await client.post("/leagues/custom-request", json={"message": "   "})
+        providers = (await client.get("/auth/providers")).json()
+    assert resp.status_code == 200
+    assert empty.status_code in (400, 422)
+    assert set(providers) == {"google"}
+    async with pool.acquire() as conn:
+        row = await conn.fetchval(
+            "SELECT id FROM feedback WHERE message = '[Custom league request] Test custom: 3-QB, two divisions'"
+        )
+        await conn.execute("DELETE FROM feedback WHERE id = $1", row)
+    assert row is not None

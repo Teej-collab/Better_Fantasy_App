@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -63,6 +63,10 @@ export default function CreateScreen() {
   const [draftType, setDraftType] = useState<DraftType>('snake');
   const [typeSettings, setTypeSettings] = useState<Record<string, number>>({});
   const [formats, setFormats] = useState<FormatOptions | null>(null);
+  // The "Something custom?" form on step 2.
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const [customSent, setCustomSent] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -281,6 +285,59 @@ export default function CreateScreen() {
     );
   }
 
+  if (step === 2 && customOpen) {
+    async function sendCustom() {
+      setBusy(true);
+      setError(null);
+      try {
+        await api.requestCustomLeague(customText.trim());
+        haptics.success();
+        setCustomSent(true);
+      } catch (e) {
+        haptics.error();
+        setError(e instanceof Error ? e.message : "Couldn't send that — try again.");
+      } finally {
+        setBusy(false);
+      }
+    }
+    return (
+      <StartScreen
+        footer={
+          customSent ? (
+            <NeonButton label="Back to league types" onPress={() => setCustomOpen(false)} />
+          ) : (
+            <NeonButton label="Send request" onPress={() => void sendCustom()} disabled={!customText.trim()} busy={busy} />
+          )
+        }>
+        <Stack.Screen options={{ title: 'Create a League' }} />
+        <StepDots step={2} total={4} />
+        <View style={styles.head}>
+          <Kicker>Create a league · Custom</Kicker>
+          <Title>Describe your league</Title>
+          <Sub>Scoring quirks, a format we don&apos;t list, house rules — tell us and we&apos;ll get back to you to set it up.</Sub>
+        </View>
+        {customSent ? (
+          <View style={[startStyles.card, startStyles.cardLit]}>
+            <Text style={startStyles.foundText}>Sent</Text>
+            <Text style={startStyles.muted}>We got it and will reach out. You can still create a league now and change it later.</Text>
+          </View>
+        ) : (
+          <TextInput
+            value={customText}
+            onChangeText={setCustomText}
+            multiline
+            maxLength={2000}
+            placeholder="e.g. 14 teams, 2 divisions, 3-QB lineups, a bonus for every 50-yard field goal…"
+            placeholderTextColor={Colors.textSecondary}
+            style={styles.customInput}
+          />
+        )}
+        {error && <Text style={startStyles.error}>{error}</Text>}
+        {!customSent && <GhostButton label="Back" onPress={() => setCustomOpen(false)} />}
+      </StartScreen>
+    );
+  }
+
   if (step === 2) {
     return (
       <StartScreen footer={<NeonButton label="Continue" onPress={() => setStep(3)} />}>
@@ -321,6 +378,14 @@ export default function CreateScreen() {
             );
           })}
         </View>
+        <Pressable onPress={() => setCustomOpen(true)} style={styles.customCard} accessibilityRole="button">
+          <View style={styles.typeIcon}>
+            <Icon name="plus" color={Colors.accent} size={20} />
+          </View>
+          <Text style={[startStyles.muted, styles.flex]}>
+            <Text style={styles.switchTitle}>Something custom?</Text> Tell us the league you want and we&apos;ll help set it up.
+          </Text>
+        </Pressable>
         <Text style={styles.note}>You can&apos;t switch types once the draft starts.</Text>
         <GhostButton label="Back" onPress={() => setStep(1)} />
       </StartScreen>
@@ -419,6 +484,8 @@ const styles = StyleSheet.create({
   stepBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.tile, alignItems: 'center', justifyContent: 'center' },
   stepText: { color: Colors.text, fontSize: 18, lineHeight: 20 },
   stepValue: { color: Colors.text, fontFamily: Fonts.monoBold, fontSize: 15, minWidth: 40, textAlign: 'center' },
+  customCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 14, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: '#2a303a' },
+  customInput: { minHeight: 160, borderRadius: 12, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.tile, color: Colors.text, fontSize: 16, padding: 14, textAlignVertical: 'top' },
   typeCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.surface },
   typeCardOn: { borderWidth: 2, borderColor: Colors.accent, backgroundColor: 'rgba(57,255,20,0.07)', padding: 13 },
   typeIcon: { width: 40, height: 40, borderRadius: 11, backgroundColor: Colors.tile, alignItems: 'center', justifyContent: 'center' },

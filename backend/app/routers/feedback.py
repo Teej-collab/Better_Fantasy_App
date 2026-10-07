@@ -14,6 +14,8 @@ concept every other admin-ish surface in this app already uses
 (app/auth/league_context.py's require_league_commissioner), not a new
 authorization concept invented just for this.
 """
+import html
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -24,6 +26,7 @@ from app.db import get_pool
 from app.image_url import validate_blob_image_url
 from app import monitoring
 from app.notifications import admin_alerts
+from app.notifications import email as email_notifications
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -88,6 +91,13 @@ async def submit_feedback(body: FeedbackRequest, request: Request):
         async def alert():
             async with pool.acquire() as conn:
                 await admin_alerts.alert_feedback(conn, submitted_by, message, bool(image_url), owner_id)
+            # And by email (Resend, ADMIN_ALERT_EMAIL — 2026-10).
+            body = html.escape(message).replace("\n", "<br>") or "(no text)"
+            await email_notifications.send_admin_alert(
+                f"Feedback from {submitted_by}",
+                f"<p><b>{html.escape(submitted_by)}</b> sent feedback:</p><blockquote>{body}</blockquote>"
+                + (f'<p><a href="{html.escape(image_url)}">Attached image</a></p>' if image_url else ""),
+            )
 
         monitoring.run_in_background(alert())
     return {"status": "ok"}

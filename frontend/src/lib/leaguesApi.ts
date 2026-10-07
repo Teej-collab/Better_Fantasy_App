@@ -145,6 +145,12 @@ export async function createLeague(
   });
 }
 
+// The Create a League flow's "Custom" option: describe the league you
+// want, and it goes to the site admin.
+export async function requestCustomLeague(message: string): Promise<void> {
+  await post("/leagues/custom-request", { message });
+}
+
 // Every league format option and whether a new league can pick it yet.
 export async function getLeagueFormats(): Promise<FormatOptions> {
   return get<FormatOptions>("/leagues/formats");

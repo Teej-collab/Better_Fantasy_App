@@ -22,6 +22,7 @@ type AuthState = {
   // undefined while the saved token is still being read.
   token: string | null | undefined;
   signInWithDiscord: () => Promise<SignInResult>;
+  signInWithGoogle: () => Promise<SignInResult>;
   // For a session token from email sign-in/sign-up, or the refreshed one
   // claiming a team or redeeming a co-owner invite hands back.
   signInWithToken: (token: string) => Promise<void>;
@@ -74,11 +75,13 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     return () => setUnauthorizedHandler(null);
   }, [applyToken, onSignOut]);
 
-  const signInWithDiscord = useCallback(async (): Promise<SignInResult> => {
+  // Discord and Google run the same flow (backend /auth/{provider}/login
+  // ?client=native → a ticket on the weekendleague:// callback).
+  const signInWith = useCallback(async (provider: 'discord' | 'google'): Promise<SignInResult> => {
     // iOS runs this in an in-app sign-in sheet (ASWebAuthenticationSession)
     // that closes itself when the backend redirects to CALLBACK_URL.
     const result = await WebBrowser.openAuthSessionAsync(
-      `${API_BASE_URL}/auth/discord/login?client=native`,
+      `${API_BASE_URL}/auth/${provider}/login?client=native`,
       CALLBACK_URL,
     );
     if (result.type !== 'success') return { ok: false, canceled: true };
@@ -96,12 +99,14 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
       return { ok: false, canceled: false, message: 'That sign-in link expired. Try again.' };
     }
   }, [applyToken]);
+  const signInWithDiscord = useCallback(() => signInWith('discord'), [signInWith]);
+  const signInWithGoogle = useCallback(() => signInWith('google'), [signInWith]);
 
   const signInWithToken = useCallback((next: string) => applyToken(next), [applyToken]);
 
   const value = useMemo(
-    () => ({ token, signInWithDiscord, signInWithToken, signOut }),
-    [token, signInWithDiscord, signInWithToken, signOut],
+    () => ({ token, signInWithDiscord, signInWithGoogle, signInWithToken, signOut }),
+    [token, signInWithDiscord, signInWithGoogle, signInWithToken, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
