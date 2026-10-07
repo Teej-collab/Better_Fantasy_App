@@ -24,7 +24,7 @@ def compute_chugs_owed(roster_rows: list[dict]) -> int:
     return sum(
         1
         for row in roster_rows
-        if row["lineup_slot"] not in ("BE", "IR")
+        if row["lineup_slot"] not in ("BE", "IR", "TAXI")
         and (row["points_scored"] or 0) <= 0
     )
 

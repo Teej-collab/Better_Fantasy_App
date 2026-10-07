@@ -13,11 +13,25 @@ const SLOT_LABELS: Record<string, string> = {
   WR: "WR",
   TE: "TE",
   "RB/WR/TE": "Flex (RB/WR/TE)",
+  "QB/RB/WR/TE": "Superflex (QB/RB/WR/TE)",
   "D/ST": "D/ST",
   K: "K",
+  DL: "DL",
+  LB: "LB",
+  DB: "DB",
+  IDP: "IDP flex (DL/LB/DB)",
   BE: "Bench",
   IR: "IR",
+  TAXI: "Taxi squad",
 };
+// Rows to show: the standard shape plus Superflex, and the IDP/taxi
+// rows only in a league that uses them (league formats, 2026-10).
+const OPTIONAL_ROWS = ["DL", "LB", "DB", "IDP", "TAXI"];
+function slotRows(values: Record<string, unknown>): string[] {
+  const base = ["QB", "RB", "WR", "TE", "RB/WR/TE", "QB/RB/WR/TE", "D/ST", "K"];
+  const extra = OPTIONAL_ROWS.filter((k) => k !== "TAXI" && Number(values[k] ?? 0) > 0);
+  return [...base, ...extra, "BE", "IR", ...(Number(values.TAXI ?? 0) > 0 ? ["TAXI"] : [])];
+}
 
 // Only real player positions get a roster cap (autopick's guardrail —
 // see backend/app/domain/draft_autopick.py) — a slot label like Flex/
@@ -108,7 +122,7 @@ export function RosterSlotsSection() {
       )}
 
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-        {Object.keys(DEFAULT_ROSTER_SLOTS).map((key) => {
+        {slotRows(values).map((key) => {
           const position = SLOT_TO_POSITION[key];
           return (
             <label key={key} className="flex items-center justify-between gap-2 text-sm">

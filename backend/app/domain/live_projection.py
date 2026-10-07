@@ -115,7 +115,7 @@ def live_projection(
     return round(scored + share_left * rest_of_game_rate * factor, 2)
 
 
-_NON_STARTER_SLOTS = ("BE", "IR")
+_NON_STARTER_SLOTS = ("BE", "IR", "TAXI")
 
 
 def live_team_total(roster_rows, game_clock: dict[str, dict], injuries: dict[str, str] | None = None) -> float:

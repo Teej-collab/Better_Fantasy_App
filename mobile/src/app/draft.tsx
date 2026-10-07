@@ -12,7 +12,7 @@ import { api, draftSocketUrl } from '@/lib/api';
 import { formatPoints } from '@/lib/format';
 import { positionColor } from '@/lib/positionColors';
 import { openPlayer, queryClient, useDraftPool, useDraftQueue, useDraftState, useMe } from '@/lib/queries';
-import type { DraftChatMessage, DraftPick, DraftPoolPlayer, DraftState } from '@/lib/types';
+import type { AuctionState, DraftChatMessage, DraftPick, DraftPoolPlayer, DraftState } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 2000;
 const POSITIONS: { label: string; value: string | undefined }[] = [
@@ -23,6 +23,12 @@ const POSITIONS: { label: string; value: string | undefined }[] = [
   { label: 'TE', value: 'TE' },
   { label: 'D/ST', value: 'DEF' },
   { label: 'K', value: 'K' },
+];
+// IDP leagues (2026-10) also filter by defender group.
+const IDP_POSITIONS: { label: string; value: string | undefined }[] = [
+  { label: 'DL', value: 'DL' },
+  { label: 'LB', value: 'LB' },
+  { label: 'DB', value: 'DB' },
 ];
 type Tab = 'players' | 'queue' | 'board' | 'chat';
 
@@ -148,7 +154,13 @@ export default function DraftScreen() {
   const picks = draft.data?.picks ?? [];
   const myOwnerId = me.data?.owner_id ?? null;
   const currentPick = picks.find((p) => p.pick_number === config?.current_pick_number);
-  const isMyTurn = config?.status === 'in_progress' && currentPick?.owner_id === myOwnerId;
+  // Auction drafts (2026-10): "my turn" is my turn to nominate, and a
+  // player's button puts him up for bid instead of drafting him.
+  const auction = draft.data?.auction ?? null;
+  const isAuction = config?.draft_type === 'auction';
+  const isMyTurn = isAuction
+    ? config?.status === 'in_progress' && auction?.nominator_owner_id === myOwnerId && !auction?.nominee
+    : config?.status === 'in_progress' && currentPick?.owner_id === myOwnerId;
   const myNextPick = picks.find((p) => p.owner_id === myOwnerId && !p.sleeper_player_id && p.pick_number >= (config?.current_pick_number ?? 0));
 
   // A buzz the moment it becomes your pick.
@@ -159,13 +171,14 @@ export default function DraftScreen() {
   }, [isMyTurn]);
 
   async function draftPlayer(player: { sleeper_player_id: string; full_name: string }) {
-    Alert.alert(`Draft ${player.full_name}?`, undefined, [
+    Alert.alert(isAuction ? `Nominate ${player.full_name} for $1?` : `Draft ${player.full_name}?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Draft',
+        text: isAuction ? 'Nominate' : 'Draft',
         onPress: async () => {
           try {
-            await api.draftPick(player.sleeper_player_id);
+            if (isAuction) await api.draftNominate(player.sleeper_player_id, 1);
+            else await api.draftPick(player.sleeper_player_id);
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             refreshDraft();
           } catch (e) {
@@ -189,7 +202,9 @@ export default function DraftScreen() {
         myNextPick={myNextPick}
         connected={connected}
         isCommissioner={me.data?.is_commissioner ?? false}
+        isAuction={isAuction}
       />
+      {isAuction && auction && config.status === 'in_progress' && <AuctionCard auction={auction} myOwnerId={myOwnerId} picks={picks} />}
 
       <View style={styles.tabs}>
         {(['players', 'queue', 'board', 'chat'] as Tab[]).map((t) => (
@@ -199,8 +214,8 @@ export default function DraftScreen() {
         ))}
       </View>
 
-      {tab === 'players' && <PlayersView canDraft={isMyTurn} onDraft={draftPlayer} />}
-      {tab === 'queue' && <QueueView canDraft={isMyTurn} onDraft={draftPlayer} />}
+      {tab === 'players' && <PlayersView canDraft={isMyTurn} onDraft={draftPlayer} actionLabel={isAuction ? 'Nominate' : 'Draft'} />}
+      {tab === 'queue' && <QueueView canDraft={isMyTurn} onDraft={draftPlayer} actionLabel={isAuction ? 'Nominate' : 'Draft'} />}
       {tab === 'board' && <BoardView picks={picks} currentPickNumber={config.current_pick_number} myOwnerId={myOwnerId} />}
       {tab === 'chat' && <ChatView messages={draft.data.chat_messages} myOwnerId={myOwnerId} onSend={sendChat} />}
     </View>
@@ -214,6 +229,7 @@ function DraftHeader(props: {
   myNextPick: DraftPick | undefined;
   connected: boolean;
   isCommissioner: boolean;
+  isAuction: boolean;
 }) {
   const { config } = props.state;
   const seconds = useCountdown(config.status === 'in_progress' ? config.current_pick_deadline : null);
@@ -232,6 +248,8 @@ function DraftHeader(props: {
       : 'Not started yet';
   } else if (config.status === 'complete') {
     title = 'Draft complete';
+  } else if (props.isAuction) {
+    title = `Auction${config.status === 'paused' ? ' · Paused' : ''}`;
   } else {
     title = `Round ${props.currentPick?.round ?? '–'} · Pick ${config.current_pick_number}${config.status === 'paused' ? ' · Paused' : ''}`;
   }
@@ -249,14 +267,15 @@ function DraftHeader(props: {
     <View style={[styles.header, props.isMyTurn && styles.headerMyTurn]}>
       <View style={styles.headerTop}>
         <Text style={styles.headerTitle}>{title}</Text>
-        {seconds !== null && (
+        {seconds !== null && !props.isAuction && (
           <Text style={[styles.clock, seconds <= 10 && styles.clockUrgent]}>{formatClock(seconds)}</Text>
         )}
       </View>
       {props.isMyTurn ? (
-        <Text style={styles.yourPick}>You&apos;re on the clock</Text>
+        <Text style={styles.yourPick}>{props.isAuction ? 'Your turn to nominate' : 'You\'re on the clock'}</Text>
       ) : (
         config.status === 'in_progress' &&
+        !props.isAuction &&
         props.currentPick && (
           <View style={styles.onClock}>
             <View style={[styles.dot, online.has(props.currentPick.owner_id) && styles.dotOnline]} />
@@ -298,7 +317,8 @@ function ControlButton({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-function PlayersView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: DraftPoolPlayer) => void }) {
+function PlayersView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; onDraft: (p: DraftPoolPlayer) => void; actionLabel: string }) {
+  const idp = useMe().data?.league_format?.roster_preset === 'idp';
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
@@ -344,7 +364,7 @@ function PlayersView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Dr
             style={styles.search}
           />
           <View style={styles.chips}>
-            {POSITIONS.map((p) => (
+            {[...POSITIONS, ...(idp ? IDP_POSITIONS : [])].map((p) => (
               <Pressable
                 key={p.label}
                 onPress={() => setPosition(p.value)}
@@ -370,7 +390,7 @@ function PlayersView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Dr
                   {queued.has(item.sleeper_player_id) ? '★' : '☆'}
                 </Text>
               </Pressable>
-              {canDraft && <DraftButton onPress={() => onDraft(item)} />}
+              {canDraft && <DraftButton label={actionLabel} onPress={() => onDraft(item)} />}
             </>
           }
         />
@@ -379,7 +399,7 @@ function PlayersView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Dr
   );
 }
 
-function QueueView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: DraftPoolPlayer) => void }) {
+function QueueView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; onDraft: (p: DraftPoolPlayer) => void; actionLabel: string }) {
   const queue = useDraftQueue();
   // Names come from the full pool; the queue itself is just ids.
   const pool = useDraftPool(undefined, '');
@@ -443,7 +463,7 @@ function QueueView({ canDraft, onDraft }: { canDraft: boolean; onDraft: (p: Draf
                 <Pressable onPress={() => remove(id)} hitSlop={6} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove ${player?.full_name ?? 'player'} from queue`}>
                   <Text style={styles.removeX}>✕</Text>
                 </Pressable>
-                {canDraft && player && !player.drafted && <DraftButton onPress={() => onDraft(player)} />}
+                {canDraft && player && !player.drafted && <DraftButton label={actionLabel} onPress={() => onDraft(player)} />}
               </>
             }
           />
@@ -573,15 +593,122 @@ function PlayerRow(props: {
   );
 }
 
-function DraftButton({ onPress }: { onPress: () => void }) {
+function AuctionCard({ auction, myOwnerId, picks }: { auction: AuctionState; myOwnerId: number | null; picks: DraftPick[] }) {
+  const seconds = useCountdown(auction.deadline);
+  const [custom, setCustom] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [showTeams, setShowTeams] = useState(false);
+  const names = new Map(picks.map((p) => [p.owner_id, p.owner_name]));
+  const me = auction.teams.find((t) => t.owner_id === myOwnerId) ?? null;
+  const high = auction.high_bid ?? 0;
+  const iLead = auction.high_bidder_owner_id === myOwnerId;
+  const canBid = !!auction.nominee && !!me && me.open_spots > 0 && !iLead;
+  const name = (id: number | null) => (id === null ? '' : id === myOwnerId ? 'you' : (names.get(id) ?? `Team ${id}`));
+
+  async function bid(amount: number) {
+    setBusy(true);
+    try {
+      await api.draftBid(amount);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCustom('');
+      refreshDraft();
+    } catch (e) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Couldn't place that bid", e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.auction}>
+      {auction.nominee ? (
+        <View style={styles.headerTop}>
+          <View style={styles.flex}>
+            <Text style={styles.muted}>Up for bid</Text>
+            <Text style={styles.auctionName} numberOfLines={1}>
+              {auction.nominee.full_name ?? auction.nominee.sleeper_player_id} {auction.nominee.position ? `· ${positionLabel(auction.nominee.position)}` : ''}
+            </Text>
+            <Text style={styles.muted}>
+              High bid <Text style={styles.auctionBid}>${high}</Text> · {name(auction.high_bidder_owner_id)}
+            </Text>
+          </View>
+          {seconds !== null && <Text style={[styles.clock, seconds <= 5 && styles.clockUrgent]}>{seconds}s</Text>}
+        </View>
+      ) : (
+        <Text style={styles.muted}>
+          {auction.nominator_owner_id === myOwnerId
+            ? 'Your turn to nominate — tap a player below.'
+            : `${name(auction.nominator_owner_id)} is nominating${seconds !== null ? ` (${seconds}s)` : ''}.`}
+        </Text>
+      )}
+      {canBid && (
+        <View style={styles.bidRow}>
+          {[1, 5].map((step) =>
+            high + step <= me!.max_bid ? (
+              <Pressable key={step} disabled={busy} onPress={() => bid(high + step)} style={({ pressed }) => [styles.bidButton, pressed && styles.pressed]}>
+                <Text style={styles.bidButtonText}>${high + step}</Text>
+              </Pressable>
+            ) : null,
+          )}
+          <TextInput
+            value={custom}
+            onChangeText={setCustom}
+            keyboardType="number-pad"
+            placeholder={`$${high + 1}–${me!.max_bid}`}
+            placeholderTextColor={Colors.textSecondary}
+            style={styles.bidInput}
+          />
+          <Pressable
+            disabled={busy || !custom || Number(custom) <= high}
+            onPress={() => bid(Math.floor(Number(custom)))}
+            style={[styles.bidOutline, (!custom || Number(custom) <= high) && { opacity: 0.4 }]}>
+            <Text style={styles.bidOutlineText}>Bid</Text>
+          </Pressable>
+        </View>
+      )}
+      {iLead && <Text style={styles.yourPick}>You have the high bid</Text>}
+      {me && (
+        <Text style={styles.muted}>
+          You: ${me.remaining} left · {me.open_spots} open · max bid ${me.max_bid}
+        </Text>
+      )}
+      <Pressable onPress={() => setShowTeams((v) => !v)}>
+        <Text style={styles.muted}>{showTeams ? 'Hide budgets ▴' : "Every team's budget ▾"}</Text>
+      </Pressable>
+      {showTeams &&
+        auction.teams.map((t) => (
+          <View key={t.owner_id} style={styles.headerTop}>
+            <Text style={styles.muted} numberOfLines={1}>
+              {names.get(t.owner_id) ?? `Team ${t.owner_id}`}
+            </Text>
+            <Text style={styles.muted}>
+              ${t.remaining} · {t.open_spots} open
+            </Text>
+          </View>
+        ))}
+    </View>
+  );
+}
+
+function DraftButton({ onPress, label }: { onPress: () => void; label: string }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.draftButton, pressed && styles.pressed]}>
-      <Text style={styles.draftText}>Draft</Text>
+      <Text style={styles.draftText}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  auction: { marginHorizontal: Spacing.md, marginBottom: Spacing.sm, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.accent, backgroundColor: Colors.surface, gap: Spacing.sm },
+  auctionName: { color: Colors.text, fontSize: 18, fontWeight: '800' },
+  auctionBid: { color: Colors.text, fontWeight: '800' },
+  bidRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
+  bidButton: { backgroundColor: Colors.accent, borderRadius: Radius.pill, paddingHorizontal: 16, paddingVertical: 9 },
+  bidButtonText: { color: Colors.bg, fontWeight: '800', fontSize: 15 },
+  bidInput: { minWidth: 90, color: Colors.text, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
+  bidOutline: { borderWidth: 1, borderColor: Colors.accent, borderRadius: Radius.pill, paddingHorizontal: 14, paddingVertical: 8 },
+  bidOutlineText: { color: Colors.accent, fontWeight: '800' },
   screen: { flex: 1 },
   flex: { flex: 1 },
   header: {

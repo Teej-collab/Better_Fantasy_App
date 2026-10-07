@@ -4,6 +4,7 @@ pick/turn mutations live in app/domain/draft_engine.py)."""
 import json
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.league_format import extra_draftable_positions, position_filter
 from app.domain.roster_slots import DEFAULT_ROSTER_SLOTS
 
 
@@ -34,12 +35,18 @@ async def get_draft_pool(
         LEFT JOIN current_rosters cr ON cr.sleeper_player_id = p.sleeper_player_id
             AND cr.season = $1 AND cr.league_id = $2
         LEFT JOIN team_bye_weeks tbw ON tbw.season = $1 AND tbw.pro_team = p.pro_team
-        WHERE p.is_draftable
+        WHERE (p.is_draftable OR (p.position = ANY($3::text[]) AND p.pro_team IS NOT NULL))
+          AND ($4::boolean IS FALSE OR p.years_exp = 0)
     """
-    params = [season, league_id]
+    # IDP leagues (2026-10) also draft individual defenders; a dynasty
+    # rookie draft only first-year players.
+    rookies = (await conn.fetchval(
+        "SELECT pool FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )) == "rookies"
+    params = [season, league_id, await extra_draftable_positions(conn, league_id), rookies]
     if position:
-        query += f" AND p.position = ${len(params) + 1}"
-        params.append(position)
+        query += f" AND p.position = ANY(${len(params) + 1}::text[])"
+        params.append(position_filter(position))
     if search:
         query += f" AND p.full_name ILIKE ${len(params) + 1}"
         params.append(f"%{search}%")
@@ -63,7 +70,7 @@ async def get_draft_state(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID)
         """
         SELECT dp.pick_number, dp.round, dp.round_pick, dp.owner_id, o.display_name AS owner_name,
                dp.sleeper_player_id, p.full_name AS player_name, p.position AS player_position,
-               dp.is_autopick, dp.is_keeper, dp.made_at
+               dp.is_autopick, dp.is_keeper, dp.made_at, dp.price
         FROM draft_picks dp
         JOIN owners o ON o.owner_id = dp.owner_id
         LEFT JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id
@@ -72,7 +79,13 @@ async def get_draft_state(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID)
         """,
         season, league_id,
     )
-    return {"config": config_dict, "picks": [dict(p) for p in picks]}
+    # Auction drafts (2026-10): the live auction rides along.
+    auction = None
+    if config_dict.get("draft_type") == "auction":
+        from app.domain import auction_engine
+
+        auction = await auction_engine.get_state(conn, season, league_id)
+    return {"config": config_dict, "picks": [dict(p) for p in picks], "auction": auction}
 
 
 async def get_team_roster_positions(conn, season: int, team_id: int) -> list[str]:

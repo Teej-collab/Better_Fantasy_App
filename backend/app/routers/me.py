@@ -41,6 +41,7 @@ from app.auth.league_context import require_active_league_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool, on_own_conn
+from app.domain import league_format
 from app.domain import lineup_engine
 from app.domain import player_views
 from app.domain import waivers
@@ -108,6 +109,15 @@ async def _require_my_team(payload: dict, active_season: int) -> tuple[int, str,
     if team is None:
         raise HTTPException(status_code=404, detail="No team found for this owner")
     return team["id"], team["team_name"], league_id
+
+
+async def _forbid_in_best_ball(conn, league_id: int, kind: str) -> None:
+    """Best ball (2026-10): lineups set themselves and rosters are set at
+    the draft — refuse a lineup move ("lineup") or an add/drop/claim
+    ("roster") with a plain explanation."""
+    message = await league_format.best_ball_block(conn, league_id, kind)
+    if message:
+        raise HTTPException(status_code=409, detail=message)
 
 
 def _map_lineup_error(e: Exception) -> HTTPException:
@@ -191,6 +201,8 @@ def _roster_entry_dict(entry: dict) -> dict:
         "pro_team": entry["pro_team"],
         "injury_status": entry["injury_status"],
         "acquired_via": entry["acquired_via"],
+        # Taxi squad eligibility (dynasty, 2026-10): first- or second-year.
+        "years_exp": entry.get("years_exp"),
         # Only present when the caller resolved a current week and
         # attached these (see my_team below) — every other lineup/free-
         # agent endpoint's entries won't have these keys at all, so
@@ -417,12 +429,16 @@ async def my_team(request: Request, week: int | None = None):
             if info:
                 entry.update(info)
 
+    lineup_auto = league_format.lineups_are_automatic(await on_own_conn(league_format.get_league_format, league_id))
     return {
         "team_name": team_name,
         "season": active_season,
         "week": requested_week,
         "current_week": current_week,
         "is_editable": is_editable,
+        # Best ball (2026-10): the best lineup is set automatically, so
+        # the apps show it read-only with a note.
+        "lineup_auto": lineup_auto,
         "roster": [_roster_entry_dict(e) for e in roster],
         "roster_slots": roster_slots,
     }
@@ -491,6 +507,7 @@ async def preview_lineup_move(body: LineupMoveRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            await _forbid_in_best_ball(conn, league_id, "lineup")
             locked = await _locked_pro_teams_for_current_week(conn, active_season)
             plan = await lineup_engine.plan_move(
                 conn, active_season, team_id, body.sleeper_player_id, body.to_slot,
@@ -511,11 +528,12 @@ async def preview_lineup_move(body: LineupMoveRequest, request: Request):
 async def preview_lineup_swap(body: LineupSwapRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _, _ = await _require_my_team(payload, active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            await _forbid_in_best_ball(conn, league_id, "lineup")
             locked = await _locked_pro_teams_for_current_week(conn, active_season)
             plan = await lineup_engine.plan_swap(
                 conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
@@ -539,6 +557,7 @@ async def submit_lineup_move(body: LineupMoveRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            await _forbid_in_best_ball(conn, league_id, "lineup")
             locked = await _locked_pro_teams_for_current_week(conn, active_season)
             roster = await lineup_engine.move_player(
                 conn, active_season, team_id, body.sleeper_player_id, body.to_slot,
@@ -553,11 +572,12 @@ async def submit_lineup_move(body: LineupMoveRequest, request: Request):
 async def submit_lineup_swap(body: LineupSwapRequest, request: Request):
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
-    team_id, _, _ = await _require_my_team(payload, active_season)
+    team_id, _, league_id = await _require_my_team(payload, active_season)
 
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            await _forbid_in_best_ball(conn, league_id, "lineup")
             locked = await _locked_pro_teams_for_current_week(conn, active_season)
             roster = await lineup_engine.swap_players(
                 conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
@@ -586,6 +606,7 @@ async def drop_player(body: DropPlayerRequest, request: Request):
     pool = await get_pool()
     try:
         async with pool.acquire() as conn:
+            await _forbid_in_best_ball(conn, league_id, "roster")
             roster = await lineup_engine.drop_player(
                 conn, active_season, team_id, body.sleeper_player_id, league_id=league_id
             )
@@ -623,6 +644,7 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
             # this is the first time anyone's touched them since
             # kickoff; a no-op if they're already on waivers for a
             # real reason (a genuine recent drop).
+            await _forbid_in_best_ball(conn, league_id, "roster")
             locked = await _waiver_locked_pro_teams(conn, active_season)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.sleeper_player_id, locked
@@ -731,14 +753,17 @@ async def list_free_agents(request: Request, position: str | None = None, search
                 AND pws_prev.league_id = $2
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
-            WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
+            WHERE (p.is_draftable OR (p.position = ANY($5::text[]) AND p.pro_team IS NOT NULL))
+              AND p.sleeper_player_id NOT IN (
                 SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
             )
         """
-        params: list = [active_season, league_id, current_week, last_week]
+        # IDP leagues (2026-10) also pick up individual defenders.
+        params: list = [active_season, league_id, current_week, last_week,
+                        await league_format.extra_draftable_positions(conn, league_id)]
         if position:
-            query += f" AND p.position = ${len(params) + 1}"
-            params.append(position)
+            query += f" AND p.position = ANY(${len(params) + 1}::text[])"
+            params.append(league_format.position_filter(position))
         if search:
             query += f" AND p.full_name ILIKE ${len(params) + 1}"
             params.append(f"%{search}%")
@@ -814,17 +839,23 @@ async def list_my_waiver_claims(request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         claims = await waivers.list_claims_for_team(conn, active_season, league_id, team_id)
+        fmt = await league_format.get_league_format(conn, league_id)
+        faab_left = await waivers.faab_remaining(conn, active_season, league_id, team_id, fmt)
     return {
         "claims": [
             {**c, "created_at": c["created_at"].isoformat(), "processed_at": c["processed_at"].isoformat() if c["processed_at"] else None}
             for c in claims
-        ]
+        ],
+        # FAAB leagues only (guillotine): what's left to bid, of the budget.
+        "faab": {"remaining": faab_left, "budget": league_format.faab_budget(fmt)} if faab_left is not None else None,
     }
 
 
 class WaiverClaimRequest(BaseModel):
     add_sleeper_player_id: str
     drop_sleeper_player_id: str | None = None
+    # FAAB leagues (guillotine, 2026-10) only; ignored elsewhere.
+    bid_amount: int | None = None
 
 
 @router.post("/team/waivers/claim")
@@ -846,12 +877,14 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
             # how it tells "really on waivers" from "just a normal free
             # agent"), so this has to run before it, same as the
             # free-agent-add route above.
+            await _forbid_in_best_ball(conn, league_id, "roster")
             locked = await _waiver_locked_pro_teams(conn, active_season)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.add_sleeper_player_id, locked
             )
             claim = await waivers.submit_claim(
                 conn, active_season, league_id, team_id, body.add_sleeper_player_id, body.drop_sleeper_player_id,
+                bid_amount=body.bid_amount,
             )
     except WaiverError as e:
         raise _map_waiver_error(e) from e

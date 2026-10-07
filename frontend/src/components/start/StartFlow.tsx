@@ -8,9 +8,25 @@ import QRCode from "qrcode";
 import { useEffect, useState, type ReactNode } from "react";
 import { setDraftSchedule } from "@/lib/draftApi";
 import {
+  DRAFT_TYPES,
+  formatSummary,
+  isAvailable,
+  LEAGUE_TYPES,
+  MATCHUP_TYPES,
+  ROSTER_PRESETS,
+  TYPE_NOTE,
+  TYPE_SETTINGS,
+  type DraftType,
+  type FormatOptions,
+  type LeagueType,
+  type MatchupType,
+  type RosterPreset,
+} from "@/lib/leagueFormat";
+import {
   claimOwner,
   createLeague,
   createTeam,
+  getLeagueFormats,
   getMyLeagues,
   getUnclaimedOwners,
   joinLeague,
@@ -33,12 +49,14 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 // - join: paste a link or code (or scan the QR with the phone's camera),
 //   see the league before joining, then claim your past team's history
 //   or start a new team;
-// - create: name + start fresh / from ESPN, the basics (teams, scoring,
-//   draft, keepers), your team — then an invite screen with the QR.
+// - create: name + start fresh / from ESPN, the kind of league (redraft,
+//   keeper, dynasty, best ball, guillotine — 2026-10), the basics (teams,
+//   scoring, roster, matchups, draft, and the type's own settings), your
+//   team — then an invite screen with the QR.
 // Everything here is an existing endpoint (backend app/routers/
 // leagues.py); /leagues stays as the full management page.
 
-type View = "home" | "join" | "joinTeam" | "create1" | "create2" | "create3" | "invite";
+type View = "home" | "join" | "joinTeam" | "create1" | "createType" | "create2" | "create3" | "invite";
 
 const TEAM_COUNTS = [8, 10, 12, 14];
 const SCORING: { key: ScoringPreset; label: string }[] = [
@@ -78,9 +96,20 @@ export function StartFlow({
   const [teamCount, setTeamCount] = useState(12);
   const [scoring, setScoring] = useState<ScoringPreset>("ppr");
   const [draftAt, setDraftAt] = useState("");
-  const [keepers, setKeepers] = useState(false);
+  const [leagueType, setLeagueType] = useState<LeagueType>("redraft");
+  const [rosterPreset, setRosterPreset] = useState<RosterPreset>("standard");
+  const [matchupType, setMatchupType] = useState<MatchupType>("h2h");
+  const [draftType, setDraftType] = useState<DraftType>("snake");
+  const [typeSettings, setTypeSettings] = useState<Record<string, number>>({});
+  const [formats, setFormats] = useState<FormatOptions | null>(null);
   const [teamName, setTeamName] = useState("");
   const [created, setCreated] = useState<League | null>(null);
+
+  useEffect(() => {
+    getLeagueFormats()
+      .then(setFormats)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,12 +190,29 @@ export function StartFlow({
 
   const createNow = () =>
     run(async () => {
-      const league = await createLeague(leagueName.trim(), { teamCount, scoring, keepers, makeActive: true });
+      const league = await createLeague(leagueName.trim(), {
+        teamCount,
+        scoring,
+        makeActive: true,
+        format: {
+          league_type: leagueType,
+          roster_preset: rosterPreset,
+          // A guillotine always ranks on points; it has no matchups to pick.
+          matchup_type: leagueType === "guillotine" ? "points" : matchupType,
+          draft_type: draftType,
+          type_settings: settingValues(),
+        },
+      });
       await createTeam(league.id, teamName.trim());
       if (draftAt) await setDraftSchedule(draftAt).catch(() => {});
       setCreated(league);
       go("invite");
     });
+
+  // This type's settings, defaulted from GET /leagues/formats' limits.
+  const limitsFor = (key: string) => formats?.type_settings[leagueType]?.[key] ?? DEFAULT_LIMITS[key];
+  const settingValues = () =>
+    Object.fromEntries(TYPE_SETTINGS[leagueType].map((t) => [t.key, typeSettings[t.key] ?? limitsFor(t.key)?.default ?? 0]));
 
   const emblem = seasonalEmblem();
   let content: ReactNode = null;
@@ -378,7 +424,7 @@ export function StartFlow({
       <>
         <Top onBack={() => go("home")} step={1} />
         <div className="flex flex-col gap-2">
-          <span className={styles.kicker}>Create a league · 1 of 3</span>
+          <span className={styles.kicker}>Create a league · 1 of 4</span>
           <h1 className={`${anton.className} ${styles.title}`}>Name your league</h1>
         </div>
         <label className={styles.label}>
@@ -397,7 +443,56 @@ export function StartFlow({
             text="After it's created, connect ESPN to import every past season, owner, matchup and record."
           />
         </div>
-        <button type="button" className={`${styles.neon} mt-auto`} disabled={!leagueName.trim()} onClick={() => go("create2")}>
+        <button type="button" className={`${styles.neon} mt-auto`} disabled={!leagueName.trim()} onClick={() => go("createType")}>
+          Continue
+        </button>
+      </>
+    );
+  }
+
+  if (view === "createType") {
+    content = (
+      <>
+        <Top onBack={() => go("create1")} step={2} />
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>Create a league · 2 of 4</span>
+          <h1 className={`${anton.className} ${styles.title}`}>What kind of league?</h1>
+        </div>
+        <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="League type">
+          {LEAGUE_TYPES.map((t) => {
+            const available = isAvailable(formats, "league_type", t.key);
+            const on = leagueType === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                disabled={!available}
+                onClick={() => {
+                  setLeagueType(t.key);
+                  setTypeSettings({});
+                }}
+                className={`${styles.option} ${on ? styles.optionOn : ""} ${available ? "" : "opacity-55"}`}
+                style={{ alignItems: "center" }}
+              >
+                <span className={styles.typeIcon}>
+                  <LeagueTypeIcon type={t.key} />
+                </span>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className={`${anton.className} text-lg tracking-wide uppercase`}>{t.name}</span>
+                    {available && t.badge && <span className={`${styles.pill} ${styles.pillPop}`}>{t.badge}</span>}
+                    {!available && <span className={styles.pill}>Coming soon</span>}
+                  </span>
+                  <span className="text-sm leading-snug text-[#aab2bf]">{t.text}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-sm text-[color:var(--wl-text-secondary)]">You can&apos;t switch types once the draft starts.</p>
+        <button type="button" className={`${styles.neon} mt-auto`} onClick={() => go("create2")}>
           Continue
         </button>
       </>
@@ -407,9 +502,9 @@ export function StartFlow({
   if (view === "create2") {
     content = (
       <>
-        <Top onBack={() => go("create1")} step={2} />
+        <Top onBack={() => go("createType")} step={3} />
         <div className="flex flex-col gap-2">
-          <span className={styles.kicker}>Create a league · 2 of 3</span>
+          <span className={styles.kicker}>Create a league · 3 of 4</span>
           <h1 className={`${anton.className} ${styles.title}`}>Set the basics</h1>
         </div>
         <Group label="How many teams?">
@@ -430,7 +525,31 @@ export function StartFlow({
             ))}
           </div>
         </Group>
+        <Group label="Roster">
+          <Segs
+            columns={4}
+            options={ROSTER_PRESETS.map((r) => ({ ...r, available: isAvailable(formats, "roster_preset", r.key) }))}
+            value={rosterPreset}
+            onChange={setRosterPreset}
+          />
+        </Group>
+        {leagueType !== "guillotine" && (
+          <Group label="Matchups">
+            <Segs
+              columns={2}
+              options={MATCHUP_TYPES.map((m) => ({ ...m, available: isAvailable(formats, "matchup_type", m.key) }))}
+              value={matchupType}
+              onChange={setMatchupType}
+            />
+          </Group>
+        )}
         <Group label="Draft">
+          <Segs
+            columns={2}
+            options={DRAFT_TYPES.map((d) => ({ ...d, available: isAvailable(formats, "draft_type", d.key) }))}
+            value={draftType}
+            onChange={setDraftType}
+          />
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <input type="datetime-local" className={styles.field} value={draftAt} onChange={(e) => setDraftAt(e.target.value)} aria-label="Draft date and time" />
             <button type="button" className={`${styles.seg} px-3.5 ${draftAt ? "" : styles.segOn}`} aria-pressed={!draftAt} onClick={() => setDraftAt("")}>
@@ -438,22 +557,37 @@ export function StartFlow({
             </button>
           </div>
         </Group>
-        <div className={`${styles.card} flex-row items-center justify-between`}>
-          <div className="flex flex-col">
-            <span className="font-semibold">Keepers</span>
-            <span className="text-sm text-[color:var(--wl-text-secondary)]">Teams keep players into next season</span>
+        {(TYPE_SETTINGS[leagueType].length > 0 || TYPE_NOTE[leagueType]) && (
+          <div className={styles.card}>
+            {TYPE_NOTE[leagueType] && <span className="text-sm text-[#aab2bf]">{TYPE_NOTE[leagueType]}</span>}
+            {TYPE_SETTINGS[leagueType].map((t) => {
+              const limits = limitsFor(t.key);
+              const value = typeSettings[t.key] ?? limits?.default ?? 0;
+              const step = t.step ?? 1;
+              const set = (v: number) => setTypeSettings((cur) => ({ ...cur, [t.key]: Math.max(limits?.min ?? 0, Math.min(limits?.max ?? 99, v)) }));
+              return (
+                <div key={t.key} className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-col">
+                    <span className="font-semibold">{t.title}</span>
+                    <span className="text-sm text-[color:var(--wl-text-secondary)]">{t.text}</span>
+                  </div>
+                  <div className={styles.stepper}>
+                    <button type="button" aria-label={`Fewer: ${t.title}`} onClick={() => set(value - step)} disabled={value <= (limits?.min ?? 0)}>
+                      −
+                    </button>
+                    <span className="min-w-[3.5ch] text-center font-mono font-bold">
+                      {t.prefix ?? ""}
+                      {value}
+                    </span>
+                    <button type="button" aria-label={`More: ${t.title}`} onClick={() => set(value + step)} disabled={value >= (limits?.max ?? 99)}>
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={keepers}
-            aria-label="Keepers"
-            className={`${styles.switch} ${keepers ? styles.switchOn : ""}`}
-            onClick={() => setKeepers((k) => !k)}
-          >
-            <span className={styles.knob} />
-          </button>
-        </div>
+        )}
         <p className="text-sm leading-relaxed text-[color:var(--wl-text-secondary)]">
           Roster spots, playoffs and every scoring rule are in Commissioner Tools whenever you want them.
         </p>
@@ -467,9 +601,9 @@ export function StartFlow({
   if (view === "create3") {
     content = (
       <>
-        <Top onBack={() => go("create2")} step={3} />
+        <Top onBack={() => go("create2")} step={4} />
         <div className="flex flex-col gap-2">
-          <span className={styles.kicker}>Create a league · 3 of 3</span>
+          <span className={styles.kicker}>Create a league · 4 of 4</span>
           <h1 className={`${anton.className} ${styles.title}`}>Now your team</h1>
           <p className={styles.sub}>This is what everyone sees in standings, matchups and chat. Add a logo any time in Settings.</p>
         </div>
@@ -481,7 +615,9 @@ export function StartFlow({
           <span className={styles.kicker}>Your league</span>
           <span className={`${anton.className} text-2xl tracking-wide uppercase`}>{leagueName}</span>
           <span className="text-sm text-[#aab2bf]">
-            {teamCount} teams · {SCORING.find((s) => s.key === scoring)?.label} · {draftAt ? `Draft ${formatDraft(draftAt)}` : "Draft date later"} · Keepers {keepers ? "on" : "off"}
+            {teamCount} teams ·{" "}
+            {formatSummary({ league_type: leagueType, roster_preset: rosterPreset, matchup_type: matchupType, draft_type: draftType })} ·{" "}
+            {SCORING.find((s) => s.key === scoring)?.label} · {draftAt ? `Draft ${formatDraft(draftAt)}` : "Draft date later"}
           </span>
         </div>
         {error && <p className={styles.error}>{error}</p>}
@@ -602,8 +738,8 @@ function Top({ onBack, step }: { onBack: () => void; step?: number }) {
         Back
       </button>
       {step && (
-        <div className={styles.dots} aria-label={`Step ${step} of 3`}>
-          {[1, 2, 3].map((i) => (
+        <div className={styles.dots} aria-label={`Step ${step} of 4`}>
+          {[1, 2, 3, 4].map((i) => (
             <span key={i} className={`${styles.dot} ${i === step ? styles.dotNow : i < step ? styles.dotDone : ""}`} />
           ))}
         </div>
@@ -733,6 +869,70 @@ function CheckIcon() {
   return (
     <svg {...svgProps} width={18} height={18}>
       <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
+}
+
+// Fallback limits for the type settings until GET /leagues/formats answers.
+const DEFAULT_LIMITS: Record<string, { default: number; min: number; max: number }> = {
+  keepers_per_team: { default: 2, min: 1, max: 10 },
+  rookie_draft_rounds: { default: 4, min: 1, max: 10 },
+  taxi_squad_size: { default: 3, min: 0, max: 10 },
+  bench_size: { default: 10, min: 4, max: 20 },
+  faab_budget: { default: 1000, min: 100, max: 10000 },
+};
+
+function Segs<K extends string>({
+  columns,
+  options,
+  value,
+  onChange,
+}: {
+  columns: number;
+  options: { key: K; label: string; sub?: string; available: boolean }[];
+  value: K;
+  onChange: (key: K) => void;
+}) {
+  return (
+    <div className={styles.segs} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          aria-pressed={value === o.key}
+          disabled={!o.available}
+          className={`${styles.seg} ${value === o.key ? styles.segOn : ""} ${o.available ? "" : "opacity-50"}`}
+          onClick={() => onChange(o.key)}
+        >
+          <span className="block">{o.label}</span>
+          {(o.sub || !o.available) && <span className={styles.segSub}>{o.available ? o.sub : "Soon"}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LeagueTypeIcon({ type }: { type: LeagueType }) {
+  const paths: Record<LeagueType, ReactNode> = {
+    redraft: (
+      <>
+        <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
+        <path d="M18 3v4h-4M6 21v-4h4" />
+      </>
+    ),
+    keeper: <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />,
+    dynasty: <path d="M3 18h18M5 18l-1-9 5 4 3-7 3 7 5-4-1 9" />,
+    bestball: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+      </>
+    ),
+    guillotine: <path d="M6 3v18M18 3v18M6 6h12M8 9l8 3" />,
+  };
+  return (
+    <svg {...svgProps} width={20} height={20}>
+      {paths[type]}
     </svg>
   );
 }

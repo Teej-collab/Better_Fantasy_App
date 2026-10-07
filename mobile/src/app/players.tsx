@@ -11,7 +11,7 @@ import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { formatGameTime, formatPoints } from '@/lib/format';
-import { openPlayer, useFreeAgents } from '@/lib/queries';
+import { openPlayer, useFreeAgents, useMe } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
 
 // Label → stored players.position value. Defenses are stored as "DEF"
@@ -29,8 +29,15 @@ const POSITIONS: { label: string; value: string | undefined }[] = [
   { label: 'D/ST', value: 'DEF' },
   { label: 'K', value: 'K' },
 ];
+// IDP leagues (2026-10) also filter by defender group.
+const IDP_POSITIONS: { label: string; value: string | undefined }[] = [
+  { label: 'DL', value: 'DL' },
+  { label: 'LB', value: 'LB' },
+  { label: 'DB', value: 'DB' },
+];
 
 function PlayersScreenContent() {
+  const idp = useMe().data?.league_format?.roster_preset === 'idp';
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
@@ -81,7 +88,7 @@ function PlayersScreenContent() {
               style={styles.search}
             />
             <View style={styles.chips}>
-              {POSITIONS.map((p) => {
+              {[...POSITIONS, ...(idp ? IDP_POSITIONS : [])].map((p) => {
                 const active = p.value === position;
                 return (
                   <Pressable

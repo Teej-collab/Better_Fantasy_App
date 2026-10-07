@@ -54,6 +54,8 @@ export type PlayoffWorld = {
   teams: WorldTeam[];
   schedule: WorldGame[];
   games: SpecGame[];
+  /** "points" in a total-points league: seeds go by points scored, record breaks ties. */
+  rank_by?: "wins" | "points";
 };
 
 export type Scenario = {
@@ -149,8 +151,11 @@ export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENA
     }
   }
 
+  const byRecord = (x: { wins: number; ties: number }, y: { wins: number; ties: number }) => y.wins + 0.5 * y.ties - (x.wins + 0.5 * x.ties);
   const standings = Object.values(rows)
-    .sort((x, y) => y.wins + 0.5 * y.ties - (x.wins + 0.5 * x.ties) || y.points_for - x.points_for)
+    .sort((x, y) =>
+      world.rank_by === "points" ? y.points_for - x.points_for || byRecord(x, y) : byRecord(x, y) || y.points_for - x.points_for,
+    )
     .map((r, i) => ({ ...r, seed: i + 1 }));
   const seedOf: Record<number, number> = {};
   for (const r of standings) seedOf[r.team_id] = r.seed;

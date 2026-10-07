@@ -53,7 +53,9 @@ type PanelState =
  * are-you-sure before the one real network call, so a stray click on
  * Add can't silently commit a roster move.
  */
-export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAgent[] }) {
+// `bidding`: claims in this league are FAAB bids (guillotine, 2026-10).
+export function FreeAgentsList({ players: initialPlayers, bidding = false }: { players: MyFreeAgent[]; bidding?: boolean }) {
+  const [bid, setBid] = useState("1");
   const [players, setPlayers] = useState(initialPlayers);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
@@ -139,7 +141,7 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
   async function submitClaim(player: MyFreeAgent, dropSleeperPlayerId?: string) {
     setPanel({ status: "claim-submitting" });
     try {
-      await submitWaiverClaim(player.sleeper_player_id, dropSleeperPlayerId);
+      await submitWaiverClaim(player.sleeper_player_id, dropSleeperPlayerId, bidding ? Math.max(0, Math.floor(Number(bid) || 0)) : undefined);
       setPanel({
         status: "claim-success",
         message: `Claim filed on ${player.full_name}. It resolves automatically once their waiver period ends.`,
@@ -380,8 +382,20 @@ export function FreeAgentsList({ players: initialPlayers }: { players: MyFreeAge
                       <p className="text-black/70 dark:text-white/70">
                         <strong>{p.full_name}</strong> is still on waivers
                         {mounted && p.waiver_clears_at && ` until ${formatGameTime(p.waiver_clears_at)}`}. File a claim —
-                        it resolves automatically, highest this-week priority wins.
+                        it resolves automatically, {bidding ? "highest bid wins (waiver priority breaks a tie)" : "highest this-week priority wins"}.
                       </p>
+                      {bidding && (
+                        <label className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
+                          FAAB bid $
+                          <input
+                            type="number"
+                            min={0}
+                            value={bid}
+                            onChange={(e) => setBid(e.target.value)}
+                            className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
+                          />
+                        </label>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => submitClaim(p)}

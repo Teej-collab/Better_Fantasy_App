@@ -23,7 +23,7 @@ from typing import Callable
 
 from app.queries import league as league_queries
 
-STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
+STARTER_EXCLUDED_SLOTS = {"BE", "IR", "TAXI"}
 # How far a position's average has to move from its season norm before
 # the week is "RBs went off" / "a quiet week for QBs".
 POSITION_SWING = 0.2

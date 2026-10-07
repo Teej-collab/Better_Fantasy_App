@@ -13,7 +13,7 @@ there's no separate push/websocket path for this.
 from app.config import DEFAULT_LEAGUE_ID
 from app.queries import league as queries
 
-_STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
+_STARTER_EXCLUDED_SLOTS = {"BE", "IR", "TAXI"}
 
 
 def _top_scorer(roster_rows):

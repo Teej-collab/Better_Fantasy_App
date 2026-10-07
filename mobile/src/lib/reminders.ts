@@ -1,4 +1,4 @@
-import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel } from '@/lib/rosterSlots';
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, TAXI_SLOT_LABEL } from '@/lib/rosterSlots';
 import type { ChugDeadline, MyKeepers, MyTeam, YourWeek } from '@/lib/types';
 
 // Game-day reminders scheduled on the phone itself (lib/localNotifications.ts):
@@ -39,7 +39,7 @@ function listIssues(issues: string[]): string {
 // kickoff. Only for the live week, while the lineup can still change.
 export function lineupReminders(team: MyTeam | undefined, now: number): Reminder[] {
   if (!team || !team.is_editable || team.week === null || team.week !== team.current_week) return [];
-  const starters = team.roster.filter((e) => e.lineup_slot !== BENCH_SLOT_LABEL && e.lineup_slot !== IR_SLOT_LABEL);
+  const starters = team.roster.filter((e) => e.lineup_slot !== BENCH_SLOT_LABEL && e.lineup_slot !== IR_SLOT_LABEL && e.lineup_slot !== TAXI_SLOT_LABEL);
   const kickoffs = team.roster
     .map((e) => (e.game_time ? new Date(e.game_time).getTime() : NaN))
     .filter((t) => !Number.isNaN(t) && t > now);

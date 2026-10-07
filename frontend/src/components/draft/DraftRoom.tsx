@@ -6,6 +6,7 @@ import {
   getDraftState,
   getDraftWebSocketUrl,
   getDraftWsTicket,
+  nominatePlayer,
   submitDraftPick,
   type DraftChatMessage,
   type DraftPoolPlayer,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/draftApi";
 import { listSeasons, listTeams, type DraftGrade, type Team } from "@/lib/api";
 import { DraftSetupPanel } from "@/components/draft/DraftSetupPanel";
+import { AuctionPanel } from "@/components/draft/AuctionPanel";
 import { DraftBoard } from "@/components/draft/DraftBoard";
 import { DraftGradesLeaderboard } from "@/components/draft/DraftGradesLeaderboard";
 import { PositionBadge } from "@/components/draft/PositionBadge";
@@ -332,7 +334,13 @@ export function DraftRoom({
   const config = draftState?.config;
   const secondsRemaining = useCountdown(config?.current_pick_deadline ?? null);
   const currentPick = draftState?.picks.find((p) => p.pick_number === config?.current_pick_number);
-  const isMyTurn = currentPick?.owner_id === myOwnerId && config?.status === "in_progress";
+  // Auction drafts (2026-10): "my turn" means my turn to nominate, and
+  // a pool button puts the player up for bid instead of drafting him.
+  const auction = draftState?.auction ?? null;
+  const isAuction = config?.draft_type === "auction";
+  const isMyTurn = isAuction
+    ? config?.status === "in_progress" && auction?.nominator_owner_id === myOwnerId && !auction?.nominee
+    : currentPick?.owner_id === myOwnerId && config?.status === "in_progress";
 
   // Pre-draft room: 1 hour of queue-building before the real draft
   // (see PRE_DRAFT_WINDOW_MS above). secondsUntilStart reuses the same
@@ -430,7 +438,8 @@ export function DraftRoom({
     setSubmitting(true);
     setError(null);
     try {
-      await submitDraftPick(sleeperPlayerId);
+      if (isAuction) await nominatePlayer(sleeperPlayerId, 1);
+      else await submitDraftPick(sleeperPlayerId);
       await refreshState();
       await refreshPool();
     } catch (e) {
@@ -470,7 +479,7 @@ export function DraftRoom({
                     : "Not started"
                   : `Round ${currentPick?.round ?? "—"} · Pick ${config!.current_pick_number}`}
           </p>
-          {config!.status === "in_progress" && currentPick && (
+          {config!.status === "in_progress" && currentPick && !isAuction && (
             <p className="flex items-center gap-1.5 text-lg font-semibold">
               {/* ESPN-style "are they actually here" indicator — the
                   same signal the round-2+ post-autopick grace period
@@ -490,7 +499,7 @@ export function DraftRoom({
             </p>
           )}
         </div>
-        {config!.status === "in_progress" && config!.current_pick_deadline && (
+        {config!.status === "in_progress" && config!.current_pick_deadline && !isAuction && (
           <div className={`text-3xl font-bold tabular-nums ${secondsRemaining <= 10 ? "text-red-500" : ""}`}>
             {secondsRemaining}s
           </div>
@@ -500,6 +509,15 @@ export function DraftRoom({
         )}
         <span className="text-xs text-black/50 dark:text-white/50">{connected ? "● live" : "○ reconnecting…"}</span>
       </div>
+
+      {isAuction && auction && config!.status === "in_progress" && (
+        <AuctionPanel
+          auction={auction}
+          myOwnerId={myOwnerId}
+          teamName={(ownerId) => teamNameByOwner.get(ownerId) ?? `Team ${ownerId}`}
+          onError={setError}
+        />
+      )}
 
       {preDraftWindowActive && (
         <div className={`flex flex-col items-center gap-1 rounded-xl p-6 text-center ${beta ? "wl-card" : "neon-panel"}`}>
@@ -571,7 +589,7 @@ export function DraftRoom({
                 aria-label="Search players"
                 className="min-w-40 flex-1 rounded-full border border-black/10 bg-transparent px-3 py-1 text-sm dark:border-white/10"
               />
-              {POSITIONS.map((pos) => {
+              {[...POSITIONS, ...(config?.roster_slots?.DL ? ["DL", "LB", "DB"] : [])].map((pos) => {
                 const color = positionColor(pos);
                 const active = positionFilter === pos;
                 return (
@@ -634,7 +652,7 @@ export function DraftRoom({
                       disabled={p.drafted || !isMyTurn || submitting}
                       className="shrink-0 rounded-full bg-sky-500 px-3 py-1 text-xs font-semibold text-white disabled:opacity-30"
                     >
-                      Draft
+                      {isAuction ? "Nominate" : "Draft"}
                     </button>
                   </li>
                 );
@@ -664,7 +682,7 @@ export function DraftRoom({
                           disabled={submitting}
                           className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-semibold text-white disabled:opacity-30"
                         >
-                          Draft
+                          {isAuction ? "Nominate" : "Draft"}
                         </button>
                       )}
                       <button

@@ -20,6 +20,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
+from app.domain import league_format
 from app.domain import trades as trades_domain
 from app.domain.trade_exceptions import (
     NotYourTradeError,
@@ -138,6 +139,8 @@ async def propose_trade(body: ProposeTradeRequest, request: Request, pool=Depend
     season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         team_id, league_id = await _require_my_team(conn, payload, season)
+        if message := await league_format.best_ball_block(conn, league_id, "roster"):
+            raise HTTPException(status_code=409, detail=message)
         try:
             trade = await trades_domain.propose_trade(
                 conn, league_id, season, team_id, body.receiving_team_id, body.give, body.receive, body.note

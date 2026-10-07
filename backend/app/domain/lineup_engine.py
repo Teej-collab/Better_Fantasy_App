@@ -28,12 +28,13 @@ from app.domain.lineup_exceptions import (
     RosterFullError,
     SlotIneligibleError,
 )
+from app.domain.league_format import extra_draftable_positions
 from app.domain.roster_slots import BENCH_SLOT_LABEL, is_eligible_for_slot, total_draftable_slots
 from app.queries.roster_transactions import log_transaction
 
 _ROSTER_ENTRY_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
-           p.full_name AS player_name, p.position, p.pro_team, p.injury_status
+           p.full_name AS player_name, p.position, p.pro_team, p.injury_status, p.years_exp
     FROM current_rosters cr
     JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
     WHERE cr.season = $1 AND cr.team_id = $2
@@ -64,7 +65,7 @@ _ROSTER_ENTRY_SQL = """
 # include league_id — this join was simply never updated to match.
 _ROSTER_ENTRY_WITH_SCORE_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
-           p.full_name AS player_name, p.position, p.pro_team, p.injury_status,
+           p.full_name AS player_name, p.position, p.pro_team, p.injury_status, p.years_exp,
            COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
            pws.fantasy_points AS points
     FROM current_rosters cr
@@ -136,7 +137,7 @@ async def plan_move(
     call) is empty by default, meaning "no lock enforced" — every real
     caller in app/routers/me.py always passes the live set."""
     player = await _get_roster_entry(conn, season, team_id, sleeper_player_id)
-    if not is_eligible_for_slot(player["position"], to_slot, player["injury_status"]):
+    if not is_eligible_for_slot(player["position"], to_slot, player["injury_status"], player.get("years_exp")):
         raise SlotIneligibleError(f"{player['player_name']} ({player['position']}) isn't eligible for slot {to_slot}")
     if player["pro_team"] in locked_pro_teams:
         raise LineupLockedError(f"{player['player_name']}'s game has already started — their lineup slot is locked")
@@ -155,9 +156,9 @@ async def plan_swap(
 ) -> dict:
     player_a = await _get_roster_entry(conn, season, team_id, sleeper_player_id_a)
     player_b = await _get_roster_entry(conn, season, team_id, sleeper_player_id_b)
-    if not is_eligible_for_slot(player_a["position"], player_b["lineup_slot"], player_a["injury_status"]):
+    if not is_eligible_for_slot(player_a["position"], player_b["lineup_slot"], player_a["injury_status"], player_a.get("years_exp")):
         raise SlotIneligibleError(f"{player_a['player_name']} isn't eligible for {player_b['player_name']}'s slot")
-    if not is_eligible_for_slot(player_b["position"], player_a["lineup_slot"], player_b["injury_status"]):
+    if not is_eligible_for_slot(player_b["position"], player_a["lineup_slot"], player_b["injury_status"], player_b.get("years_exp")):
         raise SlotIneligibleError(f"{player_b['player_name']} isn't eligible for {player_a['player_name']}'s slot")
     if player_a["pro_team"] in locked_pro_teams:
         raise LineupLockedError(f"{player_a['player_name']}'s game has already started — their lineup slot is locked")
@@ -232,9 +233,11 @@ async def add_free_agent(
 ) -> dict:
     async with conn.transaction():
         player = await conn.fetchrow(
-            "SELECT sleeper_player_id, is_draftable FROM players WHERE sleeper_player_id = $1", sleeper_player_id
+            "SELECT sleeper_player_id, is_draftable, position FROM players WHERE sleeper_player_id = $1", sleeper_player_id
         )
-        if player is None or not player["is_draftable"]:
+        if player is None or not (
+            player["is_draftable"] or player["position"] in await extra_draftable_positions(conn, league_id)
+        ):
             raise PlayerNotDraftableError(f"{sleeper_player_id} isn't a rosterable player")
 
         already_rostered = await conn.fetchval(

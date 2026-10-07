@@ -4,6 +4,7 @@ fantasy data yet (rosters, drafts, matchups, scoring stay exactly as
 they are); this module only tracks who belongs to which league,
 starting with the one real league every existing member already plays
 in."""
+import json
 
 import secrets
 
@@ -130,6 +131,18 @@ async def apply_scoring_preset(conn, league_id: int, season: int, preset: str) -
         ON CONFLICT (season, stat_category, league_id) DO UPDATE SET points_per_unit = EXCLUDED.points_per_unit
         """,
         season, SCORING_PRESETS[preset], league_id,
+    )
+
+
+async def set_league_format(conn, league_id: int, choices: dict, type_settings: dict) -> None:
+    await conn.execute(
+        """
+        UPDATE leagues SET league_type = $2, matchup_type = $3, draft_type = $4, roster_preset = $5,
+                           type_settings = $6::jsonb
+        WHERE id = $1
+        """,
+        league_id, choices["league_type"], choices["matchup_type"], choices["draft_type"],
+        choices["roster_preset"], json.dumps(type_settings),
     )
 
 
@@ -319,7 +332,8 @@ async def set_member_role(conn, league_id: int, user_id: int, role: str) -> bool
 async def list_leagues_for_user(conn, user_id: int):
     return await conn.fetch(
         """
-        SELECT l.id, l.name, l.invite_code, l.created_at, l.team_count, lm.role
+        SELECT l.id, l.name, l.invite_code, l.created_at, l.team_count, lm.role,
+               l.league_type, l.matchup_type, l.draft_type, l.roster_preset, l.type_settings
         FROM league_members lm
         JOIN leagues l ON l.id = lm.league_id
         WHERE lm.user_id = $1
@@ -426,15 +440,26 @@ async def get_scoring_rules(conn, league_id: int, season: int):
 
 
 async def upsert_scoring_rules(conn, league_id: int, season: int, rules: dict[str, float]) -> None:
-    """Every stat_category already exists per (season, league_id) from
-    seed_default_scoring_rules at league-creation time, so this only
-    ever updates existing rows — an unrecognized key in `rules` (a typo,
-    a stale frontend build) silently affects nothing rather than
-    creating a new, uncomputed stat category, since scoring_engine.py
-    only ever reads categories it already knows to look for."""
+    """Sets each rule's value. A stat this league doesn't score yet is
+    added when it's one the scoring catalog knows (the scoring editor's
+    "Add a scoring rule", 2026-10 — e.g. kicker tackles); any other
+    unrecognized key (a typo, a stale build) still affects nothing, so
+    a league never gains a category nothing computes."""
+    from app.domain.scoring_catalog import CATALOG
+
+    existing = {
+        r["stat_category"]
+        for r in await conn.fetch(
+            "SELECT stat_category FROM league_scoring_rules WHERE league_id = $1 AND season = $2", league_id, season
+        )
+    }
+    allowed = {k: v for k, v in rules.items() if k in existing or k in CATALOG}
     await conn.executemany(
-        "UPDATE league_scoring_rules SET points_per_unit = $3 WHERE league_id = $1 AND season = $2 AND stat_category = $4",
-        [(league_id, season, value, category) for category, value in rules.items()],
+        """
+        INSERT INTO league_scoring_rules (season, stat_category, points_per_unit, league_id) VALUES ($2, $4, $3, $1)
+        ON CONFLICT (season, stat_category, league_id) DO UPDATE SET points_per_unit = EXCLUDED.points_per_unit
+        """,
+        [(league_id, season, value, category) for category, value in allowed.items()],
     )
 
 

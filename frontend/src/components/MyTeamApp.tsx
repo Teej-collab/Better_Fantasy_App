@@ -15,7 +15,7 @@ import { createCoOwnerInvite } from "@/lib/leaguesApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
-import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from "@/lib/rosterSlots";
 import { formatGameTime } from "@/lib/gameTime";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from "@/components/players/PlayerViews";
@@ -31,7 +31,7 @@ function eligibleStarterSlotsFor(position: string): string[] {
   return STARTER_SLOT_ORDER.filter((slot) => isEligibleForSlot(position, slot));
 }
 
-const BENCH_SLOTS = new Set([BENCH_SLOT_LABEL, "IR"]);
+const BENCH_SLOTS = new Set([BENCH_SLOT_LABEL, "IR", TAXI_SLOT_LABEL]);
 
 type EditLineupOption = { slot: string; occupant: RosterEntry | null };
 
@@ -73,6 +73,13 @@ function editLineupOptions(entry: RosterEntry, roster: RosterEntry[], rosterSlot
     const irOccupants = roster.filter((r) => r.lineup_slot === IR_SLOT_LABEL);
     for (const occupant of irOccupants) if (!occupant.is_locked) options.push({ slot: IR_SLOT_LABEL, occupant });
     if (irOccupants.length < irCapacity) options.push({ slot: IR_SLOT_LABEL, occupant: null });
+  }
+  // Taxi squad (dynasty leagues): first- or second-year players.
+  const taxiCapacity = rosterSlots[TAXI_SLOT_LABEL] ?? 0;
+  if (taxiCapacity > 0 && entry.years_exp != null && entry.years_exp <= 1) {
+    const taxiOccupants = roster.filter((r) => r.lineup_slot === TAXI_SLOT_LABEL);
+    for (const occupant of taxiOccupants) if (!occupant.is_locked && occupant.player_id !== entry.player_id) options.push({ slot: TAXI_SLOT_LABEL, occupant });
+    if (taxiOccupants.length < taxiCapacity && entry.lineup_slot !== TAXI_SLOT_LABEL) options.push({ slot: TAXI_SLOT_LABEL, occupant: null });
   }
   return options;
 }
@@ -504,6 +511,7 @@ export function MyTeamApp({
     .sort((a, b) => STARTER_SLOT_ORDER.indexOf(a.lineup_slot) - STARTER_SLOT_ORDER.indexOf(b.lineup_slot));
   const bench = team.roster.filter((e) => e.lineup_slot === BENCH_SLOT_LABEL);
   const ir = team.roster.filter((e) => e.lineup_slot === IR_SLOT_LABEL);
+  const taxi = team.roster.filter((e) => e.lineup_slot === TAXI_SLOT_LABEL);
 
   // Real state right now, not a hypothetical edge case: the actual
   // draft hasn't happened yet, so current_rosters is genuinely empty
@@ -594,6 +602,11 @@ export function MyTeamApp({
           ›
         </button>
       </div>
+      {team.lineup_auto && (
+        <p className="rounded-lg bg-[color:color-mix(in_srgb,var(--wl-accent)_10%,transparent)] px-3 py-2 text-center text-xs font-medium">
+          Best ball: your best lineup is set for you every week.
+        </p>
+      )}
       {!team.is_editable && (
         <p className="text-center text-xs text-black/50 dark:text-white/50">
           {team.current_week !== null && week < team.current_week
@@ -648,7 +661,7 @@ export function MyTeamApp({
                   entry={e}
                   ownership={ownership[e.player_id]}
                   mounted={mounted}
-                  editable={team.is_editable}
+                  editable={team.is_editable && !team.lineup_auto}
                   beta={beta}
                   onOpenEdit={openEdit}
                   onViewPlayer={openPlayerCard}
@@ -666,7 +679,7 @@ export function MyTeamApp({
                   entry={e}
                   ownership={ownership[e.player_id]}
                   mounted={mounted}
-                  editable={team.is_editable}
+                  editable={team.is_editable && !team.lineup_auto}
                   beta={beta}
                   onOpenEdit={openEdit}
                   onViewPlayer={openPlayerCard}
@@ -687,7 +700,29 @@ export function MyTeamApp({
                     entry={e}
                     ownership={ownership[e.player_id]}
                     mounted={mounted}
-                    editable={team.is_editable}
+                    editable={team.is_editable && !team.lineup_auto}
+                    beta={beta}
+                    onOpenEdit={openEdit}
+                    onViewPlayer={openPlayerCard}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {taxi.length > 0 && (
+            <section className="flex flex-col gap-1">
+              <h2 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                Taxi Squad
+              </h2>
+              <ul className={`rounded-lg px-4 ${beta ? "wl-card" : "neon-panel bg-black/[0.015] dark:bg-white/[0.03]"}`}>
+                {taxi.map((e) => (
+                  <RosterRow
+                    key={e.player_id}
+                    entry={e}
+                    ownership={ownership[e.player_id]}
+                    mounted={mounted}
+                    editable={team.is_editable && !team.lineup_auto}
                     beta={beta}
                     onOpenEdit={openEdit}
                     onViewPlayer={openPlayerCard}

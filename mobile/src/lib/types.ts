@@ -1,3 +1,5 @@
+import type { LeagueFormat } from '@/lib/leagueFormat';
+
 // Response shapes from the FastAPI backend, copied from the web app's
 // frontend/src/lib/api.ts (the most complete record of them) and
 // trimmed to the fields these screens read. When a screen needs more,
@@ -12,6 +14,8 @@ export type Me = {
   active_league_id: number | null;
   // How many leagues this account is in (optional for an older backend).
   league_count?: number;
+  // The active league's format (2026-10); null with no active league.
+  league_format?: LeagueFormat | null;
 };
 
 export type YourWeekMatchup = {
@@ -61,6 +65,8 @@ export type StandingsRow = {
   points_for: string;
   points_against: string;
   final_rank: number | null;
+  // Guillotine leagues: the week this team was cut, null while alive.
+  eliminated_week?: number | null;
 };
 
 export type InGameInjury = {
@@ -170,6 +176,8 @@ export type RosterEntry = {
   player_id: string;
   player_name: string;
   lineup_slot: string;
+  // Taxi squad eligibility (dynasty): first- or second-year players.
+  years_exp?: number | null;
   position: string;
   pro_team: string | null;
   injury_status: string | null;
@@ -190,6 +198,8 @@ export type MyTeam = {
   current_week: number | null;
   // False when viewing any week but the live one.
   is_editable: boolean;
+  // Best ball: the lineup is set automatically (optional for an older backend).
+  lineup_auto?: boolean;
   roster: RosterEntry[];
   // Per-slot capacity, e.g. { RB: 2, WR: 2 }. Null pre-draft.
   roster_slots: Record<string, number> | null;
@@ -336,6 +346,8 @@ export type DraftStatus = 'not_started' | 'in_progress' | 'paused' | 'complete';
 
 export type DraftConfig = {
   season: number;
+  // 'snake' | 'linear' (dynasty rookie draft) | 'auction' — optional for an older backend.
+  draft_type?: string;
   pick_time_limit_seconds: number;
   draft_order: number[];
   roster_slots: Record<string, number>;
@@ -360,6 +372,21 @@ export type DraftPick = {
   is_autopick: boolean;
   is_keeper: boolean;
   made_at: string | null;
+  // Auction drafts: what he went for.
+  price?: number | null;
+};
+
+// The live auction (auction drafts, 2026-10 — backend app/domain/
+// auction_engine.py). The clock is config.current_pick_deadline.
+export type AuctionTeam = { owner_id: number; spent: number; remaining: number; players: number; open_spots: number; max_bid: number };
+export type AuctionState = {
+  budget: number;
+  nominator_owner_id: number | null;
+  nominee: { sleeper_player_id: string; full_name?: string; position?: string; pro_team?: string | null } | null;
+  high_bid: number | null;
+  high_bidder_owner_id: number | null;
+  deadline: string | null;
+  teams: AuctionTeam[];
 };
 
 export type DraftChatMessage = { id: number; owner_id: number; owner_name: string; text: string; created_at: string };
@@ -369,6 +396,8 @@ export type DraftState = {
   picks: DraftPick[];
   connected_owner_ids: number[];
   chat_messages: DraftChatMessage[];
+  // Auction drafts only.
+  auction?: AuctionState | null;
 };
 
 export type DraftPoolPlayer = {
@@ -954,7 +983,7 @@ export type LeagueInfo = {
   team_count?: number | null;
   // GET /leagues/mine only: the league picker's card line.
   summary?: LeagueSummary | null;
-};
+} & Partial<LeagueFormat>;
 
 export type LeagueSummary = {
   team_name: string | null;

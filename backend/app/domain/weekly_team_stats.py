@@ -284,7 +284,7 @@ async def compute_chaos_scores_for_week(conn, season: int, week: int, league_id:
         table = "roster_history" if in_app else "rosters"
         starters = await conn.fetch(
             f"SELECT is_boom, is_bust FROM {table} WHERE season = $1 AND week = $2 AND team_id = $3 "
-            "AND lineup_slot NOT IN ('BE', 'IR')",
+            "AND lineup_slot NOT IN ('BE', 'IR', 'TAXI')",
             season, week, team_id,
         )
         boom_count = sum(1 for s in starters if s["is_boom"])
@@ -341,7 +341,7 @@ async def compute_team_projected_for_week(conn, season: int, week: int, league_i
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
-            WHERE cr.season = $1 AND cr.team_id = $2 AND cr.lineup_slot NOT IN ('BE', 'IR')
+            WHERE cr.season = $1 AND cr.team_id = $2 AND cr.lineup_slot NOT IN ('BE', 'IR', 'TAXI')
             """,
             season, team_id, week,
         )

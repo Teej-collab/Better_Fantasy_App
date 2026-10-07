@@ -22,9 +22,10 @@ from app.domain.roster_slots import IR_ELIGIBLE_INJURY_STATUSES, IR_SLOT_LABEL
 
 
 async def count_roster_toward_limit(conn, season: int, team_id: int) -> int:
-    """Every rostered player except the ones in the IR slot."""
+    """Every rostered player except the ones on IR or the taxi squad
+    (dynasty leagues, 2026-10)."""
     return await conn.fetchval(
-        "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2 AND lineup_slot <> $3",
+        "SELECT count(*) FROM current_rosters WHERE season = $1 AND team_id = $2 AND lineup_slot NOT IN ($3, 'TAXI')",
         season, team_id, IR_SLOT_LABEL,
     )
 

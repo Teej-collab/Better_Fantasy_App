@@ -30,7 +30,7 @@ def classify_severity(points_diff: float) -> str:
 
 
 def detect_bench_crimes(roster_rows: list[dict]) -> list[dict]:
-    starters = [r for r in roster_rows if r["lineup_slot"] not in ("BE", "IR")]
+    starters = [r for r in roster_rows if r["lineup_slot"] not in ("BE", "IR", "TAXI")]
     bench = [r for r in roster_rows if r["lineup_slot"] == "BE"]
 
     crimes = []

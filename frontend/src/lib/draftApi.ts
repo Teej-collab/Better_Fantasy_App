@@ -50,6 +50,21 @@ export type DraftPick = {
   is_autopick: boolean;
   is_keeper: boolean;
   made_at: string | null;
+  // Auction drafts: what he went for.
+  price?: number | null;
+};
+
+// The live auction (auction drafts, 2026-10 — backend app/domain/
+// auction_engine.py). The clock is config.current_pick_deadline.
+export type AuctionTeam = { owner_id: number; spent: number; remaining: number; players: number; open_spots: number; max_bid: number };
+export type AuctionState = {
+  budget: number;
+  nominator_owner_id: number | null;
+  nominee: { sleeper_player_id: string; full_name?: string; position?: string; pro_team?: string | null } | null;
+  high_bid: number | null;
+  high_bidder_owner_id: number | null;
+  deadline: string | null;
+  teams: AuctionTeam[];
 };
 
 export type DraftChatMessage = {
@@ -72,6 +87,8 @@ export type DraftState = {
   // client-side by live "chat" WebSocket events after this initial
   // snapshot (see DraftRoom.tsx).
   chat_messages: DraftChatMessage[];
+  // Auction drafts only; null for a snake or rookie draft.
+  auction?: AuctionState | null;
 };
 
 export type DraftPoolPlayer = {
@@ -146,6 +163,28 @@ export async function getDraftPoolServer(
 }
 
 export type DraftPickResult = { pick: DraftPick; config: DraftConfig };
+
+async function auctionPost(path: string, body: unknown): Promise<{ auction: AuctionState }> {
+  const res = await fetch(`/api/backend/draft/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Auction ${path} failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// Put a player up for bid (your turn to nominate), opening at `bid`.
+export async function nominatePlayer(sleeperPlayerId: string, bid = 1) {
+  return auctionPost("nominate", { sleeper_player_id: sleeperPlayerId, bid });
+}
+
+export async function placeBid(amount: number) {
+  return auctionPost("bid", { amount });
+}
 
 export async function submitDraftPick(sleeperPlayerId: string): Promise<DraftPickResult> {
   const res = await fetch(`/api/backend/draft/pick`, {

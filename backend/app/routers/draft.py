@@ -28,6 +28,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
+from app.domain import auction_engine
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
@@ -210,6 +211,53 @@ async def submit_pick(body: PickRequest, request: Request):
     await manager.broadcast_to_draft((season, league_id), {"type": "pick_made", **result})
     await notify_on_the_clock(season, league_id, result["config"])
     return result
+
+
+class NominateRequest(BaseModel):
+    sleeper_player_id: str
+    bid: int = 1
+
+
+class BidRequest(BaseModel):
+    amount: int
+
+
+async def _auction_action(request: Request, act) -> dict:
+    """Shared body of /nominate and /bid (auction drafts, 2026-10): run
+    the action as the caller's owner, then push the new auction state
+    to the whole draft room."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            league_id = await require_active_league_id(conn, payload)
+            owner_id = await resolve_owner_id(conn, payload)
+            await act(conn, season, league_id, owner_id)
+            state = await auction_engine.get_state(conn, season, league_id)
+    except auction_engine.AuctionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except DraftError as e:
+        raise _map_draft_error(e) from e
+    await manager.broadcast_to_draft((season, league_id), {"type": "auction", "auction": state})
+    return {"auction": state}
+
+
+@router.post("/nominate")
+async def nominate_player(body: NominateRequest, request: Request):
+    return await _auction_action(
+        request,
+        lambda conn, season, league_id, owner_id: auction_engine.nominate(
+            conn, season, league_id, owner_id, body.sleeper_player_id, body.bid
+        ),
+    )
+
+
+@router.post("/bid")
+async def place_bid(body: BidRequest, request: Request):
+    return await _auction_action(
+        request, lambda conn, season, league_id, owner_id: auction_engine.bid(conn, season, league_id, owner_id, body.amount)
+    )
 
 
 class SetupRequest(BaseModel):

@@ -24,7 +24,7 @@ import { Text } from '@/components/Text';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useActiveLeague, useKeeperRules, useLeagueTeams, useRosterSettings } from '@/lib/queries';
-import { BENCH_SLOT_LABEL, FLEX_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel } from '@/lib/rosterSlots';
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from '@/lib/rosterSlots';
 import type { FreeAgent, KeeperRules, RosterEntry } from '@/lib/types';
 
 // The web's /commissioner/roster: KeeperRulesSection,
@@ -136,17 +136,31 @@ const SLOT_LABELS: Record<string, string> = {
   WR: 'WR',
   TE: 'TE',
   'RB/WR/TE': 'Flex (RB/WR/TE)',
+  'QB/RB/WR/TE': 'Superflex (QB/RB/WR/TE)',
   'D/ST': 'D/ST',
   K: 'K',
+  DL: 'DL',
+  LB: 'LB',
+  DB: 'DB',
+  IDP: 'IDP flex (DL/LB/DB)',
   BE: 'Bench',
   IR: 'IR',
+  TAXI: 'Taxi squad',
 };
+// Rows to show: the standard shape plus Superflex, and the IDP/taxi
+// rows only in a league that uses them (league formats, 2026-10).
+const OPTIONAL_ROWS = ['DL', 'LB', 'DB', 'IDP', 'TAXI'];
+function slotRows(values: Record<string, unknown>): string[] {
+  const base = ['QB', 'RB', 'WR', 'TE', 'RB/WR/TE', 'QB/RB/WR/TE', 'D/ST', 'K'];
+  const extra = OPTIONAL_ROWS.filter((k) => k !== 'TAXI' && Number(values[k] ?? 0) > 0);
+  return [...base, ...extra, 'BE', 'IR', ...(Number(values.TAXI ?? 0) > 0 ? ['TAXI'] : [])];
+}
 // Only real positions get a cap (the slot label → players.position).
 const SLOT_TO_POSITION: Record<string, string> = { QB: 'QB', RB: 'RB', WR: 'WR', TE: 'TE', 'D/ST': 'DEF', K: 'K' };
 
 function RosterSlotsSection(props: { slots: Record<string, number>; editable: boolean; positionMax: Record<string, number> }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.keys(DEFAULT_ROSTER_SLOTS).map((k) => [k, String(props.slots[k] ?? 0)])),
+    Object.fromEntries(slotRows(props.slots).map((k) => [k, String(props.slots[k] ?? 0)])),
   );
   const [maxValues, setMaxValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(props.positionMax).map(([k, v]) => [k, String(v)])),
@@ -185,7 +199,7 @@ function RosterSlotsSection(props: { slots: Record<string, number>; editable: bo
           </Text>
         </View>
       )}
-      {Object.keys(DEFAULT_ROSTER_SLOTS).map((key) => {
+      {slotRows(values).map((key) => {
         const position = SLOT_TO_POSITION[key];
         return (
           <NumberRow
@@ -224,7 +238,7 @@ function RosterSlotsSection(props: { slots: Record<string, number>; editable: bo
 
 // ---- Force-edit a roster ---------------------------------------------
 
-const ALL_LINEUP_SLOTS = ['QB', 'RB', 'WR', 'TE', FLEX_SLOT_LABEL, 'D/ST', 'K', BENCH_SLOT_LABEL, IR_SLOT_LABEL];
+const ALL_LINEUP_SLOTS = [...STARTER_SLOT_ORDER, BENCH_SLOT_LABEL, IR_SLOT_LABEL, TAXI_SLOT_LABEL];
 
 function ForceEditRosterSection() {
   const accent = useAppearance().accent;

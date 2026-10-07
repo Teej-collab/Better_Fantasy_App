@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMyLeagues, getPlayoffSettings, renameLeague, updatePlayoffSettings, type League } from "@/lib/leaguesApi";
+import { LeagueFormatSection } from "@/components/commissioner/LeagueFormatSection";
+import type { FormatOptions } from "@/lib/leagueFormat";
+import { getLeagueFormats, getMyLeagues, getPlayoffSettings, renameLeague, updatePlayoffSettings, type League } from "@/lib/leaguesApi";
 
 /**
  * Split out of the old single-page CommissionerApp.tsx (2026-09-03) —
@@ -17,6 +19,7 @@ export function LeagueSettingsSection() {
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [formats, setFormats] = useState<FormatOptions | null>(null);
 
   const [playoffSeason, setPlayoffSeason] = useState<number | null>(null);
   const [playoffTeamCount, setPlayoffTeamCount] = useState("");
@@ -30,6 +33,9 @@ export function LeagueSettingsSection() {
       const { leagues, activeLeagueId } = await getMyLeagues();
       const active = leagues.find((l) => l.id === activeLeagueId) ?? null;
       setLeague(active);
+      getLeagueFormats()
+        .then(setFormats)
+        .catch(() => {});
 
       const playoff = await getPlayoffSettings();
       setPlayoffSeason(playoff.season);
@@ -149,6 +155,8 @@ export function LeagueSettingsSection() {
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
+
+        <LeagueFormatSection key={league.id} league={league} formats={formats} onSaved={setLeague} />
 
         {playoffSeason !== null && (
           <div className="flex flex-wrap items-center gap-2 border-t border-black/5 pt-3 dark:border-white/5">

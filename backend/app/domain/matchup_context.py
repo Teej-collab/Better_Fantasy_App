@@ -58,7 +58,7 @@ from app.queries.power_rankings import get_latest_power_rank_by_team
 # migration 465f0b1ffe3f for why D/ST is deliberately excluded.
 _POSITION_RANK_ELIGIBLE = {"QB", "RB", "WR", "TE", "K"}
 
-_STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
+_STARTER_EXCLUDED_SLOTS = {"BE", "IR", "TAXI"}
 
 
 def _projected_total(roster_rows) -> float | None:

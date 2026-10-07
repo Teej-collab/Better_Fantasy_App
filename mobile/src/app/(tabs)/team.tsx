@@ -19,6 +19,7 @@ import {
   lineupOptions,
   slotDisplayLabel,
   starterSortIndex,
+  TAXI_SLOT_LABEL,
   type LineupOption,
 } from '@/lib/rosterSlots';
 import { formatGameTime, formatPoints } from '@/lib/format';
@@ -42,13 +43,15 @@ function TeamScreenContent() {
   if (!data || data.roster.length === 0) return <MessageState message="Your roster fills in after the draft." />;
 
   const starters = data.roster
-    .filter((e) => e.lineup_slot !== BENCH_SLOT_LABEL && e.lineup_slot !== IR_SLOT_LABEL)
+    .filter((e) => e.lineup_slot !== BENCH_SLOT_LABEL && e.lineup_slot !== IR_SLOT_LABEL && e.lineup_slot !== TAXI_SLOT_LABEL)
     .sort((a, b) => starterSortIndex(a.lineup_slot) - starterSortIndex(b.lineup_slot));
   const bench = data.roster.filter((e) => e.lineup_slot === BENCH_SLOT_LABEL);
   const ir = data.roster.filter((e) => e.lineup_slot === IR_SLOT_LABEL);
+  const taxi = data.roster.filter((e) => e.lineup_slot === TAXI_SLOT_LABEL);
   // Only the live week's lineup can change, and only once there are
   // slot capacities to plan against.
-  const editable = data.is_editable && data.roster_slots !== null;
+  // Best ball (2026-10) sets the lineup itself.
+  const editable = data.is_editable && data.roster_slots !== null && !data.lineup_auto;
   const starterPoints = starters.reduce((sum, e) => sum + (e.points ?? 0), 0);
   const starterProjected = starters.reduce((sum, e) => sum + (e.live_projected ?? e.points_projected ?? 0), 0);
 
@@ -65,6 +68,7 @@ function TeamScreenContent() {
           </Text>
           <InviteCoOwner />
         </View>
+        {data.lineup_auto && <Text style={styles.subtitle}>Best ball: your best lineup is set for you every week.</Text>}
         <Text style={styles.subtitle}>
           {data.week !== null ? `Week ${data.week} · ` : ''}
           {formatPoints(starterPoints)} pts · Proj {formatPoints(starterProjected)}
@@ -105,6 +109,7 @@ function TeamScreenContent() {
             <RosterSection title="Starters" entries={starters} editable={editable} onEdit={setEditing} />
             {bench.length > 0 && <RosterSection title="Bench" entries={bench} editable={editable} onEdit={setEditing} />}
             {ir.length > 0 && <RosterSection title="Injured reserve" entries={ir} editable={editable} onEdit={setEditing} />}
+            {taxi.length > 0 && <RosterSection title="Taxi squad" entries={taxi} editable={editable} onEdit={setEditing} />}
           </>
         )}
       </ScrollView>

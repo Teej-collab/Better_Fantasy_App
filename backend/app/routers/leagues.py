@@ -20,8 +20,10 @@ from app.auth.league_context import require_commissioner_of, resolve_owner_id
 from app.auth.session import create_session_token, decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
+from app.domain import league_format
 from app.queries import auth as auth_queries
 from app.queries import chat as chat_queries
+from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import leagues as league_queries
 from app.queries import teams as team_queries
@@ -49,10 +51,27 @@ def _league_dict(row, role: str | None = None) -> dict:
         "invite_code": row["invite_code"],
         "created_at": row["created_at"],
         "team_count": row.get("team_count"),
+        **(league_format.format_from_row(row) if row.get("league_type") else {}),
     }
     if role is not None:
         d["role"] = role
     return d
+
+
+@router.get("/formats")
+async def league_formats():
+    """Every league format option and whether a new league can pick it
+    yet — the Create a League flow shows the rest as "Coming soon"."""
+    return {
+        field: [{"key": key, "available": key in league_format.AVAILABLE[field]} for key in options]
+        for field, options in (
+            ("league_type", league_format.LEAGUE_TYPES),
+            ("matchup_type", league_format.MATCHUP_TYPES),
+            ("draft_type", league_format.DRAFT_TYPES),
+            ("roster_preset", league_format.ROSTER_PRESETS),
+        )
+    } | {"type_settings": {t: {k: {"default": d, "min": lo, "max": hi} for k, (d, lo, hi) in v.items()}
+                           for t, v in league_format.TYPE_SETTING_LIMITS.items()}}
 
 
 @router.get("/mine")
@@ -94,6 +113,14 @@ class CreateLeagueRequest(BaseModel):
     team_count: int | None = Field(default=None, ge=2, le=32)
     scoring: str | None = None  # "ppr" | "half" | "standard"
     keepers: bool | None = None
+    # League format (2026-10, app/domain/league_format.py). All
+    # optional: an older client gets a standard redraft (or keeper,
+    # from `keepers`) head-to-head snake league, exactly as before.
+    league_type: str | None = None
+    matchup_type: str = "h2h"
+    draft_type: str = "snake"
+    roster_preset: str = "standard"
+    type_settings: dict | None = None
     # The Create a League flow switches you to the new league; the
     # Leagues page's plain create doesn't.
     make_active: bool = False
@@ -107,20 +134,39 @@ async def create_league(body: CreateLeagueRequest, request: Request):
         raise HTTPException(status_code=400, detail="Enter a league name")
     if body.scoring is not None and body.scoring not in league_queries.SCORING_PRESETS:
         raise HTTPException(status_code=422, detail="Scoring must be PPR, Half PPR or Standard")
+    league_type = body.league_type or ("keeper" if body.keepers else "redraft")
+    choices = {
+        "league_type": league_type,
+        "matchup_type": body.matchup_type,
+        "draft_type": body.draft_type,
+        "roster_preset": body.roster_preset,
+    }
+    for field, value in choices.items():
+        if value not in getattr(league_format, f"{field.upper()}S"):
+            raise HTTPException(status_code=422, detail=f"Unknown {field.replace('_', ' ')}: {value}")
+    if league_format.unavailable_choice(choices):
+        raise HTTPException(status_code=422, detail="That league format isn't available yet")
+    type_settings = league_format.normalize_type_settings(league_type, body.draft_type, body.type_settings)
 
     season = int(_require("ACTIVE_SEASON"))
     pool = await get_pool()
     async with pool.acquire() as conn:
         invite_code = await league_queries.new_invite_code(conn)
         league_id = await league_queries.create_league(conn, name, payload["user_id"], invite_code, body.team_count)
+        await league_queries.set_league_format(conn, league_id, choices, type_settings)
+        await draft_queries.upsert_roster_slots_setting(
+            conn, season, league_format.roster_slots_for(body.roster_preset, league_type, type_settings), league_id,
+        )
         await league_queries.add_member(conn, league_id, payload["user_id"], "commissioner")
         if body.make_active:
             await league_queries.set_active_league_id(conn, payload["user_id"], league_id)
         await league_queries.seed_default_scoring_rules(conn, league_id, season)
         if body.scoring is not None:
             await league_queries.apply_scoring_preset(conn, league_id, season, body.scoring)
-        if body.keepers is not None:
-            await keeper_queries.upsert_rules(conn, season, 2 if body.keepers else 0, None, None, league_id)
+        if league_type == "keeper":
+            await keeper_queries.upsert_rules(conn, season, type_settings["keepers_per_team"], None, None, league_id)
+        elif body.keepers is not None:
+            await keeper_queries.upsert_rules(conn, season, 0, None, None, league_id)
 
         # Give the new league somewhere to talk from day one — same
         # precedent as seed_default_scoring_rules above ("give a new
@@ -414,6 +460,64 @@ async def rename_league(league_id: int, body: RenameLeagueRequest, request: Requ
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
         await league_queries.rename_league(conn, league_id, name)
+        row = await league_queries.get_league(conn, league_id)
+    return _league_dict(row)
+
+
+class UpdateFormatRequest(BaseModel):
+    league_type: str | None = None
+    matchup_type: str | None = None
+    draft_type: str | None = None
+    roster_preset: str | None = None
+    type_settings: dict | None = None
+
+
+@router.patch("/{league_id}/format")
+async def update_league_format(league_id: int, body: UpdateFormatRequest, request: Request):
+    """Commissioner-only (2026-10). The league type, roster and draft
+    style shape the draft itself, so they change only until the draft
+    is set up (reset it to change them after). Head-to-head vs total
+    points only changes how standings rank, so it can change any time."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        current = await league_format.get_league_format(conn, league_id)
+        choices = {
+            "league_type": body.league_type or current["league_type"],
+            "matchup_type": body.matchup_type or current["matchup_type"],
+            "draft_type": body.draft_type or current["draft_type"],
+            "roster_preset": body.roster_preset or current["roster_preset"],
+        }
+        for field, value in choices.items():
+            if value not in getattr(league_format, f"{field.upper()}S"):
+                raise HTTPException(status_code=422, detail=f"Unknown {field.replace('_', ' ')}: {value}")
+        shapes_draft = any(choices[f] != current[f] for f in ("league_type", "draft_type", "roster_preset")) or (
+            body.type_settings is not None
+        )
+        if shapes_draft:
+            if await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="The draft is already set up. Reset it in Draft Setup to change the league type, roster or draft style.",
+                )
+            changed = {f: choices[f] for f in choices if choices[f] != current[f]}
+            if league_format.unavailable_choice(changed):
+                raise HTTPException(status_code=422, detail="That league format isn't available yet")
+        type_settings = league_format.normalize_type_settings(
+            choices["league_type"], choices["draft_type"],
+            body.type_settings if body.type_settings is not None else current["type_settings"],
+        )
+        await league_queries.set_league_format(conn, league_id, choices, type_settings)
+        if shapes_draft:
+            await draft_queries.upsert_roster_slots_setting(
+                conn, season,
+                league_format.roster_slots_for(choices["roster_preset"], choices["league_type"], type_settings),
+                league_id,
+            )
+            if choices["league_type"] == "keeper":
+                await keeper_queries.upsert_rules(conn, season, type_settings["keepers_per_team"], None, None, league_id)
         row = await league_queries.get_league(conn, league_id)
     return _league_dict(row)
 

@@ -144,24 +144,41 @@ export function OptionCard({ on, title, text, color, icon, onPress }: { on: bool
   );
 }
 
-export function Segments<T extends string | number>({ options, value, onChange, label }: { options: { key: T; label: string }[]; value: T; onChange: (v: T) => void; label: string }) {
+export function Segments<T extends string | number>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  // `sub` is a second line under the label; `available: false` greys
+  // an option out with "Soon" (league formats not built yet, 2026-10).
+  options: { key: T; label: string; sub?: string; available?: boolean }[];
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+}) {
   return (
     <View style={styles.group}>
       <Text style={styles.groupLabel}>{label}</Text>
       <View style={styles.segs}>
         {options.map((o) => {
           const on = o.key === value;
+          const available = o.available !== false;
           return (
             <Pressable
               key={String(o.key)}
+              disabled={!available}
               onPress={() => {
                 haptics.select();
                 onChange(o.key);
               }}
               accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              style={[styles.seg, on && styles.segOn]}>
-              <Text style={[styles.segText, on && styles.segTextOn]}>{o.label}</Text>
+              accessibilityState={{ selected: on, disabled: !available }}
+              style={[styles.seg, on && styles.segOn, !available && styles.dim]}>
+              <Text style={[styles.segText, on && styles.segTextOn]} numberOfLines={1} adjustsFontSizeToFit>
+                {o.label}
+              </Text>
+              {(o.sub || !available) && <Text style={[styles.segSub, on && styles.segTextOn]}>{available ? o.sub : 'Soon'}</Text>}
             </Pressable>
           );
         })}
@@ -242,6 +259,7 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: Spacing.sm },
   flex: { flex: 1 },
   dim: { opacity: 0.45 },
+  segSub: { color: Colors.textSecondary, fontSize: 10.5, fontWeight: '500', marginTop: 1 },
   pressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
   dots: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2a303a' },

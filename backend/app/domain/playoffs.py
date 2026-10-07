@@ -57,6 +57,7 @@ Two entry points:
 """
 import math
 
+from app.domain.league_format import get_league_format, ranks_by_points
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.playoff_exceptions import (
     PlayoffAlreadyGeneratedError,
@@ -492,5 +493,9 @@ async def get_playoff_world(conn, season: int, league_id: int = DEFAULT_LEAGUE_I
         "teams": [dict(t) for t in teams],
         "schedule": schedule,
         "games": spec_games,
+        # Total-points leagues seed on points, record as tiebreaker
+        # (app/domain/league_format.py) — the clients' what-if seeding
+        # and the odds simulation read this.
+        "rank_by": "points" if ranks_by_points(await get_league_format(conn, league_id)) else "wins",
     }
 

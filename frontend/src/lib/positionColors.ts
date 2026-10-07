@@ -13,11 +13,20 @@ export const POSITION_COLORS: Record<string, string> = {
   TE: "#fb923c",
   K: "#c084fc",
   DEF: "#facc15",
+  // IDP leagues (2026-10): individual defenders by group.
+  DL: "#f472b6",
+  LB: "#2dd4bf",
+  DB: "#a3e635",
+};
+
+// Sleeper's raw defensive positions -> the IDP group whose color they wear.
+const IDP_GROUP: Record<string, string> = {
+  DE: "DL", DT: "DL", NT: "DL", ILB: "LB", OLB: "LB", MLB: "LB", CB: "DB", S: "DB", SS: "DB", FS: "DB",
 };
 
 const FALLBACK_COLOR = "#9ca3af";
 
 export function positionColor(position: string | null | undefined): string {
   if (!position) return FALLBACK_COLOR;
-  return POSITION_COLORS[position] ?? FALLBACK_COLOR;
+  return POSITION_COLORS[IDP_GROUP[position] ?? position] ?? FALLBACK_COLOR;
 }

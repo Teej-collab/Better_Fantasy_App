@@ -14,12 +14,17 @@ module only overwrites the score fields once Phase D's scoring engine
 has computed the week's points, immediately after.
 """
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain.best_ball import best_lineup_points
+from app.domain.league_format import get_league_format, lineups_are_automatic
 from app.queries import league as league_queries
 
-_NON_STARTER_SLOTS = ("BE", "IR")
+_NON_STARTER_SLOTS = ("BE", "IR", "TAXI")
 
 
-async def compute_team_score(conn, season: int, week: int, team_id: int) -> float:
+async def compute_team_score(conn, season: int, week: int, team_id: int, best_ball_slots: dict | None = None) -> float:
+    """`best_ball_slots`: the league's roster shape when it's a best-ball
+    league (app/domain/best_ball.py) — the score is then the roster's
+    best possible lineup, whoever was slotted where."""
     # 2026-09-22 real production bug, confirmed live (real report: a
     # decided week 1 win recorded as a loss, points_for reading wrong —
     # traced to this exact team/week in the DB): this used to join
@@ -36,6 +41,15 @@ async def compute_team_score(conn, season: int, week: int, team_id: int) -> floa
     # reusing it here instead of duplicating a second, divergent version
     # of that same fallback chain.
     roster = await league_queries.get_roster_for_week(conn, season, team_id, week)
+    if best_ball_slots is not None:
+        return best_lineup_points(
+            [
+                {"sleeper_player_id": r["player_id"], "position": r["position"], "lineup_slot": r["lineup_slot"],
+                 "value": float(r["points_scored"]) if r["points_scored"] is not None else 0.0}
+                for r in roster
+            ],
+            best_ball_slots,
+        )
     starters = [r for r in roster if r["lineup_slot"] not in _NON_STARTER_SLOTS]
     return round(sum(float(r["points_scored"]) for r in starters if r["points_scored"] is not None), 2)
 
@@ -50,11 +64,16 @@ async def compute_matchup_scores_for_week(conn, season: int, week: int, league_i
         "SELECT id, home_team_id, away_team_id FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3",
         season, week, league_id,
     )
+    best_ball_slots = None
+    if lineups_are_automatic(await get_league_format(conn, league_id)):
+        from app.domain.lineup_engine import _get_roster_slots
+
+        best_ball_slots = await _get_roster_slots(conn, season, league_id)
     updated = 0
     async with conn.transaction():
         for row in matchup_rows:
-            home_score = await compute_team_score(conn, season, week, row["home_team_id"])
-            away_score = await compute_team_score(conn, season, week, row["away_team_id"])
+            home_score = await compute_team_score(conn, season, week, row["home_team_id"], best_ball_slots)
+            away_score = await compute_team_score(conn, season, week, row["away_team_id"], best_ball_slots)
             # Explicit numeric(10,2) cast: matchups.home_score/away_score
             # is an unconstrained `numeric` column, and asyncpg binds a
             # Python float to it as that float's exact binary value, not

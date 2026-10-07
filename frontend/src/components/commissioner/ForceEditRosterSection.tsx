@@ -9,7 +9,7 @@ import {
   getTeamCurrentRoster,
 } from "@/lib/commissionerLineupApi";
 import type { RosterEntry } from "@/lib/api";
-import { BENCH_SLOT_LABEL, FLEX_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel } from "@/lib/rosterSlots";
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from "@/lib/rosterSlots";
 
 type FreeAgentResult = { sleeper_player_id: string; full_name: string; position: string; pro_team: string | null };
 
@@ -19,7 +19,7 @@ type FreeAgentResult = { sleeper_player_id: string; full_name: string; position:
 // fixing an already-live lineup, e.g. the real report that led to it:
 // a team with no FLEX starter set had every slot below FLEX rendering
 // the wrong player in the head-to-head table).
-const ALL_LINEUP_SLOTS = ["QB", "RB", "WR", "TE", FLEX_SLOT_LABEL, "D/ST", "K", BENCH_SLOT_LABEL, IR_SLOT_LABEL];
+const ALL_LINEUP_SLOTS = [...STARTER_SLOT_ORDER, BENCH_SLOT_LABEL, IR_SLOT_LABEL, TAXI_SLOT_LABEL];
 
 /**
  * Force-add/drop a player on any member's roster (2026-09-03) — a

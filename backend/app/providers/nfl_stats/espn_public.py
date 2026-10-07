@@ -70,6 +70,17 @@ _INDIVIDUAL_STAT_MAP: dict[tuple[str, str], str] = {
     # one — which is the actual answer to "can we track QB tackles":
     # yes, because this was never position-scoped to begin with.
     ("defensive", "totalTackles"): "def_tackle",
+    # Volume stats a league can price (the scoring editor, 2026-10).
+    ("rushing", "rushingAttempts"): "rush_att",
+    # Individual defenders' own stats (IDP leagues, 2026-10). Raw names:
+    # app/domain/stat_derivations.py turns them into idp_* for a DL/LB/DB
+    # and drops them for anyone else.
+    ("defensive", "sacks"): "def_sack_ind",
+    ("defensive", "tacklesForLoss"): "def_tfl",
+    ("defensive", "passesDefended"): "def_pd",
+    ("defensive", "QBHits"): "def_qb_hit",
+    ("defensive", "defensiveTouchdowns"): "def_td_ind",
+    ("interceptions", "interceptions"): "def_int_ind",
 }
 
 # 2026-09-13 fix, real report: anchored to end-of-string with zero
@@ -130,9 +141,17 @@ def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
     Misses aren't captured here at all — see _parse_fg_misses_by_player
     for those, which reads a different part of the response entirely
     (misses don't score, so they never appear in scoringPlays)."""
-    kicker_by_team = _single_kicker_lookup(data, "abbreviation")
-
     yards_by_player: dict[int, float] = {}
+    for espn_player_id, distance in _made_field_goals(data):
+        yards_by_player[espn_player_id] = yards_by_player.get(espn_player_id, 0) + distance
+    return yards_by_player
+
+
+def _made_field_goals(data: dict) -> list[tuple[int, int]]:
+    """[(kicker espn id, distance)] for every made field goal — see
+    _parse_fg_yards_by_player for how a kick is credited."""
+    kicker_by_team = _single_kicker_lookup(data, "abbreviation")
+    kicks: list[tuple[int, int]] = []
     for play in data.get("scoringPlays", []):
         if play.get("type", {}).get("abbreviation") != "FG":
             continue
@@ -143,9 +162,20 @@ def _parse_fg_yards_by_player(data: dict) -> dict[int, float]:
         kickers = kicker_by_team.get(team_abbr, [])
         if len(kickers) != 1:
             continue  # ambiguous (0 or 2+ kickers credited) — skip rather than guess
-        yards_by_player[kickers[0]] = yards_by_player.get(kickers[0], 0) + int(match.group(1))
+        kicks.append((kickers[0], int(match.group(1))))
+    return kicks
 
-    return yards_by_player
+
+# Made field goals by distance (the scoring editor, 2026-10) — for a
+# league that prices kicks by band instead of per yard (fg_yds).
+_FG_MADE_TIERS = ((39, "fg_made_0_39"), (49, "fg_made_40_49"), (None, "fg_made_50_plus"))
+
+
+def fg_made_tier(distance: int) -> str:
+    for max_yards, category in _FG_MADE_TIERS:
+        if max_yards is None or distance <= max_yards:
+            return category
+    return _FG_MADE_TIERS[-1][1]
 
 
 _FG_MISS_TIERS: list[tuple[int | None, str]] = [
@@ -227,6 +257,7 @@ def _parse_fg_misses_by_player(data: dict) -> dict[int, dict[str, float]]:
 # "made/attempted" combined strings (e.g. "3/4").
 _MADE_ATTEMPTED_MAP: dict[tuple[str, str], str] = {
     ("kicking", "extraPointsMade/extraPointAttempts"): "xp_made",
+    ("passing", "completions/passingAttempts"): "pass_cmp",
 }
 
 # Team D/ST aggregate categories — summed across every player on a
@@ -585,6 +616,65 @@ async def _fetch_summary(event_id: str) -> dict:
         return response.json()
 
 
+# 40+ yard touchdowns (the scoring editor's long-TD bonus, 2026-10).
+# Like field goals, a touchdown's length is only in scoringPlays' text
+# ("Chuba Hubbard 43 Yd pass from Bryce Young (Ryan Fitzgerald Kick)",
+# "Bijan Robinson 59 Yd Run (...)"), with names, never ids. A name is
+# matched against that same team's boxscore athletes; one that doesn't
+# match exactly (or matches two players) is skipped, never guessed.
+LONG_TD_YARDS = 40
+_TD_PASS_RE = re.compile(r"^(?P<receiver>.+?) (?P<yards>\d+) Yd pass from (?P<passer>.+?)(?: \(|$)")
+_TD_RUN_RE = re.compile(r"^(?P<rusher>.+?) (?P<yards>\d+) Yd Run(?: \(|$)")
+
+
+def _athletes_by_name(data: dict) -> dict[tuple[str, str], int | None]:
+    """{(team abbreviation, display name): espn id}, None when two
+    athletes on one team share a name."""
+    found: dict[tuple[str, str], int | None] = {}
+    for team_entry in data.get("boxscore", {}).get("players", []):
+        abbr = team_entry.get("team", {}).get("abbreviation")
+        for category in team_entry.get("statistics", []):
+            for athlete_entry in category.get("athletes", []):
+                athlete = athlete_entry.get("athlete", {})
+                name, espn_id = athlete.get("displayName"), athlete.get("id")
+                if not abbr or not name or espn_id is None:
+                    continue
+                key = (abbr, name.strip())
+                if key in found and found[key] != int(espn_id):
+                    found[key] = None
+                else:
+                    found[key] = int(espn_id)
+    return found
+
+
+def _parse_long_tds_by_player(data: dict) -> dict[int, dict[str, float]]:
+    """{espn_id: {pass_td_40 / rush_td_40 / rec_td_40: count}}."""
+    names = _athletes_by_name(data)
+    out: dict[int, dict[str, float]] = {}
+
+    def credit(abbr: str, name: str, category: str) -> None:
+        espn_id = names.get((abbr, name.strip()))
+        if espn_id is not None:
+            bucket = out.setdefault(espn_id, {})
+            bucket[category] = bucket.get(category, 0) + 1
+
+    for play in data.get("scoringPlays", []):
+        if play.get("type", {}).get("abbreviation") != "TD":
+            continue
+        abbr = play.get("team", {}).get("abbreviation")
+        text = (play.get("text") or "").strip()
+        if not abbr:
+            continue
+        if m := _TD_PASS_RE.match(text):
+            if int(m["yards"]) >= LONG_TD_YARDS:
+                credit(abbr, m["receiver"], "rec_td_40")
+                credit(abbr, m["passer"], "pass_td_40")
+        elif m := _TD_RUN_RE.match(text):
+            if int(m["yards"]) >= LONG_TD_YARDS:
+                credit(abbr, m["rusher"], "rush_td_40")
+    return out
+
+
 def parse_individual_player_stats(data: dict) -> list[dict]:
     """One entry per player who recorded a mapped stat in this game:
     {"espn_player_id": int, "player_name": str, "pro_team": str,
@@ -635,12 +725,24 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
     # player is already in players_by_id: true for every real kicker in
     # practice (they always show up in the kicking category above too),
     # but this stays correct even if that ever isn't the case.
+    for espn_player_id, distance in _made_field_goals(data):
+        entry = players_by_id.get(espn_player_id)
+        if entry is not None:
+            tier = fg_made_tier(distance)
+            entry["stat_line"][tier] = entry["stat_line"].get(tier, 0) + 1
+
     for espn_player_id, fg_yards in _parse_fg_yards_by_player(data).items():
         entry = players_by_id.setdefault(
             espn_player_id,
             {"espn_player_id": espn_player_id, "player_name": None, "pro_team": None, "stat_line": {}},
         )
         entry["stat_line"]["fg_yds"] = entry["stat_line"].get("fg_yds", 0) + fg_yards
+
+    for espn_player_id, buckets in _parse_long_tds_by_player(data).items():
+        entry = players_by_id.get(espn_player_id)
+        if entry is not None:
+            for bucket, count in buckets.items():
+                entry["stat_line"][bucket] = entry["stat_line"].get(bucket, 0) + count
 
     for espn_player_id, miss_buckets in _parse_fg_misses_by_player(data).items():
         entry = players_by_id.setdefault(

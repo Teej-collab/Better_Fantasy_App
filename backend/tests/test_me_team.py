@@ -119,6 +119,9 @@ async def test_my_team_returns_roster_from_current_rosters(pool, monkeypatch):
     assert body["team_name"] == "My Team roster1"
     assert body["roster"][0]["player_id"] == player
     assert body["roster"][0]["lineup_slot"] == "RB"
+    # League formats (2026-10): League #1 isn't best ball, so the lineup is the owner's to set.
+    assert body["lineup_auto"] is False
+    assert "years_exp" in body["roster"][0]
     # No league_state row seeded for this season — current week isn't
     # resolvable, so the score/schedule fields degrade to null rather
     # than erroring.

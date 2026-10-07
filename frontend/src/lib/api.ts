@@ -1,4 +1,5 @@
 import { nflTeamColor } from "@/lib/nfl-teams";
+import type { LeagueFormat } from "@/lib/leagueFormat";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -108,6 +109,8 @@ export type StandingsRow = {
   // regular-season record instead. A row with final_rank === 1 is the
   // champion.
   final_rank: number | null;
+  // Guillotine leagues: the week this team was cut, null while alive.
+  eliminated_week?: number | null;
 };
 
 export type WeekMatchup = {
@@ -1399,6 +1402,8 @@ export type Me = {
   // backend without the field still type-checks — read it through
   // opensOnLeaguePicker below.
   league_count?: number;
+  // The active league's format (2026-10); null with no active league.
+  league_format?: LeagueFormat | null;
 };
 
 /** Whether a fresh launch opens on the league picker after the intro:
@@ -1682,6 +1687,8 @@ export type RosterEntry = {
   pro_team: string | null;
   injury_status: string | null;
   acquired_via: string;
+  // Taxi squad eligibility (dynasty): first- or second-year players.
+  years_exp?: number | null;
   // Only GET /me/team populates these (see api.ts's getMyTeam) — every
   // lineup-move/swap/free-agent response's roster entries leave them
   // null. points is this app's own stored, computed-after-the-fact
@@ -1734,6 +1741,8 @@ export type MyTeam = {
   week: number | null;
   current_week: number | null;
   is_editable: boolean;
+  // Best ball (2026-10): the lineup is set automatically.
+  lineup_auto?: boolean;
   roster: RosterEntry[];
   // Per-slot capacity (e.g. RB: 2, WR: 2) from draft_config.roster_slots
   // — null pre-draft, same as roster itself being empty then. Powers
@@ -2086,13 +2095,15 @@ export type WaiverClaim = {
 // Real write — files a claim on a player currently on waivers, resolved
 // later by the daily/hourly scheduler job once their waiver period
 // clears (highest this-week priority wins).
-export async function submitWaiverClaim(addSleeperPlayerId: string, dropSleeperPlayerId?: string): Promise<WaiverClaim> {
+// `bidAmount`: a FAAB bid, for a league that bids on waivers (guillotine).
+export async function submitWaiverClaim(addSleeperPlayerId: string, dropSleeperPlayerId?: string, bidAmount?: number): Promise<WaiverClaim> {
   const res = await fetch(`/api/backend/me/team/waivers/claim`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       add_sleeper_player_id: addSleeperPlayerId,
       drop_sleeper_player_id: dropSleeperPlayerId ?? null,
+      bid_amount: bidAmount ?? null,
     }),
   });
   if (!res.ok) {

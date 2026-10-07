@@ -105,8 +105,8 @@ async def test_a_player_appearing_in_multiple_categories_is_merged_not_duplicate
     assert qb["player_name"] == "Aidan O'Connell"
     assert qb["pro_team"] == "LV"
     assert qb["stat_line"] == {
-        "pass_yd": 166.0, "pass_td": 2.0, "pass_int": 1.0,
-        "rush_yd": 12.0, "rush_td": 1.0,
+        "pass_yd": 166.0, "pass_td": 2.0, "pass_int": 1.0, "pass_cmp": 15.0,
+        "rush_yd": 12.0, "rush_td": 1.0, "rush_att": 3.0,
     }
 
 

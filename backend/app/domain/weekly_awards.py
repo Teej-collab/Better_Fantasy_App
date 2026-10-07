@@ -214,7 +214,7 @@ async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, le
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
                 AND pws.league_id = tbs.league_id
             WHERE rh.season = $1 AND rh.week = $2 AND tbs.league_id = $4
-              AND rh.lineup_slot NOT IN ('BE', 'IR')
+              AND rh.lineup_slot NOT IN ('BE', 'IR', 'TAXI')
               AND rh.points_projected > 0
               AND pws.fantasy_points > rh.points_projected
             ORDER BY pws.fantasy_points - rh.points_projected DESC LIMIT $3

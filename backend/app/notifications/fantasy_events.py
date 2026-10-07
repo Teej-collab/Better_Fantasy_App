@@ -34,7 +34,7 @@ _TD_KINDS = ("rush_td", "rec_td", "pass_td")
 # Red zone alerts only make sense for players who could actually score
 # from there — a D/ST on the team with the ball can't.
 _RED_ZONE_POSITIONS = {"QB", "RB", "WR", "TE", "K"}
-_BENCH_SLOTS = {"BE", "IR"}
+_BENCH_SLOTS = {"BE", "IR", "TAXI"}
 # A team that bounces out of and back into the red zone on the same
 # drive (a sack, a penalty) shouldn't buzz everyone's phone twice.
 _RED_ZONE_COOLDOWN_SECONDS = 8 * 60
@@ -231,7 +231,7 @@ async def notify_red_zone(conn, season: int, week: int | None, games: list[dict]
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             JOIN teams_by_season t ON t.id = cr.team_id
             WHERE cr.season = $1 AND p.pro_team = ANY($2::text[])
-              AND cr.lineup_slot NOT IN ('BE', 'IR') AND p.position = ANY($3::text[])
+              AND cr.lineup_slot NOT IN ('BE', 'IR', 'TAXI') AND p.position = ANY($3::text[])
             ORDER BY p.search_rank NULLS LAST, p.full_name
             """,
             season, entered, list(_RED_ZONE_POSITIONS),

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
@@ -8,7 +8,7 @@ import { Card } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { formatGameTime, formatPoints } from '@/lib/format';
-import { invalidateRosterMoves, useMyTeam } from '@/lib/queries';
+import { invalidateRosterMoves, useMe, useMyTeam } from '@/lib/queries';
 import { slotDisplayLabel } from '@/lib/rosterSlots';
 import type { FreeAgent, RosterEntry } from '@/lib/types';
 
@@ -27,6 +27,9 @@ function formatClearsAt(iso: string | null): string {
 // claim. A claim can name a drop, used only if the claim wins.
 export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onClose: () => void }) {
   const team = useMyTeam();
+  // Guillotine leagues bid on waivers with FAAB (2026-10).
+  const bidding = useMe().data?.league_format?.league_type === 'guillotine';
+  const [bid, setBid] = useState('1');
   const [mode, setMode] = useState<'add' | 'claim'>(player.waiver_clears_at || player.game_locked ? 'claim' : 'add');
   const [clearsAt, setClearsAt] = useState(player.waiver_clears_at);
   const [pickingDrop, setPickingDrop] = useState(false);
@@ -68,7 +71,11 @@ export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onCl
     setBusy(true);
     setMessage(null);
     try {
-      await api.submitWaiverClaim(player.sleeper_player_id, drop?.player_id ?? null);
+      await api.submitWaiverClaim(
+        player.sleeper_player_id,
+        drop?.player_id ?? null,
+        bidding ? Math.max(0, Math.floor(Number(bid) || 0)) : undefined,
+      );
       finish(`Claim filed for ${player.full_name}. It's decided when waivers clear.`);
     } catch (e) {
       fail(e);
@@ -119,6 +126,13 @@ export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onCl
           </View>
           {opponent && <Text style={styles.muted}>Next: {opponent}</Text>}
           {mode === 'claim' && <Text style={styles.waivers}>{formatClearsAt(clearsAt)}</Text>}
+          {mode === 'claim' && bidding && !done && (
+            <View style={styles.bidRow}>
+              <Text style={styles.muted}>FAAB bid $</Text>
+              <TextInput value={bid} onChangeText={setBid} keyboardType="number-pad" style={styles.bidInput} accessibilityLabel="FAAB bid" />
+              <Text style={styles.muted}>Highest bid wins</Text>
+            </View>
+          )}
 
           {done ? (
             <Text style={styles.done}>{done}</Text>
@@ -199,6 +213,8 @@ function DropRow(props: { label: string; detail: string; onPress: () => void; di
 }
 
 const styles = StyleSheet.create({
+  bidRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  bidInput: { minWidth: 70, color: Colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 6, textAlign: 'center' },
   sheet: { flex: 1, backgroundColor: Colors.bg },
   header: {
     flexDirection: 'row',

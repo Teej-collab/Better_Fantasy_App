@@ -177,6 +177,7 @@ function StandingsTable(props: {
   loading: boolean;
 }) {
   const accent = useAppearance().accent;
+  const me = useMe().data;
   const rankings = useLatestPowerRankings(props.season).data?.rankings ?? [];
   const rankByTeam = new Map(rankings.map((r) => [r.team_id, r.power_rank]));
   // Simulated playoff chances, this season only (2026-10).
@@ -190,11 +191,14 @@ function StandingsTable(props: {
   const showPlayoffLine = !isFinal && playoffCount !== null && playoffCount > 0 && playoffCount < standings.length;
   const toiletBowl = 4;
   const showToilet = !isFinal && standings.length > toiletBowl;
+  const format = me?.league_format;
+  const rankedByPoints = format?.matchup_type === 'points' || format?.league_type === 'guillotine';
 
   return (
     <View style={styles.gapSm}>
       <Text style={styles.smallMuted}>
         {isFinal ? 'Final standings.' : 'Season in progress.'}
+        {rankedByPoints && ' Ranked by total points.'}
         {showPlayoffLine && ` Top ${playoffCount} make the playoffs.`}
         {showToilet && ` The bottom ${toiletBowl} risk the Toilet Bowl.`}
         {odds && ' Playoff % comes from 10,000 simulated seasons.'}
@@ -221,6 +225,7 @@ function StandingsTable(props: {
                       <Text style={ls.name}>{row.team_name}</Text>
                       <RankBadge rank={rankByTeam.get(row.team_id)} />
                     </PreviewLink>
+                    {row.eliminated_week != null && <Pill text={`🪓 Cut Wk ${row.eliminated_week}`} color="#f87171" bg="rgba(239,68,68,0.15)" />}
                     {champion && <Pill text="🏆 Champion" color="#fcd34d" bg="rgba(251,191,36,0.2)" />}
                     {loser && <Pill text="💩 League Loser" color="#d9b98a" bg="rgba(139,90,43,0.3)" />}
                     <Text style={ls.owner}>{row.owner_name}</Text>

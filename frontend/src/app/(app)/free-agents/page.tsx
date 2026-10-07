@@ -35,6 +35,9 @@ const POSITION_TO_QUERY_VALUE: Record<string, string> = {
   TE: "TE",
   "D/ST": "DEF",
   K: "K",
+  DL: "DL",
+  LB: "LB",
+  DB: "DB",
 };
 
 export default async function FreeAgentsPage({
@@ -102,7 +105,7 @@ export default async function FreeAgentsPage({
         >
           All
         </Link>
-        {POSITIONS.map((p) => {
+        {[...POSITIONS, ...(me.league_format?.roster_preset === "idp" ? ["DL", "LB", "DB"] : [])].map((p) => {
           const queryValue = POSITION_TO_QUERY_VALUE[p];
           return (
             <Link
@@ -140,7 +143,7 @@ export default async function FreeAgentsPage({
         </details>
       )}
 
-      <FreeAgentsList players={players} />
+      <FreeAgentsList players={players} bidding={me.league_format?.league_type === "guillotine"} />
     </div>
   );
 }

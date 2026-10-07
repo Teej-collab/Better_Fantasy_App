@@ -33,6 +33,7 @@ from app.auth.session import (
 )
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool, on_own_conn
+from app.domain import league_format
 from app.monitoring import record_failed_login
 from app.notifications.email import send_password_reset_email
 from app.queries import auth as auth_queries
@@ -368,16 +369,20 @@ async def me(request: Request):
     async def load_league_role(conn):
         active_league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
         is_commissioner = False
+        fmt = None
         if active_league_id is not None:
             membership = await league_queries.get_membership(conn, active_league_id, payload["user_id"])
             is_commissioner = membership is not None and membership["role"] == "commissioner"
+            # The active league's format (2026-10): the apps hide lineup
+            # moves in best ball, rank standings by points, and so on.
+            fmt = await league_format.get_league_format(conn, active_league_id)
         # How many leagues this account is in — the apps only open on
         # the league picker for someone with none yet (Join/Create) or
         # several (choose one); with exactly one there's nothing to pick.
         league_count = await conn.fetchval(
             "SELECT count(*) FROM league_members WHERE user_id = $1", payload["user_id"]
         )
-        return active_league_id, is_commissioner, league_count
+        return active_league_id, is_commissioner, league_count, fmt
 
     # League #1's commissioner OR an explicit users.is_admin grant
     # (app/auth/league_context.py's is_site_admin — same check
@@ -395,7 +400,7 @@ async def me(request: Request):
     #
     # The three lookups are independent, so they run side by side
     # (app/db.py's on_own_conn) — every page load calls this endpoint.
-    (owner_id, display_name), (active_league_id, is_commissioner, league_count), is_site_owner = await asyncio.gather(
+    (owner_id, display_name), (active_league_id, is_commissioner, league_count, fmt), is_site_owner = await asyncio.gather(
         on_own_conn(load_owner_and_name),
         on_own_conn(load_league_role),
         on_own_conn(is_site_admin, payload["user_id"]),
@@ -409,6 +414,7 @@ async def me(request: Request):
         "is_site_owner": is_site_owner,
         "active_league_id": active_league_id,
         "league_count": league_count,
+        "league_format": fmt,
     }
 
 

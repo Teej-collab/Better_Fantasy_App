@@ -29,6 +29,7 @@ import time
 import httpx
 
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
+from app.domain.stat_derivations import derive_stat_line
 from app.providers.espn.player_info import REGULAR_SEASON_WEEKS, get_bulk_ownership
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.providers.nfl_stats.espn_public import _POINTS_ALLOWED_TIERS, _YARDS_ALLOWED_TIERS, _tier_category
@@ -156,7 +157,7 @@ def league_stat_line(stats: dict, position: str) -> dict[str, float]:
 def league_points(stats: dict | None, position: str, rules: dict[str, float]) -> float | None:
     if not stats:
         return None
-    return compute_player_points(league_stat_line(stats, position), rules)
+    return compute_player_points(derive_stat_line(league_stat_line(stats, position), position), rules)
 
 
 # ---- Column sets ------------------------------------------------------------

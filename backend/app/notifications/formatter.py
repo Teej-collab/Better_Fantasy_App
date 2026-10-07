@@ -304,3 +304,15 @@ def trade_update(title: str, body: str, trade_id: int) -> dict:
     """Every later step of a trade (accepted, under review, vetoed,
     processed…) — same tag, so each replaces the last on the lock screen."""
     return _payload(title, body, "/trades", "trade", _trade_tag(trade_id))
+
+
+def guillotine_cut(team_name: str, week: int, points: float, survivors: int) -> dict:
+    """A guillotine league's weekly cut (league formats, 2026-10)."""
+    tail = "and wins the league" if survivors == 1 else f"{survivors} teams left"
+    return _payload(
+        f"🪓 {team_name} got the chop",
+        f"Lowest score in Week {week} ({points:.1f}). Their players just hit waivers — {tail}.",
+        "/standings",
+        "guillotine_cut",
+        tag=f"guillotine-{week}",
+    )

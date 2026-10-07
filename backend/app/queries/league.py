@@ -7,6 +7,7 @@ app/domain/ + app/queries/awards.py instead — see MIGRATION_MAP.md.
 
 """
 
+from app.domain.league_format import get_league_format, ranks_by_points
 from app.config import DEFAULT_LEAGUE_ID
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import roster_history as roster_history_queries
@@ -153,13 +154,23 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
         if not is_week_final(games):
             exclude_week = current_week
 
+    # Total-points (and guillotine) leagues rank on points scored, with
+    # record as the tiebreaker — the reverse of head-to-head (2026-10,
+    # app/domain/league_format.py).
+    fmt = await get_league_format(conn, league_id)
+    rank_order = (
+        "points_for DESC, COALESCE(SUM(r.win), 0) + 0.5 * COALESCE(SUM(r.tie), 0) DESC"
+        if ranks_by_points(fmt)
+        else "COALESCE(SUM(r.win), 0) + 0.5 * COALESCE(SUM(r.tie), 0) DESC, points_for DESC"
+    )
+
     # Ordering: final_standings.final_rank (ESPN's own rankCalculatedFinal
     # — accounts for the full playoff bracket) when it exists for this
     # season, falling back to regular-season win/loss/points for a season
     # still in progress (no final rank yet). A team with final_rank == 1
     # is the champion — no separate "champion" concept needed.
     return await conn.fetch(
-        """
+        f"""
         WITH results AS (
             SELECT home_team_id AS team_id, home_score AS points_for, away_score AS points_against,
                    (home_score > away_score)::int AS win,
@@ -187,21 +198,25 @@ async def get_standings(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID):
                COALESCE(SUM(r.tie), 0)::int AS ties,
                COALESCE(SUM(r.points_for), 0) AS points_for,
                COALESCE(SUM(r.points_against), 0) AS points_against,
-               fs.final_rank
+               fs.final_rank,
+               ge.week AS eliminated_week
         FROM teams_by_season t
         JOIN owners o ON t.owner_id = o.owner_id
         LEFT JOIN results r ON r.team_id = t.id
         LEFT JOIN final_standings fs ON fs.team_id = t.id AND fs.season = t.season
+        -- Guillotine leagues (2026-10): teams still alive rank first, then
+        -- the cut teams, last cut highest.
+        LEFT JOIN guillotine_eliminations ge ON ge.team_id = t.id
         WHERE t.season = $1 AND t.league_id = $2
-        GROUP BY t.id, t.team_name, o.display_name, fs.final_rank
+        GROUP BY t.id, t.team_name, o.display_name, fs.final_rank, ge.week
         -- 2026-09-24: a tie counts as half a win (standard fantasy
         -- rule, commissioner's call). With no ties this is the same
         -- order as sorting by wins alone.
         ORDER BY
             CASE WHEN fs.final_rank IS NULL THEN 1 ELSE 0 END,
             fs.final_rank,
-            COALESCE(SUM(r.win), 0) + 0.5 * COALESCE(SUM(r.tie), 0) DESC,
-            points_for DESC
+            ge.week IS NOT NULL, ge.week DESC,
+            {rank_order}
         """,
         season, league_id, exclude_week,
     )
@@ -340,7 +355,9 @@ async def get_team_score_stdev(conn, season: int, league_id: int = DEFAULT_LEAGU
 # "RB/WR/TE" (its actual eligibility), not "FLEX" — confirmed against
 # real synced data. Unrecognized slots sort last rather than erroring,
 # so an unexpected future slot value doesn't break the page.
-_SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K", "BE", "IR"]
+# Superflex and the IDP slots (league formats, 2026-10) slot in among
+# the starters; the taxi squad sorts after IR.
+_SLOT_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "QB/RB/WR/TE", "D/ST", "K", "DL", "LB", "DB", "IDP", "BE", "IR", "TAXI"]
 
 
 def _sort_roster_rows(rows):
@@ -488,7 +505,7 @@ async def get_touchdowns_for_teams(conn, season: int, week: int, team_ids: list[
         JOIN player_week_stats pws
             ON pws.season = cr.season AND pws.week = $2 AND pws.sleeper_player_id = cr.sleeper_player_id
             AND pws.league_id = cr.league_id
-        WHERE cr.season = $1 AND cr.team_id = ANY($3::int[]) AND cr.lineup_slot NOT IN ('BE', 'IR')
+        WHERE cr.season = $1 AND cr.team_id = ANY($3::int[]) AND cr.lineup_slot NOT IN ('BE', 'IR', 'TAXI')
         """,
         season, week, team_ids,
     )

@@ -4,9 +4,27 @@
 // just comes back as an error.
 import type { RosterEntry } from '@/lib/types';
 
-const POSITION_TO_SLOT_LABEL: Record<string, string> = { QB: 'QB', RB: 'RB', WR: 'WR', TE: 'TE', K: 'K', DEF: 'D/ST' };
+const POSITION_TO_SLOT_LABEL: Record<string, string> = { QB: 'QB', RB: 'RB', WR: 'WR', TE: 'TE', K: 'K', DEF: 'D/ST', DL: 'DL', LB: 'LB', DB: 'DB' };
 const FLEX_ELIGIBLE_POSITIONS = new Set(['RB', 'WR', 'TE']);
 export const FLEX_SLOT_LABEL = 'RB/WR/TE';
+// League formats (2026-10): Superflex also takes a QB; IDP leagues start
+// defenders in DL/LB/DB plus an IDP flex.
+export const SUPERFLEX_SLOT_LABEL = 'QB/RB/WR/TE';
+export const IDP_FLEX_SLOT_LABEL = 'IDP';
+export const TAXI_SLOT_LABEL = 'TAXI';
+const MULTI_POSITION_SLOTS: Record<string, Set<string>> = {
+  [FLEX_SLOT_LABEL]: FLEX_ELIGIBLE_POSITIONS,
+  [SUPERFLEX_SLOT_LABEL]: new Set(['QB', 'RB', 'WR', 'TE']),
+  [IDP_FLEX_SLOT_LABEL]: new Set(['DL', 'LB', 'DB']),
+};
+// Sleeper's raw defensive positions -> the IDP group they start in.
+const IDP_GROUP: Record<string, string> = {
+  DE: 'DL', DT: 'DL', NT: 'DL', ILB: 'LB', OLB: 'LB', MLB: 'LB', CB: 'DB', S: 'DB', SS: 'DB', FS: 'DB',
+};
+
+export function fantasyPosition(position: string): string {
+  return IDP_GROUP[position] ?? position;
+}
 export const BENCH_SLOT_LABEL = 'BE';
 export const IR_SLOT_LABEL = 'IR';
 
@@ -21,12 +39,13 @@ export function isIrEligible(injuryStatus: string | null | undefined): boolean {
 export function isEligibleForSlot(position: string, slotLabel: string, injuryStatus?: string | null): boolean {
   if (slotLabel === BENCH_SLOT_LABEL) return true;
   if (slotLabel === IR_SLOT_LABEL) return isIrEligible(injuryStatus);
-  if (slotLabel === FLEX_SLOT_LABEL) return FLEX_ELIGIBLE_POSITIONS.has(position);
-  return POSITION_TO_SLOT_LABEL[position] === slotLabel;
+  const group = fantasyPosition(position);
+  if (slotLabel in MULTI_POSITION_SLOTS) return MULTI_POSITION_SLOTS[slotLabel].has(group);
+  return POSITION_TO_SLOT_LABEL[group] === slotLabel;
 }
 
 // ESPN's starter display order.
-export const STARTER_SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', FLEX_SLOT_LABEL, 'D/ST', 'K'];
+export const STARTER_SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', FLEX_SLOT_LABEL, SUPERFLEX_SLOT_LABEL, 'D/ST', 'K', 'DL', 'LB', 'DB', IDP_FLEX_SLOT_LABEL];
 
 export function starterSortIndex(slotLabel: string): number {
   const i = STARTER_SLOT_ORDER.indexOf(slotLabel);
@@ -34,7 +53,9 @@ export function starterSortIndex(slotLabel: string): number {
 }
 
 export function slotDisplayLabel(slotLabel: string): string {
-  return slotLabel === FLEX_SLOT_LABEL ? 'FLEX' : slotLabel;
+  if (slotLabel === FLEX_SLOT_LABEL) return 'FLEX';
+  if (slotLabel === SUPERFLEX_SLOT_LABEL) return 'SFLX';
+  return slotLabel;
 }
 
 export type LineupOption = { slot: string; occupant: RosterEntry | null };
@@ -61,5 +82,7 @@ export function lineupOptions(
     entry.lineup_slot === BENCH_SLOT_LABEL ? { slot: BENCH_SLOT_LABEL, occupant: entry } : { slot: BENCH_SLOT_LABEL, occupant: null },
   );
   if (isIrEligible(entry.injury_status)) addSlot(IR_SLOT_LABEL);
+  // Taxi squad (dynasty leagues): first- or second-year players.
+  if ((rosterSlots[TAXI_SLOT_LABEL] ?? 0) > 0 && entry.years_exp != null && entry.years_exp <= 1) addSlot(TAXI_SLOT_LABEL);
   return options;
 }

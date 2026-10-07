@@ -37,7 +37,7 @@ Two guardrails stack, tightest wins:
   every league that's never touched this setting keeps behaving
   exactly as it always has.
 """
-from app.domain.roster_slots import FLEX_ELIGIBLE_POSITIONS, FLEX_SLOT_LABEL, POSITION_TO_SLOT_LABEL
+from app.domain.roster_slots import MULTI_POSITION_SLOTS, POSITION_TO_SLOT_LABEL, fantasy_position
 
 
 def _position_capacity(position: str, roster_slots: dict[str, int], position_max: dict[str, int] | None = None) -> int:
@@ -49,12 +49,15 @@ def _position_capacity(position: str, roster_slots: dict[str, int], position_max
     commissioner-configured value that's larger than physically
     possible (e.g. left over from a smaller bench a prior season) can
     never loosen this below the real physical ceiling."""
-    label = POSITION_TO_SLOT_LABEL.get(position)
+    group = fantasy_position(position)
+    label = POSITION_TO_SLOT_LABEL.get(group)
     capacity = roster_slots.get(label, 0) if label else 0
-    if position in FLEX_ELIGIBLE_POSITIONS:
-        capacity += roster_slots.get(FLEX_SLOT_LABEL, 0)
+    # Every flex this position can fill: FLEX, Superflex, the IDP flex.
+    for slot, eligible in MULTI_POSITION_SLOTS.items():
+        if group in eligible:
+            capacity += roster_slots.get(slot, 0)
     capacity += roster_slots.get("BE", 0)
-    configured = (position_max or {}).get(position)
+    configured = (position_max or {}).get(position, (position_max or {}).get(group))
     if configured is not None:
         capacity = min(capacity, configured)
     return capacity
@@ -98,12 +101,16 @@ def choose_autopick(
     if not available_players:
         return None
 
+    # Counted by lineup group, so a DE and a DT both count toward DL
+    # (IDP leagues, 2026-10); offense is unchanged.
     counts: dict[str, int] = {}
     for pos in rostered_positions:
-        counts[pos] = counts.get(pos, 0) + 1
+        group = fantasy_position(pos)
+        counts[group] = counts.get(group, 0) + 1
 
     def _is_eligible(player: dict) -> bool:
-        return counts.get(player["position"], 0) < _position_capacity(player["position"], roster_slots, position_max)
+        group = fantasy_position(player["position"])
+        return counts.get(group, 0) < _position_capacity(player["position"], roster_slots, position_max)
 
     if queue:
         available_by_id = {p["sleeper_player_id"]: p for p in available_players}

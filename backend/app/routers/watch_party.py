@@ -225,7 +225,7 @@ async def lobby(request: Request, pool=Depends(get_pool)):
         )
 
     def starters_on(roster, teams):
-        return [r for r in roster if r["lineup_slot"] not in ("BE", "IR") and r["pro_team"] in teams]
+        return [r for r in roster if r["lineup_slot"] not in ("BE", "IR", "TAXI") and r["pro_team"] in teams]
 
     out = []
     for g in games:

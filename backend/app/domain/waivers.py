@@ -62,11 +62,13 @@ import json
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.domain.league_format import faab_budget, get_league_format, uses_faab
 from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
 from app.domain.nfl_schedule import locked_pro_teams
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
 from app.domain.waiver_exceptions import (
+    BidError,
     ClaimNotCancellableError,
     ClaimNotFoundError,
     DuplicateClaimError,
@@ -251,9 +253,25 @@ async def force_clear_waiver(conn, season: int, league_id: int, sleeper_player_i
     )
 
 
+async def faab_remaining(conn, season: int, league_id: int, team_id: int, fmt: dict | None = None) -> int | None:
+    """This team's FAAB left (its budget minus every winning bid), or
+    None in a league that doesn't bid."""
+    fmt = fmt or await get_league_format(conn, league_id)
+    if not uses_faab(fmt):
+        return None
+    spent = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(bid_amount), 0) FROM waiver_claims
+        WHERE season = $1 AND league_id = $2 AND team_id = $3 AND status = 'successful'
+        """,
+        season, league_id, team_id,
+    )
+    return faab_budget(fmt) - int(spent)
+
+
 async def submit_claim(
     conn, season: int, league_id: int, team_id: int, add_sleeper_player_id: str,
-    drop_sleeper_player_id: str | None = None,
+    drop_sleeper_player_id: str | None = None, bid_amount: int | None = None,
 ) -> dict:
     if not await is_on_waivers(conn, season, league_id, add_sleeper_player_id):
         raise PlayerNotOnWaiversError(
@@ -268,6 +286,17 @@ async def submit_claim(
     )
     if existing:
         raise DuplicateClaimError(f"You already have a pending claim on {add_sleeper_player_id}")
+    # FAAB (guillotine leagues, 2026-10): every claim is a bid.
+    remaining = await faab_remaining(conn, season, league_id, team_id)
+    if remaining is None:
+        bid_amount = None
+    else:
+        if bid_amount is None:
+            raise BidError("Enter a bid — this league bids on waivers with FAAB")
+        if bid_amount < 0:
+            raise BidError("A bid can't be negative")
+        if bid_amount > remaining:
+            raise BidError(f"You have ${remaining} of FAAB left")
     ir_violations = await ineligible_ir_player_names(
         conn, season, team_id, [drop_sleeper_player_id] if drop_sleeper_player_id else []
     )
@@ -282,12 +311,12 @@ async def submit_claim(
             raise PlayerNotOnRosterError(f"{drop_sleeper_player_id} isn't on your roster")
     row = await conn.fetchrow(
         """
-        INSERT INTO waiver_claims (season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO waiver_claims (season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id, bid_amount)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id,
-                  status, failure_reason, created_at, processed_at
+                  status, failure_reason, created_at, processed_at, bid_amount
         """,
-        season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id,
+        season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id, bid_amount,
     )
     return dict(row)
 
@@ -297,7 +326,7 @@ async def list_claims_for_team(conn, season: int, league_id: int, team_id: int) 
         """
         SELECT wc.id, wc.add_sleeper_player_id, ap.full_name AS add_player_name,
                wc.drop_sleeper_player_id, dp.full_name AS drop_player_name,
-               wc.status, wc.failure_reason, wc.created_at, wc.processed_at
+               wc.status, wc.failure_reason, wc.created_at, wc.processed_at, wc.bid_amount
         FROM waiver_claims wc
         JOIN players ap ON ap.sleeper_player_id = wc.add_sleeper_player_id
         LEFT JOIN players dp ON dp.sleeper_player_id = wc.drop_sleeper_player_id
@@ -396,15 +425,19 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
     Deletes the waiver_wire row unconditionally at the end: whether a
     claim won, every claim failed validation, or there were no claims
     at all, this player's waiver period is over either way."""
+    # FAAB leagues (guillotine, 2026-10): the highest bid wins, waiver
+    # priority breaks a tied bid. Elsewhere bid_amount is NULL for every
+    # claim, so this is plain priority order exactly as before.
+    fmt = await get_league_format(conn, league_id)
     claims = await conn.fetch(
         """
-        SELECT wc.id, wc.team_id, wc.drop_sleeper_player_id
+        SELECT wc.id, wc.team_id, wc.drop_sleeper_player_id, wc.bid_amount
         FROM waiver_claims wc
         JOIN team_waiver_priority twp
             ON twp.season = wc.season AND twp.league_id = wc.league_id
            AND twp.week = $4 AND twp.team_id = wc.team_id
         WHERE wc.season = $1 AND wc.league_id = $2 AND wc.add_sleeper_player_id = $3 AND wc.status = 'pending'
-        ORDER BY twp.priority ASC
+        ORDER BY wc.bid_amount DESC NULLS LAST, twp.priority ASC
         """,
         season, league_id, sleeper_player_id, week,
     )
@@ -415,10 +448,22 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
         if winner_claim_id is not None:
             await conn.execute(
                 "UPDATE waiver_claims SET status = 'failed', failure_reason = $1, processed_at = now() WHERE id = $2",
-                "Lost the waiver — a higher-priority claim won this player", claim["id"],
+                "Outbid — a higher bid won this player" if claim["bid_amount"] is not None
+                else "Lost the waiver — a higher-priority claim won this player",
+                claim["id"],
             )
             outcomes.append({"claim_id": claim["id"], "status": "failed"})
             continue
+
+        if claim["bid_amount"] is not None:
+            remaining = await faab_remaining(conn, season, league_id, claim["team_id"], fmt)
+            if remaining is not None and claim["bid_amount"] > remaining:
+                await conn.execute(
+                    "UPDATE waiver_claims SET status = 'failed', failure_reason = $1, processed_at = now() WHERE id = $2",
+                    f"Not enough FAAB left (${remaining})", claim["id"],
+                )
+                outcomes.append({"claim_id": claim["id"], "status": "failed"})
+                continue
 
         dropped_player_id = claim["drop_sleeper_player_id"]
         ir_violations = await ineligible_ir_player_names(

@@ -159,6 +159,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
+from app.domain import auction_engine, guillotine
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
 from app.domain.chug_debt import compute_chug_debts_for_single_week
@@ -431,6 +432,10 @@ async def _run_week_settlement_job():
             # never a second real LLM call or cost.
             async with pool.acquire() as conn:
                 await narrative_engine.generate_weekly_recap(conn, season, settle_week, league_id)
+            # Guillotine leagues cut the week's lowest score (a no-op
+            # anywhere else, and after the first tick — app/domain/guillotine.py).
+            async with pool.acquire() as conn:
+                await guillotine.eliminate_for_week(conn, season, settle_week, league_id)
             logger.info(
                 "Week settlement finished (season=%s week=%s league_id=%s)", season, settle_week, league_id
             )
@@ -595,13 +600,27 @@ async def _run_draft_clock_job():
     pool = await get_pool()
     async with pool.acquire() as conn:
         due = await conn.fetch(
-            "SELECT league_id FROM draft_config "
+            "SELECT league_id, draft_type FROM draft_config "
             "WHERE season = $1 AND status = 'in_progress' AND current_pick_deadline IS NOT NULL "
             "AND current_pick_deadline <= $2",
             season, datetime.now(timezone.utc),
         )
         for row in due:
             league_id = row["league_id"]
+            # Auction drafts (2026-10): the clock awards the player up
+            # for bid or nominates for a nominator who ran out of time.
+            if row["draft_type"] == "auction":
+                try:
+                    event = await auction_engine.tick(conn, season, league_id)
+                except DraftError:
+                    logger.exception("Auction tick failed for season=%s league_id=%s", season, league_id)
+                    continue
+                if event:
+                    await draft_manager.broadcast_to_draft(
+                        (season, league_id),
+                        {"type": "auction", "event": event, "auction": await auction_engine.get_state(conn, season, league_id)},
+                    )
+                continue
             try:
                 result = await draft_engine.autopick(conn, season, league_id=league_id)
             except DraftError:

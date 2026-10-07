@@ -177,12 +177,11 @@ async def test_compute_week_stats_recomputes_from_scratch_on_a_stat_correction(p
 
 async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch):
     """ESPN's own def_tackle stat isn't position-scoped (see
-    espn_public.py's own docstring on totalTackles) — this league's
-    real rule (2026-09): nobody except a QB is ever awarded points for
-    a tackle. compute_week_stats renames def_tackle -> qb_tackle in the
-    stat_line before scoring for QB-position players only, and drops
-    the stat entirely for anyone else — def_tackle no longer exists as
-    a real scoring category at all (migration 224c44524737)."""
+    espn_public.py's own docstring on totalTackles), so compute_week_stats
+    scores a tackle by who made it (app/domain/stat_derivations.py,
+    2026-10): a QB's becomes qb_tackle, a kicker's k_tackle, an IDP
+    defender's idp_tackle (worth nothing unless the league prices it),
+    and anyone else's (a WR chasing down a turnover) is dropped."""
     await _seed_rules(pool)
     async with pool.acquire() as conn:
         await conn.execute(
@@ -191,11 +190,15 @@ async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch)
         )
     await _seed_player(pool, "test-weeklystats-qb-tackle", espn_player_id=333, position="QB")
     await _seed_player(pool, "test-weeklystats-lb-tackle", espn_player_id=444, position="LB")
+    await _seed_player(pool, "test-weeklystats-wr-tackle", espn_player_id=555, position="WR")
+    await _seed_player(pool, "test-weeklystats-k-tackle", espn_player_id=666, position="K")
 
     game = {
         "players": [
             {"espn_player_id": 333, "player_name": "Test QB", "pro_team": "KC", "stat_line": {"def_tackle": 1}},
             {"espn_player_id": 444, "player_name": "Test LB", "pro_team": "KC", "stat_line": {"def_tackle": 9}},
+            {"espn_player_id": 555, "player_name": "Test WR", "pro_team": "KC", "stat_line": {"def_tackle": 1}},
+            {"espn_player_id": 666, "player_name": "Test K", "pro_team": "KC", "stat_line": {"def_tackle": 1}},
         ],
         "team_dst": {},
     }
@@ -214,12 +217,22 @@ async def test_qb_tackle_is_split_from_def_tackle_by_position(pool, monkeypatch)
             "SELECT * FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
             TEST_SEASON, "test-weeklystats-lb-tackle",
         )
+        wr_row, k_row = [
+            await conn.fetchrow(
+                "SELECT * FROM player_week_stats WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+                TEST_SEASON, sid,
+            )
+            for sid in ("test-weeklystats-wr-tackle", "test-weeklystats-k-tackle")
+        ]
 
     assert json.loads(qb_row["raw_stats"]) == {"qb_tackle": 1}
     assert float(qb_row["fantasy_points"]) == 15.0
 
-    assert json.loads(lb_row["raw_stats"]) == {}
+    assert json.loads(lb_row["raw_stats"]) == {"idp_tackle": 9}
     assert float(lb_row["fantasy_points"]) == 0.0
+    assert json.loads(wr_row["raw_stats"]) == {}
+    assert json.loads(k_row["raw_stats"]) == {"k_tackle": 1}
+    assert float(k_row["fantasy_points"]) == 0.0
 
 
 async def test_compute_week_stats_raises_without_scoring_rules(pool, monkeypatch):

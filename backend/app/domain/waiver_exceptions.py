@@ -43,3 +43,8 @@ class IRSlotViolationClaimError(WaiverError):
     claims until they're moved off IR (see app/domain/ir_rules.py)."""
 
     pass
+
+
+class BidError(WaiverError):
+    """A FAAB bid that can't be placed: missing in a bidding league,
+    negative, or more than the team has left (league formats, 2026-10)."""

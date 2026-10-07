@@ -27,7 +27,7 @@ from app.queries import draft as draft_queries
 from app.queries import league as queries
 from app.queries.power_rankings import get_latest_power_rank_by_team
 
-_STARTER_EXCLUDED_SLOTS = {"BE", "IR"}
+_STARTER_EXCLUDED_SLOTS = {"BE", "IR", "TAXI"}
 
 
 def _projected_total(roster_rows) -> float:

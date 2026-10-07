@@ -84,6 +84,8 @@ import type {
   WeekMatchupContextItem,
   YourWeek,
 } from '@/lib/types';
+import type { FormatOptions, LeagueFormat } from '@/lib/leagueFormat';
+import type { PreviewPlayer, ScoringCatalog } from '@/lib/scoringCatalog';
 
 // The production backend by default (mobile/.env). Point it at a local
 // backend with a .env.local, e.g. EXPO_PUBLIC_API_BASE_URL=http://<your-mac>.local:8000.
@@ -372,10 +374,11 @@ export const api = {
     }
   },
   waiverClaims: () => request<{ claims: WaiverClaim[] }>('/me/team/waivers'),
-  submitWaiverClaim: (addPlayerId: string, dropPlayerId: string | null) =>
+  // `bid`: a FAAB bid, for a league that bids on waivers (guillotine).
+  submitWaiverClaim: (addPlayerId: string, dropPlayerId: string | null, bid?: number) =>
     request<WaiverClaim>('/me/team/waivers/claim', {
       method: 'POST',
-      body: JSON.stringify({ add_sleeper_player_id: addPlayerId, drop_sleeper_player_id: dropPlayerId }),
+      body: JSON.stringify({ add_sleeper_player_id: addPlayerId, drop_sleeper_player_id: dropPlayerId, bid_amount: bid ?? null }),
     }),
   cancelWaiverClaim: (claimId: number) =>
     request<unknown>(`/me/team/waivers/claim/${claimId}/cancel`, { method: 'POST' }),
@@ -400,6 +403,10 @@ export const api = {
     }),
   draftPick: (playerId: string) =>
     request<unknown>('/draft/pick', { method: 'POST', body: JSON.stringify({ sleeper_player_id: playerId }) }),
+  // Auction drafts: put a player up for bid (your turn to nominate), or raise.
+  draftNominate: (playerId: string, bid = 1) =>
+    request<unknown>('/draft/nominate', { method: 'POST', body: JSON.stringify({ sleeper_player_id: playerId, bid }) }),
+  draftBid: (amount: number) => request<unknown>('/draft/bid', { method: 'POST', body: JSON.stringify({ amount }) }),
   // Commissioner only.
   draftControl: (action: 'start' | 'pause' | 'resume' | 'undo-last-pick') =>
     request<unknown>(`/draft/${action}`, { method: 'POST' }),
@@ -494,6 +501,10 @@ export const api = {
     }),
   // ---- Commissioner tools (backend enforces commissioner-only) ----
   leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
+  // Commissioner-only (2026-10). Type, roster and draft style change only
+  // until the draft is set up; head-to-head vs total points any time.
+  updateLeagueFormat: (leagueId: number, format: Partial<LeagueFormat>) =>
+    request<LeagueInfo>(`/leagues/${leagueId}/format`, { method: 'PATCH', body: JSON.stringify(format) }),
   renameLeague: (leagueId: number, name: string) =>
     request<LeagueInfo>(`/leagues/${leagueId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   playoffSettings: () => request<PlayoffSettings>('/league/playoff-settings'),
@@ -517,6 +528,13 @@ export const api = {
       body: JSON.stringify({ user_id: userId, team_name: teamName }),
     }),
   scoringRulesEditor: () => request<{ season: number; rules: ScoringRule[] }>('/league/scoring-rules'),
+  // The scoring editor (2026-10): every stat a league can score, its
+  // value here, a live preview, and requests for stats not tracked yet.
+  scoringCatalog: () => request<ScoringCatalog>('/league/scoring-catalog'),
+  scoringPreview: (rules: Record<string, number>) =>
+    request<{ week: number | null; players: PreviewPlayer[] }>('/league/scoring-preview', { method: 'POST', body: JSON.stringify({ rules }) }),
+  requestScoringStat: (message: string) =>
+    request<{ status: string }>('/league/scoring-requests', { method: 'POST', body: JSON.stringify({ message }) }),
   updateScoringRules: (season: number, rules: Record<string, number>) =>
     request<{ season: number; rules: ScoringRule[] }>('/league/scoring-rules', { method: 'PUT', body: JSON.stringify({ season, rules }) }),
   keeperRules: () => request<KeeperRules>('/keepers/rules'),
@@ -635,7 +653,16 @@ export const api = {
     request<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   forgotPassword: (email: string) =>
     request<{ message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
-  createLeague: (name: string, options?: { teamCount?: number; scoring?: ScoringPreset; keepers?: boolean; makeActive?: boolean }) =>
+  createLeague: (
+    name: string,
+    options?: {
+      teamCount?: number;
+      scoring?: ScoringPreset;
+      keepers?: boolean;
+      makeActive?: boolean;
+      format?: Omit<LeagueFormat, 'type_settings'> & { type_settings?: Record<string, number> };
+    },
+  ) =>
     request<LeagueInfo>('/leagues', {
       method: 'POST',
       body: JSON.stringify({
@@ -644,8 +671,11 @@ export const api = {
         scoring: options?.scoring,
         keepers: options?.keepers,
         make_active: options?.makeActive ?? false,
+        ...(options?.format ?? {}),
       }),
     }),
+  // Every league format option and whether a new league can pick it yet.
+  leagueFormats: () => request<FormatOptions>('/leagues/formats'),
   // `inviteCode` may be a bare code or a pasted join link.
   joinLeague: (inviteCode: string, makeActive = false) =>
     request<LeagueInfo>('/leagues/join', { method: 'POST', body: JSON.stringify({ invite_code: inviteCode, make_active: makeActive }) }),

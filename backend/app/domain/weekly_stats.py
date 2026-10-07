@@ -29,6 +29,9 @@ from app.config import DEFAULT_LEAGUE_ID
 from app.domain import live_injuries
 from app.domain.matchup_scoring import compute_matchup_scores_for_week
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
+from app.domain.best_ball import reslot_best_ball_lineups
+from app.domain.league_format import get_league_format, lineups_are_automatic
+from app.domain.stat_derivations import derive_stat_line
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.providers.nfl_stats.espn_public import fetch_injury_news, get_game_stats
 
@@ -125,29 +128,11 @@ async def compute_week_stats(
             if sleeper_id is None:
                 continue
             stat_line = player["stat_line"]
-            # Nobody except a QB is ever awarded points for a
-            # tackle in this league (2026-09, the owner's explicit
-            # rule — D/ST is scored on sacks, not tackles). ESPN's
-            # own "defensive"/totalTackles category isn't position-
-            # scoped at all (see espn_public.py's docstring) — a
-            # rostered RB/WR/TE occasionally records a real one
-            # (e.g. chasing down a turnover), and without this it
-            # would silently carry a real (if usually zero-priced)
-            # def_tackle entry. That category no longer exists as
-            # a real scoring lever at all (removed from
-            # league_scoring_rules, not just zeroed — see migration
-            # 224c44524737), so it's dropped here rather than
-            # renamed for anyone but a QB. Handled here, not in
-            # espn_public.py, since that's a pure per-game stat
-            # parse with no access to a player's position — this is
-            # the first point in the pipeline with both the stat
-            # and the position at once.
-            if "def_tackle" in stat_line:
-                stat_line = dict(stat_line)
-                if espn_to_position.get(player["espn_player_id"]) == "QB":
-                    stat_line["qb_tackle"] = stat_line.pop("def_tackle")
-                else:
-                    del stat_line["def_tackle"]
+            # Tackles by position (QB, K; IDP defenders), TE premium
+            # and game bonuses — app/domain/stat_derivations.py. This
+            # is the first point in the pipeline with both the stat line
+            # and the player's position.
+            stat_line = derive_stat_line(stat_line, espn_to_position.get(player["espn_player_id"]))
             points = compute_player_points(stat_line, rules)
             rows.append((season, week, sleeper_id, json.dumps(stat_line), points, league_id))
             counts["players"] += 1
@@ -195,6 +180,10 @@ async def compute_and_store_week(pool, season: int, week: int, league_id: int = 
 
     async with pool.acquire() as conn:
         stat_counts = await compute_week_stats(conn, season, week, event_ids, league_id)
+        # Best ball (2026-10): every lineup is set to its best possible
+        # lineup before it's scored.
+        if lineups_are_automatic(await get_league_format(conn, league_id)):
+            await reslot_best_ball_lineups(conn, season, week, league_id)
         matchups_updated = await compute_matchup_scores_for_week(conn, season, week, league_id)
         # ESPN's in-game rulings ("ruled out", "questionable to
         # return") — only while a game is in progress, best-effort.

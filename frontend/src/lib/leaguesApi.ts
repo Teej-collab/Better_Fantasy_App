@@ -3,6 +3,8 @@
 // picture. Same same-origin /api/backend proxy every other
 // authenticated call in this app uses.
 
+import type { FormatOptions, LeagueFormat } from "@/lib/leagueFormat";
+
 export type League = {
   id: number;
   name: string;
@@ -14,7 +16,7 @@ export type League = {
   team_count?: number | null;
   // GET /leagues/mine only: the league picker's card line.
   summary?: LeagueSummary | null;
-};
+} & Partial<LeagueFormat>;
 
 export type LeagueSummary = {
   team_name: string | null;
@@ -125,7 +127,13 @@ export async function getMyLeagues(): Promise<{ leagues: League[]; activeLeagueI
 
 export async function createLeague(
   name: string,
-  options?: { teamCount?: number; scoring?: ScoringPreset; keepers?: boolean; makeActive?: boolean },
+  options?: {
+    teamCount?: number;
+    scoring?: ScoringPreset;
+    keepers?: boolean;
+    makeActive?: boolean;
+    format?: Omit<LeagueFormat, "type_settings"> & { type_settings?: Record<string, number> };
+  },
 ): Promise<League> {
   return post<League>("/leagues", {
     name,
@@ -133,7 +141,13 @@ export async function createLeague(
     scoring: options?.scoring,
     keepers: options?.keepers,
     make_active: options?.makeActive ?? false,
+    ...(options?.format ?? {}),
   });
+}
+
+// Every league format option and whether a new league can pick it yet.
+export async function getLeagueFormats(): Promise<FormatOptions> {
+  return get<FormatOptions>("/leagues/formats");
 }
 
 // `inviteCode` may be a bare code or a pasted join link.
@@ -239,6 +253,12 @@ export async function renameLeague(leagueId: number, name: string): Promise<Leag
   return patch<League>(`/leagues/${leagueId}`, { name });
 }
 
+// Commissioner-only (2026-10). Type, roster and draft style change only
+// until the draft is set up; head-to-head vs total points any time.
+export async function updateLeagueFormat(leagueId: number, format: Partial<LeagueFormat>): Promise<League> {
+  return patch<League>(`/leagues/${leagueId}/format`, format);
+}
+
 // Commissioner-only — the backend enforces this (require_commissioner_of)
 // and also rejects targeting your own user_id, so a commissioner can
 // never accidentally remove their own access through this call.
@@ -321,6 +341,47 @@ export type ScoringRule = { stat_category: string; points_per_unit: number };
 export async function getScoringRules(season?: number): Promise<{ season: number; rules: ScoringRule[] }> {
   const query = season != null ? `?season=${season}` : "";
   return get<{ season: number; rules: ScoringRule[] }>(`/league/scoring-rules${query}`);
+}
+
+// The scoring editor (2026-10): every stat a league can score, grouped
+// by tab, with this league's value (null = not scored) and whether the
+// app records it yet.
+export type CatalogStat = {
+  key: string;
+  group: string;
+  label: string;
+  hint: string;
+  tracked: boolean;
+  idp: boolean;
+  value: number | null;
+};
+export type ScoringCatalog = {
+  season: number;
+  groups: { key: string; label: string }[];
+  stats: CatalogStat[];
+  idp: boolean;
+};
+export async function getScoringCatalog(): Promise<ScoringCatalog> {
+  return get<ScoringCatalog>("/league/scoring-catalog");
+}
+
+export type PreviewPlayer = {
+  sleeper_player_id: string;
+  name: string;
+  position: string;
+  pro_team: string | null;
+  stats: Record<string, number>;
+  before: number;
+  after: number;
+};
+// Real players' latest week rescored under the rules being edited.
+export async function previewScoring(rules: Record<string, number>): Promise<{ week: number | null; players: PreviewPlayer[] }> {
+  return post<{ week: number | null; players: PreviewPlayer[] }>("/league/scoring-preview", { rules });
+}
+
+// A stat the editor can't offer yet — goes to the feedback inbox.
+export async function requestScoringStat(message: string): Promise<void> {
+  await post("/league/scoring-requests", { message });
 }
 
 // Commissioner-only — every stat_category already exists per season/

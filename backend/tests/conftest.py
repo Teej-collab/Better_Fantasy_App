@@ -472,6 +472,13 @@ async def cleanup_test_season(pool):
             "DELETE FROM analytics_events WHERE league_id IN "
             "(SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
+        # A new league stages its format's roster shape and (for a
+        # keeper league) its keeper rules for the ACTIVE season, not
+        # TEST_SEASON (league formats, 2026-10) — clear them by league.
+        for table in ("league_keeper_rules", "league_roster_slots_settings"):
+            await conn.execute(
+                f"DELETE FROM {table} WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+            )
         await conn.execute("DELETE FROM leagues WHERE name LIKE 'Test League%'")
         # owner_users.owner_id -> owners.owner_id, so capture which
         # users are linked to test owners *before* deleting those

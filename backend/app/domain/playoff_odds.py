@@ -135,6 +135,7 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
     models = _team_models(world, scenario)
     team_ids = [t["team_id"] for t in world["teams"]]
     count = world["playoff_team_count"]
+    by_points = world.get("rank_by") == "points"
     bowl_line = count + 4
 
     # Fixed part of the season: played games (with any flips).
@@ -202,7 +203,9 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
                 focus_wins += 1
                 if g["id"] in my_game_wins:
                     my_game_wins[g["id"]] += 1
-        order = sorted(team_ids, key=lambda t: (wins[t], pf[t]), reverse=True)
+        order = sorted(
+            team_ids, key=(lambda t: (pf[t], wins[t])) if by_points else (lambda t: (wins[t], pf[t])), reverse=True
+        )
         seed_of = {t: i + 1 for i, t in enumerate(order)}
 
         # The bracket, by the spec.

@@ -33,7 +33,9 @@ from app.domain.draft_exceptions import (
     PlayerAlreadyDraftedError,
     PlayerNotDraftableError,
 )
-from app.domain.roster_slots import total_draftable_slots
+from app.domain import auction_engine
+from app.domain.league_format import extra_draftable_positions, get_league_format
+from app.domain.roster_slots import TAXI_SLOT_LABEL, total_draftable_slots
 from app.queries import draft_queue as draft_queue_queries
 from app.queries import keepers as keeper_queries
 
@@ -79,6 +81,61 @@ def _config_dict(row) -> dict:
     if isinstance(d.get("position_max"), str):
         d["position_max"] = json.loads(d["position_max"])
     return d
+
+
+_POOL_SQL = """
+    SELECT p.sleeper_player_id, p.position, p.search_rank FROM players p
+    WHERE (p.is_draftable OR (p.position = ANY($3::text[]) AND p.pro_team IS NOT NULL))
+      AND ($4::boolean IS FALSE OR p.years_exp = 0)
+      AND p.sleeper_player_id NOT IN (
+        SELECT sleeper_player_id FROM draft_picks
+        WHERE season = $1 AND league_id = $2 AND sleeper_player_id IS NOT NULL
+      )
+      AND p.sleeper_player_id NOT IN (
+        SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
+      )
+"""
+
+
+async def _rookies_only(conn, season: int, league_id: int) -> bool:
+    return (await conn.fetchval(
+        "SELECT pool FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )) == "rookies"
+
+
+async def draftable_pool(conn, season: int, league_id: int) -> list[dict]:
+    """Every player still available in this league's draft, best first
+    — individual defenders included in an IDP league, first-year
+    players only in a dynasty rookie draft (league formats, 2026-10)."""
+    rows = await conn.fetch(
+        _POOL_SQL + " ORDER BY p.search_rank ASC NULLS LAST",
+        season, league_id, await extra_draftable_positions(conn, league_id), await _rookies_only(conn, season, league_id),
+    )
+    return [dict(r) for r in rows]
+
+
+async def is_draftable_in_league(conn, season: int, league_id: int, sleeper_player_id: str) -> bool:
+    player = await conn.fetchrow(
+        "SELECT is_draftable, position, years_exp, pro_team FROM players WHERE sleeper_player_id = $1", sleeper_player_id
+    )
+    if player is None:
+        return False
+    if not (player["is_draftable"] or (
+        player["position"] in await extra_draftable_positions(conn, league_id) and player["pro_team"] is not None
+    )):
+        return False
+    return not await _rookies_only(conn, season, league_id) or player["years_exp"] == 0
+
+
+def plan_linear_order(draft_order: list[int], rounds: int) -> list[tuple[int, int, int, int]]:
+    """Like plan_snake_order, but every round in the same order — a
+    dynasty rookie draft (worst team first, every round)."""
+    n = len(draft_order)
+    return [
+        ((r - 1) * n + i, r, i, owner_id)
+        for r in range(1, rounds + 1)
+        for i, owner_id in enumerate(draft_order, start=1)
+    ]
 
 
 def plan_snake_order(draft_order: list[int], rounds: int) -> list[tuple[int, int, int, int]]:
@@ -142,14 +199,26 @@ async def create_draft(
             season, league_id,
         )
         rounds = total_draftable_slots(roster_slots)
+        # League formats (2026-10): an auction plans no picks up front; a
+        # dynasty league after its first season keeps every roster and
+        # drafts rookies only, worst team first, the same order each round.
+        fmt = await get_league_format(conn, league_id)
+        draft_type, pool = "snake", "all"
+        if fmt["draft_type"] == "auction":
+            draft_type = "auction"
+        elif fmt["league_type"] == "dynasty" and await carry_dynasty_rosters(conn, season, league_id):
+            draft_type, pool = "linear", "rookies"
+            rounds = int(fmt["type_settings"].get("rookie_draft_rounds", 4))
+            draft_order = await rookie_draft_order(conn, season, league_id, draft_order)
         await conn.execute(
             """
             INSERT INTO draft_config
-                (season, pick_time_limit_seconds, draft_order, roster_slots, league_id, scheduled_start, position_max)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (season, pick_time_limit_seconds, draft_order, roster_slots, league_id, scheduled_start, position_max,
+                 draft_type, pool)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             season, pick_time_limit_seconds, draft_order, json.dumps(roster_slots), league_id, pre_set_schedule,
-            json.dumps(position_max) if position_max is not None else None,
+            json.dumps(position_max) if position_max is not None else None, draft_type, pool,
         )
         # Same cleanup as the pre-set schedule above — draft_config.
         # roster_slots is the single source of truth from here on, so
@@ -158,7 +227,12 @@ async def create_draft(
         await conn.execute(
             "DELETE FROM league_roster_slots_settings WHERE season = $1 AND league_id = $2", season, league_id
         )
-        rows = plan_snake_order(draft_order, rounds)
+        if draft_type == "auction":
+            await auction_engine.create_auction(
+                conn, season, league_id, int(fmt["type_settings"].get("auction_budget", 200))
+            )
+            return
+        rows = (plan_linear_order if draft_type == "linear" else plan_snake_order)(draft_order, rounds)
         await conn.executemany(
             """
             INSERT INTO draft_picks (season, pick_number, round, round_pick, owner_id, league_id)
@@ -169,6 +243,68 @@ async def create_draft(
                 for pick_number, round_num, round_pick, owner_id in rows
             ],
         )
+
+
+async def carry_dynasty_rosters(conn, season: int, league_id: int) -> bool:
+    """A dynasty league keeps every roster: copies last season's final
+    rosters onto this season's teams (matched by owner), once. A taxi
+    player who's no longer a first- or second-year player moves to the
+    bench. Returns whether this league has a past season to carry from
+    (False for its first, startup season)."""
+    previous = await conn.fetch(
+        """
+        SELECT cr.sleeper_player_id, cr.lineup_slot, t_old.owner_id, p.years_exp
+        FROM current_rosters cr
+        JOIN teams_by_season t_old ON t_old.id = cr.team_id
+        JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
+        WHERE cr.season = $1 AND cr.league_id = $2
+        """,
+        season - 1, league_id,
+    )
+    if not previous:
+        return False
+    already = await conn.fetchval(
+        "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 AND acquired_via = 'keeper' LIMIT 1",
+        season, league_id,
+    )
+    if already:
+        return True
+    teams = {
+        r["owner_id"]: r["id"]
+        for r in await conn.fetch("SELECT id, owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2", season, league_id)
+    }
+    rows = []
+    for r in previous:
+        team_id = teams.get(r["owner_id"])
+        if team_id is None:
+            continue
+        slot = r["lineup_slot"]
+        if slot == TAXI_SLOT_LABEL and (r["years_exp"] or 0) > 1:
+            slot = "BE"
+        rows.append((season, team_id, r["sleeper_player_id"], slot, league_id))
+    await conn.executemany(
+        """
+        INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id)
+        VALUES ($1, $2, $3, $4, 'keeper', $5) ON CONFLICT DO NOTHING
+        """,
+        rows,
+    )
+    return True
+
+
+async def rookie_draft_order(conn, season: int, league_id: int, fallback: list[int]) -> list[int]:
+    """Worst team first: last season's final standings reversed (owners
+    without a team last season go first, in the commissioner's order)."""
+    from app.queries.league import get_standings
+
+    standings = await get_standings(conn, season - 1, league_id)
+    last_year = [r["team_id"] for r in standings]
+    owner_by_team = {
+        r["id"]: r["owner_id"]
+        for r in await conn.fetch("SELECT id, owner_id FROM teams_by_season WHERE season = $1 AND league_id = $2", season - 1, league_id)
+    }
+    ranked = [owner_by_team[t] for t in reversed(last_year) if owner_by_team.get(t) in fallback]
+    return [o for o in fallback if o not in ranked] + ranked
 
 
 async def update_draft_order(
@@ -468,6 +604,11 @@ async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
             "UPDATE draft_config SET status = 'in_progress', started_at = now() WHERE season = $1 AND league_id = $2",
             season, league_id,
         )
+        if config["draft_type"] == "auction":
+            await auction_engine.start(conn, season, league_id)
+            return _config_dict(await conn.fetchrow(
+                "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+            ))
         return await _advance_to_next_open_pick(conn, season, 1, league_id)
 
 
@@ -535,6 +676,8 @@ async def make_pick(
             raise DraftNotFoundError(f"No draft configured for season {season}")
         if config["status"] != "in_progress":
             raise DraftNotInProgressError(f"Draft for season {season} isn't in progress (status={config['status']})")
+        if config["draft_type"] == "auction":
+            raise auction_engine.AuctionError("This is an auction — nominate or bid instead of picking")
 
         pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
@@ -543,10 +686,7 @@ async def make_pick(
         if pick is None or pick["owner_id"] != owner_id:
             raise NotYourTurnError("It isn't your turn to pick")
 
-        player = await conn.fetchrow(
-            "SELECT sleeper_player_id, is_draftable FROM players WHERE sleeper_player_id = $1", sleeper_player_id
-        )
-        if player is None or not player["is_draftable"]:
+        if not await is_draftable_in_league(conn, season, league_id, sleeper_player_id):
             raise PlayerNotDraftableError(f"{sleeper_player_id} isn't a draftable player")
 
         # Checks current_rosters too, not just draft_picks (2026-09, a
@@ -612,6 +752,8 @@ async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dic
         )
         if not config or config["status"] != "in_progress":
             raise DraftNotInProgressError(f"Draft for season {season} isn't in progress")
+        if config["draft_type"] == "auction":
+            raise auction_engine.AuctionError("An auction's clock is handled by auction_engine.tick")
         pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND pick_number = $2 AND league_id = $3",
             season, config["current_pick_number"], league_id,
@@ -632,19 +774,9 @@ async def autopick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> dic
         rostered_positions = [r["position"] for r in rostered]
         queue = await draft_queue_queries.get_queue(conn, season, owner_id, league_id)
 
-        available = await conn.fetch(
-            """
-            SELECT p.sleeper_player_id, p.position, p.search_rank FROM players p
-            WHERE p.is_draftable AND p.sleeper_player_id NOT IN (
-                SELECT sleeper_player_id FROM draft_picks
-                WHERE season = $1 AND league_id = $2 AND sleeper_player_id IS NOT NULL
-            )
-            ORDER BY p.search_rank ASC NULLS LAST
-            """,
-            season, league_id,
-        )
+        available = await draftable_pool(conn, season, league_id)
         chosen = choose_autopick(
-            rostered_positions, config["roster_slots"], [dict(r) for r in available], config.get("position_max"),
+            rostered_positions, config["roster_slots"], available, config.get("position_max"),
             queue,
         )
         if chosen is None:
@@ -665,6 +797,13 @@ async def undo_last_pick(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) 
         )
         if config is None:
             raise DraftNotFoundError(f"No draft configured for season {season}")
+        if config["draft_type"] == "auction":
+            undone = await auction_engine.undo_last(conn, season, league_id)
+            if undone is None:
+                raise NothingToUndoError("No player won yet to undo")
+            return {"undone_pick": undone, "config": _config_dict(await conn.fetchrow(
+                "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+            ))}
 
         last_pick = await conn.fetchrow(
             "SELECT * FROM draft_picks WHERE season = $1 AND made_at IS NOT NULL AND is_keeper = FALSE "
@@ -717,3 +856,4 @@ async def reset_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
         )
         await conn.execute("DELETE FROM draft_picks WHERE season = $1 AND league_id = $2", season, league_id)
         await conn.execute("DELETE FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id)
+        await conn.execute("DELETE FROM draft_auction WHERE season = $1 AND league_id = $2", season, league_id)

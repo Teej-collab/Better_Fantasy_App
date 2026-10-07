@@ -24,6 +24,8 @@ import re
 import httpx
 
 from app.domain.scoring_engine import compute_player_points
+from app.domain.stat_derivations import derive_stat_line, tackle_category
+from app.providers.nfl_stats.espn_public import LONG_TD_YARDS, fg_made_tier
 
 CORE_PLAY_URL = (
     "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/{game_id}"
@@ -89,8 +91,8 @@ def _fg_miss_category(distance: int) -> str:
 def play_stat_lines(core: dict, positions: dict[int, str]) -> tuple[dict[int, dict], dict[str, float]]:
     """({espn_id: stat_line} for individual players, {category: count}
     for the DEFENDING team's D/ST) for one play. `positions` maps
-    espn_id -> fantasy position, only needed to spot a QB making a
-    tackle (qb_tackle)."""
+    espn_id -> position, only needed to score a tackle by who made it
+    (qb_tackle, k_tackle — app/domain/stat_derivations.py)."""
     play_type = core["type"]
     yards = core["yards"]
     is_td = core["is_scoring"] and "Touchdown" in play_type
@@ -109,11 +111,14 @@ def play_stat_lines(core: dict, positions: dict[int, str]) -> tuple[dict[int, di
     is_completion = play_type in ("Pass Reception", "Passing Touchdown")
     is_interception = "Interception" in play_type
 
+    long_td = is_td and yards >= LONG_TD_YARDS
     for espn_id in roles.get("passer", []):
         if is_completion:
             add(espn_id, "pass_yd", yards)
             if is_td:
                 add(espn_id, "pass_td")
+            if long_td:
+                add(espn_id, "pass_td_40")
         if is_interception:
             add(espn_id, "pass_int")
     if is_completion:
@@ -122,13 +127,18 @@ def play_stat_lines(core: dict, positions: dict[int, str]) -> tuple[dict[int, di
             add(espn_id, "rec_yd", yards)
             if is_td:
                 add(espn_id, "rec_td")
+            if long_td:
+                add(espn_id, "rec_td_40")
     for espn_id in roles.get("rusher", []):
         add(espn_id, "rush_yd", yards)
         if is_td and play_type == "Rushing Touchdown":
             add(espn_id, "rush_td")
+            if long_td:
+                add(espn_id, "rush_td_40")
     if play_type == "Field Goal Good":
         for espn_id in roles.get("kicker", []):
             add(espn_id, "fg_yds", yards)
+            add(espn_id, fg_made_tier(yards))
     elif play_type in ("Field Goal Missed", "Blocked Field Goal"):
         for espn_id in roles.get("kicker", []):
             add(espn_id, _fg_miss_category(yards))
@@ -143,8 +153,9 @@ def play_stat_lines(core: dict, positions: dict[int, str]) -> tuple[dict[int, di
         for espn_id in roles.get("fumbler", []):
             add(espn_id, "fum_lost")
     for espn_id in roles.get("tackler", []):
-        if positions.get(espn_id) == "QB":
-            add(espn_id, "qb_tackle")
+        category = tackle_category(positions.get(espn_id))
+        if category:
+            add(espn_id, category)
 
     dst: dict[str, float] = {}
     if roles.get("sackedBy"):
@@ -192,6 +203,8 @@ async def build_last_play_fantasy(conn, game, play_id: str, league_id: int | Non
     for espn_id, line in lines.items():
         sleeper_id = sleeper_by_espn.get(espn_id)
         if sleeper_id is not None:
+            # TE premium on a catch; game bonuses wait for the full game.
+            line = derive_stat_line(line, positions.get(espn_id), bonuses=False)
             points_by_sleeper[sleeper_id] = compute_player_points(line, rules)
     # A ball-handler still "was on the play" at 0 points (the target on
     # an incompletion, a sacked QB). ESPN's catch-all roles ("other",

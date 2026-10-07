@@ -4,6 +4,8 @@ write is commissioner-only. Mirrors keepers.py's shape exactly:
 league_id is always resolved from the session's active league, never
 accepted from the request itself.
 """
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
@@ -12,6 +14,9 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
+from app.domain import league_format, scoring_catalog
+from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
+from app.domain.stat_derivations import derive_stat_line
 from app.domain.schedule import generate_regular_season_schedule
 from app.domain.schedule_exceptions import ScheduleError
 from app.encryption import decrypt_secret, encrypt_secret
@@ -64,6 +69,94 @@ async def update_scoring_rules(body: ScoringRulesRequest, request: Request, pool
         await league_queries.upsert_scoring_rules(conn, league_id, body.season, body.rules)
         rows = await league_queries.get_scoring_rules(conn, league_id, body.season)
     return {"season": body.season, "rules": [dict(r) for r in rows]}
+
+
+@router.get("/scoring-catalog")
+async def get_scoring_catalog(request: Request, pool=Depends(get_pool)):
+    """The scoring editor (2026-10): every stat a league can score,
+    grouped by tab, with this league's value and whether we track it."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        rules = rules_dict_from_rows(await league_queries.get_scoring_rules(conn, league_id, season))
+        fmt = await league_format.get_league_format(conn, league_id)
+    return {
+        "season": season,
+        "groups": [{"key": g, "label": scoring_catalog.GROUP_LABELS[g]} for g in scoring_catalog.GROUPS],
+        "stats": scoring_catalog.catalog_with_rules(rules),
+        "idp": fmt["roster_preset"] == "idp",
+    }
+
+
+class ScoringPreviewRequest(BaseModel):
+    rules: dict[str, float]
+
+
+@router.post("/scoring-preview")
+async def scoring_preview(body: ScoringPreviewRequest, request: Request, pool=Depends(get_pool)):
+    """Real players' latest week, rescored under the rules being edited
+    — the editor's live preview. The players whose score moves most
+    come first (so a new rule shows someone it affects), then each
+    position's top scorer."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        current = rules_dict_from_rows(await league_queries.get_scoring_rules(conn, league_id, season))
+        week = await conn.fetchval(
+            "SELECT max(week) FROM player_week_stats WHERE season = $1 AND league_id = $2", season, league_id
+        )
+        if week is None:
+            return {"week": None, "players": []}
+        rows = await conn.fetch(
+            """
+            SELECT s.sleeper_player_id, s.raw_stats, p.full_name, p.position, p.pro_team
+            FROM player_week_stats s JOIN players p ON p.sleeper_player_id = s.sleeper_player_id
+            WHERE s.season = $1 AND s.week = $2 AND s.league_id = $3
+            """,
+            season, week, league_id,
+        )
+    proposed = {**current, **body.rules}
+    scored = []
+    for r in rows:
+        stats = r["raw_stats"] if isinstance(r["raw_stats"], dict) else json.loads(r["raw_stats"] or "{}")
+        line = derive_stat_line(stats, r["position"]) if r["position"] != "DEF" else stats
+        before, after = compute_player_points(line, current), compute_player_points(line, proposed)
+        scored.append({
+            "sleeper_player_id": r["sleeper_player_id"], "name": r["full_name"], "position": r["position"],
+            "pro_team": r["pro_team"], "stats": {k: v for k, v in line.items() if v}, "before": before, "after": after,
+        })
+    movers = sorted((p for p in scored if p["after"] != p["before"]), key=lambda p: -abs(p["after"] - p["before"]))[:4]
+    leaders = []
+    for position in ("QB", "RB", "WR", "TE", "K", "DEF"):
+        best = max((p for p in scored if p["position"] == position), key=lambda p: p["after"], default=None)
+        if best and best not in movers:
+            leaders.append(best)
+    return {"week": week, "players": (movers + leaders)[:8]}
+
+
+class ScoringRequest(BaseModel):
+    message: str
+
+
+@router.post("/scoring-requests")
+async def request_scoring_stat(body: ScoringRequest, request: Request, pool=Depends(get_pool)):
+    """A stat the scoring editor can't offer yet ("Request"): lands in
+    the feedback inbox the site owner already reads."""
+    message = body.message.strip()[:500]
+    if not message:
+        raise HTTPException(status_code=400, detail="Say which stat you'd like to score")
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        user = await conn.fetchrow("SELECT display_name FROM users WHERE id = $1", payload["user_id"])
+        await conn.execute(
+            "INSERT INTO feedback (user_id, submitted_by, message, page_url) VALUES ($1, $2, $3, $4)",
+            payload["user_id"], (user["display_name"] if user else None) or "Commissioner",
+            f"[Scoring stat request, league {league_id}] {message}", "/commissioner/scoring",
+        )
+    return {"status": "ok"}
 
 
 @router.get("/playoff-settings")

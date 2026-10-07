@@ -133,7 +133,7 @@ async def _reasons_by_owner_week(conn, season: int, league_id: int) -> dict[tupl
             LEFT JOIN player_week_stats pws
                 ON pws.season = rh.season AND pws.week = rh.week AND pws.sleeper_player_id = rh.sleeper_player_id
                 AND pws.league_id = $2
-            WHERE rh.season = $1 AND rh.lineup_slot NOT IN ('BE', 'IR') AND COALESCE(pws.fantasy_points, 0) <= 0
+            WHERE rh.season = $1 AND rh.lineup_slot NOT IN ('BE', 'IR', 'TAXI') AND COALESCE(pws.fantasy_points, 0) <= 0
             ORDER BY rh.week, pws.fantasy_points NULLS LAST
             """,
             season, league_id,
@@ -144,7 +144,7 @@ async def _reasons_by_owner_week(conn, season: int, league_id: int) -> dict[tupl
             SELECT tbs.owner_id, r.week, r.player_name, r.position, r.lineup_slot, r.points_scored AS points
             FROM rosters r
             JOIN teams_by_season tbs ON tbs.id = r.team_id
-            WHERE r.season = $1 AND r.league_id = $2 AND r.lineup_slot NOT IN ('BE', 'IR')
+            WHERE r.season = $1 AND r.league_id = $2 AND r.lineup_slot NOT IN ('BE', 'IR', 'TAXI')
               AND COALESCE(r.points_scored, 0) <= 0
             ORDER BY r.week, r.points_scored NULLS LAST
             """,

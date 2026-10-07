@@ -142,6 +142,8 @@ export default async function StandingsPage({
           <div className="flex flex-col gap-4">
             <p className="text-xs text-black/50 dark:text-white/50">
               {isFinal ? "Final standings." : "Season in progress."}
+              {(me.league_format?.matchup_type === "points" || me.league_format?.league_type === "guillotine") &&
+                " Ranked by total points."}
               {showPlayoffLine && ` Top ${playoffTeamCount} make the playoffs.`}
               {showToiletBowlLine && ` The bottom ${toiletBowlCount} risk the Toilet Bowl.`}
               {playoffOdds && " Playoff % comes from 10,000 simulated seasons."}
@@ -291,6 +293,11 @@ function StandingsListRow({
             {row.team_name}
           </Link>
           <TeamRankBadge rank={powerRank} />
+          {row.eliminated_week != null && (
+            <span className="ml-2 inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+              🪓 Cut Wk {row.eliminated_week}
+            </span>
+          )}
           {isChampion && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-400/20 dark:text-amber-300">
               🏆 Champion
