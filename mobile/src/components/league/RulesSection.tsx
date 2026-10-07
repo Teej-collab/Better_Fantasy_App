@@ -56,12 +56,12 @@ export function RulesSection({ scrollTo }: { scrollTo: (y: number) => void }) {
 // wheel before it's spun (app/punishment-wheel.tsx).
 function WheelCard() {
   const wheel = usePunishmentWheel().data;
-  if (!wheel || (!wheel.result && wheel.items.length === 0 && !wheel.is_commissioner)) return null;
+  if (!wheel) return null;
   return (
     <Pressable onPress={() => router.push('/punishment-wheel' as Href)} style={({ pressed }) => [styles.wheelCard, pressed && styles.pressed]} accessibilityRole="button">
       <Text style={styles.wheelKicker}>{`🎡 ${wheel.season} PUNISHMENT WHEEL`}</Text>
-      <Text style={styles.wheelText}>{wheel.result ? wheel.result.text : wheel.items.length ? `${wheel.items.length} on the wheel — not spun yet` : 'Fill the wheel, then spin it'}</Text>
-      <Text style={styles.wheelMeta}>{wheel.result ? 'The league loser owes it · tap to watch the spin' : 'Tap to see the wheel'}</Text>
+      <Text style={styles.wheelText}>{wheel.result ? wheel.result.text : wheel.items.length ? `${wheel.items.length} on the wheel — not spun yet` : 'The wheel is empty — add a punishment'}</Text>
+      <Text style={styles.wheelMeta}>{wheel.result ? 'The league loser owes it · tap to watch the spin' : 'Anyone can add one · tap to see the wheel'}</Text>
     </Pressable>
   );
 }

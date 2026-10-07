@@ -137,6 +137,8 @@ export default function PunishmentWheelScreen() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const handled = useRef<string | null>(null);
+  const scroller = useRef<ScrollView>(null);
+  const inputY = useRef(0);
 
   const data = wheel.data;
   const result = data?.result ?? null;
@@ -209,6 +211,19 @@ export default function PunishmentWheelScreen() {
     }
   }
 
+  // Spinning is final for the season, so it asks first.
+  function confirmSpin() {
+    if (!data) return;
+    Alert.alert(
+      `Spin for ${data.season}?`,
+      "Wherever it lands is locked in as this season's punishment. You can't re-spin or change the wheel after.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Spin it', style: 'destructive', onPress: () => void spin() },
+      ],
+    );
+  }
+
   async function spin() {
     haptics.thud();
     setPhase('spinning');
@@ -225,7 +240,14 @@ export default function PunishmentWheelScreen() {
   const revealed = result && phase === 'done';
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView
+      ref={scroller}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive">
       <Stack.Screen options={{ title: 'Punishment Wheel' }} />
       <View style={styles.head}>
         <Text style={styles.kicker}>{`${data.season} SEASON`}</Text>
@@ -259,7 +281,7 @@ export default function PunishmentWheelScreen() {
 
       {!result && data.is_commissioner && (
         <Pressable
-          onPress={() => void spin()}
+          onPress={confirmSpin}
           disabled={!data.can_spin || phase === 'spinning'}
           style={({ pressed }) => [styles.spin, (!data.can_spin || phase === 'spinning') && styles.spinOff, pressed && styles.pressed]}>
           <Text style={[styles.spinText, (!data.can_spin || phase === 'spinning') && styles.spinTextOff]}>
@@ -271,11 +293,13 @@ export default function PunishmentWheelScreen() {
 
       <View style={styles.listHead}>
         <Text style={styles.listTitle}>{`ON THE WHEEL (${faceItems.length})`}</Text>
-        <Text style={styles.listNote}>{result ? `Locked for ${data.season}` : data.can_edit ? 'Commissioners and admins can edit' : 'Set by the commissioner'}</Text>
+        <Text style={styles.listNote}>{result ? `Locked for ${data.season}` : 'Anyone in the league can add one'}</Text>
       </View>
       {data.can_edit && (
-        <View style={styles.addRow}>
+        <View style={styles.addRow} onLayout={(e) => (inputY.current = e.nativeEvent.layout.y)}>
           <TextInput
+            onFocus={() => setTimeout(() => scroller.current?.scrollTo({ y: Math.max(inputY.current - 160, 0), animated: true }), 250)}
+            returnKeyType="done"
             value={draft}
             onChangeText={setDraft}
             placeholder="Add a punishment…"
@@ -294,13 +318,13 @@ export default function PunishmentWheelScreen() {
         </View>
       )}
       <View style={styles.list}>
-        {(result ? result.items.map((text, i) => ({ id: i, text })) : data.items).map((item, i) => (
+        {(result ? result.items.map((text, i) => ({ id: i, text, can_remove: false })) : data.items).map((item, i) => (
           <View key={item.id} style={[styles.row, i > 0 && styles.divided]}>
             <View style={[styles.swatch, { backgroundColor: COLORS[i % COLORS.length] }]} />
             <Text style={styles.rowText} numberOfLines={1}>
               {item.text}
             </Text>
-            {data.can_edit && (
+            {item.can_remove && (
               <Pressable onPress={() => void run(() => api.removePunishment(item.id))} hitSlop={8} accessibilityLabel={`Remove ${item.text}`} style={styles.remove}>
                 <Text style={styles.removeText}>×</Text>
               </Pressable>

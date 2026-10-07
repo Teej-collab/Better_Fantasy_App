@@ -40,14 +40,18 @@ async def test_commissioner_builds_and_spins_once_members_watch(pool, monkeypatc
     member = _league_session_cookie(m_user, m_owner)
     try:
         async with _client() as client:
-            client.cookies.update(member)
-            denied_add = await client.post("/punishment-wheel/items", json={"text": "Nope"})
-            denied_spin = await client.post("/punishment-wheel/spin")
-
             client.cookies.update(commish)
             too_few = await client.post("/punishment-wheel/spin")
-            for text in ("Take the SAT", "24 hours in a Waffle House", "Run a 5K in a costume"):
+            for text in ("Take the SAT", "24 hours in a Waffle House"):
                 await client.post("/punishment-wheel/items", json={"text": text})
+
+            client.cookies.update(member)
+            member_added = await client.post("/punishment-wheel/items", json={"text": "Run a 5K in a costume"})
+            denied_spin = await client.post("/punishment-wheel/spin")
+            commish_item = member_added.json()["items"][0]
+            denied_remove = await client.delete(f"/punishment-wheel/items/{commish_item['id']}")
+
+            client.cookies.update(commish)
             spun = await client.post("/punishment-wheel/spin")
             again = await client.post("/punishment-wheel/spin")
             locked = await client.post("/punishment-wheel/items", json={"text": "Too late"})
@@ -55,7 +59,9 @@ async def test_commissioner_builds_and_spins_once_members_watch(pool, monkeypatc
             client.cookies.update(member)
             seen = (await client.get("/punishment-wheel")).json()
 
-        assert denied_add.status_code == 403 and denied_spin.status_code == 403
+        assert member_added.status_code == 200 and denied_spin.status_code == 403
+        assert [i["can_remove"] for i in member_added.json()["items"]] == [False, False, True]
+        assert denied_remove.status_code == 403
         assert too_few.status_code == 409
         assert spun.status_code == 200
         result = spun.json()["result"]

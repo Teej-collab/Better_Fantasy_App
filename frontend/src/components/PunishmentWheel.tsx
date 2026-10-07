@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Wheel = {
   season: number;
-  items: { id: number; text: string }[];
+  items: { id: number; text: string; can_remove: boolean }[];
   result: { text: string; landed_index: number; items: string[]; spun_at: string; spun_by: string | null } | null;
   can_edit: boolean;
   can_spin: boolean;
@@ -266,7 +266,12 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
       {!result && wheel.is_commissioner && (
         <button
           type="button"
-          onClick={() => void spin()}
+          onClick={() => {
+            // Spinning is final for the season, so it asks first.
+            if (window.confirm(`Spin for ${wheel.season}?\n\nWherever it lands is locked in as this season's punishment. You can't re-spin or change the wheel after.`)) {
+              void spin();
+            }
+          }}
           disabled={!wheel.can_spin || phase === "spinning"}
           className="h-14 rounded-2xl border-2 border-[#39ff14] bg-[#39ff14] font-[Oswald,sans-serif] text-lg font-bold tracking-[0.15em] text-[#06110a] shadow-[0_0_24px_rgba(57,255,20,0.45)] disabled:bg-transparent disabled:text-[#39ff14] disabled:opacity-60 disabled:shadow-none"
         >
@@ -283,7 +288,7 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
       <div className="mt-2 flex items-baseline justify-between">
         <h2 className="font-[Oswald,sans-serif] text-sm tracking-[0.15em] text-white/50">ON THE WHEEL ({items.length})</h2>
         <span className="text-[11px] text-white/40">
-          {result ? `Locked for ${wheel.season}` : wheel.can_edit ? "Commissioners and admins can edit" : "Set by the commissioner"}
+          {result ? `Locked for ${wheel.season}` : "Anyone in the league can add one"}
         </span>
       </div>
       {wheel.can_edit && (
@@ -303,11 +308,11 @@ export function PunishmentWheel({ leagueId }: { leagueId: number }) {
         </form>
       )}
       <ul className="overflow-hidden rounded-xl border border-white/10 bg-[#12161c]">
-        {(result ? result.items.map((text, i) => ({ id: i, text })) : wheel.items).map((item, i) => (
+        {(result ? result.items.map((text, i) => ({ id: i, text, can_remove: false })) : wheel.items).map((item, i) => (
           <li key={item.id} className="flex min-h-11 items-center gap-2.5 border-t border-white/5 px-3 first:border-t-0">
             <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: COLORS[i % COLORS.length] }} />
             <span className="min-w-0 flex-1 truncate text-sm">{item.text}</span>
-            {wheel.can_edit && (
+            {item.can_remove && (
               <button
                 type="button"
                 aria-label={`Remove ${item.text}`}

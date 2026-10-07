@@ -835,7 +835,7 @@ export type SeasonAwards = {
 // The Punishment Wheel (backend/app/routers/punishment_wheel.py).
 export type PunishmentWheel = {
   season: number;
-  items: { id: number; text: string }[];
+  items: { id: number; text: string; can_remove: boolean }[];
   result: { text: string; landed_index: number; items: string[]; spun_at: string; spun_by: string | null } | null;
   can_edit: boolean;
   can_spin: boolean;

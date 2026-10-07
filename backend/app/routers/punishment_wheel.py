@@ -4,7 +4,8 @@ for the season; a commissioner spins it once, and where it lands is the
 season's punishment for the league loser.
 
 - Anyone in the league can see the wheel and the result.
-- Commissioners and site admins add and remove punishments, until the spin.
+- Any member can add punishments until the spin; members can take back
+  their own, and commissioners and site admins can remove any.
 - Only a commissioner can spin, once per season. The server picks where
   it lands (secrets.randbelow), so nobody can rig it and every phone
   animates to the same answer — open apps get it live over the chat
@@ -46,13 +47,13 @@ async def _context(conn, request: Request) -> dict:
         "league_id": league_id,
         "season": int(_require("ACTIVE_SEASON")),
         "commissioner": commissioner,
-        "can_edit": commissioner or await is_site_admin(conn, payload["user_id"]),
+        "can_manage": commissioner or await is_site_admin(conn, payload["user_id"]),
     }
 
 
 async def _wheel(conn, ctx: dict) -> dict:
     items = await conn.fetch(
-        "SELECT id, text FROM punishment_wheel_items WHERE league_id = $1 AND season = $2 ORDER BY id",
+        "SELECT id, text, added_by_user_id FROM punishment_wheel_items WHERE league_id = $1 AND season = $2 ORDER BY id",
         ctx["league_id"], ctx["season"],
     )
     spun = await conn.fetchrow(
@@ -74,9 +75,16 @@ async def _wheel(conn, ctx: dict) -> dict:
         }
     return {
         "season": ctx["season"],
-        "items": [{"id": r["id"], "text": r["text"]} for r in items],
+        "items": [
+            {
+                "id": r["id"],
+                "text": r["text"],
+                "can_remove": result is None and (ctx["can_manage"] or r["added_by_user_id"] == ctx["payload"]["user_id"]),
+            }
+            for r in items
+        ],
         "result": result,
-        "can_edit": ctx["can_edit"] and result is None,
+        "can_edit": result is None,
         "can_spin": ctx["commissioner"] and result is None and len(items) >= 2,
         "is_commissioner": ctx["commissioner"],
     }
@@ -100,8 +108,6 @@ async def add_item(body: AddItemRequest, request: Request, pool=Depends(get_pool
         raise HTTPException(status_code=400, detail="Write a punishment first")
     async with pool.acquire() as conn:
         ctx = await _context(conn, request)
-        if not ctx["can_edit"]:
-            raise HTTPException(status_code=403, detail="Only commissioners can change the wheel")
         if await conn.fetchval("SELECT 1 FROM season_punishments WHERE league_id = $1 AND season = $2", ctx["league_id"], ctx["season"]):
             raise HTTPException(status_code=409, detail="The wheel's already been spun this season")
         count = await conn.fetchval(
@@ -120,10 +126,14 @@ async def add_item(body: AddItemRequest, request: Request, pool=Depends(get_pool
 async def remove_item(item_id: int, request: Request, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         ctx = await _context(conn, request)
-        if not ctx["can_edit"]:
-            raise HTTPException(status_code=403, detail="Only commissioners can change the wheel")
         if await conn.fetchval("SELECT 1 FROM season_punishments WHERE league_id = $1 AND season = $2", ctx["league_id"], ctx["season"]):
             raise HTTPException(status_code=409, detail="The wheel's already been spun this season")
+        added_by = await conn.fetchval(
+            "SELECT added_by_user_id FROM punishment_wheel_items WHERE id = $1 AND league_id = $2 AND season = $3",
+            item_id, ctx["league_id"], ctx["season"],
+        )
+        if added_by is not None and not ctx["can_manage"] and added_by != ctx["payload"]["user_id"]:
+            raise HTTPException(status_code=403, detail="Only the commissioner can remove someone else's punishment")
         await conn.execute(
             "DELETE FROM punishment_wheel_items WHERE id = $1 AND league_id = $2 AND season = $3",
             item_id, ctx["league_id"], ctx["season"],
