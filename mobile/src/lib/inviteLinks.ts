@@ -5,13 +5,21 @@ import { toNativePath } from '@/lib/localNotifications';
 // which ones). They arrive as web paths, so each maps to its app screen.
 // app/+native-intent.tsx calls this for every link that opens the app.
 
-/** The app path for a website URL or path. */
+/**
+ * The app path for a website URL, a weekendleague:// link, or a path.
+ * Always a single-slash app path: a plain home-screen launch arrives as
+ * "weekendleague:///", and a path starting "//" would be read as an
+ * outside web address and opened in Safari (a real bug in build 2).
+ */
 export function appPathForLink(url: string): string {
-  let path = url;
-  const web = url.match(/^https?:\/\/[^/]+(\/[^#]*)?/);
-  if (web) path = web[1] || '/';
-  const custom = url.match(/^weekendleague:\/\/(.*)$/);
-  if (custom) path = `/${custom[1]}`;
+  let path = url.trim();
+  const web = path.match(/^https?:\/\/[^/?#]+([^#]*)/i);
+  if (web) path = web[1];
+  const custom = path.match(/^weekendleague:\/\/(.*)$/i);
+  if (custom) path = custom[1];
+  // Anything else with a scheme isn't ours to open.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return '/';
+  path = `/${path.replace(/^\/+/, '')}`;
 
   const query = (name: string) => path.match(new RegExp(`[?&]${name}=([^&#]+)`))?.[1];
 
@@ -28,7 +36,8 @@ export function appPathForLink(url: string): string {
   // A Lounge room.
   const lounge = path.match(/^\/lounge\/([^/?#]+)/);
   if (lounge) return `/lounge-room/${lounge[1]}`;
-  return toNativePath(path);
+  const mapped = toNativePath(path);
+  return mapped.startsWith('/') && !mapped.startsWith('//') ? mapped : '/';
 }
 
 // A link tapped while signed out waits here until sign-in finishes

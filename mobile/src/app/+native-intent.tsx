@@ -8,7 +8,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
     const appPath = appPathForLink(path);
     // Remembered in case you're signed out: the sign-in screen shows
     // first, and the link opens right after (app/_layout.tsx).
-    if (appPath !== '/' && !appPath.startsWith('/auth')) rememberLinkForAfterSignIn(appPath);
+    if (appPath !== '/' && appPath !== '/?' && !appPath.startsWith('/auth')) rememberLinkForAfterSignIn(appPath);
     return appPath;
   } catch {
     return '/';

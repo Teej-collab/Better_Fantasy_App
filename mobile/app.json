@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "appleTeamId": "5K8V6776KS",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
