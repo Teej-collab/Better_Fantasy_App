@@ -346,6 +346,14 @@ def close_game(title: str, body: str, matchup_id: int) -> dict:
     return _payload(title, body, _matchup_url(matchup_id), "close_game", f"close-{matchup_id}")
 
 
+def punishment_wheel_result(season: int, text: str) -> dict:
+    return _payload(
+        "🎡 The wheel has spoken",
+        f"{season}'s league loser will: {text}",
+        "/punishment-wheel", "punishment_wheel", f"wheel-{season}",
+    )
+
+
 def _trade_tag(trade_id: int) -> str:
     return f"trade-{trade_id}"
 

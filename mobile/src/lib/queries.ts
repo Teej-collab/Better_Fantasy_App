@@ -495,6 +495,10 @@ export function useAwardLeaderboards() {
   return useQuery({ queryKey: ['award-leaderboards'], queryFn: async () => (await api.awardLeaderboards()).categories });
 }
 
+export function usePunishmentWheel() {
+  return useQuery({ queryKey: ['punishment-wheel'], queryFn: api.punishmentWheel });
+}
+
 export function useOwners() {
   return useQuery({ queryKey: ['owners'], queryFn: async () => (await api.owners()).owners });
 }

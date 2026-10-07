@@ -18,6 +18,7 @@ const TILES: { href: Href; title: string; description: string }[] = [
   { href: '/draft', title: 'Draft', description: 'Setup, order, schedule, and live draft-room controls' },
   { href: '/commissioner/trades', title: 'Trades', description: 'Trade deadline, review requirement, and pending trades to approve' },
   { href: '/commissioner/polls', title: 'Polls', description: 'Ask your league a question and collect votes' },
+  { href: '/punishment-wheel' as Href, title: 'Punishment Wheel', description: "Fill the wheel, then spin it once for this season's league-loser punishment" },
   { href: '/commissioner/espn', title: 'ESPN Connection', description: 'Import teams, matchups, and standings from a real ESPN league' },
 ];
 

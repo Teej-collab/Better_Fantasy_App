@@ -163,6 +163,7 @@ function RootStack() {
           <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
           <Stack.Screen name="lounge-private" options={{ title: 'Private Lounge', headerBackTitle: 'Back' }} />
           <Stack.Screen name="lounge" options={{ title: 'The Lounge', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="punishment-wheel" options={{ title: 'Punishment Wheel', headerBackTitle: 'Back' }} />
           <Stack.Screen name="lounge-room/[slug]" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
           <Stack.Screen name="commissioner/index" options={{ title: 'Commissioner Tools', headerBackTitle: 'Back' }} />
           <Stack.Screen name="commissioner/league" options={{ title: 'League Settings', headerBackTitle: 'Tools' }} />

@@ -36,6 +36,9 @@ type SocketEvent =
       added: boolean;
     }
   | { type: 'deleted'; message_id: number; conversation_id: number }
+  // The commissioner just spun the Punishment Wheel: an open wheel screen
+  // picks it up and plays the spin (app/punishment-wheel.tsx).
+  | { type: 'wheel_spin'; league_id: number; season: number; landed_index: number; items: string[]; text: string }
   | { type: 'read' | 'error'; conversation_id: number };
 
 // Same bookkeeping as ChatApp.tsx's "reaction" handler.
@@ -144,6 +147,8 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData<ChatMessage[]>(['chat-messages', event.conversation_id], (prev) =>
         prev?.filter((m) => m.id !== event.message_id),
       );
+    } else if (event.type === 'wheel_spin') {
+      void queryClient.invalidateQueries({ queryKey: ['punishment-wheel'] });
     }
   }, []);
 

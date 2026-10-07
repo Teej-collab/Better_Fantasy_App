@@ -832,6 +832,16 @@ export type SeasonAwards = {
   awards: { award_type: string; detail: string | null; owner_id: number; owner_name: string }[];
 };
 
+// The Punishment Wheel (backend/app/routers/punishment_wheel.py).
+export type PunishmentWheel = {
+  season: number;
+  items: { id: number; text: string }[];
+  result: { text: string; landed_index: number; items: string[]; spun_at: string; spun_by: string | null } | null;
+  can_edit: boolean;
+  can_spin: boolean;
+  is_commissioner: boolean;
+};
+
 export type Owner = {
   owner_id: number;
   display_name: string;

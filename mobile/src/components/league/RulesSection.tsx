@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useRef, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -7,7 +7,7 @@ import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import { formatSummary, LEAGUE_TYPES } from '@/lib/leagueFormat';
-import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings } from '@/lib/queries';
+import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings, usePunishmentWheel } from '@/lib/queries';
 
 // The 2026 Official Rulebook, word for word from the web's
 // frontend/src/app/(app)/rules/page.tsx. Keep the two in sync when the
@@ -37,8 +37,33 @@ const ORIGINAL_LEAGUE_ID = 1;
 
 export function RulesSection({ scrollTo }: { scrollTo: (y: number) => void }) {
   const me = useMe().data;
-  if (me?.active_league_id === ORIGINAL_LEAGUE_ID) return <OfficialRulebook scrollTo={scrollTo} />;
-  return <LeagueSettingsRules />;
+  // The rulebook's contents measure positions inside this wrapper; add
+  // the wrapper's own offset so its jumps still land.
+  const base = useRef(0);
+  return (
+    <View style={styles.page} onLayout={(e) => (base.current = e.nativeEvent.layout.y)}>
+      <WheelCard />
+      {me?.active_league_id === ORIGINAL_LEAGUE_ID ? (
+        <OfficialRulebook scrollTo={(y) => scrollTo(base.current + y)} />
+      ) : (
+        <LeagueSettingsRules />
+      )}
+    </View>
+  );
+}
+
+// This season's Punishment Wheel result, or the invitation to watch the
+// wheel before it's spun (app/punishment-wheel.tsx).
+function WheelCard() {
+  const wheel = usePunishmentWheel().data;
+  if (!wheel || (!wheel.result && wheel.items.length === 0 && !wheel.is_commissioner)) return null;
+  return (
+    <Pressable onPress={() => router.push('/punishment-wheel' as Href)} style={({ pressed }) => [styles.wheelCard, pressed && styles.pressed]} accessibilityRole="button">
+      <Text style={styles.wheelKicker}>{`🎡 ${wheel.season} PUNISHMENT WHEEL`}</Text>
+      <Text style={styles.wheelText}>{wheel.result ? wheel.result.text : wheel.items.length ? `${wheel.items.length} on the wheel — not spun yet` : 'Fill the wheel, then spin it'}</Text>
+      <Text style={styles.wheelMeta}>{wheel.result ? 'The league loser owes it · tap to watch the spin' : 'Tap to see the wheel'}</Text>
+    </Pressable>
+  );
 }
 
 function LeagueSettingsRules() {
@@ -443,6 +468,10 @@ function Payout({ emoji, label, value }: { emoji: string; label: string; value: 
 }
 
 const styles = StyleSheet.create({
+  wheelCard: { borderRadius: 16, borderWidth: 1, borderColor: '#a855f7', backgroundColor: '#1b1230', padding: Spacing.lg, gap: 4 },
+  wheelKicker: { color: '#c084fc', fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+  wheelText: { color: Colors.text, fontSize: 17, fontWeight: '700' },
+  wheelMeta: { color: Colors.textSecondary, fontSize: 12 },
   page: { gap: Spacing.lg },
   titleBlock: { gap: 4 },
   title: { fontSize: 24, textTransform: 'none', letterSpacing: 0 },

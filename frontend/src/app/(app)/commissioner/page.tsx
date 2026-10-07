@@ -88,6 +88,11 @@ export default async function CommissionerPage() {
       description: "Ask your league a question and collect votes",
     },
     {
+      href: "/punishment-wheel",
+      title: "Punishment Wheel",
+      description: "Fill the wheel, then spin it once for this season's league-loser punishment",
+    },
+    {
       href: "/commissioner/espn",
       title: "ESPN Connection",
       description: "Import teams, matchups, and standings from a real ESPN league",

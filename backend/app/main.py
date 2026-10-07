@@ -33,6 +33,7 @@ from app.routers import (
     players,
     polls,
     profile,
+    punishment_wheel,
     push,
     settings,
     trades,
@@ -176,6 +177,7 @@ app.include_router(push.router)
 app.include_router(settings.router)
 app.include_router(trades.router)
 app.include_router(watch_party.router)
+app.include_router(punishment_wheel.router)
 
 
 @app.get("/health")
