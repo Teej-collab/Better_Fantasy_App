@@ -142,3 +142,28 @@ async def test_faab_highest_bid_wins_and_is_spent(pool):
         reasons = await conn.fetch("SELECT id, failure_reason FROM waiver_claims WHERE id = ANY($1::int[])", [low["id"], high["id"]])
     assert statuses == {low["id"]: "failed", high["id"]: "successful"}, [dict(r) for r in reasons]
     assert left == 65
+
+
+async def test_newly_available_players_start_on_waivers_in_drafted_leagues(pool):
+    league_id, (a, _b, _c) = await _guillotine_league(pool)
+    fresh = await _player(pool, "fresh")
+    rostered = await _player(pool, "rostered")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO draft_config (season, league_id, draft_order, roster_slots, status) VALUES ($1, $2, '{}', $3, 'complete')",
+            TEST_SEASON, league_id, json.dumps(STANDARD),
+        )
+        await conn.execute(
+            "INSERT INTO current_rosters (season, team_id, sleeper_player_id, lineup_slot, acquired_via, league_id) "
+            "VALUES ($1, $2, $3, 'BE', 'draft', $4)",
+            TEST_SEASON, a, rostered, league_id,
+        )
+        added = await waivers.put_new_players_on_waivers(conn, TEST_SEASON, [fresh, rostered])
+        again = await waivers.put_new_players_on_waivers(conn, TEST_SEASON, [fresh])
+        on_wire = {
+            r["sleeper_player_id"]
+            for r in await conn.fetch("SELECT sleeper_player_id FROM waiver_wire WHERE league_id = $1", league_id)
+        }
+    assert on_wire == {fresh}
+    assert again == 0
+    assert added >= 1

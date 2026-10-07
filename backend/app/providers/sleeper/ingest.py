@@ -14,6 +14,7 @@ import logging
 import os
 
 from app.providers.sleeper.client import fetch_all_players, fetch_players_who_played
+from app.domain.waivers import put_new_players_on_waivers
 from app.providers.sleeper.teams import team_full_name
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,8 @@ async def sync_players(pool) -> int:
         logger.warning("Sleeper season stats fetch failed; unsigned free agents left out this sync", exc_info=True)
         played = set()
     rows = [_normalize(sid, raw, played) for sid, raw in raw_players.items() if raw.get("position")]
+    async with pool.acquire() as conn:
+        was_draftable = {r["sleeper_player_id"] for r in await conn.fetch("SELECT sleeper_player_id FROM players WHERE is_draftable")}
 
     values = [
         (
@@ -194,6 +197,15 @@ async def sync_players(pool) -> int:
                 """,
                 values,
             )
+
+    # Newly available players start on waivers in every drafted league
+    # (2026-10). Skipped on a first-ever sync (nothing was draftable yet,
+    # and there's no league to be fair to).
+    newly = [r["sleeper_player_id"] for r in rows if r["is_draftable"] and r["sleeper_player_id"] not in was_draftable]
+    if was_draftable and newly and season:
+        async with pool.acquire() as conn:
+            added = await put_new_players_on_waivers(conn, season, newly)
+        logger.info("Sleeper player sync: %d newly available players, %d league waiver clocks started", len(newly), added)
 
     draftable = [r for r in rows if r["is_draftable"]]
     skill_positions = {"QB", "RB", "WR", "TE"}

@@ -165,6 +165,35 @@ async def start_waiver_clock(
     )
 
 
+async def put_new_players_on_waivers(conn, season: int, sleeper_player_ids: list[str]) -> int:
+    """Players who just became available (e.g. a released player like
+    Tyreek Hill showing up in Free Agents, 2026-10) start on waivers for
+    the same 1 day as a dropped player, in every league whose draft is
+    done, so the whole league gets a fair claim instead of first-tap-wins.
+    Never shortens or restarts a clock that's already running, and skips
+    anyone already rostered in that league. Returns rows added."""
+    if not sleeper_player_ids:
+        return 0
+    clears_at = datetime.now(timezone.utc) + DROP_WAIVER_PERIOD
+    rows = await conn.fetch(
+        """
+        INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
+        SELECT $1, d.league_id, p.sid, now(), $3
+        FROM draft_config d
+        CROSS JOIN unnest($2::text[]) AS p(sid)
+        WHERE d.season = $1 AND d.status = 'complete'
+          AND NOT EXISTS (
+              SELECT 1 FROM current_rosters cr
+              WHERE cr.season = $1 AND cr.league_id = d.league_id AND cr.sleeper_player_id = p.sid
+          )
+        ON CONFLICT (season, league_id, sleeper_player_id) DO NOTHING
+        RETURNING 1
+        """,
+        season, sleeper_player_ids, clears_at,
+    )
+    return len(rows)
+
+
 async def is_on_waivers(conn, season: int, league_id: int, sleeper_player_id: str) -> bool:
     row = await conn.fetchval(
         "SELECT 1 FROM waiver_wire WHERE season = $1 AND league_id = $2 AND sleeper_player_id = $3 AND clears_at > now()",
