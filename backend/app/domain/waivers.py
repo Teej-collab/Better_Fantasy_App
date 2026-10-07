@@ -167,14 +167,16 @@ async def start_waiver_clock(
 
 async def put_new_players_on_waivers(conn, season: int, sleeper_player_ids: list[str]) -> int:
     """Players who just became available (e.g. a released player like
-    Tyreek Hill showing up in Free Agents, 2026-10) start on waivers for
-    the same 1 day as a dropped player, in every league whose draft is
-    done, so the whole league gets a fair claim instead of first-tap-wins.
+    Tyreek Hill showing up in Free Agents, 2026-10) start on waivers
+    until the league's weekly Wednesday clear (3:00 AM ET), the same
+    clear a game-locked free agent waits for, in every league whose
+    draft is done, so the whole league gets a fair claim instead of
+    first-tap-wins.
     Never shortens or restarts a clock that's already running, and skips
     anyone already rostered in that league. Returns rows added."""
     if not sleeper_player_ids:
         return 0
-    clears_at = datetime.now(timezone.utc) + DROP_WAIVER_PERIOD
+    clears_at = _next_wednesday_clear_et(datetime.now(timezone.utc))
     rows = await conn.fetch(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
