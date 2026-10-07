@@ -211,3 +211,12 @@ def test_normalize_maps_a_def_entrys_own_id_and_name():
     assert row["sleeper_player_id"] == "WSH"
     assert row["pro_team"] == "WSH"
     assert row["full_name"] == "Washington Commanders"
+
+
+def test_an_unsigned_player_who_played_recently_is_a_free_agent():
+    # Tyreek Hill, 2026: no team, still Active, played in 2025 -> claimable.
+    assert ingest._is_draftable("WR", ["WR"], "Active", None, recently_played=True)
+    # Long retired but still "Active" on Sleeper, no recent games -> not.
+    assert not ingest._is_draftable("QB", ["QB"], "Active", None, recently_played=False)
+    # A team-less D/ST row is never a free agent.
+    assert not ingest._is_draftable("DEF", ["DEF"], None, None, recently_played=True)

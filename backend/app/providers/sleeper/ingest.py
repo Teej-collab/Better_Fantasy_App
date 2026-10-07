@@ -11,8 +11,9 @@ keys them by team abbreviation instead of a numeric id and leaves their
 name fields blank.
 """
 import logging
+import os
 
-from app.providers.sleeper.client import fetch_all_players
+from app.providers.sleeper.client import fetch_all_players, fetch_players_who_played
 from app.providers.sleeper.teams import team_full_name
 
 logger = logging.getLogger(__name__)
@@ -51,12 +52,18 @@ def _normalize_team_abbr(abbr: str | None) -> str | None:
     return _TEAM_ABBR_NORMALIZE.get(abbr, abbr)
 
 
-def _is_draftable(position: str, fantasy_positions: list, status: str | None, pro_team: str | None) -> bool:
+def _is_draftable(
+    position: str, fantasy_positions: list, status: str | None, pro_team: str | None, recently_played: bool = False,
+) -> bool:
     if position not in _DRAFTABLE_POSITIONS:
         return False
     if not fantasy_positions or not (set(fantasy_positions) & _DRAFTABLE_POSITIONS):
         return False
-    if not pro_team:
+    # An unsigned player (no team) is still a real free agent anyone can
+    # claim if he played this season or last — e.g. Tyreek Hill, released
+    # in 2026 (2026-10). Long-retired players Sleeper still lists as
+    # Active (no games in either season) stay out.
+    if not pro_team and not (recently_played and position != "DEF"):
         return False
     if position == "DEF":
         return True  # DEF entries don't carry a normal individual-player status
@@ -67,7 +74,7 @@ def _is_draftable(position: str, fantasy_positions: list, status: str | None, pr
     return True
 
 
-def _normalize(sleeper_id: str, raw: dict) -> dict:
+def _normalize(sleeper_id: str, raw: dict, played: set[str] = frozenset()) -> dict:
     position = raw.get("position") or ""
     fantasy_positions = raw.get("fantasy_positions") or []
     pro_team = _normalize_team_abbr(raw.get("team"))
@@ -102,7 +109,7 @@ def _normalize(sleeper_id: str, raw: dict) -> dict:
         "status": status,
         "injury_status": raw.get("injury_status"),
         "search_rank": raw.get("search_rank"),
-        "is_draftable": _is_draftable(position, fantasy_positions, status, pro_team),
+        "is_draftable": _is_draftable(position, fantasy_positions, status, pro_team, sleeper_id in played),
         "age": raw.get("age"),
         "height": _stringify(raw.get("height")),
         "weight": _stringify(raw.get("weight")),
@@ -123,7 +130,14 @@ async def sync_players(pool) -> int:
     Returns the number of rows written. Never call more than once a
     day — see client.py's module docstring."""
     raw_players = fetch_all_players()
-    rows = [_normalize(sid, raw) for sid, raw in raw_players.items() if raw.get("position")]
+    season = int(os.getenv("ACTIVE_SEASON", "0") or 0)
+    try:
+        played = fetch_players_who_played([season, season - 1]) if season else set()
+    except Exception:
+        # Best-effort: without it, unsigned players just stay out as before.
+        logger.warning("Sleeper season stats fetch failed; unsigned free agents left out this sync", exc_info=True)
+        played = set()
+    rows = [_normalize(sid, raw, played) for sid, raw in raw_players.items() if raw.get("position")]
 
     values = [
         (
