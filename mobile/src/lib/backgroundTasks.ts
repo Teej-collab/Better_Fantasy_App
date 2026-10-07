@@ -29,7 +29,12 @@ if (requireOptionalNativeModule('ExpoTaskManager') && requireOptionalNativeModul
       const token = await SecureStore.getItemAsync(TOKEN_KEY);
       if (!token) return Notifications.BackgroundNotificationTaskResult.NoData;
       setSessionToken(token);
-      updateMatchupWidget(await api.myWeek());
+      const [week, team, scoreboard] = await Promise.all([
+        api.myWeek(),
+        api.myTeam().catch(() => null),
+        api.nflScoreboard().catch(() => null),
+      ]);
+      updateMatchupWidget(week, { team, games: scoreboard?.games ?? [] });
       return Notifications.BackgroundNotificationTaskResult.NewData;
     } catch {
       return Notifications.BackgroundNotificationTaskResult.Failed;

@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "appleTeamId": "5K8V6776KS",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
@@ -80,7 +80,22 @@
             {
               "name": "MatchupWidget",
               "displayName": "Matchup",
-              "description": "Your matchup score on The Weekend.",
+              "description": "Your live matchup: scores, logos, win odds and who's playing.",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium",
+                  "systemLarge",
+                  "accessoryCircular",
+                  "accessoryRectangular",
+                  "accessoryInline"
+                ]
+              }
+            },
+            {
+              "name": "LeagueWidget",
+              "displayName": "League",
+              "description": "Your standing, power rank, the waiver countdown and last week's awards.",
               "ios": {
                 "supportedFamilies": [
                   "systemSmall",

@@ -148,6 +148,8 @@ class LiveActivityTokenBody(BaseModel):
     device_id: str
     activity_id: str | None = None
     matchup_id: int | None = None
+    # The phone's widgets folder (a file:// URL), where it keeps team logos.
+    asset_dir: str | None = None
 
 
 @router.post("/live-activity")
@@ -160,6 +162,7 @@ async def register_live_activity_token(body: LiveActivityTokenBody, request: Req
         raise HTTPException(status_code=422, detail="kind must be activity or start")
     if not body.token or not body.device_id or len(body.token) > 400:
         raise HTTPException(status_code=400, detail="token and device_id are required")
+    asset_dir = body.asset_dir if body.asset_dir and body.asset_dir.startswith("file://") and len(body.asset_dir) < 500 else None
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
         if owner_id is None:
@@ -167,10 +170,10 @@ async def register_live_activity_token(body: LiveActivityTokenBody, request: Req
         league_id = await require_active_league_id(conn, payload)
         if body.kind == "activity":
             await live_activity_queries.upsert_activity_token(
-                conn, owner_id, league_id, body.device_id, body.token, body.activity_id, body.matchup_id
+                conn, owner_id, league_id, body.device_id, body.token, body.activity_id, body.matchup_id, asset_dir
             )
         else:
-            await live_activity_queries.upsert_start_token(conn, owner_id, league_id, body.device_id, body.token)
+            await live_activity_queries.upsert_start_token(conn, owner_id, league_id, body.device_id, body.token, asset_dir)
     return {"ok": True}
 
 

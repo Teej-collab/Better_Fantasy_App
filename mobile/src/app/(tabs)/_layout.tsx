@@ -6,12 +6,24 @@ import { AppState, Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useThemeSync } from '@/lib/appearance';
-import { updateMatchupWidget } from '@/lib/homeWidget';
+import { leagueWidgetPropsFor, updateLeagueWidget, updateMatchupWidget } from '@/lib/homeWidget';
 import { listenForPushToStart, syncLiveActivity } from '@/lib/liveActivity';
 import { syncSeasonalAppIcon } from '@/lib/seasonal';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
 import { registerForPush } from '@/lib/pushRegistration';
-import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
+import {
+  useActiveLeagueName,
+  useChatConversations,
+  useChugDeadline,
+  useHomeAwards,
+  useMe,
+  useMyKeepers,
+  useMyTeam,
+  useMyWeek,
+  useNflScoreboard,
+  useSeasonWeek,
+  useStandings,
+} from '@/lib/queries';
 import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
 
 // Long-press the app icon: four shortcuts (iOS's maximum), with the
@@ -67,9 +79,21 @@ function useLocalReminders() {
 // sign-out so it doesn't keep showing someone's score.
 function useHomeWidget() {
   const myWeek = useMyWeek().data;
+  const team = useMyTeam().data;
+  const games = useNflScoreboard().data;
+  const season = useSeasonWeek().data?.season ?? null;
+  const weekNumber = useSeasonWeek().data?.week ?? null;
+  const standings = useStandings(season).data?.standings;
+  const awards = useHomeAwards(season, weekNumber).data ?? null;
+  const leagueName = useActiveLeagueName().data ?? null;
   useEffect(() => {
-    if (myWeek !== undefined) updateMatchupWidget(myWeek);
-  }, [myWeek]);
+    if (myWeek !== undefined) updateMatchupWidget(myWeek, { team, games });
+  }, [myWeek, team, games]);
+  // The League widget: standings, power rank, waivers and last week's awards.
+  useEffect(() => {
+    if (myWeek === undefined || standings === undefined) return;
+    updateLeagueWidget(leagueWidgetPropsFor({ week: myWeek, leagueName, standings, awards }));
+  }, [myWeek, standings, awards, leagueName]);
   // The Lock Screen / Dynamic Island live score follows the same data
   // (lib/liveActivity.ts), and the backend can start one at kickoff.
   useEffect(() => {

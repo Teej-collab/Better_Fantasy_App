@@ -42,6 +42,30 @@ WIDGET_REFRESH_SECONDS = 15 * 60
 
 _last_widget_refresh = 0.0
 
+# A touchdown by one of your starters (app/notifications/fantasy_events.py
+# reports it): shown as the Live Activity's latest play, and for the first
+# MOMENT_SECONDS as the TOUCHDOWN moment — the update carries an alert, so
+# the Dynamic Island pops open for a few seconds. Kept in memory: the
+# live sync and this tick run in the same process.
+MOMENT_SECONDS = 45
+LAST_PLAY_SECONDS = 2 * 3600
+_moments: dict[tuple[int, int], dict] = {}
+# Token ids that already got the alert for their owner's latest moment.
+_alerted: dict[int, float] = {}
+
+
+def record_touchdown(owner_id: int, league_id: int, player_name: str, points: float | None) -> None:
+    _moments[(owner_id, league_id)] = {
+        "player": player_name,
+        "points": round(points, 1) if points is not None else None,
+        "at": time.time(),
+    }
+
+
+def _initials(name: str | None) -> str:
+    words = [w for w in (name or "").replace("'", "").split() if w[:1].isalnum()]
+    return "".join(w[0] for w in words[:2]).upper() or "?"
+
 
 def props_for(week: dict | None) -> dict | None:
     """A matchup for the lock screen, or None when there isn't one this
@@ -72,7 +96,31 @@ def props_for(week: dict | None) -> dict | None:
         "oppLeft": opp_left,
         "winProbability": round(m["win_probability"]) if m["win_probability"] is not None else None,
         "matchupId": m["matchup_id"],
+        # Logos live on the phone as logo-<team id>.png in its widgets
+        # folder (mobile/src/lib/widgetAssets.ts); initials stand in until then.
+        "myTeamId": week.get("team_id"),
+        "oppTeamId": m.get("opponent_team_id"),
+        "myInitials": _initials(week["team_name"]),
+        "oppInitials": _initials(m["opponent_team_name"]),
     }
+
+
+def _with_device_and_moment(props: dict, row, owner_id: int, league_id: int) -> tuple[dict, dict | None]:
+    """Adds this phone's logo folder, and the latest touchdown. Returns
+    the props and, when the moment is fresh and this Live Activity hasn't
+    been alerted for it yet, the alert to send with them."""
+    out = {**props, "logoDir": row["asset_dir"], "lastPlay": None, "moment": None}
+    moment = _moments.get((owner_id, league_id))
+    alert = None
+    if moment and time.time() - moment["at"] < LAST_PLAY_SECONDS:
+        pts = f" +{moment['points']}" if moment["points"] else ""
+        out["lastPlay"] = f"{moment['player']} TD{pts}"
+        if time.time() - moment["at"] < MOMENT_SECONDS:
+            out["moment"] = "td"
+            if _alerted.get(row["id"]) != moment["at"]:
+                _alerted[row["id"]] = moment["at"]
+                alert = {"title": f"TOUCHDOWN · {moment['player']}", "body": f"{props['myName']} {props['myScore']} – {props['oppScore']}"}
+    return out, alert
 
 
 def _content_state(props: dict) -> dict:
@@ -131,6 +179,9 @@ async def run_tick(pool) -> dict:
     now = datetime.now(timezone.utc)
     for row in activities:
         props = props_for(await week_for(row["owner_id"], row["league_id"]))
+        alert = None
+        if props is not None:
+            props, alert = _with_device_and_moment(props, row, row["owner_id"], row["league_id"])
         stale_matchup = props is not None and row["matchup_id"] is not None and props["matchupId"] != row["matchup_id"]
         if props is None or stale_matchup:
             aps = {"timestamp": int(time.time()), "event": "end", "dismissal-date": int(time.time())}
@@ -158,9 +209,14 @@ async def run_tick(pool) -> dict:
 
         if comparable == row["last_props"]:
             continue
-        if row["last_sent_at"] is not None and (now - row["last_sent_at"]).total_seconds() < MIN_SECONDS_BETWEEN_UPDATES:
+        recent = row["last_sent_at"] is not None and (now - row["last_sent_at"]).total_seconds() < MIN_SECONDS_BETWEEN_UPDATES
+        if recent and alert is None:
             continue
         aps = {"timestamp": int(time.time()), "event": "update", "content-state": _content_state(props)}
+        if alert is not None:
+            # An alert makes iOS show the expanded Dynamic Island (and the
+            # Lock Screen banner) for a moment: the TOUCHDOWN view.
+            aps["alert"] = {**alert, "sound": "default"}
         # Live scoring is worth an immediate update; anything else can wait for a cheaper slot.
         if await _send(pool, row, aps, priority=10 if props["state"] == "live" else 5):
             async with pool.acquire() as conn:
@@ -172,6 +228,7 @@ async def run_tick(pool) -> dict:
             props = props_for(await week_for(row["owner_id"], row["league_id"]))
             if not props or props["state"] != "live":
                 continue
+            props, _ = _with_device_and_moment(props, row, row["owner_id"], row["league_id"])
             async with pool.acquire() as conn:
                 if await queries.has_active_activity(conn, row["owner_id"], props["matchupId"]):
                     continue

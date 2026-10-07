@@ -163,3 +163,30 @@ async def test_register_and_end_routes(pool, monkeypatch):
             assert not await queries.has_active_activity(conn, owner, 9)
     finally:
         await _cleanup(pool, owner)
+
+
+async def test_touchdown_moment_alerts_once_then_stays_as_latest_play(pool, harness, monkeypatch):
+    owner = await _seed_owner(pool, 706)
+    monkeypatch.setattr(live_activity, "_moments", {})
+    monkeypatch.setattr(live_activity, "_alerted", {})
+    try:
+        async with pool.acquire() as conn:
+            await queries.upsert_activity_token(conn, owner, 1, "dev-1", "tok-td", "act-td", 7, "file:///shared/ExpoWidgets/")
+        await live_activity.run_tick(pool)
+        harness["sent"].clear()
+
+        live_activity.record_touchdown(owner, 1, "Puka Nacua", 8.8)
+        await live_activity.run_tick(pool)  # right after the last update, but a moment skips the rate limit
+        aps = harness["sent"][0][1]
+        props = json.loads(aps["content-state"]["props"])
+        assert aps["alert"]["title"] == "TOUCHDOWN · Puka Nacua"
+        assert props["moment"] == "td" and props["lastPlay"] == "Puka Nacua TD +8.8"
+        assert props["logoDir"] == "file:///shared/ExpoWidgets/" and props["myInitials"] == "GG"
+
+        harness["sent"].clear()
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE live_activity_tokens SET last_sent_at = now() - interval '1 minute' WHERE owner_id = $1", owner)
+        await live_activity.run_tick(pool)
+        assert all("alert" not in a for _, a in harness["sent"])  # alerted once only
+    finally:
+        await _cleanup(pool, owner)

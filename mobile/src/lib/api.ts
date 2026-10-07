@@ -208,7 +208,15 @@ export const api = {
     request<{ id: number; active: boolean }>('/push/native/register', { method: 'POST', body: JSON.stringify(body) }),
   // Live Activity tokens (the lock-screen score): 'activity' for a running
   // one, 'start' for the device's push-to-start token.
-  registerLiveActivityToken: (body: { kind: 'activity' | 'start'; token: string; device_id: string; activity_id?: string; matchup_id?: number }) =>
+  registerLiveActivityToken: (body: {
+    kind: 'activity' | 'start';
+    token: string;
+    device_id: string;
+    activity_id?: string;
+    matchup_id?: number;
+    // The phone's widgets folder, where team logos are saved (lib/widgetAssets.ts).
+    asset_dir?: string;
+  }) =>
     request<{ ok: boolean }>('/push/live-activity', { method: 'POST', body: JSON.stringify(body) }),
   endLiveActivity: (body: { activity_id?: string; device_id?: string }) =>
     request<{ ok: boolean }>('/push/live-activity/end', { method: 'POST', body: JSON.stringify(body) }),

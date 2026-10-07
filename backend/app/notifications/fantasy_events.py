@@ -25,6 +25,7 @@ discipline as every other notification call site in this app.
 import logging
 import time
 
+from app.domain import live_activity
 from app.notifications import dispatcher, formatter
 from app.queries import owner_preferences as preferences_queries
 
@@ -130,14 +131,18 @@ async def _notify_touchdowns(conn, season: int, before: dict, after: dict) -> No
         season, scorers,
     )
     for row in rows:
-        prefs = await preferences_queries.get_preferences(conn, row["owner_id"])
-        if not (prefs["push_enabled"] and prefs["notify_my_players"]):
-            continue
         pid = row["sleeper_player_id"]
         key = (row["league_id"], pid)
         points_delta = None
         if key in after.get("player_points", {}):
             points_delta = after["player_points"][key] - before.get("player_points", {}).get(key, 0.0)
+        # The Lock Screen / Dynamic Island TOUCHDOWN moment (2026-10) —
+        # starters only, and regardless of push preferences.
+        if row["lineup_slot"] not in _BENCH_SLOTS:
+            live_activity.record_touchdown(row["owner_id"], row["league_id"], row["player_name"], points_delta)
+        prefs = await preferences_queries.get_preferences(conn, row["owner_id"])
+        if not (prefs["push_enabled"] and prefs["notify_my_players"]):
+            continue
         await dispatcher.send_to_owner(
             conn, row["owner_id"],
             formatter.fantasy_player_touchdown(

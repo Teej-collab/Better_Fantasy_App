@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { api } from '@/lib/api';
 import { canUseWidgets } from '@/lib/homeWidget';
 import { deviceId } from '@/lib/pushRegistration';
+import { initialsFor, syncTeamLogos, widgetAssetDir } from '@/lib/widgetAssets';
 import type { YourWeek } from '@/lib/types';
 import type { MatchupActivityProps } from '@/widgets/MatchupActivity';
 
@@ -81,6 +82,14 @@ export function activityPropsFor(week: YourWeek | null): MatchupActivityProps | 
     winProbability: m.win_probability !== null ? Math.round(m.win_probability) : null,
     matchupId: m.matchup_id,
     updatedAt: Date.now(),
+    myTeamId: week.team_id,
+    oppTeamId: m.opponent_team_id,
+    myInitials: initialsFor(week.team_name),
+    oppInitials: initialsFor(m.opponent_team_name),
+    logoDir: widgetAssetDir(),
+    // The backend adds the latest touchdown; the app doesn't track plays.
+    lastPlay: null,
+    moment: null,
   };
 }
 
@@ -96,7 +105,14 @@ async function registerActivity(activity: Activity, matchupId?: number) {
   const send = async (token: string | null) => {
     const device = await deviceId();
     if (!token || !device) return;
-    await api.registerLiveActivityToken({ kind: 'activity', token, device_id: device, activity_id: id, matchup_id: matchupOf.get(id) });
+    await api.registerLiveActivityToken({
+      kind: 'activity',
+      token,
+      device_id: device,
+      activity_id: id,
+      matchup_id: matchupOf.get(id),
+      asset_dir: widgetAssetDir() ?? undefined,
+    });
     registered.add(id);
   };
   activity.addPushTokenListener((e) => void send(e.pushToken).catch(() => {}));
@@ -138,6 +154,11 @@ export async function syncLiveActivity(week: YourWeek | null): Promise<void> {
   if (current.length === 0) {
     // Only start once games are underway — not hours ahead.
     if (props.state !== 'live') return;
+    // Logos onto the phone first, so they're there from the first frame.
+    await syncTeamLogos([
+      { teamId: week?.team_id, url: week?.matchup?.my_logo_url },
+      { teamId: week?.matchup?.opponent_team_id, url: week?.matchup?.opponent_logo_url },
+    ]).catch(() => {});
     try {
       const activity = f.start(props, `weekendleague://matchup/${props.matchupId}`);
       lastSignature = signature;
@@ -167,7 +188,7 @@ export function listenForPushToStart(): () => void {
       if (!(await liveActivityEnabled())) return;
       const device = await deviceId();
       if (!device) return;
-      await api.registerLiveActivityToken({ kind: 'start', token: e.activityPushToStartToken, device_id: device });
+      await api.registerLiveActivityToken({ kind: 'start', token: e.activityPushToStartToken, device_id: device, asset_dir: widgetAssetDir() ?? undefined });
     })().catch(() => {});
   });
   return () => sub.remove();

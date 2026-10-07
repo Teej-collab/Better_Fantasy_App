@@ -5,7 +5,8 @@ Dynamic Island live score on iOS.
 
 
 async def upsert_activity_token(
-    conn, owner_id: int, league_id: int, device_id: str, token: str, activity_id: str | None, matchup_id: int | None
+    conn, owner_id: int, league_id: int, device_id: str, token: str, activity_id: str | None, matchup_id: int | None,
+    asset_dir: str | None = None,
 ):
     """A running Live Activity's update token. iOS can reissue it, so a
     repeat of the same activity replaces the old token instead of adding
@@ -18,18 +19,19 @@ async def upsert_activity_token(
         )
     await conn.execute(
         """
-        INSERT INTO live_activity_tokens (owner_id, league_id, device_id, kind, token, activity_id, matchup_id)
-        VALUES ($1, $2, $3, 'activity', $4, $5, $6)
+        INSERT INTO live_activity_tokens (owner_id, league_id, device_id, kind, token, activity_id, matchup_id, asset_dir)
+        VALUES ($1, $2, $3, 'activity', $4, $5, $6, $7)
         ON CONFLICT (token) DO UPDATE SET
             owner_id = EXCLUDED.owner_id, league_id = EXCLUDED.league_id, device_id = EXCLUDED.device_id,
             activity_id = EXCLUDED.activity_id, matchup_id = EXCLUDED.matchup_id,
+            asset_dir = COALESCE(EXCLUDED.asset_dir, live_activity_tokens.asset_dir),
             active = TRUE, updated_at = now()
         """,
-        owner_id, league_id, device_id, token, activity_id, matchup_id,
+        owner_id, league_id, device_id, token, activity_id, matchup_id, asset_dir,
     )
 
 
-async def upsert_start_token(conn, owner_id: int, league_id: int, device_id: str, token: str):
+async def upsert_start_token(conn, owner_id: int, league_id: int, device_id: str, token: str, asset_dir: str | None = None):
     """The device's push-to-start token — one per device and account."""
     await conn.execute(
         "DELETE FROM live_activity_tokens WHERE token = $1 AND NOT (owner_id = $2 AND device_id = $3 AND kind = 'start')",
@@ -37,12 +39,14 @@ async def upsert_start_token(conn, owner_id: int, league_id: int, device_id: str
     )
     await conn.execute(
         """
-        INSERT INTO live_activity_tokens (owner_id, league_id, device_id, kind, token)
-        VALUES ($1, $2, $3, 'start', $4)
+        INSERT INTO live_activity_tokens (owner_id, league_id, device_id, kind, token, asset_dir)
+        VALUES ($1, $2, $3, 'start', $4, $5)
         ON CONFLICT (owner_id, device_id) WHERE kind = 'start' DO UPDATE SET
-            token = EXCLUDED.token, league_id = EXCLUDED.league_id, active = TRUE, updated_at = now()
+            token = EXCLUDED.token, league_id = EXCLUDED.league_id,
+            asset_dir = COALESCE(EXCLUDED.asset_dir, live_activity_tokens.asset_dir),
+            active = TRUE, updated_at = now()
         """,
-        owner_id, league_id, device_id, token,
+        owner_id, league_id, device_id, token, asset_dir,
     )
 
 
