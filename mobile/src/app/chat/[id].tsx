@@ -3,7 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SharedBetCard } from '@/components/bets/SharedBetCard';
@@ -11,7 +11,7 @@ import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { api, uploadChatImage, WEB_BASE_URL } from '@/lib/api';
+import { api, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
@@ -40,7 +40,7 @@ export default function ConversationScreen() {
 
   const [draft, setDraft] = useState('');
   const [title, setTitle] = useState('');
-  // The message whose long-press menu is open (reactions + Reply).
+  // The message whose long-press menu is open (reactions, Reply, Report, Block).
   const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -114,6 +114,60 @@ export default function ConversationScreen() {
     if (!target) return;
     void Haptics.selectionAsync();
     api.reactToMessage(target.id, emoji).catch(() => {});
+  }
+
+  // Report and block (App Review's rule for user-generated content):
+  // a report reaches the site admins; a block hides that person's
+  // messages from you everywhere and stops their pushes.
+  function reportMessage() {
+    const target = actionsFor;
+    setActionsFor(null);
+    if (!target) return;
+    const reasons: { label: string; value: ReportReason }[] = [
+      { label: 'Harassment or bullying', value: 'harassment' },
+      { label: 'Hate speech', value: 'hate' },
+      { label: 'Sexual content', value: 'sexual' },
+      { label: 'Spam', value: 'spam' },
+      { label: 'Something else', value: 'other' },
+    ];
+    const send = (reason: ReportReason) =>
+      api
+        .reportMessage(target.id, reason)
+        .then(() => Alert.alert('Thanks for reporting', "We'll review it within 24 hours. You can also block this person so you stop seeing their messages."))
+        .catch((e) => Alert.alert("Couldn't send the report", e instanceof Error ? e.message : 'Try again in a moment.'));
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: 'Why are you reporting this message?', options: [...reasons.map((r) => r.label), 'Cancel'], cancelButtonIndex: reasons.length },
+        (i) => i < reasons.length && void send(reasons[i].value),
+      );
+    } else {
+      Alert.alert('Report this message?', undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Report', style: 'destructive', onPress: () => void send('other') },
+      ]);
+    }
+  }
+
+  function blockSender() {
+    const target = actionsFor;
+    setActionsFor(null);
+    if (!target) return;
+    Alert.alert(`Block ${target.owner_name}?`, "You won't see their messages in any chat, they can't DM you, and you won't get notifications from them. You can unblock them in Settings → Chat.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () =>
+          void api
+            .blockOwner(target.owner_id)
+            .then(() => {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              void queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+              void queryClient.invalidateQueries({ queryKey: ['chat-blocks'] });
+            })
+            .catch((e) => Alert.alert("Couldn't block them", e instanceof Error ? e.message : 'Try again in a moment.')),
+      },
+    ]);
   }
 
   function startReply() {
@@ -302,6 +356,16 @@ export default function ConversationScreen() {
             <Pressable onPress={startReply} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
               <Text style={styles.replyActionText}>Reply</Text>
             </Pressable>
+          )}
+          {actionsFor && actionsFor.owner_id !== myOwnerId && (
+            <>
+              <Pressable onPress={reportMessage} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
+                <Text style={[styles.replyActionText, styles.dangerText]}>Report message</Text>
+              </Pressable>
+              <Pressable onPress={blockSender} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
+                <Text style={[styles.replyActionText, styles.dangerText]}>Block {actionsFor.owner_name}</Text>
+              </Pressable>
+            </>
           )}
         </Pressable>
       </Modal>
@@ -575,6 +639,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   replyActionText: { color: Colors.text, fontSize: 16, fontWeight: '700' },
+  dangerText: { color: Colors.loss },
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',

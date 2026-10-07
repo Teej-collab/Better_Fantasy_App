@@ -1,3 +1,4 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -97,10 +98,12 @@ function ChoiceStage({ onChoose, onBack }: { onChoose: (v: Variant) => void; onB
 
 // The web's SignInCard: Discord, or email (sign in / create account).
 function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: () => void; onForgot: () => void }) {
-  const { signInWithDiscord, signInWithGoogle, signInWithToken } = useAuth();
+  const { signInWithApple, signInWithDiscord, signInWithGoogle, signInWithToken } = useAuth();
   const [googleOn, setGoogleOn] = useState(false);
+  const [appleOn, setAppleOn] = useState(false);
   useEffect(() => {
     api.signInProviders().then((p) => setGoogleOn(p.google)).catch(() => {});
+    if (Platform.OS === 'ios') AppleAuthentication.isAvailableAsync().then(setAppleOn).catch(() => {});
   }, []);
   const intent = variant !== 'signin';
   const [showEmail, setShowEmail] = useState(intent);
@@ -160,21 +163,29 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
 
       {!showEmail ? (
         <>
+          {/* Apple first (App Review wants it at least as prominent as
+              the others), then Google and email; Discord — the original
+              League #1 sign-in — stays as a quieter option. */}
+          {appleOn && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={variant === 'signin' ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN : AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              cornerRadius={Radius.pill}
+              style={styles.apple}
+              onPress={() => !busy && onProvider(signInWithApple)}
+            />
+          )}
           {googleOn && (
             <Pressable onPress={() => onProvider(signInWithGoogle)} disabled={busy} style={({ pressed }) => [styles.google, (pressed || busy) && styles.pressed]}>
               <Text style={styles.googleText}>Continue with Google</Text>
             </Pressable>
           )}
-          <Pressable onPress={() => onProvider(signInWithDiscord)} disabled={busy} style={({ pressed }) => [styles.discord, (pressed || busy) && styles.pressed]}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.discordText}>Continue with Discord</Text>}
-          </Pressable>
-          <View style={styles.orRow}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>OR</Text>
-            <View style={styles.orLine} />
-          </View>
           <Pressable onPress={() => setShowEmail(true)} style={({ pressed }) => [styles.outline, pressed && styles.pressed]}>
             <Text style={styles.outlineText}>Continue with email</Text>
+          </Pressable>
+          {busy && <ActivityIndicator color={Colors.textSecondary} />}
+          <Pressable onPress={() => onProvider(signInWithDiscord)} disabled={busy} hitSlop={8}>
+            <Text style={[styles.link, styles.centerText]}>Continue with Discord</Text>
           </Pressable>
         </>
       ) : (
@@ -221,7 +232,7 @@ function SignInCard({ variant, onBack, onForgot }: { variant: Variant; onBack: (
           </Pressable>
           {!intent && (
             <Pressable onPress={() => setShowEmail(false)} hitSlop={8}>
-              <Text style={[styles.link, styles.centerText]}>← Use Discord instead</Text>
+              <Text style={[styles.link, styles.centerText]}>← Other ways to sign in</Text>
             </Pressable>
           )}
         </View>
@@ -359,13 +370,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     padding: Spacing.xl + 4,
   },
-  discord: { backgroundColor: Colors.discord, borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center' },
-  google: { backgroundColor: '#ffffff', borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center', marginBottom: Spacing.sm },
+  apple: { height: 50, marginBottom: -Spacing.sm },
+  google: { backgroundColor: '#ffffff', borderRadius: Radius.pill, paddingVertical: 15, alignItems: 'center', marginBottom: -Spacing.sm },
   googleText: { color: '#1f1f1f', fontSize: 15, fontWeight: '600' },
-  discordText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  orRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  orLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
-  orText: { color: Colors.textSecondary, fontSize: 10, fontWeight: '600', letterSpacing: 2 },
   outline: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, paddingVertical: 13, alignItems: 'center' },
   outlineText: { color: Colors.text, fontSize: 15, fontWeight: '500' },
   form: { gap: Spacing.md },

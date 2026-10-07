@@ -518,6 +518,8 @@ async def test_week_settlement_job_settles_once_a_cached_week_is_actually_final(
     async with pool.acquire() as conn:
         league_id = await _make_league(conn, "week-settlement")
         await _seed_owner_and_team(conn, league_id, "week-settlement")
+        # The chug steps only run for leagues with the house rule on (2026-10).
+        await conn.execute("UPDATE leagues SET chug_enabled = TRUE WHERE id = $1", league_id)
         await conn.execute(
             "INSERT INTO league_state (season, current_week) VALUES ($1, 5) "
             "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",

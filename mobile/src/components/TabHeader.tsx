@@ -75,6 +75,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
   const items: { label: string; href: Href }[] = [
     { label: 'Settings', href: '/settings' },
     { label: 'Notifications', href: { pathname: '/settings', params: { section: 'notifications' } } },
+    { label: 'The Lounge', href: '/lounge' as Href },
     { label: 'My Bets', href: '/bets' },
     { label: 'Leagues & invites', href: '/leagues' },
     ...(isCommissioner ? [{ label: 'Commissioner Tools', href: '/commissioner' as Href }] : []),

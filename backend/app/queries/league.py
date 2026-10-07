@@ -71,7 +71,7 @@ async def list_all_owners(conn, league_id: int = DEFAULT_LEAGUE_ID):
     league entirely)."""
     return await conn.fetch(
         """
-        SELECT o.owner_id, o.display_name,
+        SELECT o.owner_id, o.display_name, o.logo_url,
                (
                    SELECT t.team_name FROM teams_by_season t
                    WHERE t.owner_id = o.owner_id AND t.league_id = $1

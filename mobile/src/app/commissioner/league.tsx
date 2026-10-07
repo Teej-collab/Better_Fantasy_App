@@ -1,12 +1,13 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 
 import {
   CommishScreen,
   commishStyles as s,
   ErrorText,
   errorMessage,
+  GroupLabel,
   Input,
   OutlineButton,
   Picker,
@@ -49,6 +50,7 @@ export default function LeagueSettingsScreen() {
           <NameRow league={league.data} />
           <InviteRow league={league.data} />
           <FormatForm key={league.data.id} league={league.data} />
+          <HouseRulesForm key={`house-${league.data.id}`} league={league.data} />
           {playoff.data && <PlayoffForm key={playoff.data.season} settings={playoff.data} />}
         </View>
       )}
@@ -120,6 +122,59 @@ function InviteRow({ league }: { league: LeagueInfo }) {
       {/* The full invite — link, QR, and share — not just the code. */}
       <OutlineButton label="Invite" onPress={() => setOpen(true)} />
       <InviteSheet league={open ? league : null} onClose={() => setOpen(false)} />
+    </View>
+  );
+}
+
+// House rules (2026-10): the chug rule started as League #1's own and
+// is now off unless a commissioner turns it on — and names it.
+function HouseRulesForm({ league }: { league: LeagueInfo }) {
+  const [enabled, setEnabled] = useState(Boolean(league.chug_enabled));
+  const [name, setName] = useState(league.chug_rule_name ?? '');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.updateHouseRules(league.id, { chug_enabled: enabled, chug_rule_name: name });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['leagues-mine'] }),
+        queryClient.invalidateQueries({ queryKey: ['my-leagues'] }),
+        queryClient.invalidateQueries({ queryKey: ['chug-deadline'] }),
+      ]);
+      setSaved(true);
+    } catch (e) {
+      setError(errorMessage(e, "Couldn't save the house rules."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={s.gapSm}>
+      <GroupLabel>House rules</GroupLabel>
+      <View style={[s.row, { justifyContent: 'space-between' }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.medium}>🍺 Chug rule</Text>
+          <Text style={s.small}>Every starter who scores 0 or less owes their owner a chug by Monday night kickoff, with a countdown, leaderboard and video uploads.</Text>
+        </View>
+        <Switch value={enabled} onValueChange={setEnabled} trackColor={{ true: Colors.accent, false: 'rgba(255,255,255,0.25)' }} />
+      </View>
+      {enabled && (
+        <View style={s.row}>
+          <Text style={s.label}>Name it</Text>
+          <Input value={name} onChangeText={setName} placeholder="Chug Rule" maxLength={40} style={{ minWidth: 160 }} />
+        </View>
+      )}
+      <View style={s.row}>
+        <PrimaryButton label="Save" busyLabel="Saving…" busy={busy} onPress={() => void save()} />
+        {saved && <Text style={s.small}>Saved</Text>}
+      </View>
+      {error && <ErrorText>{error}</ErrorText>}
     </View>
   );
 }

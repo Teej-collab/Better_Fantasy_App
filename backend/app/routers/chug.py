@@ -194,6 +194,10 @@ async def chug_deadline(request: Request, league_id: int = Depends(require_leagu
     out of THAT week's real schedule."""
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
+        # A house rule (2026-10): leagues that haven't turned it on
+        # never see a countdown.
+        if not await conn.fetchval("SELECT chug_enabled FROM leagues WHERE id = $1", league_id):
+            return {"deadline": None, "is_past": False, "mine": None}
         any_debt_assigned = await conn.fetchval(
             "SELECT 1 FROM chug_debts WHERE season = $1 AND league_id = $2 LIMIT 1",
             active_season, league_id,

@@ -265,6 +265,20 @@ export function useActiveLeagueName() {
   });
 }
 
+// The active league's house rules (2026-10): the chug rule is off unless
+// the commissioner turned it on, and goes by whatever name they gave it.
+export function useHouseRules() {
+  return useQuery({
+    queryKey: ['my-leagues'],
+    queryFn: api.myLeagues,
+    staleTime: 5 * 60_000,
+    select: (d) => {
+      const league = d.leagues.find((l) => l.id === d.active_league_id);
+      return { chugEnabled: Boolean(league?.chug_enabled), chugRuleName: league?.chug_rule_name || 'Chug Rule' };
+    },
+  });
+}
+
 function hasAwardsData(a: WeeklyAwards): boolean {
   return (
     !!a.game_of_the_week ||

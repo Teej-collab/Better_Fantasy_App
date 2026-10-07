@@ -188,10 +188,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+export type ReportReason = 'harassment' | 'hate' | 'sexual' | 'spam' | 'other';
+
 export const api = {
   me: () => request<Me>('/auth/me'),
   redeemNativeTicket: (ticket: string) =>
     request<{ token: string }>('/auth/native/redeem', { method: 'POST', body: JSON.stringify({ ticket }) }),
+  // Sign in with Apple: the identity token from the system sheet, which
+  // the backend verifies with Apple (backend/app/auth/apple_signin.py).
+  appleSignIn: (identityToken: string, fullName: string | null) =>
+    request<{ token: string }>('/auth/apple/native', {
+      method: 'POST',
+      body: JSON.stringify({ identity_token: identityToken, full_name: fullName }),
+    }),
+  // This phone's APNs token, for real push (backend/app/routers/push.py).
+  registerNativePush: (body: { device_id: string; platform: 'ios' | 'android'; push_token: string; app_version: string | null; os_version: string | null }) =>
+    request<{ id: number; active: boolean }>('/push/native/register', { method: 'POST', body: JSON.stringify(body) }),
+  unregisterNativePush: (deviceId: string) =>
+    request<void>(`/push/native/register/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }),
   seasons: () => request<{ seasons: number[] }>('/seasons'),
   currentWeek: (season: number) =>
     request<{ season: number; current_week: number | null }>(`/seasons/${season}/current-week`),
@@ -220,7 +234,7 @@ export const api = {
   // Commissioner only.
   feedback: () => request<{ items: FeedbackItem[] }>('/feedback'),
   myLeagues: () =>
-    request<{ leagues: { id: number; name: string }[]; active_league_id: number | null }>('/leagues/mine'),
+    request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
   weeklyAwards: (season: number, week: number) => request<WeeklyAwards>(`/seasons/${season}/weeks/${week}/awards`),
   weeklyRecap: (season: number, week: number) =>
     request<{ narrative: WeeklyNarrative | null }>(`/seasons/${season}/weeks/${week}/recap`),
@@ -442,6 +456,12 @@ export const api = {
   // Toggles; the server broadcasts the result to everyone over the socket.
   reactToMessage: (messageId: number, emoji: string) =>
     request<{ added: boolean }>(`/chat/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
+  // Report and block (App Review's rule for user-generated content).
+  reportMessage: (messageId: number, reason: ReportReason, details?: string) =>
+    request<{ status: string }>(`/chat/messages/${messageId}/report`, { method: 'POST', body: JSON.stringify({ reason, details }) }),
+  blockedOwners: () => request<{ blocked: { owner_id: number; display_name: string }[] }>('/chat/blocks'),
+  blockOwner: (ownerId: number) => request<{ status: string }>(`/chat/blocks/${ownerId}`, { method: 'POST' }),
+  unblockOwner: (ownerId: number) => request<{ status: string }>(`/chat/blocks/${ownerId}`, { method: 'DELETE' }),
   // Commish Corner read tracking (2026-10): who has seen a post, who
   // hasn't, who opened its link — commissioner / poster only.
   announcementReceipts: (messageId: number) => request<AnnouncementReceipts>(`/chat/messages/${messageId}/receipts`),
@@ -505,6 +525,9 @@ export const api = {
   // until the draft is set up; head-to-head vs total points any time.
   updateLeagueFormat: (leagueId: number, format: Partial<LeagueFormat>) =>
     request<LeagueInfo>(`/leagues/${leagueId}/format`, { method: 'PATCH', body: JSON.stringify(format) }),
+  // The chug rule as a per-league house rule (2026-10), commissioner-only.
+  updateHouseRules: (leagueId: number, rules: { chug_enabled?: boolean; chug_rule_name?: string }) =>
+    request<LeagueInfo>(`/leagues/${leagueId}/house-rules`, { method: 'PATCH', body: JSON.stringify(rules) }),
   renameLeague: (leagueId: number, name: string) =>
     request<LeagueInfo>(`/leagues/${leagueId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   playoffSettings: () => request<PlayoffSettings>('/league/playoff-settings'),

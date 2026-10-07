@@ -17,7 +17,6 @@ import { PageTitle } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { OWNER_PHOTOS } from '@/lib/ownerPhotos';
 import { useCareerProfile, useOwnerBadges, useOwners, useSeasonProfile } from '@/lib/queries';
 import type { Owner, OwnerBadges, PeriodSummary } from '@/lib/types';
 
@@ -123,8 +122,9 @@ function TradingCard({ owner }: { owner: Owner }) {
 }
 
 function OwnerPhoto({ owner, compact }: { owner: Owner; compact?: boolean }) {
-  const photo = OWNER_PHOTOS[owner.owner_id];
-  if (photo) return <Image source={photo} style={StyleSheet.absoluteFill} contentFit="cover" />;
+  // The owner's own uploaded picture (Settings → Profile). Real photos of
+  // League #1's members used to ship inside the app; they don't anymore.
+  if (owner.logo_url) return <Image source={{ uri: owner.logo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />;
   const initials =
     owner.display_name
       .split(' ')

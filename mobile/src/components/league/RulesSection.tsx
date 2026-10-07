@@ -6,6 +6,8 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
+import { formatSummary, LEAGUE_TYPES } from '@/lib/leagueFormat';
+import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings } from '@/lib/queries';
 
 // The 2026 Official Rulebook, word for word from the web's
 // frontend/src/app/(app)/rules/page.tsx. Keep the two in sync when the
@@ -28,9 +30,75 @@ const TOC = [
   { id: 'commissioner', emoji: '⚖️', title: 'Commissioner Clause' },
 ];
 
+// The written rulebook above is League #1's own (buy-in, payouts, the
+// Wheel of Punishment...). Every other league gets rules built from its
+// own settings instead (2026-10) — never another league's house rules.
+const ORIGINAL_LEAGUE_ID = 1;
+
+export function RulesSection({ scrollTo }: { scrollTo: (y: number) => void }) {
+  const me = useMe().data;
+  if (me?.active_league_id === ORIGINAL_LEAGUE_ID) return <OfficialRulebook scrollTo={scrollTo} />;
+  return <LeagueSettingsRules />;
+}
+
+function LeagueSettingsRules() {
+  const me = useMe().data;
+  const format = me?.league_format;
+  const playoffs = usePlayoffSettings().data;
+  const houseRules = useHouseRules().data;
+  const leagueName = useActiveLeagueName().data;
+  const noop = () => {};
+  const type = format ? LEAGUE_TYPES.find((t) => t.key === format.league_type) : undefined;
+  return (
+    <View style={styles.page}>
+      <View style={styles.titleBlock}>
+        <Display style={styles.title}>League Rules</Display>
+        <Text style={styles.muted}>{leagueName ?? 'Your league'}</Text>
+      </View>
+      {format && (
+        <Section onMeasure={noop} id="format" emoji="🏈" title="Format">
+          <P bold>{formatSummary(format)}</P>
+          {type && <P soft>{type.text}</P>}
+          <Bullets
+            items={[
+              format.matchup_type === 'points' ? 'Standings rank by total points scored.' : 'Each week you play one opponent; the higher score wins.',
+              format.draft_type === 'auction' ? 'Auction draft — every team bids from the same budget.' : 'Snake draft — the order reverses every round.',
+            ]}
+          />
+        </Section>
+      )}
+      <Section onMeasure={noop} id="lineups" emoji="📋" title="Lineups & Waivers">
+        <Bullets
+          items={[
+            'Set your lineup before each game kicks off — players lock at their own kickoff.',
+            'Players who just got dropped sit on waivers before anyone can add them. Claims run Wednesday morning.',
+            'Free agents not on waivers can be added right away from the Players tab.',
+          ]}
+        />
+      </Section>
+      {playoffs?.playoff_team_count ? (
+        <Section onMeasure={noop} id="playoffs" emoji="🏆" title="Playoffs">
+          <P>
+            The top {playoffs.playoff_team_count} teams make the playoffs
+            {playoffs.start_week ? `, starting in Week ${playoffs.start_week}` : ''}
+            {playoffs.weeks_per_matchup > 1 ? `, with ${playoffs.weeks_per_matchup}-week matchups` : ''}.
+          </P>
+        </Section>
+      ) : null}
+      {houseRules?.chugEnabled && (
+        <Section onMeasure={noop} id="chug" emoji="🍺" title={houseRules.chugRuleName}>
+          <P>Each starter who scores 0 or fewer fantasy points earns one chug for their owner, due by Monday Night Football kickoff.</P>
+          <Link label="→ View the Chug Leaderboard" onPress={() => router.push('/chug')} />
+        </Section>
+      )}
+      <P soft>Your commissioner can change these settings in Commissioner Tools.</P>
+    </View>
+  );
+}
+
 // `scrollTo` scrolls the League screen's ScrollView to a y offset; the
 // table of contents uses it to jump to a section.
-export function RulesSection({ scrollTo }: { scrollTo: (y: number) => void }) {
+function OfficialRulebook({ scrollTo }: { scrollTo: (y: number) => void }) {
   const offsets = useRef<Record<string, number>>({});
   const rootY = useRef(0);
   const measure = (id: string, y: number) => {

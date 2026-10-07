@@ -269,7 +269,7 @@ const DISCOVER_TILES = [
   },
   { section: 'rivalries', label: 'Rivalries', description: 'All-time rivalry history and grudges', color: SectionColors.rivalries },
   { section: 'rules', label: 'Rules', description: 'Scoring, roster, and league settings', color: SectionColors.rules },
-  { section: 'history', label: 'History', description: 'Awards, trading cards, and the lifetime Chug leaderboard', color: SectionColors.history },
+  { section: 'history', label: 'History', description: 'Recaps, awards, trading cards, and draft grades', color: SectionColors.history },
   { section: 'activity', label: 'Activity', description: 'Activity', color: '#64748b' },
 ];
 

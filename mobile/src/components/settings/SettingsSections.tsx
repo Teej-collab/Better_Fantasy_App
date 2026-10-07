@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -24,7 +25,8 @@ import { applyTheme, useAppearance } from '@/lib/appearance';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
-import { queryClient, useFeedbackList, useMe, useMySettings, usePreferences } from '@/lib/queries';
+import { registerForPush } from '@/lib/pushRegistration';
+import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, usePreferences } from '@/lib/queries';
 import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
@@ -72,10 +74,11 @@ function Panel({ title, description, children, color, danger }: { title?: string
 const REMINDER_TOGGLES: { key: ReminderCategory; label: string; description: string }[] = [
   { key: 'lineup', label: 'Lineup check', description: 'An hour before kickoff, if a starter is Out, on bye, or a slot is empty.' },
   { key: 'draft', label: 'Draft and keepers', description: 'Before the draft starts, and before keeper picks are due if you haven’t made them.' },
-  { key: 'chug', label: "Jeffrey's Rule", description: 'Two hours before the chug deadline.' },
+  { key: 'chug', label: 'Chug Rule', description: 'Two hours before the chug deadline.' },
 ];
 
 function PhoneReminders() {
+  const houseRules = useHouseRules().data;
   const [settings, setSettings] = useState<ReminderSettings | null>(null);
   const [testNote, setTestNote] = useState<string | null>(null);
   useEffect(() => {
@@ -95,11 +98,11 @@ function PhoneReminders() {
         <Text style={styles.small}>These arrive with the next app install.</Text>
       ) : (
         <>
-          {REMINDER_TOGGLES.map((t, i) => (
+          {REMINDER_TOGGLES.filter((t) => t.key !== 'chug' || houseRules?.chugEnabled).map((t, i) => (
             <ToggleRow
               key={t.key}
               divided={i > 0}
-              label={t.label}
+              label={t.key === 'chug' && houseRules ? houseRules.chugRuleName : t.label}
               description={t.description}
               value={settings?.[t.key] ?? true}
               disabled={!settings}
@@ -117,6 +120,41 @@ function PhoneReminders() {
           {testNote && <Text style={styles.small}>{testNote}</Text>}
         </>
       )}
+    </Panel>
+  );
+}
+
+// Real push on this phone (lib/pushRegistration.ts). The app asks once
+// you're in a league; this is the way back if you said no then.
+function PushPanel({ on }: { on: boolean }) {
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function turnOn() {
+    setBusy(true);
+    try {
+      const ok = await registerForPush();
+      if (ok) {
+        await queryClient.invalidateQueries({ queryKey: ['preferences'] });
+        setNote('Push is on for this phone.');
+      } else {
+        setNote('Turn on notifications for The Weekend in iPhone Settings → Notifications, then try again.');
+      }
+    } catch {
+      setNote("Couldn't turn on push right now. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Panel title="Push Notifications" description="Trade offers, waiver results, chat and injury alerts on this phone, even when The Weekend isn't open.">
+      {on ? (
+        <Text style={styles.small}>✓ Push is on for your account.</Text>
+      ) : (
+        <Pressable onPress={() => void turnOn()} disabled={busy} style={styles.secondary}>
+          <Text style={styles.body}>{busy ? 'Turning on…' : 'Turn on push notifications'}</Text>
+        </Pressable>
+      )}
+      {note && <Text style={styles.small}>{note}</Text>}
     </Panel>
   );
 }
@@ -456,13 +494,7 @@ export function NotificationSettings() {
         ))}
       </Panel>
 
-      <Panel title="Push Notifications" description="Real-time alerts on this device, even when The Weekend isn't open.">
-        <Text style={styles.small}>
-          {prefs.push_enabled
-            ? '✓ Push is on for your account (set up from the website or the iOS web app).'
-            : 'Not available in this preview build yet — native push needs the published app. You can turn on push from the website on your phone (Share → Add to Home Screen, then Settings → Notifications).'}
-        </Text>
-      </Panel>
+      <PushPanel on={prefs.push_enabled} />
 
       <PhoneReminders />
 
@@ -547,16 +579,46 @@ export function ChatSettings() {
           <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} onChange={(v) => patch({ [t.key]: v })} />
         ))}
       </Panel>
-      <Panel color={SectionColors.chat}>
-        {/* Stored inverted (true = opted out); shown as "allow". */}
-        <ToggleRow
-          label="AI Learning From Chat"
-          description="Not built yet — reserving the choice now. If this ever ships, allow chat messages to help the AI learn to talk trash like this league does."
-          value={!prefs.ai_training_opt_out}
-          onChange={(v) => patch({ ai_training_opt_out: !v })}
-        />
-      </Panel>
+      {/* The web's "AI Learning From Chat" placeholder isn't shown here:
+          App Review rejects settings for features that don't exist yet. */}
+      <BlockedPeople />
     </View>
+  );
+}
+
+// Everyone you've blocked from chat (long-press a message → Block).
+function BlockedPeople() {
+  const blocked = useQuery({ queryKey: ['chat-blocks'], queryFn: api.blockedOwners }).data?.blocked;
+  const [busy, setBusy] = useState<number | null>(null);
+  async function unblock(ownerId: number) {
+    setBusy(ownerId);
+    try {
+      await api.unblockOwner(ownerId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['chat-blocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['chat-messages'] }),
+      ]);
+    } catch (e) {
+      Alert.alert("Couldn't unblock them", e instanceof Error ? e.message : undefined);
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Panel color={SectionColors.chat} title="Blocked people" description="You don't see their messages, they can't DM you, and you get no notifications from them.">
+      {blocked === undefined ? null : blocked.length === 0 ? (
+        <Text style={styles.small}>Nobody. To block someone, long-press one of their messages.</Text>
+      ) : (
+        blocked.map((b, i) => (
+          <View key={b.owner_id} style={[styles.toggleRow, i > 0 && styles.divided]}>
+            <Text style={[styles.body, styles.flex]}>{b.display_name}</Text>
+            <Pressable onPress={() => void unblock(b.owner_id)} disabled={busy === b.owner_id} hitSlop={8}>
+              <Text style={styles.body}>{busy === b.owner_id ? 'Unblocking…' : 'Unblock'}</Text>
+            </Pressable>
+          </View>
+        ))
+      )}
+    </Panel>
   );
 }
 

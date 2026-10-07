@@ -1,8 +1,10 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { API_BASE_URL, api, setSessionToken, setUnauthorizedHandler } from '@/lib/api';
+import { unregisterForPush } from '@/lib/pushRegistration';
 
 const TOKEN_KEY = 'weekend-league.session';
 
@@ -23,6 +25,7 @@ type AuthState = {
   token: string | null | undefined;
   signInWithDiscord: () => Promise<SignInResult>;
   signInWithGoogle: () => Promise<SignInResult>;
+  signInWithApple: () => Promise<SignInResult>;
   // For a session token from email sign-in/sign-up, or the refreshed one
   // claiming a team or redeeming a co-owner invite hands back.
   signInWithToken: (token: string) => Promise<void>;
@@ -50,7 +53,9 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
 
   const signOut = useCallback(async () => {
     // Ends the session server-side too; signing out locally still
-    // happens if the network call fails.
+    // happens if the network call fails. This phone's push token goes
+    // first, while the session still works.
+    await unregisterForPush().catch(() => {});
     await api.logout().catch(() => {});
     await applyToken(null);
     onSignOut();
@@ -102,11 +107,36 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
   const signInWithDiscord = useCallback(() => signInWith('discord'), [signInWith]);
   const signInWithGoogle = useCallback(() => signInWith('google'), [signInWith]);
 
+  // Sign in with Apple (2026-10, required by App Review alongside
+  // Google and Discord): the system sheet hands back an identity token
+  // the backend verifies with Apple — no browser round trip. The name
+  // only comes on the very first authorization, so it rides along.
+  const signInWithApple = useCallback(async (): Promise<SignInResult> => {
+    let credential: AppleAuthentication.AppleAuthenticationCredential;
+    try {
+      credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return { ok: false, canceled: true };
+      return { ok: false, canceled: false, message: "Couldn't sign in with Apple. Try again." };
+    }
+    if (!credential.identityToken) return { ok: false, canceled: false, message: "Couldn't sign in with Apple. Try again." };
+    const fullName = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ') || null;
+    try {
+      const { token: sessionToken } = await api.appleSignIn(credential.identityToken, fullName);
+      await applyToken(sessionToken);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, canceled: false, message: e instanceof Error ? e.message : "Couldn't sign in with Apple. Try again." };
+    }
+  }, [applyToken]);
+
   const signInWithToken = useCallback((next: string) => applyToken(next), [applyToken]);
 
   const value = useMemo(
-    () => ({ token, signInWithDiscord, signInWithGoogle, signInWithToken, signOut }),
-    [token, signInWithDiscord, signInWithGoogle, signInWithToken, signOut],
+    () => ({ token, signInWithDiscord, signInWithGoogle, signInWithApple, signInWithToken, signOut }),
+    [token, signInWithDiscord, signInWithGoogle, signInWithApple, signInWithToken, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

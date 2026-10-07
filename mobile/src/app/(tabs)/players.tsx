@@ -1,9 +1,10 @@
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
+import { TabFrame } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
@@ -304,13 +305,13 @@ const styles = StyleSheet.create({
   viewName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
 });
 
-// Free Agents — reached from My Team's sub-nav (it was a tab of its own
-// until the 2026-10 navigation pass gave that slot to the Lounge).
+// Players — a tab again (App Store pass, 2026-10): checking free agents
+// is a daily habit, the Lounge a Sunday one, so the Lounge moved to Home
+// and the account menu. Also reached from My Team's sub-nav.
 export default function PlayersScreen() {
   return (
-    <>
-      <Stack.Screen options={{ title: 'Free Agents', headerBackTitle: 'Team' }} />
+    <TabFrame>
       <PlayersScreenContent />
-    </>
+    </TabFrame>
   );
 }

@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.auth import discord_oauth, google_oauth
+from app.auth import apple_signin, discord_oauth, google_oauth
 from app.auth.config import DiscordAuthConfig, GoogleAuthConfig, SessionConfig
 from app.auth.league_context import is_site_admin, resolve_owner_id
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
@@ -268,6 +268,40 @@ async def google_callback(request: Request, code: str | None = None, state: str 
         samesite=config.cookie_samesite, secure=config.cookie_secure,
     )
     return response
+
+
+class AppleNativeSignInRequest(BaseModel):
+    identity_token: str
+    # Apple shares the name only on the very first authorization, and
+    # only to the app (it isn't in the token) — the app passes it along.
+    full_name: str | None = None
+
+
+@router.post("/apple/native")
+async def apple_native_sign_in(body: AppleNativeSignInRequest, request: Request):
+    """Sign in with Apple from the iOS app (2026-10, required by App
+    Review once Google/Discord are offered). The identity token comes
+    straight from the system sheet and is verified against Apple's keys
+    (app/auth/apple_signin.py) — a self-serve account like Google's, so
+    the session gets the same {"token"} as /auth/login."""
+    try:
+        claims = await asyncio.to_thread(apple_signin.verify_identity_token, body.identity_token)
+    except apple_signin.AppleTokenError:
+        raise HTTPException(status_code=401, detail="Couldn't verify your Apple sign-in. Try again.")
+
+    email_verified = claims.get("email_verified") in (True, "true")
+    email = _normalize_email(claims["email"]) if claims.get("email") and email_verified else None
+    full_name = (body.full_name or "").strip()[:80]
+    display_name = full_name or (email.split("@")[0] if email and "privaterelay" not in email else "The Weekend user")
+
+    config = SessionConfig()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        user_id = await auth_queries.get_or_create_user_for_apple(conn, claims["sub"], email, display_name)
+        token_version = await auth_queries.get_token_version(conn, user_id)
+        owner_id = await auth_queries.get_owner_id_for_user(conn, user_id)
+    token = create_session_token(config.session_secret, user_id=user_id, owner_id=owner_id, token_version=token_version)
+    return {"token": token}
 
 
 class NativeOAuthRedeemRequest(BaseModel):

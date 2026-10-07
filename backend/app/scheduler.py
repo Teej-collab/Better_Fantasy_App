@@ -423,9 +423,13 @@ async def _run_week_settlement_job():
         try:
             async with pool.acquire() as conn:
                 await compute_weekly_team_stats_for_week(conn, season, settle_week, league_id)
-            await compute_chug_debts_for_single_week(pool, season, settle_week, league_id)
-            await accrue_weekly_debt_for_single_week(pool, season, settle_week, league_id)
-            await ensure_chug_deadline_settled(pool, season, settle_week, week_games, league_id=league_id)
+            # The chug rule is a per-league house rule (2026-10).
+            async with pool.acquire() as conn:
+                chug_enabled = await conn.fetchval("SELECT chug_enabled FROM leagues WHERE id = $1", league_id)
+            if chug_enabled:
+                await compute_chug_debts_for_single_week(pool, season, settle_week, league_id)
+                await accrue_weekly_debt_for_single_week(pool, season, settle_week, league_id)
+                await ensure_chug_deadline_settled(pool, season, settle_week, week_games, league_id=league_id)
             # Idempotent — checks the cache before ever calling the real
             # Anthropic API (see narrative_engine.py), so this is a fast
             # no-op on every tick after the first successful generation,

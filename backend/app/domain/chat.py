@@ -6,6 +6,7 @@ awards rewrite earlier this session. See app/queries/chat.py for the
 underlying reads.
 """
 from app.queries import chat as chat_queries
+from app.queries import chat_safety as chat_safety_queries
 
 
 def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict, mentions_by_message: dict, seen_by_message: dict | None = None):
@@ -49,6 +50,10 @@ def _build_seen_by_message(message_ids: list[int], participants) -> dict[int, li
 
 async def get_conversation_messages(conn, conversation_id: int, before_id: int | None, limit: int, requesting_owner_id: int):
     rows = await chat_queries.list_messages(conn, conversation_id, before_id, limit)
+    # Messages from anyone this owner has blocked never come back.
+    blocked = await chat_safety_queries.blocked_owner_ids(conn, requesting_owner_id)
+    if blocked:
+        rows = [r for r in rows if r["owner_id"] not in blocked]
     if not rows:
         return []
 

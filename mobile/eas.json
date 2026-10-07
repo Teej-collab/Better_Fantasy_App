@@ -12,6 +12,17 @@
         "buildType": "apk"
       },
       "node": "24.19.0"
+    },
+    "production": {
+      "channel": "main",
+      "environment": "production",
+      "autoIncrement": true,
+      "node": "24.19.0"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {}
     }
   }
 }

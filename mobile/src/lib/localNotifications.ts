@@ -13,7 +13,7 @@ type NotificationsModule = typeof import('expo-notifications');
 export const canScheduleReminders = requireOptionalNativeModule('ExpoNotificationScheduler') !== null;
 
 let notifications: NotificationsModule | null = null;
-function load(): NotificationsModule | null {
+export function load(): NotificationsModule | null {
   if (!canScheduleReminders) return null;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   notifications ??= require('expo-notifications') as NotificationsModule;
@@ -44,7 +44,7 @@ export async function saveReminderSettings(settings: ReminderSettings): Promise<
 // ---- Scheduling ----------------------------------------------------------
 
 // Asks once, the first time there's actually something to remind about.
-async function ensurePermission(n: NotificationsModule): Promise<boolean> {
+export async function ensurePermission(n: NotificationsModule): Promise<boolean> {
   const current = await n.getPermissionsAsync();
   if (current.granted) return true;
   if (!current.canAskAgain) return false;
@@ -114,13 +114,21 @@ export function setUpReminderHandling(): () => void {
   const open = (url: unknown) => {
     if (typeof url === 'string' && url.startsWith('/')) router.push(toNativePath(url) as Href);
   };
+  // A reminder carries its url in content.data; a real push from the
+  // backend (app/notifications/apns_client.py) carries it beside "aps",
+  // which iOS hands over as the push trigger's payload.
+  const urlOf = (r: import('expo-notifications').NotificationResponse) => {
+    const { content, trigger } = r.notification.request;
+    const payload = trigger && 'payload' in trigger ? (trigger.payload as Record<string, unknown> | null) : null;
+    return content.data?.url ?? payload?.url;
+  };
   const initial = n.getLastNotificationResponse();
   if (initial) {
-    open(initial.notification.request.content.data?.url);
+    open(urlOf(initial));
     // Handled — so a later launch doesn't open it again.
     n.clearLastNotificationResponse();
   }
-  const sub = n.addNotificationResponseReceivedListener((r) => open(r.notification.request.content.data?.url));
+  const sub = n.addNotificationResponseReceivedListener((r) => open(urlOf(r)));
   return () => sub.remove();
 }
 

@@ -9,6 +9,7 @@ import { useThemeSync } from '@/lib/appearance';
 import { updateMatchupWidget } from '@/lib/homeWidget';
 import { syncSeasonalAppIcon } from '@/lib/seasonal';
 import { setUpReminderHandling, syncReminders } from '@/lib/localNotifications';
+import { registerForPush } from '@/lib/pushRegistration';
 import { useChatConversations, useChugDeadline, useMe, useMyKeepers, useMyTeam, useMyWeek } from '@/lib/queries';
 import { chugReminders, draftReminders, keeperReminders, lineupReminders } from '@/lib/reminders';
 
@@ -83,8 +84,19 @@ function useSeasonalAppIcon() {
   }, []);
 }
 
+// Real push (lib/pushRegistration.ts): asks once you're in a league —
+// before that there's nothing to notify you about — and re-sends the
+// token each launch in case iOS rotated it.
+function usePushRegistration() {
+  const inLeague = useMe().data?.active_league_id != null;
+  useEffect(() => {
+    if (inLeague) registerForPush().catch(() => {});
+  }, [inLeague]);
+}
+
 export default function TabsLayout() {
   useHomeScreenQuickActions();
+  usePushRegistration();
   useLocalReminders();
   useHomeWidget();
   useThemeSync();
@@ -103,9 +115,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Team</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.3.fill" md="groups" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="lounge">
-        <NativeTabs.Trigger.Label>Lounge</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="sofa.fill" md="weekend" />
+      <NativeTabs.Trigger name="players">
+        <NativeTabs.Trigger.Label>Players</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="chat">
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>

@@ -55,6 +55,8 @@ def _league_dict(row, role: str | None = None) -> dict:
         "invite_code": row["invite_code"],
         "created_at": row["created_at"],
         "team_count": row.get("team_count"),
+        "chug_enabled": bool(row.get("chug_enabled")),
+        "chug_rule_name": row.get("chug_rule_name"),
         **(league_format.format_from_row(row) if row.get("league_type") else {}),
     }
     if role is not None:
@@ -503,6 +505,28 @@ async def rename_league(league_id: int, body: RenameLeagueRequest, request: Requ
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
         await league_queries.rename_league(conn, league_id, name)
+        row = await league_queries.get_league(conn, league_id)
+    return _league_dict(row)
+
+
+class HouseRulesRequest(BaseModel):
+    chug_enabled: bool | None = None
+    chug_rule_name: str | None = None
+
+
+@router.patch("/{league_id}/house-rules")
+async def update_house_rules(league_id: int, body: HouseRulesRequest, request: Request):
+    """Commissioner-only (2026-10). The chug rule started as League #1's
+    own tradition; any league can now turn it on and name it."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_commissioner_of(conn, payload, league_id)
+        if body.chug_enabled is not None:
+            await conn.execute("UPDATE leagues SET chug_enabled = $2 WHERE id = $1", league_id, body.chug_enabled)
+        if body.chug_rule_name is not None:
+            name = body.chug_rule_name.strip()[:40] or None
+            await conn.execute("UPDATE leagues SET chug_rule_name = $2 WHERE id = $1", league_id, name)
         row = await league_queries.get_league(conn, league_id)
     return _league_dict(row)
 

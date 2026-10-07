@@ -99,7 +99,7 @@ export function LeaguePicker({ onOpened, onLeave }: { onOpened: () => void; onLe
         <Image source={seasonalEmblem()} style={styles.emblem} contentFit="contain" accessibilityLabel="The Weekend" />
         <Kicker>Welcome to The Weekend</Kicker>
         <Title>Let&apos;s get you into a league</Title>
-        <Sub>Every league here keeps its history, chat, chugs and trash talk in one place.</Sub>
+        <Sub>Every league here keeps its history, chat and trash talk in one place.</Sub>
       </View>
       <View style={styles.list}>
         <Door title="Join a league" text="Got an invite link, code or QR from your commissioner?" accent="#39ff14" icon="users" onPress={() => go('/start/join')} />

@@ -25,6 +25,7 @@ import { useAppearance } from '@/lib/appearance';
 import {
   queryClient,
   useAllTimePowerRankings,
+  useHouseRules,
   useLatestPowerRankings,
   useLeagueActivity,
   useMatchupContext,
@@ -557,6 +558,7 @@ export function HistorySection({ latestSeason }: { latestSeason: number | null }
   const currentWeek = useSeasonWeek().data?.week ?? null;
   // The last finished week's recap — each recap page steps to the others.
   const recapWeek = currentWeek !== null ? Math.max(1, currentWeek - 1) : null;
+  const chugEnabled = useHouseRules().data?.chugEnabled ?? false;
   const tiles = [
     {
       title: 'Weekly Recaps',
@@ -576,7 +578,10 @@ export function HistorySection({ latestSeason }: { latestSeason: number | null }
       description: "Every owner who's ever been in the league — career stats and a trading card per season",
       onPress: () => router.push('/cards'),
     },
-    { title: 'Chug', description: "The lifetime leaderboard — who's completed the most, who still owes", onPress: () => router.push('/chug') },
+    // Only for leagues with the chug house rule on (2026-10).
+    ...(chugEnabled
+      ? [{ title: 'Chug', description: "The lifetime leaderboard — who's completed the most, who still owes", onPress: () => router.push('/chug') }]
+      : []),
     {
       title: 'Draft Grades',
       description: "Every team's draft grade and recap, plus the full draft board",
@@ -585,7 +590,7 @@ export function HistorySection({ latestSeason }: { latestSeason: number | null }
   ];
   return (
     <View style={styles.gap}>
-      <PageTitle subtitle="The league's past — awards, trading cards, and Chug.">History</PageTitle>
+      <PageTitle subtitle="The league's past — recaps, awards, trading cards and draft grades.">History</PageTitle>
       {tiles.map((t) => (
         <Pressable key={t.title} onPress={t.onPress}>
           {({ pressed }) => (
@@ -610,7 +615,7 @@ export function ActivitySection({ season }: { season: number | null }) {
   const items = q.data ?? [];
   return (
     <View style={styles.gap}>
-      <PageTitle subtitle="Trades, waiver pickups, and free-agent adds/drops — starts from whenever this feature shipped, not the beginning of the season.">
+      <PageTitle subtitle="Trades, waiver pickups, and free-agent adds and drops.">
         League Activity
       </PageTitle>
       {q.isPending ? (

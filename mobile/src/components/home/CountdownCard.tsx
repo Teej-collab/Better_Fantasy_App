@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
+import { useHouseRules } from '@/lib/queries';
 import { Colors, Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
 
 type Remaining = { days: number; hours: number; minutes: number; seconds: number };
@@ -67,6 +68,8 @@ export function ChugCountdownCard({
   // a glance how many you owe without opening the Chug screen.
   mine?: { outstanding_owed: number; fined_owed: number; fine_amount: number } | null;
 }) {
+  // The league's own name for the rule (Commissioner Tools → House Rules).
+  const ruleName = useHouseRules().data?.chugRuleName ?? 'Chug Rule';
   const remaining = useRemaining(deadline);
   const reached = isPast || remaining === null;
   return (
@@ -78,7 +81,7 @@ export function ChugCountdownCard({
         </Pressable>
       </View>
       <View style={styles.titleBlock}>
-        <Text style={styles.title}>🍺 Jeffrey&apos;s Rule</Text>
+        <Text style={styles.title}>🍺 {ruleName}</Text>
         <Text style={styles.subtitle}>Chugs due by Monday Night Football kickoff</Text>
       </View>
       {mine && (

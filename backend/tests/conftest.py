@@ -272,6 +272,10 @@ async def cleanup_test_season(pool):
             "DELETE FROM message_mentions WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute(
+            "DELETE FROM owner_blocks WHERE blocker_owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%') "
+            "OR blocked_owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
+        )
+        await conn.execute(
             "DELETE FROM messages WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute(

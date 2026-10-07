@@ -29,9 +29,10 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
 from app.image_url import validate_blob_image_url
-from app.notifications import dispatcher, formatter
+from app.notifications import admin_alerts, dispatcher, formatter
 from app.providers import giphy
 from app.queries import chat as chat_queries
+from app.queries import chat_safety as chat_safety_queries
 from app.queries import owner_preferences as preferences_queries
 from app.queries import watch_party as watch_party_queries
 
@@ -426,6 +427,71 @@ async def delete_message(message_id: int, request: Request, pool=Depends(get_poo
     return {"status": "deleted"}
 
 
+REPORT_REASONS = {"harassment", "hate", "sexual", "spam", "other"}
+
+
+@router.post("/messages/{message_id}/report")
+async def report_message(message_id: int, request: Request, pool=Depends(get_pool)):
+    """Flag a message for the site admins (App Review's UGC rule, 2026-10).
+    Anyone who can see the conversation can report a message in it;
+    the admins get a push right away."""
+    payload = _require_session(request)
+    body = await request.json()
+    reason = body.get("reason")
+    if reason not in REPORT_REASONS:
+        raise HTTPException(status_code=400, detail="Pick a reason")
+    details = str(body.get("details") or "").strip()[:1000] or None
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        target = await chat_queries.get_message_owner_and_conversation(conn, message_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        await _require_participant(conn, payload, target["conversation_id"], owner_id)
+        if target["owner_id"] == owner_id:
+            raise HTTPException(status_code=400, detail="You can't report your own message")
+        created = await chat_safety_queries.report_message(conn, message_id, owner_id, reason, details)
+        if created:
+            reporter = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+            reported = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", target["owner_id"])
+            await admin_alerts.alert_chat_report(conn, reporter or "Someone", reported or "someone", reason, owner_id)
+    return {"status": "reported"}
+
+
+@router.get("/blocks")
+async def list_blocks(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        rows = await chat_safety_queries.list_blocked(conn, owner_id)
+    return {"blocked": [{"owner_id": r["owner_id"], "display_name": r["display_name"]} for r in rows]}
+
+
+@router.post("/blocks/{blocked_owner_id}")
+async def block_owner(blocked_owner_id: int, request: Request, pool=Depends(get_pool)):
+    """Hides that person's messages from you everywhere in chat, stops
+    pushes from them, and closes the DM between you both ways."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            raise HTTPException(status_code=409, detail="No league yet")
+        if blocked_owner_id == owner_id:
+            raise HTTPException(status_code=400, detail="You can't block yourself")
+        if not await conn.fetchval("SELECT 1 FROM owners WHERE owner_id = $1", blocked_owner_id):
+            raise HTTPException(status_code=404, detail="No such member")
+        await chat_safety_queries.block_owner(conn, owner_id, blocked_owner_id)
+    return {"status": "blocked"}
+
+
+@router.delete("/blocks/{blocked_owner_id}")
+async def unblock_owner(blocked_owner_id: int, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await chat_safety_queries.unblock_owner(conn, owner_id, blocked_owner_id)
+    return {"status": "unblocked"}
+
+
 async def _push_notify_new_message(
     conversation_id: int, sender_id: int, sender_name: str, body: str,
     reply_to_id: int | None, mentioned_ids: list[int], participant_ids: list[int],
@@ -595,12 +661,22 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                             title = str(data.get("title") or "").strip()
                             if not title or len(title) > MAX_TITLE_LENGTH:
                                 error_code = "commish_corner_title_required"
+                    if not error_code:
+                        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+                        # A DM with someone either side has blocked
+                        # can't be sent to (App Review's block rule).
+                        if conversation and conversation["type"] == "direct":
+                            other_ids = [p for p in participant_ids if p != owner_id]
+                            if other_ids and await chat_safety_queries.is_blocked_either_way(conn, owner_id, other_ids[0]):
+                                error_code = "blocked"
                     if error_code:
                         await websocket.send_text(json.dumps(
                             {"type": "error", "error": error_code, "conversation_id": conversation_id}
                         ))
                     else:
-                        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+                        # Anyone who blocked the sender never receives it.
+                        blockers = await chat_safety_queries.owners_blocking(conn, owner_id, participant_ids)
+                        participant_ids = [p for p in participant_ids if p not in blockers]
                         # Never trust the client's mention list outright — only
                         # people actually in this conversation can be mentioned.
                         valid_mentions = [m for m in mentions if m in participant_ids]

@@ -12,7 +12,7 @@ import { YourWeekCard } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import {
   queryClient,
@@ -20,6 +20,7 @@ import {
   useChugDeadline,
   useChugFeed,
   useGamecastIdFinder,
+  useHouseRules,
   useHomeAwards,
   useHomeRecap,
   useIsGameLive,
@@ -90,6 +91,7 @@ function HomeScreenContent() {
   const draftDone = myWeek.data?.draft?.status === 'complete';
   const chugDeadline = useChugDeadline(draftDone).data ?? null;
   const chugFeed = useChugFeed(season).data ?? [];
+  const houseRules = useHouseRules().data;
   const activity = useLeagueActivity(season, 5).data ?? [];
   const [refreshing, setRefreshing] = useState(false);
 
@@ -141,7 +143,7 @@ function HomeScreenContent() {
       rivalryGames.length > 0 || rivalries.length > 0 ? (
         <RivalriesCard games={rivalryGames} top={topRivalries(rivalries)} />
       ) : null,
-    chugFeed: chugFeed.length > 0 ? <ChugFeedCard chugs={chugFeed} /> : null,
+    chugFeed: houseRules?.chugEnabled && chugFeed.length > 0 ? <ChugFeedCard chugs={chugFeed} /> : null,
     activity: activity.length > 0 ? <ActivityCard items={activity} /> : null,
     discover: <DiscoverCard ringColor={appearance.ring} />,
   };
@@ -176,6 +178,13 @@ function HomeScreenContent() {
       {cards.yourWeek}
       {topCard}
       {liveNflGames.length > 0 && <LiveNowCard games={liveNflGames} findGamecastId={findGamecastId} />}
+      {/* The Lounge left the tab bar (2026-10) — on game day it's one tap from here. */}
+      {isGameDay && (
+        <Pressable onPress={() => router.push('/lounge')} style={({ pressed }) => [styles.loungeCard, pressed && styles.pressed]}>
+          <Text style={styles.loungeTitle}>🛋 The Lounge is open</Text>
+          <Text style={styles.loungeText}>Watch the games with your league →</Text>
+        </Pressable>
+      )}
 
       {cardOrder(prefs.data?.home_card_order)
         .filter((key) => key !== 'yourWeek')
@@ -205,7 +214,7 @@ function YourWeekSlot(props: { myWeek: YourWeek | null; isGameDay: boolean; leag
   }
   if (!myWeek) {
     // /me/week fails for an account that hasn't joined a league yet.
-    return <MessageState message="You're signed in, but not on a team yet. Join or create a league on the website." />;
+    return <MessageState message="You're signed in, but not on a team yet. Join or create a league to get started." />;
   }
   return (
     <NeonPanel color={props.color} contentStyle={styles.emptyHero}>
@@ -239,6 +248,10 @@ const styles = StyleSheet.create({
   emptyHero: { gap: Spacing.sm },
   emptyTitle: { fontSize: 20 },
   emptyText: { color: Colors.textSecondary, fontSize: 14 },
+  loungeCard: { borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, padding: Spacing.lg, gap: 2 },
+  loungeTitle: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  loungeText: { color: Colors.textSecondary, fontSize: 13 },
+  pressed: { opacity: 0.7 },
   footerLink: { alignSelf: 'center' },
   footerText: { color: Colors.textSecondary, fontSize: 14 },
 });

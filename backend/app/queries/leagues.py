@@ -333,7 +333,8 @@ async def list_leagues_for_user(conn, user_id: int):
     return await conn.fetch(
         """
         SELECT l.id, l.name, l.invite_code, l.created_at, l.team_count, lm.role,
-               l.league_type, l.matchup_type, l.draft_type, l.roster_preset, l.type_settings
+               l.league_type, l.matchup_type, l.draft_type, l.roster_preset, l.type_settings,
+               l.chug_enabled, l.chug_rule_name
         FROM league_members lm
         JOIN leagues l ON l.id = lm.league_id
         WHERE lm.user_id = $1

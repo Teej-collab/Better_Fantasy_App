@@ -25,10 +25,22 @@ logger = logging.getLogger(__name__)
 _PERMANENT_FAILURE_REASONS = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"}
 
 _client: APNs | None = None
+# Builds run straight from Xcode get APNs *sandbox* tokens; TestFlight
+# and App Store builds get production ones, and each environment
+# rejects the other's tokens as BadDeviceToken. Both kinds register
+# against the same backend (2026-10), so a BadDeviceToken from
+# production gets one retry on the sandbox before the token counts as
+# gone.
+_sandbox_client: APNs | None = None
 
 
-def _get_client() -> APNs:
-    global _client
+def _get_client(sandbox: bool = False) -> APNs:
+    global _client, _sandbox_client
+    if sandbox:
+        if _sandbox_client is None:
+            key_id, team_id, bundle_id, key_content = require_apns_configured()
+            _sandbox_client = APNs(key=key_content, key_id=key_id, team_id=team_id, topic=bundle_id, use_sandbox=True)
+        return _sandbox_client
     if _client is None:
         key_id, team_id, bundle_id, key_content = require_apns_configured()
         _client = APNs(key=key_content, key_id=key_id, team_id=team_id, topic=bundle_id)
@@ -38,8 +50,9 @@ def _get_client() -> APNs:
 def _reset_client_for_tests() -> None:
     """Test-only — lets a test swap in a fake client without a
     still-cached real one from an earlier test leaking through."""
-    global _client
+    global _client, _sandbox_client
     _client = None
+    _sandbox_client = None
 
 
 async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
@@ -50,24 +63,26 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
     alongside "aps" as custom top-level payload keys, the same way
     frontend/public/sw.js's push handler already expects them under
     the web payload's own "data"/"url" keys."""
-    client = _get_client()
-    request = NotificationRequest(
-        device_token=push_token,
-        message={
-            # sound: without it iOS delivers silently (no buzz or tone
-            # on a locked phone). thread-id groups notifications of the
-            # same kind together in Notification Center.
-            "aps": {
-                "alert": {"title": payload.get("title", ""), "body": payload.get("body", "")},
-                "sound": "default",
-                "thread-id": (payload.get("data") or {}).get("type", "weekend-league"),
-            },
-            "url": payload.get("url"),
-            "data": payload.get("data", {}),
+    message = {
+        # sound: without it iOS delivers silently (no buzz or tone
+        # on a locked phone). thread-id groups notifications of the
+        # same kind together in Notification Center.
+        "aps": {
+            "alert": {"title": payload.get("title", ""), "body": payload.get("body", "")},
+            "sound": "default",
+            "thread-id": (payload.get("data") or {}).get("type", "weekend-league"),
         },
-    )
-    result = await client.send_notification(request)
+        "url": payload.get("url"),
+        "data": payload.get("data", {}),
+    }
+    result = await _get_client().send_notification(NotificationRequest(device_token=push_token, message=message))
     if result.is_successful:
         return True, False
+    if result.description == "BadDeviceToken":
+        result = await _get_client(sandbox=True).send_notification(
+            NotificationRequest(device_token=push_token, message=message)
+        )
+        if result.is_successful:
+            return True, False
     logger.warning("APNs delivery failed (status=%s, reason=%s)", result.status, result.description)
     return False, result.description in _PERMANENT_FAILURE_REASONS

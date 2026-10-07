@@ -832,7 +832,7 @@ export type SeasonAwards = {
   awards: { award_type: string; detail: string | null; owner_id: number; owner_name: string }[];
 };
 
-export type Owner = { owner_id: number; display_name: string; latest_team_name: string; seasons: number[] };
+export type Owner = { owner_id: number; display_name: string; logo_url?: string | null; latest_team_name: string; seasons: number[] };
 
 export type PeriodSummary = { record: string; pf: number; pa: number; pfpg: number; papg: number; game_count: number };
 
@@ -981,6 +981,9 @@ export type LeagueInfo = {
   role: 'commissioner' | 'member';
   // How many teams it's meant to have; null for leagues made before that was asked.
   team_count?: number | null;
+  // The chug rule is a house rule a commissioner turns on and names (2026-10).
+  chug_enabled?: boolean;
+  chug_rule_name?: string | null;
   // GET /leagues/mine only: the league picker's card line.
   summary?: LeagueSummary | null;
 } & Partial<LeagueFormat>;

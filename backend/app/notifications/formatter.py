@@ -292,6 +292,12 @@ def admin_feedback_alert(submitted_by: str, message: str, has_image: bool) -> di
     )
 
 
+def admin_chat_report_alert(reporter: str, reported: str, reason: str) -> dict:
+    return _payload(
+        f"🚩 {reporter} reported a message", f"From {reported} · {reason}", "/admin", "admin_chat_report",
+    )
+
+
 def _trade_tag(trade_id: int) -> str:
     return f"trade-{trade_id}"
 

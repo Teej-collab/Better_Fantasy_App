@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAudioModeAsync, createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -88,13 +89,24 @@ function weekendPowerOn() {
   );
 }
 
+const INTRO_SEEN_KEY = 'wl:intro-seen';
+// Read once at startup so the check is instant by the time the intro asks.
+const introSeenOnLaunch = AsyncStorage.getItem(INTRO_SEEN_KEY).then((v) => v === '1').catch(() => false);
+function hasSeenIntro(): Promise<boolean> {
+  return introSeenOnLaunch;
+}
+function markIntroSeen() {
+  AsyncStorage.setItem(INTRO_SEEN_KEY, '1').catch(() => {});
+}
+
 function useIntroSounds(enabled: boolean) {
   const players = useRef<{ light: AudioPlayer; can: AudioPlayer; pour: AudioPlayer } | null>(null);
   useEffect(() => {
     if (!enabled) return;
-    // Plays even with the ringer switch on silent (like the web's audio),
-    // without stopping whatever music is already playing.
-    setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' }).catch(() => {});
+    // Respects the ringer switch (App Store pass, 2026-10: a beer can
+    // cracking open at work or in church was the wrong surprise), and
+    // never stops whatever music is already playing.
+    setAudioModeAsync({ playsInSilentMode: false, interruptionMode: 'mixWithOthers' }).catch(() => {});
     players.current = {
       light: createAudioPlayer(require('@/assets/audio/light-switch.m4a')),
       can: createAudioPlayer(require('@/assets/audio/can-opening.m4a')),
@@ -215,12 +227,16 @@ export function IntroOverlay({
   }
 
   useEffect(() => {
-    after(INITIAL_DARK_BEAT_MS, () => {
+    after(INITIAL_DARK_BEAT_MS, async () => {
       ambient.set(withTiming(1, { duration: 1400 }));
-      if (reduceMotion) {
+      // The full show (about 8 seconds, with sound) plays once per
+      // install; every launch after that gets the quick version.
+      const seen = await hasSeenIntro();
+      if (reduceMotion || seen) {
         showFinal(true);
         return;
       }
+      markIntroSeen();
       setStage('word');
       word.set(flickerOn(WORD_FLICKER_MS[0]));
       sounds.playLightSwitch(); // WELCOME

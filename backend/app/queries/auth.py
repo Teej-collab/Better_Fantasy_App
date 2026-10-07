@@ -147,6 +147,34 @@ async def get_or_create_user_for_google(conn, google_user_id: str, email: str | 
     )
 
 
+async def get_or_create_user_for_apple(conn, apple_user_id: str, email: str | None, display_name: str) -> int:
+    """Sign in with Apple — the same three cases, and the same
+    passwordless-only linking rule, as get_or_create_user_for_google
+    above (see its security note). `email` is only passed when Apple
+    marks it verified; it's often a private-relay address, which simply
+    won't match anything."""
+    existing = await conn.fetchrow("SELECT id FROM users WHERE apple_user_id = $1", apple_user_id)
+    if existing is not None:
+        return existing["id"]
+
+    if email is not None:
+        by_email = await conn.fetchrow("SELECT id, password_hash FROM users WHERE email = $1", email)
+        if by_email is not None:
+            if by_email["password_hash"] is None:
+                await conn.execute("UPDATE users SET apple_user_id = $1 WHERE id = $2", apple_user_id, by_email["id"])
+                return by_email["id"]
+            email = None
+
+    return await conn.fetchval(
+        """
+        INSERT INTO users (apple_user_id, email, display_name)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        """,
+        apple_user_id, email, display_name,
+    )
+
+
 async def delete_account(conn, user_id: int) -> None:
     """Deletes the login itself — never the shared league history it
     may be linked to. If this account has claimed a historical owner

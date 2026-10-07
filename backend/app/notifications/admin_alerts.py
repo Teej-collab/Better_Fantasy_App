@@ -141,3 +141,9 @@ async def maybe_alert_login_burst(conn, ip: str | None, email: str | None) -> No
 async def alert_feedback(conn, submitted_by: str, message: str, has_image: bool, submitter_owner_id: int | None) -> None:
     """Called right after a feedback row is inserted."""
     await _send(conn, formatter.admin_feedback_alert(submitted_by, message, has_image), exclude_owner_id=submitter_owner_id)
+
+
+async def alert_chat_report(conn, reporter: str, reported: str, reason: str, reporter_owner_id: int | None) -> None:
+    """Called right after a message_reports row is inserted. Apple
+    expects reports to be acted on within a day, so every one pings."""
+    await _send(conn, formatter.admin_chat_report_alert(reporter, reported, reason), exclude_owner_id=reporter_owner_id)
