@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import {
   getSeasonProfile,
   type CareerProfile,
@@ -133,7 +132,7 @@ function CardFront({
 }) {
   return (
     <div className="relative h-full w-full">
-      <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} sizes="(max-width: 640px) 90vw, 420px" />
+      <OwnerPhotoFill name={owner.display_name} photoUrl={owner.photo_url} />
 
       {isChampion && (
         <div className="absolute inset-x-0 top-0 flex justify-center pt-3">
@@ -184,7 +183,7 @@ function CardBack({
     <div className="flex items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
         <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full ring-1 ring-white/25">
-          <OwnerPhotoFill name={owner.display_name} ownerId={owner.owner_id} sizes="40px" compact />
+          <OwnerPhotoFill name={owner.display_name} photoUrl={owner.photo_url} compact />
         </div>
         {isChampion && (
           <span className="flex shrink-0 items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
@@ -211,42 +210,23 @@ function CardBack({
   );
 }
 
-// No `photo_url` field on Owner yet — real photos are dropped in here
-// one at a time as owners send them in, keyed by owner_id. Everyone
-// else keeps the initials placeholder below.
-const OWNER_PHOTOS: Record<number, string> = {
-  5: "/images/owners/clay-felice.jpg", // Clay Felice
-  44: "/images/owners/brian-thomas.jpg", // Brian Thomas
-  12: "/images/owners/ian-parkinson.jpg", // Ian Parkinson
-  3: "/images/owners/bailey-hawn.jpg", // Bailey Hawn
-  11: "/images/owners/bowmen-solari.jpg", // Bowmen "Bo" Solari
-  10: "/images/owners/jeffrey-horak.jpg", // Jeffrey "Jeff" Horak
-  8: "/images/owners/aaron-wylie.jpg", // Aaron Wylie
-  15: "/images/owners/aaron-roberts.jpg", // Aaron Roberts
-  20: "/images/owners/tyler-dailey.jpg", // Tyler Dailey
-  9: "/images/owners/james-hogan.jpg", // James "Jimmy" Hogan
-  2: "/images/owners/lorenzo-cachia.jpg", // Lorenzo Cachia
-  1: "/images/owners/niko.jpg", // Niko
-  4: "/images/owners/tj.jpg", // TJ
-  7: "/images/owners/ryan-horak.jpg", // Ryan Horak
-  6: "/images/owners/grant-pomerenk.jpg", // Grant Pomerenk
-};
-
+// The owner's card photo comes from the backend's private bucket as a
+// short-lived signed link, only for members of this league (2026-10) —
+// it used to be a public file in /images/owners that anyone could open.
 function OwnerPhotoFill({
   name,
-  ownerId,
-  sizes,
+  photoUrl,
   compact = false,
 }: {
   name: string;
-  ownerId: number;
-  sizes: string;
+  photoUrl: string | null | undefined;
   compact?: boolean;
 }) {
-  const photo = OWNER_PHOTOS[ownerId];
-
-  if (photo) {
-    return <Image src={photo} alt={name} fill sizes={sizes} className="object-cover" />;
+  if (photoUrl) {
+    // A plain <img>: next/image would need the bucket's host allow-listed,
+    // and its optimizer would cache the signed link.
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={photoUrl} alt={name} className="absolute inset-0 h-full w-full object-cover" />;
   }
 
   const initials =
@@ -259,8 +239,7 @@ function OwnerPhotoFill({
       .toUpperCase() || "?";
 
   return (
-    // Placeholder until a real photo exists for this owner — add it to
-    // OWNER_PHOTOS above once one comes in.
+    // No photo yet — set one from Player Cards in the app.
     <div
       className={`absolute inset-0 flex items-center justify-center bg-gradient-to-br from-fuchsia-500/50 via-orange-400/40 to-sky-400/50 font-bold text-white ${compact ? "text-xs" : "text-6xl"}`}
     >

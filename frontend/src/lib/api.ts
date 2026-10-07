@@ -563,6 +563,10 @@ export type SeasonProfile = {
 export type Owner = {
   owner_id: number;
   display_name: string;
+  // Player-card photo (2026-10): a short-lived signed link to the private
+  // bucket, only ever returned to members of this league.
+  photo_url?: string | null;
+  photo_version?: number | null;
   latest_team_name: string;
   seasons: number[];
 };

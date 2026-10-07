@@ -73,7 +73,12 @@ class ESPNProvider(FantasyProvider):
                 # every future sync instead of being overwritten back to
                 # the real ESPN name on the next full/live sync — see
                 # migration 893534025217 for the full reasoning.
+                # A second ESPN account that's really an existing owner
+                # (merged by app/domain/owner_merge.py) maps to that owner
+                # instead of re-creating the duplicate on every sync.
                 owner_id = await conn.fetchval(
+                    "SELECT owner_id FROM owner_espn_aliases WHERE espn_member_id = $1", espn_member_id
+                ) or await conn.fetchval(
                     """
                     INSERT INTO owners (espn_member_id, display_name)
                     VALUES ($1, $2)

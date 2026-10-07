@@ -294,6 +294,7 @@ export const api = {
   recordBook: () => request<{ categories: RecordCategory[] }>('/records'),
   awardLeaderboards: () => request<{ categories: AwardLeaderboardCategory[] }>('/awards/all-time'),
   owners: () => request<{ owners: Owner[] }>('/owners'),
+  deleteCardPhoto: (ownerId: number) => request<{ status: string }>(`/owners/${ownerId}/card-photo`, { method: 'DELETE' }),
   careerProfile: (ownerId: number) => request<CareerProfile>(`/owners/${ownerId}/career`),
   ownerBadges: (ownerId: number) => request<OwnerBadges>(`/owners/${ownerId}/badges`),
   seasonProfile: (ownerId: number, season: number) => request<SeasonProfile | null>(`/owners/${ownerId}/profile?season=${season}`),
@@ -775,6 +776,28 @@ export async function uploadChatImage(uri: string): Promise<string> {
   if (!res.ok) throw new ApiError(res.status, `Upload failed (${res.status})`);
   const { url } = (await res.json()) as { url: string };
   return url;
+}
+
+// Player-card photos (2026-10) go straight to the backend, into its private
+// bucket — never a public host. Yours, or anyone's if you're commissioner.
+export async function uploadCardPhoto(ownerId: number, uri: string): Promise<void> {
+  const form = new FormData();
+  form.append('photo', { uri, name: 'card.jpg', type: 'image/jpeg' } as unknown as Blob);
+  const res = await fetch(`${API_BASE_URL}/owners/${ownerId}/card-photo`, {
+    method: 'POST',
+    headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `Upload failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch {
+      // Not JSON.
+    }
+    throw new ApiError(res.status, detail);
+  }
 }
 
 // Chug videos go straight to the backend (a whole video is too big for

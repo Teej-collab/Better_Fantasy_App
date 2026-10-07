@@ -832,7 +832,18 @@ export type SeasonAwards = {
   awards: { award_type: string; detail: string | null; owner_id: number; owner_name: string }[];
 };
 
-export type Owner = { owner_id: number; display_name: string; logo_url?: string | null; latest_team_name: string; seasons: number[] };
+export type Owner = {
+  owner_id: number;
+  display_name: string;
+  logo_url?: string | null;
+  // Player-card photo (2026-10): a short-lived signed link to the private
+  // bucket, only for members of this league; photo_version changes when
+  // the photo does, so the image cache survives new links.
+  photo_url?: string | null;
+  photo_version?: number | null;
+  latest_team_name: string;
+  seasons: number[];
+};
 
 export type PeriodSummary = { record: string; pf: number; pa: number; pfpg: number; papg: number; game_count: number };
 

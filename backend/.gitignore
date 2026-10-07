@@ -1,0 +1,4 @@
+
+# Private files that must never be committed (e.g. player-card photos
+# waiting to be uploaded to the private bucket by app/scripts/seed_card_photos.py).
+private/

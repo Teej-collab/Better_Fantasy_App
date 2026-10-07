@@ -17,7 +17,9 @@ import { PageTitle } from '@/components/league/LeagueUI';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { useCareerProfile, useOwnerBadges, useOwners, useSeasonProfile } from '@/lib/queries';
+import { api, uploadCardPhoto } from '@/lib/api';
+import { pickCardPhoto } from '@/lib/cardPhoto';
+import { queryClient, useActiveLeague, useCareerProfile, useMe, useOwnerBadges, useOwners, useSeasonProfile } from '@/lib/queries';
 import type { Owner, OwnerBadges, PeriodSummary } from '@/lib/types';
 
 const CARD_HEIGHT = 460;
@@ -61,6 +63,7 @@ export default function PlayerCardsScreen() {
         renderItem={({ item, index }) => (
           <CoverflowItem index={index} step={step} scrollX={scrollX} width={cardWidth}>
             <TradingCard owner={item} />
+            <ChangePhoto owner={item} />
           </CoverflowItem>
         )}
       />
@@ -78,6 +81,51 @@ function CoverflowItem(props: { index: number; step: number; scrollX: SharedValu
     };
   });
   return <Animated.View style={[{ width: props.width }, style]}>{props.children}</Animated.View>;
+}
+
+// Your own card, or every card if you're the commissioner: set the photo.
+function ChangePhoto({ owner }: { owner: Owner }) {
+  const me = useMe().data;
+  const isCommissioner = useActiveLeague().data?.role === 'commissioner';
+  const [busy, setBusy] = useState(false);
+  if (!me || (me.owner_id !== owner.owner_id && !isCommissioner)) return null;
+
+  async function pick() {
+    const choices = owner.photo_url ? ['Choose a photo', 'Remove photo', 'Cancel'] : ['Choose a photo', 'Cancel'];
+    const run = async (i: number) => {
+      try {
+        setBusy(true);
+        if (i === 0) {
+          const uri = await pickCardPhoto();
+          if (!uri) return;
+          await uploadCardPhoto(owner.owner_id, uri);
+        } else if (i === 1 && owner.photo_url) {
+          await api.deleteCardPhoto(owner.owner_id);
+        } else {
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['owners'] });
+      } catch (e) {
+        Alert.alert("Couldn't update the photo", e instanceof Error ? e.message : undefined);
+      } finally {
+        setBusy(false);
+      }
+    };
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: choices, cancelButtonIndex: choices.length - 1, destructiveButtonIndex: owner.photo_url ? 1 : undefined },
+        (i) => void run(i),
+      );
+    } else {
+      void run(0);
+    }
+  }
+
+  return (
+    <Pressable onPress={() => void pick()} disabled={busy} hitSlop={8} style={styles.changePhoto} accessibilityRole="button">
+      <Text style={styles.changePhotoText}>{busy ? 'Saving…' : me.owner_id === owner.owner_id ? 'Change my photo' : 'Change photo'}</Text>
+    </Pressable>
+  );
 }
 
 function TradingCard({ owner }: { owner: Owner }) {
@@ -122,8 +170,21 @@ function TradingCard({ owner }: { owner: Owner }) {
 }
 
 function OwnerPhoto({ owner, compact }: { owner: Owner; compact?: boolean }) {
-  // The owner's own uploaded picture (Settings → Profile). Real photos of
-  // League #1's members used to ship inside the app; they don't anymore.
+  // The card photo comes from the private bucket as a short-lived signed
+  // link (only for this league's members); cacheKey keeps it cached on the
+  // phone across new links until the photo itself changes. Then the team
+  // logo, then initials.
+  if (owner.photo_url) {
+    return (
+      <Image
+        source={{ uri: owner.photo_url, cacheKey: `card-photo-${owner.owner_id}-${owner.photo_version ?? 0}` }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        cachePolicy="disk"
+        transition={150}
+      />
+    );
+  }
   if (owner.logo_url) return <Image source={{ uri: owner.logo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />;
   const initials =
     owner.display_name
@@ -328,6 +389,8 @@ function CareerAwards({ summary }: { summary: Record<string, number[]> }) {
 }
 
 const styles = StyleSheet.create({
+  changePhoto: { alignSelf: 'center', marginTop: Spacing.sm, paddingVertical: 6 },
+  changePhotoText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   screen: { flex: 1 },
   header: { padding: Spacing.lg },
   frame: {
