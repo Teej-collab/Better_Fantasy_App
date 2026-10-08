@@ -144,6 +144,23 @@ export function leagueWidgetPropsFor(input: {
   };
 }
 
+// The snapshot is saved to the shared UserDefaults, which can't hold null
+// (it's not a property-list value): one null and the save throws, and the
+// widget never gets a snapshot — the League widget, whose props always had
+// standingDelta: null, sat black on the Home Screen. So nulls are left out;
+// the widgets read a missing field the same way.
+function withoutNulls<T>(value: T): T {
+  if (Array.isArray(value)) return value.filter((v) => v !== null && v !== undefined).map(withoutNulls) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => [k, withoutNulls(v)]),
+    ) as T;
+  }
+  return value;
+}
+
 // Skip identical snapshots (the live refetch runs every few seconds) so
 // the widget isn't reloaded for nothing; updatedAt is left out of the
 // comparison or nothing would ever match.
@@ -167,9 +184,11 @@ export function updateMatchupWidget(week: YourWeek | null, extras: { team?: MyTe
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const widget = (require('@/widgets/MatchupWidget') as typeof import('@/widgets/MatchupWidget')).default;
-        widget.updateSnapshot(props);
-      } catch {
+        widget.updateSnapshot(withoutNulls(props));
+      } catch (e) {
         // A widget that can't update just keeps its last snapshot.
+        lastSignature = null;
+        console.warn('Matchup widget update failed', e);
       }
     });
 }
@@ -182,8 +201,10 @@ export function updateLeagueWidget(props: LeagueWidgetProps | null): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const widget = (require('@/widgets/LeagueWidget') as typeof import('@/widgets/LeagueWidget')).default;
-    widget.updateSnapshot(props);
-  } catch {
+    widget.updateSnapshot(withoutNulls(props));
+  } catch (e) {
     // Keeps its last snapshot.
+    lastLeagueSignature = null;
+    console.warn('League widget update failed', e);
   }
 }

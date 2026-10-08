@@ -87,7 +87,7 @@ const LeagueWidget = (props: LeagueWidgetProps, environment: WidgetEnvironment) 
         <Spacer />
         <Text modifiers={[font({ size: 10, weight: 'heavy' }), foregroundStyle(accent)]}>THE WEEKEND</Text>
       </HStack>
-      {props.awards.length ? (
+      {props.awards?.length ? (
         <HStack alignment="top" spacing={14}>
           {props.awards.slice(0, 3).map(award)}
         </HStack>

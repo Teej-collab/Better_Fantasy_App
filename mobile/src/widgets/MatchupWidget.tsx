@@ -79,7 +79,7 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
   const oppValue = pre ? props.oppProjected : props.oppScore;
   const myWinning = myValue >= oppValue;
   const margin = Math.round((myValue - oppValue) * 10) / 10;
-  const odds = props.winProbability !== null ? Math.round(props.winProbability) : null;
+  const odds = props.winProbability != null ? Math.round(props.winProbability) : null;
   const header =
     props.state === 'live' ? '● LIVE' : props.state === 'final' ? 'FINAL' : props.week ? `WEEK ${props.week}` : 'THE WEEKEND';
   const headerColor = props.state === 'live' && fullColor ? live : accent;
