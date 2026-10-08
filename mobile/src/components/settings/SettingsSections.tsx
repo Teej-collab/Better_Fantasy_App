@@ -9,7 +9,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, TextInput, Vie
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
-import { Colors, HoneycombColor, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, DefaultAccent, HoneycombColor, Radius, SectionColors, Spacing } from '@/constants/theme';
 import { api, uploadChatImage } from '@/lib/api';
 import {
   canScheduleReminders,
@@ -21,7 +21,7 @@ import {
   type ReminderSettings,
 } from '@/lib/localNotifications';
 import type { ReminderCategory } from '@/lib/reminders';
-import { applyTheme, useAppearance } from '@/lib/appearance';
+import { applyAccent, applyTheme, HONEYCOMB_MULTI, useAppearance } from '@/lib/appearance';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
@@ -232,6 +232,7 @@ function Swatches(props: {
   palette: { name: string; hex: string }[];
   defaultSwatch?: { color: string; label?: string };
   offOption?: boolean;
+  multiOption?: boolean;
 }) {
   const current = props.value?.toLowerCase() ?? null;
   return (
@@ -240,6 +241,7 @@ function Swatches(props: {
         <Swatch color={props.defaultSwatch.color} label={props.defaultSwatch.label ?? 'Default'} on={current === null} onPress={() => props.onChange(null)} />
       )}
       {props.offOption && <Swatch color="transparent" label="Off" on={current === 'off'} onPress={() => props.onChange('off')} off />}
+      {props.multiOption && <Swatch color="transparent" label="Multi" on={current === 'multi'} onPress={() => props.onChange('multi')} multi />}
       {props.palette.map((p) => (
         <Swatch key={p.hex} color={p.hex} label={p.name.replace('Neon ', '')} on={current === p.hex.toLowerCase()} onPress={() => props.onChange(p.hex)} />
       ))}
@@ -247,10 +249,13 @@ function Swatches(props: {
   );
 }
 
-function Swatch({ color, label, on, onPress, off }: { color: string; label: string; on: boolean; onPress: () => void; off?: boolean }) {
+function Swatch({ color, label, on, onPress, off, multi }: { color: string; label: string; on: boolean; onPress: () => void; off?: boolean; multi?: boolean }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }} style={[styles.swatch, on && styles.swatchOn]}>
-      <View style={[styles.swatchDot, { backgroundColor: color }, off && styles.swatchOff]}>{off && <Text style={styles.offX}>✕</Text>}</View>
+      <View style={[styles.swatchDot, { backgroundColor: color }, off && styles.swatchOff, multi && styles.swatchMulti]}>
+        {off && <Text style={styles.offX}>✕</Text>}
+        {multi && HONEYCOMB_MULTI.slice(0, 4).map((c) => <View key={c} style={[styles.multiQuarter, { backgroundColor: c }]} />)}
+      </View>
       <Text style={styles.swatchLabel} numberOfLines={1}>
         {label}
       </Text>
@@ -707,19 +712,20 @@ export function AppearanceSettings() {
         description="Colors the nav bar's current tab everywhere in the app, plus the glow on boxes that aren't already tied to a league section (Standings, Rivalries, and so on keep their own color regardless of this choice).">
         <Swatches
           value={prefs.accent_color}
-          onChange={(accent_color) => patch({ accent_color })}
+          onChange={(accent_color) => void patch({ accent_color }).then((ok) => ok && applyAccent(accent_color))}
           palette={NEON_PALETTE.filter((p) => p.name !== 'Neon Green')}
-          defaultSwatch={{ color: Colors.accent }}
+          defaultSwatch={{ color: DefaultAccent }}
         />
       </Panel>
 
-      <Panel title="Background" description="The color of the faint breathing honeycomb behind every page.">
+      <Panel title="Background" description="The color of the faint breathing honeycomb behind every page. Multi gives the lights behind it different colors, so the lines between the hexagons glow in several.">
         <Swatches
           value={prefs.honeycomb_color}
           onChange={(honeycomb_color) => patch({ honeycomb_color })}
           palette={NEON_PALETTE}
           defaultSwatch={{ color: HoneycombColor }}
           offOption
+          multiOption
         />
       </Panel>
 
@@ -1019,6 +1025,8 @@ const styles = StyleSheet.create({
   swatch: { width: 64, alignItems: 'center', gap: 4, padding: 6, borderRadius: Radius.md, borderWidth: 2, borderColor: 'transparent' },
   swatchOn: { borderColor: Colors.text },
   swatchDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  swatchMulti: { flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' },
+  multiQuarter: { width: '50%', height: '50%' },
   swatchOff: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   offX: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
   swatchLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 10, textAlign: 'center' },

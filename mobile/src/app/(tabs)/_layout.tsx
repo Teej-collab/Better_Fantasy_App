@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { Colors } from '@/constants/theme';
-import { useThemeSync } from '@/lib/appearance';
+import { useAppearance, useThemeSync } from '@/lib/appearance';
 import { leagueWidgetPropsFor, updateLeagueWidget, updateMatchupWidget } from '@/lib/homeWidget';
 import { listenForPushToStart, syncLiveActivity } from '@/lib/liveActivity';
 import { syncSeasonalAppIcon } from '@/lib/seasonal';
@@ -136,8 +136,10 @@ export default function TabsLayout() {
   // are your own (those never count as unread).
   useMe();
   const unread = (useChatConversations().data ?? []).reduce((sum, c) => sum + c.unread_count, 0);
+  // Settings > Appearance > Accent Color colors the current tab.
+  const accent = useAppearance().accent;
   return (
-    <NativeTabs backgroundColor={Colors.surface} tintColor={Colors.accent}>
+    <NativeTabs backgroundColor={Colors.surface} tintColor={accent}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="house.fill" md="home" />

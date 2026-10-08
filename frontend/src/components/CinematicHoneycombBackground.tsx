@@ -111,6 +111,8 @@ type Light = { ax: number; ay: number; fx: number; fy: number; px: number; py: n
  * under reduced motion (Settings > Appearance > Animations or the OS
  * setting), which draws a single still frame instead.
  */
+const MULTI_COLORS = ["#ec4899", "#0ea5e9", "#39ff14", "#a855f7", "#facc15"];
+
 export function CinematicHoneycombBackground({
   intensity = 1,
   animated = true,
@@ -136,6 +138,9 @@ export function CinematicHoneycombBackground({
     let height = 0;
     let r = 0;
     let lightColor = DEFAULT_COLOR;
+    // Settings > Appearance > Background > Multi-color: each light gets
+    // its own color, so the gaps glow in several (same as the app).
+    let lightColors: string[] = [DEFAULT_COLOR];
     let lights: Light[] = [];
     let cell: ReturnType<typeof buildCell> | null = null;
     // Every plate, pre-rendered once per layout — one tile period larger
@@ -144,8 +149,9 @@ export function CinematicHoneycombBackground({
 
     const isOff = () => root.getAttribute("data-honeycomb") === "off";
     const isStill = () => !animated || osReduced.matches || root.classList.contains("motion-reduced");
+    const rawColor = () => color ?? getComputedStyle(root).getPropertyValue("--honeycomb-color").trim();
     const currentColor = () => {
-      const c = color ?? getComputedStyle(root).getPropertyValue("--honeycomb-color").trim();
+      const c = rawColor();
       return /^#[0-9a-fA-F]{6}$/.test(c) ? c : DEFAULT_COLOR;
     };
 
@@ -166,7 +172,9 @@ export function CinematicHoneycombBackground({
       dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
       canvas!.width = Math.round(width * dpr);
       canvas!.height = Math.round(height * dpr);
-      lightColor = currentColor();
+      const multi = rawColor() === "multi";
+      lightColor = multi ? MULTI_COLORS[3] : currentColor();
+      lightColors = multi ? MULTI_COLORS : [lightColor];
 
       // Big plates — about three and a half across a desktop screen,
       // two and a half across a phone — clamped at both ends.
@@ -194,7 +202,7 @@ export function CinematicHoneycombBackground({
       // Three lights, each on its own slow looping path, biased toward
       // the focal point so the strongest light sits behind page headings.
       const span = duration * 1000;
-      lights = [0, 1, 2].map((k) => ({
+      lights = Array.from({ length: Math.max(3, lightColors.length) }, (_, k) => ({
         ax: 0.3 + 0.25 * hash(k, 1),
         ay: 0.3 + 0.25 * hash(k, 2),
         fx: (Math.PI * 2) / (span * (3.5 + 3 * hash(k, 3))),
@@ -222,15 +230,16 @@ export function CinematicHoneycombBackground({
       ctx!.globalCompositeOperation = "lighter";
       const fx = (focalX / 100) * width;
       const fy = (focalY / 100) * height;
-      for (const l of lights) {
+      for (const [i, l] of lights.entries()) {
+        const c = lightColors[i % lightColors.length];
         const x = fx + Math.sin(t * l.fx + l.px) * l.ax * width;
         const y = fy + Math.sin(t * l.fy + l.py) * l.ay * height;
         const strength = LIGHT_MAX * (0.55 + 0.45 * Math.sin(t * l.pulse + l.phase));
         const glow = ctx!.createRadialGradient(x, y, 0, x, y, l.size);
-        glow.addColorStop(0, lightColor);
-        glow.addColorStop(0.3, lightColor + "cc");
-        glow.addColorStop(0.65, lightColor + "33");
-        glow.addColorStop(1, lightColor + "00");
+        glow.addColorStop(0, c);
+        glow.addColorStop(0.3, c + "cc");
+        glow.addColorStop(0.65, c + "33");
+        glow.addColorStop(1, c + "00");
         ctx!.globalAlpha = strength;
         ctx!.fillStyle = glow;
         ctx!.fillRect(x - l.size, y - l.size, l.size * 2, l.size * 2);

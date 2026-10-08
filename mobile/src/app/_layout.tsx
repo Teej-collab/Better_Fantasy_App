@@ -13,8 +13,8 @@ import { DarkTheme, router, Stack, ThemeProvider, usePathname, type Href } from 
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AppTickerBar } from '@/components/AppTickerBar';
@@ -25,6 +25,8 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { takeSkipIntro } from '@/lib/appearance';
+import { AWAY_RESET_MS, openedByLinkRecently } from '@/lib/freshStart';
 import { ChatSocketProvider } from '@/lib/chatSocket';
 import { takeLinkForAfterSignIn } from '@/lib/inviteLinks';
 import { queryClient, queryPersister, useMe } from '@/lib/queries';
@@ -71,7 +73,8 @@ function RootStack() {
   // The intro plays once per cold launch for a signed-in owner — a
   // relaunch after the app was closed, like the web's page load. Decided
   // once the saved session is known; signing in later doesn't replay it.
-  const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>('pending');
+  // A reload to apply a setting (lib/appearance.ts) skips it.
+  const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>(() => (takeSkipIntro() ? 'done' : 'pending'));
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
   const me = useMe(Boolean(token)).data;
   const displayName = me?.display_name ?? null;
@@ -86,6 +89,33 @@ function RootStack() {
   if (intro === 'pending' && token) setPicker(true);
   const pathname = usePathname();
   if (picker && (pathname !== '/' || me?.league_count === 1)) setPicker(false);
+
+  // Back after 30+ minutes away without the app being closed (iOS keeps it
+  // suspended until it needs the memory): start fresh — Home, new data and
+  // the full intro — unless a notification or link just opened something.
+  const backgroundAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        backgroundAt.current = Date.now();
+        return;
+      }
+      if (state !== 'active' || backgroundAt.current === null) return;
+      const away = Date.now() - backgroundAt.current;
+      backgroundAt.current = null;
+      if (away < AWAY_RESET_MS) return;
+      // Give a notification tap or link a moment to land first.
+      setTimeout(() => {
+        if (openedByLinkRecently()) return;
+        if (router.canDismiss()) router.dismissAll();
+        router.navigate('/');
+        void queryClient.invalidateQueries();
+        setIntro('playing');
+      }, 400);
+    });
+    return () => sub.remove();
+  }, [token]);
   const [fontsLoaded] = useFonts({
     Oswald_500Medium,
     Oswald_600SemiBold,

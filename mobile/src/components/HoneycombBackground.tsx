@@ -86,6 +86,7 @@ function Light({ spec, clock, cx, cy, color }: { spec: LightSpec; clock: SharedV
 export function HoneycombBackground() {
   const { width, height } = useWindowDimensions();
   const color = useAppearance().honeycomb;
+  const lightColors = useAppearance().honeycombColors;
   const systemReduced = useReducedMotion();
   const appReduced = useAppearance().reducedMotion;
   const still = systemReduced || appReduced;
@@ -113,7 +114,9 @@ export function HoneycombBackground() {
 
   const lights = useMemo<LightSpec[]>(() => {
     const rand = seeded(11);
-    return [0, 1, 2].map(() => ({
+    // One light per color; Multi-color brings five, plain three.
+    const count = Math.max(3, lightColors.length);
+    return Array.from({ length: count }, () => ({
       size: r * (2.2 + rand()),
       ax: width * (0.3 + 0.25 * rand()),
       ay: height * (0.3 + 0.25 * rand()),
@@ -124,7 +127,7 @@ export function HoneycombBackground() {
       py: rand() * Math.PI * 2,
       pp: rand() * Math.PI * 2,
     }));
-  }, [r, width, height]);
+  }, [r, width, height, lightColors.length]);
 
   const clock = useSharedValue(0);
   const drift = useSharedValue(0);
@@ -153,7 +156,7 @@ export function HoneycombBackground() {
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.bg]}>
       <View style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: AMBIENT }]} />
       {lights.map((spec, i) => (
-        <Light key={i} spec={spec} clock={clock} cx={width * 0.5} cy={height * 0.4} color={color} />
+        <Light key={i} spec={spec} clock={clock} cx={width * 0.5} cy={height * 0.4} color={lightColors[i % lightColors.length]} />
       ))}
       <Animated.View style={[styles.sheet, { width: sheetW, height: sheetH }, driftStyle]}>
         {/* The plates never change, so iOS can keep them as one cached bitmap. */}

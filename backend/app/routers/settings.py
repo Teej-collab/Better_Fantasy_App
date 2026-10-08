@@ -313,11 +313,12 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail="border_glow_color must be a 6-digit hex color like #39ff14, or null")
     if (
         patch.get("honeycomb_color") is not None
-        and patch["honeycomb_color"] != "off"
+        and patch["honeycomb_color"] not in ("off", "multi")
         and not _HEX_COLOR_RE.match(patch["honeycomb_color"])
     ):
         raise HTTPException(
-            status_code=400, detail='honeycomb_color must be a 6-digit hex color like #dc143c, "off", or null'
+            status_code=400,
+            detail='honeycomb_color must be a 6-digit hex color like #dc143c, "multi", "off", or null',
         )
     if patch.get("home_card_order") is not None:
         try:

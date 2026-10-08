@@ -19,6 +19,20 @@ function storedTheme(): ThemeName {
 
 export const ActiveTheme: ThemeName = storedTheme();
 
+// Settings > Appearance > Accent Color, saved on this phone the same way
+// (lib/appearance.ts), so the many screens styled from Colors.accent at
+// load use your color — not just the ones that read it live.
+export const ACCENT_STORE_KEY = 'wl-accent';
+
+function storedAccent(): string | null {
+  try {
+    const value = SecureStore.getItem(ACCENT_STORE_KEY);
+    return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 // The web app's palettes (frontend/src/app/globals.css): Calm is the
 // :root --wl-* tokens, Cosmic is [data-wl-theme="cosmic"], which swaps
 // only bg/surface/border/accent — so the two apps read as one product.
@@ -30,8 +44,12 @@ const PALETTES = {
   cosmic: { bg: '#0a0716', surface: '#171129', tile: '#1e182f', tileRaised: '#231d34', border: '#35285f', accent: '#39ffb0' },
 } as const;
 
+// The Look's own accent, for "Default" in Settings.
+export const DefaultAccent: string = PALETTES[ActiveTheme].accent;
+
 export const Colors = {
   ...PALETTES[ActiveTheme],
+  accent: storedAccent() ?? DefaultAccent,
   text: '#eceef1',
   textSecondary: '#8790a0',
   live: '#ef4444',

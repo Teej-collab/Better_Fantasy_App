@@ -398,7 +398,8 @@ export function AppearanceSection() {
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Background</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            The color of the faint breathing honeycomb behind every page.
+            The color of the faint breathing honeycomb behind every page. Multi gives the lights behind it different
+            colors, so the lines between the hexagons glow in several.
           </p>
         </div>
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Background Color">
@@ -429,6 +430,22 @@ export function AppearanceSection() {
               <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
             </button>
           ))}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={prefs.honeycomb_color === "multi"}
+            onClick={() => setHoneycombColor("multi")}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
+              prefs.honeycomb_color === "multi" ? "border-black dark:border-white" : "border-transparent"
+            }`}
+          >
+            <span
+              className="h-8 w-8 rounded-full"
+              style={{ background: "conic-gradient(#ec4899, #0ea5e9, #39ff14, #a855f7, #facc15, #ec4899)" }}
+              aria-hidden
+            />
+            <span className="text-[10px] text-black/50 dark:text-white/50">Multi</span>
+          </button>
           <button
             type="button"
             role="radio"
