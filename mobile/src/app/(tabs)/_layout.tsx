@@ -92,8 +92,8 @@ function useHomeWidget() {
   // The League widget: standings, power rank, waivers and last week's awards.
   useEffect(() => {
     if (myWeek === undefined || standings === undefined) return;
-    updateLeagueWidget(leagueWidgetPropsFor({ week: myWeek, leagueName, standings, awards }));
-  }, [myWeek, standings, awards, leagueName]);
+    updateLeagueWidget(leagueWidgetPropsFor({ week: myWeek, season, leagueName, standings, awards }));
+  }, [myWeek, season, standings, awards, leagueName]);
   // The Lock Screen / Dynamic Island live score follows the same data
   // (lib/liveActivity.ts), and the backend can start one at kickoff.
   useEffect(() => {

@@ -117,6 +117,7 @@ export function nextWaiverRun(now = Date.now()): number {
 
 export function leagueWidgetPropsFor(input: {
   week: YourWeek | null;
+  season: number | null;
   leagueName: string | null;
   standings: StandingsRow[];
   awards: { awards: WeeklyAwards; week: number } | null;
@@ -140,7 +141,8 @@ export function leagueWidgetPropsFor(input: {
     waiversAt: nextWaiverRun(),
     awardsWeek: awards?.week ?? null,
     awards: items,
-    url: 'weekendleague://league',
+    url: 'weekendleague://league?section=standings',
+    recapUrl: input.season && awards?.week ? `weekendleague://recap/${input.season}/${awards.week}` : 'weekendleague://league',
   };
 }
 

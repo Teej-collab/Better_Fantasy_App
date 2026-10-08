@@ -19,7 +19,9 @@ export type LeagueWidgetProps = {
   awardsWeek: number | null;
   // Up to three of last week's awards (overachiever, bench crime, top player…).
   awards: { label: string; who: string; value: string; tone: 'good' | 'bad' | 'fun' }[];
+  // Small opens Standings; medium opens that week's full recap.
   url: string;
+  recapUrl?: string;
 };
 
 const LeagueWidget = (props: LeagueWidgetProps, environment: WidgetEnvironment) => {
@@ -79,7 +81,7 @@ const LeagueWidget = (props: LeagueWidgetProps, environment: WidgetEnvironment) 
   );
 
   return (
-    <VStack alignment="leading" spacing={10} modifiers={[containerBackground(bg, 'widget'), widgetURL(props.url)]}>
+    <VStack alignment="leading" spacing={10} modifiers={[containerBackground(bg, 'widget'), widgetURL(props.recapUrl ?? props.url)]}>
       <HStack>
         <Text modifiers={[font({ size: 10, weight: 'heavy' }), foregroundStyle(purple)]}>
           {props.awardsWeek ? `WEEK ${props.awardsWeek} AWARDS` : 'WEEKLY AWARDS'}

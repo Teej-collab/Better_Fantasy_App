@@ -86,7 +86,10 @@ function RootStack() {
   // straight onto its Home. Waits for /auth/me (the intro is still
   // playing over it) so the picker never flashes up and away.
   const [picker, setPicker] = useState(false);
-  if (intro === 'pending' && token) setPicker(true);
+  // A widget, link or notification that launched the app (lib/freshStart.ts)
+  // lands a moment after this first check, so ask whether one did rather
+  // than waiting to see the path change.
+  if (intro === 'pending' && token && !openedByLinkRecently(10_000)) setPicker(true);
   const pathname = usePathname();
   if (picker && (pathname !== '/' || me?.league_count === 1)) setPicker(false);
 
