@@ -3,6 +3,7 @@ import { requireOptionalNativeModule } from 'expo';
 import { router, type Href } from 'expo-router';
 
 import type { Reminder, ReminderCategory } from '@/lib/reminders';
+import { markOpenedByLink } from '@/lib/freshStart';
 
 // Schedules lib/reminders.ts's reminders as local notifications. Native
 // (expo-notifications) and, like sharing, only loaded where the build has
@@ -112,7 +113,10 @@ export function setUpReminderHandling(): () => void {
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
   const open = (url: unknown) => {
-    if (typeof url === 'string' && url.startsWith('/')) router.push(toNativePath(url) as Href);
+    if (typeof url === 'string' && url.startsWith('/')) {
+      markOpenedByLink();
+      router.push(toNativePath(url) as Href);
+    }
   };
   // A reminder carries its url in content.data; a real push from the
   // backend (app/notifications/apns_client.py) carries it beside "aps",
