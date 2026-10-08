@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
-import { TabFrame } from '@/components/TabFrame';
+import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
@@ -26,6 +26,7 @@ import { formatGameTime, formatPoints } from '@/lib/format';
 import type { MyTeam, RosterEntry } from '@/lib/types';
 
 function TeamScreenContent() {
+  const scrollRef = useTabScrollRef<ScrollView>();
   const team = useMyTeam();
   const [editing, setEditing] = useState<RosterEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,6 +60,7 @@ function TeamScreenContent() {
     <>
       <ScrollView
         style={styles.screen}
+      ref={scrollRef}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>

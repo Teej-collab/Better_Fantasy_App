@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
-import { TabFrame } from '@/components/TabFrame';
+import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
@@ -38,6 +38,7 @@ const IDP_POSITIONS: { label: string; value: string | undefined }[] = [
 ];
 
 function PlayersScreenContent() {
+  const scrollRef = useTabScrollRef<FlatList<FreeAgent>>();
   const idp = useMe().data?.league_format?.roster_preset === 'idp';
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
@@ -64,6 +65,7 @@ function PlayersScreenContent() {
   return (
     <View style={styles.screen}>
       <FlatList
+      ref={scrollRef}
         data={view === 'matchup' ? list : []}
         keyExtractor={(p) => p.sleeper_player_id}
         contentInsetAdjustmentBehavior="automatic"

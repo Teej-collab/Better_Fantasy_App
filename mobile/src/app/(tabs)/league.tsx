@@ -1,8 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { TabFrame } from '@/components/TabFrame';
+import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { SeasonTabs } from '@/components/league/LeagueUI';
 import { RulesSection } from '@/components/league/RulesSection';
 import {
@@ -54,7 +54,7 @@ function LeagueScreenContent() {
   useFocusEffect(useCallback(() => trackPageView(sectionRoute), [sectionRoute]));
   const [season, setSeason] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useTabScrollRef<ScrollView>();
   const shownSeason = season ?? latest;
 
   async function onRefresh() {

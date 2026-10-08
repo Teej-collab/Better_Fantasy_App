@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { TickerStrips } from '@/components/TickerStrips';
-import { TabFrame } from '@/components/TabFrame';
+import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { AwardsCard } from '@/components/home/AwardsCard';
 import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
@@ -69,6 +69,7 @@ function cardOrder(raw: string | null | undefined): string[] {
 }
 
 function HomeScreenContent() {
+  const scrollRef = useTabScrollRef<ScrollView>();
   const appearance = useAppearance();
   const prefs = usePreferences();
   const seasonWeek = useSeasonWeek();
@@ -146,6 +147,7 @@ function HomeScreenContent() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"

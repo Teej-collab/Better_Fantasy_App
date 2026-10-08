@@ -1,5 +1,5 @@
-import { useIsFocused } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useIsFocused, useNavigation } from 'expo-router';
+import { createContext, useContext, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppTickerBar } from '@/components/AppTickerBar';
@@ -11,6 +11,36 @@ import { Colors } from '@/constants/theme';
 import { useConnectivity } from '@/lib/connectivity';
 import { useMe } from '@/lib/queries';
 
+// Tapping the tab you're already on scrolls it back to the top. iOS's own
+// version of that only finds a scroll view that's the first view all the
+// way down, and the honeycomb and header come first here, so each tab
+// hands its main list to useTabScrollRef() and the frame scrolls it.
+type Scrollable = {
+  scrollTo?: (options: { y: number; animated?: boolean }) => void;
+  scrollToOffset?: (options: { offset: number; animated?: boolean }) => void;
+};
+const TabScrollContext = createContext<RefObject<Scrollable | null> | null>(null);
+
+export function useTabScrollRef<T>(): RefObject<T | null> {
+  const shared = useContext(TabScrollContext);
+  const own = useRef<T>(null);
+  return (shared ?? own) as RefObject<T | null>;
+}
+
+function useScrollToTopOnTabPress(ref: RefObject<Scrollable | null>) {
+  const navigation = useNavigation();
+  useEffect(() => {
+    // 'tabPress' fires before the switch, so only a tap on the tab you're
+    // already looking at scrolls.
+    return (navigation as any).addListener('tabPress', () => {
+      if (!navigation.isFocused()) return;
+      const list = ref.current;
+      if (list?.scrollToOffset) list.scrollToOffset({ offset: 0, animated: true });
+      else list?.scrollTo?.({ y: 0, animated: true });
+    });
+  }, [navigation, ref]);
+}
+
 // Wraps each tab's screen. Native tabs paint an opaque system background
 // over the app-wide honeycomb behind the navigator, so each tab draws
 // its own — only while it's the tab on screen, so hidden tabs don't keep
@@ -20,6 +50,8 @@ export function TabFrame({ children, ticker = false }: { children: ReactNode; ti
   const focused = useIsFocused();
   const me = useMe().data;
   const { online } = useConnectivity();
+  const scrollRef = useRef<Scrollable | null>(null);
+  useScrollToTopOnTabPress(scrollRef);
   // Signed in but in no league yet: every tab is league data, so offer
   // to join or create one instead.
   const noLeague = me !== undefined && me.active_league_id === null;
@@ -34,7 +66,9 @@ export function TabFrame({ children, ticker = false }: { children: ReactNode; ti
           {ticker && !noLeague && <AppTickerBar />}
         </View>
       ) : null}
-      <View style={styles.flex}>{noLeague ? <NeedsLeague displayName={me.display_name} /> : children}</View>
+      <TabScrollContext.Provider value={scrollRef}>
+        <View style={styles.flex}>{noLeague ? <NeedsLeague displayName={me.display_name} /> : children}</View>
+      </TabScrollContext.Provider>
     </View>
   );
 }

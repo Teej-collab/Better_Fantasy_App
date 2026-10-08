@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
-import { TabFrame } from '@/components/TabFrame';
+import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { WatchPartyBar } from '@/components/watchparty/WatchPartyBar';
 import { Card, LoadingState, MessageState, TeamAvatar } from '@/components/ui';
@@ -12,6 +12,7 @@ import { queryClient, useChatConversations } from '@/lib/queries';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 
 function ChatListScreenContent() {
+  const scrollRef = useTabScrollRef<ScrollView>();
   const conversations = useChatConversations();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -27,6 +28,7 @@ function ChatListScreenContent() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
