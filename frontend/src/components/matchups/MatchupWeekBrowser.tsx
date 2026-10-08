@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { getWeekMatchupContextClient, type WeekMatchupContextItem } from "@/lib/api";
 import { MatchupCarousel } from "@/components/matchups/MatchupCarousel";
 import { orientMatchupForViewer } from "@/components/matchups/orientMatchup";
@@ -34,6 +34,12 @@ export function MatchupWeekBrowser({
 }) {
   const [week, setWeek] = useState(initialWeek);
   const [matchups, setMatchups] = useState(initialMatchups);
+  // Your own game is always the first chip and slide; the rest follow in
+  // the league's order.
+  const ordered = useMemo(() => {
+    const mine = (m: WeekMatchupContextItem) => m.home.owner_id === myOwnerId || m.away.owner_id === myOwnerId;
+    return [...matchups.filter(mine), ...matchups.filter((m) => !mine(m))];
+  }, [matchups, myOwnerId]);
   const [targetMatchupId, setTargetMatchupId] = useState(initialMatchupId);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -171,7 +177,7 @@ export function MatchupWeekBrowser({
           // the target matchup — it only reads initialMatchupId on mount.
           <MatchupCarousel
             key={week}
-            matchups={matchups}
+            matchups={ordered}
             initialMatchupId={targetMatchupId}
             onActiveMatchupChange={(m) => {
               focusOwnerIdRef.current = m.home.owner_id;

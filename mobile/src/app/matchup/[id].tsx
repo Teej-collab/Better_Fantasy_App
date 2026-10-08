@@ -39,10 +39,13 @@ export default function MatchupScreen() {
   const shownWeek = week ?? start.data?.week ?? null;
   const context = useMatchupContext(season, shownWeek);
   const myOwnerId = me?.owner_id ?? null;
-  const matchups = useMemo(
-    () => (context.data?.matchups ?? []).map((m) => orientMatchupForViewer(m, myOwnerId)),
-    [context.data, myOwnerId],
-  );
+  // Your own game is always the first chip and page; the rest follow in
+  // the league's order.
+  const matchups = useMemo(() => {
+    const all = (context.data?.matchups ?? []).map((m) => orientMatchupForViewer(m, myOwnerId));
+    const mine = (m: WeekMatchupContextItem) => myOwnerId !== null && (m.home.owner_id === myOwnerId || m.away.owner_id === myOwnerId);
+    return [...all.filter(mine), ...all.filter((m) => !mine(m))];
+  }, [context.data, myOwnerId]);
 
   // Which team to stay with when the week changes: the one whose
   // matchup was on screen (the web's focusOwnerIdRef).
