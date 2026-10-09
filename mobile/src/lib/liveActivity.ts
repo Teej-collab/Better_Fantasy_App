@@ -84,8 +84,10 @@ export function activityPropsFor(week: YourWeek | null): MatchupActivityProps | 
     updatedAt: Date.now(),
     myTeamId: week.team_id,
     oppTeamId: m.opponent_team_id,
-    myInitials: initialsFor(m.my_owner_name ?? week.team_name),
-    oppInitials: initialsFor(m.opponent_owner_name ?? m.opponent_team_name),
+    // Initials only when there's no picture: they sit behind the logo, and a
+    // see-through logo would show them.
+    myInitials: m.my_logo_url ? '' : initialsFor(m.my_owner_name ?? week.team_name),
+    oppInitials: m.opponent_logo_url ? '' : initialsFor(m.opponent_owner_name ?? m.opponent_team_name),
     logoDir: widgetAssetDir(),
     // The backend adds the latest touchdown; the app doesn't track plays.
     lastPlay: null,

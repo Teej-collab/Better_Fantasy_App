@@ -94,8 +94,10 @@ export function widgetPropsFor(
     updatedAt: now,
     myTeamId: week.team_id,
     oppTeamId: m.opponent_team_id,
-    myInitials: initialsFor(m.my_owner_name ?? week.team_name),
-    oppInitials: initialsFor(m.opponent_owner_name ?? m.opponent_team_name),
+    // Initials only when there's no picture: they sit behind the logo, and a
+    // see-through logo would show them.
+    myInitials: m.my_logo_url ? '' : initialsFor(m.my_owner_name ?? week.team_name),
+    oppInitials: m.opponent_logo_url ? '' : initialsFor(m.opponent_owner_name ?? m.opponent_team_name),
     logoDir: widgetAssetDir(),
     playing: playingNow(extras.team, extras.games ?? []).slice(0, 3),
     nextUp: nextUp(extras.team, now),

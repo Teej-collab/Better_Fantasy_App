@@ -100,9 +100,11 @@ def props_for(week: dict | None) -> dict | None:
         # folder (mobile/src/lib/widgetAssets.ts); initials stand in until then.
         "myTeamId": week.get("team_id"),
         "oppTeamId": m.get("opponent_team_id"),
-        # The owner's initials, like every avatar in the app.
-        "myInitials": _initials(m.get("my_owner_name") or week["team_name"]),
-        "oppInitials": _initials(m.get("opponent_owner_name") or m["opponent_team_name"]),
+        # The owner's initials, like every avatar in the app — only when
+        # there's no picture: they sit behind the logo, and a see-through
+        # logo would show them.
+        "myInitials": "" if m.get("my_logo_url") else _initials(m.get("my_owner_name") or week["team_name"]),
+        "oppInitials": "" if m.get("opponent_logo_url") else _initials(m.get("opponent_owner_name") or m["opponent_team_name"]),
     }
 
 
