@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ColorPicker, Host } from '@expo/ui/swift-ui';
 import { requireOptionalNativeModule } from 'expo';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
@@ -36,6 +36,9 @@ import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
 
+
+// The league's admin inbox (2026-10).
+const SUPPORT_EMAIL = 'theweekend.admin@gmail.com';
 
 // ---- shared pieces ----
 
@@ -1010,6 +1013,16 @@ export function FeedbackSettings() {
         </View>
         {status === 'sent' && <Text style={styles.saved}>Sent — thanks!</Text>}
         {error && <Text style={styles.error}>{error}</Text>}
+      </Panel>
+      {/* The league's admin inbox — also on the website's Privacy Policy
+          and Terms, and where these feedback notes are emailed. */}
+      <Panel title="Email Us" description="Prefer email? Questions, account or privacy requests, anything else.">
+        <Pressable
+          onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('The Weekend')}`)}
+          accessibilityRole="link"
+          style={[styles.secondary, { borderColor: accent }]}>
+          <Text style={styles.body}>{SUPPORT_EMAIL}</Text>
+        </Pressable>
       </Panel>
       {isCommissioner && <RecentFeedback />}
     </View>
