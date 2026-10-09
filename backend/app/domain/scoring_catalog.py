@@ -32,18 +32,18 @@ _STATS: tuple[tuple[str, str, str, str, bool, bool], ...] = (
     ("pass_int", "passing", "Interception thrown", "per interception", True, False),
     ("pass_cmp", "passing", "Completion", "per completion", True, False),
     ("qb_tackle", "passing", "QB tackle", "any tackle by a QB", True, False),
-    ("two_pt_pass", "passing", "2-point conversion pass", "per conversion", False, False),
+    ("two_pt_pass", "passing", "2-point conversion pass", "per conversion", True, False),
 
     ("rush_yd", "rushing", "Rushing yards", "per yard", True, False),
     ("rush_td", "rushing", "Rushing TD", "per touchdown", True, False),
     ("rush_att", "rushing", "Carry", "per rushing attempt", True, False),
-    ("two_pt_rush", "rushing", "2-point conversion run", "per conversion", False, False),
+    ("two_pt_rush", "rushing", "2-point conversion run", "per conversion", True, False),
 
     ("rec", "receiving", "Reception", "per catch (PPR)", True, False),
     ("te_rec", "receiving", "TE premium", "extra per catch by a TE", True, False),
     ("rec_yd", "receiving", "Receiving yards", "per yard", True, False),
     ("rec_td", "receiving", "Receiving TD", "per touchdown", True, False),
-    ("two_pt_rec", "receiving", "2-point conversion catch", "per conversion", False, False),
+    ("two_pt_rec", "receiving", "2-point conversion catch", "per conversion", True, False),
 
     ("fg_yds", "kicking", "FG made, per yard", "per yard of each made kick", True, False),
     ("fg_made_0_39", "kicking", "FG made, 0–39 yds", "per field goal", True, False),

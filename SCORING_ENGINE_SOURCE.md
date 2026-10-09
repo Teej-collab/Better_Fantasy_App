@@ -123,7 +123,7 @@ scored stat categories now (`app/providers/nfl_stats/espn_public.py`):
   access to a player's position — splits `def_tackle` into `qb_tackle`
   for QB-position players right before scoring, per player/per game.
 
-**Still NOT captured**: 2-point conversions, and safeties (`def_safety`
+**Still NOT captured**: safeties (`def_safety`
 [team, +2] / `safety_1pt` [individual, +1]). Both are real but rare
 events, likely also derivable from the same `drives.previous[].plays[]`
 source that closed the missed/blocked-FG gaps above — but unlike those,
@@ -162,7 +162,7 @@ around:
   own scoring screenshots list it under both the Team Defense/Special
   Teams and Miscellaneous sections at the same point value.
 
-Still not built: 2pt conversions and safeties (`def_safety`) — see the
+Still not built: safeties (`def_safety`). 2-point conversions are parsed from scoringPlays text since 2026-10 (`two_point_conversions` in espn_public.py) — see the
 "Still NOT captured" note above; `def_block` (also a D/ST-specific
 category in this league's rules) is no longer in this gap, see above.
 

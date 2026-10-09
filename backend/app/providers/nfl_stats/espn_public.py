@@ -16,7 +16,7 @@ round-trip would be wasteful.
 
 Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
-NOT here (2pt conversions, safeties — def_safety [team, 2pts] and
+NOT here (safeties — def_safety [team, 2pts] and
 safety_1pt [individual, 1pt] — neither is in ESPN's boxscore stat
 tables at all, only in play-by-play, and unlike the blocked-FG fix
 below, no real safety has occurred this season to confirm ESPN's own
@@ -675,6 +675,48 @@ def _parse_long_tds_by_player(data: dict) -> dict[int, dict[str, float]]:
     return out
 
 
+# 2-point conversions (2026-10). Not in the boxscore's stat tables either;
+# a successful one is named in the touchdown's scoringPlays text —
+# "... (Bo Nix Pass to Jaylen Waddle for Two-Point Conversion)" or
+# "... (Najee Harris Run for Two-Point Conversion)" — and a failed one says
+# "Conversion Failed", which matches neither pattern. Checked against all
+# 26 tries in weeks 1-4 of 2026. Names are matched like long TDs above.
+_TWO_PT_PASS_RE = re.compile(r"\((?P<passer>[^()]+?) Pass to (?P<receiver>[^()]+?) for Two-Point Conversion\)\s*$")
+_TWO_PT_RUN_RE = re.compile(r"\((?P<rusher>[^()]+?) Run for Two-Point Conversion\)\s*$")
+
+
+def two_point_conversions(data: dict) -> list[tuple[str, str, str]]:
+    """[(team abbreviation, player name, two_pt_pass / two_pt_rush / two_pt_rec)]."""
+    out: list[tuple[str, str, str]] = []
+    for play in data.get("scoringPlays", []):
+        abbr = play.get("team", {}).get("abbreviation")
+        text = (play.get("text") or "").strip()
+        if not abbr:
+            continue
+        if m := _TWO_PT_PASS_RE.search(text):
+            out.append((abbr, m["passer"].strip(), "two_pt_pass"))
+            out.append((abbr, m["receiver"].strip(), "two_pt_rec"))
+        elif m := _TWO_PT_RUN_RE.search(text):
+            out.append((abbr, m["rusher"].strip(), "two_pt_rush"))
+    return out
+
+
+def _parse_two_point_by_player(data: dict) -> tuple[dict[int, dict[str, float]], list[tuple[str, str, str]]]:
+    """({espn_id: {category: count}}, the ones whose name didn't match a
+    boxscore athlete — someone whose only touch was the conversion)."""
+    names = _athletes_by_name(data)
+    out: dict[int, dict[str, float]] = {}
+    unmatched: list[tuple[str, str, str]] = []
+    for abbr, name, category in two_point_conversions(data):
+        espn_id = names.get((abbr, name))
+        if espn_id is None:
+            unmatched.append((abbr, name, category))
+            continue
+        bucket = out.setdefault(espn_id, {})
+        bucket[category] = bucket.get(category, 0) + 1
+    return out, unmatched
+
+
 def parse_individual_player_stats(data: dict) -> list[dict]:
     """One entry per player who recorded a mapped stat in this game:
     {"espn_player_id": int, "player_name": str, "pro_team": str,
@@ -739,6 +781,16 @@ def parse_individual_player_stats(data: dict) -> list[dict]:
         entry["stat_line"]["fg_yds"] = entry["stat_line"].get("fg_yds", 0) + fg_yards
 
     for espn_player_id, buckets in _parse_long_tds_by_player(data).items():
+        entry = players_by_id.get(espn_player_id)
+        if entry is not None:
+            for bucket, count in buckets.items():
+                entry["stat_line"][bucket] = entry["stat_line"].get(bucket, 0) + count
+
+    # A name that didn't match is skipped (never guessed); in weeks 1-4
+    # every one matched, since a player in on a conversion has touched
+    # the ball somewhere in the boxscore.
+    two_point, _unmatched = _parse_two_point_by_player(data)
+    for espn_player_id, buckets in two_point.items():
         entry = players_by_id.get(espn_player_id)
         if entry is not None:
             for bucket, count in buckets.items():

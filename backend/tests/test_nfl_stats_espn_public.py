@@ -782,3 +782,53 @@ def test_def_sack_uses_the_opponents_team_sacks_taken():
     stat_lines = espn_public.parse_team_dst_stats(summary)
     assert stat_lines["JAX"]["def_sack"] == 3
     assert stat_lines["NE"]["def_sack"] == 1
+
+
+def _two_point_game(*texts: str) -> dict:
+    athletes = [
+        ("passing", [("3122840", "Deshaun Watson")]),
+        ("receiving", [("4832800", "Denzel Boston"), ("4429084", "Harold Fannin Jr.")]),
+        ("rushing", [("4241457", "Najee Harris")]),
+    ]
+    return {
+        "boxscore": {
+            "players": [
+                {
+                    "team": {"abbreviation": "CLE"},
+                    "statistics": [
+                        {"name": name, "keys": [], "athletes": [{"athlete": {"id": i, "displayName": n}, "stats": []} for i, n in group]}
+                        for name, group in athletes
+                    ],
+                }
+            ]
+        },
+        "scoringPlays": [{"type": {"abbreviation": "TD"}, "team": {"abbreviation": "CLE"}, "text": t} for t in texts],
+    }
+
+
+def test_two_point_conversions_credit_passer_receiver_and_rusher():
+    data = _two_point_game(
+        "Harold Fannin Jr. 14 Yd pass from Deshaun Watson (Deshaun Watson Pass to Denzel Boston for Two-Point Conversion)",
+        "Harold Fannin Jr. 3 Yd pass from Deshaun Watson (Najee Harris Run for Two-Point Conversion)",
+    )
+    by_id = {p["espn_player_id"]: p["stat_line"] for p in espn_public.parse_individual_player_stats(data)}
+    assert by_id[3122840]["two_pt_pass"] == 1
+    assert by_id[4832800]["two_pt_rec"] == 1
+    assert by_id[4241457]["two_pt_rush"] == 1
+    assert "two_pt_rec" not in by_id[4429084]
+
+
+def test_two_point_conversions_ignore_failed_tries_and_kicks():
+    data = _two_point_game(
+        "Harold Fannin Jr. 14 Yd pass from Deshaun Watson (Two-Point Pass Conversion Failed)",
+        "Harold Fannin Jr. 9 Yd pass from Deshaun Watson (Two-Point Run Conversion Failed)",
+        "Najee Harris 2 Yd Run (Andre Szmyt Kick)",
+    )
+    assert espn_public.two_point_conversions(data) == []
+
+
+def test_two_point_conversion_with_an_unknown_name_is_skipped_not_guessed():
+    data = _two_point_game("Harold Fannin Jr. 14 Yd pass from Deshaun Watson (Someone Else Run for Two-Point Conversion)")
+    credits, unmatched = espn_public._parse_two_point_by_player(data)
+    assert credits == {}
+    assert unmatched == [("CLE", "Someone Else", "two_pt_rush")]
