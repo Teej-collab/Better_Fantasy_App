@@ -12,6 +12,7 @@ generic-response handling) — callers log and swallow, same discipline
 dispatcher.py already uses for a failed push.
 """
 import logging
+import os
 
 import httpx
 
@@ -24,11 +25,17 @@ RESEND_API_URL = "https://api.resend.com/emails"
 
 async def _send(to_email: str, subject: str, html_body: str) -> None:
     api_key, from_email = require_email_configured()
+    message = {"from": from_email, "to": [to_email], "subject": subject, "html": html_body}
+    # The "from" address isn't an inbox; a reply goes to the league's
+    # admin inbox instead (SUPPORT_EMAIL, 2026-10).
+    support = os.getenv("SUPPORT_EMAIL")
+    if support:
+        message["reply_to"] = support
     async with httpx.AsyncClient() as client:
         response = await client.post(
             RESEND_API_URL,
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"from": from_email, "to": [to_email], "subject": subject, "html": html_body},
+            json=message,
             timeout=10.0,
         )
         response.raise_for_status()
@@ -59,7 +66,6 @@ async def send_admin_alert(subject: str, html_body: str) -> bool:
     """A message for the site admin (ADMIN_ALERT_EMAIL) — e.g. a custom
     league request from the Create a League flow (2026-10). Best-effort:
     returns whether it went out, never raises."""
-    import os
 
     to_email = os.getenv("ADMIN_ALERT_EMAIL")
     if not to_email:

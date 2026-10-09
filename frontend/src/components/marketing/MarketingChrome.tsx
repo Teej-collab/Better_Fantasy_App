@@ -38,6 +38,14 @@ export function MarketingFooter() {
         <Link href="/commissioners" className="hover:text-[color:var(--wl-text)]">
           For commissioners
         </Link>
+        {" · "}
+        <Link href="/privacy" className="hover:text-[color:var(--wl-text)]">
+          Privacy
+        </Link>
+        {" · "}
+        <Link href="/terms" className="hover:text-[color:var(--wl-text)]">
+          Terms
+        </Link>
       </p>
     </footer>
   );
