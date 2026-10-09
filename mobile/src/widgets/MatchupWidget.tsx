@@ -83,6 +83,11 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
   const header =
     props.state === 'live' ? '● LIVE' : props.state === 'final' ? 'FINAL' : props.week ? `WEEK ${props.week}` : 'THE WEEKEND';
   const headerColor = props.state === 'live' && fullColor ? live : accent;
+  // Live projections once games are underway — the same live projected
+  // totals as the app's Your Week card (before kickoff the big number
+  // already is the projection).
+  const showProj = props.state === 'live' || props.state === 'between';
+  const projLine = `Proj ${fmt(props.myProjected)}–${fmt(props.oppProjected)}`;
   const shortName = (name: string) => (name.length > 11 ? name.split(' ')[0] : name);
 
   // A team's logo, or its initials until the logo is saved on the phone.
@@ -154,7 +159,9 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
         <HStack>
           <Text modifiers={[font({ size: 11, weight: 'bold' })]}>{props.state === 'live' ? `● LIVE · WK ${props.week ?? ''}` : header}</Text>
           <Spacer />
-          <Text modifiers={[font({ size: 11, weight: 'semibold' })]}>{props.state === 'live' ? `${props.myLeft} left` : pre ? 'Proj' : ''}</Text>
+          <Text modifiers={[font({ size: 11, weight: 'semibold' }), monospacedDigit()]}>
+            {showProj ? `Proj ${Math.round(props.myProjected)}–${Math.round(props.oppProjected)}` : pre ? 'Proj' : ''}
+          </Text>
         </HStack>
         {row(props.myName, myValue, false)}
         {row(props.oppName, oppValue, true)}
@@ -200,6 +207,9 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
           <Text modifiers={[font({ size: 12, weight: 'bold', design: 'rounded' }), monospacedDigit(), foregroundStyle(myWinning ? accent : loss)]}>
             {`${margin >= 0 ? '+' : ''}${fmt(margin)} ${myWinning ? 'lead' : 'behind'}`}
           </Text>
+          <Text modifiers={[font({ size: 10, weight: 'semibold' }), monospacedDigit(), foregroundStyle(muted), lineLimit(1), minimumScaleFactor(0.8)]}>
+            {projLine}
+          </Text>
         </VStack>
       );
     }
@@ -221,14 +231,19 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
     );
   }
 
-  const teamRow = (teamId: number | null | undefined, initials: string | undefined, ring: string, name: string, value: number, leading: boolean, size: number) => (
+  const teamRow = (teamId: number | null | undefined, initials: string | undefined, ring: string, name: string, value: number, projected: number, leading: boolean, size: number) => (
     <HStack spacing={10}>
       {logo(teamId, initials, size === 30 ? 30 : 26, ring)}
       <Text modifiers={[font({ size: 15, weight: 'semibold' }), foregroundStyle(text), lineLimit(1), minimumScaleFactor(0.7)]}>{name}</Text>
       <Spacer />
-      <Text modifiers={[font({ size, weight: 'heavy', design: 'rounded' }), monospacedDigit(), foregroundStyle(leading && !pre ? accent : text)]}>
-        {fmt(value)}
-      </Text>
+      <VStack alignment="trailing" spacing={0}>
+        <Text modifiers={[font({ size, weight: 'heavy', design: 'rounded' }), monospacedDigit(), foregroundStyle(leading && !pre ? accent : text)]}>
+          {fmt(value)}
+        </Text>
+        {showProj ? (
+          <Text modifiers={[font({ size: 10, weight: 'semibold' }), monospacedDigit(), foregroundStyle(muted)]}>{`Proj ${fmt(projected)}`}</Text>
+        ) : null}
+      </VStack>
     </HStack>
   );
 
@@ -239,8 +254,8 @@ const MatchupWidget = (props: MatchupWidgetProps, environment: WidgetEnvironment
         <Spacer />
         <Text modifiers={[font({ size: 11, weight: 'heavy' }), foregroundStyle(accent)]}>THE WEEKEND</Text>
       </HStack>
-      {teamRow(props.myTeamId, props.myInitials, '#13301a', props.myName, myValue, myWinning, size)}
-      {teamRow(props.oppTeamId, props.oppInitials, '#2a1a12', props.oppName, oppValue, !myWinning, size)}
+      {teamRow(props.myTeamId, props.myInitials, '#13301a', props.myName, myValue, props.myProjected, myWinning, size)}
+      {teamRow(props.oppTeamId, props.oppInitials, '#2a1a12', props.oppName, oppValue, props.oppProjected, !myWinning, size)}
       {oddsBar}
       <Text modifiers={[font({ size: 11 }), foregroundStyle(muted), lineLimit(1)]}>{footer}</Text>
     </VStack>

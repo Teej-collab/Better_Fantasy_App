@@ -73,6 +73,10 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
   const margin = Math.round((myValue - oppValue) * 10) / 10;
   const marginText = `${margin >= 0 ? '+' : ''}${margin.toFixed(1)}`;
   const td = props.moment === 'td';
+  // Live projections under each score once games are underway — the same
+  // live projected totals as the app's Your Week card (before kickoff the
+  // big number already is the projection).
+  const showProj = !pre && !final;
 
   const label = props.state === 'live' ? '● LIVE' : final ? 'FINAL' : pre ? 'KICKOFF SOON' : 'BETWEEN GAMES';
   const labelColor = props.state === 'live' ? live : accent;
@@ -139,6 +143,11 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
         <Text modifiers={[font({ size: 11, weight: 'semibold' }), foregroundStyle(muted), lineLimit(1), minimumScaleFactor(0.7)]}>
           {mine ? props.myName : props.oppName}
         </Text>
+        {showProj ? (
+          <Text modifiers={[font({ size: 10, weight: 'semibold' }), monospacedDigit(), foregroundStyle(muted)]}>
+            {`Proj ${fmt(mine ? props.myProjected : props.oppProjected)}`}
+          </Text>
+        ) : null}
       </VStack>
       {!mine ? oppLogo(size) : null}
     </HStack>
