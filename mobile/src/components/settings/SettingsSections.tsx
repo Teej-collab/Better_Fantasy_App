@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ColorPicker, Host } from '@expo/ui/swift-ui';
+import { requireOptionalNativeModule } from 'expo';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
@@ -21,7 +24,8 @@ import {
   type ReminderSettings,
 } from '@/lib/localNotifications';
 import type { ReminderCategory } from '@/lib/reminders';
-import { applyAccent, applyTheme, HONEYCOMB_MULTI, useAppearance } from '@/lib/appearance';
+import { applyAccent, applyTheme, flushAccentReload, useAppearance } from '@/lib/appearance';
+import { COLOR_PRESETS, isHexColor, isMulti, MULTI, MULTI_COLORS } from '@/lib/colorChoice';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
@@ -32,17 +36,6 @@ import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
 
-// Same palette as the web's lib/neonPalette.ts.
-const NEON_PALETTE = [
-  { name: 'Neon Green', hex: '#39ff14' },
-  { name: 'Neon Blue', hex: '#0ea5e9' },
-  { name: 'Neon Pink', hex: '#ec4899' },
-  { name: 'Neon Yellow', hex: '#facc15' },
-  { name: 'Neon Orange', hex: '#f97316' },
-  { name: 'Neon Lightning Blue', hex: '#22d3ee' },
-  { name: 'Neon Purple', hex: '#a855f7' },
-  { name: 'Neon Red', hex: '#ff1744' },
-];
 
 // ---- shared pieces ----
 
@@ -225,26 +218,66 @@ function Segment<T extends string>(props: { options: { key: T; label: string }[]
   );
 }
 
-// A row of color swatches with an optional Default (null) and Off.
+// Every color choice (2026-10): Default · Multi · a few curated colors ·
+// Custom (the system color picker) · Off where a setting has it. Picker
+// changes arrive continuously while you drag, so they're saved once you
+// pause rather than on every one.
+const CUSTOM_SAVE_DELAY_MS = 600;
+// iOS's own color picker (@expo/ui).
+const canPickColor = Platform.OS === 'ios' && requireOptionalNativeModule('ExpoUI') !== null;
+
 function Swatches(props: {
   value: string | null;
-  onChange: (hex: string | null) => void;
-  palette: { name: string; hex: string }[];
-  defaultSwatch?: { color: string; label?: string };
+  onChange: (value: string | null) => void;
+  defaultSwatch: { color: string; label?: string };
+  // Presets to leave out (e.g. the one Default already is).
+  without?: string[];
   offOption?: boolean;
-  multiOption?: boolean;
 }) {
   const current = props.value?.toLowerCase() ?? null;
+  const presets = COLOR_PRESETS.filter((p) => !props.without?.includes(p.hex));
+  const isPreset = presets.some((p) => p.hex === current);
+  const [custom, setCustom] = useState<string | null>(null);
+  const customShown = custom ?? (isHexColor(current) && !isPreset ? current : null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  function pick(value: string | null) {
+    if (timer.current) clearTimeout(timer.current);
+    setCustom(null);
+    props.onChange(value);
+  }
+
+  function pickCustom(hex: string) {
+    const value = hex.slice(0, 7).toLowerCase();
+    if (!isHexColor(value)) return;
+    setCustom(value);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => props.onChange(value), CUSTOM_SAVE_DELAY_MS);
+  }
+
   return (
     <View style={styles.swatches}>
-      {props.defaultSwatch && (
-        <Swatch color={props.defaultSwatch.color} label={props.defaultSwatch.label ?? 'Default'} on={current === null} onPress={() => props.onChange(null)} />
-      )}
-      {props.offOption && <Swatch color="transparent" label="Off" on={current === 'off'} onPress={() => props.onChange('off')} off />}
-      {props.multiOption && <Swatch color="transparent" label="Multi" on={current === 'multi'} onPress={() => props.onChange('multi')} multi />}
-      {props.palette.map((p) => (
-        <Swatch key={p.hex} color={p.hex} label={p.name.replace('Neon ', '')} on={current === p.hex.toLowerCase()} onPress={() => props.onChange(p.hex)} />
+      <Swatch color={props.defaultSwatch.color} label={props.defaultSwatch.label ?? 'Default'} on={current === null && !custom} onPress={() => pick(null)} />
+      <Swatch color="transparent" label="Multi" on={isMulti(current) && !custom} onPress={() => pick(MULTI)} multi />
+      {presets.map((p) => (
+        <Swatch key={p.hex} color={p.hex} label={p.name} on={current === p.hex && !custom} onPress={() => pick(p.hex)} />
       ))}
+      <View style={[styles.swatch, customShown && styles.swatchOn]} accessibilityLabel="Custom color">
+        {canPickColor ? (
+          <Host matchContents>
+            <ColorPicker selection={customShown ?? '#ffffff'} supportsOpacity={false} onSelectionChange={pickCustom} />
+          </Host>
+        ) : (
+          <View style={[styles.swatchDot, styles.swatchOff]} />
+        )}
+        <Text style={styles.swatchLabel} numberOfLines={1}>
+          Custom
+        </Text>
+      </View>
+      {props.offOption && <Swatch color="transparent" label="Off" on={current === 'off'} onPress={() => pick('off')} off />}
     </View>
   );
 }
@@ -254,7 +287,7 @@ function Swatch({ color, label, on, onPress, off, multi }: { color: string; labe
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: on }} style={[styles.swatch, on && styles.swatchOn]}>
       <View style={[styles.swatchDot, { backgroundColor: color }, off && styles.swatchOff, multi && styles.swatchMulti]}>
         {off && <Text style={styles.offX}>✕</Text>}
-        {multi && HONEYCOMB_MULTI.slice(0, 4).map((c) => <View key={c} style={[styles.multiQuarter, { backgroundColor: c }]} />)}
+        {multi && MULTI_COLORS.slice(0, 4).map((c) => <View key={c} style={[styles.multiQuarter, { backgroundColor: c }]} />)}
       </View>
       <Text style={styles.swatchLabel} numberOfLines={1}>
         {label}
@@ -291,15 +324,6 @@ function usePatchPreferences() {
 
 // ---- Profile ----
 
-const CHAT_COLOR_PRESETS = [
-  { name: 'Neon Green', hex: '#39ff14' },
-  { name: 'Electric Blue', hex: '#0ea5e9' },
-  { name: 'Hot Pink', hex: '#ec4899' },
-  { name: 'Golden Yellow', hex: '#fbbf24' },
-  { name: 'Orange', hex: '#f97316' },
-  { name: 'Purple', hex: '#a855f7' },
-  { name: 'White/Neutral', hex: '#f5f4ec' },
-];
 const DEFAULT_BUBBLE_COLOR = '#1f890b';
 
 // Dark text on light bubbles, white on dark (the web's readableTextColor).
@@ -348,7 +372,8 @@ function ProfileForm({ settings }: { settings: MySettings }) {
     });
   }
 
-  const preview = settings.chat_color ?? DEFAULT_BUBBLE_COLOR;
+  const multiBubble = isMulti(settings.chat_color);
+  const preview = isHexColor(settings.chat_color) ? settings.chat_color : DEFAULT_BUBBLE_COLOR;
   return (
     <View style={styles.gap}>
       <Header title="Profile" subtitle="How you appear throughout The Weekend." />
@@ -414,13 +439,15 @@ function ProfileForm({ settings }: { settings: MySettings }) {
         <Swatches
           value={settings.chat_color}
           onChange={(hex) => run('color', () => api.updateChatColor(hex))}
-          palette={CHAT_COLOR_PRESETS}
-          defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }}
+          defaultSwatch={{ color: DEFAULT_BUBBLE_COLOR }}
         />
         <Text style={styles.small}>Preview</Text>
         <View style={styles.previewRow}>
-          <View style={[styles.bubble, { backgroundColor: preview }]}>
-            <Text style={{ color: readableTextColor(preview), fontSize: 14 }}>This is how your messages will appear in League Chat.</Text>
+          <View style={[styles.bubble, { backgroundColor: preview }, multiBubble && styles.bubbleClip]}>
+            {multiBubble && (
+              <LinearGradient colors={[MULTI_COLORS[0], MULTI_COLORS[1], MULTI_COLORS[3]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            )}
+            <Text style={{ color: multiBubble ? '#ffffff' : readableTextColor(preview), fontSize: 14 }}>This is how your messages will appear in League Chat.</Text>
           </View>
         </View>
       </Panel>
@@ -662,6 +689,9 @@ function BlockedPeople() {
 export function AppearanceSettings() {
   const prefs = usePreferences().data;
   const { patch, saved, error } = usePatchPreferences();
+  // A new Accent Color reloads the app so everything changes together —
+  // once you're done here, not while you're still picking.
+  useFocusEffect(useCallback(() => () => flushAccentReload(), []));
   if (!prefs) return <LoadingState />;
   const direction = prefs.design_direction !== 'default';
 
@@ -709,34 +739,32 @@ export function AppearanceSettings() {
 
       <Panel
         title="Accent Color"
-        description="Colors the nav bar's current tab everywhere in the app, plus the glow on boxes that aren't already tied to a league section (Standings, Rivalries, and so on keep their own color regardless of this choice).">
+        description="Colors the nav bar's current tab everywhere in the app, plus the glow on boxes that aren't already tied to a league section. Multi: every card glows in its own section's color. A new accent applies everywhere when you leave Settings.">
         <Swatches
           value={prefs.accent_color}
           onChange={(accent_color) => void patch({ accent_color }).then((ok) => ok && applyAccent(accent_color))}
-          palette={NEON_PALETTE.filter((p) => p.name !== 'Neon Green')}
+          without={[DefaultAccent]}
           defaultSwatch={{ color: DefaultAccent }}
         />
       </Panel>
 
-      <Panel title="Background" description="The color of the faint breathing honeycomb behind every page. Multi gives the lights behind it different colors, so the lines between the hexagons glow in several.">
+      <Panel title="Background" description="The color of the faint breathing honeycomb behind every page. Multi: the lights behind it come in several colors, so the lines between the hexagons glow in all of them.">
         <Swatches
           value={prefs.honeycomb_color}
           onChange={(honeycomb_color) => patch({ honeycomb_color })}
-          palette={NEON_PALETTE}
           defaultSwatch={{ color: HoneycombColor }}
           offOption
-          multiOption
         />
       </Panel>
 
       <Panel title="Your Week Card Color" description="Just your own Your Week card on Home — independent of Accent Color. Default follows your Accent Color.">
-        <Swatches value={prefs.your_week_color} onChange={(your_week_color) => patch({ your_week_color })} palette={NEON_PALETTE} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
+        <Swatches value={prefs.your_week_color} onChange={(your_week_color) => patch({ your_week_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
       </Panel>
 
       <Panel
         title="Border Animation Color"
         description="The moving neon ring on every card and countdown tile — independent of Accent Color and Your Week Card Color. Default follows your Accent Color.">
-        <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} palette={NEON_PALETTE} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
+        <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
       </Panel>
 
       {canChangeAppIcon && <SeasonalIconSetting />}
@@ -1025,6 +1053,7 @@ const styles = StyleSheet.create({
   swatch: { width: 64, alignItems: 'center', gap: 4, padding: 6, borderRadius: Radius.md, borderWidth: 2, borderColor: 'transparent' },
   swatchOn: { borderColor: Colors.text },
   swatchDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  bubbleClip: { overflow: 'hidden' },
   swatchMulti: { flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' },
   multiQuarter: { width: '50%', height: '50%' },
   swatchOff: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },

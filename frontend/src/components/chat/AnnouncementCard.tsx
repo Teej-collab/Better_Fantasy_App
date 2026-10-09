@@ -11,6 +11,7 @@ import {
 import { REACTION_CHOICES } from "@/components/chat/MessageBubble";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
+import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
 const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g;
 
@@ -151,7 +152,8 @@ export function AnnouncementCard({
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [openEmoji, setOpenEmoji] = useState<string | null>(null);
   const reactionsRef = useRef<HTMLDivElement>(null);
-  const accent = message.owner_chat_color ?? SECTION_COLORS.chat;
+  // A single color is needed here; Multi uses its first.
+  const accent = isHexColor(message.owner_chat_color) ? message.owner_chat_color : message.owner_chat_color === MULTI ? MULTI_COLORS[0] : SECTION_COLORS.chat;
 
   useEffect(() => {
     if (!openEmoji) return;

@@ -37,6 +37,14 @@ from app.queries import settings as settings_queries
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Every color choice (2026-10): a hex color from the picker, or "multi"
+# (Settings > Appearance's Multi option — what it means is up to each
+# setting's renderer). Background also has "off".
+MULTI = "multi"
+
+
+def _is_color_choice(value: str, *extra: str) -> bool:
+    return value in (MULTI, *extra) or bool(_HEX_COLOR_RE.match(value))
 _DISPLAY_NAME_MAX_LENGTH = 40
 _TEAM_NAME_MAX_LENGTH = 40
 
@@ -147,8 +155,8 @@ async def update_chat_color(body: ChatColorBody, request: Request, pool=Depends(
     payload = _require_session(request)
 
     color = body.chat_color
-    if color is not None and not _HEX_COLOR_RE.match(color):
-        raise HTTPException(status_code=400, detail="chat_color must be a 6-digit hex color like #39ff14, or null")
+    if color is not None and not _is_color_choice(color):
+        raise HTTPException(status_code=400, detail='chat_color must be a 6-digit hex color like #39ff14, "multi", or null')
 
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
@@ -305,17 +313,10 @@ async def update_preferences(body: PreferencesPatch, request: Request, pool=Depe
         raise HTTPException(
             status_code=400, detail=f"design_direction must be one of {sorted(_VALID_DESIGN_DIRECTIONS)}"
         )
-    if patch.get("accent_color") is not None and not _HEX_COLOR_RE.match(patch["accent_color"]):
-        raise HTTPException(status_code=400, detail="accent_color must be a 6-digit hex color like #39ff14, or null")
-    if patch.get("your_week_color") is not None and not _HEX_COLOR_RE.match(patch["your_week_color"]):
-        raise HTTPException(status_code=400, detail="your_week_color must be a 6-digit hex color like #39ff14, or null")
-    if patch.get("border_glow_color") is not None and not _HEX_COLOR_RE.match(patch["border_glow_color"]):
-        raise HTTPException(status_code=400, detail="border_glow_color must be a 6-digit hex color like #39ff14, or null")
-    if (
-        patch.get("honeycomb_color") is not None
-        and patch["honeycomb_color"] not in ("off", "multi")
-        and not _HEX_COLOR_RE.match(patch["honeycomb_color"])
-    ):
+    for field in ("accent_color", "your_week_color", "border_glow_color"):
+        if patch.get(field) is not None and not _is_color_choice(patch[field]):
+            raise HTTPException(status_code=400, detail=f'{field} must be a 6-digit hex color like #39ff14, "multi", or null')
+    if patch.get("honeycomb_color") is not None and not _is_color_choice(patch["honeycomb_color"], "off"):
         raise HTTPException(
             status_code=400,
             detail='honeycomb_color must be a 6-digit hex color like #dc143c, "multi", "off", or null',

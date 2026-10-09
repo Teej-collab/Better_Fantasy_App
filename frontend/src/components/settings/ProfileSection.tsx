@@ -11,27 +11,15 @@ import {
   updateTeamName,
   type MySettings,
 } from "@/lib/api";
-import { readableTextColor } from "@/components/chat/MessageBubble";
+import { chatColorStyle, readableTextColor } from "@/components/chat/MessageBubble";
+import { ColorChoices } from "@/components/settings/ColorChoices";
 import { LogoUploadCropper } from "@/components/settings/LogoUploadCropper";
 
-// Named, curated palette — drawn from the design system itself
-// (Neon Green is literally --wl-accent, White/Neutral is --wl-text)
-// plus the most-used presets from the previous picker's swatch list,
-// trimmed to a named seven instead of an arbitrary ten-plus-a-raw-
-// color-wheel. No free-form <input type="color"> — every message
-// stays readable because readableTextColor (the same function
-// MessageBubble.tsx uses to render real chat bubbles) already adapts
-// text color per background, so any color on this list is guaranteed
-// legible by construction, not by hand-picking "safe" hues.
-const CHAT_COLOR_PRESETS: { name: string; hex: string }[] = [
-  { name: "Neon Green", hex: "#39ff14" },
-  { name: "Electric Blue", hex: "#0ea5e9" },
-  { name: "Hot Pink", hex: "#ec4899" },
-  { name: "Golden Yellow", hex: "#fbbf24" },
-  { name: "Orange", hex: "#f97316" },
-  { name: "Purple", hex: "#a855f7" },
-  { name: "White/Neutral", hex: "#f5f4ec" },
-];
+// Chat Bubble Color uses the same choices as every color in Settings
+// (ColorChoices: Default · Multi · curated colors · Custom). Any custom
+// color stays readable: readableTextColor (the same function
+// MessageBubble.tsx uses for real bubbles) picks the text color per
+// background.
 
 const DEFAULT_BUBBLE_COLOR = "#1f890b"; // --wl-accent-dim, the app's own default bubble color
 
@@ -142,7 +130,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
     setColorStatus("idle");
   }
 
-  const previewHex = color ?? DEFAULT_BUBBLE_COLOR;
+  const previewStyle = chatColorStyle(color) ?? { backgroundColor: DEFAULT_BUBBLE_COLOR, color: readableTextColor(DEFAULT_BUBBLE_COLOR) };
 
   return (
     <div className="flex flex-col gap-6">
@@ -255,38 +243,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Chat bubble color">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={color === null}
-            onClick={() => applyColor(null)}
-            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-              color === null ? "border-black dark:border-white" : "border-transparent"
-            }`}
-          >
-            <span
-              className="h-8 w-8 rounded-full bg-gradient-to-br from-black/10 to-black/20 dark:from-white/10 dark:to-white/20"
-              aria-hidden
-            />
-            <span className="text-[10px] text-black/50 dark:text-white/50">Default</span>
-          </button>
-          {CHAT_COLOR_PRESETS.map((preset) => (
-            <button
-              key={preset.hex}
-              type="button"
-              role="radio"
-              aria-checked={color?.toLowerCase() === preset.hex}
-              onClick={() => applyColor(preset.hex)}
-              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--wl-accent)] ${
-                color?.toLowerCase() === preset.hex ? "border-black dark:border-white" : "border-transparent"
-              }`}
-            >
-              <span className="h-8 w-8 rounded-full" style={{ backgroundColor: preset.hex }} aria-hidden />
-              <span className="max-w-[4.5rem] text-[10px] text-black/50 dark:text-white/50">{preset.name}</span>
-            </button>
-          ))}
-        </div>
+        <ColorChoices label="Chat bubble color" value={color} onChange={(next) => void applyColor(next)} defaultColor={DEFAULT_BUBBLE_COLOR} />
         {colorStatus === "error" && (
           <p role="alert" className="text-xs text-red-500">
             Failed to save — try again.
@@ -300,7 +257,7 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
           <div className="flex justify-end">
             <span
               className="chat-bubble chat-bubble--mine max-w-[85%] rounded-2xl px-3.5 py-2 text-sm"
-              style={{ backgroundColor: previewHex, color: readableTextColor(previewHex) }}
+              style={previewStyle}
             >
               This is how your messages will appear in League Chat.
             </span>

@@ -58,6 +58,16 @@ export function readableTextColor(hex: string): string {
   return luminance > 0.6 ? "#111111" : "#ffffff";
 }
 
+// A sender's Chat Bubble Color as a style: their color with readable text,
+// Multi as a gradient (2026-10), or nothing for the default bubble.
+const MULTI_BUBBLE = "linear-gradient(135deg, #ec4899, #0ea5e9, #a855f7)";
+
+export function chatColorStyle(color: string | null | undefined): React.CSSProperties | undefined {
+  if (color === "multi") return { backgroundImage: MULTI_BUBBLE, color: "#ffffff" };
+  if (color && /^#[0-9a-fA-F]{6}$/.test(color)) return { backgroundColor: color, color: readableTextColor(color) };
+  return undefined;
+}
+
 /** Highlights `@DisplayName` occurrences for every real mention on this
  * message — a plain string find/replace against known mentioned names,
  * not a full rich-text model. The composer already inserted the literal
@@ -208,9 +218,7 @@ export function MessageBubble({
                 } ${highlightMention && !message.deleted ? "chat-bubble--mentions-me" : ""}`}
                 style={{
                   ...bubbleCorners(mine, !grouped, lastInRun),
-                  ...(!message.deleted && message.owner_chat_color
-                    ? { backgroundColor: message.owner_chat_color, color: readableTextColor(message.owner_chat_color) }
-                    : undefined),
+                  ...(!message.deleted ? chatColorStyle(message.owner_chat_color) : undefined),
                 }}
               >
                 {message.deleted ? message.body : renderBodyWithMentions(message.body, mentionedNames)}

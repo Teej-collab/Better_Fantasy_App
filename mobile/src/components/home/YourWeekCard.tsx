@@ -13,7 +13,7 @@ import type { YourWeek } from '@/lib/types';
 // YourWeekCard.tsx): league emblem and week, both scores with live
 // projections, the win-probability bar, then each side's rank, owner,
 // record with streak, and starters yet to play / in play.
-export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; color: string }) {
+export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; color: string; colors?: string[] | null }) {
   const { myWeek } = props;
   const m = myWeek.matchup!;
   const isLive = m.started && props.isGameDay;
@@ -24,7 +24,7 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
   const open = () => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } });
 
   return (
-    <NeonPanel color={isLive ? Colors.live : props.color} contentStyle={styles.card}>
+    <NeonPanel ring={isLive ? Colors.live : (props.colors ?? props.color)} contentStyle={styles.card}>
       <View style={styles.header}>
         {/* October's spider-web emblem and the like (lib/seasonal.ts). */}
         <Image source={seasonalEmblem()} style={styles.emblem} contentFit="contain" />

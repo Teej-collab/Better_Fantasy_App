@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getConversationMembers, type ChatAvatar, type ChatConversation } from "@/lib/api";
-import { initialsFor, readableTextColor } from "@/components/chat/MessageBubble";
+import { chatColorStyle, initialsFor, readableTextColor } from "@/components/chat/MessageBubble";
 
 // The iMessage-style "who's in this chat" screen — a group conversation
 // (league/commish_corner) only ever showed a small overlapping avatar
@@ -58,10 +58,7 @@ export function GroupInfoModal({ conversation, onClose }: { conversation: ChatCo
                 ) : (
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{
-                      backgroundColor: m.chat_color ?? "#6b7280",
-                      color: readableTextColor(m.chat_color ?? "#6b7280"),
-                    }}
+                    style={chatColorStyle(m.chat_color) ?? { backgroundColor: "#6b7280", color: readableTextColor("#6b7280") }}
                   >
                     {initialsFor(m.display_name)}
                   </span>

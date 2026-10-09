@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { DevSettings } from 'react-native';
 
 import { ACCENT_STORE_KEY, ActiveTheme, Colors, DefaultAccent, HoneycombColor, THEME_STORE_KEY, type ThemeName } from '@/constants/theme';
+import { isMulti, MULTI_COLORS } from '@/lib/colorChoice';
 import { usePreferences } from '@/lib/queries';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -14,13 +15,18 @@ function hexOr(value: string | null | undefined, fallback: string): string {
 
 export type Appearance = {
   theme: 'calm' | 'cosmic';
-  // Settings > Appearance > Accent Color.
+  // Settings > Appearance > Accent Color. Multi: each card takes its own
+  // section's color (accentMulti), the rest the default accent.
   accent: string;
+  accentMulti: boolean;
   // The moving ring on every card: Border Animation Color, falling back
   // to the accent (globals.css's --border-glow-color → --user-accent).
   ring: string;
+  // Border Animation Color: Multi — the ring sweeps through every color.
+  ringColors: string[] | null;
   // Home's Your Week card; falls back to the accent.
   yourWeek: string;
+  yourWeekColors: string[] | null;
   // The honeycomb's color, or null when it's turned off. Multi-color
   // gives each light behind the wall its own color (HONEYCOMB_MULTI).
   honeycomb: string | null;
@@ -35,7 +41,7 @@ export type Appearance = {
 // Settings > Appearance > Background > Multi-color: one light per color
 // wandering behind the wall, so the gaps glow in different colors as they
 // pass (frontend/src/components/CinematicHoneycombBackground.tsx too).
-export const HONEYCOMB_MULTI = ['#ec4899', '#0ea5e9', '#39ff14', '#a855f7', '#facc15'];
+export const HONEYCOMB_MULTI = MULTI_COLORS;
 
 const GLOW_BY_INTENSITY = { subtle: 0.14, standard: 0.28, high: 0.5 } as const;
 
@@ -45,13 +51,17 @@ export function useAppearance(): Appearance {
   const prefs = usePreferences().data;
   // Before preferences load, the color saved on this phone (Colors.accent).
   const accent = prefs ? hexOr(prefs.accent_color, DefaultAccent) : Colors.accent;
+  const accentMulti = isMulti(prefs?.accent_color);
   return {
     // The palette this launch was built with, not the saved choice:
     // the two only differ until the next launch (see useThemeSync).
     theme: ActiveTheme,
     accent,
+    accentMulti,
     ring: hexOr(prefs?.border_glow_color, accent),
+    ringColors: isMulti(prefs?.border_glow_color) ? MULTI_COLORS : null,
     yourWeek: hexOr(prefs?.your_week_color, accent),
+    yourWeekColors: isMulti(prefs?.your_week_color) ? MULTI_COLORS : null,
     honeycomb: prefs?.honeycomb_color === 'off' ? null : prefs?.honeycomb_color === 'multi' ? HONEYCOMB_MULTI[3] : hexOr(prefs?.honeycomb_color, HoneycombColor),
     honeycombColors:
       prefs?.honeycomb_color === 'multi' ? HONEYCOMB_MULTI : [hexOr(prefs?.honeycomb_color, HoneycombColor)],
@@ -64,7 +74,14 @@ export function useAppearance(): Appearance {
 // the owner's ring color; only Cosmic gives each section its own —
 // same rule as the web's [data-wl-theme="cosmic"] panel override.
 export function ringColorFor(appearance: Appearance, sectionColor: string | undefined): string {
-  return appearance.theme === 'cosmic' && sectionColor ? sectionColor : appearance.ring;
+  return (appearance.theme === 'cosmic' || appearance.accentMulti) && sectionColor ? sectionColor : appearance.ring;
+}
+
+// Multi rings (Border Animation Color: Multi), unless the card shows its
+// section color instead.
+export function ringColorsFor(appearance: Appearance, sectionColor: string | undefined): string[] | null {
+  if ((appearance.theme === 'cosmic' || appearance.accentMulti) && sectionColor) return null;
+  return appearance.ringColors;
 }
 
 // Remember the Look for the next launch (constants/theme.ts reads it
@@ -120,13 +137,23 @@ function saveAccent(accent: string | null): void {
   }
 }
 
-// Accent Color: saved for every screen styled at load, and reloaded now
+// Accent Color: saved for every screen styled at load, and the app reloads
 // so the whole app changes together instead of half now, half later.
+//
+// The reload waits until you leave Settings (flushAccentReload): with the
+// color picker, the accent changes many times while you choose.
+let accentReloadPending = false;
+
 export function applyAccent(accent: string | null): void {
   const next = accent && HEX.test(accent) ? accent : null;
-  if ((savedAccent() ?? null) === next) return;
-  saveAccent(next);
-  if ((next ?? DefaultAccent) !== Colors.accent) reloadQuietly();
+  if ((savedAccent() ?? null) !== next) saveAccent(next);
+  accentReloadPending = (next ?? DefaultAccent) !== Colors.accent;
+}
+
+export function flushAccentReload(): void {
+  if (!accentReloadPending) return;
+  accentReloadPending = false;
+  reloadQuietly();
 }
 
 // Picks up a Look chosen on the web (or on another phone). It's saved for

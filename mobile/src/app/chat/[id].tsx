@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ChatNameText } from '@/components/ChatNameText';
 import { SharedBetCard } from '@/components/bets/SharedBetCard';
 import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
@@ -392,9 +393,7 @@ function MessageBubble(props: {
   return (
     <View style={[styles.messageWrap, mine ? styles.alignEnd : styles.alignStart]}>
       {props.showName && (
-        <Text style={[styles.sender, message.owner_chat_color ? { color: message.owner_chat_color } : null]}>
-          {message.owner_name}
-        </Text>
+        <ChatNameText name={message.owner_name} chatColor={message.owner_chat_color} style={styles.sender} />
       )}
       <Pressable onLongPress={props.onLongPress} delayLongPress={300}>
         {/* A shared bet's live card sits above its "Shared a bet" bubble,

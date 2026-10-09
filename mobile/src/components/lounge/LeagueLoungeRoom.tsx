@@ -18,6 +18,7 @@ import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
+import { ChatNameText } from '@/components/ChatNameText';
 import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
@@ -25,6 +26,7 @@ import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { isTouchdown, MomentTakeover, type Moment, type ReactionCounts } from '@/components/lounge/MomentTakeover';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
+import { isHexColor } from '@/lib/colorChoice';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { useChatSocket } from '@/lib/chatSocket';
@@ -121,7 +123,7 @@ export function LeagueLoungeRoom(props: LoungeRoomProps) {
 }
 
 type FeedItem =
-  | { kind: 'message'; id: string; name: string; color: string; body: string; plus: number }
+  | { kind: 'message'; id: string; name: string; color: string; chatColor: string | null; body: string; plus: number }
   | { kind: 'moment'; id: string; text: string; points: string; team: string; odds: string | null };
 
 function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndParty }: LoungeRoomProps & { error: string | null }) {
@@ -297,7 +299,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           ) : (
             <View style={styles.message}>
               <Text style={styles.messageText}>
-                <Text style={[styles.bold, { color: item.color }]}>{item.name} </Text>
+                <ChatNameText name={`${item.name} `} chatColor={item.chatColor} fallback={item.color} style={styles.bold} />
                 <Text style={styles.messageBody}>{item.body}</Text>
               </Text>
               {item.plus > 0 && <Text style={styles.plus}>+{item.plus}</Text>}
@@ -343,13 +345,14 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
           kind: 'message' as const,
           id: `m-${m.id}`,
           name: m.owner_name.split(' ')[0],
-          color: m.owner_chat_color ?? NAME_COLORS[hashIndex(m.owner_name, NAME_COLORS.length)],
+          color: isHexColor(m.owner_chat_color) ? m.owner_chat_color : NAME_COLORS[hashIndex(m.owner_name, NAME_COLORS.length)],
+          chatColor: m.owner_chat_color,
           body: m.body,
           plus: m.reactions.reduce((n, r) => n + r.count, 0),
         }))
     : lk.chatMessages.slice(-40).map((m) => {
         const name = m.from?.name || m.from?.identity || 'Someone';
-        return { kind: 'message' as const, id: `lk-${m.id}`, name: name.split(' ')[0], color: NAME_COLORS[hashIndex(name, NAME_COLORS.length)], body: m.message, plus: 0 };
+        return { kind: 'message' as const, id: `lk-${m.id}`, name: name.split(' ')[0], color: NAME_COLORS[hashIndex(name, NAME_COLORS.length)], chatColor: null, body: m.message, plus: 0 };
       });
   // Moments sit after the messages that came before them.
   return [...messages, ...moments].reverse();

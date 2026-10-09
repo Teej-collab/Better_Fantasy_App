@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, Radius } from '@/constants/theme';
-import { ringColorFor, useAppearance } from '@/lib/appearance';
+import { ringColorFor, ringColorsFor, useAppearance } from '@/lib/appearance';
 
 const RING_WIDTH = 1.5;
 const ROTATION_MS = 5000;
@@ -40,6 +40,9 @@ type Props = {
   // shows in the Cosmic theme; Calm rings use the owner's ring color
   // (lib/appearance.ts ringColorFor).
   color?: string;
+  // A ring of its own that always applies — the Your Week card's color
+  // (Settings > Your Week Card Color), one color or Multi's several.
+  ring?: string | string[];
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   radius?: number;
@@ -49,9 +52,19 @@ type Props = {
 // section color sweeping around the border. Here, a gradient that
 // rotates behind a card inset by the ring width, clipped to the rounded
 // shape. With Reduce Motion on, the ring holds still.
-export function NeonPanel({ children, color: sectionColor, style, contentStyle, radius = Radius.lg }: Props) {
+export function NeonPanel({ children, color: sectionColor, ring, style, contentStyle, radius = Radius.lg }: Props) {
   const appearance = useAppearance();
-  const color = ringColorFor(appearance, sectionColor);
+  // Multi: the whole ring sweeps through every color instead of one bright
+  // segment fading out.
+  const multi = Array.isArray(ring) ? ring : ring ? null : ringColorsFor(appearance, sectionColor);
+  const color = typeof ring === 'string' ? ring : multi ? multi[0] : ringColorFor(appearance, sectionColor);
+  type Stops<T> = readonly [T, T, ...T[]];
+  const gradient: { colors: Stops<string>; locations: Stops<number> } = multi
+    ? {
+        colors: [multi[0], ...multi.slice(1), multi[0]] as unknown as Stops<string>,
+        locations: [...multi, multi[0]].map((_, i) => i / multi.length) as unknown as Stops<number>,
+      }
+    : { colors: [color, `${color}00`, `${color}00`], locations: [0, 0.3, 1] };
   const systemReduced = useReducedMotion();
   const reduceMotion = systemReduced || appearance.reducedMotion;
   const [size, setSize] = useState(0);
@@ -85,8 +98,8 @@ export function NeonPanel({ children, color: sectionColor, style, contentStyle, 
             pointerEvents="none"
             style={[styles.spinner, reduceMotion ? { transform: [{ rotate: '225deg' }, { scale }] } : spin]}>
             <LinearGradient
-              colors={[color, `${color}00`, `${color}00`]}
-              locations={[0, 0.3, 1]}
+              colors={gradient.colors}
+              locations={gradient.locations}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={StyleSheet.absoluteFill}

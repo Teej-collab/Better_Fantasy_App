@@ -127,7 +127,7 @@ function HomeScreenContent() {
     ) : null;
 
   const cards: Record<string, ReactNode> = {
-    yourWeek: <YourWeekSlot myWeek={myWeek.data ?? null} isGameDay={isGameDay} leagueName={leagueName} color={appearance.yourWeek} />,
+    yourWeek: <YourWeekSlot myWeek={myWeek.data ?? null} isGameDay={isGameDay} leagueName={leagueName} color={appearance.yourWeek} colors={appearance.yourWeekColors} />,
     awards:
       awards && week !== null ? (
         <AwardsCard awards={awards.awards} awardsWeek={awards.week} currentWeek={week} recap={recap} />
@@ -198,17 +198,17 @@ function HomeScreenContent() {
 }
 
 // The hero, or the web's EmptyHero when there's no matchup to show.
-function YourWeekSlot(props: { myWeek: YourWeek | null; isGameDay: boolean; leagueName: string | null; color: string }) {
+function YourWeekSlot(props: { myWeek: YourWeek | null; isGameDay: boolean; leagueName: string | null; color: string; colors: string[] | null }) {
   const { myWeek } = props;
   if (myWeek?.matchup) {
-    return <YourWeekCard myWeek={myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} color={props.color} />;
+    return <YourWeekCard myWeek={myWeek} isGameDay={props.isGameDay} leagueName={props.leagueName} color={props.color} colors={props.colors} />;
   }
   if (!myWeek) {
     // /me/week fails for an account that hasn't joined a league yet.
     return <MessageState message="You're signed in, but not on a team yet. Join or create a league to get started." />;
   }
   return (
-    <NeonPanel color={props.color} contentStyle={styles.emptyHero}>
+    <NeonPanel ring={props.colors ?? props.color} contentStyle={styles.emptyHero}>
       <Display style={styles.emptyTitle}>{myWeek.team_name}</Display>
       <Text style={styles.emptyText}>
         {myWeek.week === null || myWeek.week < 1

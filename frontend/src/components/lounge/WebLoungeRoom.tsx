@@ -35,6 +35,7 @@ import {
   useRoomTv,
 } from "@/lib/loungeLive";
 import { nflTeamColor, nflTeamName } from "@/lib/nfl-teams";
+import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
 // The League Lounge on the web (mockups 5 and 6): watch the game
 // together and sweat it together. A big TV for whoever's sharing, both
@@ -187,7 +188,11 @@ export function WebLoungeRoom({
         kind: "message" as const,
         id: `m-${m.id}`,
         name: m.owner_name.split(" ")[0],
-        color: m.owner_chat_color ?? NAME_COLORS[hash(m.owner_name, NAME_COLORS.length)],
+        color: isHexColor(m.owner_chat_color)
+          ? m.owner_chat_color
+          : m.owner_chat_color === MULTI
+            ? MULTI_COLORS[0]
+            : NAME_COLORS[hash(m.owner_name, NAME_COLORS.length)],
         body: m.body,
         plus: m.reactions.reduce((n, r) => n + r.count, 0),
       })),
