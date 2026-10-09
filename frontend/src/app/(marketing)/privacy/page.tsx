@@ -45,6 +45,10 @@ export default function PrivacyPage() {
             on the Lock Screen and in the Dynamic Island up to date.
           </li>
           <li>
+            <strong>Camera and microphone:</strong> only when you use them, for photos in chat, scanning invite codes,
+            and live video and voice in the Lounge. Lounge video and voice are live and aren&apos;t recorded.
+          </li>
+          <li>
             <strong>Usage and diagnostics:</strong> which pages you open, when you&apos;re online (so your league can
             see who&apos;s around), and error and crash reports. These include your device type, platform, screen
             size, and app version. We also log IP addresses to rate-limit sign-in attempts and block abuse.
@@ -74,7 +78,13 @@ export default function PrivacyPage() {
           <li>Resend (password-reset and account emails, and forwarding feedback to us)</li>
           <li>Apple and Google (delivering push notifications)</li>
           <li>Discord, Google, and Apple (only if you choose to sign in with them)</li>
+          <li>Expo (delivering app updates. It sees your device type and network address when the app checks for one.)</li>
+          <li>ESPN (only for a league whose commissioner connects it, to read that league&apos;s data)</li>
         </ul>
+        <p>
+          Each of these providers may use your information only to provide its service to us, and is required to
+          protect it at least as well as this policy does.
+        </p>
         <p>
           We may also disclose information if the law requires it, or to protect the safety of our users or the
           service.
@@ -85,7 +95,9 @@ export default function PrivacyPage() {
         <p>
           We use a secure sign-in cookie to keep you logged in, and a few small cookies and local-storage entries to
           remember your appearance settings (theme, accent color, animations). There are no advertising or
-          cross-site tracking cookies, so we don&apos;t need to ask for cookie consent.
+          cross-site tracking cookies, so we don&apos;t need to ask for cookie consent. Because we don&apos;t track you
+          across other sites or apps, there&apos;s nothing for Do Not Track or Global Privacy Control signals to turn
+          off.
         </p>
       </LegalSection>
 
@@ -96,8 +108,16 @@ export default function PrivacyPage() {
           accounts (and revokes Sign in with Apple), your league memberships, and your feedback, and signs you out everywhere. Shared league history
           stays with your team so your league&apos;s records don&apos;t break. That includes past scores, trades,
           standings, chat messages, and chug results. If you&apos;re the only commissioner of a league, you&apos;ll
-          need to hand that role to someone else first. To ask for a copy of your data, or for anything the delete button
-          doesn&apos;t cover, reach us through <LegalContact />.
+          need to hand that role to someone else first. You can turn off push notifications in Settings or in your phone&apos;s settings, and stop
+          sharing your camera or microphone in your phone&apos;s settings, at any time.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Your rights">
+        <p>
+          You can ask for a copy of your data, ask us to correct it, or ask us to delete it, wherever you live. Email
+          us at <LegalContact /> and we&apos;ll respond within 30 days. We don&apos;t sell your personal information or
+          share it for targeted advertising, and we won&apos;t treat you differently for using these rights.
         </p>
       </LegalSection>
 
@@ -105,7 +125,7 @@ export default function PrivacyPage() {
         <p>
           All traffic is encrypted with HTTPS, passwords are hashed, and uploaded videos are kept in private storage.
           Only members of your league can view them. No system is perfectly secure, but we take reasonable steps to
-          protect your information.
+          protect your information. Our servers and data are in the United States.
         </p>
       </LegalSection>
 
