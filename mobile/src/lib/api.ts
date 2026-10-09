@@ -653,6 +653,10 @@ export const api = {
     request<Poll>(`/leagues/${leagueId}/polls`, { method: 'POST', body: JSON.stringify({ question, options }) }),
   closePoll: (leagueId: number, pollId: number) => request<Poll>(`/leagues/${leagueId}/polls/${pollId}`, { method: 'PATCH' }),
   espnConnection: () => request<EspnConnectionStatus>('/league/espn-connection'),
+  // The league's own chat-filter words (backend app/moderation.py), commissioner only.
+  chatFilter: () => request<{ words: string[] }>('/league/chat-filter'),
+  updateChatFilter: (words: string[]) =>
+    request<{ words: string[] }>('/league/chat-filter', { method: 'PUT', body: JSON.stringify({ words }) }),
   connectEspn: (espnLeagueId: number, espnS2: string, espnSwid: string) =>
     request<unknown>('/league/espn-connection', {
       method: 'POST',

@@ -26,6 +26,7 @@ import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { isTouchdown, MomentTakeover, type Moment, type ReactionCounts } from '@/components/lounge/MomentTakeover';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
+import { cleanChat } from '@/lib/chatFilter';
 import { isHexColor } from '@/lib/colorChoice';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
@@ -352,7 +353,7 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
         }))
     : lk.chatMessages.slice(-40).map((m) => {
         const name = m.from?.name || m.from?.identity || 'Someone';
-        return { kind: 'message' as const, id: `lk-${m.id}`, name: name.split(' ')[0], color: NAME_COLORS[hashIndex(name, NAME_COLORS.length)], chatColor: null, body: m.message, plus: 0 };
+        return { kind: 'message' as const, id: `lk-${m.id}`, name: name.split(' ')[0], color: NAME_COLORS[hashIndex(name, NAME_COLORS.length)], chatColor: null, body: cleanChat(m.message), plus: 0 };
       });
   // Moments sit after the messages that came before them.
   return [...messages, ...moments].reverse();

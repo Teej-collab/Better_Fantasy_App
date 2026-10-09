@@ -654,6 +654,10 @@ export function usePendingTrades() {
   return useQuery({ queryKey: ['pending-trades'], queryFn: api.pendingTrades });
 }
 
+export function useChatFilter() {
+  return useQuery({ queryKey: ['chat-filter'], queryFn: api.chatFilter });
+}
+
 export function useEspnConnection() {
   return useQuery({ queryKey: ['espn-connection'], queryFn: api.espnConnection });
 }

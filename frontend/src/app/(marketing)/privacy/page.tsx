@@ -33,7 +33,8 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Things you post:</strong> chat messages, direct messages, images and GIFs you send, feedback you
-            submit (and any screenshot you attach), team logos, and chug videos you upload.
+            submit (and any screenshot you attach), team logos, and chug videos you upload (only in leagues that turn on the optional chug board,
+            which is for members 21 and older).
           </li>
           <li>
             <strong>ESPN league credentials:</strong> if a commissioner connects an ESPN league, we store the ESPN
@@ -131,7 +132,8 @@ export default function PrivacyPage() {
 
       <LegalSection title="Children">
         <p>
-          The Weekend isn&apos;t meant for anyone under 18, and we don&apos;t knowingly collect information from
+          The Weekend isn&apos;t meant for anyone under 18, and its optional chug board is only for members 21 and
+          older. We don&apos;t knowingly collect information from
           children under 13. If you believe a child has signed up, contact us and we&apos;ll delete the account.
         </p>
       </LegalSection>

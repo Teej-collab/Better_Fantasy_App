@@ -28,6 +28,7 @@ from app.notifications import dispatcher, formatter
 from app.queries import chat as chat_queries
 from app.queries import leagues as league_queries
 from app.queries import owner_preferences as preferences_queries
+from app import moderation
 
 router = APIRouter(prefix="/punishment-wheel", tags=["punishment-wheel"])
 logger = logging.getLogger(__name__)
@@ -115,6 +116,8 @@ async def add_item(body: AddItemRequest, request: Request, pool=Depends(get_pool
         )
         if count >= MAX_ITEMS:
             raise HTTPException(status_code=409, detail=f"The wheel holds {MAX_ITEMS} punishments")
+        if await moderation.clean_for_league(conn, ctx["league_id"], text) != text:
+            raise HTTPException(status_code=400, detail="That punishment uses a word that isn't allowed")
         await conn.execute(
             "INSERT INTO punishment_wheel_items (league_id, season, text, added_by_user_id) VALUES ($1, $2, $3, $4)",
             ctx["league_id"], ctx["season"], text, ctx["payload"]["user_id"],

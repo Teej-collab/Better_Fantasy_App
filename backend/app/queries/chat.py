@@ -4,6 +4,8 @@ reactions, mentions, read state. See app/routers/chat.py and
 migration 03417db98bb5.
 """
 
+from app import moderation
+
 
 async def get_league_conversation_id(conn, league_id: int) -> int | None:
     return await conn.fetchval(
@@ -351,6 +353,12 @@ async def insert_message(
     # (app/routers/chat.py's WS handler is the sole caller that ever
     # passes it) — every other conversation type leaves it NULL, same
     # "column exists, most rows don't use it" shape as image_url.
+    # Every message passes the chat filter here, whichever route sent it
+    # (app/moderation.py): the built-in list plus the league's own words.
+    league_id = await conn.fetchval("SELECT league_id FROM conversations WHERE id = $1", conversation_id)
+    keys = await moderation.league_keys(conn, league_id)
+    body = moderation.clean(body, keys)
+    title = moderation.clean(title, keys)
     return await conn.fetchrow(
         """
         INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id)

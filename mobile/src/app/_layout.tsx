@@ -206,6 +206,7 @@ function RootStack() {
           <Stack.Screen name="commissioner/roster" options={{ title: 'Roster & Keepers', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/trades" options={{ title: 'Trades', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/polls" options={{ title: 'Polls', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/chat-filter" options={{ title: 'Chat Filter', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/espn" options={{ title: 'ESPN Connection', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="admin/index" options={{ title: 'Admin', headerBackTitle: 'Back' }} />
           <Stack.Screen name="admin/live" options={{ title: 'Live', headerBackTitle: 'Admin' }} />

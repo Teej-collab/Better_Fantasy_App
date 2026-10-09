@@ -17,8 +17,9 @@ export default function TermsPage() {
 
       <LegalSection title="Who can use it">
         <p>
-          You must be at least 18 to use The Weekend. Features that involve alcohol, like the chug board, are only
-          for people of legal drinking age where they live. Keep your sign-in details to yourself. You&apos;re
+          You must be at least 18 to use The Weekend. The chug board is optional: each league&apos;s commissioner
+          decides whether to turn it on. Where it is on, it&apos;s only for members 21 or older, the legal drinking age
+          in the United States (or older, where the local drinking age is higher). Never drink and drive. Keep your sign-in details to yourself. You&apos;re
           responsible for anything done from your account.
         </p>
       </LegalSection>

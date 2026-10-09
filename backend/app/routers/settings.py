@@ -33,6 +33,7 @@ from app.image_url import validate_blob_image_url
 from app.notifications.quiet_hours import is_valid_timezone
 from app.queries import owner_preferences as preferences_queries
 from app.queries import settings as settings_queries
+from app import moderation
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -128,6 +129,9 @@ async def update_display_name(body: DisplayNameBody, request: Request, pool=Depe
         raise HTTPException(status_code=400, detail=f"Display name must be {_DISPLAY_NAME_MAX_LENGTH} characters or fewer")
     if any(ord(c) < 32 for c in name):
         raise HTTPException(status_code=400, detail="Display name can't contain control characters")
+    # Shown to the whole league, so the chat filter applies (app/moderation.py).
+    if moderation.clean(name) != name:
+        raise HTTPException(status_code=400, detail="Display name uses a word that isn't allowed")
 
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
@@ -213,6 +217,9 @@ async def update_team_name(body: TeamNameBody, request: Request, pool=Depends(ge
         raise HTTPException(status_code=400, detail=f"Team name must be {_TEAM_NAME_MAX_LENGTH} characters or fewer")
     if any(ord(c) < 32 for c in name):
         raise HTTPException(status_code=400, detail="Team name can't contain control characters")
+    # Shown to the whole league, so the chat filter applies (app/moderation.py).
+    if moderation.clean(name) != name:
+        raise HTTPException(status_code=400, detail="Team name uses a word that isn't allowed")
 
     active_season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:

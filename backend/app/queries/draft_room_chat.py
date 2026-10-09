@@ -11,10 +11,13 @@ stored here — that stays the existing real-time-only presence system,
 app/draft/manager.py.
 """
 
+from app import moderation
+
 MAX_MESSAGE_LENGTH = 500
 
 
 async def insert_message(conn, season: int, league_id: int, owner_id: int, text: str) -> dict:
+    text = await moderation.clean_for_league(conn, league_id, text)
     row = await conn.fetchrow(
         """
         INSERT INTO draft_room_messages (season, league_id, owner_id, text)

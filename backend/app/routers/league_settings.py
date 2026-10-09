@@ -41,6 +41,50 @@ def _require_session(request: Request) -> dict:
     return payload
 
 
+# The league's own chat-filter words (app/moderation.py), on top of the
+# built-in list every league gets. Commissioner-only; the built-in list
+# isn't shown or editable.
+MAX_FILTER_WORDS = 200
+
+
+class ChatFilterRequest(BaseModel):
+    words: list[str]
+
+
+@router.get("/chat-filter")
+async def get_chat_filter(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        words = await conn.fetchval("SELECT words FROM league_chat_filter_words WHERE league_id = $1", league_id)
+    return {"words": list(words or [])}
+
+
+@router.put("/chat-filter")
+async def update_chat_filter(body: ChatFilterRequest, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    words: list[str] = []
+    for raw in body.words:
+        word = raw.strip().lower()
+        if not word or word in words:
+            continue
+        if len(word) > 40 or " " in word:
+            raise HTTPException(status_code=400, detail="Each filter entry is one word, up to 40 characters")
+        words.append(word)
+    if len(words) > MAX_FILTER_WORDS:
+        raise HTTPException(status_code=400, detail=f"The filter holds up to {MAX_FILTER_WORDS} words")
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        await conn.execute(
+            """
+            INSERT INTO league_chat_filter_words (league_id, words) VALUES ($1, $2)
+            ON CONFLICT (league_id) DO UPDATE SET words = EXCLUDED.words, updated_at = now()
+            """,
+            league_id, words,
+        )
+    return {"words": words}
+
+
 @router.get("/scoring-rules")
 async def get_scoring_rules(request: Request, season: int | None = None, pool=Depends(get_pool)):
     payload = _require_session(request)

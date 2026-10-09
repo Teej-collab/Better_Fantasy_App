@@ -88,6 +88,11 @@ export default async function CommissionerPage() {
       description: "Ask your league a question and collect votes",
     },
     {
+      href: "/commissioner/chat-filter",
+      title: "Chat Filter",
+      description: "Slurs are always masked in chat — add any other words your league wants hidden",
+    },
+    {
       href: "/punishment-wheel",
       title: "Punishment Wheel",
       description: "Fill the wheel, then spin it once for this season's league-loser punishment",
