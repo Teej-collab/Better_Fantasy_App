@@ -250,9 +250,14 @@ function Swatches(props: {
     props.onChange(value);
   }
 
+  // iOS's picker reports the color it was handed when it first appears,
+  // as if it had been picked — that saved white for every row on first
+  // view (2026-10). Only a color different from what it was handed counts.
+  const pickerSelection = customShown ?? '#ffffff';
+
   function pickCustom(hex: string) {
     const value = hex.slice(0, 7).toLowerCase();
-    if (!isHexColor(value)) return;
+    if (!isHexColor(value) || value === pickerSelection) return;
     setCustom(value);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => props.onChange(value), CUSTOM_SAVE_DELAY_MS);
@@ -265,18 +270,26 @@ function Swatches(props: {
       {presets.map((p) => (
         <Swatch key={p.hex} color={p.hex} label={p.name} on={current === p.hex && !custom} onPress={() => pick(p.hex)} />
       ))}
-      <View style={[styles.swatch, customShown && styles.swatchOn]} accessibilityLabel="Custom color">
-        {canPickColor ? (
-          <Host matchContents>
-            <ColorPicker selection={customShown ?? '#ffffff'} supportsOpacity={false} onSelectionChange={pickCustom} />
-          </Host>
-        ) : (
-          <View style={[styles.swatchDot, styles.swatchOff]} />
-        )}
-        <Text style={styles.swatchLabel} numberOfLines={1}>
-          Custom
-        </Text>
-      </View>
+      {canPickColor && (
+        <View style={[styles.swatch, customShown && styles.swatchOn]} accessibilityLabel="Custom color" accessibilityRole="button">
+          {/* Drawn like every other dot (your color, or + before you pick
+              one); iOS's picker button sits on top, nearly invisible, so a
+              tap opens it without its own rainbow well changing the size. */}
+          <View style={styles.swatchDot}>
+            <View style={[styles.swatchDot, customShown ? { backgroundColor: customShown } : styles.swatchCustomEmpty]}>
+              {!customShown && <Text style={styles.offX}>+</Text>}
+            </View>
+            <View style={styles.pickerHitArea}>
+              <Host matchContents>
+                <ColorPicker selection={pickerSelection} supportsOpacity={false} onSelectionChange={pickCustom} />
+              </Host>
+            </View>
+          </View>
+          <Text style={styles.swatchLabel} numberOfLines={1}>
+            Custom
+          </Text>
+        </View>
+      )}
       {props.offOption && <Swatch color="transparent" label="Off" on={current === 'off'} onPress={() => pick('off')} off />}
     </View>
   );
@@ -1054,6 +1067,9 @@ const styles = StyleSheet.create({
   swatchOn: { borderColor: Colors.text },
   swatchDot: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   bubbleClip: { overflow: 'hidden' },
+  swatchCustomEmpty: { borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.35)' },
+  // Over the dot, scaled to cover it; 0.02 rather than 0 so iOS still delivers the tap.
+  pickerHitArea: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', opacity: 0.02, transform: [{ scale: 1.4 }] },
   swatchMulti: { flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' },
   multiQuarter: { width: '50%', height: '50%' },
   swatchOff: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
