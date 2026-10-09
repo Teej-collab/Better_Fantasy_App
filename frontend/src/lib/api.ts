@@ -1962,6 +1962,11 @@ export type MyFreeAgent = {
   // ensure_waiver_clock_if_game_locked). Treat the same as
   // waiver_clears_at being set: only a claim can acquire them.
   game_locked: boolean;
+  // A search also finds rostered players (2026-10): whose team they're on.
+  rostered_team_id?: number | null;
+  rostered_team_name?: string | null;
+  rostered_owner_name?: string | null;
+  is_mine?: boolean;
 };
 
 // Called server-side (free-agents/page.tsx) with the session cookie
@@ -2011,7 +2016,11 @@ export async function getMyFreeAgents(
   if (!sessionCookie) return [];
   const params = new URLSearchParams();
   if (position) params.set("position", position);
-  if (search) params.set("search", search);
+  if (search) {
+    params.set("search", search);
+    // A search also finds rostered players, tagged with their team (2026-10).
+    params.set("include_rostered", "true");
+  }
   const qs = params.toString() ? `?${params}` : "";
   const res = await fetch(`${API_BASE_URL}/me/team/free-agents${qs}`, {
     cache: "no-store",

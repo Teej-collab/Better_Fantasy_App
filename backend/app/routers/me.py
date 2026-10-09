@@ -37,7 +37,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.auth.config import SessionConfig
-from app.auth.league_context import require_active_league_id
+from app.auth.league_context import require_active_league_id, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool, on_own_conn
@@ -706,7 +706,9 @@ async def my_player_views(view: str, request: Request, ids: str = ""):
 
 
 @router.get("/team/free-agents")
-async def list_free_agents(request: Request, position: str | None = None, search: str | None = None):
+async def list_free_agents(
+    request: Request, position: str | None = None, search: str | None = None, include_rostered: bool = False
+):
     """The undrafted (season-wide) pool, same shape as /draft/pool minus
     the drafted flag — everyone on this list is by definition
     available.
@@ -729,7 +731,11 @@ async def list_free_agents(request: Request, position: str | None = None, search
     ours didn't) — always a completed week once current_week > 1, so
     no is_week_final gating needed the way the live current week's
     score would. next_opponent/game_time reuse _schedule_lookup below,
-    the same real-scoreboard cross-reference GET /team already does."""
+    the same real-scoreboard cross-reference GET /team already does.
+
+    include_rostered (2026-10, with a search): rostered players match too,
+    each with rostered_team_id/name/owner and is_mine, so a search finds
+    anyone and the app can offer a trade for someone on another team."""
     payload = _require_session(request)
     active_season = int(_require("ACTIVE_SEASON"))
 
@@ -739,12 +745,20 @@ async def list_free_agents(request: Request, position: str | None = None, search
         current_week = await league_queries.get_cached_current_week(conn, active_season)
         last_week = current_week - 1 if current_week and current_week > 1 else None
 
+        with_rostered = include_rostered and bool(search and search.strip())
+        my_owner_id = await resolve_owner_id(conn, payload) if with_rostered else None
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
                    COALESCE(pwp.projected_points, p.projected_avg_points) AS projected_points,
                    pws.fantasy_points AS score,
-                   pws_prev.fantasy_points AS last_week_score
+                   pws_prev.fantasy_points AS last_week_score,
+                   cr.team_id AS rostered_team_id, rt.team_name AS rostered_team_name,
+                   ro.display_name AS rostered_owner_name, rt.owner_id AS rostered_owner_id
             FROM players p
+            LEFT JOIN current_rosters cr
+                ON cr.season = $1 AND cr.league_id = $2 AND cr.sleeper_player_id = p.sleeper_player_id
+            LEFT JOIN teams_by_season rt ON rt.id = cr.team_id
+            LEFT JOIN owners ro ON ro.owner_id = rt.owner_id
             LEFT JOIN player_week_stats pws
                 ON pws.season = $1 AND pws.week = $3 AND pws.sleeper_player_id = p.sleeper_player_id
                 AND pws.league_id = $2
@@ -754,10 +768,9 @@ async def list_free_agents(request: Request, position: str | None = None, search
             LEFT JOIN player_weekly_projections pwp
                 ON pwp.season = $1 AND pwp.week = $3 AND pwp.sleeper_player_id = p.sleeper_player_id
             WHERE (p.is_draftable OR (p.position = ANY($5::text[]) AND p.pro_team IS NOT NULL))
-              AND p.sleeper_player_id NOT IN (
-                SELECT sleeper_player_id FROM current_rosters WHERE season = $1 AND league_id = $2
-            )
         """
+        if not with_rostered:
+            query += " AND cr.team_id IS NULL"
         # IDP leagues (2026-10) also pick up individual defenders.
         params: list = [active_season, league_id, current_week, last_week,
                         await league_format.extra_draftable_positions(conn, league_id)]
@@ -773,6 +786,9 @@ async def list_free_agents(request: Request, position: str | None = None, search
         )
 
         rows = [dict(r) for r in await conn.fetch(query, *params)]
+        for row in rows:
+            owner_id = row.pop("rostered_owner_id")
+            row["is_mine"] = row["rostered_team_id"] is not None and owner_id == my_owner_id
 
         # This league's real 1-day waiver period (app/domain/waivers.py)
         # — a row here means this "free agent" actually needs a waiver

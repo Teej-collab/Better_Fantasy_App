@@ -93,6 +93,13 @@ export type PlayerCard = {
   rostered_team_id: number | null;
   rostered_team_name: string | null;
   is_on_my_team: boolean;
+  // ESPN-style game log (2026-10): each game's line by category, with our points.
+  game_log?: PlayerGameLog | null;
+};
+
+export type PlayerGameLog = {
+  categories: { key: string; title: string; labels: string[] }[];
+  games: { week: number; opponent: string | null; result: string | null; fantasy_points: number | null; stats: Record<string, string[]> }[];
 };
 
 export async function getPlayerCard(sleeperPlayerId: string): Promise<PlayerCard> {

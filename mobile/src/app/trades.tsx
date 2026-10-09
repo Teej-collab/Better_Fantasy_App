@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
@@ -74,9 +74,12 @@ export default function TradesScreen() {
   const trades = useMyTrades();
   const league = useLeagueTrades();
   const [note, setNote] = useState('');
-  const [partnerId, setPartnerId] = useState<number | null>(null);
+  // Opened from a player ("Propose trade", 2026-10): their team and that
+  // player start picked.
+  const params = useLocalSearchParams<{ team?: string; player?: string }>();
+  const [partnerId, setPartnerId] = useState<number | null>(params.team ? Number(params.team) || null : null);
   const [give, setGive] = useState<Set<string>>(new Set());
-  const [receive, setReceive] = useState<Set<string>>(new Set());
+  const [receive, setReceive] = useState<Set<string>>(new Set(params.player ? [params.player] : []));
   const [proposing, setProposing] = useState(false);
   const [proposeError, setProposeError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);

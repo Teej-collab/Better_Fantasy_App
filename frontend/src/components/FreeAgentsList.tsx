@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { addFreeAgent, getMyTeam, submitWaiverClaim, type MyFreeAgent, type RosterEntry } from "@/lib/api";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
@@ -54,6 +55,11 @@ type PanelState =
  * Add can't silently commit a roster move.
  */
 // `bidding`: claims in this league are FAAB bids (guillotine, 2026-10).
+// The trade page with this player's team and them already picked.
+function tradeHref(p: MyFreeAgent): string {
+  return `/trades?team=${p.rostered_team_id}&player=${encodeURIComponent(p.sleeper_player_id)}`;
+}
+
 export function FreeAgentsList({ players: initialPlayers, bidding = false }: { players: MyFreeAgent[]; bidding?: boolean }) {
   const [bid, setBid] = useState("1");
   const [players, setPlayers] = useState(initialPlayers);
@@ -180,6 +186,19 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
               <span className="flex items-center gap-2">
                 {/* Adding happens in the Matchup Stats layout (the confirm/
                     drop panels live there) — the + jumps back and opens it. */}
+                {p.rostered_team_id != null ? (
+                  p.is_mine ? (
+                    <span className="h-6 w-6 shrink-0" aria-hidden />
+                  ) : (
+                    <Link
+                      href={tradeHref(p)}
+                      aria-label={`Propose a trade for ${p.full_name}`}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-400 text-xs font-bold text-black"
+                    >
+                      ⇄
+                    </Link>
+                  )
+                ) : (
                 <button
                   type="button"
                   onClick={() => {
@@ -192,6 +211,7 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                 >
                   +
                 </button>
+                )}
                 <PlayerHeadshot sleeperPlayerId={p.sleeper_player_id} proTeam={p.pro_team} name={p.full_name} size={28} />
                 <span className="flex min-w-0 flex-col">
                   <button
@@ -268,7 +288,12 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                         )}
                       </span>
                     )}
-                    {(p.waiver_clears_at || p.game_locked) && (
+                    {p.rostered_team_id != null && (
+                      <span className="text-xs font-medium text-sky-600 dark:text-sky-400">
+                        {p.is_mine ? "Your team" : `On ${p.rostered_team_name ?? "a team"}`}
+                      </span>
+                    )}
+                    {p.rostered_team_id == null && (p.waiver_clears_at || p.game_locked) && (
                       <span
                         className="mt-0.5 w-fit rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] font-semibold text-black/60 uppercase dark:bg-white/10 dark:text-white/60"
                         title={
@@ -285,7 +310,19 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                 <span className="flex shrink-0 items-center gap-2 text-right text-xs tabular-nums sm:gap-4 text-black/60 dark:text-white/60">
                   <span className="w-10">{formatStat(p.projected_points)}</span>
                   <span className="w-10">{formatStat(p.score)}</span>
-                  {activeId === p.sleeper_player_id ? (
+                  {p.rostered_team_id != null ? (
+                    // A search hit on someone's roster (2026-10): trade for them instead.
+                    p.is_mine ? (
+                      <span className="w-[52px] text-center text-xs text-black/50 dark:text-white/50">Yours</span>
+                    ) : (
+                      <Link
+                        href={tradeHref(p)}
+                        className="w-[52px] rounded-full border border-sky-400 px-2 py-1.5 text-center text-xs font-medium text-sky-500 hover:bg-sky-400/10"
+                      >
+                        Trade
+                      </Link>
+                    )
+                  ) : activeId === p.sleeper_player_id ? (
                     <button
                       onClick={close}
                       className="w-[52px] rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"

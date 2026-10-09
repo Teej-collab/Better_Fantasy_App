@@ -7,11 +7,14 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
+import { GameLogTable } from '@/components/players/GameLogTable';
 import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatPoints } from '@/lib/format';
 import { positionColor } from '@/lib/positionColors';
 import { usePlayerCard } from '@/lib/queries';
+import { proposeTradeFor } from '@/lib/tradeLinks';
+import { useAppearance } from '@/lib/appearance';
 import type { FreeAgent, PlayerCard } from '@/lib/types';
 
 const CHART_HEIGHT = 96;
@@ -49,6 +52,7 @@ function asFreeAgent(card: PlayerCard): FreeAgent {
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const card = usePlayerCard(id);
+  const accent = useAppearance().accent;
   const [adding, setAdding] = useState(false);
 
   if (card.isPending) return <LoadingState />;
@@ -97,6 +101,16 @@ export default function PlayerScreen() {
               <Text style={styles.addText}>Add</Text>
             </Pressable>
           )}
+          {/* On someone else's team: offer a trade for them (2026-10). */}
+          {p.rostered_team_id !== null && !p.is_on_my_team && (
+            <Pressable
+              onPress={() => proposeTradeFor(p)}
+              accessibilityRole="button"
+              accessibilityLabel={`Propose a trade for ${p.full_name}`}
+              style={({ pressed }) => [styles.addButton, styles.tradeButton, pressed && styles.pressed]}>
+              <Text style={styles.addText}>⇄ Trade</Text>
+            </Pressable>
+          )}
         </Card>
 
         <View style={styles.stats}>
@@ -121,12 +135,19 @@ export default function PlayerScreen() {
           </View>
         )}
 
-        {p.weekly_scores.length > 0 && (
+        {(p.weekly_scores.length > 0 || p.game_log) && (
           <>
             <SectionTitle>Game log</SectionTitle>
-            <Card>
-              <WeeklyChart scores={p.weekly_scores} />
-            </Card>
+            {p.weekly_scores.length > 0 && (
+              <Card>
+                <WeeklyChart scores={p.weekly_scores} />
+              </Card>
+            )}
+            {p.game_log && (
+              <Card>
+                <GameLogTable log={p.game_log} accent={accent} />
+              </Card>
+            )}
           </>
         )}
 
@@ -220,6 +241,7 @@ const styles = StyleSheet.create({
   ownerText: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
   addButton: { backgroundColor: Colors.accent, borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   addText: { color: Colors.bg, fontWeight: '800' },
+  tradeButton: { backgroundColor: '#60a5fa' },
   pressed: { opacity: 0.7 },
   stats: { flexDirection: 'row', gap: Spacing.md },
   stat: {

@@ -393,7 +393,11 @@ export const api = {
     }),
   // `position` is the stored value (defenses are "DEF", shown as "D/ST").
   freeAgents: (position?: string, search?: string) => {
-    const params = [position && `position=${encodeURIComponent(position)}`, search && `search=${encodeURIComponent(search)}`]
+    // A search also finds rostered players (each tagged with its team).
+    const params = [
+      position && `position=${encodeURIComponent(position)}`,
+      search && `search=${encodeURIComponent(search)}&include_rostered=true`,
+    ]
       .filter(Boolean)
       .join('&');
     return request<{ players: FreeAgent[] }>(`/me/team/free-agents${params ? `?${params}` : ''}`);
@@ -429,7 +433,11 @@ export const api = {
     request<unknown>(`/me/team/waivers/claim/${claimId}/cancel`, { method: 'POST' }),
   draftState: () => request<DraftState>('/draft/state'),
   draftPool: (position?: string, search?: string) => {
-    const params = [position && `position=${encodeURIComponent(position)}`, search && `search=${encodeURIComponent(search)}`]
+    // A search also finds rostered players (each tagged with its team).
+    const params = [
+      position && `position=${encodeURIComponent(position)}`,
+      search && `search=${encodeURIComponent(search)}&include_rostered=true`,
+    ]
       .filter(Boolean)
       .join('&');
     return request<{ players: DraftPoolPlayer[] }>(`/draft/pool${params ? `?${params}` : ''}`);

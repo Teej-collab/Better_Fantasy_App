@@ -268,6 +268,11 @@ export type FreeAgent = {
   waiver_clears_at: string | null;
   // Their game started; adding them puts them on waivers.
   game_locked: boolean;
+  // A search also finds rostered players (2026-10): whose team they're on.
+  rostered_team_id?: number | null;
+  rostered_team_name?: string | null;
+  rostered_owner_name?: string | null;
+  is_mine?: boolean;
 };
 
 export type AddFreeAgentResult =
@@ -288,6 +293,11 @@ export type WaiverClaim = {
 };
 
 // GET /players/{sleeper_player_id}/card (frontend/src/lib/playerCardApi.ts).
+export type PlayerGameLog = {
+  categories: { key: string; title: string; labels: string[] }[];
+  games: { week: number; opponent: string | null; result: string | null; fantasy_points: number | null; stats: Record<string, string[]> }[];
+};
+
 export type PlayerCard = {
   sleeper_player_id: string;
   full_name: string;
@@ -319,6 +329,8 @@ export type PlayerCard = {
   } | null;
   latest_week: { week: number; fantasy_points: number } | null;
   weekly_scores: { week: number; fantasy_points: number; opponent: string | null }[];
+  // ESPN-style game log (2026-10): each game's line by category, with our points.
+  game_log?: PlayerGameLog | null;
   rostered_team_id: number | null;
   rostered_team_name: string | null;
   is_on_my_team: boolean;

@@ -37,6 +37,7 @@ import logging
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.nfl_schedule import schedule_lookup_by_pro_team
 from app.providers.espn.player_info import get_player_info
+from app.providers.espn.player_game_log import get_player_game_log
 from app.providers.espn.player_overview import get_player_overview
 from app.providers.nfl_scoreboard import get_week_scoreboard
 
@@ -133,10 +134,11 @@ async def get_player_card(
                     sleeper_player_id, card["espn_player_id"],
                 )
 
+    # This season only (2026-10): every season's rows used to mix into one log.
     weekly_rows = await conn.fetch(
         "SELECT week, fantasy_points FROM player_week_stats "
-        "WHERE sleeper_player_id = $1 AND league_id = $2 ORDER BY week ASC",
-        sleeper_player_id, league_id,
+        "WHERE sleeper_player_id = $1 AND league_id = $2 AND ($3::int IS NULL OR season = $3) ORDER BY week ASC",
+        sleeper_player_id, league_id, season,
     )
     weekly_scores = [dict(r) for r in weekly_rows]
 
@@ -163,6 +165,21 @@ async def get_player_card(
         r["opponent"] = opponent_by_week.get(r["week"])
 
     card["weekly_scores"] = weekly_scores
+
+    # The ESPN-style game log (2026-10): each game's box-score line by
+    # category, with our fantasy points for that week beside it.
+    card["game_log"] = None
+    if card.get("espn_player_id") is not None and season is not None:
+        try:
+            game_log = await get_player_game_log(card["espn_player_id"], season)
+        except Exception:
+            logger.warning("ESPN game log lookup failed for espn_player_id=%s", card["espn_player_id"], exc_info=True)
+            game_log = None
+        if game_log:
+            points = {r["week"]: r["fantasy_points"] for r in weekly_scores}
+            for game in game_log["games"]:
+                game["fantasy_points"] = points.get(game["week"])
+            card["game_log"] = game_log
     card["latest_week"] = (
         {"week": weekly_scores[-1]["week"], "fantasy_points": weekly_scores[-1]["fantasy_points"]}
         if weekly_scores else None

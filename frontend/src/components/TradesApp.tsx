@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   acceptTrade,
   cancelTrade,
@@ -75,7 +75,10 @@ const REVIEW_EXPLAINER: Record<TradeSettings["review_mode"], (s: TradeSettings) 
  * same "personal admin" class of page, not a server-rendered display
  * page like Team/Matchup.
  */
-export function TradesApp() {
+export function TradesApp({
+  initialTeamId = null,
+  initialPlayerId = null,
+}: { initialTeamId?: number | null; initialPlayerId?: string | null } = {}) {
   const [myOwnerId, setMyOwnerId] = useState<number | null>(null);
   const [teams, setTeams] = useState<TradeTeam[] | null>(null);
   const [myTrades, setMyTrades] = useState<Trade[] | null>(null);
@@ -84,7 +87,9 @@ export function TradesApp() {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(initialTeamId);
+  // The player to pre-pick once their team's roster loads — once only.
+  const pendingPlayer = useRef(initialPlayerId);
   const [myRoster, setMyRoster] = useState<TradeRosterPlayer[]>([]);
   const [theirRoster, setTheirRoster] = useState<TradeRosterPlayer[]>([]);
   const [give, setGive] = useState<Set<string>>(new Set());
@@ -150,7 +155,12 @@ export function TradesApp() {
       setTheirRoster([]);
       if (selectedTeamId === null) return;
       getTeamRosterForTrade(selectedTeamId)
-        .then(setTheirRoster)
+        .then((roster) => {
+          setTheirRoster(roster);
+          const wanted = pendingPlayer.current;
+          pendingPlayer.current = null;
+          if (wanted && roster.some((p) => p.sleeper_player_id === wanted)) setReceive(new Set([wanted]));
+        })
         .catch(() => setTheirRoster([]));
     }, 0);
     return () => clearTimeout(id);

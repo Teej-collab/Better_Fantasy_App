@@ -12,6 +12,7 @@ import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { formatGameTime, formatPoints } from '@/lib/format';
+import { proposeTradeFor } from '@/lib/tradeLinks';
 import { openPlayer, useFreeAgents, useMe } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
 
@@ -137,7 +138,7 @@ function PlayersScreenContent() {
           ) : players.isError ? (
             <MessageState message="Couldn't load players." />
           ) : (
-            <MessageState message="No free agents match." />
+            <MessageState message={search ? 'No players match.' : 'No free agents match.'} />
           )
         }
         renderItem={({ item }) => (
@@ -168,19 +169,49 @@ function AddButton({ onWaivers, onPress }: { onWaivers: boolean; onPress: () => 
   );
 }
 
+// A search also finds rostered players (2026-10). They get a trade button
+// instead of add — straight to a trade offer with their team for them —
+// or nothing when they're already yours.
+function isRostered(p: FreeAgent): boolean {
+  return p.rostered_team_id != null;
+}
+
+function ownerLabel(p: FreeAgent): string {
+  return p.is_mine ? 'Your team' : `On ${p.rostered_team_name ?? 'a team'}`;
+}
+
+function RowAction({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) {
+  const onWaivers = !!player.waiver_clears_at || player.game_locked;
+  if (!isRostered(player)) return <AddButton onWaivers={onWaivers} onPress={onAdd} />;
+  if (player.is_mine) return <View style={styles.addButtonSpace} />;
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.selectionAsync();
+        proposeTradeFor(player);
+      }}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Propose a trade for ${player.full_name}`}
+      style={({ pressed }) => [styles.addButton, styles.tradeButton, pressed && styles.addPressed]}>
+      <Text style={[styles.addPlus, styles.tradeIcon]}>⇄</Text>
+    </Pressable>
+  );
+}
+
 // The pinned player column in a stat view: the same add button, then name and team.
 function ViewCell({ player, onPress, onAdd }: { player: FreeAgent; onPress: () => void; onAdd: () => void }) {
   const onWaivers = !!player.waiver_clears_at || player.game_locked;
   return (
     <View style={styles.viewCell}>
-      <AddButton onWaivers={onWaivers} onPress={onAdd} />
+      <RowAction player={player} onAdd={onAdd} />
       <Pressable onPress={onPress} style={styles.flex}>
         <Text style={styles.viewName} numberOfLines={1}>
           {player.full_name}
         </Text>
         <Text style={styles.detail} numberOfLines={1}>
           {player.position === 'DEF' ? 'D/ST' : player.position} · {player.pro_team ?? '—'}
-          {onWaivers ? '  · W' : ''}
+          {isRostered(player) ? `  · ${ownerLabel(player)}` : onWaivers ? '  · W' : ''}
         </Text>
       </Pressable>
     </View>
@@ -191,7 +222,9 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
   const onWaivers = !!player.waiver_clears_at || player.game_locked;
   const detail = [
     `${player.position === 'DEF' ? 'D/ST' : player.position}${player.pro_team ? ` · ${player.pro_team}` : ''}`,
-    player.next_opponent && (player.game_time ? `${player.next_opponent} ${formatGameTime(player.game_time)}` : player.next_opponent),
+    isRostered(player)
+      ? ownerLabel(player)
+      : player.next_opponent && (player.game_time ? `${player.next_opponent} ${formatGameTime(player.game_time)}` : player.next_opponent),
   ]
     .filter(Boolean)
     .join('  ·  ');
@@ -199,19 +232,23 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
   return (
     <PreviewLink
       href={{ pathname: '/player/[id]', params: { id: player.sleeper_player_id } }}
-      menu={[
-        { title: onWaivers ? 'Place Waiver Claim' : 'Add to Roster', icon: onWaivers ? 'clock' : 'plus.circle', onPress: onAdd },
-      ]}
+      menu={
+        !isRostered(player)
+          ? [{ title: onWaivers ? 'Place Waiver Claim' : 'Add to Roster', icon: onWaivers ? 'clock' : 'plus.circle', onPress: onAdd }]
+          : player.is_mine
+            ? []
+            : [{ title: 'Propose Trade', icon: 'arrow.left.arrow.right', onPress: () => proposeTradeFor(player) }]
+      }
       style={styles.row}
       pressedStyle={styles.rowPressed}>
-      <AddButton onWaivers={onWaivers} onPress={onAdd} />
+      <RowAction player={player} onAdd={onAdd} />
       <View style={styles.flex}>
         <View style={styles.nameLine}>
           <Text style={styles.name} numberOfLines={1}>
             {player.full_name}
           </Text>
           {player.injury_status && <Text style={styles.injury}>{player.injury_status}</Text>}
-          {onWaivers && <Text style={styles.waiver}>W</Text>}
+          {onWaivers && !isRostered(player) && <Text style={styles.waiver}>W</Text>}
         </View>
         <Text style={styles.detail} numberOfLines={1}>
           {detail}
@@ -300,6 +337,9 @@ const styles = StyleSheet.create({
   addPressed: { opacity: 0.6 },
   addPlus: { fontSize: 20, lineHeight: 22, fontWeight: '700' },
   addSpacer: { width: 28 + Spacing.md },
+  addButtonSpace: { width: 28, height: 28, marginRight: Spacing.md },
+  tradeButton: { borderColor: '#60a5fa', backgroundColor: '#60a5fa22' },
+  tradeIcon: { color: '#60a5fa', fontSize: 15 },
   availableRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
   available: { color: Colors.text, fontSize: 18, fontFamily: Fonts.display, letterSpacing: 1, textTransform: 'uppercase' },
   viewTable: { paddingHorizontal: Spacing.lg },

@@ -7,6 +7,7 @@ import { dropPlayer } from "@/lib/api";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
+import { GameLogTable } from "@/components/players/GameLogTable";
 
 const TABS = ["Overview", "Game Log"] as const;
 type Tab = (typeof TABS)[number];
@@ -171,11 +172,16 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                     {dropping ? "Dropping…" : "↓ Drop"}
                   </button>
                 )}
+                {/* Someone else's player: straight to a trade for them (2026-10). */}
                 <Link
-                  href="/trades"
+                  href={
+                    card.is_on_my_team || card.rostered_team_id === null
+                      ? "/trades"
+                      : `/trades?team=${card.rostered_team_id}&player=${encodeURIComponent(card.sleeper_player_id)}`
+                  }
                   className="rounded-full bg-black/10 px-3 py-1.5 text-xs font-semibold hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15"
                 >
-                  Trade Offers
+                  {card.is_on_my_team ? "Trade Offers" : "⇄ Trade"}
                 </Link>
               </div>
             )}
@@ -295,7 +301,9 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
             {tab === "Game Log" && (
               <div className="flex flex-col gap-1 rounded-xl bg-black/5 p-3 text-sm dark:bg-white/5">
-                {card.weekly_scores.length === 0 ? (
+                {card.game_log ? (
+                  <GameLogTable log={card.game_log} />
+                ) : card.weekly_scores.length === 0 ? (
                   <p className="py-6 text-center text-black/50 dark:text-white/50">
                     No games computed yet this season.
                   </p>

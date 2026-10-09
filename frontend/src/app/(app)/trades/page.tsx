@@ -8,7 +8,13 @@ import { TradesApp } from "@/components/TradesApp";
 
 export const metadata: Metadata = { title: "Trades — The Weekend" };
 
-export default async function TradesPage() {
+export default async function TradesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ team?: string; player?: string }>;
+}) {
+  // From a player's "Trade" button (2026-10): their team and them, picked.
+  const { team, player } = await searchParams;
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
   const me = await getMe(sessionCookie);
@@ -36,7 +42,7 @@ export default async function TradesPage() {
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="trades" />
       <h1 className="text-2xl font-semibold">Trades</h1>
-      <TradesApp />
+      <TradesApp initialTeamId={team ? Number(team) || null : null} initialPlayerId={player ?? null} />
     </div>
   );
 }

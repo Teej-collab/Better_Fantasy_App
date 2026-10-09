@@ -761,6 +761,26 @@ async def test_new_free_agents_list_excludes_rostered_players(pool, monkeypatch)
     assert rostered not in ids
 
 
+async def test_free_agent_search_can_include_rostered_players(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    owner_id, team_id = await _seed_owner_with_team(pool, "fa-srch", espn_team_id=112)
+    mine = await _seed_player(pool, "fa-srch-zq-mine", position="WR")
+    free = await _seed_player(pool, "fa-srch-zq-free", position="WR")
+    await _seed_roster_entry(pool, team_id, mine, lineup_slot="BE")
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        plain = await client.get("/me/team/free-agents", params={"search": "fa-srch-zq"})
+        wide = await client.get("/me/team/free-agents", params={"search": "fa-srch-zq", "include_rostered": "true"})
+
+    assert {p["sleeper_player_id"] for p in plain.json()["players"]} == {free}
+    by_id = {p["sleeper_player_id"]: p for p in wide.json()["players"]}
+    assert set(by_id) == {free, mine}
+    assert by_id[mine]["rostered_team_id"] == team_id and by_id[mine]["is_mine"] is True
+    assert by_id[free]["rostered_team_id"] is None and by_id[free]["is_mine"] is False
+
+
 async def test_free_agents_list_includes_projected_points_and_this_weeks_score(pool, monkeypatch):
     from app.routers import me as me_router
 
