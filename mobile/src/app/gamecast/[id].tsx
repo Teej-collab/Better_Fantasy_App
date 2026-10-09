@@ -4,15 +4,17 @@ import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { GamecastBets } from '@/components/bets/GamecastBets';
+import { BoxScore } from '@/components/gamecast/BoxScore';
 import { GamecastField } from '@/components/gamecast/GamecastField';
 import { DriveChart, LastPlayCard, PlayByPlay, Scoreboard, ScoringCard, StakeCard } from '@/components/gamecast/GamecastSections';
 import { MomentBanner, useGameMoments } from '@/components/gamecast/MomentBanner';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { trackGamecastGameSelected } from '@/lib/analytics';
+import { useAppearance } from '@/lib/appearance';
 import { api, gamecastSocketUrl } from '@/lib/api';
 import { isLive, lastSnap } from '@/lib/gamecast';
-import { queryClient, useFantasyImpact, useGamecastGame, usePlayFantasy } from '@/lib/queries';
+import { queryClient, useFantasyImpact, useGamecastBoxScore, useGamecastGame, usePlayFantasy } from '@/lib/queries';
 import type { LiveGame } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 2000;
@@ -96,6 +98,8 @@ export default function GamecastScreen() {
   // holds a socket open.
   const connected = useGamecastSocket(id, !!game.data && game.data.status !== 'final');
   const impact = useFantasyImpact(id, live);
+  const box = useGamecastBoxScore(id, live);
+  const accent = useAppearance().accent;
   const lastPlay = game.data ? lastSnap(game.data) : null;
   const playFantasy = usePlayFantasy(id, lastPlay?.play_id ?? null, live);
   const { moment, dismiss } = useGameMoments(game.data, lastPlay, playFantasy.data);
@@ -104,7 +108,7 @@ export default function GamecastScreen() {
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([game.refetch(), impact.refetch(), playFantasy.refetch()]);
+    await Promise.all([game.refetch(), impact.refetch(), playFantasy.refetch(), box.refetch()]);
     setRefreshing(false);
   }
 
@@ -125,6 +129,7 @@ export default function GamecastScreen() {
         {g.status !== 'scheduled' && <LastPlayCard play={lastPlay} fantasy={playFantasy.data ?? []} />}
         <GamecastBets gameId={g.game_id} live={live} />
         {impact.data && <StakeCard impact={impact.data} />}
+        {box.data && <BoxScore box={box.data} impact={impact.data} accent={accent} />}
         <ScoringCard game={g} />
         <DriveChart game={g} />
         <PlayByPlay game={g} />

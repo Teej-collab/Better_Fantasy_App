@@ -70,6 +70,7 @@ import type {
   DraftPoolPlayer,
   DraftState,
   FantasyImpact,
+  GamecastBoxScore,
   GamecastGameSummary,
   LiveGame,
   Me,
@@ -352,6 +353,7 @@ export const api = {
   // Every game this week that has a Gamecast (live, upcoming or final).
   gamecastGames: () => request<{ games: GamecastGameSummary[] }>('/nfl/live-games'),
   gamecastGame: (gameId: string) => request<LiveGame>(`/nfl/games/${encodeURIComponent(gameId)}`),
+  gamecastBoxScore: (gameId: string) => request<GamecastBoxScore>(`/nfl/games/${encodeURIComponent(gameId)}/boxscore`),
   // The Lounge: the TV game's recent history (it plays on a delay), the
   // room's TV settings, and the lobby's games ranked by your stakes.
   gamecastTimeline: (gameId: string, since?: number) =>

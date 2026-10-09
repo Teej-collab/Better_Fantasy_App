@@ -229,6 +229,15 @@ export function useGamecastGame(gameId: string) {
   return useQuery({ queryKey: ['gamecast', gameId], queryFn: () => api.gamecastGame(gameId) });
 }
 
+// The full box score; refreshes on the live beat while the game is on.
+export function useGamecastBoxScore(gameId: string, live: boolean) {
+  return useQuery({
+    queryKey: ['gamecast-boxscore', gameId],
+    queryFn: () => api.gamecastBoxScore(gameId),
+    refetchInterval: live ? LIVE_REFRESH_MS : false,
+  });
+}
+
 export function useFantasyImpact(gameId: string, live: boolean) {
   return useQuery({
     queryKey: ['fantasy-impact', gameId],

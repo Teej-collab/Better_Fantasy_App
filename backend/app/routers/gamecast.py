@@ -21,6 +21,7 @@ from app.auth.config import SessionConfig
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.db import get_pool
 from app.gamecast import service
+from app.gamecast.boxscore import get_box_score
 from app.gamecast.manager import manager
 from app.gamecast.providers import get_nfl_data_provider
 
@@ -89,6 +90,18 @@ async def game_timeline(game_id: str, since: float | None = None):
     if since is not None:
         snapshots = [s for s in snapshots if s["at"] > since]
     return {"server_now": time.time(), "snapshots": snapshots}
+
+
+@router.get("/games/{game_id}/boxscore")
+async def game_box_score(game_id: str):
+    """The full box score, ESPN-style (app/gamecast/boxscore.py). Public
+    like the game itself; the app marks your players from fantasy-impact."""
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            return await get_box_score(conn, game_id)
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=404, detail="Unknown game_id")
 
 
 @router.get("/games/{game_id}/fantasy-impact")

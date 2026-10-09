@@ -518,6 +518,19 @@ export type FantasyImpact = {
   };
 };
 
+// Gamecast's ESPN-style box score (backend app/gamecast/boxscore.py).
+export type BoxScoreAthlete = {
+  espn_id: number | null;
+  player_id: string | null;
+  name: string | null;
+  short_name: string | null;
+  position: string | null;
+  stats: string[];
+};
+export type BoxScoreCategory = { key: string; title: string; labels: string[]; athletes: BoxScoreAthlete[]; totals: string[] };
+export type BoxScoreTeam = { abbr: string; name: string; logo: string | null; home_away: 'home' | 'away' | null; categories: BoxScoreCategory[] };
+export type GamecastBoxScore = { final: boolean; teams: BoxScoreTeam[] };
+
 // Everyone in your league who was on a play, and what it earned them.
 export type PlayFantasyPlayer = {
   player_id: string;
