@@ -75,8 +75,8 @@ function useLocalReminders() {
 }
 
 // Hands the home-screen widget a fresh matchup snapshot whenever /me/week
-// loads (the live refetch keeps it current on game day), and blanks it on
-// sign-out so it doesn't keep showing someone's score.
+// loads (the live refetch keeps it current on game day). Signing out
+// blanks it (lib/auth.tsx).
 function useHomeWidget() {
   const myWeek = useMyWeek().data;
   const team = useMyTeam().data;
@@ -100,7 +100,6 @@ function useHomeWidget() {
     if (myWeek !== undefined) void syncLiveActivity(myWeek).catch(() => {});
   }, [myWeek]);
   useEffect(() => listenForPushToStart(), []);
-  useEffect(() => () => updateMatchupWidget(null), []);
 }
 
 // The season's home-screen icon (October's spider web...), checked each

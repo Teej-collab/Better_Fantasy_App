@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { API_BASE_URL, api, setSessionToken, setUnauthorizedHandler } from '@/lib/api';
 import { endAll as endAllLiveActivities } from '@/lib/liveActivity';
 import { unregisterForPush } from '@/lib/pushRegistration';
+import { updateMatchupWidget } from '@/lib/homeWidget';
 
 export const TOKEN_KEY = 'weekend-league.session';
 // Readable after the phone's first unlock since boot, not only while it's
@@ -58,6 +59,14 @@ function queryParam(url: string, name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+// Signed out: the Matchup widget stops showing your score. Only here — it
+// used to run whenever the tabs unmounted, and an app reload (applying an
+// accent color) unmounts them too, which blanked a signed-in widget to
+// "No matchup this week" mid-game.
+function clearWidgets(): void {
+  updateMatchupWidget(null);
+}
+
 export function AuthProvider({ children, onSignOut }: { children: ReactNode; onSignOut: () => void }) {
   const [token, setToken] = useState<string | null | undefined>(undefined);
 
@@ -76,6 +85,7 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     await unregisterForPush().catch(() => {});
     await api.logout().catch(() => {});
     await applyToken(null);
+    clearWidgets();
     onSignOut();
   }, [applyToken, onSignOut]);
 
@@ -95,7 +105,10 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     // The session is already dead server-side, so just forget it here
     // (calling signOut would make another request that 401s).
     setUnauthorizedHandler(() => {
-      void applyToken(null).then(onSignOut);
+      void applyToken(null).then(() => {
+        clearWidgets();
+        onSignOut();
+      });
     });
     return () => setUnauthorizedHandler(null);
   }, [applyToken, onSignOut]);
