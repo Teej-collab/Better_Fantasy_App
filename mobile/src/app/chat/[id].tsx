@@ -16,8 +16,8 @@ import { api, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
-import { queryClient, useChatConversations, useChatMessages, useMe } from '@/lib/queries';
-import type { AnnouncementReceipts, ChatGif, ChatMessage } from '@/lib/types';
+import { queryClient, useChatConversations, useChatMembers, useChatMessages, useMe, usePreferences } from '@/lib/queries';
+import type { AnnouncementReceipts, ChatGif, ChatMember, ChatMessage } from '@/lib/types';
 
 // backend/app/routers/chat.py's ALLOWED_REACTIONS and DEFAULT_PAGE_SIZE.
 const REACTIONS = ['😂', '🔥', '💀', '👍', '❤️', '😭'];
@@ -40,6 +40,10 @@ export default function ConversationScreen() {
   const { connected, typingByConversation, send, setOpenConversation } = useChatSocket();
 
   const [draft, setDraft] = useState('');
+  const [selectionEnd, setSelectionEnd] = useState(0);
+  // Display name → owner_id for each @mention picked from the list; only
+  // the ones still in the text when it's sent count (the web composer's rule).
+  const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
   const [title, setTitle] = useState('');
   // The message whose long-press menu is open (reactions, Reply, Report, Block).
   const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
@@ -62,6 +66,25 @@ export default function ConversationScreen() {
   const isAnnouncements = conversation?.type === 'commish_corner';
   const canPost = conversation?.can_post ?? true;
   const typists = (typingByConversation[conversationId] ?? []).filter((t) => t.owner_id !== myOwnerId);
+  const members = useChatMembers().data ?? [];
+  const highlightMentions = usePreferences().data?.mention_highlighting_enabled ?? true;
+  const memberNames: Record<number, string> = Object.fromEntries(members.map((m) => [m.owner_id, m.display_name]));
+  if (myOwnerId !== null && me.data?.display_name) memberNames[myOwnerId] = me.data.display_name;
+
+  // "@Jo" right before the cursor opens the member list.
+  const mentionQuery = draft.slice(0, selectionEnd).match(/(?:^|\s)@(\w*)$/)?.[1] ?? null;
+  const mentionMatches =
+    mentionQuery === null
+      ? []
+      : members.filter((m) => m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
+
+  function selectMention(member: ChatMember) {
+    const before = draft.slice(0, selectionEnd).replace(/@(\w*)$/, `@${member.display_name} `);
+    setDraft(before + draft.slice(selectionEnd));
+    setSelectionEnd(before.length);
+    setPendingMentions((prev) => new Map(prev).set(member.display_name, member.owner_id));
+    void Haptics.selectionAsync();
+  }
 
   async function loadOlder() {
     const current = messages.data;
@@ -81,6 +104,9 @@ export default function ConversationScreen() {
 
   function onChangeDraft(text: string) {
     setDraft(text);
+    // Typing at the end moves the cursor with it; onSelectionChange
+    // corrects this for edits mid-text.
+    setSelectionEnd((prev) => (prev >= draft.length ? text.length : prev));
     const now = Date.now();
     if (text && now - lastTypingSent.current > TYPING_SEND_INTERVAL_MS) {
       lastTypingSent.current = now;
@@ -98,11 +124,16 @@ export default function ConversationScreen() {
     if (isAnnouncements) event.title = title.trim();
     if (imageReady) event.image_url = pendingImage.url;
     if (replyTo) event.reply_to_id = replyTo.id;
+    const body = draft.trim();
+    const mentions = [...pendingMentions.entries()].filter(([name]) => body.includes(`@${name}`)).map(([, ownerId]) => ownerId);
+    if (mentions.length) event.mentions = mentions;
     // The sent message comes back over the socket like everyone else's,
     // so it only appears once the server has saved it.
     if (send(event)) {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setDraft('');
+      setSelectionEnd(0);
+      setPendingMentions(new Map());
       setTitle('');
       setPendingImage(null);
       setReplyTo(null);
@@ -244,6 +275,8 @@ export default function ConversationScreen() {
               mine={item.owner_id === myOwnerId}
               showName={showName}
               announcement={isAnnouncements}
+              memberNames={memberNames}
+              mentionsMe={highlightMentions && myOwnerId !== null && item.mentions.includes(myOwnerId)}
               canSeeReceipts={isAnnouncements && (canPost || item.owner_id === myOwnerId)}
               onLongPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -302,6 +335,23 @@ export default function ConversationScreen() {
               </Pressable>
             </View>
           )}
+          {mentionMatches.length > 0 && (
+            <View style={styles.mentionList}>
+              {mentionMatches.map((m, i) => (
+                <Pressable
+                  key={m.owner_id}
+                  onPress={() => selectMention(m)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mention ${m.display_name}`}
+                  style={({ pressed }) => [styles.mentionRow, i > 0 && styles.mentionDivider, pressed && styles.pressed]}>
+                  <Text style={styles.mentionName}>{m.display_name}</Text>
+                  <Text style={styles.mentionTeam} numberOfLines={1}>
+                    {m.team_name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           <View style={styles.composerRow}>
             <Pressable onPress={chooseAttachment} hitSlop={8} accessibilityRole="button" accessibilityLabel="Attach a photo" style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
               <Text style={styles.attachText}>+</Text>
@@ -323,6 +373,7 @@ export default function ConversationScreen() {
               ref={inputRef}
               value={draft}
               onChangeText={onChangeDraft}
+              onSelectionChange={(e) => setSelectionEnd(e.nativeEvent.selection.end)}
               placeholder={connected ? 'Message' : 'Connecting…'}
               placeholderTextColor={Colors.textSecondary}
               multiline
@@ -385,6 +436,9 @@ function MessageBubble(props: {
   mine: boolean;
   showName: boolean;
   announcement: boolean;
+  memberNames: Record<number, string>;
+  // Mentions the viewer, with Settings → Chat → Mention Notifications on.
+  mentionsMe: boolean;
   canSeeReceipts: boolean;
   onLongPress: () => void;
   onOpenImage: (url: string) => void;
@@ -399,7 +453,7 @@ function MessageBubble(props: {
         {/* A shared bet's live card sits above its "Shared a bet" bubble,
             outside it, so it keeps its own colors. */}
         {message.bet_id ? <SharedBetCard betId={message.bet_id} mine={mine} /> : null}
-        <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+        <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, props.mentionsMe && !message.deleted && styles.bubbleMentionsMe]}>
           {message.reply_to && (
             <View style={styles.reply}>
               <Text style={styles.replyName}>{message.reply_to.owner_name}</Text>
@@ -416,7 +470,13 @@ function MessageBubble(props: {
           )}
           {!!message.body && (
             <Text style={[styles.body, mine && styles.textMine]}>
-              {props.announcement ? <LinkedBody text={message.body} messageId={message.id} mine={mine} /> : message.body}
+              {props.announcement ? (
+                <LinkedBody text={message.body} messageId={message.id} mine={mine} />
+              ) : message.deleted ? (
+                message.body
+              ) : (
+                <MentionedBody text={message.body} names={message.mentions.map((id) => props.memberNames[id]).filter(Boolean)} mine={mine} />
+              )}
             </Text>
           )}
           {!!message.body && <BracketLinkCard body={message.body} />}
@@ -436,6 +496,28 @@ function MessageBubble(props: {
       )}
       {props.canSeeReceipts && !message.deleted && <ReceiptsLine messageId={message.id} mine={mine} />}
     </View>
+  );
+}
+
+/** Each real mention's `@DisplayName` stands out — the composer put the
+ *  exact name in the text, so a plain find against the mentioned names
+ *  is enough (MessageBubble.tsx's renderBodyWithMentions on the web). */
+function MentionedBody({ text, names, mine }: { text: string; names: string[]; mine: boolean }) {
+  if (names.length === 0) return <>{text}</>;
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const parts = text.split(new RegExp(`(@(?:${escaped.join('|')}))`, 'g'));
+  return (
+    <>
+      {parts.map((part, i) =>
+        names.some((n) => part === `@${n}`) ? (
+          <Text key={i} style={[styles.mention, mine && styles.mentionMine]}>
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </>
   );
 }
 
@@ -568,6 +650,20 @@ const styles = StyleSheet.create({
   bubble: { borderRadius: Radius.lg, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   bubbleMine: { backgroundColor: Colors.accent },
   bubbleTheirs: { backgroundColor: Colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border },
+  bubbleMentionsMe: { borderWidth: 1.5, borderColor: Colors.accent },
+  mention: { color: Colors.accent, fontWeight: '800' },
+  mentionMine: { color: Colors.bg, textDecorationLine: 'underline' },
+  mentionList: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+  },
+  mentionRow: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  mentionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
+  mentionName: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  mentionTeam: { color: Colors.textSecondary, fontSize: 12 },
   body: { color: Colors.text, fontSize: 16, lineHeight: 21 },
   textMine: { color: Colors.bg },
   announcementTitle: { color: Colors.text, fontSize: 16, fontWeight: '800', marginBottom: 2 },
