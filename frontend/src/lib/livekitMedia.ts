@@ -51,10 +51,13 @@ const GAME_CAPTURE: ScreenShareCaptureOptions = {
 const GAME_PUBLISH: TrackPublishOptions = {
   screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
   // Lower layers for viewers on a weak connection, so they drop to a
-  // lighter picture instead of freezing.
+  // lighter picture instead of freezing. All 30fps: adaptiveStream picks
+  // a viewer's layer by how big the TV is drawn, and when the web TV was
+  // capped small, everyone got the 360p layer — at 15fps, which read as
+  // a choppy stream (2026-10-11).
   screenShareSimulcastLayers: [
     new VideoPreset(1280, 720, 2_500_000, 30),
-    new VideoPreset(640, 360, 600_000, 15),
+    new VideoPreset(640, 360, 900_000, 30),
   ],
   // When the sharer's upload can't keep up, keep the frame rate and
   // soften the picture rather than stutter.

@@ -2355,6 +2355,107 @@ button[data-lk-source="screen_share"] {
   display: none;
 }
 
+/* Lounge / Watch Party room layout (WebLoungeRoom.tsx). Phones stack
+   TV → gamecast → cameras → chat. */
+.lounge-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.lounge-tv {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+.lounge-side {
+  min-height: 600px;
+}
+.lounge-cams-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  align-content: start;
+}
+
+/* Laptops and up: the TV takes the width, as tall as the window allows
+   (header + tickers + padding ≈ 210px), chat stays beside it, and the
+   gamecast and cameras share the row underneath. */
+@media (min-width: 1024px) {
+  .lounge-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) clamp(340px, 25vw, 420px);
+    grid-template-areas:
+      "tv tv side"
+      "cast cams side";
+    align-items: start;
+  }
+  .lounge-tv-cell {
+    grid-area: tv;
+  }
+  .lounge-tv {
+    width: min(100%, calc((100dvh - 210px) * 16 / 9));
+    margin-inline: auto;
+  }
+  .lounge-cast {
+    grid-area: cast;
+  }
+  .lounge-cams {
+    grid-area: cams;
+  }
+  .lounge-cams-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  .lounge-side {
+    grid-area: side;
+    position: sticky;
+    top: 1.25rem;
+    height: calc(100dvh - 190px);
+    min-height: 480px;
+  }
+}
+
+/* Big and ultrawide monitors: three columns that fill the window with
+   no page scroll — gamecast over the cameras on the left, the TV as
+   big as its column allows in the middle, chat on the right. */
+@media (min-width: 1800px) {
+  .lounge-grid {
+    grid-template-columns: clamp(380px, 23vw, 780px) minmax(0, 1fr) clamp(380px, 18vw, 620px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "cast tv side"
+      "cams tv side";
+    align-items: stretch;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .lounge-tv-cell {
+    container-type: size;
+    display: grid;
+    place-items: center;
+    min-height: 0;
+  }
+  .lounge-tv {
+    width: min(100cqw, 100cqh * 16 / 9);
+  }
+  .lounge-cams {
+    overflow: hidden;
+  }
+  .lounge-cams-grid {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* A few people: one big camera each. */
+  .lounge-cams-grid[data-few] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lounge-side {
+    position: static;
+    height: auto;
+    min-height: 0;
+  }
+}
+
 
 /* ============================================================
    Native app shell (iOS/Android Capacitor WebView) — layout.tsx's

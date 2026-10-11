@@ -305,36 +305,47 @@ export function WebLoungeRoom({
       <TickerStrip label="NFL" labelColor="#9aa3b2" items={noLinks(nflItems)} fast tint="rgba(255,255,255,0.03)" />
       {leagueItems.length > 0 && <TickerStrip label="LEAGUE" labelColor={accent} items={noLinks(leagueItems)} fast tint="rgba(57,255,20,0.04)" />}
 
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-wrap gap-5 px-4 py-5 sm:px-6">
-        <div className="flex min-w-0 flex-col gap-3.5" style={{ flex: "999 1 640px" }}>
+      {/* Phones stack everything. From 1024px the TV gets the width with
+          chat beside it, and the gamecast and cameras sit under it; from
+          1800px (big and ultrawide monitors) it's three columns — gamecast
+          and cameras on the left, the TV as big as the screen allows, chat
+          on the right — with no page scroll. Layout lives in globals.css
+          (.lounge-grid). */}
+      <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6">
+        <div className="lounge-tv-cell">
           <Tv share={share} game={game} moment={moment} counts={counts} catchingUp={delayed.catchingUp} accent={accent} />
-          {moment ? (
-            <MomentCards moment={moment} winBefore={winBefore} winNow={winPct} accent={accent} />
-          ) : (
-            <section aria-label="Gamecast" className="flex flex-wrap gap-3.5">
-              <div className="flex min-w-0 flex-col gap-2.5" style={{ flex: "2 1 420px" }}>
-                {game ? (
-                  <FieldVisualization game={game} beta />
-                ) : (
-                  <div className="rounded-[14px] border border-white/[0.08] bg-[#12151d] p-4 text-sm text-[#9aa3b2]">
-                    {share ? "Waiting for whoever's sharing to pick the game on the TV." : "When someone shares a game, its gamecast shows here."}
-                  </div>
-                )}
-                {game && <LastPlay game={game} points={lastPlayPoints} accent={accent} />}
-              </div>
-              <div aria-label="In the room" className="grid gap-2 rounded-[14px] border border-white/[0.08] bg-[#12151d] p-3.5" style={{ flex: "1 1 240px", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", alignContent: "start" }}>
-                {participants.slice(0, 9).map((p) => (
-                  <Tile key={p.identity} participant={p} accent={accent} />
-                ))}
-                <button onClick={() => setVolumeOpen(true)} className="col-span-3 mt-1 rounded-full border border-white/[0.1] py-1.5 text-xs font-semibold text-[#9aa3b2]">
-                  Adjust everyone&apos;s volume
-                </button>
-              </div>
-            </section>
-          )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[#10131b] p-3" style={{ flex: "1 1 340px", maxWidth: 420, minHeight: 600 }}>
+        <section aria-label="Gamecast" className="lounge-cast flex min-w-0 flex-col gap-3">
+          {moment ? (
+            <MomentCards moment={moment} winBefore={winBefore} winNow={winPct} accent={accent} />
+          ) : game ? (
+            <>
+              <FieldVisualization game={game} beta />
+              <LastPlay game={game} points={lastPlayPoints} accent={accent} />
+            </>
+          ) : (
+            <div className="rounded-[14px] border border-white/[0.08] bg-[#12151d] p-4 text-sm text-[#9aa3b2]">
+              {share ? "Waiting for whoever's sharing to pick the game on the TV." : "When someone shares a game, its gamecast shows here."}
+            </div>
+          )}
+        </section>
+
+        <section aria-label="In the room" className="lounge-cams flex min-h-0 min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.08] bg-[#12151d] p-3">
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <span className="text-xs font-bold tracking-wider text-[#9aa3b2] uppercase">In the room · {participants.length}</span>
+            <button onClick={() => setVolumeOpen(true)} className="rounded-full border border-white/[0.1] px-3 py-1 text-xs font-semibold text-[#9aa3b2] hover:bg-white/5">
+              Volume
+            </button>
+          </div>
+          <div className="lounge-cams-grid" data-few={participants.length <= 3 ? "" : undefined}>
+            {participants.map((p) => (
+              <Tile key={p.identity} participant={p} accent={accent} />
+            ))}
+          </div>
+        </section>
+
+        <aside className="lounge-side flex min-w-0 flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[#10131b] p-3">
           <div role="tablist" aria-label="Side panel" className="flex gap-1.5">
             {(["chat", "sweat", "plays"] as const).map((id) => (
               <button
@@ -417,10 +428,8 @@ function Tv({
   return (
     <section
       aria-label={moment ? "Touchdown" : "Shared game"}
-      className="relative overflow-hidden rounded-2xl border"
+      className="lounge-tv relative overflow-hidden rounded-2xl border"
       style={{
-        aspectRatio: "16 / 9",
-        maxHeight: 480,
         borderColor: moment ? `${teamColor}aa` : "rgba(255,255,255,0.08)",
         background: "radial-gradient(120% 90% at 50% 20%, #1d3a24 0%, #0f1f14 55%, #070b08 100%)",
         boxShadow: moment ? `0 0 60px ${teamColor}55` : undefined,
@@ -564,11 +573,14 @@ function Tile({ participant, accent }: { participant: Participant; accent: strin
   const name = participant.isLocal ? "You" : participant.name || participant.identity;
   return (
     <div
-      className="relative flex items-end overflow-hidden rounded-[10px] p-1.5 text-[11px] font-bold"
-      style={{ aspectRatio: "4 / 3", background: TILE_COLORS[hash(name, TILE_COLORS.length)], boxShadow: speaking ? `0 0 0 2px ${accent}` : "none" }}
+      className="relative flex items-end overflow-hidden rounded-xl p-2 text-[13px] font-bold"
+      style={{ aspectRatio: "16 / 9", background: TILE_COLORS[hash(name, TILE_COLORS.length)], boxShadow: speaking ? `0 0 0 2px ${accent}` : "none" }}
     >
       {camera && !camera.publication?.isMuted && <VideoTrack trackRef={camera} className="absolute inset-0 h-full w-full object-cover" />}
-      <span className="relative">{name}</span>
+      {!(camera && !camera.publication?.isMuted) && (
+        <span className="font-display absolute inset-0 flex items-center justify-center text-3xl text-white/70">{name.slice(0, 1).toUpperCase()}</span>
+      )}
+      <span className="relative rounded-md bg-black/55 px-2 py-0.5">{name}</span>
     </div>
   );
 }
@@ -576,7 +588,7 @@ function Tile({ participant, accent }: { participant: Participant; accent: strin
 function MomentCards({ moment, winBefore, winNow, accent }: { moment: Moment; winBefore: number | null; winNow: number | null; accent: string }) {
   const mine = [...moment.players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points)).slice(0, 2);
   return (
-    <section aria-label="What that play meant" className="grid gap-3" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
       {mine.map((p, i) => (
         <div
           key={p.player_id}
@@ -605,7 +617,7 @@ function MomentCards({ moment, winBefore, winNow, accent }: { moment: Moment; wi
           </b>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
