@@ -46,6 +46,11 @@ const GAME_CAPTURE: ScreenShareCaptureOptions = {
   resolution: { width: 1920, height: 1080, frameRate: 30 },
   // Prioritize smooth motion over pin-sharp stills when bandwidth is tight.
   contentHint: "motion",
+  // The sharer stops hearing the shared tab straight from that tab, so
+  // the game can't drown out everyone's voices; the room plays it back
+  // to them at their own volume instead (WebLoungeRoom.tsx's
+  // SharerGameVolume). Chrome/Edge, and only when sharing a tab.
+  suppressLocalAudioPlayback: true,
 };
 
 const GAME_PUBLISH: TrackPublishOptions = {

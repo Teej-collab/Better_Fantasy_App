@@ -9,6 +9,7 @@ import type { Bet, LiveGame, RosterPlayer, WeekMatchupContextItem } from '@/lib/
 // the play does on the TV.
 export type LoungeSweat = {
   ready: boolean;
+  matchupId: number | null;
   myTeamName: string | null;
   opponentName: string | null;
   myScore: number;
@@ -37,6 +38,7 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
   const m = week?.matchup ?? null;
   return {
     ready: !!m,
+    matchupId: m?.matchup_id ?? null,
     myTeamName: week?.team_name ?? null,
     opponentName: m?.opponent_team_name ?? null,
     myScore: m?.my_score ?? 0,

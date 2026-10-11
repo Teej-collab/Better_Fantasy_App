@@ -8,6 +8,7 @@ import {
   useParticipants,
   useRemoteParticipants,
   useTracks,
+  VideoTrack,
   type TrackReference,
 } from '@livekit/react-native';
 import Slider from '@react-native-community/slider';
@@ -35,6 +36,7 @@ import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useChatMessages, useMe } from '@/lib/queries';
+import { useRosterMoments, type RosterMoment } from '@/lib/rosterMoments';
 import type { GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
@@ -225,7 +227,32 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     return c;
   }, [reactions]);
 
-  const feed = useFeed(party, moments);
+  // No game on the TV: your own starters' touchdowns and 5+ point plays
+  // from every game instead (lib/rosterMoments.ts).
+  const rosterMoments = useRosterMoments(sweat.matchupId, sweat.ready ? sweat.myStarters : null, !tvGameId);
+  const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
+  const [rosterBanner, setRosterBanner] = useState<RosterMoment | null>(null);
+  const [bannerShownFor, setBannerShownFor] = useState<string | null>(null);
+  if (latestRosterMoment && latestRosterMoment.id !== bannerShownFor) {
+    setBannerShownFor(latestRosterMoment.id);
+    setRosterBanner(latestRosterMoment);
+  }
+  useEffect(() => {
+    if (!rosterBanner) return;
+    if (rosterBanner.touchdown) haptics.success();
+    const id = setTimeout(() => setRosterBanner(null), 15_000);
+    return () => clearTimeout(id);
+  }, [rosterBanner]);
+  const rosterFeed: FeedItem[] = rosterMoments.map((m) => ({
+    kind: 'moment',
+    id: `roster-${m.id}`,
+    text: `${lastName(m.playerName)} ${m.touchdown ? 'touchdown' : 'big play'}`,
+    points: `+${m.points.toFixed(1)}`,
+    team: m.proTeam ?? '',
+    odds: null,
+  }));
+
+  const feed = useFeed(party, [...moments, ...rosterFeed]);
   const game = delayed.game;
   const watching = participants.length;
 
@@ -269,15 +296,14 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           </View>
         )}
       </View>
-      {game && <LoungeField game={game} />}
+      {game ? <LoungeField game={game} /> : rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
       <SweatCard sweat={sweat} game={game} onOpen={() => setSweatOpen(true)} />
 
-      <Pressable onPress={() => setVolumeOpen(true)} style={styles.people} accessibilityRole="button" accessibilityLabel="People in the room — adjust their volume">
-        {participants.slice(0, 7).map((p) => (
-          <Person key={p.identity} participant={p} accent={accent} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.peopleScroll} contentContainerStyle={styles.people}>
+        {participants.map((p) => (
+          <Person key={p.identity} participant={p} accent={accent} onPress={() => setVolumeOpen(true)} />
         ))}
-        {participants.length > 7 && <Text style={styles.more}>+{participants.length - 7}</Text>}
-      </Pressable>
+      </ScrollView>
 
       <FlatList
         style={styles.feed}
@@ -359,14 +385,47 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
   return [...messages, ...moments].reverse();
 }
 
-function Person({ participant, accent }: { participant: Participant; accent: string }) {
+/** A camera tile — their video when their camera's on, else initials.
+ *  Tap for everyone's volume. */
+function Person({ participant, accent, onPress }: { participant: Participant; accent: string; onPress: () => void }) {
   const speaking = useIsSpeaking(participant);
-  const name = participant.name || participant.identity;
+  const camera = (useTracks([Track.Source.Camera]) as TrackReference[]).find((t) => t.participant.identity === participant.identity);
+  const name = participant.isLocal ? 'You' : participant.name || participant.identity;
+  const showVideo = !!camera && !camera.publication?.isMuted;
   return (
-    <View
-      style={[styles.person, { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] }, speaking && { borderColor: accent, borderWidth: 2 }]}
-      accessibilityLabel={`${name}${speaking ? ', talking' : ''}`}>
-      <Text style={styles.personText}>{initialsOf(name)}</Text>
+    <Pressable
+      onPress={onPress}
+      style={[styles.person, { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] }, speaking && { borderColor: accent }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}${speaking ? ', talking' : ''} — adjust volume`}>
+      {showVideo ? (
+        <VideoTrack trackRef={camera} style={StyleSheet.absoluteFill} objectFit="cover" mirror={participant.isLocal} />
+      ) : (
+        <Text style={styles.personInitials}>{initialsOf(name)}</Text>
+      )}
+      <Text style={styles.personName} numberOfLines={1}>
+        {name}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Under the TV for a few seconds when one of your starters scores or
+ *  breaks a big play in any game — only while no game is on the TV. */
+function RosterBanner({ moment, accent }: { moment: RosterMoment; accent: string }) {
+  return (
+    <View style={[styles.rosterBanner, { borderColor: `${accent}66`, backgroundColor: `${accent}14` }]}>
+      <Text style={[styles.rosterBannerKind, { color: accent }]}>{moment.touchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.rosterBannerName} numberOfLines={1}>
+          {moment.playerName}
+        </Text>
+        <Text style={styles.rosterBannerSub} numberOfLines={1}>
+          Your {moment.position ?? 'player'}
+          {moment.proTeam ? ` · ${moment.proTeam}` : ''}
+        </Text>
+      </View>
+      <Text style={[styles.rosterBannerPoints, { color: accent }]}>+{moment.points.toFixed(1)}</Text>
     </View>
   );
 }
@@ -537,10 +596,16 @@ const styles = StyleSheet.create({
   error: { color: '#f87171', fontSize: 12, paddingHorizontal: 14 },
   burst: { position: 'absolute', top: 18, right: 18, backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   burstText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-  people: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 },
-  person: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
-  personText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  more: { color: '#9aa3b2', fontSize: 11 },
+  peopleScroll: { flexGrow: 0 },
+  people: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
+  person: { width: 132, height: 99, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  personInitials: { color: 'rgba(255,255,255,0.75)', fontSize: 26, fontFamily: Fonts.displayBold },
+  personName: { position: 'absolute', left: 6, bottom: 6, maxWidth: 116, color: '#fff', fontSize: 11, fontWeight: '700', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, paddingVertical: 2 },
+  rosterBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1 },
+  rosterBannerKind: { fontFamily: Fonts.displayBold, fontSize: 16, letterSpacing: 1 },
+  rosterBannerName: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
+  rosterBannerSub: { color: '#9aa3b2', fontSize: 11 },
+  rosterBannerPoints: { fontFamily: Fonts.mono, fontSize: 18, fontWeight: '800' },
   feed: { flex: 1 },
   feedContent: { gap: 6, paddingHorizontal: 12, paddingBottom: 6 },
   moment: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },

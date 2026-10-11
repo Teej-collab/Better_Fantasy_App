@@ -10,6 +10,7 @@ import {
   useLocalParticipant,
   useMediaDeviceSelect,
   useParticipants,
+  useRoomContext,
   useTracks,
   type TrackReference,
 } from "@livekit/components-react";
@@ -35,6 +36,7 @@ import {
   useRoomTv,
 } from "@/lib/loungeLive";
 import { nflTeamColor, nflTeamName } from "@/lib/nfl-teams";
+import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
 // The League Lounge on the web (mockups 5 and 6): watch the game
@@ -170,6 +172,22 @@ export function WebLoungeRoom({
   const mySide = detail ? (detail.home.owner_id === myOwnerId ? detail.home : detail.away) : null;
   const myStarters = (mySide?.roster ?? []).filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
   const winPct = week?.matchup?.win_probability ?? null;
+  // No game on the TV: your own starters' touchdowns and 5+ point plays
+  // from every game instead.
+  const rosterMoments = useRosterMoments(matchupId, mySide ? myStarters : null, !tv.gameId);
+  const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
+  // The newest one shows over the TV for MOMENT_MS.
+  const [rosterBanner, setRosterBanner] = useState<RosterMoment | null>(null);
+  const [bannerShownFor, setBannerShownFor] = useState<string | null>(null);
+  if (latestRosterMoment && latestRosterMoment.id !== bannerShownFor) {
+    setBannerShownFor(latestRosterMoment.id);
+    setRosterBanner(latestRosterMoment);
+  }
+  useEffect(() => {
+    if (!rosterBanner) return;
+    const id = setTimeout(() => setRosterBanner(null), MOMENT_MS);
+    return () => clearTimeout(id);
+  }, [rosterBanner]);
   useEffect(() => {
     latestWin.current = winPct;
   }, [winPct]);
@@ -197,6 +215,13 @@ export function WebLoungeRoom({
         plus: m.reactions.reduce((n, r) => n + r.count, 0),
       })),
     ...moments,
+    ...rosterMoments.map((m) => ({
+      kind: "moment" as const,
+      id: `roster-${m.id}`,
+      text: `${lastName(m.playerName)} ${m.touchdown ? "touchdown" : "big play"}`,
+      points: `+${m.points.toFixed(1)}`,
+      team: m.proTeam ?? "",
+    })),
   ];
 
   async function toggleShare() {
@@ -313,7 +338,7 @@ export function WebLoungeRoom({
           (.lounge-grid). */}
       <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6">
         <div className="lounge-tv-cell">
-          <Tv share={share} game={game} moment={moment} counts={counts} catchingUp={delayed.catchingUp} accent={accent} />
+          <Tv share={share} game={game} moment={moment} counts={counts} catchingUp={delayed.catchingUp} accent={accent} rosterBanner={rosterBanner} />
         </div>
 
         <section aria-label="Gamecast" className="lounge-cast flex min-w-0 flex-col gap-3">
@@ -325,9 +350,12 @@ export function WebLoungeRoom({
               <LastPlay game={game} points={lastPlayPoints} accent={accent} />
             </>
           ) : (
-            <div className="rounded-[14px] border border-white/[0.08] bg-[#12151d] p-4 text-sm text-[#9aa3b2]">
-              {share ? "Waiting for whoever's sharing to pick the game on the TV." : "When someone shares a game, its gamecast shows here."}
-            </div>
+            <>
+              <RosterMoments moments={rosterMoments} accent={accent} />
+              <div className="rounded-[14px] border border-white/[0.08] bg-[#12151d] p-4 text-sm text-[#9aa3b2]">
+                {share ? "Waiting for whoever's sharing to pick the game on the TV." : "When someone shares a game, its gamecast shows here."}
+              </div>
+            </>
           )}
         </section>
 
@@ -408,7 +436,9 @@ function Tv({
   counts,
   catchingUp,
   accent,
+  rosterBanner,
 }: {
+  rosterBanner: RosterMoment | null;
   share: TrackReference | undefined;
   game: LiveGame | null;
   moment: Moment | null;
@@ -470,7 +500,8 @@ function Tv({
               <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
             </div>
           )}
-          {sharer && !sharer.isLocal && <TvVolume participant={sharer as RemoteParticipant} accent={accent} />}
+          {rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
+          {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <TvVolume participant={sharer as RemoteParticipant} accent={accent} />)}
           {/* A broadcast-style bug in the corner, only as wide as the
               scores: quarter and clock on top, the score (a dot for who has
               the ball), down and distance underneath. */}
@@ -527,27 +558,139 @@ function DeviceList({ kind }: { kind: MediaDeviceKind }) {
 function TvVolume({ participant, accent }: { participant: RemoteParticipant; accent: string }) {
   const [volume, setVolume] = useState(() => participant.getVolume(Track.Source.ScreenShareAudio) ?? 1);
   return (
+    <VolumePill
+      volume={volume}
+      max={2}
+      accent={accent}
+      onChange={(v) => {
+        setVolume(v);
+        participant.setVolume(v, Track.Source.ScreenShareAudio);
+      }}
+    />
+  );
+}
+
+/** The sharer's own game volume. Their shared tab is muted on their
+ *  computer (suppressLocalAudioPlayback in lib/livekitMedia.ts), so this
+ *  plays the shared audio back to them — turn the game down and still
+ *  hear everyone. No delay: it's their own track, not the room's copy. */
+function SharerGameVolume({ accent }: { accent: string }) {
+  const { localParticipant } = useLocalParticipant();
+  const room = useRoomContext();
+  const gameAudio = useTracks([Track.Source.ScreenShareAudio]).find((t) => t.participant.isLocal)?.publication?.track?.mediaStreamTrack;
+  const [volume, setVolume] = useState(() => {
+    try {
+      return Number(localStorage.getItem("lounge-sharer-game-volume") ?? 1);
+    } catch {
+      return 1;
+    }
+  });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (!gameAudio) return;
+    const audio = new Audio();
+    audio.srcObject = new MediaStream([gameAudio]);
+    audio.volume = volume;
+    // Same speakers the rest of the call plays through (Devices).
+    const sink = room.getActiveDevice("audiooutput");
+    if (sink && "setSinkId" in audio) void (audio as HTMLAudioElement & { setSinkId: (id: string) => Promise<void> }).setSinkId(sink).catch(() => {});
+    void audio.play().catch(() => {});
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.srcObject = null;
+      audioRef.current = null;
+    };
+    // volume is applied live below; restarting playback on every drag would stutter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameAudio, room, localParticipant]);
+
+  if (!gameAudio) return null;
+  return (
+    <VolumePill
+      volume={volume}
+      max={1}
+      accent={accent}
+      onChange={(v) => {
+        setVolume(v);
+        if (audioRef.current) audioRef.current.volume = v;
+        try {
+          localStorage.setItem("lounge-sharer-game-volume", String(v));
+        } catch {
+          // private window — the slider still works for this visit
+        }
+      }}
+    />
+  );
+}
+
+function VolumePill({ volume, max, accent, onChange }: { volume: number; max: number; accent: string; onChange: (v: number) => void }) {
+  return (
     <label className="absolute top-3.5 right-3.5 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M11 5L6 9H2v6h4l5 4V5z" />
         {volume > 0 ? <path d="M15.5 8.5a5 5 0 010 7" /> : <path d="M22 9l-6 6M16 9l6 6" />}
       </svg>
-      <span className="sr-only">Game volume, only for you</span>
-      <input
-        type="range"
-        min={0}
-        max={2}
-        step={0.05}
-        value={volume}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          setVolume(v);
-          participant.setVolume(v, Track.Source.ScreenShareAudio);
-        }}
-        className="w-[96px]"
-        style={{ accentColor: accent }}
-      />
+      <span className="text-xs font-semibold text-white/80">Game</span>
+      <span className="sr-only">volume, only for you</span>
+      <input type="range" min={0} max={max} step={0.05} value={volume} onChange={(e) => onChange(Number(e.target.value))} className="w-[110px]" style={{ accentColor: accent }} />
     </label>
+  );
+}
+
+/** Over the TV for a few seconds when one of your starters (any game)
+ *  scores or breaks a big play — only while no game is on the TV. */
+function RosterBanner({ moment, accent }: { moment: RosterMoment; accent: string }) {
+  const color = (moment.proTeam && nflTeamColor(moment.proTeam)) || accent;
+  return (
+    <div
+      className="gamecast-play-enter absolute top-14 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-2xl border px-5 py-3 shadow-2xl"
+      style={{ background: `${shade(color, 0.55)}f0`, borderColor: `${color}aa` }}
+    >
+      <span className="font-display text-xl font-bold tracking-[2px] text-white sm:text-2xl">{moment.touchdown ? "TOUCHDOWN" : "BIG PLAY"}</span>
+      <span className="text-sm font-semibold text-white/90 sm:text-base">
+        {moment.playerName}
+        {moment.proTeam ? ` · ${moment.proTeam}` : ""}
+      </span>
+      <b className="font-mono text-xl" style={{ color: accent }}>
+        +{moment.points.toFixed(1)}
+      </b>
+    </div>
+  );
+}
+
+/** Your starters' moments from every game, newest first (no game on the TV). */
+function RosterMoments({ moments, accent }: { moments: RosterMoment[]; accent: string }) {
+  if (moments.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-[14px] border border-white/[0.08] bg-[#12151d] p-3.5">
+      <span className="text-xs font-bold tracking-wider text-[#9aa3b2] uppercase">Your players</span>
+      {[...moments]
+        .reverse()
+        .slice(0, 6)
+        .map((m, i) => (
+          <div
+            key={m.id}
+            className="flex items-center gap-2.5 rounded-xl border px-3 py-2 text-sm"
+            style={i === 0 ? { background: "rgba(57,255,20,0.08)", borderColor: "rgba(57,255,20,0.3)" } : { borderColor: "rgba(255,255,255,0.06)" }}
+          >
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-black" style={{ background: m.touchdown ? accent : "#facc15" }}>
+              {m.touchdown ? "TD" : "BIG"}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <b>{m.playerName}</b>
+              <span className="text-[#9aa3b2]">
+                {m.position ? ` · ${m.position}` : ""}
+                {m.proTeam ? ` · ${m.proTeam}` : ""}
+              </span>
+            </span>
+            <b className="font-mono" style={{ color: accent }}>
+              +{m.points.toFixed(1)}
+            </b>
+          </div>
+        ))}
+    </div>
   );
 }
 
