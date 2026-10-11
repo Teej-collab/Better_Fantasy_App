@@ -37,7 +37,7 @@ import { useDelayedGame } from '@/lib/loungeLive';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments, type RosterMoment } from '@/lib/rosterMoments';
-import type { ChatMember, GamecastPlay, LiveGame } from '@/lib/types';
+import type { GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
 // nativeLoungeAvailable() (lib/loungeSession.ts) has confirmed the
@@ -254,10 +254,14 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
 
   const feed = useFeed(party, [...moments, ...rosterFeed]);
   const game = delayed.game;
+  const keyboardOpen = useKeyboardOpen();
   const watching = participants.length;
 
   return (
-    <View style={[styles.body, { paddingTop: insets.top }]}>
+    // The whole room rides up with the keyboard; while typing, everything
+    // but the TV, the chat and the message box steps aside so what you're
+    // writing stays in view.
+    <KeyboardAvoidingView style={[styles.body, { paddingTop: insets.top }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <Pressable onPress={onLeave} style={styles.back} accessibilityRole="button" accessibilityLabel="Back">
           <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
@@ -286,7 +290,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
       </View>
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <LoungeTickers tvGame={game} delaySeconds={delaySeconds} />
+      {!keyboardOpen && <LoungeTickers tvGame={game} delaySeconds={delaySeconds} />}
 
       <View onTouchStart={Keyboard.dismiss}>
         <LoungeTv share={share} game={game} catchingUp={delayed.catchingUp} />
@@ -296,14 +300,18 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           </View>
         )}
       </View>
-      {game ? <LoungeField game={game} /> : rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
-      <SweatCard sweat={sweat} game={game} onOpen={() => setSweatOpen(true)} />
+      {!keyboardOpen && (
+        <>
+          {game ? <LoungeField game={game} /> : rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
+          <SweatCard sweat={sweat} game={game} onOpen={() => setSweatOpen(true)} />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.peopleScroll} contentContainerStyle={styles.people}>
-        {participants.map((p) => (
-          <Person key={p.identity} participant={p} accent={accent} onPress={() => setVolumeOpen(true)} />
-        ))}
-      </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.peopleScroll} contentContainerStyle={styles.people}>
+            {participants.map((p) => (
+              <Person key={p.identity} participant={p} accent={accent} onPress={() => setVolumeOpen(true)} />
+            ))}
+          </ScrollView>
+        </>
+      )}
 
       <FlatList
         style={styles.feed}
@@ -339,7 +347,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
         }
       />
 
-      <Footer party={party} onReact={react} bottomInset={insets.bottom} />
+      <Footer party={party} onReact={react} bottomInset={insets.bottom} keyboardOpen={keyboardOpen} />
 
       <SweatSheet visible={sweatOpen} onClose={() => setSweatOpen(false)} sweat={sweat} game={game} share={share} catchingUp={delayed.catchingUp} />
       <VolumeSheet visible={volumeOpen} onClose={() => setVolumeOpen(false)} />
@@ -358,7 +366,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           .map((m) => ({ name: m.name, color: m.color, body: m.body }))}
         onClose={() => setMoment(null)}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -434,7 +442,33 @@ function RosterBanner({ moment, accent }: { moment: RosterMoment; accent: string
   );
 }
 
-function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party']; onReact: (k: ReactionKey) => void; bottomInset: number }) {
+function useKeyboardOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setOpen(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return open;
+}
+
+// @everyone in the picker: tags every league member at once.
+const EVERYONE = 'everyone';
+
+function Footer({
+  party,
+  onReact,
+  bottomInset,
+  keyboardOpen,
+}: {
+  party: LoungeRoomProps['party'];
+  onReact: (k: ReactionKey) => void;
+  bottomInset: number;
+  keyboardOpen: boolean;
+}) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const { send: chatSocketSend } = useChatSocket();
   const [front, setFront] = useState(true);
@@ -452,22 +486,25 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
   // haven't opened it (backend chat_ws).
   const members = useChatMembers().data ?? [];
   const [cursor, setCursor] = useState(0);
-  const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
+  // Display name (or "everyone") → the owner ids it tags.
+  const [pendingMentions, setPendingMentions] = useState<Map<string, number[]>>(new Map());
   const mentionQuery = party ? (draft.slice(0, cursor).match(/(?:^|\s)@(\w*)$/)?.[1] ?? null) : null;
+  const q = mentionQuery?.toLowerCase() ?? '';
+  const everyoneMatches = mentionQuery !== null && members.length > 1 && EVERYONE.startsWith(q);
   const matches =
-    mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5);
-  function pick(member: ChatMember) {
+    mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(q)).slice(0, everyoneMatches ? 3 : 4);
+  function pick(name: string, ownerIds: number[]) {
     haptics.tap();
-    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${member.display_name} `);
+    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${name} `);
     setDraft(before + draft.slice(cursor));
     setCursor(before.length);
-    setPendingMentions((prev) => new Map(prev).set(member.display_name, member.owner_id));
+    setPendingMentions((prev) => new Map(prev).set(name, ownerIds));
   }
 
   function submit() {
     const body = draft.trim();
     if (!body) return;
-    const mentions = [...pendingMentions].filter(([name]) => body.includes(`@${name}`)).map(([, id]) => id);
+    const mentions = [...new Set([...pendingMentions].filter(([name]) => body.includes(`@${name}`)).flatMap(([, ids]) => ids))];
     setDraft('');
     setCursor(0);
     setPendingMentions(new Map());
@@ -476,15 +513,24 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.footer, { paddingBottom: Math.max(14, bottomInset) }]}>
-        {matches.length > 0 && (
+    <View style={[styles.footer, { paddingBottom: keyboardOpen ? 8 : Math.max(14, bottomInset) }]}>
+        {(everyoneMatches || matches.length > 0) && (
           <View style={styles.mentionList}>
+            {everyoneMatches && (
+              <Pressable
+                onPress={() => pick(EVERYONE, members.map((m) => m.owner_id))}
+                style={({ pressed }) => [styles.mentionRow, pressed && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Tag everyone in the league">
+                <Text style={styles.mentionName}>@everyone</Text>
+                <Text style={styles.mentionTeam}>Tag the whole league</Text>
+              </Pressable>
+            )}
             {matches.map((m, i) => (
               <Pressable
                 key={m.owner_id}
-                onPress={() => pick(m)}
-                style={({ pressed }) => [styles.mentionRow, i > 0 && styles.mentionDivider, pressed && { opacity: 0.6 }]}
+                onPress={() => pick(m.display_name, [m.owner_id])}
+                style={({ pressed }) => [styles.mentionRow, (i > 0 || everyoneMatches) && styles.mentionDivider, pressed && { opacity: 0.6 }]}
                 accessibilityRole="button"
                 accessibilityLabel={`Tag ${m.display_name}`}>
                 <Text style={styles.mentionName}>{m.display_name}</Text>
@@ -495,13 +541,15 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
             ))}
           </View>
         )}
-        <View style={styles.reactRow}>
-          {REACTIONS.map((r) => (
-            <Pressable key={r.key} onPress={() => onReact(r.key)} style={styles.reactBtn} accessibilityRole="button">
-              <Text style={styles.reactText}>{r.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        {!keyboardOpen && (
+          <View style={styles.reactRow}>
+            {REACTIONS.map((r) => (
+              <Pressable key={r.key} onPress={() => onReact(r.key)} style={styles.reactBtn} accessibilityRole="button">
+                <Text style={styles.reactText}>{r.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <View style={styles.inputRow}>
           <TextInput
             value={draft}
@@ -517,53 +565,76 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
             style={styles.input}
             returnKeyType="send"
             onSubmitEditing={submit}
+            // Stays open after sending so you can keep talking; ↓ closes it.
+            submitBehavior="submit"
             accessibilityLabel="Message the room"
           />
-          <Pressable
-            onPress={() => {
-              haptics.tap();
-              void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
-            }}
-            style={[styles.roundBtn, !isMicrophoneEnabled && styles.roundBtnOff]}
-            accessibilityRole="button"
-            accessibilityLabel={isMicrophoneEnabled ? 'Microphone on' : 'Microphone off'}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <Rect x={9} y={3} width={6} height={11} rx={3} />
-              <Path d="M5 11a7 7 0 0014 0M12 18v3" />
-              {!isMicrophoneEnabled && <Path d="M3 3l18 18" />}
-            </Svg>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              haptics.tap();
-              void localParticipant.setCameraEnabled(!isCameraEnabled);
-            }}
-            style={[styles.roundBtn, !isCameraEnabled && styles.roundBtnOff]}
-            accessibilityRole="button"
-            accessibilityLabel={isCameraEnabled ? 'Camera on' : 'Camera off'}>
-            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <Path d="M16 10l5-3v10l-5-3M3 7h13v10H3z" />
-              {!isCameraEnabled && <Path d="M2 2l20 20" />}
-            </Svg>
-          </Pressable>
-          {isCameraEnabled && (
-            <Pressable
-              onPress={() => {
-                haptics.tap();
-                void flip();
-              }}
-              style={styles.roundBtn}
-              accessibilityRole="button"
-              accessibilityLabel={front ? 'Switch to the back camera' : 'Switch to the front camera'}>
-              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <Path d="M3 7h3l2-3h8l2 3h3v12H3z" />
-                <Path d="M9 13a3 3 0 015.2-2M15 13a3 3 0 01-5.2 2" />
-              </Svg>
-            </Pressable>
+          {keyboardOpen ? (
+            <>
+              <Pressable
+                onPress={submit}
+                disabled={!draft.trim()}
+                style={[styles.roundBtn, styles.sendBtn, !draft.trim() && { opacity: 0.4 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Send">
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#06110a" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="M12 19V5M5 12l7-7 7 7" />
+                </Svg>
+              </Pressable>
+              <Pressable onPress={Keyboard.dismiss} style={styles.roundBtn} accessibilityRole="button" accessibilityLabel="Hide keyboard">
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="M6 9l6 6 6-6" />
+                </Svg>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => {
+                  haptics.tap();
+                  void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+                }}
+                style={[styles.roundBtn, !isMicrophoneEnabled && styles.roundBtnOff]}
+                accessibilityRole="button"
+                accessibilityLabel={isMicrophoneEnabled ? 'Microphone on' : 'Microphone off'}>
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <Rect x={9} y={3} width={6} height={11} rx={3} />
+                  <Path d="M5 11a7 7 0 0014 0M12 18v3" />
+                  {!isMicrophoneEnabled && <Path d="M3 3l18 18" />}
+                </Svg>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  haptics.tap();
+                  void localParticipant.setCameraEnabled(!isCameraEnabled);
+                }}
+                style={[styles.roundBtn, !isCameraEnabled && styles.roundBtnOff]}
+                accessibilityRole="button"
+                accessibilityLabel={isCameraEnabled ? 'Camera on' : 'Camera off'}>
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="M16 10l5-3v10l-5-3M3 7h13v10H3z" />
+                  {!isCameraEnabled && <Path d="M2 2l20 20" />}
+                </Svg>
+              </Pressable>
+              {isCameraEnabled && (
+                <Pressable
+                  onPress={() => {
+                    haptics.tap();
+                    void flip();
+                  }}
+                  style={styles.roundBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={front ? 'Switch to the back camera' : 'Switch to the front camera'}>
+                  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <Path d="M3 7h3l2-3h8l2 3h3v12H3z" />
+                    <Path d="M9 13a3 3 0 015.2-2M15 13a3 3 0 01-5.2 2" />
+                  </Svg>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </View>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -675,6 +746,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: '#12151d', color: '#f3f4f6', paddingHorizontal: 14, fontSize: 14 },
   roundBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   roundBtnOff: { backgroundColor: '#b91c3c' },
+  sendBtn: { backgroundColor: '#39ff14' },
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: { maxHeight: '65%', backgroundColor: '#0f121a', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16 },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14 },

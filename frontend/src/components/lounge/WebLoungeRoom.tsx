@@ -836,16 +836,19 @@ function ChatPanel({
   // league members; a tag pings them with a link into this room — even
   // if they haven't opened it yet (backend chat_ws).
   const [cursor, setCursor] = useState(0);
-  const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
+  // Display name (or "everyone") → the owner ids it tags.
+  const [pendingMentions, setPendingMentions] = useState<Map<string, number[]>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
   const mentionQuery = draft.slice(0, cursor).match(/(?:^|\s)@(\w*)$/)?.[1] ?? null;
-  const matches =
-    mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
-  function pick(member: ChatMember) {
-    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${member.display_name} `);
+  const q = mentionQuery?.toLowerCase() ?? "";
+  // @everyone tags every league member at once.
+  const everyoneMatches = mentionQuery !== null && members.length > 1 && "everyone".startsWith(q);
+  const matches = mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(q)).slice(0, everyoneMatches ? 5 : 6);
+  function pick(name: string, ownerIds: number[]) {
+    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${name} `);
     setDraft(before + draft.slice(cursor));
     setCursor(before.length);
-    setPendingMentions((prev) => new Map(prev).set(member.display_name, member.owner_id));
+    setPendingMentions((prev) => new Map(prev).set(name, ownerIds));
     inputRef.current?.focus();
   }
   const listRef = useRef<HTMLDivElement>(null);
@@ -886,16 +889,22 @@ function ChatPanel({
           e.preventDefault();
           const body = draft.trim();
           if (!body) return;
-          onSend(body, [...pendingMentions].filter(([name]) => body.includes(`@${name}`)).map(([, id]) => id));
+          onSend(body, [...new Set([...pendingMentions].filter(([name]) => body.includes(`@${name}`)).flatMap(([, ids]) => ids))]);
           setDraft("");
           setCursor(0);
           setPendingMentions(new Map());
         }}
       >
-        {matches.length > 0 && (
+        {(everyoneMatches || matches.length > 0) && (
           <div className="absolute right-0 bottom-full left-0 z-40 mb-1.5 flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f1420] shadow-2xl">
+            {everyoneMatches && (
+              <button type="button" onClick={() => pick("everyone", members.map((m) => m.owner_id))} className="flex flex-col px-3 py-2 text-left text-sm hover:bg-white/[0.06]">
+                <span className="font-semibold">@everyone</span>
+                <span className="text-xs text-[#9aa3b2]">Tag the whole league</span>
+              </button>
+            )}
             {matches.map((m) => (
-              <button key={m.owner_id} type="button" onClick={() => pick(m)} className="flex flex-col px-3 py-2 text-left text-sm hover:bg-white/[0.06]">
+              <button key={m.owner_id} type="button" onClick={() => pick(m.display_name, [m.owner_id])} className="flex flex-col px-3 py-2 text-left text-sm hover:bg-white/[0.06]">
                 <span className="font-semibold">{m.display_name}</span>
                 <span className="text-xs text-[#9aa3b2]">{m.team_name}</span>
               </button>
