@@ -2445,10 +2445,6 @@ button[data-lk-source="screen_share"] {
     overflow-y: auto;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* A few people: one big camera each. */
-  .lounge-cams-grid[data-few] {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .lounge-side {
     position: static;
     height: auto;

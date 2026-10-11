@@ -338,11 +338,11 @@ export function WebLoungeRoom({
               Volume
             </button>
           </div>
-          <div className="lounge-cams-grid" data-few={participants.length <= 3 ? "" : undefined}>
+          <CameraGrid count={participants.length}>
             {participants.map((p) => (
               <Tile key={p.identity} participant={p} accent={accent} />
             ))}
-          </div>
+          </CameraGrid>
         </section>
 
         <aside className="lounge-side flex min-w-0 flex-col gap-3 rounded-2xl border border-white/[0.08] bg-[#10131b] p-3">
@@ -564,6 +564,58 @@ function LastPlay({ game, points, accent }: { game: LiveGame; points: { playId: 
         </span>
       )}
     </p>
+  );
+}
+
+const TILE_GAP = 8;
+const MIN_TILE_WIDTH = 160;
+
+/** The cameras on a big monitor (the 1800px+ layout, where the camera
+ *  area has a fixed height): every tile as big as it can be while
+ *  everyone still fits — one person fills the area, and tiles shrink as
+ *  people join. Past MIN_TILE_WIDTH they stop shrinking and the area
+ *  scrolls instead. Smaller layouts keep the CSS grid (.lounge-cams-grid). */
+function CameraGrid({ count, children }: { count: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ columns: number; width: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const wide = window.matchMedia("(min-width: 1800px)");
+    const measure = () => {
+      if (!wide.matches || count === 0) return setFit(null);
+      const { clientWidth: w, clientHeight: h } = el;
+      let best = { columns: 1, width: 0 };
+      for (let columns = 1; columns <= count; columns++) {
+        const rows = Math.ceil(count / columns);
+        const byWidth = (w - (columns - 1) * TILE_GAP) / columns;
+        const byHeight = ((h - (rows - 1) * TILE_GAP) / rows) * (16 / 9);
+        const width = Math.min(byWidth, byHeight);
+        if (width > best.width) best = { columns, width };
+      }
+      if (best.width < MIN_TILE_WIDTH) {
+        const columns = Math.max(1, Math.floor((w + TILE_GAP) / (MIN_TILE_WIDTH + TILE_GAP)));
+        best = { columns, width: (w - (columns - 1) * TILE_GAP) / columns };
+      }
+      setFit({ columns: best.columns, width: Math.floor(best.width) });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    wide.addEventListener("change", measure);
+    return () => {
+      observer.disconnect();
+      wide.removeEventListener("change", measure);
+    };
+  }, [count]);
+  return (
+    <div
+      ref={ref}
+      className="lounge-cams-grid"
+      style={fit ? { gridTemplateColumns: `repeat(${fit.columns}, ${fit.width}px)`, justifyContent: "center", alignContent: "center" } : undefined}
+    >
+      {children}
+    </div>
   );
 }
 
