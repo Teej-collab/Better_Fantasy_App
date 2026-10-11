@@ -137,6 +137,10 @@ async def get_room(conn, room_id: int):
     return await conn.fetchrow("SELECT * FROM watch_party_rooms WHERE id = $1", room_id)
 
 
+async def get_room_for_conversation(conn, conversation_id: int):
+    return await conn.fetchrow("SELECT * FROM watch_party_rooms WHERE conversation_id = $1", conversation_id)
+
+
 async def is_private_room_member(conn, room_id: int, owner_id: int) -> bool:
     row = await conn.fetchval(
         "SELECT 1 FROM watch_party_room_members WHERE room_id = $1 AND owner_id = $2",

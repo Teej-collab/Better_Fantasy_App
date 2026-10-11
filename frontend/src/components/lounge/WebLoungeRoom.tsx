@@ -18,7 +18,7 @@ import { Track, type Participant, type RemoteParticipant } from "livekit-client"
 import { TickerStrip } from "@/components/LiveTicker";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
-import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
+import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMember, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
 import {
@@ -73,12 +73,14 @@ type FeedItem =
 export function WebLoungeRoom({
   room,
   messages,
+  members,
   myOwnerId,
   onSend,
   onLeave,
 }: {
   room: WatchPartyRoom;
   messages: ChatMessage[];
+  members: ChatMember[];
   myOwnerId: number;
   onSend: (body: string, mentions: number[], replyToId: number | null, imageUrl: string | null) => void;
   onLeave: () => void;
@@ -401,7 +403,7 @@ export function WebLoungeRoom({
             </div>
           )}
 
-          {tab === "chat" && <ChatPanel feed={feed} onSend={(body) => onSend(body, [], null, null)} onReact={react} accent={accent} />}
+          {tab === "chat" && <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} accent={accent} />}
           {tab === "sweat" && <SweatPanel week={week} myStarters={myStarters} bets={bets?.bets ?? []} winPct={winPct} accent={accent} />}
           {tab === "plays" && <PlaysPanel game={game} />}
         </aside>
@@ -816,8 +818,36 @@ function MomentCards({ moment, winBefore, winNow, accent }: { moment: Moment; wi
   );
 }
 
-function ChatPanel({ feed, onSend, onReact, accent }: { feed: FeedItem[]; onSend: (body: string) => void; onReact: (k: ReactionKey) => void; accent: string }) {
+function ChatPanel({
+  feed,
+  members,
+  onSend,
+  onReact,
+  accent,
+}: {
+  feed: FeedItem[];
+  members: ChatMember[];
+  onSend: (body: string, mentions: number[]) => void;
+  onReact: (k: ReactionKey) => void;
+  accent: string;
+}) {
   const [draft, setDraft] = useState("");
+  // @mentions, as in MessageComposer.tsx: "@Jo" before the cursor lists
+  // league members; a tag pings them with a link into this room — even
+  // if they haven't opened it yet (backend chat_ws).
+  const [cursor, setCursor] = useState(0);
+  const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mentionQuery = draft.slice(0, cursor).match(/(?:^|\s)@(\w*)$/)?.[1] ?? null;
+  const matches =
+    mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
+  function pick(member: ChatMember) {
+    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${member.display_name} `);
+    setDraft(before + draft.slice(cursor));
+    setCursor(before.length);
+    setPendingMentions((prev) => new Map(prev).set(member.display_name, member.owner_id));
+    inputRef.current?.focus();
+  }
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -851,18 +881,37 @@ function ChatPanel({ feed, onSend, onReact, accent }: { feed: FeedItem[]; onSend
         ))}
       </div>
       <form
+        className="relative"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!draft.trim()) return;
-          onSend(draft.trim());
+          const body = draft.trim();
+          if (!body) return;
+          onSend(body, [...pendingMentions].filter(([name]) => body.includes(`@${name}`)).map(([, id]) => id));
           setDraft("");
+          setCursor(0);
+          setPendingMentions(new Map());
         }}
       >
+        {matches.length > 0 && (
+          <div className="absolute right-0 bottom-full left-0 z-40 mb-1.5 flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f1420] shadow-2xl">
+            {matches.map((m) => (
+              <button key={m.owner_id} type="button" onClick={() => pick(m)} className="flex flex-col px-3 py-2 text-left text-sm hover:bg-white/[0.06]">
+                <span className="font-semibold">{m.display_name}</span>
+                <span className="text-xs text-[#9aa3b2]">{m.team_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <label className="flex">
           <span className="sr-only">Message the room</span>
           <input
+            ref={inputRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setCursor(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}
             placeholder="Talk your talk…"
             className="h-11 flex-1 rounded-full border border-white/[0.1] bg-[#161a24] px-4 text-sm text-[#f3f4f6]"
           />

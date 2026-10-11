@@ -20,6 +20,7 @@ export function WatchPartyRoom({
   room,
   onClose,
   messages,
+  members,
   myOwnerId,
   onSend,
 }: {
@@ -133,7 +134,7 @@ export function WatchPartyRoom({
           onDisconnected={handleDisconnected}
           onError={(err) => setConnectError(err.message || "Couldn't connect to the video call.")}
         >
-          <WebLoungeRoom room={room} messages={messages} myOwnerId={myOwnerId} onSend={onSend} onLeave={handleLeaveClick} />
+          <WebLoungeRoom room={room} messages={messages} members={members} myOwnerId={myOwnerId} onSend={onSend} onLeave={handleLeaveClick} />
         </LiveKitRoom>
       )}
     </div>

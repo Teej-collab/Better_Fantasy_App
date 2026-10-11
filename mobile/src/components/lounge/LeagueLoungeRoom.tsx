@@ -15,7 +15,7 @@ import Slider from '@react-native-community/slider';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Track, type Participant, type RemoteParticipant } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -35,9 +35,9 @@ import { useChatSocket } from '@/lib/chatSocket';
 import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
-import { useChatMessages, useMe } from '@/lib/queries';
+import { useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments, type RosterMoment } from '@/lib/rosterMoments';
-import type { GamecastPlay, LiveGame } from '@/lib/types';
+import type { ChatMember, GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
 // nativeLoungeAvailable() (lib/loungeSession.ts) has confirmed the
@@ -288,7 +288,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
 
       <LoungeTickers tvGame={game} delaySeconds={delaySeconds} />
 
-      <View>
+      <View onTouchStart={Keyboard.dismiss}>
         <LoungeTv share={share} game={game} catchingUp={delayed.catchingUp} />
         {burst && (
           <View style={styles.burst} pointerEvents="none">
@@ -310,6 +310,10 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
         contentContainerStyle={styles.feedContent}
         data={feed}
         inverted
+        // Scroll or tap the chat to put the keyboard away.
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        onTouchStart={Keyboard.dismiss}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) =>
           item.kind === 'moment' ? (
@@ -442,18 +446,55 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
   }
   const lk = useChat();
   const [draft, setDraft] = useState('');
+  // @mentions (Watch Party chats only — a password Lounge's chat is
+  // LiveKit's): "@Jo" before the cursor lists league members, and a tag
+  // pings them with a link straight into this room, even if they
+  // haven't opened it (backend chat_ws).
+  const members = useChatMembers().data ?? [];
+  const [cursor, setCursor] = useState(0);
+  const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
+  const mentionQuery = party ? (draft.slice(0, cursor).match(/(?:^|\s)@(\w*)$/)?.[1] ?? null) : null;
+  const matches =
+    mentionQuery === null ? [] : members.filter((m) => m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 5);
+  function pick(member: ChatMember) {
+    haptics.tap();
+    const before = draft.slice(0, cursor).replace(/@(\w*)$/, `@${member.display_name} `);
+    setDraft(before + draft.slice(cursor));
+    setCursor(before.length);
+    setPendingMentions((prev) => new Map(prev).set(member.display_name, member.owner_id));
+  }
 
   function submit() {
     const body = draft.trim();
     if (!body) return;
+    const mentions = [...pendingMentions].filter(([name]) => body.includes(`@${name}`)).map(([, id]) => id);
     setDraft('');
-    if (party) chatSocketSend({ type: 'message', conversation_id: party.conversationId, body });
+    setCursor(0);
+    setPendingMentions(new Map());
+    if (party) chatSocketSend({ type: 'message', conversation_id: party.conversationId, body, ...(mentions.length ? { mentions } : {}) });
     else void lk.send(body);
   }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.footer, { paddingBottom: Math.max(14, bottomInset) }]}>
+        {matches.length > 0 && (
+          <View style={styles.mentionList}>
+            {matches.map((m, i) => (
+              <Pressable
+                key={m.owner_id}
+                onPress={() => pick(m)}
+                style={({ pressed }) => [styles.mentionRow, i > 0 && styles.mentionDivider, pressed && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Tag ${m.display_name}`}>
+                <Text style={styles.mentionName}>{m.display_name}</Text>
+                <Text style={styles.mentionTeam} numberOfLines={1}>
+                  {m.team_name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <View style={styles.reactRow}>
           {REACTIONS.map((r) => (
             <Pressable key={r.key} onPress={() => onReact(r.key)} style={styles.reactBtn} accessibilityRole="button">
@@ -464,8 +505,14 @@ function Footer({ party, onReact, bottomInset }: { party: LoungeRoomProps['party
         <View style={styles.inputRow}>
           <TextInput
             value={draft}
-            onChangeText={setDraft}
-            placeholder="Talk your talk…"
+            onChangeText={(text) => {
+              // Typing at the end moves the cursor with it;
+              // onSelectionChange corrects this for edits mid-text.
+              setCursor((prev) => (prev >= draft.length ? text.length : prev));
+              setDraft(text);
+            }}
+            onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
+            placeholder={party ? 'Talk your talk… @ to tag' : 'Talk your talk…'}
             placeholderTextColor="rgba(255,255,255,0.4)"
             style={styles.input}
             returnKeyType="send"
@@ -617,6 +664,11 @@ const styles = StyleSheet.create({
   plus: { color: '#f3f4f6', fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
   footer: { gap: 8, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)', backgroundColor: '#0e1018' },
   reactRow: { flexDirection: 'row', gap: 6 },
+  mentionList: { borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: '#12151d', overflow: 'hidden' },
+  mentionRow: { paddingHorizontal: 12, paddingVertical: 8 },
+  mentionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.1)' },
+  mentionName: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
+  mentionTeam: { color: '#9aa3b2', fontSize: 11 },
   reactBtn: { flex: 1, height: 30, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: '#12151d', alignItems: 'center', justifyContent: 'center' },
   reactText: { color: '#f3f4f6', fontSize: 12, fontWeight: '600' },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

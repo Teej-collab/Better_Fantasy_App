@@ -138,12 +138,15 @@ export function setUpReminderHandling(): () => void {
 
 /**
  * Pushes from the backend carry the web's paths (app/notifications/
- * formatter.py). Most match a native screen as is; these four don't, so a
+ * formatter.py). Most match a native screen as is; these don't, so a
  * tap would land on a list instead of the thing the push was about.
  */
 export function toNativePath(url: string): string {
   let m = url.match(/^\/chat\?conversation=(\d+)/);
   if (m) return `/chat/${m[1]}`;
+  // Tagged in a Lounge / watch party's chat: straight into the room.
+  m = url.match(/^\/chat\?party=(\d+)/);
+  if (m) return `/lounge-room/party-${m[1]}`;
   m = url.match(/^\/matchups\/(\d+)/);
   if (m) return `/matchup/${m[1]}`;
   m = url.match(/^\/seasons\/(\d+)\/weeks\/(\d+)\/recap/);

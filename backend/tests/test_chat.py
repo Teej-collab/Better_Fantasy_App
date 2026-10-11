@@ -1528,3 +1528,45 @@ async def test_announcement_receipts_show_seen_and_link_opens_to_the_commissione
     assert [p["owner_id"] for p in data["not_seen"]] == [lurker_owner]
     assert [p["owner_id"] for p in data["opened"]] == [reader_owner]
     assert data["has_link"] is True
+
+
+async def test_tag_in_the_lounge_reaches_a_member_who_never_opened_it(pool, monkeypatch):
+    """The Lounge's chat only gains participants as people open the room,
+    so a tag is how you pull someone in: they get the mention push even
+    though they're not in its chat yet, and it links to the room."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    from app.queries import watch_party as watch_party_queries
+    from app.routers import chat as chat_router
+
+    sent = []
+
+    async def _fake_send_to_owner(conn, owner_id, payload):
+        sent.append((owner_id, payload))
+
+    monkeypatch.setattr(chat_router.dispatcher, "send_to_owner", _fake_send_to_owner)
+
+    user_a, a, league_id = await _seed_league_owner(pool, "lounge-tag-a")
+    _, b, _ = await _seed_league_owner(pool, "lounge-tag-b", league_id=league_id)
+    _, outsider, _ = await _seed_league_owner(pool, "lounge-tag-other-league")
+    async with pool.acquire() as conn:
+        room = await watch_party_queries.get_or_create_open_room(conn, league_id, a)
+        await preferences_queries.update_preferences(conn, b, {"push_enabled": True, "notify_mentions": True})
+        await preferences_queries.update_preferences(conn, outsider, {"push_enabled": True, "notify_mentions": True})
+
+    await _use_fresh_pool_for_websocket()
+    client = TestClient(app)
+    with client.websocket_connect("/chat/ws", cookies=_league_session_cookie(user_a, a)) as ws:
+        ws.send_json({"type": "message", "conversation_id": room["conversation_id"], "body": "@Leaguer get in here", "mentions": [b, outsider]})
+        received = ws.receive_json()
+        # Flush — the push runs after the broadcast above.
+        ws.send_json({"type": "message", "conversation_id": room["conversation_id"], "body": "flush"})
+        ws.receive_json()
+    await _use_fresh_pool_for_websocket()
+
+    assert received["message"]["mentions"] == [b]  # another league's owner can't be tagged in
+    assert [owner for owner, _ in sent] == [b]
+    payload = sent[0][1]
+    assert payload["data"]["type"] == "chat_mention"
+    assert payload["url"] == f"/chat?party={room['id']}"
+    assert "League Lounge" in payload["title"]

@@ -77,6 +77,13 @@ def chat_mention(sender_name: str, body: str, conversation_id: int) -> dict:
     return _payload(f"{sender_name} mentioned you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_mention")
 
 
+def lounge_mention(sender_name: str, body: str, room_id: int, room_name: str) -> dict:
+    """Tagged in a Lounge / watch party's chat — the tap opens the room
+    itself (the web's ?party=, the app's lounge-room/party-<id>), so
+    being tagged pulls you into the room, not its chat history."""
+    return _payload(f"{sender_name} tagged you in {room_name}", _preview(body) or "Come watch", f"/chat?party={room_id}", "chat_mention")
+
+
 def chat_reply(sender_name: str, body: str, conversation_id: int) -> dict:
     return _payload(f"{sender_name} replied to you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_reply")
 

@@ -495,6 +495,7 @@ async def unblock_owner(blocked_owner_id: int, request: Request, pool=Depends(ge
 async def _push_notify_new_message(
     conversation_id: int, sender_id: int, sender_name: str, body: str,
     reply_to_id: int | None, mentioned_ids: list[int], participant_ids: list[int],
+    lounge_room=None,
 ) -> None:
     """Web Push side effect of a chat message, alongside the WebSocket
     broadcast above — reuses the same owner_preferences categories the
@@ -513,6 +514,9 @@ async def _push_notify_new_message(
     backgrounded, which silently suppressed every chat push regardless
     of preference for anyone who keeps the app open in the background."""
     others = [p for p in participant_ids if p != sender_id and not manager.has_visible_connection(p)]
+    # Tagged from a Lounge's chat without having opened the room yet (see
+    # the mentions filter in chat_ws) — not participants, so add them here.
+    others += [m for m in mentioned_ids if m not in participant_ids and m != sender_id]
     if not others:
         return
     try:
@@ -523,9 +527,19 @@ async def _push_notify_new_message(
                 original = await chat_queries.get_message_owner_and_conversation(conn, reply_to_id)
                 reply_target_owner_id = original["owner_id"] if original else None
             conversation_type = await chat_queries.get_conversation_type(conn, conversation_id)
+            # A tag in a Lounge's chat links to the room, not the chat.
+            lounge_build = None
+            if lounge_room is not None:
+                room_name = "the League Lounge" if lounge_room["kind"] == "open" else (lounge_room["name"] or "a watch party")
+
+                def lounge_build(name, text, _conversation_id):
+                    return formatter.lounge_mention(name, text, lounge_room["id"], room_name)
+
 
             for recipient_id in others:
-                if recipient_id in mentioned_ids:
+                if recipient_id in mentioned_ids and lounge_build is not None:
+                    category, build = "notify_mentions", lounge_build
+                elif recipient_id in mentioned_ids:
                     category, build = "notify_mentions", formatter.chat_mention
                 elif recipient_id == reply_target_owner_id:
                     category, build = "notify_replies", formatter.chat_reply
@@ -680,6 +694,25 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
                         # Never trust the client's mention list outright — only
                         # people actually in this conversation can be mentioned.
                         valid_mentions = [m for m in mentions if m in participant_ids]
+                        # A Lounge / open watch party's chat only gains
+                        # participants as people open the room, so tagging a
+                        # league member who hasn't is how you pull them in:
+                        # they're mentioned (and pushed, with a link to the
+                        # room) though not added to its chat until they join.
+                        # Private parties stay invite-only.
+                        lounge_room = None
+                        if conversation and conversation["type"] == "watch_party":
+                            lounge_room = await watch_party_queries.get_room_for_conversation(conn, conversation_id)
+                            outside = [m for m in mentions if m not in participant_ids and m != owner_id]
+                            if lounge_room and lounge_room["kind"] != "private" and outside:
+                                eligible = {
+                                    r["owner_id"]
+                                    for r in await chat_queries.list_eligible_members(
+                                        conn, int(_require("ACTIVE_SEASON")), lounge_room["league_id"], owner_id
+                                    )
+                                }
+                                blocked_by = await chat_safety_queries.owners_blocking(conn, owner_id, outside)
+                                valid_mentions += [m for m in outside if m in eligible and m not in blocked_by]
 
                         row = await chat_queries.insert_message(
                             conn, conversation_id, owner_id, body, reply_to_id, image_url, title
@@ -692,7 +725,8 @@ async def chat_ws(websocket: WebSocket, ticket: str | None = None):
 
                 await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
                 await _push_notify_new_message(
-                    conversation_id, owner_id, owner_name or "Someone", body, reply_to_id, valid_mentions, participant_ids
+                    conversation_id, owner_id, owner_name or "Someone", body, reply_to_id, valid_mentions, participant_ids,
+                    lounge_room,
                 )
 
             elif event_type == "typing":

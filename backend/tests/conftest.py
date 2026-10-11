@@ -451,6 +451,10 @@ async def cleanup_test_season(pool):
             )
             """
         )
+        # A test league's watch party rooms point at its conversations.
+        await conn.execute(
+            "DELETE FROM watch_party_rooms WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
+        )
         await conn.execute(
             "DELETE FROM conversations WHERE league_id IN (SELECT id FROM leagues WHERE name LIKE 'Test League%')"
         )
