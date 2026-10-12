@@ -299,6 +299,7 @@ async def cleanup_test_season(pool):
         # current_rosters/draft_picks/roster_history/roster_transactions
         # reference teams_by_season(id), so they have to go before the
         # teams_by_season DELETE below.
+        await conn.execute("DELETE FROM locked_departures WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM current_rosters WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM roster_transactions WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM roster_history WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])

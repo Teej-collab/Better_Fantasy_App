@@ -395,6 +395,30 @@ def _sort_roster_rows(rows):
 # the legacy `rosters` table only and hasn't been ported to
 # current_rosters yet — a real, known follow-up, not silently
 # fabricated data.
+# Starters who played this week and then left the roster still count for
+# this week, in the slot they played from (app/domain/locked_departures.py)
+# — unless they're back on the same roster. Same columns as the
+# current_rosters reads below; {team_col} adds team_id for the batch read.
+_LOCKED_DEPARTURES_SQL = """
+        SELECT {team_col}p.full_name AS player_name, p.position, ld.lineup_slot,
+               pws.fantasy_points AS points_scored, pws.raw_stats,
+               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
+               ld.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
+        FROM locked_departures ld
+        JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
+        LEFT JOIN player_week_stats pws
+            ON pws.season = ld.season AND pws.week = ld.week AND pws.sleeper_player_id = ld.sleeper_player_id
+            AND pws.league_id = ld.league_id
+        LEFT JOIN player_weekly_projections pwp
+            ON pwp.season = ld.season AND pwp.week = ld.week AND pwp.sleeper_player_id = ld.sleeper_player_id
+        WHERE ld.season = $1 AND {team_filter} AND ld.week = $3
+          AND NOT EXISTS (
+              SELECT 1 FROM current_rosters back
+              WHERE back.season = ld.season AND back.team_id = ld.team_id AND back.sleeper_player_id = ld.sleeper_player_id
+          )
+"""
+
+
 async def get_current_roster(conn, season: int, team_id: int, week: int):
     rows = await conn.fetch(
         """
@@ -410,6 +434,8 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
         LEFT JOIN player_weekly_projections pwp
             ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = $2
+        UNION ALL
+        """ + _LOCKED_DEPARTURES_SQL.format(team_filter="ld.team_id = $2", team_col="") + """
         """,
         season, team_id, week,
     )
@@ -435,6 +461,8 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
         LEFT JOIN player_weekly_projections pwp
             ON pwp.season = cr.season AND pwp.week = $3 AND pwp.sleeper_player_id = cr.sleeper_player_id
         WHERE cr.season = $1 AND cr.team_id = ANY($2::int[])
+        UNION ALL
+        """ + _LOCKED_DEPARTURES_SQL.format(team_filter="ld.team_id = ANY($2::int[])", team_col="ld.team_id, ") + """
         """,
         season, team_ids, week,
     )

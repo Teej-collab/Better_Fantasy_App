@@ -528,3 +528,77 @@ async def test_submit_claim_allowed_on_locked_never_dropped_player(pool):
         claim = await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id, player)
     assert claim["status"] == "pending"
     assert claim["add_sleeper_player_id"] == player
+
+
+async def _seed_played_week(pool, week, sleeper_player_id, points):
+    """The current week is `week`, and `sleeper_player_id` already has
+    points in it (their game's been played)."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week) VALUES ($1, $2) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week",
+            TEST_SEASON, week,
+        )
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, league_id) "
+            "VALUES ($1, $2, $3, '{}'::jsonb, $4, $5)",
+            TEST_SEASON, week, sleeper_player_id, points, DEFAULT_LEAGUE_ID,
+        )
+
+
+async def test_claim_dropping_a_starter_who_already_played_keeps_their_points_this_week(pool, monkeypatch):
+    """Real report 2026-10-12: a Monday 3am claim dropped the D/ST that
+    had started and played Sunday, and its points left the week's
+    matchup. ESPN keeps them with the team that started the player."""
+    from app.domain import lineup_engine, locked_departures
+    from app.domain.lineup_exceptions import LineupLockedError
+    from app.queries import league as league_queries
+    from app.queries import roster_history as roster_history_queries
+
+    async def _no_scoreboard(week, season):
+        raise RuntimeError("offline")
+
+    # Scoreboard unreachable: falls back to "already has points this week".
+    monkeypatch.setattr(locked_departures, "get_week_scoreboard", _no_scoreboard)
+
+    await _seed_roster_config(pool)
+    _, team_a = await _seed_owner_with_team(pool, "kept-a", espn_team_id=231)
+    _, team_b = await _seed_owner_with_team(pool, "kept-b", espn_team_id=232)
+    await _seed_matchup(pool, week=5, home_team_id=team_a, away_team_id=team_b, home_score=0, away_score=0)
+    played_dst = await _seed_player(pool, "kept-dst", position="DEF")
+    new_dst = await _seed_player(pool, "kept-new-dst", position="DEF")
+    benched = await _seed_player(pool, "kept-bench")
+    await _seed_roster_entry(pool, team_a, played_dst, lineup_slot="D/ST")
+    await _seed_roster_entry(pool, team_a, benched, lineup_slot="BE")
+    await _seed_played_week(pool, 5, played_dst, 9.0)
+
+    async with pool.acquire() as conn:
+        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, new_dst)
+        await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_a, new_dst, played_dst)
+    await _force_expire(pool, new_dst)
+
+    async with pool.acquire() as conn:
+        await waivers.process_expired_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, week=5)
+        # A benched player who leaves isn't kept.
+        await lineup_engine.drop_player(conn, TEST_SEASON, team_a, benched)
+
+        roster = {r["player_id"]: r for r in await league_queries.get_current_roster(conn, TEST_SEASON, team_a, 5)}
+        assert roster[played_dst]["lineup_slot"] == "D/ST"
+        assert float(roster[played_dst]["points_scored"]) == 9.0
+        assert roster[new_dst]["lineup_slot"] == "BE"
+        assert benched not in roster
+
+        # The week's frozen snapshot keeps them too.
+        await roster_history_queries.snapshot_week(conn, TEST_SEASON, 5)
+        kept = await conn.fetchval(
+            "SELECT lineup_slot FROM roster_history WHERE season = $1 AND week = 5 AND team_id = $2 AND sleeper_player_id = $3",
+            TEST_SEASON, team_a, played_dst,
+        )
+        assert kept == "D/ST"
+
+        # Their slot stays theirs until the week ends.
+        try:
+            await lineup_engine.plan_move(conn, TEST_SEASON, team_a, new_dst, "D/ST")
+            assert False, "expected LineupLockedError"
+        except LineupLockedError:
+            pass

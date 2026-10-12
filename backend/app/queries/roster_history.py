@@ -36,6 +36,26 @@ async def snapshot_week(conn, season: int, week: int) -> int:
             """,
             season, week,
         )
+        # Starters who played this week and then left the roster stay in
+        # the week's lineup (app/domain/locked_departures.py).
+        await conn.execute(
+            """
+            INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
+            SELECT ld.season, ld.week, ld.team_id, ld.sleeper_player_id, ld.lineup_slot,
+                   COALESCE(pwp.projected_points, p.projected_avg_points)
+            FROM locked_departures ld
+            JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
+            LEFT JOIN player_weekly_projections pwp
+                ON pwp.season = ld.season AND pwp.week = ld.week AND pwp.sleeper_player_id = ld.sleeper_player_id
+            WHERE ld.season = $1 AND ld.week = $2
+              AND NOT EXISTS (
+                  SELECT 1 FROM roster_history rh
+                  WHERE rh.season = ld.season AND rh.week = ld.week AND rh.team_id = ld.team_id
+                    AND rh.sleeper_player_id = ld.sleeper_player_id
+              )
+            """,
+            season, week,
+        )
     return len(rows)
 
 

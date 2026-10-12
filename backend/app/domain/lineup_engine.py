@@ -16,6 +16,7 @@ import json
 
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
+from app.domain.locked_departures import keep_if_played
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     IRSlotViolationError,
@@ -116,6 +117,20 @@ async def _find_displacement(conn, season: int, team_id: int, to_slot: str, rost
         _ROSTER_ENTRY_SQL + " AND cr.lineup_slot = $3", season, team_id, to_slot
     )
     capacity = roster_slots.get(to_slot, 0)
+    # A starter who played this week and then left the roster still
+    # holds this slot until the week ends (app/domain/locked_departures.py).
+    held = await conn.fetch(
+        """
+        SELECT p.full_name AS player_name FROM locked_departures ld
+        JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
+        WHERE ld.season = $1 AND ld.team_id = $2 AND ld.lineup_slot = $3
+          AND ld.week = (SELECT current_week FROM league_state WHERE season = $1 LIMIT 1)
+        """,
+        season, team_id, to_slot,
+    )
+    capacity -= len(held)
+    if held and capacity <= 0:
+        raise LineupLockedError(f"{held[0]['player_name']} already played from {to_slot} this week — that slot opens up next week")
     if len(occupants) < capacity:
         return None
     if len(occupants) == 1:
@@ -216,6 +231,7 @@ async def drop_player(
     say who actually triggered it."""
     async with conn.transaction():
         await _get_roster_entry(conn, season, team_id, sleeper_player_id)  # raises PlayerNotOnRosterError if not
+        await keep_if_played(conn, season, league_id, team_id, sleeper_player_id)
         await conn.execute(
             "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
             season, team_id, sleeper_player_id,
@@ -284,6 +300,7 @@ async def add_free_agent(
             if not drop_sleeper_player_id:
                 raise RosterFullError(f"Roster is full ({current_count}/{capacity}) — choose a player to drop")
             dropped = await _get_roster_entry(conn, season, team_id, drop_sleeper_player_id)
+            await keep_if_played(conn, season, league_id, team_id, drop_sleeper_player_id)
             await conn.execute(
                 "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
                 season, team_id, drop_sleeper_player_id,

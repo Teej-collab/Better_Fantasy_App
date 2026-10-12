@@ -42,6 +42,7 @@ import json
 import math
 
 from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
+from app.domain.locked_departures import keep_if_played
 from app.domain.roster_slots import BENCH_SLOT_LABEL, total_draftable_slots
 from app.domain.trade_exceptions import (
     AssetNotOwnedError,
@@ -347,6 +348,9 @@ async def _apply_trade(conn, trade: dict) -> None:
         conn, trade["season"], trade["league_id"], trade["proposing_team_id"], trade["receiving_team_id"], give, receive
     )
     for asset in trade["assets"]:
+        # A starter who already played this week keeps those points for
+        # the team that started them (app/domain/locked_departures.py).
+        await keep_if_played(conn, trade["season"], trade["league_id"], asset["from_team_id"], asset["sleeper_player_id"])
         await conn.execute(
             "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
             trade["season"], asset["from_team_id"], asset["sleeper_player_id"],

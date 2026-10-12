@@ -63,6 +63,7 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.domain.league_format import faab_budget, get_league_format, uses_faab
+from app.domain.locked_departures import keep_if_played
 from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
 from app.domain.nfl_schedule import locked_pro_teams
@@ -528,6 +529,8 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
             continue
 
         if dropped_player_id is not None:
+            # A starter who already played this week keeps those points.
+            await keep_if_played(conn, season, league_id, claim["team_id"], dropped_player_id)
             await conn.execute(
                 "DELETE FROM current_rosters WHERE season = $1 AND league_id = $2 AND team_id = $3 AND sleeper_player_id = $4",
                 season, league_id, claim["team_id"], dropped_player_id,
