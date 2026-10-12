@@ -153,11 +153,6 @@ export function HomePageBeta({
           full-season standings that are always there (2026-09 request). */}
       {weeklyAwards && season !== null && currentWeek !== null && (
         <section className="flex flex-col gap-2">
-          <SectionHeaderBeta
-            title={weeklyAwardsWeek === currentWeek ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
-            href={`/seasons/${season}/awards`}
-          />
-          <AwardsPreview awards={weeklyAwards} />
           {weeklyRecap && weeklyRecapWeek !== null ? (
             <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} isCommissioner={isCommissioner} />
           ) : (
@@ -166,6 +161,11 @@ export function HomePageBeta({
             // has rolled over yet.
             isCommissioner && <WeekRecapSection season={season} week={currentWeek} narrative={null} canGenerate />
           )}
+          <SectionHeaderBeta
+            title={weeklyAwardsWeek === currentWeek ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
+            href={`/seasons/${season}/awards`}
+          />
+          <AwardsPreview awards={weeklyAwards} />
         </section>
       )}
 

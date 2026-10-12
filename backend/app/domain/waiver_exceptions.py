@@ -48,3 +48,10 @@ class IRSlotViolationClaimError(WaiverError):
 class BidError(WaiverError):
     """A FAAB bid that can't be placed: missing in a bidding league,
     negative, or more than the team has left (league formats, 2026-10)."""
+
+
+class ClaimOrderError(WaiverError):
+    """A new claim order that doesn't name exactly this team's pending
+    claims — the list it was made from is out of date."""
+
+    pass

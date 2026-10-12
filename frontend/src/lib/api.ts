@@ -2103,6 +2103,11 @@ export type WaiverClaim = {
   failure_reason: string | null;
   created_at: string;
   processed_at: string | null;
+  // The team's own rank for a pending claim (1 = first). Pending claims
+  // come back first, in this order.
+  claim_order: number;
+  // When a pending claim's player clears waivers.
+  clears_at: string | null;
 };
 
 // Real write — files a claim on a player currently on waivers, resolved
@@ -2136,6 +2141,20 @@ export async function cancelWaiverClaim(claimId: number): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Cancel failed (${res.status})`);
+  }
+}
+
+// ESPN's Waiver Claims > Edit (2026-10-12): every pending claim's id,
+// top first. A 409 means the claims changed since they were loaded.
+export async function reorderWaiverClaims(claimIds: number[]): Promise<void> {
+  const res = await fetch(`/api/backend/me/team/waivers/claims/order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ claim_ids: claimIds }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Couldn't save your claim order (${res.status})`);
   }
 }
 

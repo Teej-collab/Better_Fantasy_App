@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.config import DEFAULT_LEAGUE_ID
 from app.domain import waivers
 from app.domain.lineup_engine import add_free_agent
@@ -8,6 +10,7 @@ from app.domain.lineup_exceptions import PlayerNotOnRosterError, PlayerOnWaivers
 from app.domain.waiver_exceptions import (
     ClaimNotCancellableError,
     ClaimNotFoundError,
+    ClaimOrderError,
     DuplicateClaimError,
     PlayerNotOnWaiversError,
 )
@@ -15,6 +18,15 @@ from app.routers.commissioner_lineup import _waiver_locked_pro_teams as commissi
 from app.routers.me import _locked_pro_teams_for_current_week as me_locked_pro_teams
 from app.routers.me import _waiver_locked_pro_teams as me_waiver_locked_pro_teams
 from tests.conftest import TEST_SEASON
+
+
+@pytest.fixture(autouse=True)
+def _no_games_kicked_off(monkeypatch):
+    """start_waiver_clock reads the live ESPN scoreboard to hold a
+    played player for Wednesday; tests that want that say so."""
+    async def none(conn, season):
+        return frozenset()
+    monkeypatch.setattr(waivers, "current_waiver_locked_pro_teams", none)
 
 
 async def _seed_owner_with_team(pool, suffix, espn_team_id):
@@ -110,6 +122,53 @@ async def test_dropped_player_waiver_clock_is_one_day(pool):
         clears_at = (await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player]))[player]
     after = dt.datetime.now(dt.timezone.utc)
     assert before + dt.timedelta(days=1) <= clears_at <= after + dt.timedelta(days=1)
+
+
+def _locked(teams):
+    async def fake(conn, season):
+        return teams
+    return fake
+
+
+def _is_wednesday_3am_et(clears_at):
+    import zoneinfo
+
+    clears_at_et = clears_at.astimezone(zoneinfo.ZoneInfo("America/New_York"))
+    return clears_at_et.weekday() == 2 and (clears_at_et.hour, clears_at_et.minute, clears_at_et.second) == (3, 0, 0)
+
+
+async def test_dropping_a_player_whose_game_kicked_off_holds_them_until_wednesday(pool, monkeypatch):
+    """2026-10-12 rule: once a player's game has kicked off, a drop
+    doesn't get the 1-day clock — they clear in the Wednesday run."""
+    monkeypatch.setattr(waivers, "current_waiver_locked_pro_teams", _locked(frozenset({"KC"})))
+    player = await _seed_player(pool, "drop-after-kickoff")
+    async with pool.acquire() as conn:
+        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        clears_at = (await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [player]))[player]
+    assert _is_wednesday_3am_et(clears_at)
+
+
+async def test_hold_moves_a_pre_kickoff_drop_to_the_wednesday_clear(pool):
+    """The real 2026-10-11 case: the 49ers D/ST were dropped Sunday
+    morning before kickoff, played that afternoon, and their 1-day
+    clock cleared them Monday morning. Once their game has kicked off,
+    the waiver tick holds them for Wednesday; a team that hasn't played
+    keeps its 1-day clock."""
+    played = await _seed_player(pool, "hold-played")
+    not_played = await _seed_player(pool, "hold-not-played")
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE players SET pro_team = 'SEA' WHERE sleeper_player_id = $1", not_played)
+        one_day = datetime.now(timezone.utc) + timedelta(days=1)
+        for player in (played, not_played):
+            await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player, clears_at=one_day)
+
+        assert await waivers.hold_played_until_wednesday(conn, TEST_SEASON, frozenset({"KC"})) >= 1
+        clears = await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [played, not_played])
+        assert _is_wednesday_3am_et(clears[played])
+        assert clears[not_played] == one_day
+        # Already held: a second tick changes nothing for this player.
+        await waivers.hold_played_until_wednesday(conn, TEST_SEASON, frozenset({"KC"}))
+        assert (await waivers.get_waiver_clears_at(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, [played]))[played] == clears[played]
 
 
 async def test_game_locked_waiver_clock_clears_at_next_wednesday_3am_et(pool):
@@ -326,6 +385,82 @@ async def test_process_expired_waivers_winner_drop_target_starts_new_waiver_cloc
         )
         assert still_rostered is None
         assert await waivers.is_on_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, outgoing) is True
+
+
+async def _claim_statuses(conn, team_id):
+    return {
+        c["add_sleeper_player_id"]: c["status"]
+        for c in await waivers.list_claims_for_team(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id)
+    }
+
+
+async def test_claim_order_picks_which_claim_uses_a_shared_drop(pool):
+    """ESPN's Waiver Claims > Edit (2026-10-12): two claims dropping the
+    same player — the one ranked first wins, the other has nothing left
+    to drop."""
+    await _seed_roster_config(pool)
+    _, team = await _seed_owner_with_team(pool, "order1", espn_team_id=231)
+    first_made = await _seed_player(pool, "order1-a")
+    ranked_first = await _seed_player(pool, "order1-b")
+    drop = await _seed_player(pool, "order1-drop")
+    await _seed_roster_entry(pool, team, drop)
+
+    async with pool.acquire() as conn:
+        for player in (first_made, ranked_first):
+            await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        claim_a = await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, first_made, drop)
+        claim_b = await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, ranked_first, drop)
+        assert (claim_a["claim_order"], claim_b["claim_order"]) == (1, 2)
+        await waivers.reorder_claims(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, [claim_b["id"], claim_a["id"]])
+        listed = await waivers.list_claims_for_team(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team)
+        assert [c["id"] for c in listed] == [claim_b["id"], claim_a["id"]]
+    for player in (first_made, ranked_first):
+        await _force_expire(pool, player)
+
+    async with pool.acquire() as conn:
+        await waivers.process_expired_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, week=2)
+        statuses = await _claim_statuses(conn, team)
+    assert statuses == {ranked_first: "successful", first_made: "failed"}
+
+
+async def test_a_team_that_wins_a_claim_waits_its_turn_for_the_next(pool):
+    """The top team gets its first choice, then goes to the back: the
+    next team's first choice beats the top team's second."""
+    await _seed_roster_config(pool)
+    _, top = await _seed_owner_with_team(pool, "order2a", espn_team_id=232)
+    _, next_team = await _seed_owner_with_team(pool, "order2b", espn_team_id=233)
+    # top loses week 1, so it has waiver priority 1.
+    await _seed_matchup(pool, week=1, home_team_id=top, away_team_id=next_team, home_score=5, away_score=25)
+    player_a = await _seed_player(pool, "order2-a")
+    player_b = await _seed_player(pool, "order2-b")
+
+    async with pool.acquire() as conn:
+        for player in (player_a, player_b):
+            await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, top, player_a)
+        await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, top, player_b)
+        await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, next_team, player_b)
+    for player in (player_a, player_b):
+        await _force_expire(pool, player)
+
+    async with pool.acquire() as conn:
+        await waivers.process_expired_waivers(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, week=2)
+        assert await _claim_statuses(conn, top) == {player_a: "successful", player_b: "failed"}
+        assert await _claim_statuses(conn, next_team) == {player_b: "successful"}
+
+
+async def test_reorder_claims_must_name_every_pending_claim(pool):
+    _, team = await _seed_owner_with_team(pool, "order3", espn_team_id=234)
+    players = [await _seed_player(pool, f"order3-{i}") for i in range(2)]
+    async with pool.acquire() as conn:
+        claims = []
+        for player in players:
+            await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+            claims.append(await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, player))
+        with pytest.raises(ClaimOrderError):
+            await waivers.reorder_claims(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, [claims[0]["id"]])
+        with pytest.raises(ClaimOrderError):
+            await waivers.reorder_claims(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team, [claims[0]["id"]] * 2)
 
 
 async def test_add_free_agent_rejects_a_player_still_on_waivers(pool):

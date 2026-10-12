@@ -147,6 +147,9 @@ export const OFFLINE_MESSAGE = "You're offline — check your connection and try
 initConnectivity(`${API_BASE_URL}/health`);
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // The session this request went out with: only its own 401 means it
+  // expired (see below).
+  const sentToken = sessionToken;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let res: Response;
@@ -157,7 +160,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         Accept: 'application/json',
         ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...(sentToken ? { Authorization: `Bearer ${sentToken}` } : {}),
         ...init?.headers,
       },
     });
@@ -172,7 +175,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     clearTimeout(timer);
   }
   reportReachable();
-  if (res.status === 401) onUnauthorized?.();
+  // Signs out only when the session this phone still holds was turned
+  // away. A request that went out before the saved session finished
+  // loading has no token, and its 401 used to erase that session as
+  // soon as it loaded: Niko kept having to sign in again (2026-10-12).
+  if (res.status === 401 && sentToken !== null && sentToken === sessionToken) onUnauthorized?.();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     let body: Record<string, unknown> | null = null;
@@ -429,6 +436,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ add_sleeper_player_id: addPlayerId, drop_sleeper_player_id: dropPlayerId, bid_amount: bid ?? null }),
     }),
+  // ESPN's Waiver Claims > Edit (2026-10-12): every pending claim's id,
+  // top first. A 409 means the claims changed since they were loaded.
+  reorderWaiverClaims: (claimIds: number[]) =>
+    request<unknown>('/me/team/waivers/claims/order', { method: 'PUT', body: JSON.stringify({ claim_ids: claimIds }) }),
   cancelWaiverClaim: (claimId: number) =>
     request<unknown>(`/me/team/waivers/claim/${claimId}/cancel`, { method: 'POST' }),
   draftState: () => request<DraftState>('/draft/state'),

@@ -1045,6 +1045,11 @@ async def _run_waiver_processing_job():
         current_week = await league_queries.get_cached_current_week(conn, season)
         if current_week is None:
             return
+        held = await waivers.hold_played_until_wednesday(
+            conn, season, await waivers.current_waiver_locked_pro_teams(conn, season)
+        )
+        if held:
+            logger.info("Waiver processing: held %d played player(s) until the Wednesday clear", held)
         due_leagues = await conn.fetch(
             "SELECT DISTINCT league_id FROM waiver_wire WHERE season = $1 AND clears_at <= now()", season,
         )

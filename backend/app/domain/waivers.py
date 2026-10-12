@@ -19,7 +19,9 @@ scooped up with no claim required). Modeled here as next Wednesday
 3:00 AM ET, the start of ESPN's own stated processing window — see
 `_next_wednesday_clear_et` below. 2026-09-23: that Wednesday clear
 applies to game-locked free agents only; a player a team actually drops
-is back on this league's real 1-day waiver period (DROP_WAIVER_PERIOD). Also per that same source: "Game
+is back on this league's real 1-day waiver period (DROP_WAIVER_PERIOD) —
+2026-10-12: unless their game has kicked off, which holds them for the
+Wednesday clear too (hold_played_until_wednesday). Also per that same source: "Game
 Lock: individual players lock at the start of their team's scheduled
 game and move to waiver status" — exactly what waivers.ensure_waiver_
 clock_if_game_locked (below) already does, and "Same-Day Add/Drop: ...
@@ -72,11 +74,13 @@ from app.domain.waiver_exceptions import (
     BidError,
     ClaimNotCancellableError,
     ClaimNotFoundError,
+    ClaimOrderError,
     DuplicateClaimError,
     IRSlotViolationClaimError,
     PlayerNotOnWaiversError,
 )
-from app.queries.league import get_standings
+from app.providers.nfl_scoreboard import get_week_scoreboard
+from app.queries.league import get_cached_current_week, get_standings
 from app.queries.roster_transactions import log_transaction
 
 # ESPN's own real "Standard Waivers" setting — not yet commissioner-
@@ -143,6 +147,51 @@ def waiver_locked_pro_teams(
     return prior_locked
 
 
+async def current_waiver_locked_pro_teams(conn, season: int) -> frozenset[str]:
+    """waiver_locked_pro_teams for right now, read off the cached ESPN
+    scoreboard. Fails open (empty) when there's no current week or the
+    scoreboard can't be reached, same as the routers' own copies."""
+    current_week = await get_cached_current_week(conn, season)
+    if current_week is None:
+        return frozenset()
+    try:
+        games = await get_week_scoreboard(current_week, season)
+    except Exception:
+        return frozenset()
+    prior_games = None
+    if current_week > 1 and not locked_pro_teams(games):
+        try:
+            prior_games = await get_week_scoreboard(current_week - 1, season)
+        except Exception:
+            prior_games = None
+    return waiver_locked_pro_teams(games, prior_games)
+
+
+async def hold_played_until_wednesday(
+    conn, season: int, locked: frozenset[str], now: datetime | None = None,
+) -> int:
+    """2026-10-12 rule: once a player's NFL game has kicked off, they
+    don't clear waivers until the Wednesday 3am ET run — even if a team
+    dropped them before kickoff, when their 1-day drop clock would have
+    run out mid-week (the 49ers D/ST, dropped Sunday morning, cleared
+    Monday morning). Runs at the top of every waiver-processing tick,
+    before anything expired is resolved, so it catches a clock that
+    started before kickoff. Returns how many waiver rows moved."""
+    if not locked:
+        return 0
+    clears_at = _next_wednesday_clear_et(now or datetime.now(timezone.utc))
+    result = await conn.execute(
+        """
+        UPDATE waiver_wire w SET clears_at = $2
+        FROM players p
+        WHERE p.sleeper_player_id = w.sleeper_player_id
+          AND w.season = $1 AND w.clears_at <> $2 AND p.pro_team = ANY($3::text[])
+        """,
+        season, clears_at, sorted(locked),
+    )
+    return int(result.split()[-1])
+
+
 async def start_waiver_clock(
     conn, season: int, league_id: int, sleeper_player_id: str, clears_at: datetime | None = None,
 ) -> None:
@@ -154,7 +203,17 @@ async def start_waiver_clock(
     DROP_WAIVER_PERIOD; ensure_waiver_clock_if_game_locked passes the
     Wednesday-3am-ET clear instead."""
     if clears_at is None:
-        clears_at = datetime.now(timezone.utc) + DROP_WAIVER_PERIOD
+        now = datetime.now(timezone.utc)
+        clears_at = now + DROP_WAIVER_PERIOD
+        # A player whose game has already kicked off waits for the
+        # Wednesday clear instead (see hold_played_until_wednesday).
+        locked = await current_waiver_locked_pro_teams(conn, season)
+        if locked:
+            pro_team = await conn.fetchval(
+                "SELECT pro_team FROM players WHERE sleeper_player_id = $1", sleeper_player_id
+            )
+            if pro_team in locked:
+                clears_at = _next_wednesday_clear_et(now)
     await conn.execute(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
@@ -343,10 +402,14 @@ async def submit_claim(
             raise PlayerNotOnRosterError(f"{drop_sleeper_player_id} isn't on your roster")
     row = await conn.fetchrow(
         """
-        INSERT INTO waiver_claims (season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id, bid_amount)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO waiver_claims (season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id, bid_amount, claim_order)
+        VALUES ($1, $2, $3, $4, $5, $6, (
+            -- A new claim goes to the bottom of this team's own order.
+            SELECT COALESCE(MAX(claim_order), 0) + 1 FROM waiver_claims
+            WHERE season = $1 AND league_id = $2 AND team_id = $3 AND status = 'pending'
+        ))
         RETURNING id, season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id,
-                  status, failure_reason, created_at, processed_at, bid_amount
+                  status, failure_reason, created_at, processed_at, bid_amount, claim_order
         """,
         season, league_id, team_id, add_sleeper_player_id, drop_sleeper_player_id, bid_amount,
     )
@@ -358,16 +421,42 @@ async def list_claims_for_team(conn, season: int, league_id: int, team_id: int) 
         """
         SELECT wc.id, wc.add_sleeper_player_id, ap.full_name AS add_player_name,
                wc.drop_sleeper_player_id, dp.full_name AS drop_player_name,
-               wc.status, wc.failure_reason, wc.created_at, wc.processed_at, wc.bid_amount
+               wc.status, wc.failure_reason, wc.created_at, wc.processed_at, wc.bid_amount, wc.claim_order,
+               ww.clears_at
         FROM waiver_claims wc
         JOIN players ap ON ap.sleeper_player_id = wc.add_sleeper_player_id
         LEFT JOIN players dp ON dp.sleeper_player_id = wc.drop_sleeper_player_id
+        LEFT JOIN waiver_wire ww
+            ON ww.season = wc.season AND ww.league_id = wc.league_id
+           AND ww.sleeper_player_id = wc.add_sleeper_player_id AND wc.status = 'pending'
         WHERE wc.season = $1 AND wc.league_id = $2 AND wc.team_id = $3
-        ORDER BY wc.created_at DESC
+        -- Pending claims first, in the team's own order; then history, newest first.
+        ORDER BY (wc.status = 'pending') DESC,
+                 CASE WHEN wc.status = 'pending' THEN wc.claim_order END ASC,
+                 wc.created_at DESC
         """,
         season, league_id, team_id,
     )
     return [dict(r) for r in rows]
+
+
+async def reorder_claims(conn, season: int, league_id: int, team_id: int, claim_ids: list[int]) -> None:
+    """ESPN's Waiver Claims > Edit (2026-10-12): the team's pending
+    claims, top first. Must name every pending claim exactly once, so a
+    claim filed or processed since the list was loaded can't be lost."""
+    pending = {
+        r["id"]
+        for r in await conn.fetch(
+            "SELECT id FROM waiver_claims WHERE season = $1 AND league_id = $2 AND team_id = $3 AND status = 'pending'",
+            season, league_id, team_id,
+        )
+    }
+    if len(claim_ids) != len(set(claim_ids)) or set(claim_ids) != pending:
+        raise ClaimOrderError("Your claims changed — refresh and try again")
+    await conn.executemany(
+        "UPDATE waiver_claims SET claim_order = $1 WHERE id = $2",
+        [(position, claim_id) for position, claim_id in enumerate(claim_ids, start=1)],
+    )
 
 
 async def cancel_claim(conn, season: int, league_id: int, team_id: int, claim_id: int) -> None:
@@ -583,8 +672,32 @@ async def process_expired_waivers(conn, season: int, league_id: int, week: int) 
     # every claim (not seed itself), treating a real contested player
     # as if nobody had claimed them at all.
     await get_priority_order(conn, season, league_id, week)
+    # ESPN's order when several players clear in the same run (the
+    # Wednesday clear): the team at the top of the waiver order gets
+    # its highest-ranked claim (reorder_claims), drops to the back, and
+    # the next claim is picked again from the new order — so a team's
+    # second choice only goes ahead of another team's first choice once
+    # it's that team's turn. FAAB leagues take the highest bid first.
+    remaining = {row["sleeper_player_id"] for row in expired}
     results = []
-    for row in expired:
+    while remaining:
+        player = await conn.fetchval(
+            """
+            SELECT wc.add_sleeper_player_id
+            FROM waiver_claims wc
+            JOIN team_waiver_priority twp
+                ON twp.season = wc.season AND twp.league_id = wc.league_id
+               AND twp.week = $4 AND twp.team_id = wc.team_id
+            WHERE wc.season = $1 AND wc.league_id = $2 AND wc.status = 'pending'
+              AND wc.add_sleeper_player_id = ANY($3::text[])
+            ORDER BY wc.bid_amount DESC NULLS LAST, twp.priority ASC, wc.claim_order ASC, wc.id ASC
+            LIMIT 1
+            """,
+            season, league_id, sorted(remaining), week,
+        )
+        if player is None:
+            player = min(remaining)  # nobody's claiming the rest: they just clear
+        remaining.discard(player)
         async with conn.transaction():
-            results.append(await _resolve_one_player(conn, season, league_id, week, row["sleeper_player_id"]))
+            results.append(await _resolve_one_player(conn, season, league_id, week, player))
     return results

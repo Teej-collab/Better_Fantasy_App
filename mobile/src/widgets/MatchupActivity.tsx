@@ -4,10 +4,12 @@ import {
   aspectRatio,
   background,
   clipShape,
+  fixedSize,
   font,
   foregroundStyle,
   frame,
   gaugeStyle,
+  layoutPriority,
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
@@ -81,7 +83,7 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
   const label = props.state === 'live' ? '● LIVE' : final ? 'FINAL' : pre ? 'KICKOFF SOON' : 'BETWEEN GAMES';
   const labelColor = props.state === 'live' ? live : accent;
   const odds = props.winProbability !== null ? `${props.winProbability}% to win` : '';
-  const left = final ? '' : `${props.myLeft} left · ${props.oppLeft} left`;
+  const left = final ? '' : `You ${props.myLeft} left · Them ${props.oppLeft} left`;
   const footer = environment.isStale ? 'Updating…' : [odds, left].filter((s) => s.length > 0).join('  ·  ');
 
   // A team's logo, or its initials until the logo is saved on the phone.
@@ -107,8 +109,21 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
   );
   const myLogo = (size: number) => logo(props.myTeamId, props.myInitials, size, '#13301a');
   const oppLogo = (size: number) => logo(props.oppTeamId, props.oppInitials, size, '#2a1a12');
+  // A score is never cut short: it keeps its full width, and the team name
+  // under it shrinks or truncates instead. Niko's "114.6" showed as "11…"
+  // next to a long team name (2026-10-11).
   const score = (value: number, color: string, size: number) => (
-    <Text modifiers={[font({ size, weight: 'heavy', design: 'rounded' }), monospacedDigit(), foregroundStyle(color)]}>{fmt(value)}</Text>
+    <Text
+      modifiers={[
+        font({ size, weight: 'heavy', design: 'rounded' }),
+        monospacedDigit(),
+        foregroundStyle(color),
+        lineLimit(1),
+        fixedSize({ horizontal: true, vertical: false }),
+        layoutPriority(2),
+      ]}>
+      {fmt(value)}
+    </Text>
   );
   const oddsBar =
     props.winProbability !== null && !final ? (
@@ -136,10 +151,10 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
   );
 
   const side = (mine: boolean, size: number) => (
-    <HStack spacing={10}>
+    <HStack spacing={8}>
       {mine ? myLogo(size) : null}
       <VStack alignment={mine ? 'leading' : 'trailing'} spacing={1}>
-        {score(mine ? myValue : oppValue, mine ? (myWinning && !pre ? accent : text) : !myWinning && !pre ? loss : text, size === 36 ? 30 : 28)}
+        {score(mine ? myValue : oppValue, mine ? (myWinning && !pre ? accent : text) : !myWinning && !pre ? loss : text, size === 32 ? 27 : 26)}
         <Text modifiers={[font({ size: 11, weight: 'semibold' }), foregroundStyle(muted), lineLimit(1), minimumScaleFactor(0.7)]}>
           {mine ? props.myName : props.oppName}
         </Text>
@@ -167,8 +182,8 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
                 {props.week ? `WEEK ${props.week} · THE WEEKEND` : 'THE WEEKEND'}
               </Text>
             </HStack>
-            <HStack>
-              {side(true, 36)}
+            <HStack spacing={6}>
+              {side(true, 32)}
               <Spacer />
               <Text
                 modifiers={[
@@ -177,11 +192,14 @@ const MatchupActivity = (props: MatchupActivityProps, environment: LiveActivityE
                   padding({ horizontal: 7, vertical: 3 }),
                   background(myWinning ? '#1d3a17' : '#3a1717'),
                   clipShape('capsule'),
+                  lineLimit(1),
+                  fixedSize({ horizontal: true, vertical: false }),
+                  layoutPriority(1),
                 ]}>
                 {pre ? 'PROJ' : marginText}
               </Text>
               <Spacer />
-              {side(false, 36)}
+              {side(false, 32)}
             </HStack>
             {oddsBar}
             <Text modifiers={[font({ size: 11 }), foregroundStyle(muted), lineLimit(1)]}>{pre ? 'Projected' : footer}</Text>

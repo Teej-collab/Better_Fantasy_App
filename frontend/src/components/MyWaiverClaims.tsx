@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { cancelWaiverClaim, listMyWaiverClaims, type WaiverClaim } from "@/lib/api";
+import { cancelWaiverClaim, listMyWaiverClaims, reorderWaiverClaims, type WaiverClaim } from "@/lib/api";
 
 const STATUS_STYLE: Record<WaiverClaim["status"], string> = {
   pending: "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60",
@@ -10,8 +10,18 @@ const STATUS_STYLE: Record<WaiverClaim["status"], string> = {
   cancelled: "bg-black/5 text-black/40 dark:bg-white/5 dark:text-white/40",
 };
 
+// "Processes Wed, Oct 14 at 3:00 AM", in the viewer's own time zone.
+function processesAt(iso: string): string {
+  const when = new Date(iso);
+  const day = when.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `Processes ${day} at ${time}`;
+}
+
 /**
- * This team's own waiver claims, most recent first — self-fetching
+ * This team's own waiver claims — pending ones first, in the order the
+ * team ranked them (the arrows, like ESPN's Waiver Claims > Edit), then
+ * the rest most recent first — self-fetching
  * client widget so FreeAgentsList's own optimistic claim-submit flow
  * doesn't have to thread state all the way up to the server-rendered
  * page just to keep this list in sync. Refetches after a successful
@@ -35,6 +45,24 @@ export function MyWaiverClaims() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load your waiver claims"));
   }, []);
 
+  async function move(claimId: number, by: -1 | 1) {
+    if (!claims) return;
+    const pendingIds = claims.filter((c) => c.status === "pending").map((c) => c.id);
+    const from = pendingIds.indexOf(claimId);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= pendingIds.length) return;
+    [pendingIds[from], pendingIds[to]] = [pendingIds[to], pendingIds[from]];
+    const byId = new Map(claims.map((c) => [c.id, c]));
+    const previous = claims;
+    setClaims([...pendingIds.map((id) => byId.get(id)!), ...claims.filter((c) => c.status !== "pending")]);
+    try {
+      await reorderWaiverClaims(pendingIds);
+    } catch (e) {
+      setClaims(previous);
+      setError(e instanceof Error ? e.message : "Couldn't save your claim order");
+    }
+  }
+
   async function cancel(claimId: number) {
     setCancellingId(claimId);
     try {
@@ -51,7 +79,8 @@ export function MyWaiverClaims() {
   if (claims === null) return <p className="text-xs text-black/50 dark:text-white/50">Loading your claims…</p>;
   if (claims.length === 0) return null;
 
-  const pending = claims.filter((c) => c.status === "pending").length;
+  const pendingIds = claims.filter((c) => c.status === "pending").map((c) => c.id);
+  const pending = pendingIds.length;
   const isOpen = open ?? claims.length <= 3;
   return (
     <div className="neon-panel flex flex-col rounded-lg bg-black/[0.015] dark:bg-white/[0.03]">
@@ -69,17 +98,50 @@ export function MyWaiverClaims() {
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
+      {isOpen && pending > 1 && (
+        <p className="px-4 pt-2 text-xs text-black/50 dark:text-white/50">
+          Use the arrows to rank your pending claims. When several clear at once, your top claim goes first on your turn.
+        </p>
+      )}
       {isOpen && (
       <ul className="flex flex-col divide-y divide-black/5 dark:divide-white/5">
         {claims.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-            <span className="flex min-w-0 flex-col">
+            {c.status === "pending" && pending > 1 && (
+              <span className="flex shrink-0 flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => move(c.id, -1)}
+                  disabled={pendingIds.indexOf(c.id) === 0}
+                  aria-label={`Move ${c.add_player_name} up`}
+                  className="flex h-6 w-8 items-center justify-center rounded text-black/60 hover:bg-black/5 disabled:opacity-25 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  ▲
+                </button>
+                <span className="text-[10px] font-semibold tabular-nums text-black/40 dark:text-white/40">
+                  {pendingIds.indexOf(c.id) + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => move(c.id, 1)}
+                  disabled={pendingIds.indexOf(c.id) === pending - 1}
+                  aria-label={`Move ${c.add_player_name} down`}
+                  className="flex h-6 w-8 items-center justify-center rounded text-black/60 hover:bg-black/5 disabled:opacity-25 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  ▼
+                </button>
+              </span>
+            )}
+            <span className="flex min-w-0 flex-1 flex-col">
               <span className="wrap-break-word">
                 {c.add_player_name}
                 {c.drop_player_name && (
                   <span className="text-black/50 dark:text-white/50"> (drop {c.drop_player_name})</span>
                 )}
               </span>
+              {c.status === "pending" && c.clears_at && (
+                <span className="text-xs text-black/50 dark:text-white/50">{processesAt(c.clears_at)}</span>
+              )}
               {c.failure_reason && (
                 <span className="text-xs text-black/50 dark:text-white/50">{c.failure_reason}</span>
               )}

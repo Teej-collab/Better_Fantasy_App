@@ -84,6 +84,10 @@ export function teamLogoUrl(abbr: string | null | undefined): string | null {
   return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${abbr.toLowerCase()}.png&w=160&h=160`;
 }
 
+// A D/ST's id is its team abbreviation ("SF"), which Sleeper has no
+// picture for: it gets the team logo instead.
 export function sleeperHeadshotUrl(sleeperPlayerId: string | null | undefined): string | null {
-  return sleeperPlayerId ? `https://sleepercdn.com/content/nfl/players/${sleeperPlayerId}.jpg` : null;
+  if (!sleeperPlayerId) return null;
+  if (sleeperPlayerId in NFL_TEAM_NAMES) return teamLogoUrl(sleeperPlayerId);
+  return `https://sleepercdn.com/content/nfl/players/${sleeperPlayerId}.jpg`;
 }

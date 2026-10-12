@@ -552,11 +552,7 @@ export default async function HomePage() {
   if (weeklyAwards && season !== null && week !== null) {
     cards.awards = (
       <section className="flex flex-col gap-2">
-        <SectionHeader
-          title={weeklyAwardsWeek === week ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
-          href={`/seasons/${season}/awards`}
-        />
-        <AwardsPreview awards={weeklyAwards} />
+        {/* The week's recap leads, above its awards (2026-10-12). */}
         {season !== null && week !== null && (
           weeklyRecap && weeklyRecapWeek !== null ? (
             <WeeklyRecapTeaser
@@ -578,6 +574,11 @@ export default async function HomePage() {
             me.is_commissioner && <WeekRecapSection season={season} week={week} narrative={null} canGenerate />
           )
         )}
+        <SectionHeader
+          title={weeklyAwardsWeek === week ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
+          href={`/seasons/${season}/awards`}
+        />
+        <AwardsPreview awards={weeklyAwards} />
       </section>
     );
   }

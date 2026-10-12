@@ -290,6 +290,11 @@ export type WaiverClaim = {
   failure_reason: string | null;
   created_at: string;
   processed_at: string | null;
+  // The team's own rank for a pending claim (1 = first); pending claims
+  // come back first, in this order.
+  claim_order: number;
+  // When a pending claim's player clears waivers.
+  clears_at: string | null;
 };
 
 // GET /players/{sleeper_player_id}/card (frontend/src/lib/playerCardApi.ts).

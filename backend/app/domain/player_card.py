@@ -27,11 +27,15 @@ network call at request time) and is always returned even if ESPN is
 unreachable; both ESPN pieces degrade to None on any failure — a bad
 crosswalk id, a timeout, ESPN being down — rather than raising, since
 they're enrichment on top of a real player record, not the record
-itself. A DEF entry gets neither: ESPN's player_map (see
-player_info.py) is a name->id map of individual NFL athletes, not team
-D/ST units, so there's no id to resolve either lookup with anyway.
+itself. A DEF entry (2026-10-12) gets ESPN's projection/ownership —
+its espn_player_id is ESPN's own D/ST id (-16000 minus the team id),
+which player_info resolves fine — but no athlete overview or ESPN game
+log (D/STs have no athlete page). Its game log is built from our own
+weekly stats instead (_defense_game_log), and its picture is the team
+logo.
 """
 import asyncio
+import json
 import logging
 
 from app.config import DEFAULT_LEAGUE_ID
@@ -49,6 +53,67 @@ logger = logging.getLogger(__name__)
 # team abbreviation, not a person) — the frontend falls back to a team
 # badge/initials for those, same as it already does elsewhere.
 SLEEPER_HEADSHOT_URL = "https://sleepercdn.com/content/nfl/players/{player_id}.jpg"
+# A D/ST's picture: its team logo, the same ESPN CDN image the web's
+# teamLogoUrl (frontend/src/lib/nfl-teams.ts) uses.
+TEAM_LOGO_URL = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/{abbr}.png&w=160&h=160"
+
+# A D/ST's game log columns, from the stats our scoring already stores
+# for it (app/providers/nfl_stats/espn_public.py). Points allowed is the
+# real final score; yards allowed is only stored as its scoring band.
+_DEFENSE_COUNTS = [("SACK", "def_sack"), ("INT", "def_int"), ("FR", "def_fum_rec"),
+                   ("SFTY", "def_safety"), ("BLK", "def_block"), ("TD", "def_return_td")]
+
+
+def _count(value) -> str:
+    number = float(value or 0)
+    return str(int(number)) if number.is_integer() else f"{number:.1f}"
+
+
+def _yards_allowed_band(raw: dict) -> str:
+    for key in raw:
+        if key.startswith("yds_allow_"):
+            band = key.removeprefix("yds_allow_")
+            if band.startswith("lt"):
+                return f"<{band[2:]}"
+            if band.endswith("_plus"):
+                return f"{band.removesuffix('_plus')}+"
+            return band.replace("_", "–")
+    return "—"
+
+
+def _defense_game_log(pro_team: str, rows: list[dict], games_by_week: dict[int, dict]) -> dict | None:
+    """The same {"categories", "games"} shape as ESPN's athlete game log
+    (app/providers/espn/player_game_log.py), so every client's game-log
+    table renders a D/ST without a special case."""
+    games = []
+    for row in rows:
+        raw = row["raw_stats"]
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        raw = raw or {}
+        game = games_by_week.get(row["week"]) or {}
+        home = game.get("home_team") == pro_team
+        opponent = game.get("away_team") if home else game.get("home_team")
+        mine, theirs = (game.get("home_score"), game.get("away_score")) if home else (game.get("away_score"), game.get("home_score"))
+        result = None
+        points_allowed = "—"
+        if theirs not in (None, "") and mine not in (None, ""):
+            points_allowed = str(theirs)
+            if game.get("completed"):
+                mine_n, theirs_n = float(mine), float(theirs)
+                outcome = "W" if mine_n > theirs_n else "L" if mine_n < theirs_n else "T"
+                result = f"{outcome} {mine}-{theirs}"
+        games.append({
+            "week": row["week"],
+            "opponent": (opponent if home else f"@{opponent}") if opponent else None,
+            "result": result,
+            "stats": {"defense": [_count(raw.get(key)) for _, key in _DEFENSE_COUNTS]
+                      + [points_allowed, _yards_allowed_band(raw)]},
+        })
+    if not games:
+        return None
+    labels = [label for label, _ in _DEFENSE_COUNTS] + ["PA", "YA"]
+    return {"categories": [{"key": "defense", "title": "Defense", "labels": labels}], "games": games}
 
 
 async def get_player_card(
@@ -67,9 +132,11 @@ async def get_player_card(
         return None
 
     card = dict(row)
-    card["headshot_url"] = (
-        None if card["position"] == "DEF" else SLEEPER_HEADSHOT_URL.format(player_id=sleeper_player_id)
-    )
+    is_defense = card["position"] == "DEF"
+    if is_defense:
+        card["headshot_url"] = TEAM_LOGO_URL.format(abbr=card["pro_team"].lower()) if card["pro_team"] else None
+    else:
+        card["headshot_url"] = SLEEPER_HEADSHOT_URL.format(player_id=sleeper_player_id)
     card["projection"] = None
     card["overview"] = None
 
@@ -101,65 +168,68 @@ async def get_player_card(
             card["rostered_team_name"] = roster_row["team_name"]
             card["is_on_my_team"] = my_owner_id is not None and roster_row["owner_id"] == my_owner_id
 
-    if card["position"] != "DEF":
+    try:
+        projection = get_player_info(card["espn_player_id"], full_name=card["full_name"])
+    except Exception:
+        projection = None
+        logger.exception(
+            "ESPN player_info lookup failed for sleeper_player_id=%s espn_player_id=%s",
+            sleeper_player_id, card["espn_player_id"],
+        )
+    card["projection"] = projection
+
+    # A resolved-by-name id that wasn't already on the row — persist
+    # it so the next lookup (and Phase D's weekly-stats crosswalk,
+    # which reads this same column) skips name-matching entirely.
+    # See player_info.py's docstring for the (rare, accepted) risk
+    # of a same-name mismatch.
+    if projection is not None and card["espn_player_id"] is None:
+        resolved_id = projection["espn_player_id"]
+        await conn.execute(
+            "UPDATE players SET espn_player_id = $1 WHERE sleeper_player_id = $2",
+            resolved_id, sleeper_player_id,
+        )
+        card["espn_player_id"] = resolved_id
+
+    if card["espn_player_id"] is not None and not is_defense:
         try:
-            projection = get_player_info(card["espn_player_id"], full_name=card["full_name"])
+            card["overview"] = await get_player_overview(card["espn_player_id"])
         except Exception:
-            projection = None
             logger.exception(
-                "ESPN player_info lookup failed for sleeper_player_id=%s espn_player_id=%s",
+                "ESPN player_overview lookup failed for sleeper_player_id=%s espn_player_id=%s",
                 sleeper_player_id, card["espn_player_id"],
             )
-        card["projection"] = projection
-
-        # A resolved-by-name id that wasn't already on the row — persist
-        # it so the next lookup (and Phase D's weekly-stats crosswalk,
-        # which reads this same column) skips name-matching entirely.
-        # See player_info.py's docstring for the (rare, accepted) risk
-        # of a same-name mismatch.
-        if projection is not None and card["espn_player_id"] is None:
-            resolved_id = projection["espn_player_id"]
-            await conn.execute(
-                "UPDATE players SET espn_player_id = $1 WHERE sleeper_player_id = $2",
-                resolved_id, sleeper_player_id,
-            )
-            card["espn_player_id"] = resolved_id
-
-        if card["espn_player_id"] is not None:
-            try:
-                card["overview"] = await get_player_overview(card["espn_player_id"])
-            except Exception:
-                logger.exception(
-                    "ESPN player_overview lookup failed for sleeper_player_id=%s espn_player_id=%s",
-                    sleeper_player_id, card["espn_player_id"],
-                )
 
     # This season only (2026-10): every season's rows used to mix into one log.
     weekly_rows = await conn.fetch(
-        "SELECT week, fantasy_points FROM player_week_stats "
+        "SELECT week, fantasy_points, raw_stats FROM player_week_stats "
         "WHERE sleeper_player_id = $1 AND league_id = $2 AND ($3::int IS NULL OR season = $3) ORDER BY week ASC",
         sleeper_player_id, league_id, season,
     )
-    weekly_scores = [dict(r) for r in weekly_rows]
+    weekly_scores = [{"week": r["week"], "fantasy_points": r["fantasy_points"]} for r in weekly_rows]
 
     opponent_by_week: dict[int, str | None] = {}
+    games_by_week: dict[int, dict] = {}
     if season is not None and weekly_scores:
         weeks = sorted({r["week"] for r in weekly_scores})
 
-        async def _opponent_for_week(week: int) -> tuple[int, str | None]:
+        async def _opponent_for_week(week: int) -> tuple[int, str | None, dict | None]:
             try:
                 games = await get_week_scoreboard(week, season)
                 lookup = schedule_lookup_by_pro_team(games)
-                return week, lookup.get(card["pro_team"], {}).get("next_opponent")
+                game = next((g for g in games if card["pro_team"] in (g.get("home_team"), g.get("away_team"))), None)
+                return week, lookup.get(card["pro_team"], {}).get("next_opponent"), game
             except Exception:
                 logger.exception(
                     "get_week_scoreboard failed for season=%s week=%s (player card opponent lookup)",
                     season, week,
                 )
-                return week, None
+                return week, None, None
 
-        for week, opponent in await asyncio.gather(*(_opponent_for_week(w) for w in weeks)):
+        for week, opponent, game in await asyncio.gather(*(_opponent_for_week(w) for w in weeks)):
             opponent_by_week[week] = opponent
+            if game is not None:
+                games_by_week[week] = game
 
     for r in weekly_scores:
         r["opponent"] = opponent_by_week.get(r["week"])
@@ -169,7 +239,14 @@ async def get_player_card(
     # The ESPN-style game log (2026-10): each game's box-score line by
     # category, with our fantasy points for that week beside it.
     card["game_log"] = None
-    if card.get("espn_player_id") is not None and season is not None:
+    if is_defense and card["pro_team"]:
+        game_log = _defense_game_log(card["pro_team"], [dict(r) for r in weekly_rows], games_by_week)
+        if game_log:
+            points = {r["week"]: r["fantasy_points"] for r in weekly_scores}
+            for game in game_log["games"]:
+                game["fantasy_points"] = points.get(game["week"])
+            card["game_log"] = game_log
+    elif card.get("espn_player_id") is not None and season is not None:
         try:
             game_log = await get_player_game_log(card["espn_player_id"], season)
         except Exception:

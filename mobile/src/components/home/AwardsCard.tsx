@@ -90,6 +90,8 @@ export function AwardsCard(props: {
   const tiles = buildAwardTiles(props.awards);
   return (
     <View style={styles.section}>
+      {/* The week's recap leads, above its awards (2026-10-12). */}
+      {props.recap && <RecapTeaser recap={props.recap.recap} week={props.recap.week} season={props.recap.season} />}
       <ShareableCard title={`Week ${props.awardsWeek} Awards`} style={styles.shareGap}>
       <SectionTitle>{props.awardsWeek === props.currentWeek ? "This Week's Awards" : `Week ${props.awardsWeek} Awards`}</SectionTitle>
       <View style={styles.grid}>
@@ -104,7 +106,6 @@ export function AwardsCard(props: {
         ))}
       </View>
       </ShareableCard>
-      {props.recap && <RecapTeaser recap={props.recap.recap} week={props.recap.week} season={props.recap.season} />}
     </View>
   );
 }

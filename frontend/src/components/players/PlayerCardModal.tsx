@@ -74,7 +74,9 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   }
 
   const accent = card ? nflTeamColor(card.pro_team) : null;
-  const logo = card ? teamLogoUrl(card.pro_team) : null;
+  const isDefense = card?.position === "DEF";
+  // A D/ST's picture already is its team logo — no second badge.
+  const logo = card && !isDefense ? teamLogoUrl(card.pro_team) : null;
   const initials = card
     ? card.full_name
         .split(/\s+/)
@@ -121,7 +123,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                     width={96}
                     height={96}
                     onError={() => setHeadshotFailed(true)}
-                    className="h-full w-full rounded-full bg-black/5 object-cover object-top dark:bg-white/10"
+                    className={`h-full w-full rounded-full bg-black/5 dark:bg-white/10 ${isDefense ? "object-contain p-2" : "object-cover object-top"}`}
                   />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center rounded-full bg-black/10 text-2xl font-semibold text-black/50 dark:bg-white/10 dark:text-white/50">

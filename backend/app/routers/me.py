@@ -61,6 +61,7 @@ from app.domain.nfl_schedule import live_status_by_pro_team, locked_pro_teams, s
 from app.domain.waiver_exceptions import (
     ClaimNotCancellableError,
     ClaimNotFoundError,
+    ClaimOrderError,
     DuplicateClaimError,
     PlayerNotOnWaiversError,
     WaiverError,
@@ -139,6 +140,8 @@ def _map_lineup_error(e: Exception) -> HTTPException:
 def _map_waiver_error(e: Exception) -> HTTPException:
     if isinstance(e, (ClaimNotFoundError, PlayerNotOnRosterError)):
         return HTTPException(status_code=404, detail=str(e))
+    if isinstance(e, ClaimOrderError):
+        return HTTPException(status_code=409, detail=str(e))
     if isinstance(e, (PlayerNotOnWaiversError, DuplicateClaimError, ClaimNotCancellableError)):
         return HTTPException(status_code=400, detail=str(e))
     return HTTPException(status_code=400, detail=str(e))
@@ -859,7 +862,13 @@ async def list_my_waiver_claims(request: Request):
         faab_left = await waivers.faab_remaining(conn, active_season, league_id, team_id, fmt)
     return {
         "claims": [
-            {**c, "created_at": c["created_at"].isoformat(), "processed_at": c["processed_at"].isoformat() if c["processed_at"] else None}
+            {
+                **c,
+                "created_at": c["created_at"].isoformat(),
+                "processed_at": c["processed_at"].isoformat() if c["processed_at"] else None,
+                # When a pending claim's player clears ("Processes Wed, Oct 14").
+                "clears_at": c["clears_at"].isoformat() if c["clears_at"] else None,
+            }
             for c in claims
         ],
         # FAAB leagues only (guillotine): what's left to bid, of the budget.
@@ -911,6 +920,29 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
         "created_at": claim["created_at"].isoformat(),
         "processed_at": claim["processed_at"].isoformat() if claim["processed_at"] else None,
     }
+
+
+class ClaimOrderRequest(BaseModel):
+    # Every pending claim's id, top first.
+    claim_ids: list[int]
+
+
+@router.put("/team/waivers/claims/order")
+async def reorder_waiver_claims(body: ClaimOrderRequest, request: Request):
+    """ESPN's Waiver Claims > Edit (2026-10-12): rank your own pending
+    claims. When several clear in the same run, the first one you can
+    win on your turn in the waiver order goes first."""
+    payload = _require_session(request)
+    active_season = int(_require("ACTIVE_SEASON"))
+    team_id, _, league_id = await _require_my_team(payload, active_season)
+
+    pool = await get_pool()
+    try:
+        async with pool.acquire() as conn:
+            await waivers.reorder_claims(conn, active_season, league_id, team_id, body.claim_ids)
+    except WaiverError as e:
+        raise _map_waiver_error(e) from e
+    return {"claim_ids": body.claim_ids}
 
 
 @router.post("/team/waivers/claim/{claim_id}/cancel")

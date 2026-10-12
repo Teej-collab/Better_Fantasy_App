@@ -77,7 +77,13 @@ export default function PlayerScreen() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" refreshControl={<AppRefreshControl />}>
         <View style={styles.hero}>
           {p.headshot_url ? (
-            <Image source={{ uri: p.headshot_url }} style={styles.headshot} contentFit="cover" transition={150} />
+            // A D/ST's picture is its team logo: shown whole, not cropped like a face.
+            <Image
+              source={{ uri: p.headshot_url }}
+              style={[styles.headshot, p.position === 'DEF' && styles.teamLogo]}
+              contentFit={p.position === 'DEF' ? 'contain' : 'cover'}
+              transition={150}
+            />
           ) : (
             <View style={[styles.headshot, styles.headshotEmpty]} />
           )}
@@ -233,6 +239,7 @@ const styles = StyleSheet.create({
   hero: { flexDirection: 'row', gap: Spacing.lg, alignItems: 'center' },
   headshot: { width: 88, height: 88, borderRadius: 44, backgroundColor: Colors.surface },
   headshotEmpty: { borderWidth: 1, borderColor: Colors.border },
+  teamLogo: { padding: 10 },
   heroText: { flex: 1, gap: 2 },
   name: { color: Colors.text, fontSize: 24, fontWeight: '800' },
   muted: { color: Colors.textSecondary, fontSize: 13 },

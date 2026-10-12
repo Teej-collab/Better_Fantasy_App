@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { AppState } from 'react-native';
 
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { MyTeam, RosterEntry, WeeklyAwards } from '@/lib/types';
 
 // This is the main reason the native app feels faster than the web one:
@@ -262,7 +263,9 @@ export function usePlayFantasy(gameId: string, playId: string | null, live = fal
 // ---- Home ----
 
 export function usePreferences() {
-  return useQuery({ queryKey: ['preferences'], queryFn: api.preferences, staleTime: 5 * 60_000 });
+  // Asked before the saved session loads, this only gets a 401.
+  const signedIn = Boolean(useAuth().token);
+  return useQuery({ queryKey: ['preferences'], queryFn: api.preferences, staleTime: 5 * 60_000, enabled: signedIn });
 }
 
 export function useActiveLeagueName() {

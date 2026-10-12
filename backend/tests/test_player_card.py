@@ -53,17 +53,48 @@ async def test_get_player_card_includes_bio_and_headshot(pool, monkeypatch):
     assert card["latest_week"] is None
 
 
-async def test_get_player_card_def_entry_has_no_headshot_and_skips_espn(pool, monkeypatch):
-    await _seed_player(pool, "test-playercard-dst", espn_id=None, position="DEF", pro_team="test-playercard-dst")
-    calls = []
-    monkeypatch.setattr(player_card, "get_player_info", lambda *a, **kw: calls.append((a, kw)))
+async def test_get_player_card_def_entry_has_logo_projection_and_game_log(pool, monkeypatch):
+    """2026-10-12: a D/ST's page was blank — no picture, no ownership, no
+    game log. It gets its team logo, ESPN's projection by its D/ST id,
+    and a game log built from the stats our scoring stores for it."""
+    await _seed_player(pool, "test-playercard-dst", espn_id=-16025, position="DEF", pro_team="SF")
+    monkeypatch.setattr(
+        player_card, "get_player_info",
+        lambda espn_player_id, full_name=None: {"espn_player_id": espn_player_id, "percent_owned": 36.3, "bye_week": 8},
+    )
+
+    async def _overview(espn_player_id):
+        raise AssertionError("D/STs have no ESPN athlete page")
+
+    async def _game_log(espn_player_id, season):
+        raise AssertionError("D/STs have no ESPN athlete game log")
+
+    async def _scoreboard(week, year, season_type=2):
+        return [{"home_team": "SEA", "away_team": "SF", "home_score": "29", "away_score": "32", "completed": True}]
+
+    monkeypatch.setattr(player_card, "get_player_overview", _overview)
+    monkeypatch.setattr(player_card, "get_player_game_log", _game_log)
+    monkeypatch.setattr(player_card, "get_week_scoreboard", _scoreboard)
 
     async with pool.acquire() as conn:
-        card = await player_card.get_player_card(conn, "test-playercard-dst")
+        await conn.execute(
+            "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points) "
+            "VALUES ($1, 5, $2, $3, 20.0)",
+            TEST_SEASON, "test-playercard-dst",
+            '{"def_int": 2.0, "def_sack": 5.0, "def_fum_rec": 2, "def_return_td": 1.0, "pts_allow_28_34": 1, "yds_allow_200_299": 1}',
+        )
+        card = await player_card.get_player_card(conn, "test-playercard-dst", season=TEST_SEASON)
 
-    assert card["headshot_url"] is None
-    assert card["projection"] is None
-    assert calls == []  # never even attempted for a DEF entry
+    assert card["headshot_url"] == player_card.TEAM_LOGO_URL.format(abbr="sf")
+    assert card["projection"]["percent_owned"] == 36.3
+    assert card["game_log"]["categories"] == [
+        {"key": "defense", "title": "Defense", "labels": ["SACK", "INT", "FR", "SFTY", "BLK", "TD", "PA", "YA"]}
+    ]
+    [game] = card["game_log"]["games"]
+    assert game["opponent"] == "@SEA"
+    assert game["result"] == "W 32-29"
+    assert game["stats"]["defense"] == ["5", "2", "2", "0", "0", "1", "29", "200–299"]
+    assert game["fantasy_points"] == 20.0
 
 
 async def test_get_player_card_enriches_from_espn_when_crosswalk_exists(pool, monkeypatch):
