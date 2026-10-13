@@ -242,6 +242,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     history && mine ? <TurningPointsCard history={history} meIsHome={mine.item.home.team_id === teamId} opponent={mine.them.owner_name} /> : null;
   const tonightGames = games.filter((g) => (g.state === 'pre' || g.state === 'in') && sameEtDate(g.date, now));
 
+  // Recap day: last week's final until Wednesday's waivers start the new week.
+  const last = phase === 'recap' && lastContext ? sideFor(lastContext.matchups, teamId) : null;
+
   let header: { kicker: string; title: string; live?: boolean; right?: string };
   let body: ReactNode;
 
@@ -287,19 +290,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
 
     // Tuesday after the flip: last week's story and the week ahead.
     case 'recap': {
-      const last = lastContext ? sideFor(lastContext.matchups, teamId) : null;
       header = { kicker: 'Tuesday · Recap day', title: greeting(name, now) };
       body = (
         <>
-          {last && lastWeek !== null && (
-            <YourWeekCard
-              myWeek={lastWeekAsYourWeek(last, lastWeek, myWeek.data.season, teamId)}
-              isGameDay={false}
-              leagueName={leagueName}
-              color={appearance.yourWeek}
-              colors={appearance.yourWeekColors}
-            />
-          )}
           {awards && <YourAwardsCard awards={awards.awards} teamName={myWeek.data.team_name} />}
           <PowerMoveCard trend={trend} teamId={teamId} />
           {odds && <PlayoffOddsCard odds={odds} teamId={teamId} />}
@@ -487,8 +480,24 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         </View>
         <Text style={styles.title}>{header.title}</Text>
       </View>
-      {m ? (
-        <YourWeekCard myWeek={myWeek.data} isGameDay={live} leagueName={leagueName} color={appearance.yourWeek} colors={appearance.yourWeekColors} />
+      {last && lastWeek !== null ? (
+        <YourWeekCard
+          myWeek={lastWeekAsYourWeek(last, lastWeek, myWeek.data.season, teamId)}
+          isGameDay={false}
+          leagueName={leagueName}
+          color={appearance.yourWeek}
+          colors={appearance.yourWeekColors}
+          final
+        />
+      ) : m ? (
+        <YourWeekCard
+          myWeek={myWeek.data}
+          isGameDay={live}
+          leagueName={leagueName}
+          color={appearance.yourWeek}
+          colors={appearance.yourWeekColors}
+          final={phase === 'final'}
+        />
       ) : (
         <Panel>
           <Text style={styles.muted}>No matchup this week.</Text>

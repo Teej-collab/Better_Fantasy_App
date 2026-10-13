@@ -13,18 +13,32 @@ import type { YourWeek } from '@/lib/types';
 // YourWeekCard.tsx): league emblem and week, both scores with live
 // projections, the win-probability bar, then each side's rank, owner,
 // record with streak, and starters yet to play / in play.
-export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leagueName: string | null; color: string; colors?: string[] | null }) {
+// `final` (the living home, once a matchup is decided): the card says
+// it's your final and makes the winner unmistakable — a result banner,
+// a green or red ring, a W/L on each score and the loser's score dimmed.
+export function YourWeekCard(props: {
+  myWeek: YourWeek;
+  isGameDay: boolean;
+  leagueName: string | null;
+  color: string;
+  colors?: string[] | null;
+  final?: boolean;
+}) {
   const { myWeek } = props;
   const m = myWeek.matchup!;
-  const isLive = m.started && props.isGameDay;
+  const isLive = m.started && props.isGameDay && !props.final;
   const winning = m.my_score !== null && m.opponent_score !== null && m.my_score >= m.opponent_score;
+  const margin = Math.abs((m.my_score ?? 0) - (m.opponent_score ?? 0));
+  const tie = props.final && m.my_score === m.opponent_score;
+  const result = !props.final ? null : tie ? 'tie' : winning ? 'win' : 'loss';
+  const resultColor = result === 'win' ? Colors.win : result === 'loss' ? Colors.loss : Colors.textSecondary;
   // The scores are bare numbers on screen; say whose is whose.
   const pts = (n: number | null) => `${(n ?? 0).toFixed(1)} points`;
   const scoreLabel = `${myWeek.team_name} ${pts(m.my_score)}, projected ${m.my_projected_total.toFixed(1)}. ${m.opponent_team_name} ${pts(m.opponent_score)}, projected ${m.opponent_projected_total.toFixed(1)}.${m.win_probability !== null ? ` ${Math.round(m.win_probability)}% chance to win.` : ''} ${m.my_yet_to_play} of your starters yet to play, ${m.my_in_play} playing now.`;
   const open = () => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } });
 
   return (
-    <NeonPanel ring={isLive ? Colors.live : (props.colors ?? props.color)} contentStyle={styles.card}>
+    <NeonPanel ring={isLive ? Colors.live : result ? resultColor : (props.colors ?? props.color)} contentStyle={styles.card}>
       <View style={styles.header}>
         {/* October's spider-web emblem and the like (lib/seasonal.ts). */}
         <Image source={seasonalEmblem()} style={styles.emblem} contentFit="contain" />
@@ -41,22 +55,44 @@ export function YourWeekCard(props: { myWeek: YourWeek; isGameDay: boolean; leag
           <View style={styles.weekPill}>
             <Text style={styles.weekText}>
               {m.is_playoff ? 'Playoffs · ' : ''}Week {myWeek.week}
+              {result ? ' · Final' : ''}
             </Text>
           </View>
         )}
       </View>
 
+      {result && (
+        <View style={[styles.resultBanner, { backgroundColor: `${resultColor}24`, borderColor: `${resultColor}66` }]}>
+          <Text style={[styles.resultKicker, { color: resultColor }]}>Your final</Text>
+          <Text style={[styles.resultText, { color: resultColor }]}>
+            {result === 'win'
+              ? `You beat ${m.opponent_owner_name ?? m.opponent_team_name} by ${margin.toFixed(1)}`
+              : result === 'loss'
+                ? `${m.opponent_owner_name ?? m.opponent_team_name} beat you by ${margin.toFixed(1)}`
+                : 'A dead-even tie'}
+          </Text>
+        </View>
+      )}
+
       <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={scoreLabel} accessibilityHint="Opens the matchup" style={({ pressed }) => pressed && styles.pressed}>
         <View style={styles.dotted} />
         <View style={styles.scores}>
           {/* Avatars show the owner's initials when there's no logo. */}
-          <ScoreBlock name={m.my_owner_name ?? myWeek.team_name} logoUrl={m.my_logo_url} score={m.my_score} projected={m.my_projected_total} lead={winning} />
+          <ScoreBlock
+            name={m.my_owner_name ?? myWeek.team_name}
+            logoUrl={m.my_logo_url}
+            score={m.my_score}
+            projected={m.my_projected_total}
+            lead={winning}
+            outcome={result === 'win' ? 'W' : result === 'loss' ? 'L' : result === 'tie' ? 'T' : undefined}
+          />
           <ScoreBlock
             name={m.opponent_owner_name ?? m.opponent_team_name}
             logoUrl={m.opponent_logo_url}
             score={m.opponent_score}
             projected={m.opponent_projected_total}
             lead={!winning}
+            outcome={result === 'win' ? 'L' : result === 'loss' ? 'W' : result === 'tie' ? 'T' : undefined}
             right
           />
         </View>
@@ -108,14 +144,25 @@ function ScoreBlock(props: {
   projected: number;
   lead: boolean;
   right?: boolean;
+  // A decided matchup: W / L / T next to the score, the winner's in green.
+  outcome?: 'W' | 'L' | 'T';
 }) {
+  const won = props.outcome === 'W';
+  const lost = props.outcome === 'L';
   return (
     <View style={[styles.scoreBlock, props.right && styles.reverse]}>
       <TeamAvatar name={props.name} logoUrl={props.logoUrl} size={56} />
       <View style={props.right ? styles.alignEnd : styles.alignStart}>
-        <Text style={[styles.score, !props.lead && styles.scoreTrailing]}>
-          {props.score !== null ? props.score.toFixed(1) : '0.0'}
-        </Text>
+        <View style={[styles.scoreLine, props.right && styles.reverse]}>
+          <Text style={[styles.score, !props.lead && styles.scoreTrailing, won && { color: Colors.win }, lost && styles.scoreLost]}>
+            {props.score !== null ? props.score.toFixed(1) : '0.0'}
+          </Text>
+          {props.outcome && (
+            <View style={[styles.outcome, { backgroundColor: won ? Colors.win : lost ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.15)' }]}>
+              <Text style={[styles.outcomeText, { color: won ? '#0b0e13' : lost ? Colors.loss : Colors.text }]}>{props.outcome}</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.projected}>{props.projected.toFixed(2)}</Text>
       </View>
     </View>
@@ -219,6 +266,13 @@ const styles = StyleSheet.create({
   alignEnd: { alignItems: 'flex-end' },
   score: { fontFamily: Fonts.monoBold, fontSize: 30, color: '#fff', fontVariant: ['tabular-nums'] },
   scoreTrailing: { color: 'rgba(255,255,255,0.7)' },
+  scoreLost: { color: 'rgba(255,255,255,0.4)' },
+  scoreLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  outcome: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  outcomeText: { fontSize: 13, fontWeight: '800' },
+  resultBanner: { borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 10, gap: 2, marginTop: -Spacing.sm },
+  resultKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
+  resultText: { fontSize: 18, fontWeight: '800' },
   projected: { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginTop: 4, fontVariant: ['tabular-nums'] },
   winRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
   winPct: { width: 40, color: Colors.text, fontSize: 14, fontVariant: ['tabular-nums'] },
