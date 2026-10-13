@@ -206,6 +206,8 @@ def _roster_entry_dict(entry: dict) -> dict:
         "acquired_via": entry["acquired_via"],
         # Taxi squad eligibility (dynasty, 2026-10): first- or second-year.
         "years_exp": entry.get("years_exp"),
+        # This week's practice report ("Full" / "Limited" / "DNP").
+        "practice_participation": entry.get("practice_participation"),
         # Only present when the caller resolved a current week and
         # attached these (see my_team below) — every other lineup/free-
         # agent endpoint's entries won't have these keys at all, so

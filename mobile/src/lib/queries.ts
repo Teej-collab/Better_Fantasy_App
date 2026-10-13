@@ -167,6 +167,16 @@ export function useFreeAgents(position: string | undefined, search: string) {
   });
 }
 
+export function useWinProbHistory(season: number | null, matchupId: number | null) {
+  const refetchInterval = useLiveRefetchInterval();
+  return useQuery({
+    queryKey: ['win-prob-history', season, matchupId],
+    queryFn: () => api.winProbHistory(season!, matchupId!),
+    enabled: season !== null && matchupId !== null,
+    refetchInterval,
+  });
+}
+
 export function useWaiverClaims() {
   return useQuery({ queryKey: ['waiver-claims'], queryFn: api.waiverClaims });
 }

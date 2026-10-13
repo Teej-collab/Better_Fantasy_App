@@ -200,3 +200,48 @@ def test_broadcast_name_joins_networks_and_falls_back_to_geo_broadcasts():
     assert _broadcast_name({"broadcasts": [{"names": ["ESPN", "ABC"]}]}) == "ESPN/ABC"
     assert _broadcast_name({"geoBroadcasts": [{"media": {"shortName": "Prime Video"}}]}) == "Prime Video"
     assert _broadcast_name({}) is None
+
+
+def test_scoreboard_games_carry_weather_and_dome():
+    # Living home weather alerts (2026-10-13): ESPN's own event forecast,
+    # and whether the stadium is a dome.
+    from app.providers.nfl_scoreboard import _parse_scoreboard_events
+
+    data = {
+        "events": [
+            {
+                "id": "9",
+                "name": "A at B",
+                "weather": {"displayValue": "Snow", "temperature": 28},
+                "competitions": [
+                    {
+                        "status": {"type": {"state": "pre"}},
+                        "venue": {"indoor": False},
+                        "competitors": [
+                            {"homeAway": "home", "team": {"abbreviation": "BUF"}},
+                            {"homeAway": "away", "team": {"abbreviation": "MIA"}},
+                        ],
+                    }
+                ],
+            },
+            {
+                "id": "10",
+                "name": "C at D",
+                "competitions": [
+                    {
+                        "status": {"type": {"state": "pre"}},
+                        "venue": {"indoor": True},
+                        "competitors": [
+                            {"homeAway": "home", "team": {"abbreviation": "DET"}},
+                            {"homeAway": "away", "team": {"abbreviation": "GB"}},
+                        ],
+                    }
+                ],
+            },
+        ]
+    }
+    snow, dome = _parse_scoreboard_events(data)
+    assert snow["weather"] == {"condition": "Snow", "temperature": 28}
+    assert snow["indoor"] is False
+    assert dome["weather"] is None
+    assert dome["indoor"] is True

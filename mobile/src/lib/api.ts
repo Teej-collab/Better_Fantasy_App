@@ -83,6 +83,7 @@ import type {
   StandingsRow,
   WaiverClaim,
   WaiverClaimsResponse,
+  WinProbHistory,
   WeekMatchupContext,
   WeekMatchupContextItem,
   YourWeek,
@@ -358,6 +359,8 @@ export const api = {
   leagueActivity: (season: number, limit?: number) =>
     request<{ items: LeagueActivityItem[] }>(`/seasons/${season}/activity${limit !== undefined ? `?limit=${limit}` : ''}`),
   nflScoreboard: () => request<{ games: NflGame[] }>('/nfl/scoreboard'),
+  winProbHistory: (season: number, matchupId: number) =>
+    request<WinProbHistory>(`/seasons/${season}/matchups/${matchupId}/win-prob-history`),
   // Every game this week that has a Gamecast (live, upcoming or final).
   gamecastGames: () => request<{ games: GamecastGameSummary[] }>('/nfl/live-games'),
   gamecastGame: (gameId: string) => request<LiveGame>(`/nfl/games/${encodeURIComponent(gameId)}`),

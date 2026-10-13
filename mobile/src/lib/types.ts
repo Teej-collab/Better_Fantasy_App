@@ -189,6 +189,8 @@ export type RosterEntry = {
   bye_week: number | null;
   // Their NFL game has started, so the backend rejects moving them.
   is_locked: boolean;
+  // This week's practice report: "Full" / "Limited" / "DNP".
+  practice_participation?: string | null;
 };
 
 export type MyTeam = {
@@ -365,6 +367,10 @@ export type NflGame = {
   date: string | null;
   broadcast: string | null;
   week: number | null;
+  // ESPN's forecast for a game not yet played, and whether it's a dome
+  // (optional for an older backend).
+  weather?: { condition: string | null; temperature: number | null } | null;
+  indoor?: boolean;
 };
 
 // Draft (backend/app/routers/draft.py; web types in frontend/src/lib/draftApi.ts).
@@ -1273,3 +1279,16 @@ export type PlayoffOddsFocus = {
 };
 export type PlayoffOdds = { sims: number; status: 'projected' | 'live'; teams: PlayoffOddsTeam[]; focus: PlayoffOddsFocus | null };
 
+
+// GET /seasons/{season}/matchups/{id}/win-prob-history: how a matchup's
+// win % moved (home side's view) and its turning points.
+export type WinProbHistory = {
+  points: { at: string; home_win_pct: number; home_score: number; away_score: number }[];
+  turning_points: {
+    at: string;
+    home_win_pct_change: number;
+    side: 'home' | 'away';
+    player_name: string | null;
+    points: number;
+  }[];
+};

@@ -30,6 +30,7 @@ from app.domain import playoff_odds as playoff_odds_domain
 from app.domain import playoffs
 from app.domain import power_rankings
 from app.domain import waivers
+from app.domain import win_prob_history
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -145,6 +146,16 @@ async def waiver_priority(
     async with pool.acquire() as conn:
         order = await waivers.get_priority_order(conn, season, league_id, week)
     return {"week": week, "priority_order": order}
+
+
+@router.get("/seasons/{season}/matchups/{matchup_id}/win-prob-history")
+async def win_prob_history_route(
+    season: int, matchup_id: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
+):
+    """How a matchup's win % moved through the week, and its turning
+    points (app/domain/win_prob_history.py) — home side's view."""
+    async with pool.acquire() as conn:
+        return await win_prob_history.get_history(conn, league_id, matchup_id)
 
 
 @router.get("/seasons/{season}/weeks/{week}/matchups")

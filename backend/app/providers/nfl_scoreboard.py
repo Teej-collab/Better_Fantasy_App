@@ -86,6 +86,15 @@ def _broadcast_name(competition: dict) -> str | None:
     return "/".join(names) or None
 
 
+def _weather(event: dict) -> dict | None:
+    weather = event.get("weather") or {}
+    condition = weather.get("displayValue")
+    temperature = weather.get("temperature") or weather.get("highTemperature")
+    if not condition and temperature is None:
+        return None
+    return {"condition": condition, "temperature": temperature}
+
+
 def _parse_scoreboard_events(data: dict) -> list[dict]:
     games = []
     for event in data.get("events", []):
@@ -153,6 +162,11 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 # per-event week.number) — lets the Gamecast hub label
                 # its slate without a second request.
                 "week": (event.get("week") or {}).get("number"),
+                # Forecast for games not yet played (ESPN's own event
+                # weather) and whether the stadium is a dome — the living
+                # home's weather alerts for outdoor games.
+                "weather": _weather(event),
+                "indoor": bool((competition.get("venue") or {}).get("indoor")),
             }
         )
     return games

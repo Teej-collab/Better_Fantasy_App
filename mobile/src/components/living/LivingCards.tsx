@@ -68,7 +68,7 @@ export function LinkText({ children, color, onPress }: { children: ReactNode; co
   );
 }
 
-function Row({ left, right, first }: { left: ReactNode; right: ReactNode; first?: boolean }) {
+export function Row({ left, right, first }: { left: ReactNode; right: ReactNode; first?: boolean }) {
   return (
     <View style={[styles.row, !first && styles.rowDivided]}>
       <View style={styles.rowLeft}>{typeof left === 'string' ? <Text style={styles.rowText}>{left}</Text> : left}</View>
@@ -283,64 +283,6 @@ export function MatchupPreviewCard({
         theirLabel={opponent}
         middle={winProbability != null ? <Chip color={color}>{Math.round(winProbability)}% to win</Chip> : <Text style={styles.scoreTo}>vs</Text>}
       />
-    </Panel>
-  );
-}
-
-// Starters who are hurt, on bye, or missing.
-export function lineupProblems(roster: RosterEntry[], slots: Record<string, number> | null, week: number | null): string[] {
-  const problems: string[] = [];
-  const starters = roster.filter((p) => isStarter(p.lineup_slot));
-  for (const p of starters) {
-    if (p.is_locked) continue;
-    const status = p.injury_status?.toLowerCase() ?? '';
-    if (week != null && p.bye_week === week) problems.push(`${p.player_name} is on bye`);
-    else if (['out', 'ir', 'injured reserve', 'suspended', 'pup'].includes(status)) problems.push(`${p.player_name} is ${p.injury_status}`);
-    else if (status === 'doubtful') problems.push(`${p.player_name} is doubtful`);
-  }
-  if (slots) {
-    for (const [slot, count] of Object.entries(slots)) {
-      if (!isStarter(slot)) continue;
-      const filled = starters.filter((p) => p.lineup_slot === slot).length;
-      if (filled < count) problems.push(`Empty ${slot} spot`);
-    }
-  }
-  return problems;
-}
-
-export function LineupCheckCard({
-  roster,
-  slots,
-  week,
-  color,
-}: {
-  roster: RosterEntry[];
-  slots: Record<string, number> | null;
-  week: number | null;
-  color: string;
-}) {
-  const problems = lineupProblems(roster, slots, week);
-  const questionable = roster.filter(
-    (p) => isStarter(p.lineup_slot) && !p.is_locked && p.injury_status?.toLowerCase() === 'questionable',
-  );
-  return (
-    <Panel tint={problems.length > 0 ? '#ff8a3d' : undefined} onPress={() => router.navigate('/team')} label="Open your lineup">
-      <Kicker color={problems.length > 0 ? '#ff8a3d' : color}>
-        {problems.length > 0 ? `${problems.length} lineup problem${problems.length === 1 ? '' : 's'}` : 'Lineup check'}
-      </Kicker>
-      {problems.length === 0 && questionable.length === 0 && <Text style={styles.body}>Your lineup looks set.</Text>}
-      {problems.map((p, i) => (
-        <Row key={p} first={i === 0} left={p} right={<Chip color="#ff8a3d">Fix</Chip>} />
-      ))}
-      {questionable.map((p, i) => (
-        <Row
-          key={p.player_id}
-          first={problems.length === 0 && i === 0}
-          left={`${p.player_name} · ${p.position}`}
-          right={<Chip color="#f5b942">Questionable</Chip>}
-        />
-      ))}
-      <Text style={[styles.linkText, { color }]}>{problems.length > 0 ? 'Fix my lineup →' : 'Open my lineup →'}</Text>
     </Panel>
   );
 }

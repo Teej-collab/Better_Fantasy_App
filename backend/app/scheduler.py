@@ -159,7 +159,7 @@ from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
-from app.domain import auction_engine, guillotine, live_activity
+from app.domain import auction_engine, guillotine, live_activity, win_prob_history
 from app.notifications import game_alerts, inactives
 from app.domain.week_flip import is_past_week_flip
 from app.domain import watch_party as watch_party_domain
@@ -321,6 +321,12 @@ async def _run_live_sync_job():
     async with pool.acquire() as conn:
         after = await fantasy_events.snapshot_week(conn, season, week)
         await fantasy_events.notify_fantasy_events(conn, season, before, after)
+    # Win % through the week, for the living home's turning points.
+    try:
+        async with pool.acquire() as conn:
+            await win_prob_history.capture(conn, season, week)
+    except Exception:
+        logger.exception("Win % snapshot failed (season=%s week=%s)", season, week)
     record_job_run("live_sync")
 
 

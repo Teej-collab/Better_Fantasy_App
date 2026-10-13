@@ -5,7 +5,19 @@ a DEF entry keyed by team abbreviation (draftable, special-cased name),
 a practice-squad player (excluded), and a retired/teamless player
 (excluded). Test rows use a 'test-' sleeper_player_id prefix so
 conftest.py's cleanup_test_season fixture can find them."""
+import pytest
+
 from app.providers.sleeper import ingest
+from tests.conftest import TEST_SEASON
+
+
+@pytest.fixture(autouse=True)
+def _test_season_only(monkeypatch):
+    # sync_players starts waiver clocks for newly available players in
+    # ACTIVE_SEASON. Run with the real .env, that was the live season —
+    # 2026-10-13 it put these fake players on waivers in every real
+    # league. Pin it to the test season.
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
 
 _FAKE_PLAYERS = {
     "test-1": {
@@ -220,3 +232,13 @@ def test_an_unsigned_player_who_played_recently_is_a_free_agent():
     assert not ingest._is_draftable("QB", ["QB"], "Active", None, recently_played=False)
     # A team-less D/ST row is never a free agent.
     assert not ingest._is_draftable("DEF", ["DEF"], None, None, recently_played=True)
+
+
+def test_normalize_keeps_the_practice_report():
+    row = ingest._normalize(
+        "123",
+        {"position": "WR", "team": "GB", "status": "Active", "full_name": "A Player",
+         "practice_participation": "Limited", "practice_description": "Hamstring"},
+    )
+    assert row["practice_participation"] == "Limited"
+    assert row["practice_description"] == "Hamstring"

@@ -116,6 +116,10 @@ def _normalize(sleeper_id: str, raw: dict, played: set[str] = frozenset()) -> di
         "weight": _stringify(raw.get("weight")),
         "jersey_number": _stringify(raw.get("number")),
         "years_exp": raw.get("years_exp"),
+        # This week's practice report ("Full" / "Limited" / "DNP"), for
+        # the living home's injury checks.
+        "practice_participation": raw.get("practice_participation"),
+        "practice_description": raw.get("practice_description"),
     }
 
 
@@ -149,6 +153,7 @@ async def sync_players(pool) -> int:
             row["pro_team"], row["status"], row["injury_status"], row["search_rank"],
             row["is_draftable"], row["age"], row["height"], row["weight"],
             row["jersey_number"], row["years_exp"],
+            row["practice_participation"], row["practice_description"],
         )
         for row in rows
     ]
@@ -164,9 +169,9 @@ async def sync_players(pool) -> int:
                     sleeper_player_id, espn_player_id, full_name, first_name, last_name,
                     position, fantasy_positions, pro_team, status, injury_status,
                     search_rank, is_draftable, age, height, weight, jersey_number, years_exp,
-                    updated_at
+                    practice_participation, practice_description, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, now())
                 ON CONFLICT (sleeper_player_id) DO UPDATE SET
                     -- COALESCE, not a straight overwrite: Sleeper's own
                     -- espn_id field is null for most players (confirmed
@@ -193,6 +198,8 @@ async def sync_players(pool) -> int:
                     weight = EXCLUDED.weight,
                     jersey_number = EXCLUDED.jersey_number,
                     years_exp = EXCLUDED.years_exp,
+                    practice_participation = EXCLUDED.practice_participation,
+                    practice_description = EXCLUDED.practice_description,
                     updated_at = now()
                 """,
                 values,
