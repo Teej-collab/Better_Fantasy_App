@@ -274,4 +274,11 @@ async def team_roster(
 async def rivalries(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         rows = await queries.list_rivalries(conn, league_id)
-    return {"rivalries": [dict(r) for r in rows]}
+        rivalries = []
+        for r in rows:
+            # The real all-time record, not the rivalries row's stored
+            # counts, which never update (2026-10-13: the page's records
+            # were stuck where they were imported).
+            h2h = await queries.get_head_to_head(conn, r["owner_a_id"], r["owner_b_id"], league_id)
+            rivalries.append({**dict(r), "all_time_wins_a": h2h["wins_a"], "all_time_wins_b": h2h["wins_b"], "ties": h2h["ties"]})
+    return {"rivalries": rivalries}

@@ -1,3 +1,4 @@
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.bench_crimes import (
     classify_severity,
     compute_bench_crimes_for_season,
@@ -137,3 +138,52 @@ async def test_compute_bench_crimes_for_season_covers_all_weeks(pool):
 
     total = await compute_bench_crimes_for_season(pool, TEST_SEASON)
     assert total == 2
+
+
+async def test_in_app_bench_crimes_only_read_this_leagues_teams(pool):
+    """2026-10-13: roster_history has no league column, and every
+    league's lineups were read — Week 5's "biggest bench crime" in League
+    #1 was a sandbox team benching Bucky Irving."""
+    async with pool.acquire() as conn:
+        if not await conn.fetchval("SELECT 1 FROM draft_config WHERE season = $1", TEST_SEASON):
+            await conn.execute(
+                "INSERT INTO draft_config (season, draft_order, roster_slots) VALUES ($1, $2, '{}')", TEST_SEASON, []
+            )
+        creator = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES "
+            "('test-benchcrime-other-league@example.com', 'x', 'Other') RETURNING id"
+        )
+        other_league = await conn.fetchval(
+            "INSERT INTO leagues (name, created_by_user_id, invite_code) VALUES "
+            "('Test League Bench Crimes', $1, 'BENCH-CRIMES') RETURNING id",
+            creator,
+        )
+    mine = await _seed_team(pool, 41)
+    theirs = await _seed_team(pool, 42)
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE teams_by_season SET league_id = $1 WHERE id = $2", other_league, theirs)
+        for suffix in ("start", "bench"):
+            await conn.execute(
+                "INSERT INTO players (sleeper_player_id, full_name, position, fantasy_positions, pro_team, status, is_draftable) "
+                "VALUES ($1, $2, 'RB', '{RB}', 'KC', 'Active', TRUE)",
+                f"test-benchcrime-{suffix}", f"Bench Test {suffix}",
+            )
+            await conn.execute(
+                "INSERT INTO player_week_stats (season, week, sleeper_player_id, raw_stats, fantasy_points, league_id) "
+                "VALUES ($1, 1, $2, '{}', $3, $4)",
+                TEST_SEASON, f"test-benchcrime-{suffix}", 5.0 if suffix == "start" else 25.0, DEFAULT_LEAGUE_ID,
+            )
+        for team_id in (mine, theirs):
+            await conn.execute(
+                "INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot) VALUES "
+                "($1, 1, $2, 'test-benchcrime-start', 'RB'), ($1, 1, $2, 'test-benchcrime-bench', 'BE')",
+                TEST_SEASON, team_id,
+            )
+
+        await compute_bench_crimes_for_week(conn, TEST_SEASON, 1, DEFAULT_LEAGUE_ID)
+        teams = {r["team_id"] for r in await conn.fetch(
+            "SELECT team_id FROM bench_crimes WHERE season = $1 AND week = 1 AND league_id = $2",
+            TEST_SEASON, DEFAULT_LEAGUE_ID,
+        )}
+        await conn.execute("UPDATE teams_by_season SET league_id = $1 WHERE id = $2", DEFAULT_LEAGUE_ID, theirs)
+    assert teams == {mine}

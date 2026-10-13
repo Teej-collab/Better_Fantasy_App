@@ -132,17 +132,13 @@ def _standings_shape_facts(standings: list, week: int, results, who: Who) -> lis
     unbeaten = [r for r in standings if r["losses"] == 0 and not r["ties"] and r["wins"] > 0]
     winless = [r for r in standings if r["wins"] == 0 and not r["ties"] and r["losses"] > 0]
     facts = []
-    if not unbeaten and not winless:
-        facts.append("Nobody in the league is undefeated and nobody is winless anymore")
-    else:
-        if unbeaten:
-            facts.append("Still undefeated: " + ", ".join(f"{who(r['team_name'])} ({r['wins']}-0)" for r in unbeaten))
-        else:
-            facts.append("Nobody in the league is undefeated anymore")
-        if winless:
-            facts.append("Still winless: " + ", ".join(f"{who(r['team_name'])} (0-{r['losses']})" for r in winless))
-        else:
-            facts.append("Nobody in the league is winless anymore")
+    # Only who still is. "Nobody is undefeated anymore" is news the week
+    # it happens (the first-loss line below), then just repetition every
+    # recap after (commissioner, 2026-10-13).
+    if unbeaten:
+        facts.append("Still undefeated: " + ", ".join(f"{who(r['team_name'])} ({r['wins']}-0)" for r in unbeaten))
+    if winless:
+        facts.append("Still winless: " + ", ".join(f"{who(r['team_name'])} (0-{r['losses']})" for r in winless))
     # Who changed status this week.
     by_team = {r["team_id"]: r for r in standings}
     for _m, winner, loser, _margin in results:
@@ -541,7 +537,7 @@ def _rivalry_facts(matchups, who: Who) -> list[str]:
         home, away = who(m["home"]["team_name"]), who(m["away"]["team_name"])
         facts.append(
             f"Rivalry game: {home} vs {away} is \"{r['name']}\" — {r['tagline']} {r['description']} "
-            f"All-time between them before this week: {home} {r['all_time_wins_home']}, {away} {r['all_time_wins_away']}"
+            f"All-time series between them now: {home} {r['all_time_wins_home']}, {away} {r['all_time_wins_away']}"
         )
     return facts
 

@@ -134,8 +134,8 @@ guess at a cause the facts don't give you, and never imply when something happen
 
 How a great recap goes:
 - Open with the shape of the week for the whole league, from LEAGUE CONTEXT: was it a big scoring week \
-or a dud, did the top power-ranked teams collide and how did it shake out, is anyone still unbeaten or \
-winless (or nobody), and anything unusual — running backs going off, a QB feeding his own receiver, a pile \
+or a dud, did the top power-ranked teams collide and how did it shake out, who's still unbeaten or \
+winless (only if the facts name someone — never point out that nobody is), and anything unusual — running backs going off, a QB feeding his own receiver, a pile \
 of interceptions or missed field goals. Lines marked (notable) are the ones worth talking about.
 - Then the games that matter, and WHY they went the way they did, from STORYLINES: the injury that sank \
 someone, the new pickup or returning star who swung it, the guy who tried to carry a loser. Give losers \

@@ -184,20 +184,28 @@ async def test_weekly_awards_endpoint(pool, monkeypatch):
 
 async def test_rivalries_endpoint(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
-    owner_a, _ = await _seed_owner_and_team(pool, 4, "Hank", "Hank's Team")
-    owner_b, _ = await _seed_owner_and_team(pool, 5, "Ivy", "Ivy's Team")
+    owner_a, team_a = await _seed_owner_and_team(pool, 4, "Hank", "Hank's Team")
+    owner_b, team_b = await _seed_owner_and_team(pool, 5, "Ivy", "Ivy's Team")
     cookies = await _member_cookies(pool, "rivalries-endpoint")
 
     async with pool.acquire() as conn:
+        # Stored counts that nothing updates — the page must not show them.
         await conn.execute(
-            "INSERT INTO rivalries (owner_a_id, owner_b_id, name, tier) VALUES ($1, $2, 'Test Rivalry', 'Developing')",
+            "INSERT INTO rivalries (owner_a_id, owner_b_id, name, tier, all_time_wins_a, all_time_wins_b) "
+            "VALUES ($1, $2, 'Test Rivalry', 'Developing', 7, 7)",
             owner_a, owner_b,
+        )
+        await conn.execute(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id, home_score, away_score) VALUES "
+            "($1, 1, $2, $3, 110, 90), ($1, 2, $3, $2, 100, 95), ($1, 3, $2, $3, 120, 80)",
+            TEST_SEASON, team_a, team_b,
         )
 
     resp = await _get("/rivalries", cookies)
     assert resp.status_code == 200
-    names = [r["name"] for r in resp.json()["rivalries"]]
-    assert "Test Rivalry" in names
+    rivalry = next(r for r in resp.json()["rivalries"] if r["name"] == "Test Rivalry")
+    # The real record (2026-10-13: the page's records never moved).
+    assert (rivalry["all_time_wins_a"], rivalry["all_time_wins_b"], rivalry["ties"]) == (2, 1, 0)
 
 
 async def test_weekly_recap_get_requires_session(monkeypatch):

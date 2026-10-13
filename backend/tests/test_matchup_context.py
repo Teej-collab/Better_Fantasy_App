@@ -280,8 +280,10 @@ async def test_matchup_context_flags_rivalry_with_correct_home_away_orientation(
     m = resp.json()["matchups"][0]
     assert m["is_rivalry"] is True
     assert m["rivalry"]["name"] == "The Rumble"
-    assert m["rivalry"]["all_time_wins_home"] == 5  # home (team_a) is owner_a
-    assert m["rivalry"]["all_time_wins_away"] == 3
+    # From the real results (home won the one game), not the row's stale
+    # stored 5-3 (2026-10-13).
+    assert m["rivalry"]["all_time_wins_home"] == 1
+    assert m["rivalry"]["all_time_wins_away"] == 0
 
 
 async def test_matchup_context_includes_recent_meetings_oriented_to_home(pool, monkeypatch):

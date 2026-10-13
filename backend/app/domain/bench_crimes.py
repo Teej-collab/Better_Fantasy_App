@@ -58,8 +58,17 @@ def detect_bench_crimes(roster_rows: list[dict]) -> list[dict]:
 async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     in_app = await uses_in_app_rosters(conn, season)
     if in_app:
+        # Only this league's teams. roster_history has no league column,
+        # and reading every league's lineups filed the sandbox leagues'
+        # bench crimes under League #1 — Week 5's "biggest bench crime"
+        # was TJ's Sandbox Squad benching Bucky Irving (2026-10-13).
         team_rows = await conn.fetch(
-            "SELECT DISTINCT team_id FROM roster_history WHERE season = $1 AND week = $2", season, week
+            """
+            SELECT DISTINCT rh.team_id FROM roster_history rh
+            JOIN teams_by_season t ON t.id = rh.team_id
+            WHERE rh.season = $1 AND rh.week = $2 AND t.league_id = $3
+            """,
+            season, week, league_id,
         )
     else:
         team_rows = await conn.fetch(

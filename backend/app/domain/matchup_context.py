@@ -211,16 +211,19 @@ def _injury_state_map(injuries) -> dict[str, str]:
     return {pid: v["state"] for pid, v in (injuries or {}).items()}
 
 
-def _rivalry_dict(rivalry_row, home_owner_id):
-    is_home_a = rivalry_row["owner_a_id"] == home_owner_id
+def _rivalry_dict(rivalry_row, h2h):
+    """The all-time record comes from the real results (get_head_to_head,
+    called with home's owner as a), not the rivalries row's stored
+    counts, which nothing has updated since they were imported
+    (2026-10-13: the Rivalries page records never moved)."""
     return {
         "name": rivalry_row["name"],
         "emoji": rivalry_row["emoji"],
         "tagline": rivalry_row["tagline"],
         "description": rivalry_row["description"],
         "tier": rivalry_row["tier"],
-        "all_time_wins_home": rivalry_row["all_time_wins_a"] if is_home_a else rivalry_row["all_time_wins_b"],
-        "all_time_wins_away": rivalry_row["all_time_wins_b"] if is_home_a else rivalry_row["all_time_wins_a"],
+        "all_time_wins_home": h2h["wins_a"],
+        "all_time_wins_away": h2h["wins_b"],
     }
 
 
@@ -266,7 +269,7 @@ def _matchup_entry(
         "is_playoff": m["is_playoff"],
         "is_game_of_the_week": is_gow,
         "is_rivalry": rivalry is not None,
-        "rivalry": _rivalry_dict(rivalry, home_team["owner_id"]) if rivalry else None,
+        "rivalry": _rivalry_dict(rivalry, h2h) if rivalry else None,
         "head_to_head": {
             # get_head_to_head was called with home's owner_id as
             # owner_a_id, so wins_a/"a" is always home's side here.
