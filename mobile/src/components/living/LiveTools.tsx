@@ -54,22 +54,22 @@ export function SwingPlayersCard({ me, them }: { me: MatchupContextSide; them: M
   return (
     <View style={styles.tiles}>
       {carry && (
-        <View style={styles.tile}>
+        <Panel outerStyle={styles.tileOuter}>
           <Kicker color={UP}>Carrying you</Kicker>
           <Text style={styles.tileName} numberOfLines={1}>
             {carry.player_name}
           </Text>
           <Display style={styles.tileNum}>{fmt(carry.points_scored)}</Display>
-        </View>
+        </Panel>
       )}
       {hurt && (
-        <View style={styles.tile}>
+        <Panel outerStyle={styles.tileOuter}>
           <Kicker color={DOWN}>Hurting you</Kicker>
           <Text style={styles.tileName} numberOfLines={1}>
             {hurt.player_name}
           </Text>
           <Display style={styles.tileNum}>{fmt(hurt.points_scored)}</Display>
-        </View>
+        </Panel>
       )}
     </View>
   );
@@ -300,7 +300,7 @@ export function WatchPartiesCard({ rooms }: { rooms: WatchPartyRoom[] }) {
   const live = rooms.filter((r) => r.is_live && r.member_count > 0);
   if (live.length === 0) return null;
   return (
-    <Panel style={styles.lounge}>
+    <Panel tint="#a78bfa" style={styles.lounge}>
       <Kicker color="#c4b5fd">Watch parties on now</Kicker>
       {live.map((r, i) => (
         <Row
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   live: { color: Colors.live, fontSize: 12, fontWeight: '700' },
   link: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
   tiles: { flexDirection: 'row', gap: 10 },
-  tile: { flex: 1, minWidth: 0, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: 16, padding: Spacing.md, gap: 4 },
+  tileOuter: { flex: 1, minWidth: 0 },
   tileName: { color: Colors.text, fontSize: 14, fontWeight: '700' },
   tileNum: { fontSize: 28, color: Colors.text },
   huge: { fontSize: 56, lineHeight: 62 },
@@ -337,5 +337,5 @@ const styles = StyleSheet.create({
   chart: { height: 64, flexDirection: 'row', alignItems: 'flex-end', gap: 1, backgroundColor: Colors.tile, borderRadius: 8, padding: 4 },
   midline: { position: 'absolute', left: 4, right: 4, top: '50%', height: StyleSheet.hairlineWidth, backgroundColor: Colors.textSecondary },
   chartBar: { flex: 1, borderRadius: 1, opacity: 0.85 },
-  lounge: { backgroundColor: '#1d1630', borderColor: 'rgba(167,139,250,0.4)' },
+  lounge: { backgroundColor: '#1d1630' },
 });

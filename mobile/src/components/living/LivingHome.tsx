@@ -2,19 +2,18 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { ShareableCard } from '@/components/ShareableCard';
 import { TickerStrips } from '@/components/TickerStrips';
 import { useTabScrollRef } from '@/components/TabFrame';
+import { AwardsCard } from '@/components/home/AwardsCard';
 import { ChugCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard } from '@/components/home/FeedCards';
+import { YourWeekCard } from '@/components/home/YourWeekCard';
 import { LiveNowCard } from '@/components/home/LeagueCards';
 import {
-  AwardsMiniCard,
   Chip,
   ClaimResultsCard,
   KickoffCard,
   Kicker,
-  LinkText,
   LoungeCard,
   MatchupPreviewCard,
   Panel,
@@ -23,7 +22,6 @@ import {
   useNow,
   WaiversCountdownCard,
   WeekEndedCard,
-  WinBar,
 } from '@/components/living/LivingCards';
 import { BetsCard, HeadStartCard, LineupFixCard, OpponentIntelCard, StartSitCard, WeatherCard } from '@/components/living/LineupTools';
 import {
@@ -54,11 +52,11 @@ import {
 } from '@/components/living/WeekCards';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
+import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
+import { useAppearance } from '@/lib/appearance';
 import {
   dayName,
   etDayHour,
-  fmt,
   homePhase,
   isStarter,
   nextEt,
@@ -70,6 +68,7 @@ import {
 } from '@/lib/livingHome';
 import {
   queryClient,
+  useActiveLeagueName,
   useBets,
   useChatConversations,
   useChugDeadline,
@@ -98,19 +97,6 @@ import {
 import { buildKickoffCountdownItem, buildLeagueTickerItems, buildTickerItems } from '@/lib/ticker';
 import { lastRun } from '@/lib/waiverClaims';
 
-// The recap's opening, without markdown, cut at a sentence near `max`.
-function excerpt(text: string, max = 220): string {
-  const plain = text
-    .replace(/^#+\s.*$/gm, '')
-    .replace(/[*_>#`]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (plain.length <= max) return plain;
-  const cut = plain.slice(0, max);
-  const stop = cut.lastIndexOf('. ');
-  return `${stop > 80 ? cut.slice(0, stop + 1) : cut.trimEnd()}…`;
-}
-
 function greeting(name: string | null, now: Date): string {
   const h = now.getHours();
   const part = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
@@ -135,6 +121,8 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const scrollRef = useTabScrollRef<ScrollView>();
   const now = useNow();
   const me = useMe().data ?? null;
+  const appearance = useAppearance();
+  const leagueName = useActiveLeagueName().data ?? null;
   const seasonWeek = useSeasonWeek();
   const season = seasonWeek.data?.season ?? null;
   const week = seasonWeek.data?.week ?? null;
@@ -234,34 +222,16 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
             };
           })
           .sort((a, b) => a.margin - b.margin)[0] ?? null;
-      const recapOut = recap && recap.week === week && recap.recap.released !== false;
-      const flip = nextEt(2, 15, now);
-      const resultColor = won ? color : tie ? Colors.text : Colors.loss;
       header = {
         kicker: `${day} · Final`,
         title: tie ? `A tie in Week ${week}` : won ? `You won Week ${week}` : `Week ${week} got away`,
       };
       body = (
         <>
-          <ShareableCard title={`Week ${week} result`}>
-            <Panel tint={resultColor} style={styles.center}>
-              <Kicker color={resultColor}>{tie ? 'Final · Tie' : won ? 'Final · Win' : 'Final · Loss'}</Kicker>
-              <ScoreLine mine={m?.my_score ?? null} theirs={m?.opponent_score ?? null} color={won ? color : Colors.text} mineLabel={myWeek.data.team_name} theirLabel={m?.opponent_team_name} />
-              {record && <Text style={styles.body}>Now {record}</Text>}
-            </Panel>
-          </ShareableCard>
           <View style={styles.buttons}>
             <Pressable style={[styles.button, { backgroundColor: color }]} onPress={() => router.navigate('/chat')} accessibilityRole="button">
-              <Text style={styles.buttonText}>{won ? 'Talk trash' : 'Face the chat'}</Text>
+              <Text style={styles.buttonText}>{won ? 'Talk trash in the chat' : 'Face the chat'}</Text>
             </Pressable>
-            {m && (
-              <Pressable
-                style={[styles.button, styles.buttonQuiet]}
-                onPress={() => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } })}
-                accessibilityRole="button">
-                <Text style={styles.buttonQuietText}>Open matchup</Text>
-              </Pressable>
-            )}
           </View>
           {week !== null && <StandingsMoveCard standings={standings} matchups={weekMatchups} teamId={teamId} week={week} />}
           {mine && <ProjectionReportCard me={mine.me} matchups={weekMatchups} />}
@@ -269,23 +239,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <WeekEndedCard me={mine?.me ?? null} closest={closest} />
           {turning}
           <LeagueScoreboardCard matchups={weekMatchups} teamId={teamId} title="Around the league" />
-          {recapOut && season !== null && week !== null ? (
-            <Panel onPress={() => router.push({ pathname: '/recap/[season]/[week]', params: { season: String(season), week: String(week) } })} label="Read the recap">
-              <Kicker color="#f5b942">The Week {week} recap is out</Kicker>
-              <Text style={styles.body}>{excerpt(recap.recap.text, 140)}</Text>
-            </Panel>
-          ) : (
-            <Panel>
-              <View style={styles.spread}>
-                <View style={styles.gap2}>
-                  <Kicker>Coming up</Kicker>
-                  <Text style={styles.body}>The Week {week} recap and awards</Text>
-                  <Text style={styles.small}>You&apos;ll get a push the moment it drops.</Text>
-                </View>
-                <Text style={styles.muted}>in {untilText(flip, now)}</Text>
-              </View>
-            </Panel>
-          )}
         </>
       );
       break;
@@ -294,7 +247,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     // Tuesday after the flip: last week's story and the week ahead.
     case 'recap': {
       const last = lastContext ? sideFor(lastContext.matchups, teamId) : null;
-      const lastRecap = recap && recap.week === lastWeek && recap.recap.released !== false ? recap : null;
       const won = last && (last.me.score ?? 0) > (last.them.score ?? 0);
       header = { kicker: 'Tuesday · Recap day', title: greeting(name, now) };
       body = (
@@ -310,18 +262,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
                 theirLabel={last.them.team_name}
                 middle={<Chip color={won ? '#39ff14' : Colors.loss}>{`${won ? 'W' : 'L'} · ${Math.abs((last.me.score ?? 0) - (last.them.score ?? 0)).toFixed(1)}`}</Chip>}
               />
-              {lastRecap && <Text style={styles.quote}>“{excerpt(lastRecap.recap.text)}”</Text>}
-              {lastRecap && season !== null && (
-                <LinkText
-                  color="#f5b942"
-                  onPress={() => router.push({ pathname: '/recap/[season]/[week]', params: { season: String(season), week: String(lastWeek) } })}>
-                  Read the Week {lastWeek} recap →
-                </LinkText>
-              )}
             </Panel>
           )}
           {awards && <YourAwardsCard awards={awards.awards} teamName={myWeek.data.team_name} />}
-          {awards && season !== null && <AwardsMiniCard awards={awards.awards} week={awards.week} season={season} color={color} />}
           <PowerMoveCard trend={trend} teamId={teamId} />
           {odds && <PlayoffOddsCard odds={odds} teamId={teamId} />}
           {m && <NextOpponentCard matchup={m} item={mine?.item ?? null} teamId={teamId} />}
@@ -427,25 +370,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       };
       body = (
         <>
-          {m && (
-            <Panel tint={color} onPress={() => router.push({ pathname: '/matchup/[id]', params: { id: String(m.matchup_id) } })} label="Open your matchup">
-              <ScoreLine
-                mine={m.my_score}
-                theirs={m.opponent_score}
-                color={margin >= 0 ? color : Colors.text}
-                mineLabel={`You · proj ${fmt(mine?.me.projected_total ?? m.my_projected_total)}`}
-                theirLabel={`${m.opponent_team_name} · proj ${fmt(mine?.them.projected_total ?? m.opponent_projected_total)}`}
-                middle={<Chip color={margin >= 0 ? color : Colors.loss}>{`${margin >= 0 ? '+' : '−'}${Math.abs(margin).toFixed(1)}`}</Chip>}
-              />
-              {m.win_probability != null && <WinBar percent={m.win_probability} color={color} />}
-              <View style={styles.spread}>
-                {m.win_probability != null && <Text style={styles.muted}>{Math.round(m.win_probability)}% to win</Text>}
-                <Text style={styles.muted}>
-                  You {m.my_yet_to_play + m.my_in_play} left · Them {m.opponent_yet_to_play + m.opponent_in_play} left
-                </Text>
-              </View>
-            </Panel>
-          )}
           {mine && <SwingPlayersCard me={mine.me} them={mine.them} />}
           <PlayersNowCard players={onNow} title="Your players right now" />
           {mine && <TouchdownFeedCard me={mine.me} them={mine.them} />}
@@ -480,6 +404,29 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     }
   }
 
+  // The classic home's Your Week card leads every day, with the week's
+  // recap right under it and the awards after, both exactly as the
+  // classic home shows them. Before the recap is out on a final week, a
+  // countdown takes its place. On days about the week ahead, the awards
+  // move below that day's cards.
+  const awardsFirst = phase === 'final' || phase === 'recap' || phase === 'waivers';
+  const shownRecap = phase === 'final' ? (recap && recap.week === week ? recap : null) : recap;
+  const awardsCard =
+    awards && week !== null ? <AwardsCard awards={awards.awards} awardsWeek={awards.week} currentWeek={week} recap={shownRecap} /> : null;
+  const recapCountdown =
+    phase === 'final' && !shownRecap ? (
+      <Panel tint={SectionColors.awards}>
+        <View style={styles.spread}>
+          <View style={styles.gap2}>
+            <Kicker color={SectionColors.awards}>Week {week} recap</Kicker>
+            <Text style={styles.body}>The recap and awards drop at noon PT</Text>
+            <Text style={styles.small}>You&apos;ll get a push the moment it&apos;s out.</Text>
+          </View>
+          <Text style={styles.muted}>in {untilText(nextEt(2, 15, now), now)}</Text>
+        </View>
+      </Panel>
+    ) : null;
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -504,12 +451,17 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         </View>
         <Text style={styles.title}>{header.title}</Text>
       </View>
-      {body}
-      {m === null && (
+      {m ? (
+        <YourWeekCard myWeek={myWeek.data} isGameDay={live} leagueName={leagueName} color={appearance.yourWeek} colors={appearance.yourWeekColors} />
+      ) : (
         <Panel>
           <Text style={styles.muted}>No matchup this week.</Text>
         </Panel>
       )}
+      {recapCountdown}
+      {awardsFirst && awardsCard}
+      {body}
+      {!awardsFirst && awardsCard}
       {chug?.deadline && <ChugCountdownCard deadline={chug.deadline} isPast={chug.is_past} mine={chug.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
       <Pressable onPress={onUseClassic} hitSlop={8} style={styles.footer} accessibilityRole="button">

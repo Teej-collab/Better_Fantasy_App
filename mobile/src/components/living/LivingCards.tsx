@@ -4,10 +4,11 @@ import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'rea
 
 import { OutcomeChip } from '@/components/players/OutcomeChip';
 import { Display, Text } from '@/components/Text';
-import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
+import { NeonPanel } from '@/components/NeonPanel';
+import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter, nextEt, untilText } from '@/lib/livingHome';
-import type { MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse, WeeklyAwards } from '@/lib/types';
+import type { MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
 import { pendingClaims } from '@/lib/waiverClaims';
 
 // Re-renders every `ms` so countdowns tick.
@@ -20,21 +21,32 @@ export function useNow(ms = 30_000): Date {
   return now;
 }
 
+// Every living-home card sits in the classic home's NeonPanel: the same
+// dark card with a segment of color sweeping around its border. `tint`
+// sets the ring's color (the day's color, a warning); without it the
+// ring is the owner's own ring color, like the classic cards. `style`
+// styles the card's inside.
 export function Panel({
   children,
   tint,
   style,
+  outerStyle,
   onPress,
   label,
 }: {
   children: ReactNode;
   tint?: string;
   style?: StyleProp<ViewStyle>;
+  outerStyle?: StyleProp<ViewStyle>;
   onPress?: () => void;
   label?: string;
 }) {
-  const panelStyle = [styles.panel, tint ? { borderColor: withAlpha(tint, 0.45) } : null, style];
-  if (!onPress) return <View style={panelStyle}>{children}</View>;
+  const card = (
+    <NeonPanel ring={tint} color={SectionColors.home} contentStyle={[styles.panel, style]} style={onPress ? undefined : outerStyle}>
+      {children}
+    </NeonPanel>
+  );
+  if (!onPress) return card;
   return (
     <Pressable
       onPress={() => {
@@ -43,8 +55,8 @@ export function Panel({
       }}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [panelStyle, pressed && styles.pressed]}>
-      {children}
+      style={({ pressed }) => [outerStyle, pressed && styles.pressed]}>
+      {card}
     </Pressable>
   );
 }
@@ -154,47 +166,6 @@ export function WeekEndedCard({
         right={crime ? `${crime.bench_player} +${crime.points_diff.toFixed(1)} over ${crime.started_player}` : 'No bench crimes'}
       />
       {closest && <Row left="Closest finish" right={`${closest.label} by ${closest.margin.toFixed(1)}`} />}
-    </Panel>
-  );
-}
-
-// Boom of the week and the biggest bench crime, one tap from all awards.
-export function AwardsMiniCard({ awards, week, season, color }: { awards: WeeklyAwards; week: number; season: number; color: string }) {
-  const boom = awards.boom_leaders[0];
-  const crime = awards.biggest_bench_crime;
-  if (!boom && !crime) return null;
-  return (
-    <Panel>
-      <View style={styles.spread}>
-        <Text style={styles.cardTitle}>Week {week} awards</Text>
-        <LinkText color={color} onPress={() => router.push({ pathname: '/awards/[season]', params: { season: String(season) } })}>
-          All awards
-        </LinkText>
-      </View>
-      <View style={styles.tiles}>
-        {boom && (
-          <View style={styles.tile}>
-            <Kicker color="#f97316">Boom</Kicker>
-            <Text style={styles.tileTitle} numberOfLines={1}>
-              {boom.player_name} · {boom.points_scored.toFixed(1)}
-            </Text>
-            <Text style={styles.tileSub} numberOfLines={1}>
-              {boom.team_name}
-            </Text>
-          </View>
-        )}
-        {crime && (
-          <View style={styles.tile}>
-            <Kicker color="#94a3b8">Bench crime</Kicker>
-            <Text style={styles.tileTitle} numberOfLines={1}>
-              {crime.bench_player} +{crime.points_diff.toFixed(1)}
-            </Text>
-            <Text style={styles.tileSub} numberOfLines={1}>
-              {crime.team_name}
-            </Text>
-          </View>
-        )}
-      </View>
     </Panel>
   );
 }
@@ -342,7 +313,7 @@ export function PlayersNowCard({ players, title }: { players: RosterPlayer[]; ti
 
 export function LoungeCard({ title, body }: { title: string; body: string }) {
   return (
-    <Panel style={styles.lounge} onPress={() => router.push('/lounge')} label="Open the Lounge">
+    <Panel tint="#a78bfa" style={styles.lounge} onPress={() => router.push('/lounge')} label="Open the Lounge">
       <View style={styles.spread}>
         <View style={styles.gap2}>
           <Kicker color="#c4b5fd">{title}</Kicker>
@@ -355,14 +326,7 @@ export function LoungeCard({ title, body }: { title: string; body: string }) {
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    gap: 10,
-  },
+  panel: { gap: 10 },
   pressed: { opacity: 0.75 },
   kicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
   link: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
@@ -396,5 +360,5 @@ const styles = StyleSheet.create({
   body: { color: Colors.text, fontSize: 14 },
   small: { color: Colors.textSecondary, fontSize: 12 },
   gap2: { gap: 2, flexShrink: 1 },
-  lounge: { backgroundColor: '#1d1630', borderColor: 'rgba(167,139,250,0.4)' },
+  lounge: { backgroundColor: '#1d1630' },
 });
