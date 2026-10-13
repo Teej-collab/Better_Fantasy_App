@@ -44,19 +44,36 @@ export type HomePhase =
   | 'sweat' // Monday with your matchup still undecided
   | 'final'; // your matchup is done, the week hasn't flipped yet
 
-const ET = 'America/New_York';
+// Eastern time — the league's clock — worked out by hand rather than
+// with Intl time zones, which gave wrong hours on the phone (the recap
+// countdown read 7d 23h on 2026-10-13). US rules: EDT from the second
+// Sunday in March, 2 AM, to the first Sunday in November, 2 AM.
+function nthSundayUtc(year: number, month: number, n: number): number {
+  const firstDay = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  return 1 + ((7 - firstDay) % 7) + 7 * (n - 1);
+}
 
-// The weekday (0 = Sunday) and hour in Eastern time — the league's clock.
+function etOffsetHours(when: Date): number {
+  const year = when.getUTCFullYear();
+  const dstStart = Date.UTC(year, 2, nthSundayUtc(year, 2, 2), 7); // 2 AM EST
+  const dstEnd = Date.UTC(year, 10, nthSundayUtc(year, 10, 1), 6); // 2 AM EDT
+  const t = when.getTime();
+  return t >= dstStart && t < dstEnd ? -4 : -5;
+}
+
+// A Date whose UTC fields read as Eastern wall-clock time.
+function etWall(when: Date): Date {
+  return new Date(when.getTime() + etOffsetHours(when) * 60 * 60 * 1000);
+}
+
+// The weekday (0 = Sunday) and hour in Eastern time.
 export function etDayHour(when: Date): { day: number; hour: number } {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(when);
-  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun';
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
-  return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday), hour };
+  const wall = etWall(when);
+  return { day: wall.getUTCDay(), hour: wall.getUTCHours() };
 }
 
 function sameEtDay(a: Date, b: Date): boolean {
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: ET, year: 'numeric', month: 'numeric', day: 'numeric' });
-  return f.format(a) === f.format(b);
+  return etWall(a).toISOString().slice(0, 10) === etWall(b).toISOString().slice(0, 10);
 }
 
 // The next time it's `day` at `hour`:00 Eastern, stepping an hour at a time.
@@ -124,7 +141,7 @@ export const PHASE_COLOR: Record<HomePhase, string> = {
 };
 
 export function dayName(now = new Date()): string {
-  return now.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long' });
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][etDayHour(now).day];
 }
 
 // "4h 12m" / "16h 42m" / "2d 4h".
