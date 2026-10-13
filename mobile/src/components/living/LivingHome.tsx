@@ -10,7 +10,6 @@ import { ActivityCard } from '@/components/home/FeedCards';
 import { YourWeekCard } from '@/components/home/YourWeekCard';
 import { LiveNowCard } from '@/components/home/LeagueCards';
 import {
-  Chip,
   ClaimResultsCard,
   KickoffCard,
   Kicker,
@@ -18,7 +17,6 @@ import {
   MatchupPreviewCard,
   Panel,
   PlayersNowCard,
-  ScoreLine,
   useNow,
   WaiversCountdownCard,
   WeekEndedCard,
@@ -94,8 +92,53 @@ import {
   useWatchPartyRooms,
   useWinProbHistory,
 } from '@/lib/queries';
+import type { MatchupContextSide, WeekMatchupContextItem, YourWeek } from '@/lib/types';
 import { buildKickoffCountdownItem, buildLeagueTickerItems, buildTickerItems } from '@/lib/ticker';
 import { lastRun } from '@/lib/waiverClaims';
+
+// Last week's matchup in the Your Week card's own shape, so recap day
+// can show last week's final in exactly the same card.
+function lastWeekAsYourWeek(
+  last: { item: WeekMatchupContextItem; me: MatchupContextSide; them: MatchupContextSide },
+  week: number,
+  season: number,
+  teamId: number,
+): YourWeek {
+  const { item, me, them } = last;
+  return {
+    season,
+    week,
+    team_id: teamId,
+    team_name: me.team_name,
+    power_rank: me.power_rank,
+    draft: null,
+    matchup: {
+      matchup_id: item.matchup_id,
+      is_playoff: item.is_playoff,
+      started: true,
+      record: me.record,
+      my_owner_name: me.owner_name,
+      my_logo_url: me.logo_url,
+      my_result_streak: me.result_streak,
+      my_yet_to_play: 0,
+      my_in_play: 0,
+      my_score: me.score,
+      my_projected_total: me.projected_total ?? me.score ?? 0,
+      opponent_team_id: them.team_id,
+      opponent_team_name: them.team_name,
+      opponent_power_rank: them.power_rank,
+      opponent_owner_name: them.owner_name,
+      opponent_logo_url: them.logo_url,
+      opponent_record: them.record,
+      opponent_result_streak: them.result_streak,
+      opponent_yet_to_play: 0,
+      opponent_in_play: 0,
+      opponent_score: them.score,
+      opponent_projected_total: them.projected_total ?? them.score ?? 0,
+      win_probability: me.win_probability,
+    },
+  };
+}
 
 function greeting(name: string | null, now: Date): string {
   const h = now.getHours();
@@ -171,8 +214,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const color = PHASE_COLOR[phase];
   const weekMatchups = context?.matchups ?? [];
   const mine = sideFor(weekMatchups, teamId);
-  const myRow = standings.find((r) => r.team_id === teamId);
-  const record = myRow ? `${myRow.wins}–${myRow.losses}${myRow.ties ? `–${myRow.ties}` : ''}` : null;
   const name = me?.display_name ?? null;
   const day = dayName(now);
   const live = games.some((g) => g.state === 'in');
@@ -247,22 +288,17 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     // Tuesday after the flip: last week's story and the week ahead.
     case 'recap': {
       const last = lastContext ? sideFor(lastContext.matchups, teamId) : null;
-      const won = last && (last.me.score ?? 0) > (last.them.score ?? 0);
       header = { kicker: 'Tuesday · Recap day', title: greeting(name, now) };
       body = (
         <>
-          {last && (
-            <Panel tint="#f5b942">
-              <Kicker color="#f5b942">Your Week {lastWeek} · Final</Kicker>
-              <ScoreLine
-                mine={last.me.score}
-                theirs={last.them.score}
-                color={won ? '#39ff14' : Colors.text}
-                mineLabel={record ? `You · ${record}` : 'You'}
-                theirLabel={last.them.team_name}
-                middle={<Chip color={won ? '#39ff14' : Colors.loss}>{`${won ? 'W' : 'L'} · ${Math.abs((last.me.score ?? 0) - (last.them.score ?? 0)).toFixed(1)}`}</Chip>}
-              />
-            </Panel>
+          {last && lastWeek !== null && (
+            <YourWeekCard
+              myWeek={lastWeekAsYourWeek(last, lastWeek, myWeek.data.season, teamId)}
+              isGameDay={false}
+              leagueName={leagueName}
+              color={appearance.yourWeek}
+              colors={appearance.yourWeekColors}
+            />
           )}
           {awards && <YourAwardsCard awards={awards.awards} teamName={myWeek.data.team_name} />}
           <PowerMoveCard trend={trend} teamId={teamId} />
