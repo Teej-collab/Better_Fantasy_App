@@ -2097,6 +2097,8 @@ export type WaiverClaim = {
   id: number;
   add_sleeper_player_id: string;
   add_player_name: string;
+  add_player_position: string | null;
+  add_player_pro_team: string | null;
   drop_sleeper_player_id: string | null;
   drop_player_name: string | null;
   status: WaiverClaimStatus;
@@ -2131,9 +2133,13 @@ export async function submitWaiverClaim(addSleeperPlayerId: string, dropSleeperP
   return res.json();
 }
 
-export async function listMyWaiverClaims(): Promise<WaiverClaim[]> {
-  const { claims } = await authedGet<{ claims: WaiverClaim[] }>("/me/team/waivers");
-  return claims;
+// Your claims plus where you sit in this week's waiver order
+// ("Priority #4 of 12").
+export type MyWaiverClaims = { claims: WaiverClaim[]; priority: { rank: number; of: number } | null };
+
+export async function listMyWaiverClaims(): Promise<MyWaiverClaims> {
+  const { claims, priority } = await authedGet<MyWaiverClaims>("/me/team/waivers");
+  return { claims, priority: priority ?? null };
 }
 
 export async function cancelWaiverClaim(claimId: number): Promise<void> {

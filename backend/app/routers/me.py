@@ -860,6 +860,14 @@ async def list_my_waiver_claims(request: Request):
         claims = await waivers.list_claims_for_team(conn, active_season, league_id, team_id)
         fmt = await league_format.get_league_format(conn, league_id)
         faab_left = await waivers.faab_remaining(conn, active_season, league_id, team_id, fmt)
+        # Where this team sits in this week's waiver order ("Priority #4 of 12").
+        priority = None
+        current_week = await league_queries.get_cached_current_week(conn, active_season)
+        if current_week is not None:
+            order = await waivers.get_priority_order(conn, active_season, league_id, current_week)
+            mine = next((r["priority"] for r in order if r["team_id"] == team_id), None)
+            if mine is not None:
+                priority = {"rank": mine, "of": len(order)}
     return {
         "claims": [
             {
@@ -873,6 +881,7 @@ async def list_my_waiver_claims(request: Request):
         ],
         # FAAB leagues only (guillotine): what's left to bid, of the budget.
         "faab": {"remaining": faab_left, "budget": league_format.faab_budget(fmt)} if faab_left is not None else None,
+        "priority": priority,
     }
 
 

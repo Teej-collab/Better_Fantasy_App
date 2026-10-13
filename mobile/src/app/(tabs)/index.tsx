@@ -9,11 +9,13 @@ import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/Countdo
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
 import { DiscoverCard, LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
 import { YourWeekCard } from '@/components/home/YourWeekCard';
+import { LivingHome } from '@/components/living/LivingHome';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
+import { isLivingHomeTester, useLivingHomeSwitch } from '@/lib/livingHome';
 import {
   queryClient,
   useActiveLeagueName,
@@ -28,6 +30,7 @@ import {
   useLeagueActivity,
   useLeagueTicker,
   useMatchupContext,
+  useMe,
   useMyWeek,
   useNflScoreboard,
   usePreferences,
@@ -68,7 +71,7 @@ function cardOrder(raw: string | null | undefined): string[] {
   return [...base, ...DEFAULT_HOME_CARD_ORDER.filter((k) => !base.includes(k))];
 }
 
-function HomeScreenContent() {
+function HomeScreenContent({ onTryLiving }: { onTryLiving?: () => void }) {
   const scrollRef = useTabScrollRef<ScrollView>();
   const appearance = useAppearance();
   const prefs = usePreferences();
@@ -193,6 +196,11 @@ function HomeScreenContent() {
           <Text style={styles.footerText}>Draft results</Text>
         </Pressable>
       )}
+      {onTryLiving && (
+        <Pressable onPress={onTryLiving} hitSlop={8} style={styles.footerLink}>
+          <Text style={styles.footerText}>Try the new living home</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
@@ -248,9 +256,17 @@ const styles = StyleSheet.create({
 });
 
 export default function HomeScreen() {
+  // The living home (2026-10-13) is only for its testers so far; they
+  // can flip between it and this one from the bottom of either.
+  const tester = isLivingHomeTester(useMe().data?.owner_id);
+  const [living, setLiving] = useLivingHomeSwitch();
   return (
     <TabFrame>
-      <HomeScreenContent />
+      {tester && living ? (
+        <LivingHome onUseClassic={() => setLiving(false)} />
+      ) : (
+        <HomeScreenContent onTryLiving={tester ? () => setLiving(true) : undefined} />
+      )}
     </TabFrame>
   );
 }

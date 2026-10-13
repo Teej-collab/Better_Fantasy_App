@@ -168,7 +168,7 @@ export function useFreeAgents(position: string | undefined, search: string) {
 }
 
 export function useWaiverClaims() {
-  return useQuery({ queryKey: ['waiver-claims'], queryFn: async () => (await api.waiverClaims()).claims });
+  return useQuery({ queryKey: ['waiver-claims'], queryFn: api.waiverClaims });
 }
 
 // After any add, drop or claim: the roster, the free-agent pool and the

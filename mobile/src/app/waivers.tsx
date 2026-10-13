@@ -1,59 +1,41 @@
-import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 
+import { OutcomeChip } from '@/components/players/OutcomeChip';
+import { ReorderableClaims } from '@/components/players/ReorderableClaims';
 import { Text } from '@/components/Text';
 import { Card, LoadingState, MessageState } from '@/components/ui';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { api } from '@/lib/api';
+import { haptics } from '@/lib/haptics';
 import { invalidateRosterMoves, queryClient, useWaiverClaims } from '@/lib/queries';
-import type { WaiverClaim } from '@/lib/types';
+import type { WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
+import { lastRun, nextClear, pastClaims, pendingClaims, shortWhen } from '@/lib/waiverClaims';
 
-const STATUS_LABEL: Record<WaiverClaim['status'], string> = {
-  pending: 'Pending',
-  successful: 'Won',
-  failed: 'Lost',
-  cancelled: 'Cancelled',
-};
-
-const STATUS_COLOR: Record<WaiverClaim['status'], string> = {
-  pending: Colors.accent,
-  successful: Colors.win,
-  failed: Colors.loss,
-  cancelled: Colors.textSecondary,
-};
-
-// "Processes Wed, Oct 14 at 3:00 AM", in the phone's own time zone.
-function processesAt(iso: string): string {
-  const when = new Date(iso);
-  const day = when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-  const time = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `Processes ${day} at ${time}`;
-}
-
+/**
+ * My claims (Option B, 2026-10-13): the claims still in line up top —
+ * hold the grip and drag to rank them — then how the last waiver run
+ * went, with everything older one tap away on Past claims.
+ */
 export default function WaiversScreen() {
   const claims = useWaiverClaims();
   const [refreshing, setRefreshing] = useState(false);
-  // ESPN's Waiver Claims > Edit: rank your pending claims with the arrows.
-  const [editing, setEditing] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
-  async function move(claimId: number, by: -1 | 1) {
-    const current = claims.data ?? [];
-    const pendingIds = current.filter((c) => c.status === 'pending').map((c) => c.id);
-    const from = pendingIds.indexOf(claimId);
-    const to = from + by;
-    if (from < 0 || to < 0 || to >= pendingIds.length) return;
-    [pendingIds[from], pendingIds[to]] = [pendingIds[to], pendingIds[from]];
-    const byId = new Map(current.map((c) => [c.id, c]));
-    queryClient.setQueryData<WaiverClaim[]>(['waiver-claims'], [
-      ...pendingIds.map((id) => byId.get(id)!),
-      ...current.filter((c) => c.status !== 'pending'),
-    ]);
-    void Haptics.selectionAsync();
+  async function reorder(pendingIds: number[]) {
+    const current = claims.data;
+    if (!current) return;
+    const byId = new Map(current.claims.map((c) => [c.id, c]));
+    queryClient.setQueryData<WaiverClaimsResponse>(['waiver-claims'], {
+      ...current,
+      claims: [...pendingIds.map((id) => byId.get(id)!), ...current.claims.filter((c) => c.status !== 'pending')],
+    });
     try {
       await api.reorderWaiverClaims(pendingIds);
     } catch (e) {
-      queryClient.setQueryData<WaiverClaim[]>(['waiver-claims'], current);
+      queryClient.setQueryData<WaiverClaimsResponse>(['waiver-claims'], current);
       Alert.alert("Couldn't save your order", e instanceof Error ? e.message : 'Try again.');
       void claims.refetch();
     }
@@ -66,6 +48,7 @@ export default function WaiversScreen() {
   }
 
   function confirmCancel(claim: WaiverClaim) {
+    haptics.warning();
     Alert.alert('Cancel this claim?', `Your claim for ${claim.add_player_name} will be withdrawn.`, [
       { text: 'Keep it', style: 'cancel' },
       {
@@ -74,7 +57,7 @@ export default function WaiversScreen() {
         onPress: async () => {
           try {
             await api.cancelWaiverClaim(claim.id);
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            haptics.success();
             invalidateRosterMoves();
           } catch (e) {
             Alert.alert("Couldn't cancel", e instanceof Error ? e.message : 'Try again.');
@@ -86,93 +69,121 @@ export default function WaiversScreen() {
 
   if (claims.isPending) return <LoadingState />;
   if (claims.isError && !claims.data) return <MessageState message="Couldn't load your claims." />;
-  const list = claims.data ?? [];
-  if (list.length === 0) return <MessageState message="No waiver claims yet." />;
-  const pendingIds = list.filter((c) => c.status === 'pending').map((c) => c.id);
-  const canReorder = pendingIds.length > 1;
+  const all = claims.data?.claims ?? [];
+  const priority = claims.data?.priority ?? null;
+  const pending = pendingClaims(all);
+  const past = pastClaims(all);
+  const recent = lastRun(all);
+  const clears = nextClear(pending);
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
+      scrollEnabled={!dragging}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
-      {canReorder && (
-        <View style={styles.orderBar}>
-          <Text style={styles.orderHint}>
-            {editing ? 'When several clear at once, your top claim goes first on your turn.' : `${pendingIds.length} pending claims`}
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.kicker}>{clears ? `Up next · ${shortWhen(clears)}` : 'Up next'}</Text>
+          <Text style={styles.title}>
+            {pending.length === 0 ? 'No claims in line' : `${pending.length} claim${pending.length === 1 ? '' : 's'} in line`}
           </Text>
-          <Pressable onPress={() => setEditing(!editing)} hitSlop={10}>
-            <Text style={styles.orderButton}>{editing ? 'Done' : 'Edit order'}</Text>
-          </Pressable>
         </View>
-      )}
-      <Card style={styles.list}>
-        {list.map((claim, i) => (
-          <View key={claim.id} style={[styles.row, i > 0 && styles.divided]}>
-            {editing && claim.status === 'pending' && canReorder && (
-              <View style={styles.arrows}>
-                <Pressable
-                  onPress={() => move(claim.id, -1)}
-                  disabled={pendingIds.indexOf(claim.id) === 0}
-                  hitSlop={6}
-                  accessibilityLabel={`Move ${claim.add_player_name} up`}>
-                  <Text style={[styles.arrow, pendingIds.indexOf(claim.id) === 0 && styles.arrowOff]}>▲</Text>
-                </Pressable>
-                <Text style={styles.rank}>{pendingIds.indexOf(claim.id) + 1}</Text>
-                <Pressable
-                  onPress={() => move(claim.id, 1)}
-                  disabled={pendingIds.indexOf(claim.id) === pendingIds.length - 1}
-                  hitSlop={6}
-                  accessibilityLabel={`Move ${claim.add_player_name} down`}>
-                  <Text style={[styles.arrow, pendingIds.indexOf(claim.id) === pendingIds.length - 1 && styles.arrowOff]}>▼</Text>
-                </Pressable>
-              </View>
-            )}
-            <View style={styles.text}>
-              <Text style={styles.add}>+ {claim.add_player_name}</Text>
-              {claim.drop_player_name && <Text style={styles.drop}>− {claim.drop_player_name}</Text>}
-              {claim.failure_reason && <Text style={styles.reason}>{claim.failure_reason}</Text>}
-              <Text style={styles.when}>
-                {claim.status === 'pending' && claim.clears_at
-                  ? processesAt(claim.clears_at)
-                  : new Date(claim.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              </Text>
-            </View>
-            <View style={styles.side}>
-              <Text style={[styles.status, { color: STATUS_COLOR[claim.status] }]}>{STATUS_LABEL[claim.status]}</Text>
-              {claim.status === 'pending' && (
-                <Pressable onPress={() => confirmCancel(claim)} hitSlop={10}>
-                  <Text style={styles.cancel}>Cancel</Text>
-                </Pressable>
-              )}
-            </View>
+        {priority && (
+          <View style={styles.priority} accessibilityLabel={`Waiver priority ${priority.rank} of ${priority.of}`}>
+            <Text style={styles.priorityText}>Priority #{priority.rank}</Text>
           </View>
-        ))}
-      </Card>
+        )}
+      </View>
+
+      {pending.length > 0 ? (
+        <>
+          <Card style={styles.listCard}>
+            <ReorderableClaims claims={pending} onReorder={reorder} onCancel={confirmCancel} onDragChange={setDragging} />
+          </Card>
+          <Text style={styles.hint}>
+            {pending.length > 1 ? 'Hold ≡ and drag to rank. Your #1 goes first on your turn. ' : ''}
+            Swipe left to cancel.
+          </Text>
+        </>
+      ) : (
+        <Card style={styles.empty}>
+          <Text style={styles.emptyText}>Put in a claim on any player on waivers from the Players tab.</Text>
+        </Card>
+      )}
+
+      {recent.length > 0 && (
+        <Card style={styles.runCard}>
+          <Text style={styles.cardKicker}>Last run · {shortWhen(recent[0].processed_at!)}</Text>
+          {recent.map((c) => (
+            <View key={c.id} style={styles.runRow}>
+              <View style={styles.runText}>
+                <Text style={styles.runName} numberOfLines={1}>
+                  {c.add_player_name}
+                </Text>
+                {c.status === 'failed' && c.failure_reason && (
+                  <Text style={styles.runReason} numberOfLines={1}>
+                    {c.failure_reason}
+                  </Text>
+                )}
+              </View>
+              <OutcomeChip status={c.status} />
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {past.length > 0 && (
+        <Pressable
+          style={({ pressed }) => [styles.pastRow, pressed && styles.pressed]}
+          onPress={() => {
+            haptics.tap();
+            router.push('/waiver-history');
+          }}
+          accessibilityRole="button">
+          <Text style={styles.pastText}>
+            All past claims <Text style={styles.pastCount}>· {past.length}</Text>
+          </Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
-  list: { padding: 0, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', padding: Spacing.lg, gap: Spacing.md },
-  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
-  text: { flex: 1, gap: 2 },
-  add: { color: Colors.text, fontSize: 15, fontWeight: '600' },
-  drop: { color: Colors.textSecondary, fontSize: 14 },
-  reason: { color: Colors.loss, fontSize: 12 },
-  when: { color: Colors.textSecondary, fontSize: 12 },
-  side: { alignItems: 'flex-end', gap: Spacing.sm },
-  status: { fontSize: 13, fontWeight: '700' },
-  cancel: { color: Colors.textSecondary, fontSize: 13 },
-  orderBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, marginBottom: Spacing.sm },
-  orderHint: { flex: 1, color: Colors.textSecondary, fontSize: 12 },
-  orderButton: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
-  arrows: { alignItems: 'center', gap: 2 },
-  arrow: { color: Colors.text, fontSize: 16, paddingHorizontal: 6 },
-  arrowOff: { opacity: 0.25 },
-  rank: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
+  header: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: Spacing.md },
+  headerText: { flex: 1, gap: 2 },
+  kicker: { color: Colors.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
+  title: { color: Colors.text, fontSize: 22, fontWeight: '700' },
+  priority: { backgroundColor: withAlpha(Colors.accent, 0.14), borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
+  priorityText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
+  listCard: { padding: 4 },
+  hint: { color: Colors.textSecondary, fontSize: 12, marginTop: -4 },
+  empty: { padding: Spacing.lg },
+  emptyText: { color: Colors.textSecondary, fontSize: 14 },
+  runCard: { padding: Spacing.lg, gap: Spacing.sm },
+  cardKicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
+  runRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md, minHeight: 32 },
+  runText: { flex: 1, gap: 1 },
+  runName: { color: Colors.text, fontSize: 14 },
+  runReason: { color: Colors.textSecondary, fontSize: 12 },
+  pastRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+  },
+  pressed: { opacity: 0.7 },
+  pastText: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  pastCount: { color: Colors.textSecondary, fontWeight: '500' },
+  chevron: { color: Colors.textSecondary, fontSize: 22 },
 });

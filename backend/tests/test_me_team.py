@@ -1130,3 +1130,31 @@ async def test_my_team_past_week_shows_frozen_real_weekly_projection(pool, monke
     assert resp.status_code == 200
     entry = resp.json()["roster"][0]
     assert entry["points_projected"] == 24.5
+
+
+async def test_waiver_claims_list_has_player_details_and_priority(pool, monkeypatch):
+    # Option B claims screen (2026-10-13): each claim carries the player's
+    # position and team, and the list says where you sit in this week's
+    # waiver order ("Priority #4 of 12").
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    await _ensure_roster_config(pool)
+    owner_id, team_id = await _seed_owner_with_team(pool, "wlist1", espn_team_id=131)
+    player = await _seed_player(pool, "wlist1", position="TE", pro_team="GB")
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 3)", TEST_SEASON)
+    kickoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", _scoreboard_with_kickoff("GB", kickoff))
+
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        assert (await client.post("/me/team/waivers/claim", json={"add_sleeper_player_id": player})).status_code == 200
+        resp = await client.get("/me/team/waivers")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    claim = next(c for c in body["claims"] if c["add_sleeper_player_id"] == player)
+    assert claim["add_player_position"] == "TE"
+    assert claim["add_player_pro_team"] == "GB"
+    assert body["priority"]["rank"] >= 1
+    assert body["priority"]["of"] >= body["priority"]["rank"]

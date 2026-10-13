@@ -420,6 +420,7 @@ async def list_claims_for_team(conn, season: int, league_id: int, team_id: int) 
     rows = await conn.fetch(
         """
         SELECT wc.id, wc.add_sleeper_player_id, ap.full_name AS add_player_name,
+               ap.position AS add_player_position, ap.pro_team AS add_player_pro_team,
                wc.drop_sleeper_player_id, dp.full_name AS drop_player_name,
                wc.status, wc.failure_reason, wc.created_at, wc.processed_at, wc.bid_amount, wc.claim_order,
                ww.clears_at

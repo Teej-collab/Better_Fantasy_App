@@ -82,6 +82,7 @@ import type {
   RosterPlayer,
   StandingsRow,
   WaiverClaim,
+  WaiverClaimsResponse,
   WeekMatchupContext,
   WeekMatchupContextItem,
   YourWeek,
@@ -429,7 +430,7 @@ export const api = {
       throw e;
     }
   },
-  waiverClaims: () => request<{ claims: WaiverClaim[] }>('/me/team/waivers'),
+  waiverClaims: () => request<WaiverClaimsResponse>('/me/team/waivers'),
   // `bid`: a FAAB bid, for a league that bids on waivers (guillotine).
   submitWaiverClaim: (addPlayerId: string, dropPlayerId: string | null, bid?: number) =>
     request<WaiverClaim>('/me/team/waivers/claim', {

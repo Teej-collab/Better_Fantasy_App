@@ -284,6 +284,8 @@ export type WaiverClaim = {
   id: number;
   add_sleeper_player_id: string;
   add_player_name: string;
+  add_player_position: string | null;
+  add_player_pro_team: string | null;
   drop_sleeper_player_id: string | null;
   drop_player_name: string | null;
   status: 'pending' | 'successful' | 'failed' | 'cancelled';
@@ -295,6 +297,13 @@ export type WaiverClaim = {
   claim_order: number;
   // When a pending claim's player clears waivers.
   clears_at: string | null;
+};
+
+// GET /me/team/waivers: your claims plus where you sit in this week's
+// waiver order ("Priority #4 of 12").
+export type WaiverClaimsResponse = {
+  claims: WaiverClaim[];
+  priority: { rank: number; of: number } | null;
 };
 
 // GET /players/{sleeper_player_id}/card (frontend/src/lib/playerCardApi.ts).
