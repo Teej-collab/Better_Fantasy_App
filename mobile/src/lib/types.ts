@@ -672,6 +672,16 @@ export type ChugLedgerEvent =
 // commissioner gets an unreleased recap at all (backend/app/domain/recap_release.py).
 export type WeeklyNarrative = { text: string; kind: 'preview' | 'recap'; released?: boolean };
 
+// The content-based hype grade's breakdown (backend app/domain/
+// chug_hype.py); null on older chugs and any that couldn't be graded.
+export type ChugHypeDetail = {
+  self_roast: number;
+  comedy: number;
+  commitment: number;
+  verdict: string | null;
+  quote: string | null;
+};
+
 export type ChugFeedEntry = {
   id: number;
   owner_id: number;
@@ -681,6 +691,7 @@ export type ChugFeedEntry = {
   created_at: string;
   has_video: boolean;
   roast: string | null;
+  hype_detail?: ChugHypeDetail | null;
 };
 
 export type LeagueActivityItem =
@@ -798,6 +809,7 @@ export type ChugUploadResult =
       chugs_owed_before: number;
       chugs_owed_after: number;
       roast: string | null;
+      hype_detail?: ChugHypeDetail | null;
     };
 
 // ---- League section (frontend/src/lib/api.ts, pollsApi.ts) ----

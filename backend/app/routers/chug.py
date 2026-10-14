@@ -32,7 +32,8 @@ from app.auth.session import decode_session_token, get_session_token, decode_tic
 from app.config import _require
 from app.db import get_pool
 from app.domain.chug_deadline import deadline_from_week_games, get_mnf_deadline, is_past_mnf_deadline
-from app.domain import chug_roast
+from app.chug_analyzer.scoring import final_grade
+from app.domain import chug_hype, chug_roast
 from app.domain.chug_leaderboard import build_chug_leaderboard
 from app.domain.chug_ledger import build_chug_ledger
 from app.domain.chug_standing import (
@@ -135,6 +136,7 @@ async def chug_feed(
                 "created_at": r["created_at"].isoformat(),
                 "has_video": r["has_video"],
                 "roast": r["roast"],
+                "hype_detail": json.loads(r["hype_detail"]) if r["hype_detail"] else None,
             }
             for r in rows
         ]
@@ -281,6 +283,37 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
             }
 
         active_season = int(_require("ACTIVE_SEASON"))
+
+        # Hype is graded on what's in the video (app/domain/chug_hype.py)
+        # before the score is recorded, since it's part of the final
+        # grade. Its own short connection: the model call takes a few
+        # seconds and shouldn't hold one. Best-effort: without a grade
+        # the chug keeps the analyzer's neutral hype.
+        hype = None
+        try:
+            async with pool.acquire() as conn:
+                hype_league_id = await require_active_league_id(conn, payload)
+                hype_owner_id = on_behalf_of if on_behalf_of is not None else await resolve_owner_id(conn, payload)
+                hype_owner_name = await conn.fetchval(
+                    "SELECT display_name FROM owners WHERE owner_id = $1", hype_owner_id
+                )
+                hype_context = await chug_hype.gather_context(
+                    conn, owner_id=hype_owner_id, owner_name=hype_owner_name or "The chugger",
+                    season=active_season, league_id=hype_league_id,
+                )
+            hype = await chug_hype.grade_hype(temp_path, result, hype_context)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.warning("Chug hype grading setup failed", exc_info=True)
+        if hype:
+            result = {
+                **result,
+                "hype_score": hype["score"],
+                "final": final_grade(result["time_score"], result["smoothness_score"], hype["score"]),
+            }
+        hype_detail = {k: v for k, v in hype.items() if k != "score"} if hype else None
+
         async with pool.acquire() as conn:
             league_id = await require_active_league_id(conn, payload)
             owner_id = on_behalf_of if on_behalf_of is not None else await resolve_owner_id(conn, payload)
@@ -330,6 +363,13 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
                 result["duration_seconds"], result["smoothness_score"], result["hype_score"], result["final"],
                 league_id, video_key,
             )
+            if hype_detail:
+                try:
+                    await conn.execute(
+                        "UPDATE chug_scores SET hype_detail = $1::jsonb WHERE id = $2", json.dumps(hype_detail), row["id"]
+                    )
+                except Exception:
+                    logger.warning("Saving chug hype detail failed (chug %s)", row["id"], exc_info=True)
 
             owed_before = await conn.fetchval(
                 "SELECT outstanding_owed FROM chug_standing WHERE season = $1 AND owner_id = $2 AND league_id = $3",
@@ -363,6 +403,7 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
                     conn, chug_id=row["id"], owner_name=owner_row["display_name"], discord_user_id=discord_user_id,
                     season=active_season, league_id=league_id, result=result, owed_before=owed_before,
                     owed_after=owed_after, fined_owed=fined_owed, posted_by_commissioner=on_behalf_of is not None,
+                    hype_detail=hype_detail,
                 )
             except Exception:
                 logger.warning("Gathering chug roast facts failed (chug %s)", row["id"], exc_info=True)
@@ -382,6 +423,9 @@ async def _process_chug_upload(video: UploadFile, payload: dict, pool, on_behalf
             "time_score": result["time_score"],
             "smoothness_score": result["smoothness_score"],
             "hype_score": result["hype_score"],
+            # Content grade breakdown {self_roast, comedy, commitment,
+            # verdict, quote}, or null if it couldn't be graded.
+            "hype_detail": hype_detail,
             "final_score": result["final"],
             "created_at": row["created_at"].isoformat(),
             "has_video": video_key is not None,

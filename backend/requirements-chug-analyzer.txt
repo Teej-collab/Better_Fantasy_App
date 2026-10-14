@@ -24,3 +24,8 @@ numpy==1.26.4
 # ffmpeg/ffprobe directly (already a hard dependency here) instead,
 # after moviepy's ffmpeg-output text parser crashed on a real HEVC
 # Dolby Vision iPhone video. See audio_analysis.py's module docstring.
+# Speech-to-text for the content-based hype grade (app/chug_analyzer/
+# transcribe.py). faster-whisper 1.1.1 imports requests without
+# declaring it, so it's pinned here too.
+faster-whisper==1.1.1
+requests==2.34.2

@@ -1,11 +1,12 @@
 """
-Full chug analyzer pipeline: real detection, real motion scoring, real
-audio/hype scoring. Ported verbatim from Fantasy_Helper's
-bot/chug_analyzer/analyzer.py.
+Full chug analyzer pipeline: real detection, real motion scoring, and
+a transcript of what was said for the content-based hype grade
+(app/domain/chug_hype.py, graded by the main backend). Originally
+ported from Fantasy_Helper's bot/chug_analyzer/analyzer.py.
 """
 from app.chug_analyzer.pose_detection import detect_can_to_mouth
-from app.chug_analyzer.scoring import compute_wobble, score_chug_time, score_hype, score_smoothness
-from app.chug_analyzer.audio_analysis import extract_hype_energy
+from app.chug_analyzer.scoring import NEUTRAL_HYPE, compute_wobble, final_grade, score_chug_time, score_smoothness
+from app.chug_analyzer.transcribe import transcribe
 
 
 def analyze_chug_video(video_path: str) -> dict:
@@ -18,14 +19,6 @@ def analyze_chug_video(video_path: str) -> dict:
     wobble = compute_wobble(detection["wrist_track"])
     smoothness_score = score_smoothness(wobble)
 
-    chug_end_seconds = detection["end_frame"] / detection["fps"]
-    audio_energy = extract_hype_energy(video_path, chug_end_seconds)
-    hype_score = score_hype(audio_energy)
-
-    final_score = round(
-        (time_score * 0.5) + (smoothness_score * 0.3) + (hype_score * 0.2), 2
-    )
-
     return {
         "can_to_mouth": True,
         "duration_seconds": detection["duration_seconds"],
@@ -34,7 +27,11 @@ def analyze_chug_video(video_path: str) -> dict:
         # few frames to measure) — see scoring.compute_wobble.
         "wobble": round(wobble, 4) if wobble is not None else None,
         "smoothness_score": round(smoothness_score, 2),
-        "audio_energy": audio_energy,
-        "hype_score": round(hype_score, 2),
-        "final": final_score,
+        "hype_score": NEUTRAL_HYPE,
+        "final": final_grade(time_score, smoothness_score, NEUTRAL_HYPE),
+        # Where the chug sits in the clip, and everything said in it,
+        # for the hype grader.
+        "chug_start_seconds": round(detection["start_frame"] / detection["fps"], 2),
+        "chug_end_seconds": round(detection["end_frame"] / detection["fps"], 2),
+        "transcript": transcribe(video_path),
     }

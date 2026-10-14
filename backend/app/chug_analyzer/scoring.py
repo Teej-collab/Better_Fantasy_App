@@ -60,8 +60,13 @@ def score_smoothness(wobble: float | None) -> float:
     return round(10 * (SHAKY_FACE_WIDTHS - wobble) / (SHAKY_FACE_WIDTHS - STEADY_FACE_WIDTHS), 2)
 
 
-def score_hype(audio_energy: float) -> float:
-    """
-    audio_energy is 0-1 (normalized RMS loudness). More hype = better.
-    """
-    return min(10, audio_energy * 12)
+# Hype (2026-10 rewrite) is graded on what's in the video, not how loud
+# it is — app/domain/chug_hype.py, run by the main backend after the
+# analyzer returns. The analyzer itself can't grade it, so it scores
+# hype as this neutral middle until that grade replaces it (and keeps
+# it if grading isn't available).
+NEUTRAL_HYPE = 5.0
+
+
+def final_grade(time_score: float, smoothness_score: float, hype_score: float) -> float:
+    return round((time_score * 0.5) + (smoothness_score * 0.3) + (hype_score * 0.2), 2)

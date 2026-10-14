@@ -161,7 +161,7 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
   return (
     <NeonPanel color={SectionColors.chug} contentStyle={styles.upload}>
       <Text style={styles.kicker}>Submit a Chug</Text>
-      <Text style={styles.soft}>Record or upload a video and it&apos;ll be graded automatically — time, smoothness, and hype.</Text>
+      <Text style={styles.soft}>Record or upload a video and it&apos;ll be graded automatically — time, smoothness, and hype. Hype is what you say and do, not how loud the room is: roast yourself for the player who put you here.</Text>
       {creditable && creditable.length > 0 && (
         <Pressable onPress={chooseCredit} disabled={uploading} hitSlop={6}>
           <Text style={styles.soft}>
@@ -196,6 +196,16 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
               ? `Paid down a chug — ${result.chugs_owed_after} still owed.`
               : 'Nothing owed — logged as a bonus chug for the lifetime count.'}
           </Text>
+          {result.hype_detail && (
+            <View style={styles.hype}>
+              <Text style={styles.small}>
+                Hype: self-roast {result.hype_detail.self_roast}/4 · comedy {result.hype_detail.comedy}/3 · bit{' '}
+                {result.hype_detail.commitment}/3
+              </Text>
+              {result.hype_detail.quote && <Text style={styles.quote}>“{result.hype_detail.quote}”</Text>}
+              {result.hype_detail.verdict && <Text style={styles.verdict}>{result.hype_detail.verdict}</Text>}
+            </View>
+          )}
           {result.roast && <Text style={styles.roast}>{result.roast}</Text>}
         </View>
       )}
@@ -391,6 +401,9 @@ const styles = StyleSheet.create({
   gradeTitle: { color: Colors.text, fontSize: 18, fontWeight: '600' },
   gradeNote: { color: '#fbbf24', fontSize: 12, fontWeight: '500' },
   roast: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 19, marginTop: 4 },
+  hype: { gap: 3, marginTop: 2 },
+  quote: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontStyle: 'italic' },
+  verdict: { color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 18 },
   small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
   row: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: 6 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.05)' },

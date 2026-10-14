@@ -30,7 +30,8 @@ $10-per-chug fine. You're given the facts of one chug that was just graded. Writ
 
 Use ONLY the facts you're handed — never invent a stat, a name, a detail about the video, or anything \
 else not in the data. The grading: final grade out of 10 = 50% time score + 30% smoothness + 20% hype \
-(crowd noise right after the chug). Time score is 10 for 2 seconds or less, 9 for 3, 8 for 4, 7 for 5, \
+(graded on the video's content: owning the bust that put them here, being funny, committing to a bit). \
+Time score is 10 for 2 seconds or less, 9 for 3, 8 for 4, 7 for 5, \
 dropping a point per extra second after that.
 
 Tone: your most ruthless group-chat friend — cocky, quick, genuinely funny. Roast a slow or sloppy chug, \
@@ -43,6 +44,7 @@ sentences, plain text only: no title, no hashtags, no markdown, at most one emoj
 async def gather_facts(
     conn, *, chug_id: int, owner_name: str, discord_user_id: int, season: int, league_id: int,
     result: dict, owed_before: int, owed_after: int, fined_owed: int, posted_by_commissioner: bool,
+    hype_detail: dict | None = None,
 ) -> str:
     history = await conn.fetchrow(
         """
@@ -68,6 +70,11 @@ async def gather_facts(
         f"Final grade: {result['final']}/10 (time {result['time_score']}/10, "
         f"smoothness {result['smoothness_score']}/10, hype {result['hype_score']}/10)",
     ]
+    if hype_detail:
+        if hype_detail.get("verdict"):
+            lines.append(f"Hype judge's take on the video: {hype_detail['verdict']}")
+        if hype_detail.get("quote"):
+            lines.append(f"Best line they said in the video: \"{hype_detail['quote']}\"")
     if owed_before > 0:
         lines.append(f"This chug paid off one owed chug: owed {owed_before} before, {owed_after} still owed")
     else:

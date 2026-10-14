@@ -68,6 +68,7 @@ function ChugRow({ chug, divided }: { chug: ChugFeedEntry; divided: boolean }) {
         </View>
         <Text style={styles.value}>{chug.final_score}/10</Text>
       </Pressable>
+      {chug.hype_detail?.quote && <Text style={styles.quote}>“{chug.hype_detail.quote}”</Text>}
       {chug.roast && <Text style={styles.roast}>{chug.roast}</Text>}
       {open && (
         <View style={styles.videoWrap}>
@@ -163,6 +164,15 @@ export function ActivityCard({ items }: { items: LeagueActivityItem[] }) {
           <ActivityRow key={`${item.kind}-${item.timestamp}-${i}`} item={item} divided={i > 0} />
         ))}
       </NeonPanel>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          router.navigate({ pathname: '/league', params: { section: 'activity' } });
+        }}
+        style={({ pressed }) => [styles.moreBtn, pressed && styles.morePressed]}
+        accessibilityRole="button">
+        <Text style={styles.moreText}>See all league moves</Text>
+      </Pressable>
     </View>
   );
 }
@@ -193,6 +203,7 @@ const styles = StyleSheet.create({
   small: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
   faint: { color: 'rgba(255,255,255,0.3)', fontSize: 12 },
   value: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontVariant: ['tabular-nums'] },
+  quote: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontStyle: 'italic', paddingHorizontal: Spacing.lg, paddingBottom: 6, marginTop: -6 },
   roast: { color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 18, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, marginTop: -6 },
   videoWrap: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
   video: { width: '100%', height: 320, borderRadius: Radius.md, backgroundColor: '#000' },
