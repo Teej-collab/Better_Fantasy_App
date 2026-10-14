@@ -141,6 +141,10 @@ export function hasSessionToken(): boolean {
   return sessionToken !== null;
 }
 
+// The backend's own "your session is over" answers (every route's auth
+// check and app/main.py's revocation check). Only these sign out.
+const SESSION_ENDED = new Set(['Not signed in', 'Session expired or invalid']);
+
 // A request that hasn't answered in this long fails with the offline
 // message instead of spinning forever on a dead connection.
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -182,7 +186,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // away. A request that went out before the saved session finished
   // loading has no token, and its 401 used to erase that session as
   // soon as it loaded: Niko kept having to sign in again (2026-10-12).
-  if (res.status === 401 && sentToken !== null && sentToken === sessionToken) onUnauthorized?.();
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     let body: Record<string, unknown> | null = null;
@@ -192,6 +195,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Not JSON; keep the status message.
     }
+    // And only when the server says the session itself is the problem:
+    // a 401 for anything else (a wrong room password, a used sign-in
+    // link) used to sign the phone out too (2026-10-14).
+    if (res.status === 401 && sentToken !== null && sentToken === sessionToken && SESSION_ENDED.has(detail)) onUnauthorized?.();
     throw new ApiError(res.status, detail, body);
   }
   // 204 No Content (logout, account deletion, some settings writes).
@@ -212,6 +219,8 @@ export const api = {
     request<{ token: string }>('/auth/link/confirm', { method: 'POST', body: JSON.stringify({ ticket }) }),
   redeemNativeTicket: (ticket: string) =>
     request<{ token: string }>('/auth/native/redeem', { method: 'POST', body: JSON.stringify({ ticket }) }),
+  // A fresh 30-day session for the current one (lib/auth.tsx keeps it rolling).
+  refreshSession: () => request<{ token: string; expires_in: number }>('/auth/refresh', { method: 'POST', body: '{}' }),
   // Sign in with Apple: the identity token from the system sheet, which
   // the backend verifies with Apple (backend/app/auth/apple_signin.py).
   // authorizationCode lets the backend revoke the Apple sign-in if the

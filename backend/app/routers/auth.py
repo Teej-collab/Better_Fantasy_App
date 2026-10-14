@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.auth import apple_signin, discord_oauth, google_oauth
@@ -471,6 +471,49 @@ async def redeem_native_oauth_ticket(body: NativeOAuthRedeemRequest):
         token_version=token_version,
     )
     return {"token": token}
+
+
+@router.post("/refresh")
+async def refresh_session(request: Request):
+    """Trades a still-valid session for a fresh one (2026-10, real
+    report: Niko kept having to sign in again). Sessions are a fixed 30
+    days from sign-in, so anyone who never signed out still got signed
+    out once a month, however often they used the app. The apps call
+    this on launch and when they come back to the foreground (at most
+    once a day), so a session only ends after 30 days of not opening
+    the app at all, or on an explicit sign-out.
+
+    Only a real, current session can refresh: an expired or invalid
+    token is a 401 here, and app/main.py's session_revocation middleware
+    already turned away a revoked one (signed out elsewhere, password
+    reset, account deleted) before this runs. The new token carries the
+    same identity claims and the account's current token_version."""
+    token = get_session_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    config = SessionConfig()
+    payload = decode_session_token(config.session_secret, token)
+    if payload is None or "purpose" in payload:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        token_version = await auth_queries.get_token_version(conn, payload["user_id"])
+    fresh = create_session_token(
+        config.session_secret,
+        user_id=payload["user_id"],
+        owner_id=payload.get("owner_id"),
+        discord_user_id=payload.get("discord_user_id"),
+        is_commissioner=payload.get("is_commissioner", False),
+        token_version=token_version,
+    )
+    response = JSONResponse({"token": fresh, "expires_in": SESSION_MAX_AGE_SECONDS})
+    response.set_cookie(
+        SESSION_COOKIE_NAME, fresh,
+        httponly=True, max_age=SESSION_MAX_AGE_SECONDS,
+        samesite=config.cookie_samesite, secure=config.cookie_secure,
+    )
+    return response
 
 
 @router.get("/me")

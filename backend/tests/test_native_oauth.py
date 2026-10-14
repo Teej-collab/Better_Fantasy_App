@@ -291,3 +291,44 @@ async def test_web_handoff_requires_a_session():
     async with _client() as client:
         resp = await client.post("/auth/native/web-handoff")
     assert resp.status_code == 401
+
+
+# ---- session refresh -----------------------------------------------------
+
+
+async def test_refresh_hands_back_a_fresh_session_with_the_same_identity(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, "refresh-1")
+    user_id = await make_safe_session_user_id_for_owner(pool, owner_id)
+    old = create_session_token(_SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=4242)
+    old_exp = decode_session_token(_SESSION_SECRET, old)["exp"]
+
+    import time as _time
+    monkeypatch.setattr(_time, "time", lambda real=_time.time: real() + 3600)
+    async with _client() as client:
+        resp = await client.post("/auth/refresh", headers={"Authorization": f"Bearer {old}"})
+
+    assert resp.status_code == 200
+    fresh = decode_session_token(_SESSION_SECRET, resp.json()["token"])
+    assert fresh["user_id"] == user_id
+    assert fresh["owner_id"] == owner_id
+    assert fresh["discord_user_id"] == 4242
+    assert fresh["exp"] > old_exp
+
+
+async def test_refresh_refuses_a_signed_out_or_bad_session(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, "refresh-2")
+    user_id = await make_safe_session_user_id_for_owner(pool, owner_id)
+    token = create_session_token(_SESSION_SECRET, user_id=user_id, owner_id=owner_id)
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET token_version = token_version + 1 WHERE id = $1", user_id)
+
+    async with _client() as client:
+        revoked = await client.post("/auth/refresh", headers={"Authorization": f"Bearer {token}"})
+        garbage = await client.post("/auth/refresh", headers={"Authorization": "Bearer not-a-token"})
+        missing = await client.post("/auth/refresh")
+
+    assert revoked.status_code == 401
+    assert garbage.status_code == 401
+    assert missing.status_code == 401

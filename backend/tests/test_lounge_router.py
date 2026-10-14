@@ -191,7 +191,7 @@ async def test_wrong_password_is_rejected_and_locks_out_after_max_attempts(pool,
                 f"/lounge/rooms/{room['slug']}/join",
                 json={"password": "wrong", "display_name": "Guessy"},
             )
-            assert resp.status_code == 401
+            assert resp.status_code == 403
 
         locked_resp = await guest_client.post(
             f"/lounge/rooms/{room['slug']}/join",

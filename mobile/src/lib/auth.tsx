@@ -1,7 +1,8 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
 import { API_BASE_URL, api, setSessionToken, setUnauthorizedHandler } from '@/lib/api';
 import { endAll as endAllLiveActivities } from '@/lib/liveActivity';
@@ -52,6 +53,25 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+// Seconds until the session expires, from its JWT `exp` claim; null if
+// it can't be read (then it's just never refreshed early).
+function secondsLeft(token: string): number | null {
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { exp } = JSON.parse(atob(part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '='))) as { exp?: number };
+    return typeof exp === 'number' ? exp - Date.now() / 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+// Sessions last 30 days from when they were issued. Swapping in a fresh
+// one once a day while the app is in use keeps an active owner signed
+// in for good (2026-10-14: Niko kept being signed out a month after
+// signing in, however much he used the app).
+const SESSION_SECONDS = 30 * 24 * 60 * 60;
+const REFRESH_AFTER_SECONDS = 24 * 60 * 60;
+
 // RN's URL.searchParams isn't reliable across engines; the callback is
 // always weekendleague://auth/native-complete?ticket=… or ?error=….
 function queryParam(url: string, name: string): string | null {
@@ -90,15 +110,74 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
   }, [applyToken, onSignOut]);
 
   useEffect(() => {
-    SecureStore.getItemAsync(TOKEN_KEY)
-      .then((saved) => {
-        setSessionToken(saved);
-        setToken(saved);
-        // Sessions saved before 2026-10 were locked with the phone; re-save them.
-        if (saved) void saveToken(saved).catch(() => {});
-      })
-      .catch(() => setToken(null));
+    // A read that fails isn't "signed out". iOS can wake the app in the
+    // background (the game-day widget refresh) while the phone is locked,
+    // when the keychain may refuse the read; treating that as no session
+    // left the app sitting on the sign-in screen for the next open, with
+    // the saved session still there (2026-10-14). Retry instead: right
+    // away a few times, and again whenever the app comes to the front.
+    // Only a read that keeps failing while the app is open gives up.
+    let cancelled = false;
+    let failures = 0;
+    let sub: { remove: () => void } | null = null;
+    const load = () => {
+      SecureStore.getItemAsync(TOKEN_KEY)
+        .then((saved) => {
+          if (cancelled) return;
+          sub?.remove();
+          setSessionToken(saved);
+          setToken(saved);
+          // Sessions saved before 2026-10 were locked with the phone; re-save them.
+          if (saved) void saveToken(saved).catch(() => {});
+        })
+        .catch(() => {
+          if (cancelled) return;
+          failures += 1;
+          if (AppState.currentState !== 'active') {
+            sub ??= AppState.addEventListener('change', (state) => {
+              if (state === 'active') load();
+            });
+          } else if (failures < 4) {
+            setTimeout(load, 300 * failures);
+          } else {
+            sub?.remove();
+            setToken(null);
+          }
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      sub?.remove();
+    };
   }, []);
+
+  // Keep the session rolling: on open and on every return to the app,
+  // swap in a fresh one if this one is more than a day old. A failure
+  // here never signs out on its own (offline, server busy); only the
+  // server saying the session is over does, through request()'s 401.
+  const refreshing = useRef(false);
+  useEffect(() => {
+    if (!token) return;
+    const maybeRefresh = () => {
+      if (refreshing.current || AppState.currentState !== 'active') return;
+      const left = secondsLeft(token);
+      if (left === null || SESSION_SECONDS - left < REFRESH_AFTER_SECONDS) return;
+      refreshing.current = true;
+      api
+        .refreshSession()
+        .then(({ token: fresh }) => applyToken(fresh))
+        .catch(() => {})
+        .finally(() => {
+          refreshing.current = false;
+        });
+    };
+    maybeRefresh();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') maybeRefresh();
+    });
+    return () => sub.remove();
+  }, [token, applyToken]);
 
   useEffect(() => {
     // An expired or revoked session anywhere in the app signs out.

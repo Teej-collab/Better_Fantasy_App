@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { SessionKeeper } from "@/components/SessionKeeper";
 import {
   getActiveLeagueName,
   getMe,
@@ -204,6 +205,7 @@ export async function NavBar() {
         <BottomNav signedIn={signedIn} matchupsHref={matchupsHref} isGameDay={isGameDay} order={bottomNavOrder} />
       )}
       {stadiumDock && <StadiumDock matchupsHref={matchupsHref} />}
+      {signedIn && <SessionKeeper />}
     </>
   );
 }

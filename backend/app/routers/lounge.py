@@ -173,7 +173,9 @@ async def join_room(slug: str, request: Request, pool=Depends(get_pool)):
                 await lounge_queries.record_failed_join_attempt(
                     conn, room["id"], max_attempts=MAX_FAILED_ATTEMPTS, lockout_minutes=LOCKOUT_MINUTES
                 )
-                raise HTTPException(status_code=401, detail="Incorrect password")
+                # 403, not 401: the apps treat a 401 as "your session ended"
+                # and sign you out, which a wrong room password must not do.
+                raise HTTPException(status_code=403, detail="Incorrect password")
 
             await lounge_queries.reset_failed_attempts(conn, room["id"])
 
