@@ -234,6 +234,7 @@ def _roster_entry_dict(entry: dict) -> dict:
         "game_time": entry.get("game_time"),
         "opponent_position_rank": entry.get("opponent_position_rank"),
         "bye_week": entry.get("bye_week"),
+        "on_bye": entry.get("on_bye", False),
         "on_offense": entry.get("on_offense", False),
         "is_redzone": entry.get("is_redzone", False),
         # Only meaningful (and only ever True) on the plain GET /team
@@ -399,6 +400,7 @@ async def my_team(request: Request, week: int | None = None):
         bye_week = bye_weeks.get(entry["pro_team"])
         if bye_week is not None:
             entry["bye_week"] = bye_week
+        entry["on_bye"] = requested_week is not None and bye_week == requested_week
 
     if requested_week is not None:
         schedule = _schedule_lookup(games)
@@ -754,7 +756,8 @@ async def list_free_agents(
         my_owner_id = await resolve_owner_id(conn, payload) if with_rostered else None
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
-                   COALESCE(pwp.projected_points, p.projected_avg_points) AS projected_points,
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS projected_points,
+                   p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) AS on_bye,
                    pws.fantasy_points AS score,
                    pws_prev.fantasy_points AS last_week_score,
                    cr.team_id AS rostered_team_id, rt.team_name AS rostered_team_name,
@@ -786,7 +789,7 @@ async def list_free_agents(
             query += f" AND p.full_name ILIKE ${len(params) + 1}"
             params.append(f"%{search}%")
         query += (
-            " ORDER BY COALESCE(pwp.projected_points, p.projected_avg_points) DESC NULLS LAST, "
+            " ORDER BY CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END DESC NULLS LAST, "
             "p.search_rank ASC NULLS LAST, p.full_name ASC"
         )
 

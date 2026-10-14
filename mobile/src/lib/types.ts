@@ -86,6 +86,8 @@ export type RosterPlayer = {
   // Moves during the game; points_projected is the fixed pregame number.
   live_projected: number | null;
   in_game_injury?: InGameInjury;
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   // A Sleeper id (string) for real players.
   player_id: number | string | null;
   pro_team: string | null;
@@ -173,6 +175,8 @@ export type WeekMatchupContext = {
 // GET /me/team's roster rows (frontend/src/lib/api.ts's RosterEntry).
 // player_id is the Sleeper player id the lineup endpoints take.
 export type RosterEntry = {
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   player_id: string;
   player_name: string;
   lineup_slot: string;
@@ -262,6 +266,8 @@ export type FreeAgent = {
   injury_status: string | null;
   // This week's projection when harvested, else the season per-game average.
   projected_points: number | null;
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   score: number | null;
   last_week_score: number | null;
   next_opponent: string | null;
@@ -1267,6 +1273,8 @@ export type PlayoffOddsFocus = {
   by_wins: { wins: number; games_left: number; pct: number; share: number }[];
   next_game: { matchup_id: number; week: number; opponent_team_id: number; if_win_pct: number | null; if_loss_pct: number | null } | null;
   root_for: { matchup_id: number; week: number; root_for_team_id: number; against_team_id: number; pct_if_root: number; pct_if_other: number; swing: number }[];
+  // Every other game in the team's next week, biggest swing first.
+  root_this_week?: PlayoffOddsFocus['root_for'];
   tiebreak: { tied_at_cut_pct: number; won_on_points_pct: number | null };
   // The realistic way in (backend playoff_odds._best_path).
   best_path: {

@@ -21,3 +21,5 @@ frontend/.next/
 # Android release signing key — never commit
 *.keystore
 *.jks
+
+backend/app/chug_analyzer/models/

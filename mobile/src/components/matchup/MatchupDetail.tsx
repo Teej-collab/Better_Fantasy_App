@@ -235,7 +235,7 @@ function PlayerCell({ player, onBreakdown, right }: { player: RosterPlayer | nul
         <Pressable disabled={!canOpen || player.points_scored == null} onPress={() => onBreakdown(player)} hitSlop={6}>
           <View style={right ? styles.alignStart : styles.alignEnd}>
             <Text style={scored != null ? styles.points : styles.pointsProj}>
-              {scored != null ? scored.toFixed(1) : player.points_projected != null ? player.points_projected.toFixed(1) : '—'}
+              {scored != null ? scored.toFixed(1) : player.on_bye ? 'Bye week' : player.points_projected != null ? player.points_projected.toFixed(1) : '—'}
             </Text>
             {scored != null && isLive && player.live_projected != null ? (
               <LiveProjection live={player.live_projected} pregame={player.points_projected} small />

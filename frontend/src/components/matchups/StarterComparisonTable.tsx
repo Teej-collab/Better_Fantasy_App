@@ -298,7 +298,9 @@ function PlayerCell({
       >
         {scored != null
           ? scored.toFixed(1)
-          : player.points_projected != null
+          : player.on_bye
+            ? "Bye week"
+            : player.points_projected != null
             ? player.points_projected.toFixed(1)
             : "—"}
       </span>

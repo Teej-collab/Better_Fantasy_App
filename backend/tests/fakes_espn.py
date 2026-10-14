@@ -90,7 +90,7 @@ class FakeLeague:
     that to know when to stop."""
 
     def __init__(self, teams=None, reg_season_count=13,
-                 scoreboard_by_week=None, box_scores_by_week=None, current_week=1,
+                 scoreboard_by_week=None, box_scores_by_week=None, current_week=None,
                  position_slot_counts=None, free_agent_players=None, faab=False, acquisition_budget=100,
                  player_info_by_id=None, player_map=None):
         self.teams = teams or []
@@ -102,6 +102,11 @@ class FakeLeague:
         )
         self._scoreboard_by_week = scoreboard_by_week or {}
         self._box_scores_by_week = box_scores_by_week or {}
+        # Default: ESPN's current week is the last one with data (the real
+        # League answers a later week with the current week's data, so the
+        # adapter has to stop at current_week itself).
+        if current_week is None:
+            current_week = max([1, *(box_scores_by_week or {}), *(scoreboard_by_week or {})])
         self.current_week = current_week
         self._free_agent_players = free_agent_players or []
         self._player_info_by_id = player_info_by_id or {}

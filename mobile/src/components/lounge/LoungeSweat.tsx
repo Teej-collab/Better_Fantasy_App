@@ -149,7 +149,7 @@ export function SweatSheet({
                 ))}
                 {toPlay.length > 0 && <Text style={styles.section}>STILL TO PLAY</Text>}
                 {toPlay.map((p) => (
-                  <PlayerRow key={String(p.player_id)} p={p} dot="#4b5263" status={`${p.pro_team ?? ''} · ${p.game_time ?? 'Upcoming'}`} value={`proj ${fmt(p.points_projected)}`} muted />
+                  <PlayerRow key={String(p.player_id)} p={p} dot="#4b5263" status={`${p.pro_team ?? ''} · ${p.game_time ?? 'Upcoming'}`} value={p.on_bye ? 'Bye week' : `proj ${fmt(p.points_projected)}`} muted />
                 ))}
               </>
             )}

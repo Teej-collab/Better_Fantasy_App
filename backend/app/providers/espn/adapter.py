@@ -266,6 +266,12 @@ class ESPNProvider(FantasyProvider):
 
         async with pool.acquire() as conn:
             for week in range(1, MAX_WEEKS_TO_TRY + 1):
+                # espn_api's box_scores() quietly answers a week past
+                # ESPN's current one with the CURRENT week's data, which
+                # stamped one week's projections (byes as 0.0 included)
+                # onto every later week. Never ask past the current week.
+                if week > league.current_week:
+                    break
                 try:
                     box_scores = league.box_scores(week)
                 except Exception:
@@ -290,6 +296,8 @@ class ESPNProvider(FantasyProvider):
 
     async def sync_rosters_for_week(self, pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
         league = self._league(season)
+        if week > league.current_week:
+            return 0  # see sync_rosters: it would come back as this week's data
         box_scores = league.box_scores(week)
         async with pool.acquire() as conn:
             saved = await self._save_roster_week(conn, box_scores, season, week, league_id)

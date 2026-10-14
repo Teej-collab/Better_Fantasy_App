@@ -236,13 +236,17 @@ TRIM_TO_POSE_COVERAGE = 0.4
 
 def choose_chug_episode(
     pose_frames: list[int], contact_frames: list[int], face_frames: list[int], total_frames: int, fps: float,
+    vessel_frames: list[int] = (),
 ) -> tuple[int, int, str] | None:
     """(start_frame, end_frame, source) of the chug, or None. source is
-    what set the boundaries: "pose" or "combined"."""
+    what set the boundaries: "pose" or "combined". vessel_frames (the
+    drink itself at the mouth, see vessel_at_mouth) count the same as
+    hand contact."""
     if fps <= 0:
         return None
     pose = smooth_frames(sorted(pose_frames), fps)
-    contact = set(contact_frames)
+    vessel = [f for s, e in _runs(sorted(vessel_frames), VESSEL_MAX_GAP_SECONDS * fps) for f in range(s, e + 1)]
+    contact = set(contact_frames) | set(vessel)
     face = set(face_frames)
 
     candidates = set(pose) | contact
@@ -268,3 +272,40 @@ def choose_chug_episode(
     if best is not None and (best[1] - best[0]) / fps < MIN_CHUG_SECONDS:
         return None
     return best
+
+
+# ---- The drink itself at the mouth (2026-10-14) ------------------------------
+#
+# Real report: IMG_6085, a clear ~6s chug from a clear glass mug, came
+# back "no chug". Every signal above missed it: the glass is see-through,
+# so face mesh tracked the face the whole way (620 of 631 frames — never
+# "covered"); it was a close-up selfie, so the elbow was off-screen (pose
+# 34 frames, scattered); and the drinking hand sat at the frame edge
+# behind the mug (hand found 98 frames, at the mouth 3). The one thing
+# plainly in front of the mouth for the whole chug was the mug.
+#
+# So an object detector (mediapipe EfficientDet, COCO "cup"/"wine
+# glass"/"bottle" — cans come back as cups or bottles) looks for the drink,
+# and a frame counts when a detected drink's box reaches the mouth. On
+# IMG_6085: the box touches the mouth (gap 0.00 face widths) from 1.9s to
+# 8.7s, and is never closer than 0.83 face widths outside the chug.
+VESSEL_CATEGORIES = ("cup", "wine glass", "bottle")
+VESSEL_MIN_SCORE = 0.15
+VESSEL_AT_MOUTH = 0.25  # gap from the box's edge to the mouth, in face widths
+# The detector loses a steeply tipped glass for a moment (IMG_6085:
+# 3.4-4.2s, splitting one 6s chug into 1.4s + 3.8s) — drink frames this
+# close together are one stretch.
+VESSEL_MAX_GAP_SECONDS = 1.0
+
+
+def vessel_at_mouth(boxes_px: list[tuple[float, float, float, float]], mouth_px: tuple[float, float], face_width: float) -> bool:
+    """boxes_px: detected drinks as (x, y, width, height) in pixels."""
+    if face_width <= 0:
+        return False
+    mx, my = mouth_px
+    for x, y, w, h in boxes_px:
+        dx = max(x - mx, 0.0, mx - (x + w))
+        dy = max(y - my, 0.0, my - (y + h))
+        if math.hypot(dx, dy) / face_width <= VESSEL_AT_MOUTH:
+            return True
+    return False

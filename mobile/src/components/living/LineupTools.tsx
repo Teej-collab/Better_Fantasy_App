@@ -240,7 +240,7 @@ export function OpponentIntelCard({ them, title, players }: { them: MatchupConte
           key={`${p.player_id}-${p.player_name}`}
           first={i === 0}
           left={`${p.player_name} · ${p.position ?? ''}`}
-          right={players ? fmt(p.live_projected ?? p.points_projected) : <Chip color={BAD_STATUS.includes(p.injury_status?.toLowerCase() ?? '') ? WARN : HEADS_UP}>{p.injury_status}</Chip>}
+          right={players ? (p.on_bye ? 'Bye week' : fmt(p.live_projected ?? p.points_projected)) : <Chip color={BAD_STATUS.includes(p.injury_status?.toLowerCase() ?? '') ? WARN : HEADS_UP}>{p.injury_status}</Chip>}
         />
       ))}
     </Panel>

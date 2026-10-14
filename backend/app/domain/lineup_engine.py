@@ -67,7 +67,7 @@ _ROSTER_ENTRY_SQL = """
 _ROSTER_ENTRY_WITH_SCORE_SQL = """
     SELECT cr.sleeper_player_id, cr.lineup_slot, cr.acquired_via, cr.acquired_at,
            p.full_name AS player_name, p.position, p.pro_team, p.injury_status, p.years_exp, p.practice_participation,
-           COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
+           CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
            pws.fantasy_points AS points
     FROM current_rosters cr
     JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id

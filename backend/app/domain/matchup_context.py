@@ -101,6 +101,8 @@ def _roster_list(
                 "points_scored": float(r["points_scored"]) if r["points_scored"] is not None else None,
                 # Pregame projection — never changes during the game.
                 "points_projected": float(r["points_projected"]) if r["points_projected"] is not None else None,
+                # Its NFL team is off this week (team_bye_weeks).
+                "on_bye": bool(r.get("on_bye")),
                 # Moves with the game: points so far + pace- and
                 # injury-aware rest-of-game projection. Equals the
                 # pregame number before kickoff and the real points once

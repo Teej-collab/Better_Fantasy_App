@@ -59,7 +59,7 @@ export function RosterList({
             <div className="flex shrink-0 gap-3 tabular-nums">
               {showProjected && (
                 <span className="w-10 text-right text-black/50 dark:text-white/50">
-                  {p.points_projected !== null ? Number(p.points_projected).toFixed(1) : "—"}
+                  {p.on_bye && p.points_scored === null ? "Bye" : p.points_projected !== null ? Number(p.points_projected).toFixed(1) : "—"}
                 </span>
               )}
               <span className="w-10 text-right font-medium">

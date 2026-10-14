@@ -326,6 +326,10 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
                 "pct_if_root": round(p_good, 1), "pct_if_other": round(p_bad, 1), "swing": round(p_good - p_bad, 1),
             })
         root_for.sort(key=lambda r: r["swing"], reverse=True)
+        # Every other game in the team's next week, biggest swing first —
+        # the home screen's "who to root for this week", which shouldn't
+        # lose a game to the season-wide top 8 below.
+        root_this_week = [r for r in root_for if r["week"] == next_week]
         root_for = [r for r in root_for if r["swing"] >= 1.0]
         focus = {
             "team_id": focus_team,
@@ -334,6 +338,7 @@ def simulate(world: dict, scenario: dict, focus_team: int | None, sims: int, see
             "by_wins": rows,
             "next_game": next_game,
             "root_for": root_for[:8],
+            "root_this_week": root_this_week,
             "best_path": _best_path(world, scenario, focus_team, focus_games, my_game_wins, rows, root_for, sims, seed),
             "tiebreak": {
                 "tied_at_cut_pct": pct(tie_at_cut),

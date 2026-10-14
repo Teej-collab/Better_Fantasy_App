@@ -336,7 +336,7 @@ async def compute_team_projected_for_week(conn, season: int, week: int, league_i
         team_id = t["team_id"]
         total = await conn.fetchval(
             """
-            SELECT SUM(COALESCE(pwp.projected_points, p.projected_avg_points))
+            SELECT SUM(CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END)
             FROM current_rosters cr
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp

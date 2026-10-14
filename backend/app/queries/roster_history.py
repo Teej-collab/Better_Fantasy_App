@@ -26,7 +26,7 @@ async def snapshot_week(conn, season: int, week: int) -> int:
             """
             INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
             SELECT cr.season, $2, cr.team_id, cr.sleeper_player_id, cr.lineup_slot,
-                   COALESCE(pwp.projected_points, p.projected_avg_points)
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $2) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END
             FROM current_rosters cr
             JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp
@@ -42,7 +42,7 @@ async def snapshot_week(conn, season: int, week: int) -> int:
             """
             INSERT INTO roster_history (season, week, team_id, sleeper_player_id, lineup_slot, points_projected)
             SELECT ld.season, ld.week, ld.team_id, ld.sleeper_player_id, ld.lineup_slot,
-                   COALESCE(pwp.projected_points, p.projected_avg_points)
+                   CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = ld.season AND tbw.bye_week = ld.week) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END
             FROM locked_departures ld
             JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
             LEFT JOIN player_weekly_projections pwp

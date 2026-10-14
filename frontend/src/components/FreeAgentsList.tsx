@@ -308,7 +308,7 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-right text-xs tabular-nums sm:gap-4 text-black/60 dark:text-white/60">
-                  <span className="w-10">{formatStat(p.projected_points)}</span>
+                  <span className="w-10">{p.on_bye ? "Bye" : formatStat(p.projected_points)}</span>
                   <span className="w-10">{formatStat(p.score)}</span>
                   {p.rostered_team_id != null ? (
                     // A search hit on someone's roster (2026-10): trade for them instead.

@@ -14,7 +14,6 @@ import {
   KickoffCard,
   Kicker,
   LoungeCard,
-  MatchupPreviewCard,
   Panel,
   PlayersNowCard,
   useNow,
@@ -39,13 +38,13 @@ import {
   InjuryReportCard,
   LeagueScoreboardCard,
   NextOpponentCard,
-  PlayoffOddsCard,
   PositionEdgeCard,
   PowerMoveCard,
   ProjectionReportCard,
   RivalryResultCard,
   StandingsMoveCard,
   TradesCard,
+  WhatIfCard,
   YourAwardsCard,
 } from '@/components/living/WeekCards';
 import { Text } from '@/components/Text';
@@ -228,16 +227,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     if (countdown) leagueTickerItems = [countdown];
   }
 
-  const preview = m ? (
-    <MatchupPreviewCard
-      matchupId={m.matchup_id}
-      myProjection={m.my_projected_total}
-      theirProjection={m.opponent_projected_total}
-      opponent={m.opponent_team_name}
-      winProbability={m.win_probability}
-      color={color}
-    />
-  ) : null;
+  // Who to root for this week, from the What-If engine (Your Week up top
+  // already covers the matchup itself).
+  const whatIf = odds ? <WhatIfCard odds={odds} teamId={teamId} standings={standings} /> : null;
   const turning =
     history && mine ? <TurningPointsCard history={history} meIsHome={mine.item.home.team_id === teamId} opponent={mine.them.owner_name} /> : null;
   const tonightGames = games.filter((g) => (g.state === 'pre' || g.state === 'in') && sameEtDate(g.date, now));
@@ -295,7 +287,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         <>
           {awards && <YourAwardsCard awards={awards.awards} teamName={myWeek.data.team_name} />}
           <PowerMoveCard trend={trend} teamId={teamId} />
-          {odds && <PlayoffOddsCard odds={odds} teamId={teamId} />}
+          {whatIf}
           {m && <NextOpponentCard matchup={m} item={mine?.item ?? null} teamId={teamId} />}
           <InjuryReportCard lastWeek={last?.me.roster ?? []} roster={roster} title="Injuries from Sunday" />
           <WaiversCountdownCard claims={claims} now={now} color="#4cc3ff" />
@@ -327,7 +319,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
               </Text>
             </Panel>
           )}
-          {preview}
+          {whatIf}
           {mine && <PositionEdgeCard me={mine.me} them={mine.them} />}
           <TradesCard trades={trades} teamId={teamId} color={color} />
           <FreeAgentsCard players={freeAgents} by="projected" title="Best still available" color={color} />
@@ -353,7 +345,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <WeatherCard games={games} roster={roster} />
           {mine && theirsToday.length > 0 && <OpponentIntelCard them={mine.them} players={theirsToday} title={`${mine.them.owner_name} starts today`} />}
           <TonightGamesCard games={tonightGames} title="On today" findGamecastId={findGamecastId} />
-          {preview}
+          {whatIf}
           <LoungeCard title="Tonight in the Lounge" body="Watch the game with your league" />
         </>
       );
@@ -375,7 +367,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <WeatherCard games={games} roster={roster} />
           <InjuryReportCard lastWeek={[]} roster={roster.filter((p) => isStarter(p.lineup_slot))} title="Final injury report" />
           <KickoffCard players={upcoming} now={now} color={color} title="Your next kickoff" />
-          {preview}
+          {whatIf}
           {mine && <PositionEdgeCard me={mine.me} them={mine.them} />}
           {mine && <OpponentIntelCard them={mine.them} title={`${mine.them.owner_name}'s hurt starters`} />}
           <BetsCard bets={bets} />

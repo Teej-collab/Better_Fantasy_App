@@ -4,6 +4,7 @@ import { StyleSheet, Text as RNText, View } from 'react-native';
 import { Chip, Kicker, LinkText, Panel, Row } from '@/components/living/LivingCards';
 import { Display, Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
+import { encodeScenario } from '@/lib/bracketEngine';
 import { fmt, isStarter, untilText } from '@/lib/livingHome';
 import type {
   FreeAgent,
@@ -275,6 +276,82 @@ export function PlayoffOddsCard({ odds, teamId }: { odds: PlayoffOdds; teamId: n
   );
 }
 
+// The What-If engine's read on this week: what your own game is worth,
+// and the other games that move your playoff chances most, with who to
+// root for. Opens the What-If lab with the week already played your way.
+const WHAT_IF = '#c084fc';
+const MATTERS = 0.5;
+
+export function WhatIfCard({ odds, teamId, standings }: { odds: PlayoffOdds; teamId: number; standings: StandingsRow[] }) {
+  const mine = odds.teams.find((t) => t.team_id === teamId);
+  const focus = odds.focus?.team_id === teamId ? odds.focus : null;
+  if (!mine || !focus || focus.games_left === 0) return null;
+  const name = (id: number) => standings.find((r) => r.team_id === id)?.team_name ?? 'TBD';
+  const next = focus.next_game;
+  const games = (focus.root_this_week ?? focus.root_for.filter((r) => r.week === next?.week)).filter((r) => r.swing >= MATTERS);
+  const shown = games.slice(0, 4);
+  const pct = (n: number) => `${Math.round(n)}%`;
+
+  const picks: Record<number, number> = {};
+  if (next) picks[next.matchup_id] = teamId;
+  for (const r of games) picks[r.matchup_id] = r.root_for_team_id;
+  const w = encodeScenario({ flips: [], picks, playoff: {} }, teamId);
+
+  return (
+    <Panel
+      tint={WHAT_IF}
+      onPress={() => router.navigate({ pathname: '/league', params: { section: 'standings', view: 'playoffs', w } } as unknown as Href)}
+      label="Play out this week in What-If">
+      <Kicker color={WHAT_IF}>What-If · Your playoff picture</Kicker>
+      <View style={styles.bigRow}>
+        <Display style={styles.big}>{pct(mine.playoff_pct)}</Display>
+        <Text style={styles.muted}>to make the playoffs right now</Text>
+      </View>
+      {next && next.if_win_pct != null && next.if_loss_pct != null && (
+        <View style={styles.stakes}>
+          <View style={[styles.stake, { borderColor: `${UP}55` }]}>
+            <Text style={styles.small}>Beat {name(next.opponent_team_id)}</Text>
+            <Text style={[styles.stakeNum, { color: UP }]}>{pct(next.if_win_pct)}</Text>
+          </View>
+          <View style={[styles.stake, { borderColor: `${DOWN}55` }]}>
+            <Text style={styles.small}>Lose</Text>
+            <Text style={[styles.stakeNum, { color: DOWN }]}>{pct(next.if_loss_pct)}</Text>
+          </View>
+        </View>
+      )}
+      <Text style={[styles.small, styles.section]}>ROOT FOR THIS WEEK</Text>
+      {shown.length === 0 ? (
+        <Text style={styles.body}>No other game this week moves your odds much. It&apos;s all on your own matchup.</Text>
+      ) : (
+        shown.map((r, i) => (
+          <Row
+            key={r.matchup_id}
+            first={i === 0}
+            left={
+              <View style={styles.gap2}>
+                <Text style={styles.rowText} numberOfLines={1}>
+                  <Text style={styles.rootName}>{name(r.root_for_team_id)}</Text>
+                  <Text style={styles.small}> over {name(r.against_team_id)}</Text>
+                </Text>
+                <Text style={styles.small}>
+                  {i === 0 ? 'Your biggest game outside your own · ' : ''}
+                  {pct(r.pct_if_root)} if they win, {pct(r.pct_if_other)} if not
+                </Text>
+              </View>
+            }
+            right={<Chip color={i === 0 ? WHAT_IF : UP}>{`+${r.swing.toFixed(1)}%`}</Chip>}
+          />
+        ))
+      )}
+      <LinkText
+        color={WHAT_IF}
+        onPress={() => router.navigate({ pathname: '/league', params: { section: 'standings', view: 'playoffs', w } } as unknown as Href)}>
+        Play out the week in What-If →
+      </LinkText>
+    </Panel>
+  );
+}
+
 // This week's opponent: record, form, power rank and your history.
 export function NextOpponentCard({ matchup, item, teamId }: { matchup: YourWeekMatchup; item: WeekMatchupContextItem | null; teamId: number }) {
   const h2h = item?.head_to_head;
@@ -481,4 +558,9 @@ const styles = StyleSheet.create({
   positions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   position: { minWidth: 52, flexGrow: 1, backgroundColor: Colors.tile, borderRadius: 10, padding: 8, alignItems: 'center', gap: 2 },
   positionNum: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  stakes: { flexDirection: 'row', gap: 8 },
+  stake: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 10, gap: 2, backgroundColor: Colors.tile },
+  stakeNum: { fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  section: { letterSpacing: 1.2, fontWeight: '700', marginTop: 4 },
+  rootName: { color: Colors.text, fontWeight: '700' },
 });

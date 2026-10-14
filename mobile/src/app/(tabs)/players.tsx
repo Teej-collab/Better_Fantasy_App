@@ -255,7 +255,7 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
         </Text>
       </View>
       <Text style={[styles.num, styles.value]}>{formatPoints(player.last_week_score)}</Text>
-      <Text style={[styles.num, styles.value, styles.proj]}>{formatPoints(player.projected_points)}</Text>
+      <Text style={[styles.num, styles.value, styles.proj]}>{player.on_bye ? 'Bye' : formatPoints(player.projected_points)}</Text>
     </PreviewLink>
   );
 }

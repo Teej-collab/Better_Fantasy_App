@@ -239,7 +239,7 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
 
       <View style={styles.points}>
         <Text style={styles.pointsValue}>{formatPoints(entry.points)}</Text>
-        <Text style={styles.detail}>{formatPoints(entry.live_projected ?? entry.points_projected)}</Text>
+        <Text style={styles.detail}>{entry.on_bye ? 'Bye week' : formatPoints(entry.live_projected ?? entry.points_projected)}</Text>
       </View>
     </View>
   );

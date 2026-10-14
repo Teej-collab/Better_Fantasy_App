@@ -402,8 +402,9 @@ def _sort_roster_rows(rows):
 _LOCKED_DEPARTURES_SQL = """
         SELECT {team_col}p.full_name AS player_name, p.position, ld.lineup_slot,
                pws.fantasy_points AS points_scored, pws.raw_stats,
-               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
-               ld.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
+               CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = ld.season AND tbw.bye_week = ld.week) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
+               ld.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust,
+               FALSE AS on_bye
         FROM locked_departures ld
         JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
         LEFT JOIN player_week_stats pws
@@ -424,8 +425,9 @@ async def get_current_roster(conn, season: int, team_id: int, week: int):
         """
         SELECT p.full_name AS player_name, p.position, cr.lineup_slot,
                pws.fantasy_points AS points_scored, pws.raw_stats,
-               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
-               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
+               CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
+               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust,
+               p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) AS on_bye
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws
@@ -451,8 +453,9 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
         """
         SELECT cr.team_id, p.full_name AS player_name, p.position, cr.lineup_slot,
                pws.fantasy_points AS points_scored, pws.raw_stats,
-               COALESCE(pwp.projected_points, p.projected_avg_points) AS points_projected,
-               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust
+               CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
+               cr.sleeper_player_id AS player_id, p.pro_team, p.injury_status, FALSE AS is_boom, FALSE AS is_bust,
+               p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = cr.season AND tbw.bye_week = $3) AS on_bye
         FROM current_rosters cr
         JOIN players p ON p.sleeper_player_id = cr.sleeper_player_id
         LEFT JOIN player_week_stats pws

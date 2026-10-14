@@ -18,11 +18,17 @@ import mediapipe as mp
 
 from app.chug_analyzer.contact import (
     CONTACT_RATIO,
+    FACE_LEFT_LANDMARK,
+    FACE_RIGHT_LANDMARK,
+    MOUTH_LANDMARK,
+    VESSEL_CATEGORIES,
+    VESSEL_MIN_SCORE,
     choose_chug_episode,
     contact_ratio,
     drinking_side,
     longest_contact_episode,
     pose_wrist_relative_to_mouth,
+    vessel_at_mouth,
     wrist_relative_to_mouth,
 )
 
@@ -121,6 +127,42 @@ def _normalize_orientation(video_path: str) -> tuple[str, str | None]:
     return video_path, None
 
 
+# The drink detector (contact.vessel_at_mouth). EfficientDet-Lite2: on
+# IMG_6085 Lite0 found the glass mug in only 164 frames (mostly while it
+# was being raised), Lite2 in 356, through the whole chug. Too big to
+# commit (23 MB), so it's fetched on first use and kept next to this file.
+VESSEL_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/latest/efficientdet_lite2.tflite"
+)
+VESSEL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "efficientdet_lite2.tflite")
+# ~120 ms a frame on a laptop CPU — ~10 checks a second of video is plenty
+# for a drink that sits at the mouth for seconds.
+VESSEL_CHECKS_PER_SECOND = 10
+
+
+def _vessel_detector():
+    """mediapipe ObjectDetector for drinks, or None (logged) if the model
+    can't be had — best-effort, like _normalize_orientation: without it
+    the analyzer runs exactly as it did before."""
+    try:
+        if not os.path.exists(VESSEL_MODEL_PATH):
+            import urllib.request
+            os.makedirs(os.path.dirname(VESSEL_MODEL_PATH), exist_ok=True)
+            partial = VESSEL_MODEL_PATH + ".part"
+            urllib.request.urlretrieve(VESSEL_MODEL_URL, partial)
+            os.replace(partial, VESSEL_MODEL_PATH)
+            _log(f"vessel model downloaded: {os.path.getsize(VESSEL_MODEL_PATH)} bytes")
+        from mediapipe.tasks.python import BaseOptions, vision
+        return vision.ObjectDetector.create_from_options(vision.ObjectDetectorOptions(
+            base_options=BaseOptions(model_asset_path=VESSEL_MODEL_PATH),
+            score_threshold=VESSEL_MIN_SCORE,
+            category_allowlist=list(VESSEL_CATEGORIES),
+        ))
+    except Exception as e:  # noqa: BLE001 — any failure just means no drink signal
+        _log(f"vessel detector unavailable: {type(e).__name__}: {e}")
+        return None
+
+
 def detect_can_to_mouth(video_path: str):
     mp_hands = mp.solutions.hands
     mp_face_mesh = mp.solutions.face_mesh
@@ -139,6 +181,7 @@ def detect_can_to_mouth(video_path: str):
     # The primary chug signal now — see contact.py's drinking_side for
     # why (keeps tracking when face mesh loses a tipped-back head).
     pose = mp.solutions.pose.Pose(model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    vessel_detector = _vessel_detector()
 
     analysis_path, temp_path = _normalize_orientation(video_path)
     try:
@@ -185,6 +228,9 @@ def detect_can_to_mouth(video_path: str):
         pose_wrist_by_frame = {}
         frames_with_pose = 0
         face_frames = []
+        vessel_frames = []
+        frames_with_vessel = 0
+        vessel_stride = max(1, round((fps or 30) / VESSEL_CHECKS_PER_SECOND))
 
         while True:
             ret, frame = cap.read()
@@ -211,6 +257,19 @@ def detect_can_to_mouth(video_path: str):
             if face_results.multi_face_landmarks:
                 frames_with_face += 1
                 face_frames.append(frame_number)
+                # The drink in front of the mouth — checked every
+                # vessel_stride frames, each check standing for the
+                # frames up to the next one.
+                if vessel_detector is not None and frame_number % vessel_stride == 0:
+                    found = vessel_detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)).detections
+                    if found:
+                        frames_with_vessel += 1
+                        face = face_results.multi_face_landmarks[0].landmark
+                        mouth = (face[MOUTH_LANDMARK].x * width, face[MOUTH_LANDMARK].y * height)
+                        face_width = abs(face[FACE_LEFT_LANDMARK].x - face[FACE_RIGHT_LANDMARK].x) * width
+                        boxes = [(d.bounding_box.origin_x, d.bounding_box.origin_y, d.bounding_box.width, d.bounding_box.height) for d in found]
+                        if vessel_at_mouth(boxes, mouth, face_width):
+                            vessel_frames.extend(range(frame_number, frame_number + vessel_stride))
 
             if hand_results.multi_hand_landmarks and face_results.multi_face_landmarks:
                 frames_with_both += 1
@@ -240,11 +299,12 @@ def detect_can_to_mouth(video_path: str):
             import json
             with open(os.environ["CHUG_DEBUG_DUMP"], "w") as f:
                 json.dump({"fps": fps, "frames": frame_number, "pose": pose_frames,
-                           "contact": contact_frames, "face": face_frames}, f)
+                           "contact": contact_frames, "face": face_frames, "vessel": vessel_frames}, f)
         # Pose, hand-at-mouth contact and the face being covered each
         # propose chug frames; see contact.choose_chug_episode for how
         # they're combined (and why none of them is enough alone).
-        chosen = choose_chug_episode(pose_frames, contact_frames, face_frames, frame_number, fps)
+        vessel_frames = [f for f in vessel_frames if f < frame_number]
+        chosen = choose_chug_episode(pose_frames, contact_frames, face_frames, frame_number, fps, vessel_frames)
         episode, source = (chosen[:2], chosen[2]) if chosen else (None, None)
         contact_episode = longest_contact_episode(contact_frames, fps)
         _log(
@@ -253,6 +313,7 @@ def detect_can_to_mouth(video_path: str):
             f"frames_with_pose={frames_with_pose}, pose_frames={len(pose_frames)}, "
             f"frames_with_hand={frames_with_hand}, frames_with_face={frames_with_face}, "
             f"frames_with_both={frames_with_both}, contact_frames={len(contact_frames)}, "
+            f"vessel_checks_with_drink={frames_with_vessel}, vessel_frames={len(vessel_frames)}, "
             f"min_ratio_seen={min_ratio_seen}, contact_ratio={CONTACT_RATIO}"
         )
     finally:

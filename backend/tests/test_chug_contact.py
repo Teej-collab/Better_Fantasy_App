@@ -11,6 +11,7 @@ from app.chug_analyzer.contact import (
     MOUTH_LANDMARK,
     contact_ratio,
     longest_contact_episode,
+    vessel_at_mouth,
     wrist_relative_to_mouth,
 )
 from app.chug_analyzer.scoring import compute_wobble, score_smoothness
@@ -200,3 +201,26 @@ def test_face_lost_at_the_clip_edge_or_too_long_is_not_a_chug():
 def test_too_short_is_not_a_chug():
     # Niko's old "0.70s": a brief hand-at-mouth moment on its own.
     assert choose_chug_episode([], list(range(100, 121)), ALL_FACE, 900, FPS) is None
+
+
+def test_vessel_box_reaching_the_mouth_counts():
+    mouth, face_width = (500.0, 800.0), 200.0
+    assert vessel_at_mouth([(450.0, 780.0, 150.0, 300.0)], mouth, face_width)  # mouth inside the box
+    assert vessel_at_mouth([(540.0, 700.0, 150.0, 300.0)], mouth, face_width)  # 40px = 0.2 face widths away
+    assert not vessel_at_mouth([(600.0, 700.0, 150.0, 300.0)], mouth, face_width)  # held out to the side
+    assert not vessel_at_mouth([], mouth, face_width)
+    assert not vessel_at_mouth([(450.0, 780.0, 150.0, 300.0)], mouth, 0.0)
+
+
+def test_clear_glass_chug_with_hand_and_elbow_out_of_frame():
+    # IMG_6085: face visible throughout (the glass is see-through), no
+    # pose, hand at the mouth for 3 frames — only the glass at the mouth,
+    # with the detector losing the tipped glass for 0.8s mid-chug.
+    vessel = list(range(60, 102)) + list(range(126, 240))
+    assert choose_chug_episode([], [150, 151, 152], ALL_FACE, 900, FPS) is None
+    assert choose_chug_episode([], [150, 151, 152], ALL_FACE, 900, FPS, vessel)[:2] == (60, 239)
+
+
+def test_brief_drink_in_front_of_the_face_is_not_a_chug():
+    # Showing the can to the camera for a second.
+    assert choose_chug_episode([], [], ALL_FACE, 900, FPS, list(range(100, 130))) is None

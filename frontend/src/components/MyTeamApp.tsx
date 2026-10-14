@@ -333,6 +333,9 @@ function RosterRow({
 function ProjectionLine({ entry }: { entry: RosterEntry }) {
   const pregame = entry.points_projected;
   const live = entry.live_projected;
+  if (entry.on_bye) {
+    return <span className="text-[11px] text-black/50 dark:text-white/50">Bye week</span>;
+  }
   if (live != null) {
     return (
       <span className="text-[11px] text-black/50 dark:text-white/50">

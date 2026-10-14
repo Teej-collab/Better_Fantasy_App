@@ -94,7 +94,7 @@ function RosterList({ title, players }: { title: string; players: RosterPlayer[]
               {p.is_bust ? ' 🥶' : ''}
             </Text>
             <View style={styles.cols}>
-              <Text style={styles.proj}>{p.points_projected !== null ? Number(p.points_projected).toFixed(1) : '—'}</Text>
+              <Text style={styles.proj}>{p.on_bye && p.points_scored === null ? 'Bye' : p.points_projected !== null ? Number(p.points_projected).toFixed(1) : '—'}</Text>
               <Text style={styles.final}>{p.points_scored !== null ? Number(p.points_scored).toFixed(1) : '—'}</Text>
             </View>
           </Pressable>

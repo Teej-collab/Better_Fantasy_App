@@ -152,6 +152,8 @@ export type RosterPlayer = {
   points_scored: number | null;
   // Pregame projection — fixed for the week.
   points_projected: number | null;
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   // Moves with the game: points so far + a pace- and injury-aware
   // projection for the rest of it (backend app/domain/live_projection.py).
   // Equals points_projected before kickoff and points_scored once final.
@@ -1706,6 +1708,8 @@ export type RosterEntry = {
   // players.projected_avg_points (ESPN's own per-game average) — only
   // present on the plain GET /team read, same as points above.
   points_projected: number | null;
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   // Live projection + in-game injury, same as RosterPlayer's. Only on
   // GET /team with a resolved week.
   live_projected?: number | null;
@@ -1936,6 +1940,8 @@ export type MyFreeAgent = {
   // index has no match for (a real, known gap for deep bench/retired
   // names, not an error).
   projected_points: number | null;
+  // Its NFL team is off this week.
+  on_bye?: boolean;
   // This week's already-computed real result (app/domain/weekly_stats.py)
   // — null pre-kickoff, same "-" the reference free-agent browse UI
   // shows before real scores exist.
