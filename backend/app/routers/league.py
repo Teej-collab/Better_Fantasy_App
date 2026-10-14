@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.league_context import require_league_access
 from app.db import get_pool
 from app.domain import league_activity as league_activity_domain
+from app.domain.headshots import headshot_url
 from app.domain.league_ticker import get_week_ticker_data
 from app.domain.matchup_context import build_matchup_detail, build_week_matchup_context
 from app.domain.records import get_record_book
@@ -31,6 +32,8 @@ from app.domain import playoffs
 from app.domain import power_rankings
 from app.domain import waivers
 from app.domain import win_prob_history
+from app.domain.nfl_schedule import schedule_lookup_by_pro_team
+from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries import league as queries
 
 router = APIRouter(tags=["league"])
@@ -262,23 +265,60 @@ async def matchup_detail(
 
 @router.get("/teams/{team_id}")
 async def team_detail(team_id: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """The team header: name, owner, logo, plus its record and standings
+    rank this season (2026-10, the ESPN-style team sheet)."""
     async with pool.acquire() as conn:
         team = await queries.get_team(conn, team_id)
-    if team is None or team["league_id"] != league_id:
-        raise HTTPException(status_code=404, detail="Team not found")
-    return dict(team)
+        if team is None or team["league_id"] != league_id:
+            raise HTTPException(status_code=404, detail="Team not found")
+        standings = await queries.get_standings(conn, team["season"], league_id)
+    result = dict(team)
+    for rank, row in enumerate(standings, start=1):
+        if row["team_id"] == team_id:
+            result.update(wins=row["wins"], losses=row["losses"], ties=row["ties"], rank=rank, team_count=len(standings))
+            break
+    return result
 
 
 @router.get("/teams/{team_id}/roster")
 async def team_roster(
     team_id: int, week: int, league_id: int = Depends(require_league_access), pool=Depends(get_pool)
 ):
+    """Any team's roster for any week. Each row also carries a headshot,
+    whether its NFL team is on bye that week, and that week's opponent
+    and kickoff, so another team's roster reads like your own."""
     async with pool.acquire() as conn:
         team = await queries.get_team(conn, team_id)
         if team is None or team["league_id"] != league_id:
             raise HTTPException(status_code=404, detail="Team not found")
-        rows = await queries.get_roster_for_week(conn, team["season"], team_id, week)
-    return {"team": dict(team), "week": week, "roster": [dict(r) for r in rows]}
+        rows = [dict(r) for r in await queries.get_roster_for_week(conn, team["season"], team_id, week)]
+        bye_weeks = await queries.get_bye_weeks(conn, team["season"])
+        espn_ids = {
+            r["sleeper_player_id"]: r["espn_player_id"]
+            for r in await conn.fetch(
+                "SELECT sleeper_player_id, espn_player_id FROM players "
+                "WHERE sleeper_player_id = ANY($1::text[]) AND espn_player_id IS NOT NULL",
+                [r["player_id"] for r in rows if isinstance(r.get("player_id"), str)],
+            )
+        }
+    try:
+        schedule = schedule_lookup_by_pro_team(await get_week_scoreboard(week, team["season"]))
+    except Exception:
+        schedule = {}  # opponents are a nice-to-have; the roster still loads
+    for row in rows:
+        row["on_bye"] = bye_weeks.get(row["pro_team"]) == week
+        row.setdefault("next_opponent", None)
+        row.setdefault("game_time", None)
+        row.update({k: v for k, v in schedule.get(row["pro_team"], {}).items() if k != "opponent_pro_team"})
+        player_id = row.get("player_id")
+        if isinstance(player_id, int):
+            # Seasons synced from ESPN key rows by ESPN's own id (D/STs negative).
+            row["headshot_url"] = headshot_url(str(player_id), player_id, None) if player_id > 0 else None
+        elif player_id is not None:
+            row["headshot_url"] = headshot_url(player_id, espn_ids.get(player_id), row["position"])
+        else:
+            row["headshot_url"] = None
+    return {"team": dict(team), "week": week, "roster": rows}
 
 
 @router.get("/rivalries")

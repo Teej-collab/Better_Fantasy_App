@@ -387,7 +387,7 @@ export const api = {
   matchupContext: (season: number, week: number) =>
     request<WeekMatchupContext>(`/seasons/${season}/weeks/${week}/matchup-context`),
   matchup: (matchupId: number) => request<WeekMatchupContextItem>(`/matchups/${matchupId}`),
-  myTeam: () => request<MyTeam>('/me/team'),
+  myTeam: (week?: number | null) => request<MyTeam>(week ? `/me/team?week=${week}` : '/me/team'),
   // A given season's rates (a past matchup needs its own season's rules).
   scoringRules: (season: number) =>
     request<{ season: number; rules: { stat_category: string; points_per_unit: number }[] }>(

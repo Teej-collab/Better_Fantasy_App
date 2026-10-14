@@ -6,9 +6,11 @@ import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView,
 import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
+import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
+import { WeekStepper } from '@/components/WeekStepper';
 import { Text } from '@/components/Text';
-import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui';
+import { Card, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
@@ -27,7 +29,10 @@ import type { MyTeam, RosterEntry } from '@/lib/types';
 
 function TeamScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
-  const team = useMyTeam();
+  // null = the live week (the editable lineup); any other week is a
+  // read-only look at that week's roster and projections.
+  const [week, setWeek] = useState<number | null>(null);
+  const team = useMyTeam(week);
   const [editing, setEditing] = useState<RosterEntry | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = usePlayerView('wl:player-view:roster');
@@ -55,6 +60,9 @@ function TeamScreenContent() {
   const editable = data.is_editable && data.roster_slots !== null && !data.lineup_auto;
   const starterPoints = starters.reduce((sum, e) => sum + (e.points ?? 0), 0);
   const starterProjected = starters.reduce((sum, e) => sum + (e.live_projected ?? e.points_projected ?? 0), 0);
+  const currentWeek = data.current_week;
+  const shownWeek = data.week;
+
 
   return (
     <>
@@ -65,14 +73,27 @@ function TeamScreenContent() {
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
         <View style={styles.titleRow}>
+          <TeamAvatar name={data.owner_name ?? data.team_name} logoUrl={data.logo_url ?? null} size={44} />
           <Text style={[styles.title, styles.titleText]} numberOfLines={1}>
             {data.team_name}
           </Text>
           <InviteCoOwner />
         </View>
         {data.lineup_auto && <Text style={styles.subtitle}>Best ball: your best lineup is set for you every week.</Text>}
+        {shownWeek !== null && (
+          <View style={styles.weekRow}>
+            <WeekStepper
+              week={shownWeek}
+              currentWeek={currentWeek}
+              onChange={(next) => setWeek(next === currentWeek ? null : next)}
+              loading={team.isFetching && week !== null}
+            />
+          </View>
+        )}
         <Text style={styles.subtitle}>
-          {data.week !== null ? `Week ${data.week} · ` : ''}
+          {currentWeek !== null && shownWeek !== null && shownWeek !== currentWeek
+            ? `${shownWeek < currentWeek ? 'Past week' : 'Upcoming week'} · view only · `
+            : ''}
           {formatPoints(starterPoints)} pts · Proj {formatPoints(starterProjected)}
         </Text>
 
@@ -94,6 +115,7 @@ function TeamScreenContent() {
                   <View style={styles.viewSlot}>
                     <Text style={styles.viewSlotText}>{slotDisplayLabel(e.lineup_slot)}</Text>
                   </View>
+                  <PlayerHeadshot url={e.headshot_url} position={e.position} size={30} />
                   <Pressable onPress={() => openPlayer(e.player_id)} style={styles.player}>
                     <Text style={styles.playerName} numberOfLines={1}>
                       {e.player_name}
@@ -220,6 +242,8 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
         <Text style={[styles.slotText, canEdit && styles.slotTextEditable]}>{slotDisplayLabel(entry.lineup_slot)}</Text>
       </Pressable>
 
+      <PlayerHeadshot url={entry.headshot_url} position={entry.position} />
+
       <PreviewLink
         href={{ pathname: '/player/[id]', params: { id: entry.player_id } }}
         menu={canEdit ? [{ title: 'Change Lineup Slot', icon: 'arrow.up.arrow.down', onPress: () => props.onEdit(entry) }] : undefined}
@@ -320,6 +344,7 @@ const styles = StyleSheet.create({
   title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   titleText: { flex: 1 },
+  weekRow: { marginTop: Spacing.md },
   invite: { borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, paddingHorizontal: 12, paddingVertical: 6 },
   inviteText: { color: Colors.text, fontSize: 12, fontWeight: '500' },
   subnav: { gap: Spacing.sm, marginTop: Spacing.md },

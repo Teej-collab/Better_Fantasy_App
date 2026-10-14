@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { openTeam } from '@/components/league/LeagueUI';
 import { ShareableCard } from '@/components/ShareableCard';
 import { RecordWithStreak, RankBadge, WinProbabilityBar } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -50,7 +51,7 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
             {matchup.is_playoff && <Badge text="Playoffs" color="#c4b5fd" bg="rgba(167,139,250,0.2)" />}
           </View>
         )}
-        <ScoreHeader home={home} away={away} />
+        <ScoreHeader home={home} away={away} week={matchup.week} />
       </NeonPanel>
       </ShareableCard>
 
@@ -120,12 +121,12 @@ function LiveProjection({ live, pregame, small }: { live: number; pregame: numbe
   );
 }
 
-function ScoreHeader({ home, away }: { home: MatchupContextSide; away: MatchupContextSide }) {
+function ScoreHeader({ home, away, week }: { home: MatchupContextSide; away: MatchupContextSide; week: number }) {
   return (
     <View style={styles.scoreHeader}>
       <View style={styles.scoreRow}>
-        <TeamScore side={home} />
-        <TeamScore side={away} right />
+        <TeamScore side={home} week={week} />
+        <TeamScore side={away} week={week} right />
       </View>
       {home.win_probability !== null && away.win_probability !== null && (
         <WinProbabilityBar left={home.win_probability} right={away.win_probability} />
@@ -134,10 +135,16 @@ function ScoreHeader({ home, away }: { home: MatchupContextSide; away: MatchupCo
   );
 }
 
-function TeamScore({ side, right }: { side: MatchupContextSide; right?: boolean }) {
+// Tapping a team's logo or name opens its roster on this week (like
+// ESPN's team sheet).
+function TeamScore({ side, week, right }: { side: MatchupContextSide; week: number; right?: boolean }) {
   const align = right ? styles.alignEnd : styles.alignStart;
   return (
-    <View style={[styles.teamScore, align]}>
+    <Pressable
+      onPress={() => openTeam(side.team_id, week)}
+      accessibilityRole="button"
+      accessibilityLabel={`${side.team_name} roster`}
+      style={({ pressed }) => [styles.teamScore, align, pressed && { opacity: 0.7 }]}>
       <View style={[styles.logoScore, right && styles.reverse]}>
         <TeamAvatar name={side.owner_name ?? side.team_name} logoUrl={side.logo_url} size={56} />
         <View style={align}>
@@ -157,7 +164,7 @@ function TeamScore({ side, right }: { side: MatchupContextSide; right?: boolean 
         <RecordWithStreak record={side.record} streak={side.result_streak} />
       </Text>
       {side.season_points !== null && <Text style={styles.faint}>Season {side.season_points.toFixed(1)}</Text>}
-    </View>
+    </Pressable>
   );
 }
 

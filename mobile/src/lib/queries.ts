@@ -102,9 +102,17 @@ export function useMatchup(matchupId: number) {
   return useQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId), refetchInterval });
 }
 
-export function useMyTeam() {
+// No week (or null) is the live, editable lineup under ['my-team'], the
+// key every lineup move updates; any other week is a read-only view
+// under ['my-team', week] (still cleared by invalidating ['my-team']).
+export function useMyTeam(week?: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({ queryKey: ['my-team'], queryFn: api.myTeam, refetchInterval });
+  return useQuery({
+    queryKey: week ? ['my-team', week] : ['my-team'],
+    queryFn: () => api.myTeam(week),
+    refetchInterval,
+    placeholderData: week ? (previous) => previous : undefined,
+  });
 }
 
 // A move/swap response leaves every GET /me/team-only field (points,
@@ -563,6 +571,8 @@ export function useTeamRoster(teamId: number, week: number | null) {
     queryKey: ['team-roster', teamId, week],
     queryFn: async () => (await api.teamRoster(teamId, week!)).roster,
     enabled: week !== null,
+    // Keep the last week on screen while stepping to the next.
+    placeholderData: (previous) => previous,
   });
 }
 

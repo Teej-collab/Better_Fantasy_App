@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { openTeam } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
@@ -128,6 +129,9 @@ export function YourWeekCard(props: {
       <View style={styles.links}>
         <Pressable onPress={open} hitSlop={8}>
           <Text style={[styles.link, { color: props.color }]}>View full matchup →</Text>
+        </Pressable>
+        <Pressable onPress={() => openTeam(m.opponent_team_id, myWeek.week)} hitSlop={8}>
+          <Text style={styles.subtleLink}>Their roster →</Text>
         </Pressable>
         <Pressable onPress={() => router.navigate('/team')} hitSlop={8}>
           <Text style={styles.subtleLink}>My lineup →</Text>
@@ -289,7 +293,7 @@ const styles = StyleSheet.create({
   count: { color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
   rankBadge: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.pill, paddingHorizontal: 6, paddingVertical: 1 },
   rankText: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600' },
-  links: { flexDirection: 'row', gap: Spacing.lg },
+  links: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Spacing.sm, columnGap: Spacing.lg },
   link: { fontSize: 14 },
   subtleLink: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
 });

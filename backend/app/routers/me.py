@@ -42,6 +42,7 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool, on_own_conn
 from app.domain import league_format
+from app.domain.headshots import headshot_url
 from app.domain import lineup_engine
 from app.domain import player_views
 from app.domain import waivers
@@ -195,6 +196,15 @@ async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
     return waivers.waiver_locked_pro_teams(games, prior_games)
 
 
+async def _espn_ids_for(conn, sleeper_player_ids: list[str]) -> dict[str, int]:
+    rows = await conn.fetch(
+        "SELECT sleeper_player_id, espn_player_id FROM players "
+        "WHERE sleeper_player_id = ANY($1::text[]) AND espn_player_id IS NOT NULL",
+        sleeper_player_ids,
+    )
+    return {r["sleeper_player_id"]: r["espn_player_id"] for r in rows}
+
+
 def _roster_entry_dict(entry: dict) -> dict:
     return {
         "player_id": entry["sleeper_player_id"],
@@ -235,6 +245,7 @@ def _roster_entry_dict(entry: dict) -> dict:
         "opponent_position_rank": entry.get("opponent_position_rank"),
         "bye_week": entry.get("bye_week"),
         "on_bye": entry.get("on_bye", False),
+        "headshot_url": entry.get("headshot_url"),
         "on_offense": entry.get("on_offense", False),
         "is_redzone": entry.get("is_redzone", False),
         # Only meaningful (and only ever True) on the plain GET /team
@@ -382,14 +393,28 @@ async def my_team(request: Request, week: int | None = None):
 
     # Independent reads go out together (app/db.py's on_own_conn) —
     # these used to be ~8 sequential round trips.
-    roster, bye_weeks, roster_slots, rankings, games, live_games = await asyncio.gather(
+    # The team owner's name and logo for the header avatar.
+    async def load_owner(conn):
+        return await conn.fetchrow(
+            "SELECT o.display_name, o.logo_url FROM teams_by_season t JOIN owners o ON o.owner_id = t.owner_id "
+            "WHERE t.id = $1",
+            team_id,
+        )
+
+    roster, bye_weeks, roster_slots, rankings, games, live_games, owner = await asyncio.gather(
         on_own_conn(load_roster),
         on_own_conn(league_queries.get_bye_weeks, active_season),
         on_own_conn(load_roster_slots),
         on_own_conn(load_rankings),
         load_week_games(),
         load_live_games(),
+        on_own_conn(load_owner),
     )
+    espn_ids = await on_own_conn(_espn_ids_for, [e["sleeper_player_id"] for e in roster])
+    for entry in roster:
+        entry["headshot_url"] = headshot_url(
+            entry["sleeper_player_id"], espn_ids.get(entry["sleeper_player_id"]), entry["position"]
+        )
     injuries = (
         await on_own_conn(get_injury_states, active_season, requested_week, [e["sleeper_player_id"] for e in roster])
         if requested_week is not None
@@ -439,6 +464,8 @@ async def my_team(request: Request, week: int | None = None):
     lineup_auto = league_format.lineups_are_automatic(await on_own_conn(league_format.get_league_format, league_id))
     return {
         "team_name": team_name,
+        "owner_name": owner["display_name"] if owner else None,
+        "logo_url": owner["logo_url"] if owner else None,
         "season": active_season,
         "week": requested_week,
         "current_week": current_week,
@@ -756,6 +783,7 @@ async def list_free_agents(
         my_owner_id = await resolve_owner_id(conn, payload) if with_rostered else None
         query = """
             SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
+                   p.espn_player_id,
                    CASE WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) THEN 0 ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS projected_points,
                    p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = $1 AND tbw.bye_week = $3) AS on_bye,
                    pws.fantasy_points AS score,
@@ -795,6 +823,7 @@ async def list_free_agents(
 
         rows = [dict(r) for r in await conn.fetch(query, *params)]
         for row in rows:
+            row["headshot_url"] = headshot_url(row["sleeper_player_id"], row.pop("espn_player_id"), row["position"])
             owner_id = row.pop("rostered_owner_id")
             row["is_mine"] = row["rostered_team_id"] is not None and owner_id == my_owner_id
 

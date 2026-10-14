@@ -12,8 +12,10 @@ export function openOwner(ownerId: number, season?: number) {
   router.push({ pathname: '/owner/[id]', params: season ? { id: String(ownerId), season: String(season) } : { id: String(ownerId) } });
 }
 
-export function openTeam(teamId: number) {
-  router.push({ pathname: '/team/[id]', params: { id: String(teamId) } });
+// A team's roster page (any week). `week` opens it on that week, e.g.
+// the matchup week you tapped it from.
+export function openTeam(teamId: number, week?: number | null) {
+  router.push({ pathname: '/team/[id]', params: week ? { id: String(teamId), week: String(week) } : { id: String(teamId) } });
 }
 
 export function PageTitle({ children, subtitle }: { children: ReactNode; subtitle?: string }) {

@@ -90,6 +90,8 @@ export type RosterPlayer = {
   on_bye?: boolean;
   // A Sleeper id (string) for real players.
   player_id: number | string | null;
+  // Headshot (a team logo for a D/ST); on GET /teams/{id}/roster only.
+  headshot_url?: string | null;
   pro_team: string | null;
   injury_status: string | null;
   next_opponent: string | null;
@@ -177,6 +179,8 @@ export type WeekMatchupContext = {
 export type RosterEntry = {
   // Its NFL team is off this week.
   on_bye?: boolean;
+  // Headshot (a team logo for a D/ST); absent from an older backend.
+  headshot_url?: string | null;
   player_id: string;
   player_name: string;
   lineup_slot: string;
@@ -199,6 +203,9 @@ export type RosterEntry = {
 
 export type MyTeam = {
   team_name: string;
+  // The team owner, for the header avatar (absent from an older backend).
+  owner_name?: string | null;
+  logo_url?: string | null;
   season: number;
   week: number | null;
   current_week: number | null;
@@ -260,6 +267,7 @@ export type ChatConversation = {
 // GET /me/team/free-agents (frontend/src/lib/api.ts's MyFreeAgent).
 export type FreeAgent = {
   sleeper_player_id: string;
+  headshot_url?: string | null;
   full_name: string;
   position: string;
   pro_team: string | null;
@@ -952,7 +960,20 @@ export type DraftGrade = {
   letter_grade: string;
 };
 
-export type TeamDetail = { team_id: number; season: number; team_name: string; owner_id: number; owner_name: string };
+export type TeamDetail = {
+  team_id: number;
+  season: number;
+  team_name: string;
+  owner_id: number;
+  owner_name: string;
+  logo_url?: string | null;
+  // This season's record and standings rank (optional for an older backend).
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  rank?: number;
+  team_count?: number;
+};
 
 // Trades (backend/app/routers/trades.py; web types in frontend/src/lib/tradesApi.ts).
 export type TradeStatus =

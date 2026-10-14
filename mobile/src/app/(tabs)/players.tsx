@@ -7,6 +7,7 @@ import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { Text } from '@/components/Text';
 import { PlayerActionSheet } from '@/components/PlayerActionSheet';
+import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -205,6 +206,7 @@ function ViewCell({ player, onPress, onAdd }: { player: FreeAgent; onPress: () =
   return (
     <View style={styles.viewCell}>
       <RowAction player={player} onAdd={onAdd} />
+      <PlayerHeadshot url={player.headshot_url} position={player.position} size={30} style={styles.headshot} />
       <Pressable onPress={onPress} style={styles.flex}>
         <Text style={styles.viewName} numberOfLines={1}>
           {player.full_name}
@@ -242,6 +244,7 @@ function PlayerRow({ player, onAdd }: { player: FreeAgent; onAdd: () => void }) 
       style={styles.row}
       pressedStyle={styles.rowPressed}>
       <RowAction player={player} onAdd={onAdd} />
+      <PlayerHeadshot url={player.headshot_url} position={player.position} style={styles.headshot} />
       <View style={styles.flex}>
         <View style={styles.nameLine}>
           <Text style={styles.name} numberOfLines={1}>
@@ -344,6 +347,7 @@ const styles = StyleSheet.create({
   available: { color: Colors.text, fontSize: 18, fontFamily: Fonts.display, letterSpacing: 1, textTransform: 'uppercase' },
   viewTable: { paddingHorizontal: Spacing.lg },
   viewCell: { flexDirection: 'row', alignItems: 'center' },
+  headshot: { marginRight: Spacing.md },
   viewName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
 });
 
