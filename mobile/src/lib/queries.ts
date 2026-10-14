@@ -394,6 +394,7 @@ export function useLeagueActivity(season: number | null, limit?: number) {
     queryKey: ['league-activity', season, limit ?? 'all'],
     queryFn: async () => (await api.leagueActivity(season!, limit)).items,
     enabled: season !== null,
+    placeholderData: (previous) => previous,
   });
 }
 

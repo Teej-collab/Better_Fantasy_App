@@ -610,9 +610,14 @@ export function HistorySection({ latestSeason }: { latestSeason: number | null }
 
 // ---- Activity ----
 
+const ACTIVITY_PAGE = 50;
+
 export function ActivitySection({ season }: { season: number | null }) {
-  const q = useLeagueActivity(season, 50);
+  const [limit, setLimit] = useState(ACTIVITY_PAGE);
+  const q = useLeagueActivity(season, limit);
   const items = q.data ?? [];
+  // A full page back means there's probably more behind it.
+  const hasMore = items.length >= limit;
   return (
     <View style={styles.gap}>
       <PageTitle subtitle="Trades, waiver pickups, and free-agent adds and drops.">
@@ -629,11 +634,22 @@ export function ActivitySection({ season }: { season: number | null }) {
           ))}
         </ListPanel>
       )}
+      {hasMore && (
+        <Pressable
+          onPress={() => setLimit(limit + ACTIVITY_PAGE)}
+          disabled={q.isFetching}
+          style={({ pressed }) => [styles.loadMore, pressed && { opacity: 0.6 }]}
+          accessibilityRole="button">
+          <Text style={styles.loadMoreText}>{q.isFetching ? 'Loading…' : 'Load more'}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  loadMore: { alignSelf: 'center', minHeight: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center' },
+  loadMoreText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   inviteButton: { borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(57,255,20,0.5)', backgroundColor: 'rgba(57,255,20,0.08)', paddingHorizontal: 12, paddingVertical: 6 },
   inviteText: { color: Colors.accent, fontSize: 13, fontWeight: '700' },
