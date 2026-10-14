@@ -115,6 +115,12 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
       // Phone video is huge; medium quality keeps uploads reasonable
       // while leaving the grader plenty to work with.
       videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
+      // Library picks used to go up as the untouched original (a 10s 1080p60
+      // clip is ~28 MB), which a weak cell signal couldn't finish sending
+      // (2026-10-14: four tries at ~60-120 KB/s, all dropped). The grader
+      // works at 1280px at most and reads 540p the same (IMG_6085 6.72s vs
+      // 6.88s, IMG_1527 10.83 vs 10.77, IMG_9992 10.90 vs 10.77) — ~3.5 MB.
+      videoExportPreset: ImagePicker.VideoExportPreset.H264_960x540,
     };
     const picked =
       source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
