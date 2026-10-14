@@ -28,7 +28,7 @@ from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
 from app.domain.playoff_exceptions import PlayoffError
 from app.domain.playoffs import generate_playoff_bracket, resolve_ready_playoff_matchups
-from app.domain.player_projections import sync_projected_points
+from app.domain.player_projections import sync_projected_points, sync_weekly_projections
 from app.domain.waivers import process_expired_waivers
 from app.domain.weekly_stats import compute_and_store_week
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_single_week
@@ -287,6 +287,7 @@ async def trigger_projected_points_sync(request: Request):
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, DEFAULT_LEAGUE_ID)
         results = await sync_projected_points(conn)
+        results["weekly"] = await sync_weekly_projections(conn)
     record_job_run("projected_points_sync")
     return results
 

@@ -92,3 +92,36 @@ async def test_sync_projected_points_reports_espn_players_seen(pool, monkeypatch
         result = await player_projections.sync_projected_points(conn)
 
     assert result["espn_players_seen"] == 2
+
+
+async def test_sync_weekly_projections_fills_upcoming_weeks_and_keeps_current_week(pool, monkeypatch):
+    from tests.conftest import TEST_SEASON
+
+    sleeper_id = await _seed_player(pool, "weekly", espn_player_id=9990001)
+    asked = {}
+
+    def fake_weekly(espn_ids, weeks, config=None, season=None):
+        asked["weeks"] = weeks
+        return {week: {9990001: 10.0 + week} for week in weeks}
+
+    monkeypatch.setattr(player_projections, "get_weekly_projections", fake_weekly)
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE players SET projected_avg_points = 12.5 WHERE sleeper_player_id = $1", sleeper_id)
+        await conn.execute("INSERT INTO league_state (season, current_week) VALUES ($1, 16)", TEST_SEASON)
+        # This week's box-score projection is already in; past weeks are history.
+        await conn.execute(
+            "INSERT INTO player_weekly_projections (season, week, sleeper_player_id, projected_points) "
+            "VALUES ($1, 16, $2, 7.7), ($1, 15, $2, 3.3)",
+            TEST_SEASON, sleeper_id,
+        )
+
+        result = await player_projections.sync_weekly_projections(conn, season=TEST_SEASON)
+        rows = await conn.fetch(
+            "SELECT week, projected_points FROM player_weekly_projections "
+            "WHERE season = $1 AND sleeper_player_id = $2 ORDER BY week",
+            TEST_SEASON, sleeper_id,
+        )
+
+    assert asked["weeks"] == [16, 17, 18]
+    assert result["weeks"] == 3
+    assert {r["week"]: float(r["projected_points"]) for r in rows} == {15: 3.3, 16: 7.7, 17: 27.0, 18: 28.0}

@@ -168,7 +168,7 @@ from app.domain.chug_standing import accrue_weekly_debt_for_single_week, ensure_
 from app.domain.draft_exceptions import DraftError
 from app.domain.draft_grades import compute_draft_grades
 from app.domain.draft_narratives import generate_draft_narratives
-from app.domain.player_projections import sync_projected_points
+from app.domain.player_projections import sync_projected_points, sync_weekly_projections
 from app.draft.manager import manager as draft_manager
 from app.encryption import decrypt_secret
 from app.gamecast import service as gamecast_service
@@ -660,6 +660,7 @@ async def _run_projected_points_sync_job():
     pool = await get_pool()
     async with pool.acquire() as conn:
         results = await sync_projected_points(conn)
+        results["weekly"] = await sync_weekly_projections(conn)
     logger.info("Player projections sync finished: %s", results)
     record_job_run("projected_points_sync")
 

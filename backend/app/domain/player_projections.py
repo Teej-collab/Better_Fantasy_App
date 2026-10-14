@@ -32,7 +32,9 @@ display enrichment, not something the draft pool or matchup screen
 depend on to function.
 """
 from app.providers.espn.config import ESPNConfig
-from app.providers.espn.free_agents import get_projections
+from app.providers.espn.free_agents import get_projections, get_weekly_projections
+
+REGULAR_SEASON_WEEKS = 18
 
 
 async def sync_projected_points(conn, config: ESPNConfig | None = None, season: int | None = None) -> dict:
@@ -88,3 +90,54 @@ async def sync_projected_points(conn, config: ESPNConfig | None = None, season: 
         "matched_by_name": len(name_values),
         "espn_players_seen": len(by_espn_id),
     }
+
+
+async def sync_weekly_projections(conn, config: ESPNConfig | None = None, season: int | None = None) -> dict:
+    """Real per-week ESPN projections for the current week through the
+    end of the regular season, into player_weekly_projections (the
+    table every lineup/matchup query already reads first, falling back
+    to players.projected_avg_points). Before this, only weeks that had
+    a box score got a row, so looking ahead showed the same season
+    average for every week.
+
+    Future weeks are overwritten each run (ESPN keeps revising them).
+    The current week only fills gaps: adapter.py's box-score harvest
+    owns it for rostered players, and this just covers free agents the
+    box scores never see. Past weeks are never touched."""
+    config = config or ESPNConfig()
+    season = season or config.active_season
+    current_week = await conn.fetchval("SELECT current_week FROM league_state WHERE season = $1", season)
+    if not current_week or current_week > REGULAR_SEASON_WEEKS:
+        return {"weeks": 0, "rows": 0}
+
+    rows = await conn.fetch(
+        "SELECT sleeper_player_id, espn_player_id FROM players "
+        "WHERE espn_player_id IS NOT NULL AND projected_avg_points > 0"
+    )
+    if not rows:
+        return {"weeks": 0, "rows": 0}
+    sleeper_by_espn = {row["espn_player_id"]: row["sleeper_player_id"] for row in rows}
+
+    weeks = list(range(current_week, REGULAR_SEASON_WEEKS + 1))
+    by_week = get_weekly_projections(list(sleeper_by_espn), weeks, config, season)
+
+    written = 0
+    async with conn.transaction():
+        for week, by_id in by_week.items():
+            values = [
+                (season, week, sleeper_by_espn[espn_id], points)
+                for espn_id, points in by_id.items() if espn_id in sleeper_by_espn
+            ]
+            if not values:
+                continue
+            on_conflict = (
+                "DO NOTHING" if week == current_week
+                else "DO UPDATE SET projected_points = EXCLUDED.projected_points, synced_at = now()"
+            )
+            await conn.executemany(
+                "INSERT INTO player_weekly_projections (season, week, sleeper_player_id, projected_points) "
+                f"VALUES ($1, $2, $3, ROUND($4::numeric, 2)) ON CONFLICT (season, week, sleeper_player_id) {on_conflict}",
+                values,
+            )
+            written += len(values)
+    return {"weeks": len(by_week), "rows": written}

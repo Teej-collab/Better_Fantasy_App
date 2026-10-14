@@ -20,6 +20,7 @@ pool's inline projected-points column plus per-week matchup
 projections, app/domain/player_projections.py) via League.player_info/
 player_map instead.
 """
+import json
 import re
 
 from espn_api.football import League
@@ -149,3 +150,41 @@ def get_projections(
         for p in players
     }
     return {"by_espn_id": by_espn_id, "resolved_ids_by_name": resolved_ids_by_name}
+
+
+def get_weekly_projections(
+    espn_ids: list[int], weeks: list[int],
+    config: ESPNConfig | None = None, season: int | None = None,
+) -> dict[int, dict[int, float]]:
+    """ESPN's own week-by-week projections for upcoming weeks,
+    {week: {espn_id: points}}. get_projections above only has the
+    season total and per-game average, so every future week used to
+    show that same average copied forward. ESPN's player-card view
+    carries a real per-week projection (matchup-aware, 0 on a bye)
+    for any week of the season when asked with that week's
+    scoringPeriodId and its "11<year><week>" stat id (empirically
+    confirmed 2026-10: one call per week, ~0.65s for ~450 ids).
+    appliedTotal is already in this league's own scoring, same as the
+    box-score projections harvested in adapter.py's _save_lineup."""
+    config = config or ESPNConfig()
+    year = season or config.active_season
+    league = _get_league(config, season)
+    result: dict[int, dict[int, float]] = {}
+    for week in weeks:
+        filters = {"players": {
+            "filterIds": {"value": espn_ids},
+            "filterStatsForTopScoringPeriodIds": {"value": 1, "additionalValue": [f"11{year}{week}"]},
+        }}
+        data = league.espn_request.league_get(
+            params={"view": "kona_playercard", "scoringPeriodId": week},
+            headers={"x-fantasy-filter": json.dumps(filters)},
+        )
+        by_id: dict[int, float] = {}
+        for entry in data.get("players", []):
+            player = entry.get("player", {})
+            for stat in player.get("stats", []):
+                if stat.get("statSourceId") == 1 and stat.get("scoringPeriodId") == week:
+                    by_id[player["id"]] = stat.get("appliedTotal", 0.0)
+                    break
+        result[week] = by_id
+    return result
