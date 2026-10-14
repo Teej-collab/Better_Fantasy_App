@@ -78,18 +78,31 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
     two different week numbers: composition can be carried forward from
     an earlier snapshot when `score_week` itself was never captured,
     but the score shown is always the actually-requested week's real
-    score, never the snapshot week's."""
+    score, never the snapshot week's.
+
+    The same goes for the projection (2026-10 fix): a carried-forward
+    week used to show the snapshot week's frozen projection, so looking
+    ahead showed this week's numbers copied into every future week, bye
+    weeks included. A carried-forward week now gets its own week's
+    projection (0 on a bye), and boom/bust flags only belong to the
+    week they were computed for."""
     return await conn.fetch(
         """
         SELECT p.full_name AS player_name, p.position, rh.lineup_slot,
-               pws.fantasy_points AS points_scored, pws.raw_stats, rh.points_projected,
-               rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status, rh.is_boom, rh.is_bust
+               pws.fantasy_points AS points_scored, pws.raw_stats,
+               CASE WHEN $3 = $4 THEN rh.points_projected
+                    WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = rh.season AND tbw.bye_week = $4) THEN 0
+                    ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
+               rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status,
+               ($3 = $4 AND rh.is_boom) AS is_boom, ($3 = $4 AND rh.is_bust) AS is_bust
         FROM roster_history rh
         JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
         JOIN teams_by_season tbs ON tbs.id = rh.team_id
         LEFT JOIN player_week_stats pws
             ON pws.season = rh.season AND pws.week = $4 AND pws.sleeper_player_id = rh.sleeper_player_id
             AND pws.league_id = tbs.league_id
+        LEFT JOIN player_weekly_projections pwp
+            ON pwp.season = rh.season AND pwp.week = $4 AND pwp.sleeper_player_id = rh.sleeper_player_id
         WHERE rh.season = $1 AND rh.team_id = $2 AND rh.week = $3
         """,
         season, team_id, snapshot_week, score_week,
