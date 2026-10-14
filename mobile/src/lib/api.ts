@@ -809,44 +809,71 @@ export function gamecastSocketUrl(ticket: string, gameId: string): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/nfl/gamecast/ws?ticket=${encodeURIComponent(ticket)}&game_id=${encodeURIComponent(gameId)}`;
 }
 
+// Sends a local file as one multipart field, streamed from disk by the
+// native uploader. Expo's fetch (the global fetch in this SDK) can't send
+// React Native's { uri, name, type } form parts — it threw "Unsupported
+// FormDataPart implementation" on every upload — and reading a whole video
+// into JS memory to build a Blob would be worse.
+async function uploadFile(
+  url: string,
+  uri: string,
+  field: string,
+  mimeType: string,
+  headers?: Record<string, string>,
+): Promise<{ status: number; body: string }> {
+  const FileSystem = await import('expo-file-system/legacy');
+  const res = await FileSystem.uploadAsync(url, uri, {
+    httpMethod: 'POST',
+    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
+    fieldName: field,
+    mimeType,
+    headers,
+  });
+  return { status: res.status, body: res.body };
+}
+
+function uploadError(status: number, body: string): ApiError {
+  let detail = `Upload failed (${status})`;
+  try {
+    const parsed = JSON.parse(body);
+    if (typeof parsed?.detail === 'string') detail = parsed.detail;
+  } catch {
+    // Not JSON.
+  }
+  return new ApiError(status, detail);
+}
+
+const ok = (status: number) => status >= 200 && status < 300;
+
 // Chat photos go to the web app's Blob store, the one image host the
 // backend accepts for chat (backend/app/image_url.py), through a route
 // built for the native app (frontend/src/app/api/chat/upload-native).
 // `uri` is a local, already-compressed JPEG (lib/chatImage.ts).
 export async function uploadChatImage(uri: string): Promise<string> {
-  const form = new FormData();
-  // React Native's FormData takes a { uri, name, type } file descriptor.
-  form.append('file', { uri, name: 'photo.jpg', type: 'image/jpeg' } as unknown as Blob);
-  const res = await fetch(`${WEB_BASE_URL}/api/chat/upload-native`, {
-    method: 'POST',
-    headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
-    body: form,
-  });
-  if (!res.ok) throw new ApiError(res.status, `Upload failed (${res.status})`);
-  const { url } = (await res.json()) as { url: string };
+  const res = await uploadFile(
+    `${WEB_BASE_URL}/api/chat/upload-native`,
+    uri,
+    'file',
+    'image/jpeg',
+    sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+  );
+  if (!ok(res.status)) throw new ApiError(res.status, `Upload failed (${res.status})`);
+  const { url } = JSON.parse(res.body) as { url: string };
   return url;
 }
 
 // Player-card photos (2026-10) go straight to the backend, into its private
 // bucket — never a public host. Yours, or anyone's if you're commissioner.
 export async function uploadCardPhoto(ownerId: number, uri: string): Promise<void> {
-  const form = new FormData();
-  form.append('photo', { uri, name: 'card.jpg', type: 'image/jpeg' } as unknown as Blob);
-  const res = await fetch(`${API_BASE_URL}/owners/${ownerId}/card-photo`, {
-    method: 'POST',
-    headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `Upload failed (${res.status})`;
-    try {
-      const body = await res.json();
-      if (typeof body?.detail === 'string') detail = body.detail;
-    } catch {
-      // Not JSON.
-    }
-    throw new ApiError(res.status, detail);
-  }
+  const res = await uploadFile(
+    `${API_BASE_URL}/owners/${ownerId}/card-photo`,
+    uri,
+    'photo',
+    'image/jpeg',
+    sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+  );
+  if (!ok(res.status)) throw uploadError(res.status, res.body);
 }
 
 // Chug videos go straight to the backend (a whole video is too big for
@@ -856,25 +883,10 @@ export async function uploadCardPhoto(ownerId: number, uri: string): Promise<voi
 // `ownerId` credits someone else (commissioner only).
 export async function uploadChugVideo(uri: string, mimeType: string, ownerId?: number): Promise<ChugUploadResult> {
   const { ticket } = await request<{ ticket: string }>('/auth/ticket?purpose=chug_upload', { method: 'POST' });
-  const form = new FormData();
-  const ext = mimeType.includes('quicktime') ? 'mov' : 'mp4';
-  form.append('video', { uri, name: `chug.${ext}`, type: mimeType } as unknown as Blob);
   const onBehalf = ownerId !== undefined ? `&owner_id=${ownerId}` : '';
-  const res = await fetch(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!res.ok) {
-    let detail = `Upload failed (${res.status})`;
-    try {
-      const body = await res.json();
-      if (typeof body?.detail === 'string') detail = body.detail;
-    } catch {
-      // Not JSON.
-    }
-    throw new ApiError(res.status, detail);
-  }
-  const lines = (await res.text()).split('\n').map((l) => l.trim()).filter(Boolean);
+  const res = await uploadFile(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, uri, 'video', mimeType);
+  if (!ok(res.status)) throw uploadError(res.status, res.body);
+  const lines = res.body.split('\n').map((l) => l.trim()).filter(Boolean);
   const last = lines[lines.length - 1];
   if (!last) throw new ApiError(500, 'Upload failed — empty response');
   const data = JSON.parse(last);
