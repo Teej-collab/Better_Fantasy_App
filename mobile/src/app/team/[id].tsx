@@ -167,10 +167,10 @@ function PlayerRow({ player: p, divided }: { player: RosterPlayer; divided: bool
           {detail}
         </Text>
       </View>
-      <Text style={styles.proj}>
+      <Text style={styles.proj} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
         {p.on_bye && p.points_scored === null ? 'Bye' : p.points_projected !== null ? Number(p.points_projected).toFixed(1) : '—'}
       </Text>
-      <Text style={styles.score}>{p.points_scored !== null ? Number(p.points_scored).toFixed(1) : '—'}</Text>
+      <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>{p.points_scored !== null ? Number(p.points_scored).toFixed(1) : '—'}</Text>
     </Pressable>
   );
 }
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 2 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
   slot: { width: 36, color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600' },
-  player: { flex: 1, gap: 2 },
+  player: { flex: 1, minWidth: 0, gap: 2 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
   injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },

@@ -262,8 +262,12 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
       </PreviewLink>
 
       <View style={styles.points}>
-        <Text style={styles.pointsValue}>{formatPoints(entry.points)}</Text>
-        <Text style={styles.detail}>{entry.on_bye ? 'Bye week' : formatPoints(entry.live_projected ?? entry.points_projected)}</Text>
+        <Text style={styles.pointsValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+          {formatPoints(entry.points)}
+        </Text>
+        <Text style={styles.detail} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+          {entry.on_bye ? 'Bye week' : formatPoints(entry.live_projected ?? entry.points_projected)}
+        </Text>
       </View>
     </View>
   );
@@ -370,13 +374,13 @@ const styles = StyleSheet.create({
   slotText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
   slotTextEditable: { color: Colors.accent },
   pressed: { opacity: 0.6 },
-  player: { flex: 1, gap: 2 },
+  player: { flex: 1, minWidth: 0, gap: 2 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   playerName: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
   injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },
   locked: { color: Colors.textSecondary, fontSize: 11 },
   detail: { color: Colors.textSecondary, fontSize: 12, fontVariant: ['tabular-nums'] },
-  points: { alignItems: 'flex-end', minWidth: 48 },
+  points: { alignItems: 'flex-end', minWidth: 52, flexShrink: 0 },
   pointsValue: { color: Colors.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   sheet: { flex: 1, backgroundColor: Colors.bg },
   sheetHeader: {

@@ -156,9 +156,14 @@ function ScoreBlock(props: {
   return (
     <View style={[styles.scoreBlock, props.right && styles.reverse]}>
       <TeamAvatar name={props.name} logoUrl={props.logoUrl} size={56} />
-      <View style={props.right ? styles.alignEnd : styles.alignStart}>
+      <View style={[props.right ? styles.alignEnd : styles.alignStart, styles.shrink]}>
         <View style={[styles.scoreLine, props.right && styles.reverse]}>
-          <Text style={[styles.score, !props.lead && styles.scoreTrailing, won && { color: Colors.win }, lost && styles.scoreLost]}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            maxFontSizeMultiplier={1.1}
+            style={[styles.score, !props.lead && styles.scoreTrailing, won && { color: Colors.win }, lost && styles.scoreLost]}>
             {props.score !== null ? props.score.toFixed(1) : '0.0'}
           </Text>
           {props.outcome && (
@@ -271,7 +276,8 @@ const styles = StyleSheet.create({
   score: { fontFamily: Fonts.monoBold, fontSize: 30, color: '#fff', fontVariant: ['tabular-nums'] },
   scoreTrailing: { color: 'rgba(255,255,255,0.7)' },
   scoreLost: { color: 'rgba(255,255,255,0.4)' },
-  scoreLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  scoreLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  shrink: { flexShrink: 1, minWidth: 0 },
   outcome: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   outcomeText: { fontSize: 13, fontWeight: '800' },
   resultBanner: { borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 10, gap: 2, marginTop: -Spacing.sm },

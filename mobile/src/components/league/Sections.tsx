@@ -406,10 +406,11 @@ function PowerWeek({ season }: { season: number | null }) {
       <View style={[ls.row, styles.powerHead]}>
         <Text style={styles.headText}>Week {q.data.week}</Text>
         <View style={styles.powerCols}>
-          <Text style={[styles.headText, styles.col]}>Luck</Text>
-          <Text style={[styles.headText, styles.col]}>SoS</Text>
-          <Text style={[styles.headText, styles.col]}>Ahead</Text>
-          <Text style={[styles.headText, styles.col]}>Trend</Text>
+          {['Luck', 'SoS', 'Ahead', 'Trend'].map((label) => (
+            <Text key={label} style={[styles.headText, styles.col]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+              {label}
+            </Text>
+          ))}
         </View>
       </View>
       {q.data.rankings.map((r) => (
@@ -426,9 +427,15 @@ function PowerWeek({ season }: { season: number | null }) {
             </View>
           </View>
           <View style={styles.powerCols}>
-            <Text style={[styles.colValue, styles.col]}>{r.luck_wins !== undefined ? `${r.luck_wins > 0 ? '+' : ''}${r.luck_wins.toFixed(1)}` : '—'}</Text>
-            <Text style={[styles.colValue, styles.col]}>{r.sos_rank ? rankLabel(r.sos_rank) : '—'}</Text>
-            <Text style={[styles.colValue, styles.col]}>{r.sos_remaining_rank ? rankLabel(r.sos_remaining_rank) : '—'}</Text>
+            <Text style={[styles.colValue, styles.col]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+              {r.luck_wins !== undefined ? `${r.luck_wins > 0 ? '+' : ''}${r.luck_wins.toFixed(1)}` : '—'}
+            </Text>
+            <Text style={[styles.colValue, styles.col]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+              {r.sos_rank ? rankLabel(r.sos_rank) : '—'}
+            </Text>
+            <Text style={[styles.colValue, styles.col]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
+              {r.sos_remaining_rank ? rankLabel(r.sos_remaining_rank) : '—'}
+            </Text>
             <View style={styles.col}>
               <Movement movement={r.movement} />
             </View>
@@ -718,7 +725,7 @@ const styles = StyleSheet.create({
   powerHead: { paddingVertical: Spacing.sm },
   headText: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
   powerCols: { flexDirection: 'row', gap: Spacing.sm },
-  col: { width: 38, textAlign: 'right', alignItems: 'flex-end' },
+  col: { width: 42, textAlign: 'right', alignItems: 'flex-end' },
   powerNote: { color: '#fbbf24', fontSize: 11, marginTop: 1 },
   colValue: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontVariant: ['tabular-nums'] },
   powerTeam: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },

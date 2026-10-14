@@ -15,11 +15,13 @@ function bodyFamily(weight: string | number | undefined): string {
   return Fonts.body;
 }
 
-// How far text grows with iOS Larger Text / Android font size. 1.5×
-// covers every standard size (the largest is about 1.35×) and the first
-// accessibility sizes; past that, fixed-size rows, pills and score
-// blocks would clip. Tight spots pass a lower maxFontSizeMultiplier.
-export const MAX_FONT_SCALE = 1.5;
+// How far text grows with iOS Larger Text / Android font size. Was 1.5×,
+// but at the larger standard sizes (2026-10, a real phone set one or two
+// steps up) score blocks overlapped, table headers broke mid-word and
+// the points column clipped. 1.3× still grows text noticeably for
+// anyone who's turned it up while keeping these dense, number-heavy
+// screens intact; tight spots also shrink to fit (adjustsFontSizeToFit).
+export const MAX_FONT_SCALE = 1.3;
 
 // Drop-in for react-native's Text with the app's body font and color.
 export function Text({ style, maxFontSizeMultiplier = MAX_FONT_SCALE, ...props }: TextProps) {
