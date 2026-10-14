@@ -216,6 +216,8 @@ export type MyTeam = {
   roster: RosterEntry[];
   // Per-slot capacity, e.g. { RB: 2, WR: 2 }. Null pre-draft.
   roster_slots: Record<string, number> | null;
+  // At the roster limit: a waiver claim must name a drop (optional for an older backend).
+  roster_full?: boolean;
 };
 
 // Chat (backend/app/routers/chat.py; web types in frontend/src/lib/api.ts).

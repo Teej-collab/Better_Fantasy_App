@@ -1771,6 +1771,8 @@ export type MyTeam = {
   // filled right now even with real capacity remaining, so this can't
   // be inferred from who's currently occupying it.
   roster_slots: Record<string, number> | null;
+  // At the roster limit: a claim needs a drop (optional for an older backend).
+  roster_full?: boolean;
 };
 
 export async function getMyTeam(week?: number): Promise<MyTeam> {

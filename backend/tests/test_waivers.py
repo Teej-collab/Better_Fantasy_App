@@ -13,6 +13,7 @@ from app.domain.waiver_exceptions import (
     ClaimOrderError,
     DuplicateClaimError,
     PlayerNotOnWaiversError,
+    RosterFullClaimError,
 )
 from app.routers.commissioner_lineup import _waiver_locked_pro_teams as commissioner_waiver_locked_pro_teams
 from app.routers.me import _locked_pro_teams_for_current_week as me_locked_pro_teams
@@ -254,6 +255,25 @@ async def test_submit_claim_rejects_drop_target_not_on_roster(pool):
             assert False, "expected PlayerNotOnRosterError"
         except PlayerNotOnRosterError:
             pass
+
+
+async def test_submit_claim_on_a_full_roster_needs_a_drop(pool):
+    """A no-drop claim from a full roster could never win (processing
+    fails it), so it's refused when filed; naming a drop still works."""
+    await _seed_roster_config(pool)  # 11 roster spots
+    _, team_id = await _seed_owner_with_team(pool, "claimfull", espn_team_id=215)
+    rostered = [await _seed_player(pool, f"claimfull-r{i}") for i in range(11)]
+    for sleeper_id in rostered:
+        await _seed_roster_entry(pool, team_id, sleeper_id)
+    player = await _seed_player(pool, "claimfull")
+    async with pool.acquire() as conn:
+        await waivers.start_waiver_clock(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, player)
+        assert await waivers.roster_is_full(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id)
+        with pytest.raises(RosterFullClaimError):
+            await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id, player)
+        claim = await waivers.submit_claim(conn, TEST_SEASON, DEFAULT_LEAGUE_ID, team_id, player, rostered[0])
+    assert claim["status"] == "pending"
+    assert claim["drop_sleeper_player_id"] == rostered[0]
 
 
 async def test_cancel_claim_happy_path_and_rejects_twice(pool):

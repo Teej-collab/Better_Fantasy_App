@@ -32,7 +32,8 @@ type PanelState =
   // scheduler once their waiver period ends. Doesn't remove the player
   // from the list on success — they're still a free agent until a
   // claim actually wins.
-  | { status: "claim-menu" }
+  // rosterFull: a claim must name a drop (no-drop claims are refused).
+  | { status: "claim-menu"; rosterFull?: boolean }
   | { status: "claim-pick-drop"; roster: RosterEntry[] }
   | { status: "claim-confirm-drop"; roster: RosterEntry[]; dropCandidate: RosterEntry }
   | { status: "claim-submitting" }
@@ -123,7 +124,7 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
             p.sleeper_player_id === player.sleeper_player_id ? { ...p, waiver_clears_at: result.clears_at } : p
           )
         );
-        setPanel({ status: "claim-menu" });
+        openClaimMenu();
         return;
       }
       // roster_full — need a drop pick.
@@ -136,7 +137,18 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
 
   function startClaim(player: MyFreeAgent) {
     setActiveId(player.sleeper_player_id);
+    openClaimMenu();
+  }
+
+  // On a full roster a claim has to name a drop (the server refuses one
+  // without), so the menu only offers that once it knows.
+  function openClaimMenu() {
     setPanel({ status: "claim-menu" });
+    getMyTeam()
+      .then((team) =>
+        setPanel((prev) => (prev?.status === "claim-menu" ? { ...prev, rosterFull: Boolean(team.roster_full) } : prev))
+      )
+      .catch(() => {});
   }
 
   async function pickDropForClaim() {
@@ -433,20 +445,34 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
                           />
                         </label>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => submitClaim(p)}
-                          className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
-                        >
-                          File claim
-                        </button>
-                        <button
-                          onClick={pickDropForClaim}
-                          className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
-                        >
-                          File claim with a drop
-                        </button>
-                      </div>
+                      {panel.rosterFull ? (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            Your roster is full — pick who to drop if this claim wins.
+                          </p>
+                          <button
+                            onClick={pickDropForClaim}
+                            className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                          >
+                            Pick a drop
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => submitClaim(p)}
+                            className="w-fit rounded-full bg-[var(--wl-accent)] px-3 py-1.5 text-xs font-semibold text-black"
+                          >
+                            File claim
+                          </button>
+                          <button
+                            onClick={pickDropForClaim}
+                            className="w-fit rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/60 dark:border-white/10 dark:text-white/60"
+                          >
+                            File claim with a drop
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 

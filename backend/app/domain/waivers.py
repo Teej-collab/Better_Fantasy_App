@@ -78,6 +78,7 @@ from app.domain.waiver_exceptions import (
     DuplicateClaimError,
     IRSlotViolationClaimError,
     PlayerNotOnWaiversError,
+    RosterFullClaimError,
 )
 from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries.league import get_cached_current_week, get_standings
@@ -393,6 +394,10 @@ async def submit_claim(
     )
     if ir_violations:
         raise IRSlotViolationClaimError(ir_violation_message(ir_violations))
+    if drop_sleeper_player_id is None and await roster_is_full(conn, season, league_id, team_id):
+        raise RosterFullClaimError(
+            "Your roster is full — pick a player to drop with this claim, or it can't go through"
+        )
     if drop_sleeper_player_id is not None:
         on_roster = await conn.fetchval(
             "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 AND team_id = $3 AND sleeper_player_id = $4",
@@ -524,6 +529,20 @@ async def _bump_to_back(conn, season: int, league_id: int, week: int, team_id: i
         """,
         (max_priority or 0) + 1, season, league_id, week, team_id,
     )
+
+
+async def roster_is_full(conn, season: int, league_id: int, team_id: int) -> bool:
+    """True only when this league's roster size is known and the team
+    is at it — a claim (or add) with no drop can't fit. Pre-draft (no
+    roster_slots yet) is never "full" here, unlike _roster_has_room's
+    conservative False, since that's not a reason to refuse anything."""
+    roster_slots_raw = await conn.fetchval(
+        "SELECT roster_slots FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
+    )
+    if roster_slots_raw is None:
+        return False
+    roster_slots = json.loads(roster_slots_raw) if isinstance(roster_slots_raw, str) else roster_slots_raw
+    return await count_roster_toward_limit(conn, season, team_id) >= total_draftable_slots(roster_slots)
 
 
 async def _roster_has_room(conn, season: int, league_id: int, team_id: int) -> bool:

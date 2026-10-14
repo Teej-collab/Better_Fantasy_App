@@ -462,6 +462,8 @@ async def my_team(request: Request, week: int | None = None):
                 entry.update(info)
 
     lineup_auto = league_format.lineups_are_automatic(await on_own_conn(league_format.get_league_format, league_id))
+    # Lets the claim sheet refuse "No drop" up front on a full roster.
+    roster_full = await on_own_conn(waivers.roster_is_full, active_season, league_id, team_id)
     return {
         "team_name": team_name,
         "owner_name": owner["display_name"] if owner else None,
@@ -475,6 +477,7 @@ async def my_team(request: Request, week: int | None = None):
         "lineup_auto": lineup_auto,
         "roster": [_roster_entry_dict(e) for e in roster],
         "roster_slots": roster_slots,
+        "roster_full": roster_full,
     }
 
 

@@ -55,3 +55,10 @@ class ClaimOrderError(WaiverError):
     claims — the list it was made from is out of date."""
 
     pass
+
+
+class RosterFullClaimError(WaiverError):
+    """A claim with no drop from a team whose roster is already full.
+    It could never win: processing fails it with "Your roster was full
+    with no drop specified" (a real 2026-10 claim on Woody Marks lost
+    this way to a lower-priority team). Refused up front instead."""

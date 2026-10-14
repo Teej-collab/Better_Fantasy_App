@@ -43,6 +43,9 @@ export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onCl
   // allows it; before this, a claim on Monday night offered no drops
   // at all, only "No drop").
   const roster = team.data?.roster ?? [];
+  // A no-drop claim on a full roster can never win, and the server
+  // refuses it, so "No drop" is only offered with an open spot.
+  const rosterFull = team.data?.roster_full === true;
 
   async function add(drop?: RosterEntry) {
     setBusy(true);
@@ -173,7 +176,14 @@ export function PlayerActionSheet({ player, onClose }: { player: FreeAgent; onCl
                       );
                     })}
                     {mode === 'claim' && (
-                      <DropRow label="No drop" detail="Only works if you have an open roster spot" onPress={() => claim(null)} disabled={busy} divided={roster.length > 0} />
+                      <DropRow
+                        label="No drop"
+                        detail={rosterFull ? 'Your roster is full, so pick someone to drop' : 'Uses your open roster spot'}
+                        onPress={() => claim(null)}
+                        disabled={busy || rosterFull}
+                        unavailable={rosterFull}
+                        divided={roster.length > 0}
+                      />
                     )}
                   </Card>
                   {busy && <ActivityIndicator color={Colors.accent} style={styles.spinner} />}
