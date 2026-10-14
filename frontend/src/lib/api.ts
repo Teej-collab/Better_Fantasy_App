@@ -168,6 +168,8 @@ export type RosterPlayer = {
   // union rather than narrowed since PlayerHeadshot.tsx already
   // branches on it harmlessly either way.
   player_id: number | string | null;
+  // Headshot (a team logo for a D/ST); on /teams/{id}/roster only.
+  headshot_url?: string | null;
   pro_team: string | null;
   injury_status: string | null;
   next_opponent: string | null;
@@ -203,6 +205,13 @@ export type TeamDetail = {
   team_name: string;
   owner_id: number;
   owner_name: string;
+  logo_url?: string | null;
+  // This season's record and standings rank (2026-10).
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  rank?: number;
+  team_count?: number;
 };
 
 export type TeamRoster = {
@@ -1737,6 +1746,9 @@ export type RosterEntry = {
 
 export type MyTeam = {
   team_name: string;
+  // The team owner, for the header avatar (2026-10).
+  owner_name?: string | null;
+  logo_url?: string | null;
   season: number;
   // Which week this roster reflects, and the season's real actual
   // current week — the same value unless a different week was

@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { createCoOwnerInvite } from "@/lib/leaguesApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { LogoAvatar } from "@/components/matchups/MatchupScoreHeader";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { nflTeamName } from "@/lib/nfl-teams";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, isIrEligible, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from "@/lib/rosterSlots";
@@ -549,12 +550,15 @@ export function MyTeamApp({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">{team.team_name}</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <LogoAvatar logoUrl={team.logo_url ?? null} name={team.owner_name ?? team.team_name} size={44} />
+          <h1 className="min-w-0 truncate text-2xl font-semibold">{team.team_name}</h1>
+        </div>
         <button
           onClick={handleInviteCoOwner}
           disabled={inviting}
-          className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/[0.05]"
+          className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/[0.05]"
         >
           {inviting ? "Generating…" : "Invite Co-Owner"}
         </button>

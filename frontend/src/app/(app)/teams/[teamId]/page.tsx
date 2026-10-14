@@ -3,11 +3,25 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getCurrentWeek, getMe, getTeam, getTeamRoster, resolveWeek } from "@/lib/api";
-import { RosterList } from "@/components/RosterList";
+import type { TeamDetail } from "@/lib/api";
+import { LogoAvatar } from "@/components/matchups/MatchupScoreHeader";
+import { TeamRosterList } from "@/components/TeamRosterList";
 import { SignInCard } from "@/components/SignInCard";
 import { BackButton } from "@/components/BackButton";
 
-const WEEK_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 1);
+const MAX_WEEK = 17;
+
+function ordinal(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+  return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
+}
+
+// "4-1 · 1st of 12" — null on an older backend without the record.
+function recordLine(t: TeamDetail): string | null {
+  if (t.wins === undefined || t.losses === undefined) return null;
+  const record = `${t.wins}-${t.losses}${t.ties ? `-${t.ties}` : ""}`;
+  return t.rank ? `${record} · ${ordinal(t.rank)}${t.team_count ? ` of ${t.team_count}` : ""}` : record;
+}
 
 // Real per-page title (was falling back to the root layout's generic
 // "Weekend League" for every page in the app — mobile audit finding)
@@ -69,49 +83,109 @@ export default async function TeamPage({
     week = resolveWeek(current_week);
   }
 
-  const { roster } = await getTeamRoster(Number(teamId), week, sessionCookie);
+  const [{ roster }, { current_week }] = await Promise.all([
+    getTeamRoster(Number(teamId), week, sessionCookie),
+    getCurrentWeek(team.season),
+  ]);
+  const currentWeek = current_week ? resolveWeek(current_week) : null;
+  const isMine = me.owner_id !== null && me.owner_id === team.owner_id;
 
-  const starters = roster.filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
-  const bench = roster.filter((p) => p.lineup_slot === "BE" || p.lineup_slot === "IR");
+  const reserve = ["BE", "IR", "TAXI"];
+  const starters = roster.filter((p) => !reserve.includes(p.lineup_slot ?? ""));
+  const bench = roster.filter((p) => reserve.includes(p.lineup_slot ?? ""));
+  const scored = starters.reduce((sum, p) => sum + (p.points_scored !== null ? Number(p.points_scored) : 0), 0);
+  const projected = starters.reduce((sum, p) => sum + (p.points_projected !== null ? Number(p.points_projected) : 0), 0);
+  const record = recordLine(team);
+  const weekHref = (w: number) => `/teams/${teamId}?week=${w}`;
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <BackButton fallbackHref="/standings" label="Standings" />
-        <h1 className="text-2xl font-semibold">{team.team_name}</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          <Link href={`/owners/${team.owner_id}?season=${team.season}`} className="hover:underline">
-            {team.owner_name}
-          </Link>
-          {" — "}
-          {team.season} season
-        </p>
+        <div className="mt-1 flex items-center gap-3">
+          <LogoAvatar logoUrl={team.logo_url ?? null} name={team.owner_name ?? team.team_name} size={56} />
+          <div className="min-w-0">
+            <h1 className="text-2xl leading-tight font-semibold break-words">{team.team_name}</h1>
+            <p className="text-sm text-black/60 dark:text-white/60">
+              <Link href={`/owners/${team.owner_id}?season=${team.season}`} className="font-medium hover:underline">
+                {team.owner_name}
+              </Link>
+              {record ? ` · ${record}` : ` · ${team.season} season`}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        {WEEK_OPTIONS.map((w) => (
-          <Link
-            key={w}
-            href={`/teams/${teamId}?week=${w}`}
-            className={
-              w === week
-                ? "rounded-full border border-black/20 bg-black/5 px-3 py-1.5 font-semibold dark:border-white/20 dark:bg-white/10"
-                : "rounded-full border border-black/10 px-3 py-1.5 text-black/60 hover:bg-black/5 dark:border-white/10 dark:text-white/60 dark:hover:bg-white/10"
-            }
-          >
-            Wk {w}
+      {/* ESPN-style "< Week N >", same as My Team's. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1 rounded-full border border-black/10 p-1 dark:border-white/10">
+          <WeekArrow href={week > 1 ? weekHref(week - 1) : null} label="Previous week">
+            ‹
+          </WeekArrow>
+          <span className="px-2 text-sm font-semibold uppercase">Week {week}</span>
+          <WeekArrow href={week < MAX_WEEK ? weekHref(week + 1) : null} label="Next week">
+            ›
+          </WeekArrow>
+        </div>
+        {currentWeek !== null && week !== currentWeek && (
+          <Link href={weekHref(currentWeek)} className="text-xs font-semibold text-[var(--wl-accent)] hover:underline">
+            Back to Week {currentWeek} →
           </Link>
-        ))}
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {isMine ? (
+          <Link
+            href="/team"
+            className="flex-1 rounded-full bg-[var(--wl-accent-dim)] px-4 py-2 text-center text-sm font-semibold text-white hover:brightness-110"
+          >
+            Edit lineup in My Team
+          </Link>
+        ) : (
+          <Link
+            href={`/trades?team=${team.team_id}`}
+            className="flex-1 rounded-full bg-[var(--wl-accent-dim)] px-4 py-2 text-center text-sm font-semibold text-white hover:brightness-110"
+          >
+            Propose Trade
+          </Link>
+        )}
+        <Link
+          href={`/owners/${team.owner_id}?season=${team.season}`}
+          className="flex-1 rounded-full border border-black/15 px-4 py-2 text-center text-sm font-semibold hover:bg-black/[0.03] dark:border-white/20 dark:hover:bg-white/[0.05]"
+        >
+          Owner profile
+        </Link>
       </div>
 
       {roster.length === 0 ? (
-        <p className="text-sm text-black/50 dark:text-white/50">No roster data for week {week}.</p>
+        <p className="text-sm text-black/50 dark:text-white/50">No roster for week {week}.</p>
       ) : (
-        <div className="flex flex-col gap-6">
-          <RosterList title="Starters" players={starters} showProjected />
-          <RosterList title="Bench / IR" players={bench} showProjected />
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-black/60 tabular-nums dark:text-white/60">
+            {scored.toFixed(1)} pts · Proj {projected.toFixed(1)}
+          </p>
+          <TeamRosterList title="Starters" players={starters} />
+          <TeamRosterList title="Bench" players={bench} />
         </div>
       )}
     </div>
+  );
+}
+
+function WeekArrow({ href, label, children }: { href: string | null; label: string; children: React.ReactNode }) {
+  const className =
+    "flex h-8 w-8 items-center justify-center rounded-full bg-black/5 text-xl leading-none dark:bg-white/10";
+  if (!href) {
+    return (
+      <span className={`${className} opacity-25`} aria-hidden>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link href={href} aria-label={label} className={`${className} hover:bg-black/10 dark:hover:bg-white/20`}>
+      {children}
+    </Link>
   );
 }

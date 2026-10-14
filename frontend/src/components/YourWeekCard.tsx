@@ -125,12 +125,18 @@ export function YourWeekCard({
         </div>
       </Link>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <Link
           href={`/matchups/${m.matchup_id}`}
           className="text-sm text-[var(--wl-accent)] hover:underline"
         >
           View full matchup →
+        </Link>
+        <Link
+          href={`/teams/${m.opponent_team_id}${myWeek.week !== null ? `?week=${myWeek.week}` : ""}`}
+          className="text-sm text-white/50 hover:underline"
+        >
+          Their roster →
         </Link>
         {showLineupLink && (
           <Link href="/team" className="text-sm text-white/50 hover:underline">

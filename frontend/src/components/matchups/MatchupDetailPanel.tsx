@@ -32,7 +32,7 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
           </div>
         )}
 
-        <MatchupScoreHeader home={home} away={away} />
+        <MatchupScoreHeader home={home} away={away} week={matchup.week} />
       </div>
 
       <div className="wl-card rounded-lg p-4">

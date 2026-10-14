@@ -77,12 +77,17 @@ export function RecordWithStreak({ record, streak }: { record: string | null; st
 // on the left edge, away/right mirrors it on the right (via
 // flex-row-reverse). Whichever side the viewer owns is always passed in
 // as `home` (see orientMatchupForViewer).
-function TeamScoreBlock({ side, align }: { side: MatchupContextSide; align: "left" | "right" }) {
+// The logo and name open that team's roster on this matchup's week
+// (2026-10, like ESPN's team sheet).
+function TeamScoreBlock({ side, align, week }: { side: MatchupContextSide; align: "left" | "right"; week?: number }) {
   const isRight = align === "right";
+  const teamHref = `/teams/${side.team_id}${week ? `?week=${week}` : ""}`;
   return (
     <div className={`flex min-w-0 flex-1 flex-col gap-1.5 ${isRight ? "items-end text-right" : "items-start text-left"}`}>
       <div className={`flex items-center gap-2 sm:gap-3 ${isRight ? "flex-row-reverse" : ""}`}>
-        <TeamLogo side={side} size={56} />
+        <Link href={teamHref} aria-label={`${side.team_name} roster`} className="rounded-full hover:opacity-80">
+          <TeamLogo side={side} size={56} />
+        </Link>
         <div className={`flex flex-col leading-none ${isRight ? "items-end" : "items-start"}`}>
           <span className="font-mono text-3xl font-bold tabular-nums sm:text-4xl">
             {side.score !== null ? side.score.toFixed(1) : "0.0"}
@@ -98,7 +103,7 @@ function TeamScoreBlock({ side, align }: { side: MatchupContextSide; align: "lef
         className={`flex min-w-0 max-w-full flex-wrap items-center gap-y-0.5 ${isRight ? "justify-end" : "justify-start"}`}
       >
         <Link
-          href={`/teams/${side.team_id}`}
+          href={teamHref}
           className="line-clamp-2 min-w-0 text-base leading-tight font-semibold break-words hover:underline sm:text-lg"
         >
           {side.team_name}
@@ -125,13 +130,21 @@ function TeamScoreBlock({ side, align }: { side: MatchupContextSide; align: "lef
   );
 }
 
-export function MatchupScoreHeader({ home, away }: { home: MatchupContextSide; away: MatchupContextSide }) {
+export function MatchupScoreHeader({
+  home,
+  away,
+  week,
+}: {
+  home: MatchupContextSide;
+  away: MatchupContextSide;
+  week?: number;
+}) {
   const hasWinProbability = home.win_probability !== null && away.win_probability !== null;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3">
-        <TeamScoreBlock side={home} align="left" />
-        <TeamScoreBlock side={away} align="right" />
+        <TeamScoreBlock side={home} align="left" week={week} />
+        <TeamScoreBlock side={away} align="right" week={week} />
       </div>
       {hasWinProbability && (
         <WinProbabilityBar
