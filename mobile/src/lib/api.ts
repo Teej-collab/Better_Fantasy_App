@@ -167,6 +167,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
   } catch (e) {
+    if (controller.signal.aborted && !init?.signal) throw new ApiError(0, "The server didn't answer. Try again in a moment.");
     if (isNetworkFailure(e)) {
       reportUnreachable();
       // status 0: never reached the server.
@@ -809,28 +810,36 @@ export function gamecastSocketUrl(ticket: string, gameId: string): string {
   return `${API_BASE_URL.replace(/^http/, 'ws')}/nfl/gamecast/ws?ticket=${encodeURIComponent(ticket)}&game_id=${encodeURIComponent(gameId)}`;
 }
 
-// Sends a local file as one multipart field, streamed from disk by the
-// native uploader. Expo's fetch (the global fetch in this SDK) can't send
-// React Native's { uri, name, type } form parts — it threw "Unsupported
-// FormDataPart implementation" on every upload — and reading a whole video
-// into JS memory to build a Blob would be worse.
+// Sends a local file as one multipart field. Expo's fetch (the global
+// fetch in this SDK) can't send React Native's { uri, name, type } form
+// parts ("Unsupported FormDataPart implementation"), and the legacy native
+// uploadAsync hung with no answer; an expo-file-system File is the form
+// part Expo's fetch is built to send (its name, MIME type and bytes).
+// Capped at 10 minutes (Railway's own cap is 15) so a dropped connection
+// shows an error instead of spinning forever.
+const UPLOAD_TIMEOUT_MS = 10 * 60_000;
+
 async function uploadFile(
   url: string,
   uri: string,
   field: string,
-  mimeType: string,
   headers?: Record<string, string>,
 ): Promise<{ status: number; body: string }> {
-  const FileSystem = await import('expo-file-system/legacy');
-  const res = await FileSystem.uploadAsync(url, uri, {
-    httpMethod: 'POST',
-    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-    sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
-    fieldName: field,
-    mimeType,
-    headers,
-  });
-  return { status: res.status, body: res.body };
+  const { File } = await import('expo-file-system');
+  const form = new FormData();
+  form.append(field, new File(uri) as unknown as Blob);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: 'POST', headers, body: form, signal: controller.signal });
+    return { status: res.status, body: await res.text() };
+  } catch (e) {
+    if (controller.signal.aborted) throw new ApiError(0, 'The upload took too long. Check your connection and try again.');
+    if (isNetworkFailure(e)) throw new ApiError(0, OFFLINE_MESSAGE);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function uploadError(status: number, body: string): ApiError {
@@ -855,7 +864,6 @@ export async function uploadChatImage(uri: string): Promise<string> {
     `${WEB_BASE_URL}/api/chat/upload-native`,
     uri,
     'file',
-    'image/jpeg',
     sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
   );
   if (!ok(res.status)) throw new ApiError(res.status, `Upload failed (${res.status})`);
@@ -870,7 +878,6 @@ export async function uploadCardPhoto(ownerId: number, uri: string): Promise<voi
     `${API_BASE_URL}/owners/${ownerId}/card-photo`,
     uri,
     'photo',
-    'image/jpeg',
     sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
   );
   if (!ok(res.status)) throw uploadError(res.status, res.body);
@@ -881,10 +888,10 @@ export async function uploadCardPhoto(ownerId: number, uri: string): Promise<voi
 // the URL, same as the web's ChugUpload. The response streams progress
 // lines while the video is graded; the last line is the result.
 // `ownerId` credits someone else (commissioner only).
-export async function uploadChugVideo(uri: string, mimeType: string, ownerId?: number): Promise<ChugUploadResult> {
+export async function uploadChugVideo(uri: string, ownerId?: number): Promise<ChugUploadResult> {
   const { ticket } = await request<{ ticket: string }>('/auth/ticket?purpose=chug_upload', { method: 'POST' });
   const onBehalf = ownerId !== undefined ? `&owner_id=${ownerId}` : '';
-  const res = await uploadFile(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, uri, 'video', mimeType);
+  const res = await uploadFile(`${API_BASE_URL}/chug/upload?ticket=${encodeURIComponent(ticket)}${onBehalf}`, uri, 'video');
   if (!ok(res.status)) throw uploadError(res.status, res.body);
   const lines = res.body.split('\n').map((l) => l.trim()).filter(Boolean);
   const last = lines[lines.length - 1];

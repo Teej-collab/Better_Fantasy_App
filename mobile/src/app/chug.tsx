@@ -125,7 +125,7 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
     setError(null);
     setResult(null);
     try {
-      const graded = await uploadChugVideo(asset.uri, asset.mimeType ?? 'video/quicktime', creditTo?.id);
+      const graded = await uploadChugVideo(asset.uri, creditTo?.id);
       setResult(graded);
       setStatus('done');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
