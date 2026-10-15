@@ -88,6 +88,15 @@ export function nextEt(day: number, hour: number, from = new Date()): Date {
   return t;
 }
 
+// The betting weekend: Thursday 6 AM Eastern until Tuesday 6 AM, so the
+// Monday night game (which can run past midnight) still counts.
+export function inBetsWeekend(now = new Date()): boolean {
+  const { day, hour } = etDayHour(now);
+  if (day === 4) return hour >= 6;
+  if (day === 2) return hour < 6;
+  return day === 5 || day === 6 || day === 0 || day === 1;
+}
+
 export function isStarter(slot: string | null | undefined): boolean {
   return !!slot && !['BE', 'IR', 'TAXI'].includes(slot);
 }

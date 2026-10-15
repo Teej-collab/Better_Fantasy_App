@@ -7,7 +7,7 @@ import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter } from '@/lib/livingHome';
 import { queryClient, useLineupChange } from '@/lib/queries';
-import type { Bet, MatchupContextSide, NflGame, RosterEntry, RosterPlayer, YourWeekMatchup } from '@/lib/types';
+import type { MatchupContextSide, NflGame, RosterEntry, RosterPlayer, YourWeekMatchup } from '@/lib/types';
 
 const WARN = '#ff8a3d';
 const HEADS_UP = '#f5b942';
@@ -241,29 +241,6 @@ export function OpponentIntelCard({ them, title, players }: { them: MatchupConte
           first={i === 0}
           left={`${p.player_name} · ${p.position ?? ''}`}
           right={players ? (p.on_bye ? 'Bye week' : fmt(p.live_projected ?? p.points_projected)) : <Chip color={BAD_STATUS.includes(p.injury_status?.toLowerCase() ?? '') ? WARN : HEADS_UP}>{p.injury_status}</Chip>}
-        />
-      ))}
-    </Panel>
-  );
-}
-
-// Your open bets for the weekend.
-export function BetsCard({ bets }: { bets: Bet[] }) {
-  const open = bets.filter((b) => b.status === 'open');
-  if (open.length === 0) return null;
-  return (
-    <Panel onPress={() => router.push('/bets')} label="Open your bets">
-      <Kicker>Your open bets · {open.length}</Kicker>
-      {open.slice(0, 3).map((b, i) => (
-        <Row
-          key={b.id}
-          first={i === 0}
-          left={
-            <Text style={styles.rowText} numberOfLines={1}>
-              {b.legs.length === 1 ? b.legs[0].description : `${b.legs.length}-leg parlay`}
-            </Text>
-          }
-          right={b.odds_american != null ? `${b.odds_american > 0 ? '+' : ''}${b.odds_american}` : ''}
         />
       ))}
     </Panel>

@@ -20,7 +20,8 @@ import {
   WaiversCountdownCard,
   WeekEndedCard,
 } from '@/components/living/LivingCards';
-import { BetsCard, HeadStartCard, LineupFixCard, OpponentIntelCard, StartSitCard, WeatherCard } from '@/components/living/LineupTools';
+import { HeadStartCard, LineupFixCard, OpponentIntelCard, StartSitCard, WeatherCard } from '@/components/living/LineupTools';
+import { WeekendBetsCard } from '@/components/living/WeekendBetsCard';
 import {
   GameWindowsCard,
   MatchupsAliveCard,
@@ -55,6 +56,7 @@ import {
   dayName,
   etDayHour,
   homePhase,
+  inBetsWeekend,
   isStarter,
   nextEt,
   PHASE_COLOR,
@@ -232,6 +234,8 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const whatIf = odds ? <WhatIfCard odds={odds} teamId={teamId} standings={standings} /> : null;
   const turning =
     history && mine ? <TurningPointsCard history={history} meIsHome={mine.item.home.team_id === teamId} opponent={mine.them.owner_name} /> : null;
+  // Your bets, Thursday morning to Monday night, on whatever the mood is.
+  const betsCard = inBetsWeekend(now) ? <WeekendBetsCard bets={bets} games={games} /> : null;
   const tonightGames = games.filter((g) => (g.state === 'pre' || g.state === 'in') && sameEtDate(g.date, now));
 
   // Recap day: last week's final until Wednesday's waivers start the new week.
@@ -273,6 +277,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           {mine && <ProjectionReportCard me={mine.me} matchups={weekMatchups} />}
           {mine && <RivalryResultCard item={mine.item} teamId={teamId} />}
           <WeekEndedCard me={mine?.me ?? null} closest={closest} />
+          {betsCard}
           {turning}
           <LeagueScoreboardCard matchups={weekMatchups} teamId={teamId} title="Around the league" />
         </>
@@ -342,6 +347,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         <>
           <KickoffCard players={today} now={now} color={color} title="Locks in" />
           <LineupFixCard roster={roster} slots={myTeam?.roster_slots ?? null} week={week} color={color} />
+          {betsCard}
           <WeatherCard games={games} roster={roster} />
           {mine && theirsToday.length > 0 && <OpponentIntelCard them={mine.them} players={theirsToday} title={`${mine.them.owner_name} starts today`} />}
           <TonightGamesCard games={tonightGames} title="On today" findGamecastId={findGamecastId} />
@@ -367,10 +373,10 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <WeatherCard games={games} roster={roster} />
           <InjuryReportCard lastWeek={[]} roster={roster.filter((p) => isStarter(p.lineup_slot))} title="Final injury report" />
           <KickoffCard players={upcoming} now={now} color={color} title="Your next kickoff" />
+          {betsCard}
           {whatIf}
           {mine && <PositionEdgeCard me={mine.me} them={mine.them} />}
           {mine && <OpponentIntelCard them={mine.them} title={`${mine.them.owner_name}'s hurt starters`} />}
-          <BetsCard bets={bets} />
         </>
       );
       break;
@@ -393,6 +399,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         <>
           {mine && <SwingPlayersCard me={mine.me} them={mine.them} />}
           <PlayersNowCard players={onNow} title="Your players right now" />
+          {betsCard}
           {mine && <TouchdownFeedCard me={mine.me} them={mine.them} />}
           {mine && <GameWindowsCard me={mine.me} them={mine.them} now={now} />}
           <LeagueScoreboardCard matchups={weekMatchups} teamId={teamId} title="Around the league · live" live />
@@ -416,6 +423,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           {mine && <WhatYouNeedCard me={mine.me} them={mine.them} winProbability={m?.win_probability ?? null} />}
           {turning}
           <TonightGamesCard games={tonightGames} title="Tonight" findGamecastId={findGamecastId} />
+          {betsCard}
           <MatchupsAliveCard matchups={weekMatchups} teamId={teamId} />
           {mine && <TouchdownFeedCard me={mine.me} them={mine.them} />}
           <LoungeCard title="Sweat it together" body="The Lounge is open for tonight's game" />
