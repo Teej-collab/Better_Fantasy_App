@@ -28,9 +28,12 @@ const TYPING_SEND_INTERVAL_MS = 2000;
 // One attachment at a time, like the web composer. A GIF is one too:
 // already hosted by GIPHY, so it's ready to send straight away.
 type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string; gif?: boolean };
-// A video waits here until Send, then posts with the message text; the
-// backend converts it and sends the message itself (postChatVideo).
-type PendingVideo = { status: 'ready' | 'posting' | 'error'; localUri: string; error?: string };
+// A picked video waits in the composer until Send. Then it moves into
+// the thread straight away as an outgoing bubble (like iMessage) while it
+// uploads, and the composer is free again; the backend sends the real
+// message as soon as the upload lands (postChatVideo).
+type PendingVideo = { localUri: string };
+type OutgoingVideo = { key: string; localUri: string; body: string; replyToId: number | null; status: 'sending' | 'failed'; error?: string };
 
 export default function ConversationScreen() {
   // `title` names a conversation that isn't in the chat list, like a
@@ -56,6 +59,7 @@ export default function ConversationScreen() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
+  const [outgoing, setOutgoing] = useState<OutgoingVideo[]>([]);
   const [viewingVideo, setViewingVideo] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -121,35 +125,53 @@ export default function ConversationScreen() {
   }
 
   const imageReady = pendingImage?.status === 'done';
-  const videoReady = pendingVideo !== null && pendingVideo.status !== 'posting';
-  const canSend = videoReady
+  const canSend = pendingVideo
     ? !isAnnouncements
-    : connected && pendingImage?.status !== 'uploading' && pendingVideo === null && (!!draft.trim() || imageReady) && (!isAnnouncements || !!title.trim());
+    : connected && pendingImage?.status !== 'uploading' && (!!draft.trim() || imageReady) && (!isAnnouncements || !!title.trim());
 
-  async function sendVideo(video: PendingVideo) {
-    const body = draft.trim();
-    setPendingVideo({ ...video, status: 'posting', error: undefined });
+  async function uploadOutgoing(item: OutgoingVideo) {
+    setOutgoing((list) => list.map((o) => (o.key === item.key ? { ...o, status: 'sending', error: undefined } : o)));
     try {
-      const message = await postChatVideo(conversationId, video.localUri, body, replyTo?.id ?? null);
+      const message = await postChatVideo(conversationId, item.localUri, item.body, item.replyToId);
       // Usually already here over the socket; this covers a dropped one.
       queryClient.setQueryData<ChatMessage[]>(['chat-messages', conversationId], (prev) =>
         prev && !prev.some((m) => m.id === message.id) ? [...prev, message] : prev,
       );
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setDraft((d) => (d.trim() === body ? '' : d));
-      setSelectionEnd(0);
-      setPendingMentions(new Map());
-      setPendingVideo(null);
-      setReplyTo(null);
+      setOutgoing((list) => list.filter((o) => o.key !== item.key));
     } catch (e) {
-      setPendingVideo({ ...video, status: 'error', error: e instanceof Error ? e.message : "Couldn't post that video." });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setOutgoing((list) =>
+        list.map((o) => (o.key === item.key ? { ...o, status: 'failed', error: e instanceof Error ? e.message : "Couldn't send that video." } : o)),
+      );
     }
+  }
+
+  function retryOutgoing(item: OutgoingVideo) {
+    Alert.alert('Video not delivered', item.error, [
+      { text: 'Try again', onPress: () => void uploadOutgoing(item) },
+      { text: 'Delete', style: 'destructive', onPress: () => setOutgoing((list) => list.filter((o) => o.key !== item.key)) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   function onSend() {
     if (!canSend) return;
     if (pendingVideo) {
-      void sendVideo(pendingVideo);
+      const item: OutgoingVideo = {
+        key: `${Date.now()}`,
+        localUri: pendingVideo.localUri,
+        body: draft.trim(),
+        replyToId: replyTo?.id ?? null,
+        status: 'sending',
+      };
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setOutgoing((list) => [...list, item]);
+      setDraft('');
+      setSelectionEnd(0);
+      setPendingMentions(new Map());
+      setPendingVideo(null);
+      setReplyTo(null);
+      void uploadOutgoing(item);
       return;
     }
     const event: Record<string, unknown> = { type: 'message', conversation_id: conversationId, body: draft.trim() };
@@ -271,7 +293,7 @@ export default function ConversationScreen() {
     }
     if (!localUri) return;
     setPendingImage(null);
-    setPendingVideo({ status: 'ready', localUri });
+    setPendingVideo({ localUri });
   }
 
   function pickGif(gif: ChatGif) {
@@ -281,7 +303,7 @@ export default function ConversationScreen() {
   }
 
   function chooseAttachment() {
-    if (pendingImage?.status === 'uploading' || pendingVideo?.status === 'posting') return;
+    if (pendingImage?.status === 'uploading') return;
     // No videos in Commish's Corner (the backend refuses them there).
     Alert.alert(isAnnouncements ? 'Add a photo' : 'Add a photo or video', undefined, [
       { text: 'Photo library', onPress: () => void attach('library') },
@@ -318,6 +340,16 @@ export default function ConversationScreen() {
         onEndReachedThreshold={0.3}
         keyboardDismissMode="interactive"
         ListFooterComponent={loadingOlder ? <ActivityIndicator color={Colors.accent} style={styles.olderSpinner} /> : null}
+        // Inverted, so the header sits at the bottom: videos on their way up.
+        ListHeaderComponent={
+          outgoing.length > 0 ? (
+            <View>
+              {[...outgoing].reverse().map((o) => (
+                <OutgoingVideoBubble key={o.key} item={o} onRetry={() => retryOutgoing(o)} />
+              ))}
+            </View>
+          ) : null
+        }
         renderItem={({ item, index }) => {
           // "Previous" in reading order is the next item in this
           // newest-first array.
@@ -392,21 +424,11 @@ export default function ConversationScreen() {
           )}
           {pendingVideo && (
             <View style={styles.pendingImage}>
-              <View style={[styles.pendingThumb, styles.videoThumb]}>
-                {pendingVideo.status === 'posting' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.playGlyph}>▶</Text>}
-              </View>
-              <Text style={[styles.pendingText, pendingVideo.status === 'error' && styles.pendingError]}>
-                {pendingVideo.status === 'posting'
-                  ? 'Posting video… this can take a minute'
-                  : pendingVideo.status === 'error'
-                    ? `${pendingVideo.error} Tap Send to try again.`
-                    : 'Video ready to send'}
-              </Text>
-              {pendingVideo.status !== 'posting' && (
-                <Pressable onPress={() => setPendingVideo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove video">
-                  <Text style={styles.dismiss}>✕</Text>
-                </Pressable>
-              )}
+              <LocalVideoFrame uri={pendingVideo.localUri} style={styles.pendingThumb} />
+              <Text style={styles.pendingText}>Video ready to send</Text>
+              <Pressable onPress={() => setPendingVideo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove video">
+                <Text style={styles.dismiss}>✕</Text>
+              </Pressable>
             </View>
           )}
           {mentionMatches.length > 0 && (
@@ -432,7 +454,7 @@ export default function ConversationScreen() {
             </Pressable>
             <Pressable
               onPress={() => {
-                if (pendingImage?.status === 'uploading' || pendingVideo?.status === 'posting') return;
+                if (pendingImage?.status === 'uploading') return;
                 setGifPickerOpen(true);
               }}
               hitSlop={8}
@@ -521,23 +543,67 @@ function VideoTile({ video, from, onOpen, onLongPress }: { video: ChatVideo; fro
   const width = portrait ? 170 : 240;
   const aspect = video.width && video.height ? video.width / video.height : portrait ? 9 / 16 : 16 / 9;
   const seconds = Math.round(video.duration ?? 0);
+  const status = video.status ?? 'ready';
   return (
     <Pressable
-      onPress={() => onOpen(video.url)}
+      onPress={() => video.url && onOpen(video.url)}
       onLongPress={onLongPress}
+      disabled={status !== 'ready'}
       accessibilityRole="button"
-      accessibilityLabel={`Play video from ${from}${seconds ? `, ${seconds} seconds` : ''}`}
+      accessibilityLabel={
+        status === 'processing'
+          ? `Video from ${from}, still processing`
+          : status === 'failed'
+            ? `Video from ${from} couldn't be processed`
+            : `Play video from ${from}${seconds ? `, ${seconds} seconds` : ''}`
+      }
       style={[styles.videoTile, { width, aspectRatio: aspect }]}>
       <Image source={{ uri: video.poster_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
-      <View style={styles.playBadge}>
-        <Text style={styles.playGlyph}>▶</Text>
-      </View>
+      {status === 'ready' ? (
+        <View style={styles.playBadge}>
+          <Text style={styles.playGlyph}>▶</Text>
+        </View>
+      ) : status === 'processing' ? (
+        <View style={styles.playBadge}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : (
+        <Text style={styles.videoFailed}>Couldn&apos;t process this video</Text>
+      )}
       {seconds > 0 && (
         <Text style={styles.videoLength}>
           {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
         </Text>
       )}
     </Pressable>
+  );
+}
+
+// The first frame of a video on this phone (the composer preview and
+// an outgoing bubble): a paused, muted player.
+function LocalVideoFrame({ uri, style }: { uri: string; style: object }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.muted = true;
+  });
+  return <VideoView player={player} nativeControls={false} contentFit="cover" style={[style, styles.localFrame]} pointerEvents="none" />;
+}
+
+// Your video on its way up: shows in the thread right away, like iMessage.
+function OutgoingVideoBubble({ item, onRetry }: { item: OutgoingVideo; onRetry: () => void }) {
+  const failed = item.status === 'failed';
+  return (
+    <View style={[styles.messageWrap, styles.alignEnd]}>
+      <Pressable onPress={failed ? onRetry : undefined} disabled={!failed} accessibilityRole="button" accessibilityLabel={failed ? 'Video not delivered. Tap for options' : 'Sending video'}>
+        <View style={[styles.bubble, styles.bubbleMine]}>
+          <View style={[styles.videoTile, styles.outgoingTile]}>
+            <LocalVideoFrame uri={item.localUri} style={StyleSheet.absoluteFill} />
+            <View style={styles.playBadge}>{failed ? <Text style={styles.playGlyph}>!</Text> : <ActivityIndicator color="#fff" />}</View>
+          </View>
+          {!!item.body && <Text style={[styles.body, styles.textMine]}>{item.body}</Text>}
+        </View>
+      </Pressable>
+      <Text style={[styles.outgoingStatus, failed && styles.pendingError]}>{failed ? 'Not delivered · Tap to retry' : 'Sending…'}</Text>
+    </View>
   );
 }
 
@@ -884,7 +950,10 @@ const styles = StyleSheet.create({
   closeVideo: { alignSelf: 'flex-end', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, minHeight: 44, justifyContent: 'center' },
   closeVideoText: { color: Colors.text, fontSize: 16, fontWeight: '700' },
   videoTile: { borderRadius: Radius.md, overflow: 'hidden', backgroundColor: '#000', marginVertical: Spacing.xs, alignItems: 'center', justifyContent: 'center' },
-  videoThumb: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  localFrame: { backgroundColor: '#000' },
+  outgoingTile: { width: 170, aspectRatio: 9 / 16 },
+  outgoingStatus: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, marginRight: 4 },
+  videoFailed: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center', paddingHorizontal: 10, textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 3 },
   playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   playGlyph: { color: '#fff', fontSize: 18, marginLeft: 3 },
   videoLength: { position: 'absolute', right: 8, bottom: 6, color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 3 },

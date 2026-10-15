@@ -2200,7 +2200,10 @@ export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolea
 export type ChatReplyPreview = { id: number; owner_name: string; body: string };
 
 export type ChatVideo = {
-  url: string;
+  // "processing" while the backend converts it (the poster shows, it
+  // can't play yet); a message_updated event brings "ready" or "failed".
+  status?: "processing" | "ready" | "failed";
+  url: string | null;
   poster_url: string;
   width: number | null;
   height: number | null;

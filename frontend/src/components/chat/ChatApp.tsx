@@ -325,6 +325,16 @@ export function ChatApp({
     }
 
     function handleSocketEvent(event: Record<string, unknown>) {
+      // A posted video finished converting (or failed): swap it in.
+      if (event.type === "message_updated") {
+        const message = event.message as ChatMessage;
+        setMessagesByConversation((prev) => {
+          const existing = prev[message.conversation_id];
+          if (!existing) return prev;
+          return { ...prev, [message.conversation_id]: existing.map((m) => (m.id === message.id ? message : m)) };
+        });
+        return;
+      }
       if (event.type === "message") {
         const message = event.message as ChatMessage;
         setMessagesByConversation((prev) => {

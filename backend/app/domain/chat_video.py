@@ -14,12 +14,19 @@ asks iOS for H.264 when it picks a video) is just repackaged, which
 takes a second; anything else (an iPhone's HEVC .mov from a desktop, a
 WebM) is converted, capped at 1280px on the long edge. A poster frame
 goes up beside it so the chat shows something before anyone taps play.
+
+Two steps, so a video feels like iMessage instead of a long wait
+(2026-10-15): prepare() reads the upload, checks it and puts the poster
+up in a second or two, and the message is sent right then, marked
+"processing". finish() then converts and stores the video itself in the
+background, and the message is updated to "ready" (or "failed").
 """
 import asyncio
 import json
 import logging
 import os
 import tempfile
+import time
 import uuid
 
 from app.providers import chug_storage
@@ -31,6 +38,9 @@ MAX_DURATION_SECONDS = 3 * 60
 MAX_LONG_EDGE = 1280
 TRANSCODE_TIMEOUT_SECONDS = 8 * 60
 POSTER_LONG_EDGE = 720
+# A "processing" video older than this was lost (the server restarted
+# mid-conversion): shown as failed rather than spinning forever.
+PROCESSING_GIVE_UP_SECONDS = 20 * 60
 
 
 class ChatVideoError(Exception):
@@ -137,9 +147,11 @@ async def _poster(src: str, dst: str, duration: float) -> tuple[int, int]:
     return int(stream.get("width") or 0), int(stream.get("height") or 0)
 
 
-async def process_upload(src: str, conversation_id: int) -> dict:
-    """The stored video for a message's `video` column. Raises
-    ChatVideoError with a reason the person can act on."""
+async def prepare(src: str, conversation_id: int) -> tuple[dict, dict]:
+    """Step one, while the sender waits: checks the upload and stores
+    its poster. Returns the message's `video` (status "processing") and
+    the probe for finish(). Raises ChatVideoError with a reason the
+    person can act on."""
     p = await probe(src)
     if p["duration"] <= 0:
         raise ChatVideoError("That video is empty.")
@@ -147,22 +159,34 @@ async def process_upload(src: str, conversation_id: int) -> dict:
         raise ChatVideoError(f"Videos can be up to {MAX_DURATION_SECONDS // 60} minutes long.")
 
     unique = uuid.uuid4().hex
-    key = f"chat-videos/{conversation_id}/{unique}.mp4"
-    poster_key = f"chat-videos/{conversation_id}/{unique}.jpg"
+    stored = {
+        "key": f"chat-videos/{conversation_id}/{unique}.mp4",
+        "poster_key": f"chat-videos/{conversation_id}/{unique}.jpg",
+        "duration": round(p["duration"], 1),
+        "status": "processing",
+        "started_at": int(time.time()),
+    }
+    with tempfile.TemporaryDirectory() as work:
+        jpg = os.path.join(work, "poster.jpg")
+        stored["width"], stored["height"] = await _poster(src, jpg, p["duration"])
+        await asyncio.to_thread(chug_storage.upload_object, jpg, stored["poster_key"], "image/jpeg")
+    return stored, p
+
+
+async def finish(src: str, stored: dict, p: dict) -> dict:
+    """Step two, in the background: the playable MP4 into the bucket.
+    Returns `stored` marked "ready"; raises on failure."""
     with tempfile.TemporaryDirectory() as work:
         mp4 = os.path.join(work, "video.mp4")
-        jpg = os.path.join(work, "poster.jpg")
         await normalize(src, mp4, p)
-        width, height = await _poster(mp4, jpg, p["duration"])
-        await asyncio.to_thread(chug_storage.upload_object, mp4, key, "video/mp4")
-        await asyncio.to_thread(chug_storage.upload_object, jpg, poster_key, "image/jpeg")
-    return {
-        "key": key,
-        "poster_key": poster_key,
-        "width": width,
-        "height": height,
-        "duration": round(p["duration"], 1),
-    }
+        await asyncio.to_thread(chug_storage.upload_object, mp4, stored["key"], "video/mp4")
+    return {**stored, "status": "ready"}
+
+
+async def process_upload(src: str, conversation_id: int) -> dict:
+    """Both steps back to back (tests, and anything that can wait)."""
+    stored, p = await prepare(src, conversation_id)
+    return await finish(src, stored, p)
 
 
 def public_video(stored) -> dict | None:
@@ -175,8 +199,13 @@ def public_video(stored) -> dict | None:
     if not storage_ready():
         return None
     ttl = chug_storage.CHAT_URL_TTL_SECONDS
+    # Videos from before the two-step flow have no status: they're ready.
+    status = stored.get("status", "ready")
+    if status == "processing" and time.time() - stored.get("started_at", 0) > PROCESSING_GIVE_UP_SECONDS:
+        status = "failed"
     return {
-        "url": chug_storage.presigned_url(stored["key"], ttl),
+        "status": status,
+        "url": chug_storage.presigned_url(stored["key"], ttl) if status == "ready" else None,
         "poster_url": chug_storage.presigned_url(stored["poster_key"], ttl),
         "width": stored.get("width"),
         "height": stored.get("height"),

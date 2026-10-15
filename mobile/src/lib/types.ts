@@ -234,7 +234,10 @@ export type AnnouncementReceipts = {
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean; reactor_names: string[] };
 
 export type ChatVideo = {
-  url: string;
+  // "processing" while the backend converts it (the poster shows, it
+  // can't play yet); a message_updated event brings "ready" or "failed".
+  status?: 'processing' | 'ready' | 'failed';
+  url: string | null;
   poster_url: string;
   width: number | null;
   height: number | null;

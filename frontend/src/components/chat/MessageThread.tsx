@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ChatConversation, ChatMember, ChatMessage } from "@/lib/api";
+import { postChatVideo, type ChatConversation, type ChatMember, type ChatMessage } from "@/lib/api";
 import { AnnouncementFeed } from "@/components/chat/AnnouncementFeed";
 import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
 import { MessageBubble } from "@/components/chat/MessageBubble";
@@ -66,6 +66,10 @@ export function MessageThread({
   const [atBottom, setAtBottom] = useState(true);
   const [newMessageWaiting, setNewMessageWaiting] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  // Your videos on their way up, shown at the bottom of the thread right
+  // away like iMessage; each disappears once the backend has sent the
+  // real message (it arrives over the chat socket).
+  const [outgoing, setOutgoing] = useState<OutgoingVideo[]>([]);
   const isGroupConversation = conversation.type === "league" || conversation.type === "commish_corner";
   // Commish's Corner reads as a feed of tap-to-expand announcement
   // cards (matching History's own card list), not a chat bubble
@@ -124,6 +128,40 @@ export function MessageThread({
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     setAtBottom(distanceFromBottom < AT_BOTTOM_THRESHOLD_PX);
     if (distanceFromBottom < AT_BOTTOM_THRESHOLD_PX) setNewMessageWaiting(false);
+  }
+
+  async function uploadVideo(item: OutgoingVideo) {
+    const update = (patch: Partial<OutgoingVideo>) =>
+      setOutgoing((list) => list.map((o) => (o.key === item.key ? { ...o, ...patch } : o)));
+    update({ status: "sending", progress: 0, error: undefined });
+    try {
+      await postChatVideo(conversation.id, item.file, item.body, item.replyToId, (progress) => update({ progress }));
+      URL.revokeObjectURL(item.previewUrl);
+      setOutgoing((list) => list.filter((o) => o.key !== item.key));
+    } catch (e) {
+      update({ status: "failed", error: e instanceof Error ? e.message : "Couldn't send that video." });
+    }
+  }
+
+  function sendVideo(file: File, body: string) {
+    const item: OutgoingVideo = {
+      key: `${Date.now()}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      body,
+      replyToId: replyTo?.id ?? null,
+      status: "sending",
+      progress: 0,
+    };
+    setReplyTo(null);
+    setOutgoing((list) => [...list, item]);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+    void uploadVideo(item);
+  }
+
+  function discardVideo(item: OutgoingVideo) {
+    URL.revokeObjectURL(item.previewUrl);
+    setOutgoing((list) => list.filter((o) => o.key !== item.key));
   }
 
   function scrollToMessage(messageId: number) {
@@ -277,6 +315,9 @@ export function MessageThread({
               />
             ))
           )}
+          {outgoing.map((o) => (
+            <OutgoingVideoBubble key={o.key} item={o} onRetry={() => void uploadVideo(o)} onDiscard={() => discardVideo(o)} />
+          ))}
           {readReceipt && (
             <p className="mt-1 px-1 text-right text-[11px] text-black/35 dark:text-white/35">{readReceipt}</p>
           )}
@@ -319,6 +360,7 @@ export function MessageThread({
         ) : conversation.can_post ? (
           <MessageComposer
             conversationId={conversation.type === "commish_corner" ? undefined : conversation.id}
+            onSendVideo={sendVideo}
             members={members}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
@@ -337,6 +379,60 @@ export function MessageThread({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+type OutgoingVideo = {
+  key: string;
+  file: File;
+  previewUrl: string;
+  body: string;
+  replyToId: number | null;
+  status: "sending" | "failed";
+  progress: number;
+  error?: string;
+};
+
+// Your video on its way up: the local file plays as a preview with a
+// progress ring, then the real message replaces it.
+function OutgoingVideoBubble({ item, onRetry, onDiscard }: { item: OutgoingVideo; onRetry: () => void; onDiscard: () => void }) {
+  const failed = item.status === "failed";
+  const pct = Math.round(item.progress * 100);
+  return (
+    <div className="mt-2 flex flex-col items-end gap-1">
+      <div className="relative w-fit max-w-full overflow-hidden rounded-xl bg-black">
+        <video src={item.previewUrl} muted playsInline preload="metadata" className="max-h-80 w-[240px] max-w-full object-cover opacity-80" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          {failed ? (
+            <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white">Not delivered</span>
+          ) : (
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+              style={{ background: `conic-gradient(rgba(255,255,255,0.9) ${pct * 3.6}deg, rgba(0,0,0,0.55) 0deg)` }}
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-label="Sending video"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60">{pct < 100 ? `${pct}%` : "…"}</span>
+            </div>
+          )}
+        </div>
+      </div>
+      {item.body && <div className="chat-bubble max-w-[80%] rounded-2xl bg-[var(--wl-accent-dim)] px-3 py-2 text-sm text-white opacity-80">{item.body}</div>}
+      {failed ? (
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-red-500">{item.error}</span>
+          <button onClick={onRetry} className="font-semibold text-[var(--wl-accent-dim)] hover:underline">
+            Retry
+          </button>
+          <button onClick={onDiscard} className="text-black/50 hover:underline dark:text-white/50">
+            Delete
+          </button>
+        </div>
+      ) : (
+        <span className="text-[11px] text-black/40 dark:text-white/40">{pct < 100 ? "Sending…" : "Almost there…"}</span>
+      )}
     </div>
   );
 }

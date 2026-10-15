@@ -24,7 +24,6 @@ import tempfile
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, resolve_owner_id
@@ -341,10 +340,9 @@ async def share_to_league_chat(request: Request, pool=Depends(get_pool)):
     return {"conversation_id": conversation_id, "message_id": row["id"]}
 
 
-# A video post keeps the connection alive with a space this often while
-# it converts, the same trick as the chug upload (app/routers/chug.py's
-# upload_chug): Railway closes a request that sends nothing for 5 minutes.
-VIDEO_HEARTBEAT_SECONDS = 20
+# Background conversions in flight, so they aren't garbage-collected
+# mid-run (asyncio only keeps weak references to tasks).
+_video_tasks: set[asyncio.Task] = set()
 
 
 @router.post("/conversations/{conversation_id}/video")
@@ -358,14 +356,16 @@ async def post_video(
     pool=Depends(get_pool),
 ):
     """Posts a video to a conversation (2026-10), from the web composer
-    or the native app: stored and converted by app/domain/chat_video.py,
-    then sent exactly like a socket message (insert, broadcast, push).
-    The upload goes straight to the backend, not through a Vercel
-    function, so it carries a chat_upload ticket the way a chug upload
-    does (or the native app's Bearer token).
+    or the native app. The upload goes straight to the backend, not
+    through a Vercel function, so it carries a chat_upload ticket the
+    way a chug upload does (or the native app's Bearer token).
 
-    Streamed as text: a space every VIDEO_HEARTBEAT_SECONDS, then one
-    final JSON line, {"message": ...} or {"error": ..., "status": ...}."""
+    Feels like iMessage rather than a long wait (2026-10-15): once the
+    file is here, its poster goes up and the message is sent right
+    away, marked "processing" (app/domain/chat_video.py's prepare), so
+    everyone sees it in a second or two. The playable MP4 is made in the
+    background (_finish_video), then a "message_updated" event swaps
+    it in. Returns {"message": ...} as soon as it's sent."""
     payload = _decode_session(get_session_token(request))
     if payload is None and ticket:
         payload = decode_ticket_token(SessionConfig().session_secret, ticket, expected_purpose="chat_upload")
@@ -396,41 +396,65 @@ async def post_video(
             if not original or original["conversation_id"] != conversation_id:
                 reply_to_id = None
 
-    async def work() -> dict:
-        with tempfile.TemporaryDirectory() as tmp:
-            src = os.path.join(tmp, "upload" + (os.path.splitext(video.filename or "")[1].lower() or ".mp4"))
-            with open(src, "wb") as out:
-                await asyncio.to_thread(shutil.copyfileobj, video.file, out)
-            if os.path.getsize(src) > chat_video.MAX_VIDEO_BYTES:
-                raise chat_video.ChatVideoError("That video is too big. Try a shorter clip.")
-            stored = await chat_video.process_upload(src, conversation_id)
-        async with pool.acquire() as conn:
-            blockers = await chat_safety_queries.owners_blocking(conn, owner_id, participant_ids)
-            recipients = [p for p in participant_ids if p not in blockers]
-            row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, reply_to_id, video=stored)
-            message = await chat_domain.get_single_message(conn, row["id"], owner_id)
-        await manager.broadcast_to_owners(recipients, {"type": "message", "message": message})
-        await _push_notify_new_message(
-            conversation_id, owner_id, owner_name or "Someone", body or "🎥 Video", reply_to_id, [], recipients
-        )
-        return {"message": message}
+    # The upload's working copy lives until the background conversion is
+    # done with it (_finish_video removes it).
+    work = tempfile.mkdtemp(prefix="chat-video-")
+    src = os.path.join(work, "upload" + (os.path.splitext(video.filename or "")[1].lower() or ".mp4"))
+    try:
+        with open(src, "wb") as out:
+            await asyncio.to_thread(shutil.copyfileobj, video.file, out)
+        if os.path.getsize(src) > chat_video.MAX_VIDEO_BYTES:
+            raise chat_video.ChatVideoError("That video is too big. Try a shorter clip.")
+        stored, probed = await chat_video.prepare(src, conversation_id)
+    except chat_video.ChatVideoError as e:
+        shutil.rmtree(work, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
 
-    async def stream():
-        task = asyncio.ensure_future(work())
-        while not task.done():
-            _, pending = await asyncio.wait({task}, timeout=VIDEO_HEARTBEAT_SECONDS)
-            if pending:
-                yield " "
+    async with pool.acquire() as conn:
+        blockers = await chat_safety_queries.owners_blocking(conn, owner_id, participant_ids)
+        recipients = [p for p in participant_ids if p not in blockers]
+        row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, reply_to_id, video=stored)
+        message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+    await manager.broadcast_to_owners(recipients, {"type": "message", "message": message})
+
+    task = asyncio.create_task(_finish_video(row["id"], owner_id, recipients, work, src, stored, probed))
+    _video_tasks.add(task)
+    task.add_done_callback(_video_tasks.discard)
+
+    await _push_notify_new_message(
+        conversation_id, owner_id, owner_name or "Someone", body or "🎥 Video", reply_to_id, [], recipients
+    )
+    return {"message": message}
+
+
+async def _finish_video(
+    message_id: int, owner_id: int, recipients: list[int], work: str, src: str, stored: dict, probed: dict
+) -> None:
+    """The background half of post_video: converts and stores the MP4,
+    marks the message ready (or failed), and tells everyone in the chat."""
+    try:
         try:
-            yield "\n" + json.dumps(await task)
-        except chat_video.ChatVideoError as e:
-            yield "\n" + json.dumps({"error": str(e), "status": 400})
+            done = await chat_video.finish(src, stored, probed)
         except Exception:
-            logger.exception("Posting a chat video failed (conversation_id=%s)", conversation_id)
-            yield "\n" + json.dumps({"error": "Something went wrong posting that video. Try again.", "status": 500})
-
-    return StreamingResponse(stream(), media_type="text/plain")
-
+            logger.exception("Converting chat video for message %s failed", message_id)
+            done = {**stored, "status": "failed"}
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            updated = await conn.fetchval(
+                "UPDATE messages SET video = $2::jsonb WHERE id = $1 AND deleted_at IS NULL RETURNING id",
+                message_id, json.dumps(done),
+            )
+            if not updated:
+                return
+            message = await chat_domain.get_single_message(conn, message_id, owner_id)
+        await manager.broadcast_to_owners(recipients, {"type": "message_updated", "message": message})
+    except Exception:
+        logger.exception("Finishing chat video for message %s failed", message_id)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 @router.post("/conversations/{conversation_id}/read")
 async def mark_conversation_read(conversation_id: int, request: Request, pool=Depends(get_pool)):

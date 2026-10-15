@@ -2,7 +2,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.session import create_session_token
 from app.main import app
-from tests.conftest import TEST_SEASON, make_safe_session_user_id
+from app.config import DEFAULT_LEAGUE_ID
+from tests.conftest import TEST_SEASON, make_safe_session_user_id_for_owner
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
 
@@ -12,8 +13,17 @@ def _client():
 
 
 async def _session_cookie(pool, owner_id: int):
+    # A user linked to the owner (routes look the owner up live from the
+    # user, resolve_owner_id, not from the token's owner_id claim): the
+    # one _seed_owner already linked, else a fresh one.
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval("SELECT user_id FROM owner_users WHERE owner_id = $1 LIMIT 1", owner_id)
+        if user_id is not None:
+            await conn.execute("UPDATE users SET token_version = 1, active_league_id = $2 WHERE id = $1", user_id, DEFAULT_LEAGUE_ID)
+    if user_id is None:
+        user_id = await make_safe_session_user_id_for_owner(pool, owner_id)
     token = create_session_token(
-        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=123, is_commissioner=False
+        _SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=123, is_commissioner=False
     )
     return {"session": token}
 

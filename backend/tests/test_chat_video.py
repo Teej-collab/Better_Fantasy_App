@@ -83,3 +83,26 @@ def test_public_video_signs_both_links(monkeypatch):
     assert out["poster_url"].startswith("https://signed/chat-videos/1/x.jpg")
     assert (out["width"], out["height"], out["duration"]) == (720, 1280, 9.5)
     assert chat_video.public_video(None) is None
+
+
+def test_processing_video_has_poster_but_no_link_until_ready(tmp_path, monkeypatch):
+    clip = tmp_path / "d.mp4"
+    _make_clip(clip, "libx264")
+    uploaded = {}
+    monkeypatch.setattr(chug_storage, "upload_object", lambda path, key, ctype: uploaded.__setitem__(key, ctype))
+    monkeypatch.setattr(chat_video, "storage_ready", lambda: True)
+    monkeypatch.setattr(chug_storage, "presigned_url", lambda key, ttl: f"https://signed/{key}")
+
+    stored, probed = asyncio.run(chat_video.prepare(str(clip), 7))
+    # Only the poster is up so far; the message can go out now.
+    assert list(uploaded) == [stored["poster_key"]]
+    shown = chat_video.public_video(stored)
+    assert shown["status"] == "processing" and shown["url"] is None and shown["poster_url"]
+
+    done = asyncio.run(chat_video.finish(str(clip), stored, probed))
+    assert uploaded[stored["key"]] == "video/mp4"
+    assert chat_video.public_video(done)["url"] == f"https://signed/{stored['key']}"
+
+    # A conversion lost to a restart reads as failed, not spinning forever.
+    stale = {**stored, "started_at": 0}
+    assert chat_video.public_video(stale)["status"] == "failed"

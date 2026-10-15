@@ -36,6 +36,8 @@ type SocketEvent =
       added: boolean;
     }
   | { type: 'deleted'; message_id: number; conversation_id: number }
+  // A posted video finished converting (or failed): the same message, updated.
+  | { type: 'message_updated'; message: ChatMessage }
   // The commissioner just spun the Punishment Wheel: an open wheel screen
   // picks it up and plays the spin (app/punishment-wheel.tsx).
   | { type: 'wheel_spin'; league_id: number; season: number; landed_index: number; items: string[]; text: string }
@@ -99,6 +101,13 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
   const handleEvent = useCallback((event: SocketEvent) => {
     const myOwnerId = queryClient.getQueryData<{ owner_id: number | null }>(['me'])?.owner_id ?? null;
 
+    if (event.type === 'message_updated') {
+      const message = event.message;
+      queryClient.setQueryData<ChatMessage[]>(['chat-messages', message.conversation_id], (prev) =>
+        prev?.map((m) => (m.id === message.id ? message : m)),
+      );
+      return;
+    }
     if (event.type === 'message') {
       const message = event.message;
       queryClient.setQueryData<ChatMessage[]>(['chat-messages', message.conversation_id], (prev) =>

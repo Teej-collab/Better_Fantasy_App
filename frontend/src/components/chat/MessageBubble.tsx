@@ -88,6 +88,12 @@ function renderBodyWithMentions(body: string, mentionedNames: string[]) {
   );
 }
 
+function videoBoxStyle(video: { width: number | null; height: number | null }) {
+  return video.width && video.height
+    ? { aspectRatio: `${video.width} / ${video.height}`, width: video.width >= video.height ? 320 : 200 }
+    : { width: 280 };
+}
+
 export function MessageBubble({
   message,
   mine,
@@ -199,20 +205,32 @@ export function MessageBubble({
             <div className="relative w-fit max-w-full">
               {/* preload="none": the poster shows until someone taps play,
                   so scrolling a thread full of videos downloads nothing. */}
-              <video
-                src={message.video.url}
-                poster={message.video.poster_url}
-                controls
-                playsInline
-                preload="none"
-                aria-label="Video"
-                className="max-h-80 max-w-full rounded-xl bg-black"
-                style={
-                  message.video.width && message.video.height
-                    ? { aspectRatio: `${message.video.width} / ${message.video.height}`, width: message.video.width >= message.video.height ? 320 : 200 }
-                    : { width: 280 }
-                }
-              />
+              {message.video.url && (message.video.status ?? "ready") === "ready" ? (
+                <video
+                  src={message.video.url}
+                  poster={message.video.poster_url}
+                  controls
+                  playsInline
+                  preload="none"
+                  aria-label="Video"
+                  className="max-h-80 max-w-full rounded-xl bg-black"
+                  style={videoBoxStyle(message.video)}
+                />
+              ) : (
+                // Still converting (or failed): the poster, with a spinner
+                // or a note, until a message_updated event swaps it.
+                <div className="relative max-h-80 max-w-full overflow-hidden rounded-xl bg-black" style={videoBoxStyle(message.video)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={message.video.poster_url} alt="" className="h-full w-full object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    {message.video.status === "failed" ? (
+                      <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white">Couldn&apos;t process this video</span>
+                    ) : (
+                      <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-white/30 border-t-white" role="status" aria-label="Video processing" />
+                    )}
+                  </div>
+                </div>
+              )}
               {!message.body && message.reactions.length > 0 && (
                 <ReactionBadge mine={mine} reactions={message.reactions} />
               )}
