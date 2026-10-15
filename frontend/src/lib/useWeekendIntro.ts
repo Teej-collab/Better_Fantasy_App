@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIntroSound } from "@/lib/useIntroSound";
+import { takeFullIntro } from "@/lib/introSoundPreference";
 
 // Shared by OpeningExperience.tsx (signed-out front door) and the
 // authenticated app-entry sequence (AppEntry.tsx, HomeWelcomeBackEntry.tsx)
@@ -84,8 +85,14 @@ export function useWeekendIntro({ sound = true }: { sound?: boolean } = {}) {
         // Can't tell — default to showing the intro rather than
         // leaving the page stuck.
       }
+      // With sound (Home's Welcome Back, the sign-in screen), the full
+      // intro plays on the first load of the day, or per Settings >
+      // Appearance > Intro Sound (introSoundPreference.ts). Silent
+      // (AppEntry.tsx's reload of any other page) it stays once per
+      // browser, so a reload there doesn't use up the day's sound.
+      const full = sound ? !prefersReducedMotion() && takeFullIntro() : !seenBefore && !prefersReducedMotion();
 
-      if (prefersReducedMotion() || seenBefore) {
+      if (!full) {
         // No sound here — this is deliberately the abbreviated path
         // (accessibility preference, or a repeat signed-out visitor),
         // so it skips the light-switch/can-opening/pour cues along

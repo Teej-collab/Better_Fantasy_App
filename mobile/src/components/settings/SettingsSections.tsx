@@ -29,6 +29,7 @@ import { COLOR_PRESETS, isHexColor, isMulti, MULTI, MULTI_COLORS } from '@/lib/c
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
 import { pickChatPhoto } from '@/lib/chatImage';
+import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from '@/lib/introSound';
 import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
 import { registerForPush } from '@/lib/pushRegistration';
 import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, usePreferences } from '@/lib/queries';
@@ -786,6 +787,8 @@ export function AppearanceSettings() {
 
       {canChangeAppIcon && <SeasonalIconSetting />}
 
+      <IntroSoundSetting />
+
       <Panel title="Animations" description="Your device's own reduced-motion setting is always respected regardless of this choice.">
         <Segment
           options={[
@@ -852,6 +855,29 @@ function SeasonalIconSetting() {
         onChange={(v) => {
           setEnabled(v);
           void setSeasonalIconEnabled(v);
+        }}
+      />
+    </Panel>
+  );
+}
+
+// Saved on this phone (lib/introSound.ts), so it changes right away.
+function IntroSoundSetting() {
+  const [mode, setMode] = useState<IntroSoundMode>(getIntroSoundMode);
+  return (
+    <Panel
+      title="Intro Sound"
+      description="The full intro when you open the app: the lights clicking on, then a can cracking open and the pour. Plays only when your ringer is on. Every other open gets the quick version.">
+      <Segment
+        options={[
+          { key: 'daily', label: 'Once a Day' },
+          { key: 'always', label: 'Every Time' },
+          { key: 'off', label: 'Off' },
+        ]}
+        value={mode}
+        onChange={(next) => {
+          setMode(next);
+          setIntroSoundMode(next);
         }}
       />
     </Panel>

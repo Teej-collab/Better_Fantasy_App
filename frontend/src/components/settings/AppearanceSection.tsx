@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { getPreferences, updatePreferences, type OwnerPreferences } from "@/lib/api";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
 import { ColorChoices, isHexColor } from "@/components/settings/ColorChoices";
+import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from "@/lib/introSoundPreference";
+
+const INTRO_SOUND_MODES: { key: IntroSoundMode; label: string }[] = [
+  { key: "daily", label: "Once a Day" },
+  { key: "always", label: "Every Time" },
+  { key: "off", label: "Off" },
+];
 
 const NEON_LEVELS: { key: OwnerPreferences["neon_intensity"]; label: string }[] = [
   { key: "subtle", label: "Subtle" },
@@ -492,6 +499,47 @@ export function AppearanceSection() {
           </button>
         </div>
       </section>
+
+      <IntroSoundSetting />
     </div>
+  );
+}
+
+// Saved in this browser (introSoundPreference.ts), not the account.
+// Only drawn once preferences load in the browser, so it can read
+// localStorage straight away.
+function IntroSoundSetting() {
+  const [mode, setMode] = useState<IntroSoundMode>(getIntroSoundMode);
+  return (
+    <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+      <div>
+        <h2 className="text-sm font-semibold tracking-wide uppercase">Intro Sound</h2>
+        <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+          The full Welcome Back intro on Home: the lights clicking on, then a can cracking open and the pour. Every
+          other load gets the quick version. Your browser may keep it quiet until you&apos;ve clicked on the page.
+        </p>
+      </div>
+      <div className="flex gap-2" role="radiogroup" aria-label="Intro Sound">
+        {INTRO_SOUND_MODES.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            role="radio"
+            aria-checked={mode === m.key}
+            onClick={() => {
+              setMode(m.key);
+              setIntroSoundMode(m.key);
+            }}
+            className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
+              mode === m.key
+                ? "border-[var(--wl-accent)] text-black dark:text-white"
+                : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

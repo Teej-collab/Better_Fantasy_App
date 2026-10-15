@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAudioModeAsync, createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -17,6 +16,7 @@ import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg'
 
 import { IntroSeasonDecor } from '@/components/IntroSeasonDecor';
 import { haptics } from '@/lib/haptics';
+import { takeFullIntro } from '@/lib/introSound';
 import { currentSeason } from '@/lib/seasonal';
 import { Text } from '@/components/Text';
 import { Colors } from '@/constants/theme';
@@ -89,16 +89,6 @@ function weekendPowerOn() {
   );
 }
 
-const INTRO_SEEN_KEY = 'wl:intro-seen';
-// Read once at startup so the check is instant by the time the intro asks.
-const introSeenOnLaunch = AsyncStorage.getItem(INTRO_SEEN_KEY).then((v) => v === '1').catch(() => false);
-function hasSeenIntro(): Promise<boolean> {
-  return introSeenOnLaunch;
-}
-function markIntroSeen() {
-  AsyncStorage.setItem(INTRO_SEEN_KEY, '1').catch(() => {});
-}
-
 function useIntroSounds(enabled: boolean) {
   const players = useRef<{ light: AudioPlayer; can: AudioPlayer; pour: AudioPlayer } | null>(null);
   useEffect(() => {
@@ -159,7 +149,11 @@ export function IntroOverlay({
   const [wordIndex, setWordIndex] = useState(0);
   const [revealing, setRevealing] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const sounds = useIntroSounds(!reduceMotion);
+  // The full show (about 8 seconds, with sound) plays on the first open
+  // of the day, or per Settings > Appearance > Intro Sound; every other
+  // open gets the quick version.
+  const [full] = useState(() => !reduceMotion && takeFullIntro());
+  const sounds = useIntroSounds(full);
 
   const ambient = useSharedValue(0);
   const word = useSharedValue(0);
@@ -227,16 +221,12 @@ export function IntroOverlay({
   }
 
   useEffect(() => {
-    after(INITIAL_DARK_BEAT_MS, async () => {
+    after(INITIAL_DARK_BEAT_MS, () => {
       ambient.set(withTiming(1, { duration: 1400 }));
-      // The full show (about 8 seconds, with sound) plays once per
-      // install; every launch after that gets the quick version.
-      const seen = await hasSeenIntro();
-      if (reduceMotion || seen) {
+      if (!full) {
         showFinal(true);
         return;
       }
-      markIntroSeen();
       setStage('word');
       word.set(flickerOn(WORD_FLICKER_MS[0]));
       sounds.playLightSwitch(); // WELCOME
