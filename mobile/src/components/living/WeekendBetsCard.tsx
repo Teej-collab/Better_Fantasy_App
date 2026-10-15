@@ -80,10 +80,23 @@ export function weekendBets(bets: Bet[], games: NflGame[]): Bet[] {
   });
 }
 
-export function WeekendBetsCard({ bets, games }: { bets: Bet[]; games: NflGame[] }) {
+export function WeekendBetsCard({ bets, games, enabled }: { bets: Bet[]; games: NflGame[]; enabled: boolean }) {
   const byId = new Map(games.map((g) => [g.id, g]));
   const mine = weekendBets(bets, games);
-  if (mine.length === 0) return null;
+  // Bet tracking off in Settings: no card at all.
+  if (!enabled) return null;
+  if (mine.length === 0) {
+    return (
+      <Panel tint={ACCENT}>
+        <View style={styles.headText}>
+          <Kicker color={ACCENT}>Your bets · this weekend</Kicker>
+          <Text style={styles.headline}>No bets this weekend yet</Text>
+          <Text style={styles.small}>Screenshot a slip from your sportsbook and it tracks here live, through Monday night.</Text>
+        </View>
+        <BetButtons more={0} />
+      </Panel>
+    );
+  }
 
   const kinds = new Map(mine.map((b) => [b.id, betKind(b, byId)]));
   const live = mine.filter((b) => kinds.get(b.id) === 'live');
@@ -137,27 +150,33 @@ export function WeekendBetsCard({ bets, games }: { bets: Bet[]; games: NflGame[]
         <BetRow key={b.id} bet={b} kind={kinds.get(b.id)!} games={byId} />
       ))}
 
-      <View style={styles.buttons}>
-        <Pressable
-          onPress={() => {
-            haptics.tap();
-            router.push('/bets/add');
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.button, styles.buttonPrimary, pressed && styles.pressed]}>
-          <Text style={[styles.buttonText, { color: Colors.bg }]}>Add a bet slip</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            haptics.tap();
-            router.push('/bets');
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.pressed]}>
-          <Text style={styles.buttonText}>{more > 0 ? `All bets (+${more})` : 'All bets'}</Text>
-        </Pressable>
-      </View>
+      <BetButtons more={more} />
     </Panel>
+  );
+}
+
+function BetButtons({ more }: { more: number }) {
+  return (
+    <View style={styles.buttons}>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          router.push('/bets/add');
+        }}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.button, styles.buttonPrimary, pressed && styles.pressed]}>
+        <Text style={[styles.buttonText, { color: Colors.bg }]}>Add a bet slip</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          router.push('/bets');
+        }}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.pressed]}>
+        <Text style={styles.buttonText}>{more > 0 ? `All bets (+${more})` : 'All bets'}</Text>
+      </Pressable>
+    </View>
   );
 }
 

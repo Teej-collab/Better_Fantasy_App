@@ -106,15 +106,26 @@ function TeamScreenContent() {
         {view !== 'matchup' ? (
           <PlayerViewTable
             view={view}
-            rows={[...starters, ...bench, ...ir].map((e) => ({
+            rows={[...starters, ...bench, ...ir, ...taxi].map((e) => ({
               id: e.player_id,
               position: e.position,
               cell: (
                 <View style={styles.viewCell}>
                   <PositionStripe position={e.position} />
-                  <View style={styles.viewSlot}>
-                    <Text style={styles.viewSlotText}>{slotDisplayLabel(e.lineup_slot)}</Text>
-                  </View>
+                  {/* Moves work from every view, not just Matchup Stats
+                      (2026-10-15: stuck on Rankings, a tester couldn't move anyone). */}
+                  <Pressable
+                    disabled={!editable || e.is_locked}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      setEditing(e);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${e.player_name}`}
+                    style={({ pressed }) => [styles.viewSlot, editable && !e.is_locked && styles.slotPillEditable, pressed && styles.pressed]}>
+                    <Text style={[styles.viewSlotText, editable && !e.is_locked && styles.slotTextEditable]}>{slotDisplayLabel(e.lineup_slot)}</Text>
+                  </Pressable>
                   <PlayerHeadshot url={e.headshot_url} position={e.position} size={30} />
                   <Pressable onPress={() => openPlayer(e.player_id)} style={styles.player}>
                     <Text style={styles.playerName} numberOfLines={1}>
@@ -341,7 +352,7 @@ function LineupSheet({ entry, team, onClose }: { entry: RosterEntry; team: MyTea
 const styles = StyleSheet.create({
   viewsRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   viewCell: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  viewSlot: { width: 46, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 2, alignItems: 'center' },
+  viewSlot: { width: 46, minHeight: 28, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   viewSlotText: { color: Colors.text, fontSize: 10, fontWeight: '600' },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },

@@ -191,7 +191,8 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const trades = useMyTrades().data ?? [];
   const tradeSettings = useTradeSettings().data ?? null;
   const keeperRules = useKeeperRules().data ?? null;
-  const bets = useBets().data?.bets ?? [];
+  const betsData = useBets().data;
+  const bets = betsData?.bets ?? [];
   const rooms = useWatchPartyRooms().data ?? null;
   const [refreshing, setRefreshing] = useState(false);
 
@@ -235,7 +236,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const turning =
     history && mine ? <TurningPointsCard history={history} meIsHome={mine.item.home.team_id === teamId} opponent={mine.them.owner_name} /> : null;
   // Your bets, Thursday morning to Monday night, on whatever the mood is.
-  const betsCard = inBetsWeekend(now) ? <WeekendBetsCard bets={bets} games={games} /> : null;
+  const betsCard = inBetsWeekend(now) ? <WeekendBetsCard bets={bets} games={games} enabled={betsData?.enabled ?? false} /> : null;
   const tonightGames = games.filter((g) => (g.state === 'pre' || g.state === 'in') && sameEtDate(g.date, now));
 
   // Recap day: last week's final until Wednesday's waivers start the new week.
