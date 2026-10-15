@@ -14,6 +14,7 @@ local per-router helper there too, not shared). League/membership
 scoping uses the same require_active_league_id/resolve_owner_id this
 whole app's league-scoped routers already depend on.
 """
+import asyncio
 import time
 
 import jwt
@@ -26,6 +27,7 @@ from app.config import _require, require_livekit_configured
 from app.db import get_pool
 from app.domain import watch_party as watch_party_domain
 from app.domain import watch_party_rooms
+from app.notifications import watch_party_events
 from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.queries import chat as chat_queries
 from app.queries import league as league_queries
@@ -255,6 +257,17 @@ async def lobby(request: Request, pool=Depends(get_pool)):
     return {"week": week, "games": out}
 
 
+# Pushes sent after a room is created, kept referenced until they finish
+# (asyncio only holds weak references to tasks).
+_push_tasks: set[asyncio.Task] = set()
+
+
+def _background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _push_tasks.add(task)
+    task.add_done_callback(_push_tasks.discard)
+
+
 @router.post("/rooms")
 async def create_room(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
@@ -281,6 +294,11 @@ async def create_room(request: Request, pool=Depends(get_pool)):
                     "UPDATE watch_party_rooms SET tv_game_id = $1, tv_set_by_owner_id = $2, tv_updated_at = now() WHERE id = $3",
                     game_id, owner_id, room_id,
                 )
+            host_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+        # The rest of the league hears about it once, after the response.
+        _background(watch_party_events.notify_party_started(
+            int(_require("ACTIVE_SEASON")), league_id, owner_id, (host_name or "Someone").split()[0], room_id, name[:60], game_id,
+        ))
         return {"id": room_id}
 
     if not name:
@@ -304,7 +322,11 @@ async def create_room(request: Request, pool=Depends(get_pool)):
             raise HTTPException(status_code=400, detail=f"Not a member of your league: {invalid}")
 
         room_id = await watch_party_queries.create_private_room(conn, league_id, name, owner_id, invited_owner_ids)
+        host_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
 
+    invited = [i for i in invited_owner_ids if i != owner_id]
+    if invited:
+        _background(watch_party_events.notify_room_invite((host_name or "Someone").split()[0], room_id, name, invited))
     return {"id": room_id}
 
 

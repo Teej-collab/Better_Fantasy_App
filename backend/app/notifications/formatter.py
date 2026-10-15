@@ -84,6 +84,18 @@ def lounge_mention(sender_name: str, body: str, room_id: int, room_name: str) ->
     return _payload(f"{sender_name} tagged you in {room_name}", _preview(body) or "Come watch", f"/chat?party={room_id}", "chat_mention")
 
 
+def watch_party_started(host_name: str, room_name: str, room_id: int, game: str | None) -> dict:
+    """An open watch party just started in your league (2026-10): the tap
+    opens the room, the same link a Lounge mention uses."""
+    body = f"{game} is on the TV. Come watch." if game else f"{room_name} is open. Come watch."
+    return _payload(f"📺 {host_name} started a watch party", body, f"/chat?party={room_id}", "watch_party_started", tag=f"party-{room_id}")
+
+
+def watch_party_invite(host_name: str, room_name: str, room_id: int) -> dict:
+    """Invited to a private room (2026-10)."""
+    return _payload(f"📺 {host_name} invited you to watch", f"{room_name} is open. Tap to join.", f"/chat?party={room_id}", "watch_party_invite", tag=f"party-{room_id}")
+
+
 def chat_reply(sender_name: str, body: str, conversation_id: int) -> dict:
     return _payload(f"{sender_name} replied to you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_reply")
 

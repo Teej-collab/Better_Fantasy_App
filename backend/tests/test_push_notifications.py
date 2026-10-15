@@ -3,7 +3,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.session import create_session_token
 from app.main import app
 from app.queries import owner_preferences as preferences_queries
-from tests.conftest import make_safe_session_user_id
+from tests.conftest import make_safe_session_user_id_for_owner
 from app.queries import push_subscriptions as queries
 
 _SESSION_SECRET = "test-secret-thats-at-least-32-bytes-long"
@@ -15,7 +15,7 @@ def _client():
 
 async def _session_cookie(pool, owner_id: int):
     token = create_session_token(
-        _SESSION_SECRET, user_id=await make_safe_session_user_id(pool), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
+        _SESSION_SECRET, user_id=await make_safe_session_user_id_for_owner(pool, owner_id), owner_id=owner_id, discord_user_id=100000 + owner_id, is_commissioner=False
     )
     return {"session": token}
 

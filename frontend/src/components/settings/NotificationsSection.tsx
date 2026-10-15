@@ -52,6 +52,7 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
   { key: "notify_player_news", label: "Player News", description: "Any other news about one of your players, like practice reports. Can get chatty — turn it off if it does." },
   { key: "notify_fantasy_team", label: "Lead Changes", description: "You take the lead in your matchup, or lose it." },
   { key: "notify_league", label: "League Activity", description: "Someone in your league posts a graded chug." },
+  { key: "notify_watch_parties", label: "Watch Parties", description: "Someone in your league starts a watch party, or invites you to a private room." },
 ];
 
 type PushUiState = {

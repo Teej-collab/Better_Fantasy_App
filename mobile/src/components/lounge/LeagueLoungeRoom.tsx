@@ -24,7 +24,7 @@ import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
 import { LoungeTv } from '@/components/lounge/LoungeTv';
-import { isTouchdown, MomentTakeover, type Moment, type ReactionCounts } from '@/components/lounge/MomentTakeover';
+import { ChugAlertCard, isTouchdown, MomentRibbon, MomentsSheet, MomentToasts, SwingStrip, useRoomMoments } from '@/components/lounge/RoomMoments';
 import { Text } from '@/components/Text';
 import { Fonts } from '@/constants/theme';
 import { cleanChat } from '@/lib/chatFilter';
@@ -35,8 +35,8 @@ import { useChatSocket } from '@/lib/chatSocket';
 import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
-import { useChatMembers, useChatMessages, useMe } from '@/lib/queries';
-import { useRosterMoments, type RosterMoment } from '@/lib/rosterMoments';
+import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
+import { useRosterMoments } from '@/lib/rosterMoments';
 import type { GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
@@ -138,23 +138,27 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const sweat = useLoungeSweat(delaySeconds);
   const [sweatOpen, setSweatOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
-  const [moment, setMoment] = useState<Moment | null>(null);
   const [moments, setMoments] = useState<FeedItem[]>([]);
-  const [winBefore, setWinBefore] = useState<number | null>(null);
-  const winHistory = useRef<number[]>([]);
+  const [momentsOpen, setMomentsOpen] = useState(false);
   const [reactions, setReactions] = useState<{ key: ReactionKey; at: number; name: string }[]>([]);
   const [burst, setBurst] = useState<{ text: string; id: number } | null>(null);
-
-  // Win odds history for the moment's swing chart.
-  useEffect(() => {
-    if (sweat.winPct === null) return;
-    const h = winHistory.current;
-    if (h[h.length - 1] !== sweat.winPct) h.push(sweat.winPct);
-    if (h.length > 30) h.shift();
-  }, [sweat.winPct]);
-
-  const latestWin = useRef(sweat.winPct);
-  latestWin.current = sweat.winPct;
+  // The last minute's reactions, as counts on each reaction button.
+  const counts = useMemo(() => {
+    const c: Record<ReactionKey, number> = { letsgo: 0, robbed: 0, chug: 0, flag: 0 };
+    for (const r of reactions) c[r.key] += 1;
+    return c;
+  }, [reactions]);
+  const me = useMe().data;
+  const activeLeague = useActiveLeague().data;
+  // The room's pop-ups: big moments, fantasy plays and league moments
+  // (components/lounge/RoomMoments.tsx).
+  const rm = useRoomMoments({
+    sweat,
+    myOwnerId: me?.owner_id ?? null,
+    roomOwnerIds: participants.map((p) => p.identity),
+    chugEnabled: !!activeLeague?.chug_enabled,
+    chugRuleName: activeLeague?.chug_rule_name ?? null,
+  });
 
   async function onPlay(play: GamecastPlay, game: LiveGame) {
     let players: Awaited<ReturnType<typeof api.playFantasy>>['players'] = [];
@@ -163,11 +167,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     } catch {
       players = [];
     }
-    if (isTouchdown(play)) {
-      setWinBefore(latestWin.current);
-      setMoment({ play, game, players });
-      haptics.success();
-    }
+    rm.onPlay(play, game, players);
     const top = [...players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points))[0];
     if (!top || Math.abs(top.points) < 0.05) return;
     const yards = play.yards_gained ? `${Math.abs(play.yards_gained)}-yd ${play.play_type === 'pass' ? 'catch' : play.play_type === 'rush' ? 'run' : 'play'}` : 'big play';
@@ -193,7 +193,6 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const delayed = useDelayedGame(tvGameId, delaySeconds, (p, g) => void onPlay(p, g));
 
   // Reactions ride LiveKit's data channel — instant, and nothing stored.
-  const me = useMe().data;
   const myName = me?.display_name ?? 'You';
   const { send: sendData } = useDataChannel('lounge-reaction', (msg) => {
     try {
@@ -221,28 +220,20 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     addReaction(key, myName);
     void sendData(new TextEncoder().encode(JSON.stringify({ key })), { reliable: true });
   }
-  const counts: ReactionCounts = useMemo(() => {
-    const c = { letsgo: 0, robbed: 0, chug: 0, flag: 0 };
-    for (const r of reactions) c[r.key] += 1;
-    return c;
-  }, [reactions]);
 
   // No game on the TV: your own starters' touchdowns and 5+ point plays
   // from every game instead (lib/rosterMoments.ts).
   const rosterMoments = useRosterMoments(sweat.matchupId, sweat.ready ? sweat.myStarters : null, !tvGameId);
   const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
-  const [rosterBanner, setRosterBanner] = useState<RosterMoment | null>(null);
-  const [bannerShownFor, setBannerShownFor] = useState<string | null>(null);
-  if (latestRosterMoment && latestRosterMoment.id !== bannerShownFor) {
-    setBannerShownFor(latestRosterMoment.id);
-    setRosterBanner(latestRosterMoment);
-  }
+  // Each one pops up once, as a fantasy-play notification.
+  const rosterShown = useRef<string | null>(null);
   useEffect(() => {
-    if (!rosterBanner) return;
-    if (rosterBanner.touchdown) haptics.success();
-    const id = setTimeout(() => setRosterBanner(null), 15_000);
-    return () => clearTimeout(id);
-  }, [rosterBanner]);
+    if (!latestRosterMoment || latestRosterMoment.id === rosterShown.current) return;
+    rosterShown.current = latestRosterMoment.id;
+    const m = latestRosterMoment;
+    rm.onRosterPlay(m.id, m.playerName, m.touchdown, m.points, m.proTeam ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRosterMoment?.id]);
   const rosterFeed: FeedItem[] = rosterMoments.map((m) => ({
     kind: 'moment',
     id: `roster-${m.id}`,
@@ -252,7 +243,13 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
     odds: null,
   }));
 
-  const feed = useFeed(party, [...moments, ...rosterFeed]);
+  // League moments (chug alerts, rivalry lead changes, your bets) land in
+  // the room's chat too, so they're there after the pop-up is gone.
+  const leagueFeed: FeedItem[] = rm.history
+    .filter((m) => m.tier === 3)
+    .map((m) => ({ kind: 'moment' as const, id: `league-${m.id}`, text: m.kind === 'chug' ? `Chug alert · ${m.detail}` : m.title, points: '', team: m.kind === 'chug' ? '' : m.detail, odds: null }))
+    .reverse();
+  const feed = useFeed(party, [...moments, ...rosterFeed, ...leagueFeed]);
   const game = delayed.game;
   const keyboardOpen = useKeyboardOpen();
   const watching = participants.length;
@@ -279,6 +276,9 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
             </Text>
           </View>
         </View>
+        <Pressable onPress={() => setMomentsOpen(true)} style={styles.leave} accessibilityRole="button" accessibilityLabel={`Moments, ${rm.history.length}`}>
+          <Text style={styles.leaveText}>Moments{rm.history.length ? ` · ${rm.history.length}` : ''}</Text>
+        </Pressable>
         {onEndParty && (
           <Pressable onPress={onEndParty} style={styles.endParty} accessibilityRole="button">
             <Text style={styles.endPartyText}>End</Text>
@@ -294,6 +294,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
 
       <View onTouchStart={Keyboard.dismiss}>
         <LoungeTv share={share} game={game} catchingUp={delayed.catchingUp} />
+        {rm.big?.tier === 1 && <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} />}
         {burst && (
           <View style={styles.burst} pointerEvents="none">
             <Text style={styles.burstText}>{burst.text}</Text>
@@ -302,17 +303,31 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
       </View>
       {!keyboardOpen && (
         <>
-          {game ? <LoungeField game={game} /> : rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
+          {rm.big?.kind === 'chug' ? (
+            <ChugAlertCard moment={rm.big} onPileOn={() => react('chug')} onDismiss={rm.dismissBig} />
+          ) : rm.swing ? (
+            <SwingStrip swing={rm.swing} accent={accent} />
+          ) : (
+            game && <LoungeField game={game} />
+          )}
           <SweatCard sweat={sweat} game={game} onOpen={() => setSweatOpen(true)} />
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.peopleScroll} contentContainerStyle={styles.people}>
             {participants.map((p) => (
-              <Person key={p.identity} participant={p} accent={accent} onPress={() => setVolumeOpen(true)} />
+              <Person
+                key={p.identity}
+                participant={p}
+                accent={accent}
+                impact={rm.tileImpacts[p.identity]}
+                owesChug={rm.chugOwner === p.identity}
+                onPress={() => setVolumeOpen(true)}
+              />
             ))}
           </ScrollView>
         </>
       )}
 
+      <View style={styles.feedWrap}>
       <FlatList
         style={styles.feed}
         contentContainerStyle={styles.feedContent}
@@ -331,7 +346,14 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
                 <Path d="M14 7h7v7" />
               </Svg>
               <Text style={styles.momentText}>
-                <Text style={styles.bold}>{item.text}</Text> · <Text style={[styles.bold, { color: accent }]}>{item.points}</Text> {item.team}
+                <Text style={styles.bold}>{item.text}</Text>
+                {item.points ? (
+                  <>
+                    {' · '}
+                    <Text style={[styles.bold, { color: accent }]}>{item.points}</Text>
+                  </>
+                ) : null}
+                {item.team ? ` ${item.points ? '' : '· '}${item.team}` : ''}
                 {item.odds ? ` · ${item.odds}` : ''}
               </Text>
             </View>
@@ -347,25 +369,14 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
         }
       />
 
-      <Footer party={party} onReact={react} bottomInset={insets.bottom} keyboardOpen={keyboardOpen} />
+      <MomentToasts toasts={rm.toasts} accent={accent} onDismiss={rm.dismissToast} />
+      </View>
+
+      <Footer party={party} onReact={react} counts={counts} bottomInset={insets.bottom} keyboardOpen={keyboardOpen} />
 
       <SweatSheet visible={sweatOpen} onClose={() => setSweatOpen(false)} sweat={sweat} game={game} share={share} catchingUp={delayed.catchingUp} />
       <VolumeSheet visible={volumeOpen} onClose={() => setVolumeOpen(false)} />
-      <MomentTakeover
-        moment={moment}
-        watching={watching}
-        winBefore={winBefore}
-        winNow={sweat.winPct}
-        winHistory={winHistory.current}
-        myBets={sweat.openBets}
-        reactions={counts}
-        lastMessages={feed
-          .filter((f): f is Extract<FeedItem, { kind: 'message' }> => f.kind === 'message')
-          .slice(0, 2)
-          .reverse()
-          .map((m) => ({ name: m.name, color: m.color, body: m.body }))}
-        onClose={() => setMoment(null)}
-      />
+      <MomentsSheet visible={momentsOpen} onClose={() => setMomentsOpen(false)} history={rm.history} accent={accent} />
     </KeyboardAvoidingView>
   );
 }
@@ -399,7 +410,20 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
 
 /** A camera tile — their video when their camera's on, else initials.
  *  Tap for everyone's volume. */
-function Person({ participant, accent, onPress }: { participant: Participant; accent: string; onPress: () => void }) {
+function Person({
+  participant,
+  accent,
+  impact,
+  owesChug,
+  onPress,
+}: {
+  participant: Participant;
+  accent: string;
+  // What the moment on screen did to this person's matchup.
+  impact?: number;
+  owesChug?: boolean;
+  onPress: () => void;
+}) {
   const speaking = useIsSpeaking(participant);
   const camera = (useTracks([Track.Source.Camera]) as TrackReference[]).find((t) => t.participant.identity === participant.identity);
   const name = participant.isLocal ? 'You' : participant.name || participant.identity;
@@ -407,7 +431,13 @@ function Person({ participant, accent, onPress }: { participant: Participant; ac
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.person, { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] }, speaking && { borderColor: accent }]}
+      style={[
+        styles.person,
+        { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] },
+        speaking && { borderColor: accent },
+        impact !== undefined && Math.abs(impact) >= 0.05 && { borderColor: impact > 0 ? accent : '#f87171', borderWidth: 3 },
+        owesChug && { borderColor: '#facc15', borderWidth: 3 },
+      ]}
       accessibilityRole="button"
       accessibilityLabel={`${name}${speaking ? ', talking' : ''} — adjust volume`}>
       {showVideo ? (
@@ -418,29 +448,21 @@ function Person({ participant, accent, onPress }: { participant: Participant; ac
       <Text style={styles.personName} numberOfLines={1}>
         {name}
       </Text>
+      {impact !== undefined && Math.abs(impact) >= 0.05 && (
+        <Text style={[styles.personBadge, { backgroundColor: impact > 0 ? accent : '#f87171' }]} maxFontSizeMultiplier={1.1}>
+          {impact > 0 ? '+' : '−'}
+          {Math.abs(impact).toFixed(1)}
+        </Text>
+      )}
+      {owesChug && (
+        <Text style={[styles.personBadge, { backgroundColor: '#facc15' }]} maxFontSizeMultiplier={1.1}>
+          OWES 1
+        </Text>
+      )}
     </Pressable>
   );
 }
 
-/** Under the TV for a few seconds when one of your starters scores or
- *  breaks a big play in any game — only while no game is on the TV. */
-function RosterBanner({ moment, accent }: { moment: RosterMoment; accent: string }) {
-  return (
-    <View style={[styles.rosterBanner, { borderColor: `${accent}66`, backgroundColor: `${accent}14` }]}>
-      <Text style={[styles.rosterBannerKind, { color: accent }]}>{moment.touchdown ? 'TOUCHDOWN' : 'BIG PLAY'}</Text>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.rosterBannerName} numberOfLines={1}>
-          {moment.playerName}
-        </Text>
-        <Text style={styles.rosterBannerSub} numberOfLines={1}>
-          Your {moment.position ?? 'player'}
-          {moment.proTeam ? ` · ${moment.proTeam}` : ''}
-        </Text>
-      </View>
-      <Text style={[styles.rosterBannerPoints, { color: accent }]}>+{moment.points.toFixed(1)}</Text>
-    </View>
-  );
-}
 
 function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false);
@@ -461,11 +483,13 @@ const EVERYONE = 'everyone';
 function Footer({
   party,
   onReact,
+  counts,
   bottomInset,
   keyboardOpen,
 }: {
   party: LoungeRoomProps['party'];
   onReact: (k: ReactionKey) => void;
+  counts: Record<ReactionKey, number>;
   bottomInset: number;
   keyboardOpen: boolean;
 }) {
@@ -545,7 +569,10 @@ function Footer({
           <View style={styles.reactRow}>
             {REACTIONS.map((r) => (
               <Pressable key={r.key} onPress={() => onReact(r.key)} style={styles.reactBtn} accessibilityRole="button">
-                <Text style={styles.reactText}>{r.label}</Text>
+                <Text style={styles.reactText}>
+                  {r.label}
+                  {counts[r.key] > 0 ? <Text style={styles.reactCount}> ×{counts[r.key]}</Text> : null}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -712,6 +739,9 @@ const styles = StyleSheet.create({
   endPartyText: { color: '#fca5a5', fontSize: 13, fontWeight: '700' },
   leaveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   error: { color: '#f87171', fontSize: 12, paddingHorizontal: 14 },
+  reactCount: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 11 },
+  feedWrap: { flex: 1, position: 'relative' },
+  personBadge: { position: 'absolute', top: 6, right: 6, color: '#05060a', fontFamily: Fonts.monoBold, fontSize: 11, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
   burst: { position: 'absolute', top: 18, right: 18, backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   burstText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   peopleScroll: { flexGrow: 0 },

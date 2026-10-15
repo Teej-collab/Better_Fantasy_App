@@ -18,10 +18,13 @@ import { Track, type Participant, type RemoteParticipant } from "livekit-client"
 import { TickerStrip } from "@/components/LiveTicker";
 import { FieldVisualization } from "@/components/gamecast/FieldVisualization";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
-import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMember, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
+import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMember, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom, type WeekMatchupContextItem } from "@/lib/api";
+import type { Bet } from "@/lib/betsApi";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
 import { LoungeSweatPanel } from "@/components/lounge/LoungeSweatPanel";
+import { ChugAlertCard, MomentRibbon, MomentsMenu, MomentToasts, SwingStrip, useRoomMoments } from "@/components/lounge/RoomMoments";
+import { getMyLeagues } from "@/lib/leaguesApi";
 import {
   clockLabel,
   delayForPlay,
@@ -29,14 +32,12 @@ import {
   isTouchdown,
   lastName,
   loungeApi,
-  scoringHeadline,
-  shade,
   useDelayedGame,
   useDelayedValue,
   usePolled,
   useRoomTv,
 } from "@/lib/loungeLive";
-import { nflTeamColor, nflTeamName } from "@/lib/nfl-teams";
+import { nflTeamColor } from "@/lib/nfl-teams";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
@@ -56,7 +57,9 @@ const REACTIONS = [
   { key: "chug", label: "Chug!" },
 ] as const;
 type ReactionKey = "letsgo" | "robbed" | "chug" | "flag";
-const MOMENT_MS = 15000;
+// Stable empties, so the moments engine's effects don't rerun every render.
+const EMPTY_LEAGUE: WeekMatchupContextItem[] = [];
+const EMPTY_BETS: Bet[] = [];
 const TILE_COLORS = ["#3b1d10", "#2a1650", "#152a5c", "#073d2d", "#4a1029", "#27272a"];
 const NAME_COLORS = ["#fcd34d", "#f9a8d4", "#93c5fd", "#86efac", "#fca5a5", "#c4b5fd"];
 const hash = (s: string, n: number) => {
@@ -66,7 +69,6 @@ const hash = (s: string, n: number) => {
 };
 const fmt = (n: number | null | undefined) => (n ?? 0).toFixed(1);
 
-type Moment = { play: GamecastPlay; game: LiveGame; players: GamecastPlayFantasyPlayer[]; at: number };
 type FeedItem =
   | { kind: "message"; id: string; name: string; color: string; body: string; plus: number }
   | { kind: "moment"; id: string; text: string; points: string; team: string };
@@ -99,10 +101,8 @@ export function WebLoungeRoom({
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [tab, setTab] = useState<"chat" | "sweat" | "plays">("chat");
   const [seenMessages, setSeenMessages] = useState(messages.length);
-  const [moment, setMoment] = useState<Moment | null>(null);
-  // Your win odds when the moment's play landed, for its "before → now".
-  const [winBefore, setWinBefore] = useState<number | null>(null);
-  const latestWin = useRef<number | null>(null);
+  const [momentsOpen, setMomentsOpen] = useState(false);
+  const rmRef = useRef<((play: GamecastPlay, game: LiveGame, players: GamecastPlayFantasyPlayer[]) => void) | null>(null);
   const [moments, setMoments] = useState<FeedItem[]>([]);
   const [lastPlayPoints, setLastPlayPoints] = useState<{ playId: string; players: GamecastPlayFantasyPlayer[] } | null>(null);
   const [reactions, setReactions] = useState<{ key: ReactionKey; at: number }[]>([]);
@@ -113,11 +113,8 @@ export function WebLoungeRoom({
   async function onPlay(play: GamecastPlay, game: LiveGame) {
     const players = (await getPlayFantasy(game.game_id, play.play_id).catch(() => null)) ?? [];
     setLastPlayPoints({ playId: play.play_id, players });
-    if (isTouchdown(play)) {
-      setWinBefore(latestWin.current);
-      setMoment({ play, game, players, at: Date.now() });
-      setTab("sweat");
-    }
+    // Declared further down (it needs the league data); always set by now.
+    rmRef.current?.(play, game, players);
     const top = [...players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points))[0];
     if (!top || Math.abs(top.points) < 0.05) return;
     const yards = play.yards_gained ? `${Math.abs(play.yards_gained)}-yd ${play.play_type === "pass" ? "catch" : play.play_type === "rush" ? "run" : "play"}` : "big play";
@@ -135,11 +132,6 @@ export function WebLoungeRoom({
   const delayed = useDelayedGame(tv.gameId, tv.delaySeconds, (p, g) => void onPlay(p, g));
   const game = delayed.game;
 
-  useEffect(() => {
-    if (!moment) return;
-    const id = setTimeout(() => setMoment(null), MOMENT_MS);
-    return () => clearTimeout(id);
-  }, [moment]);
 
   // Reactions — the same data-channel topic the native app uses.
   const { send: sendData } = useDataChannel("lounge-reaction", (msg) => {
@@ -185,21 +177,33 @@ export function WebLoungeRoom({
   // from every game instead.
   const rosterMoments = useRosterMoments(matchupId, mySide ? myStarters : null, !tv.gameId);
   const latestRosterMoment = rosterMoments[rosterMoments.length - 1] ?? null;
-  // The newest one shows over the TV for MOMENT_MS.
-  const [rosterBanner, setRosterBanner] = useState<RosterMoment | null>(null);
-  const [bannerShownFor, setBannerShownFor] = useState<string | null>(null);
-  if (latestRosterMoment && latestRosterMoment.id !== bannerShownFor) {
-    setBannerShownFor(latestRosterMoment.id);
-    setRosterBanner(latestRosterMoment);
-  }
+
+  // The room's pop-ups (components/lounge/RoomMoments.tsx): big moments,
+  // fantasy plays and league moments, all on the room's delay.
+  const myLeagues = usePolled("leagues", getMyLeagues, 300_000);
+  const activeLeague = myLeagues?.leagues.find((l) => l.id === myLeagues.activeLeagueId) ?? null;
+  const rm = useRoomMoments({
+    winPct,
+    league: leagueContext?.matchups ?? EMPTY_LEAGUE,
+    bets: bets?.bets ?? EMPTY_BETS,
+    myOwnerId,
+    roomOwnerIds: participants.map((p) => p.identity),
+    chugEnabled: !!activeLeague?.chug_enabled,
+    chugRuleName: activeLeague?.chug_rule_name ?? null,
+  });
   useEffect(() => {
-    if (!rosterBanner) return;
-    const id = setTimeout(() => setRosterBanner(null), MOMENT_MS);
-    return () => clearTimeout(id);
-  }, [rosterBanner]);
+    rmRef.current = rm.onPlay;
+  }, [rm.onPlay]);
+  // Your own player's big play from any game (no game on the TV): a
+  // fantasy-play notification, once each.
+  const rosterShown = useRef<string | null>(null);
   useEffect(() => {
-    latestWin.current = winPct;
-  }, [winPct]);
+    if (!latestRosterMoment || latestRosterMoment.id === rosterShown.current) return;
+    rosterShown.current = latestRosterMoment.id;
+    const m = latestRosterMoment;
+    rm.onRosterPlay(m.id, m.playerName, m.touchdown, m.points, m.proTeam ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRosterMoment?.id]);
 
   const unread = tab === "chat" ? 0 : Math.max(0, messages.length - seenMessages);
   function pickTab(next: "chat" | "sweat" | "plays") {
@@ -231,6 +235,17 @@ export function WebLoungeRoom({
       points: `+${m.points.toFixed(1)}`,
       team: m.proTeam ?? "",
     })),
+    // League moments stay in the chat after their pop-up is gone.
+    ...rm.history
+      .filter((m) => m.tier === 3)
+      .reverse()
+      .map((m) => ({
+        kind: "moment" as const,
+        id: `league-${m.id}`,
+        text: m.kind === "chug" ? `Chug alert · ${m.detail}` : m.title,
+        points: "",
+        team: m.kind === "chug" ? "" : m.detail,
+      })),
   ];
 
   async function toggleShare() {
@@ -276,6 +291,16 @@ export function WebLoungeRoom({
               )}
             </div>
           )}
+          <div className="relative">
+            <button
+              onClick={() => setMomentsOpen((v) => !v)}
+              aria-expanded={momentsOpen}
+              className="h-[38px] rounded-full border border-white/[0.12] bg-[#12151d] px-4 text-[13px] font-semibold"
+            >
+              Moments{rm.history.length ? ` · ${rm.history.length}` : ""}
+            </button>
+            {momentsOpen && <MomentsMenu history={rm.history} accent={accent} onClose={() => setMomentsOpen(false)} />}
+          </div>
           <button
             onClick={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             aria-pressed={isMicrophoneEnabled}
@@ -347,13 +372,19 @@ export function WebLoungeRoom({
           (.lounge-grid). */}
       <main className="lounge-grid w-full flex-1 px-4 py-5 sm:px-6">
         <div className="lounge-tv-cell">
-          <Tv share={share} game={game} moment={moment} counts={counts} catchingUp={delayed.catchingUp} accent={accent} rosterBanner={rosterBanner} />
+          <Tv
+            share={share}
+            game={game}
+            catchingUp={delayed.catchingUp}
+            accent={accent}
+            overlay={rm.big?.tier === 1 ? <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} /> : null}
+          />
         </div>
 
         <section aria-label="Gamecast" className="lounge-cast flex min-w-0 flex-col gap-3">
-          {moment ? (
-            <MomentCards moment={moment} winBefore={winBefore} winNow={winPct} accent={accent} />
-          ) : game ? (
+          {rm.big?.kind === "chug" && <ChugAlertCard moment={rm.big} onPileOn={() => react("chug")} onDismiss={rm.dismissBig} />}
+          {rm.swing && <SwingStrip swing={rm.swing} accent={accent} />}
+          {game ? (
             <>
               <FieldVisualization game={game} beta />
               <LastPlay game={game} points={lastPlayPoints} accent={accent} />
@@ -377,7 +408,7 @@ export function WebLoungeRoom({
           </div>
           <CameraGrid count={participants.length}>
             {participants.map((p) => (
-              <Tile key={p.identity} participant={p} accent={accent} />
+              <Tile key={p.identity} participant={p} accent={accent} impact={rm.tileImpacts[p.identity]} owesChug={rm.chugOwner === p.identity} />
             ))}
           </CameraGrid>
         </section>
@@ -410,13 +441,16 @@ export function WebLoungeRoom({
             </div>
           )}
 
-          {tab === "chat" && <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} accent={accent} />}
+          {tab === "chat" && (
+            <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} counts={counts} accent={accent} />
+          )}
           {tab === "sweat" && (
             <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} myOwnerId={myOwnerId} accent={accent} />
           )}
           {tab === "plays" && <PlaysPanel game={game} />}
         </aside>
       </main>
+      <MomentToasts toasts={rm.toasts} accent={accent} onDismiss={rm.dismissToast} />
 
       <RoomAudioRenderer />
       <StartAudio label="Click to turn on sound" className="fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white px-5 py-3 text-sm font-bold text-black shadow-lg" />
@@ -443,38 +477,23 @@ function noLinks(items: TickerItem[]): TickerItem[] {
 function Tv({
   share,
   game,
-  moment,
-  counts,
   catchingUp,
   accent,
-  rosterBanner,
+  overlay,
 }: {
-  rosterBanner: RosterMoment | null;
   share: TrackReference | undefined;
   game: LiveGame | null;
-  moment: Moment | null;
-  counts: Record<ReactionKey, number>;
   catchingUp: boolean;
   accent: string;
+  // A big moment's ribbon across the bottom (RoomMoments.tsx).
+  overlay: React.ReactNode;
 }) {
   const sharer = share?.participant;
-  const scorer = moment?.play.team_abbr ?? null;
-  // The takeover wears the scoring team's colors.
-  const teamColor = (scorer && nflTeamColor(scorer)) || "#e31837";
-  const city = (() => {
-    const name = nflTeamName(scorer) ?? scorer ?? "";
-    const parts = name.split(" ");
-    return (parts.length > 1 ? parts.slice(0, -1).join(" ") : name).toUpperCase();
-  })();
   return (
     <section
-      aria-label={moment ? "Touchdown" : "Shared game"}
+      aria-label="Shared game"
       className="lounge-tv relative overflow-hidden rounded-2xl border"
-      style={{
-        borderColor: moment ? `${teamColor}aa` : "rgba(255,255,255,0.08)",
-        background: "radial-gradient(120% 90% at 50% 20%, #1d3a24 0%, #0f1f14 55%, #070b08 100%)",
-        boxShadow: moment ? `0 0 60px ${teamColor}55` : undefined,
-      }}
+      style={{ borderColor: "rgba(255,255,255,0.08)", background: "radial-gradient(120% 90% at 50% 20%, #1d3a24 0%, #0f1f14 55%, #070b08 100%)" }}
     >
       {share ? (
         <VideoTrack trackRef={share} className="absolute inset-0 h-full w-full object-contain" />
@@ -484,26 +503,7 @@ function Tv({
           <p className="text-xs text-white/50">Hit &ldquo;Share screen&rdquo; to put the game up.</p>
         </div>
       )}
-      {moment ? (
-        <>
-          <div
-            className="absolute inset-0"
-            style={{ background: `radial-gradient(120% 90% at 50% 30%, ${shade(teamColor, 0.35)}eb 0%, ${shade(teamColor, 0.7)}eb 60%, ${shade(teamColor, 0.9)}f2 100%)` }}
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
-            <span className="font-display text-base tracking-[6px] text-white/80">{city}</span>
-            <span className="font-display text-5xl leading-none font-bold tracking-[3px] text-white sm:text-[88px]" style={{ textShadow: `0 0 32px ${teamColor}` }}>
-              TOUCHDOWN
-            </span>
-            <span className="text-base text-white/90 sm:text-lg">{scoringHeadline(moment.play, moment.game)}</span>
-          </div>
-          <div className="absolute right-3.5 bottom-3.5 left-3.5 flex flex-wrap gap-2">
-            {counts.letsgo > 0 && <span className="rounded-full px-3 py-1.5 text-[13px] font-extrabold" style={{ background: "rgba(57,255,20,0.18)" }}>LET&apos;S GO ×{counts.letsgo}</span>}
-            {counts.robbed > 0 && <span className="rounded-full bg-[rgba(248,113,113,0.2)] px-3 py-1.5 text-[13px] font-extrabold">ROBBED ×{counts.robbed}</span>}
-            {counts.chug > 0 && <span className="rounded-full bg-[rgba(250,204,21,0.2)] px-3 py-1.5 text-[13px] font-extrabold">CHUG! ×{counts.chug}</span>}
-          </div>
-        </>
-      ) : (
+      {(
         <>
           {share && (
             <div className="absolute top-3.5 left-3.5 flex gap-2">
@@ -511,12 +511,11 @@ function Tv({
               <span className="rounded bg-black/60 px-2.5 py-1 text-xs">Shared by {sharer?.isLocal ? "you" : sharer?.name || "someone"}</span>
             </div>
           )}
-          {rosterBanner && <RosterBanner moment={rosterBanner} accent={accent} />}
           {sharer && (sharer.isLocal ? <SharerGameVolume accent={accent} /> : <TvVolume participant={sharer as RemoteParticipant} accent={accent} />)}
           {/* A broadcast-style bug in the corner, only as wide as the
               scores: quarter and clock on top, the score (a dot for who has
               the ball), down and distance underneath. */}
-          {game && (
+          {game && !overlay && (
             <div className="absolute bottom-3.5 left-3.5 flex flex-col overflow-hidden rounded-[10px] bg-[rgba(8,10,16,0.85)] font-mono whitespace-nowrap shadow-lg">
               <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 text-[11px] text-white/85">
                 <span>{clockLabel(game)}</span>
@@ -537,6 +536,7 @@ function Tv({
               {downLabel(game) && <div className="px-2 py-0.5 text-center text-[11px] text-[#facc15]">{downLabel(game)}</div>}
             </div>
           )}
+          {overlay}
         </>
       )}
     </section>
@@ -650,26 +650,6 @@ function VolumePill({ volume, max, accent, onChange }: { volume: number; max: nu
   );
 }
 
-/** Over the TV for a few seconds when one of your starters (any game)
- *  scores or breaks a big play — only while no game is on the TV. */
-function RosterBanner({ moment, accent }: { moment: RosterMoment; accent: string }) {
-  const color = (moment.proTeam && nflTeamColor(moment.proTeam)) || accent;
-  return (
-    <div
-      className="gamecast-play-enter absolute top-14 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-2xl border px-5 py-3 shadow-2xl"
-      style={{ background: `${shade(color, 0.55)}f0`, borderColor: `${color}aa` }}
-    >
-      <span className="font-display text-xl font-bold tracking-[2px] text-white sm:text-2xl">{moment.touchdown ? "TOUCHDOWN" : "BIG PLAY"}</span>
-      <span className="text-sm font-semibold text-white/90 sm:text-base">
-        {moment.playerName}
-        {moment.proTeam ? ` · ${moment.proTeam}` : ""}
-      </span>
-      <b className="font-mono text-xl" style={{ color: accent }}>
-        +{moment.points.toFixed(1)}
-      </b>
-    </div>
-  );
-}
 
 /** Your starters' moments from every game, newest first (no game on the TV). */
 function RosterMoments({ moments, accent }: { moments: RosterMoment[]; accent: string }) {
@@ -773,71 +753,57 @@ function CameraGrid({ count, children }: { count: number; children: React.ReactN
   );
 }
 
-function Tile({ participant, accent }: { participant: Participant; accent: string }) {
+function Tile({ participant, accent, impact, owesChug }: { participant: Participant; accent: string; impact?: number; owesChug?: boolean }) {
   const speaking = useIsSpeaking(participant);
   const camera = useTracks([Track.Source.Camera]).find((t) => t.participant.identity === participant.identity) as TrackReference | undefined;
   const name = participant.isLocal ? "You" : participant.name || participant.identity;
+  const hasImpact = impact !== undefined && Math.abs(impact) >= 0.05;
   return (
     <div
       className="relative flex items-end overflow-hidden rounded-xl p-2 text-[13px] font-bold"
-      style={{ aspectRatio: "16 / 9", background: TILE_COLORS[hash(name, TILE_COLORS.length)], boxShadow: speaking ? `0 0 0 2px ${accent}` : "none" }}
+      style={{
+        aspectRatio: "16 / 9",
+        background: TILE_COLORS[hash(name, TILE_COLORS.length)],
+        // What the moment on screen did to this person's matchup.
+        boxShadow: owesChug
+          ? "inset 0 0 0 3px #facc15, 0 0 24px rgba(250,204,21,0.4)"
+          : hasImpact
+            ? `inset 0 0 0 3px ${impact! > 0 ? accent : "#f87171"}`
+            : speaking
+              ? `0 0 0 2px ${accent}`
+              : "none",
+      }}
     >
       {camera && !camera.publication?.isMuted && <VideoTrack trackRef={camera} className="absolute inset-0 h-full w-full object-cover" />}
       {!(camera && !camera.publication?.isMuted) && (
         <span className="font-display absolute inset-0 flex items-center justify-center text-3xl text-white/70">{name.slice(0, 1).toUpperCase()}</span>
       )}
       <span className="relative rounded-md bg-black/55 px-2 py-0.5">{name}</span>
+      {hasImpact && (
+        <span className="absolute top-2 right-2 rounded-full px-2 py-0.5 font-mono text-xs font-bold text-[#05060a]" style={{ background: impact! > 0 ? accent : "#f87171" }}>
+          {impact! > 0 ? "+" : "−"}
+          {Math.abs(impact!).toFixed(1)}
+        </span>
+      )}
+      {owesChug && <span className="font-display absolute top-2 right-2 rounded-full bg-[#facc15] px-2 py-0.5 text-[11px] font-bold text-[#120f02]">OWES 1</span>}
     </div>
   );
 }
 
-function MomentCards({ moment, winBefore, winNow, accent }: { moment: Moment; winBefore: number | null; winNow: number | null; accent: string }) {
-  const mine = [...moment.players].sort((a, b) => Number(b.is_mine) - Number(a.is_mine) || Math.abs(b.points) - Math.abs(a.points)).slice(0, 2);
-  return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-      {mine.map((p, i) => (
-        <div
-          key={p.player_id}
-          className="flex flex-col gap-1 rounded-[14px] border p-3.5"
-          style={i === 0 && p.is_mine ? { background: "rgba(57,255,20,0.08)", borderColor: "rgba(57,255,20,0.35)" } : { background: "#12151d", borderColor: "rgba(255,255,255,0.08)" }}
-        >
-          <span className="text-xs text-[#9aa3b2]">
-            {p.player_name} · {p.is_mine ? `your ${p.position === "DEF" ? "D/ST" : p.position}` : `${p.owner_name}'s`}
-          </span>
-          <b className="font-mono text-[28px]" style={{ color: p.points >= 0 ? accent : "#f87171" }}>
-            {p.points >= 0 ? "+" : "−"}
-            {Math.abs(p.points).toFixed(1)}
-          </b>
-        </div>
-      ))}
-      {winNow !== null && (
-        <div className="flex flex-col gap-1 rounded-[14px] border border-white/[0.08] bg-[#12151d] p-3.5">
-          <span className="text-xs text-[#9aa3b2]">Your win odds</span>
-          <b className="font-mono text-[28px]">
-            {winBefore !== null && winBefore !== winNow && (
-              <>
-                {Math.round(winBefore)}% <span className="text-lg text-[#9aa3b2]">→</span>{" "}
-              </>
-            )}
-            <span style={{ color: accent }}>{Math.round(winNow)}%</span>
-          </b>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ChatPanel({
   feed,
   members,
   onSend,
   onReact,
+  counts,
   accent,
 }: {
   feed: FeedItem[];
   members: ChatMember[];
   onSend: (body: string, mentions: number[]) => void;
   onReact: (k: ReactionKey) => void;
+  counts: Record<ReactionKey, number>;
   accent: string;
 }) {
   const [draft, setDraft] = useState("");
@@ -872,7 +838,14 @@ function ChatPanel({
           item.kind === "moment" ? (
             <div key={item.id} className="flex items-center gap-2 rounded-[10px] border px-2.5 py-2 text-[13px]" style={{ background: "rgba(57,255,20,0.08)", borderColor: "rgba(57,255,20,0.25)" }}>
               <span>
-                <b>{item.text}</b> · <b style={{ color: accent }}>{item.points}</b> {item.team}
+                <b>{item.text}</b>
+                {item.points ? (
+                  <>
+                    {" · "}
+                    <b style={{ color: accent }}>{item.points}</b>
+                  </>
+                ) : null}
+                {item.team ? ` ${item.points ? "" : "· "}${item.team}` : ""}
               </span>
             </div>
           ) : (
@@ -889,6 +862,7 @@ function ChatPanel({
         {REACTIONS.map((r) => (
           <button key={r.key} onClick={() => onReact(r.key)} className="h-8 flex-1 rounded-full border border-white/[0.1] bg-[#161a24] text-xs font-bold">
             {r.label}
+            {counts[r.key] > 0 && <span className="font-mono font-medium text-[#9aa3b2]"> ×{counts[r.key]}</span>}
           </button>
         ))}
       </div>

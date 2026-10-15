@@ -779,6 +779,7 @@ export type OwnerPreferences = {
   notify_player_news: boolean;
   notify_fantasy_team: boolean;
   notify_league: boolean;
+  notify_watch_parties: boolean;
   ai_training_opt_out: boolean;
 };
 

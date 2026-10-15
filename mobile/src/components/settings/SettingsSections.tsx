@@ -513,6 +513,7 @@ const FANTASY_TOGGLES: { key: keyof OwnerPreferences; label: string; description
     description: 'Lead changes, a close game coming down to the wire, your final result, and what you won (or missed) on waivers.',
   },
   { key: 'notify_league', label: 'League Activity', description: 'Someone in your league posts a graded chug.' },
+  { key: 'notify_watch_parties', label: 'Watch Parties', description: 'Someone in your league starts a watch party, or invites you to a private room.' },
 ];
 
 // "22:00:00" ⇄ "22:00"; anything that isn't HH:MM is ignored.

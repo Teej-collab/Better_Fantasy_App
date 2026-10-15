@@ -1639,6 +1639,7 @@ export type OwnerPreferences = {
   notify_player_news: boolean;
   notify_fantasy_team: boolean;
   notify_league: boolean;
+  notify_watch_parties: boolean;
   // Consent for a not-yet-built feature (AI learning to shit-talk from
   // real chat messages) — opt-OUT model, so ai_training_opt_out
   // defaults to false (opted in). ai_training_notice_seen tracks

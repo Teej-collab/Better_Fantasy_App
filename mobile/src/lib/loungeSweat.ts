@@ -20,6 +20,8 @@ export type LoungeSweat = {
   myStarters: RosterPlayer[];
   opponentStarters: RosterPlayer[];
   openBets: Bet[];
+  // Every bet, settled ones included (the room's bet-leg alerts).
+  allBets: Bet[];
   league: WeekMatchupContextItem[];
 };
 
@@ -49,6 +51,7 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
     myStarters: (oriented?.home.roster ?? []).filter((p) => !BENCH.has(p.lineup_slot ?? '')),
     opponentStarters: (oriented?.away.roster ?? []).filter((p) => !BENCH.has(p.lineup_slot ?? '')),
     openBets: (bets?.bets ?? []).filter((b) => b.status === 'open'),
+    allBets: bets?.bets ?? [],
     league: league?.matchups ?? [],
   };
 }

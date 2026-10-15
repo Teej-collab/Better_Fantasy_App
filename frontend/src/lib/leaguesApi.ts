@@ -14,6 +14,9 @@ export type League = {
   // How many teams it's meant to have (the Create a League flow); null
   // for leagues made before that was asked.
   team_count?: number | null;
+  // The chug rule is a house rule a commissioner turns on and names.
+  chug_enabled?: boolean;
+  chug_rule_name?: string | null;
   // GET /leagues/mine only: the league picker's card line.
   summary?: LeagueSummary | null;
 } & Partial<LeagueFormat>;
