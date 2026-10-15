@@ -75,6 +75,12 @@ const GAME_PUBLISH: TrackPublishOptions = {
 /** Starts or stops sharing a game (screen + its audio) with the
  *  broadcast-quality settings above. */
 export async function toggleGameShare(localParticipant: LocalParticipant, enabled: boolean): Promise<void> {
+  // Phones' browsers (every iPhone/iPad browser, and in-app web views)
+  // have no screen capture at all, and LiveKit's own error for that is
+  // a bare "getDisplayMedia not supported" (2026-10-14, from a phone).
+  if (enabled && !navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("Phones can't share their screen from the browser. Open the Lounge on a computer to put the game up.");
+  }
   await localParticipant.setScreenShareEnabled(enabled, GAME_CAPTURE, GAME_PUBLISH);
 }
 
