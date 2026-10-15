@@ -21,6 +21,7 @@ import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolum
 import { buildLeagueTickerItems, buildNflTickerItems, endWatchParty, type ChatMember, type ChatMessage, type NflGame, type TickerItem, type WatchPartyRoom } from "@/lib/api";
 import { getPlayFantasy, type GamecastPlay, type GamecastPlayFantasyPlayer, type LiveGame } from "@/lib/gamecastApi";
 import { toggleGameShare } from "@/lib/livekitMedia";
+import { LoungeSweatPanel } from "@/components/lounge/LoungeSweatPanel";
 import {
   clockLabel,
   delayForPlay,
@@ -170,6 +171,12 @@ export function WebLoungeRoom({
     tv.delaySeconds
   );
   const scoreboard = usePolled("nfl", loungeApi.scoreboard, 30000);
+  // Every matchup this week with both lineups, for My Sweat's Scoreboard
+  // and team rosters (the native sweat sheet's same source).
+  const leagueContext = useDelayedValue(
+    usePolled(week?.week ? `c${week.season}-${week.week}` : null, () => loungeApi.matchupContext(week!.season, week!.week!), 15000),
+    tv.delaySeconds
+  );
 
   const mySide = detail ? (detail.home.owner_id === myOwnerId ? detail.home : detail.away) : null;
   const myStarters = (mySide?.roster ?? []).filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
@@ -404,7 +411,9 @@ export function WebLoungeRoom({
           )}
 
           {tab === "chat" && <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} accent={accent} />}
-          {tab === "sweat" && <SweatPanel week={week} myStarters={myStarters} bets={bets?.bets ?? []} winPct={winPct} accent={accent} />}
+          {tab === "sweat" && (
+            <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} myOwnerId={myOwnerId} accent={accent} />
+          )}
           {tab === "plays" && <PlaysPanel game={game} />}
         </aside>
       </main>
@@ -927,77 +936,6 @@ function ChatPanel({
         </label>
       </form>
     </>
-  );
-}
-
-function SweatPanel({
-  week,
-  myStarters,
-  bets,
-  winPct,
-  accent,
-}: {
-  week: ReturnType<typeof useDelayedValue<Awaited<ReturnType<typeof loungeApi.myWeek>>>>;
-  myStarters: { player_id: string | number | null; player_name: string; position: string | null; points_scored: number | null; game_status?: string | null }[];
-  bets: Awaited<ReturnType<typeof loungeApi.bets>>["bets"];
-  winPct: number | null;
-  accent: string;
-}) {
-  const m = week?.matchup;
-  const playing = myStarters.filter((p) => p.game_status === "in_progress");
-  const open = bets.filter((b) => b.status === "open");
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-      {m && (
-        <div className="flex items-center justify-between rounded-[14px] border border-white/[0.08] bg-[#161a24] p-3">
-          <div className="flex flex-col">
-            <span className="text-xs text-[#9aa3b2]">{week?.team_name} · you</span>
-            <b className="font-mono text-2xl">{fmt(m.my_score)}</b>
-          </div>
-          <b className="font-mono text-xl" style={{ color: accent }}>
-            {winPct !== null ? `${Math.round(winPct)}%` : "—"}
-          </b>
-          <div className="flex flex-col items-end">
-            <span className="text-xs text-[#9aa3b2]">{m.opponent_team_name}</span>
-            <b className="font-mono text-2xl">{fmt(m.opponent_score)}</b>
-          </div>
-        </div>
-      )}
-      {playing.length > 0 && <span className="font-display text-[11px] font-semibold tracking-[1.2px] text-[#9aa3b2]">PLAYING NOW</span>}
-      {playing.map((p) => (
-        <div key={String(p.player_id ?? p.player_name)} className="flex items-center gap-2.5 rounded-xl bg-[#161a24] px-3 py-2.5">
-          <span className="h-2 w-2 rounded-full" style={{ background: accent }} />
-          <div className="flex flex-1 flex-col">
-            <b className="text-sm">{p.player_name}</b>
-            <span className="text-xs text-[#9aa3b2]">{p.position === "DEF" ? "D/ST" : p.position}</span>
-          </div>
-          <b className="font-mono">{fmt(p.points_scored)}</b>
-        </div>
-      ))}
-      {open.length > 0 && <span className="font-display text-[11px] font-semibold tracking-[1.2px] text-[#9aa3b2]">YOUR BETS</span>}
-      {open.map((b) => (
-        <div key={b.id} className="flex flex-col gap-2 rounded-[14px] border bg-[#161a24] p-3 text-[13px]" style={{ borderColor: "rgba(96,165,250,0.35)" }}>
-          {b.legs.map((leg) => {
-            const pct = leg.status === "won" ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
-            const color = leg.status === "won" ? accent : leg.status === "lost" ? "#f87171" : "#93c5fd";
-            return (
-              <div key={leg.id} className="flex flex-col gap-1">
-                <div className="flex justify-between gap-2">
-                  <span className="truncate">{leg.description}</span>
-                  <span className="font-mono" style={{ color }}>
-                    {leg.status === "won" ? "Hit" : leg.status === "lost" ? "Missed" : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ""}` : "Live"}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[#2b2f3a]">
-                  <div className="h-full" style={{ width: `${pct}%`, background: color }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-      {!m && open.length === 0 && <p className="text-sm text-[#9aa3b2]">Nothing on the line yet this week.</p>}
-    </div>
   );
 }
 
