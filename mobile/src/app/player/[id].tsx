@@ -12,7 +12,7 @@ import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui'
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatPoints } from '@/lib/format';
 import { positionColor } from '@/lib/positionColors';
-import { usePlayerCard } from '@/lib/queries';
+import { confirmDropPlayer, usePlayerCard } from '@/lib/queries';
 import { proposeTradeFor } from '@/lib/tradeLinks';
 import { useAppearance } from '@/lib/appearance';
 import type { FreeAgent, PlayerCard } from '@/lib/types';
@@ -105,6 +105,15 @@ export default function PlayerScreen() {
           {p.rostered_team_id === null && (
             <Pressable onPress={() => setAdding(true)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
               <Text style={styles.addText}>Add</Text>
+            </Pressable>
+          )}
+          {p.is_on_my_team && (
+            <Pressable
+              onPress={() => confirmDropPlayer({ id: p.sleeper_player_id, name: p.full_name })}
+              accessibilityRole="button"
+              accessibilityLabel={`Drop ${p.full_name}`}
+              style={({ pressed }) => [styles.addButton, styles.dropButton, pressed && styles.pressed]}>
+              <Text style={styles.addText}>Drop</Text>
             </Pressable>
           )}
           {/* On someone else's team: offer a trade for them (2026-10). */}
@@ -249,6 +258,7 @@ const styles = StyleSheet.create({
   addButton: { backgroundColor: Colors.accent, borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   addText: { color: Colors.bg, fontWeight: '800' },
   tradeButton: { backgroundColor: '#60a5fa' },
+  dropButton: { backgroundColor: Colors.loss },
   pressed: { opacity: 0.7 },
   stats: { flexDirection: 'row', gap: Spacing.md },
   stat: {

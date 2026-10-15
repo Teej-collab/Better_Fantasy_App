@@ -52,7 +52,7 @@ function TvScreen() {
           📺
         </span>
         <p className="text-sm font-semibold text-white">Nothing on the TV yet</p>
-        <p className="text-xs text-white/50">Whoever's hosting can hit &ldquo;Share screen&rdquo; to put the game up.</p>
+        <p className="text-xs text-white/50">Whoever&apos;s hosting can hit &ldquo;Share screen&rdquo; to put the game up.</p>
       </div>
     );
   }

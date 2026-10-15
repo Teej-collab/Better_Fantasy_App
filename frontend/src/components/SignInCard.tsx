@@ -323,6 +323,18 @@ export function SignInCard({
           ← Back
         </button>
       )}
+
+      <p className="text-center text-[11px] text-[color:var(--wl-text-secondary)]">
+        By continuing, you agree to our{" "}
+        <a href="/terms" className="underline hover:text-[color:var(--wl-text)]">
+          Terms
+        </a>{" "}
+        and{" "}
+        <a href="/privacy" className="underline hover:text-[color:var(--wl-text)]">
+          Privacy Policy
+        </a>
+        .
+      </p>
     </div>
   );
 }

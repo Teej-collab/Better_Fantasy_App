@@ -14,7 +14,7 @@ import { Card, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/co
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
-import { openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
+import { confirmDropPlayer, openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
 import {
   BENCH_SLOT_LABEL,
   IR_SLOT_LABEL,
@@ -257,7 +257,21 @@ function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: bool
 
       <PreviewLink
         href={{ pathname: '/player/[id]', params: { id: entry.player_id } }}
-        menu={canEdit ? [{ title: 'Change Lineup Slot', icon: 'arrow.up.arrow.down', onPress: () => props.onEdit(entry) }] : undefined}
+        menu={
+          props.editable
+            ? [
+                ...(canEdit
+                  ? [{ title: 'Change Lineup Slot', icon: 'arrow.up.arrow.down' as const, onPress: () => props.onEdit(entry) }]
+                  : []),
+                {
+                  title: 'Drop Player',
+                  icon: 'minus.circle' as const,
+                  destructive: true,
+                  onPress: () => confirmDropPlayer({ id: entry.player_id, name: entry.player_name }),
+                },
+              ]
+            : undefined
+        }
         style={styles.player}
         pressedStyle={styles.pressed}>
         <View style={styles.nameLine}>
@@ -343,6 +357,13 @@ function LineupSheet({ entry, team, onClose }: { entry: RosterEntry; team: MyTea
             })}
           </Card>
           {change.isPending && <ActivityIndicator color={Colors.accent} style={styles.spinner} />}
+          <Pressable
+            disabled={change.isPending}
+            onPress={() => confirmDropPlayer({ id: entry.player_id, name: entry.player_name }, onClose)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.dropButton, pressed && styles.optionPressed]}>
+            <Text style={styles.dropText}>Drop {entry.player_name}</Text>
+          </Pressable>
         </ScrollView>
       </View>
     </Modal>
@@ -414,6 +435,17 @@ const styles = StyleSheet.create({
   optionEmpty: { color: Colors.textSecondary, fontStyle: 'italic' },
   optionAction: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
   spinner: { marginTop: Spacing.lg },
+  dropButton: {
+    marginTop: Spacing.xl,
+    minHeight: 48,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.loss,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  dropText: { color: Colors.loss, fontSize: 15, fontWeight: '700' },
 });
 
 export default function TeamScreen() {

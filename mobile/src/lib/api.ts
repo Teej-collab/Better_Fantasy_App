@@ -412,6 +412,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ sleeper_player_id: playerId, to_slot: toSlot }),
     }),
+  // Sends a player back to free agency (they go on waivers for a day).
+  dropPlayer: (playerId: string) =>
+    request<{ roster: RosterEntry[] }>('/me/team/lineup/drop', {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id: playerId }),
+    }),
   // `position` is the stored value (defenses are "DEF", shown as "D/ST").
   freeAgents: (position?: string, search?: string) => {
     // A search also finds rostered players (each tagged with its team).

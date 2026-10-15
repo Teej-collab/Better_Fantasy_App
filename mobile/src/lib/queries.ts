@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { focusManager, QueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -198,6 +199,35 @@ export function invalidateRosterMoves() {
   void queryClient.invalidateQueries({ queryKey: ['my-week'] });
   // Who rosters the player.
   void queryClient.invalidateQueries({ queryKey: ['player-card'] });
+}
+
+// Asks first, then drops. Used from My Team (lineup sheet and the
+// long-press menu) and the player page, like the website's player card.
+export function confirmDropPlayer(player: { id: string; name: string }, onDone?: () => void) {
+  Alert.alert(`Drop ${player.name}?`, 'They go back to free agency, on waivers for a day. Anyone can claim them.', [
+    { text: 'Cancel', style: 'cancel' },
+    {
+      text: 'Drop',
+      style: 'destructive',
+      onPress: () => {
+        api
+          .dropPlayer(player.id)
+          .then(({ roster }) => {
+            queryClient.setQueryData<MyTeam>(['my-team'], (prev) =>
+              prev ? { ...prev, roster: applyLineupSlots(prev.roster, roster) } : prev,
+            );
+            invalidateRosterMoves();
+            void queryClient.invalidateQueries({ queryKey: ['league-activity'] });
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            onDone?.();
+          })
+          .catch((e: unknown) => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert("Couldn't drop that player", e instanceof Error ? e.message : 'Try again.');
+          });
+      },
+    },
+  ]);
 }
 
 export function usePlayerCard(sleeperPlayerId: string) {

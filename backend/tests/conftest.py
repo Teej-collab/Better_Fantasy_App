@@ -1,8 +1,10 @@
+import asyncio
 import os
 import uuid
 
 import pytest
 import pytest_asyncio
+from starlette.testclient import WebSocketTestSession
 
 # Forces app/gamecast/providers/__init__.py's factory to the deterministic,
 # no-network mock provider (fixed game ids "mock-kc-buf"/"mock-sf-dal",
@@ -39,6 +41,38 @@ from app.providers.nfl_stats.espn_public import clear_game_stats_cache
 # it's both safe and prompt.
 _pending_pool_close: list = []
 
+
+async def _close_pool_on_this_loop():
+    pool = db_module._pool
+    if pool is None or pool._loop is not asyncio.get_running_loop():
+        return
+    try:
+        await asyncio.wait_for(pool.close(), 5)
+    except Exception:
+        pool.terminate()
+
+
+_original_ws_session_exit = WebSocketTestSession.__exit__
+
+
+def _ws_session_exit_closing_its_pool(self, *args):
+    """TestClient runs the app on a loop that dies when the WebSocket
+    session ends, and the pool the app made on it can't be closed after
+    that: close() raises "Event loop is closed", and dropping its
+    sockets abruptly made the pooler kill other connections mid-query.
+    So close it here, on that loop, while it's still running. db_module.
+    _pool keeps pointing at the closed pool, so anything the app still
+    runs on teardown errors out instead of quietly opening a new one."""
+    try:
+        self.portal.call(_close_pool_on_this_loop)
+    except Exception:
+        pass
+    return _original_ws_session_exit(self, *args)
+
+
+WebSocketTestSession.__exit__ = _ws_session_exit_closing_its_pool
+
+
 # MUST be a season number that can never be a real league season, ever.
 # cleanup_test_season below runs after every single test and does an
 # unscoped `DELETE FROM <table> WHERE season = TEST_SEASON` — the app's
@@ -55,8 +89,16 @@ TEST_SEASON = 1900
 
 @pytest_asyncio.fixture
 async def _close_pool_stashed_by_a_websocket_test():
-    if _pending_pool_close:
+    # Every WebSocket test stashes two pools (the test's own, then the
+    # one TestClient's loop made), so drain the whole list: popping just
+    # one leaked a pool per test and hit the pooler's 200-client cap
+    # (EMAXCONN) a couple dozen WebSocket tests into a run.
+    while _pending_pool_close:
         old_pool = _pending_pool_close.pop()
+        # TestClient's own pool was already closed on its loop by the
+        # WebSocketTestSession.__exit__ patch above.
+        if old_pool._loop.is_closed():
+            continue
         try:
             await old_pool.close()
         except Exception:
