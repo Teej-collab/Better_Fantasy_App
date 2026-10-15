@@ -1575,3 +1575,103 @@ async def test_tag_in_the_lounge_reaches_a_member_who_never_opened_it(pool, monk
     assert payload["data"]["type"] == "chat_mention"
     assert payload["url"] == f"/chat?party={room['id']}"
     assert "League Lounge" in payload["title"]
+
+
+# ---- group chats and deleting a chat (2026-10) ------------------------------
+
+async def _seed_group_league(pool, tag, count):
+    """`count` owners in one fresh test league: [(user_id, owner_id), ...]."""
+    user_a, owner_a, league_id = await _seed_league_owner(pool, f"{tag}-0")
+    people = [(user_a, owner_a)]
+    for i in range(1, count):
+        user_id, owner_id, _ = await _seed_league_owner(pool, f"{tag}-{i}", league_id=league_id)
+        people.append((user_id, owner_id))
+    return league_id, people
+
+
+async def test_group_chat_is_created_reused_and_listed_for_every_member(pool, monkeypatch):
+    from app.domain.chat import get_conversations_summary
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    league_id, [(user_a, a), (_, b), (_, c)] = await _seed_group_league(pool, "grp", 3)
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, a))
+        first = await client.post("/chat/conversations/group", json={"owner_ids": [b, c], "name": "Sunday Crew"})
+        again = await client.post("/chat/conversations/group", json={"owner_ids": [c, b]})
+        one_person = await client.post("/chat/conversations/group", json={"owner_ids": [b]})
+
+    assert first.status_code == 200
+    group_id = first.json()["conversation_id"]
+    assert again.json()["conversation_id"] == group_id  # same people, same group
+    async with pool.acquire() as conn:
+        assert await chat_queries.get_conversation_type(conn, one_person.json()["conversation_id"]) == "direct"
+        b_view = await get_conversations_summary(conn, b, league_id)
+    group = next(x for x in b_view if x["id"] == group_id)
+    assert group["type"] == "group"
+    assert group["name"] == "Sunday Crew"
+    assert sorted(group["member_names"]) == sorted(["Leaguer grp-0", "Leaguer grp-2"])
+
+
+async def test_group_chat_only_takes_people_from_your_league(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    _, [(user_a, a), (_, b)] = await _seed_group_league(pool, "grp-out", 2)
+    _, outsider, _ = await _seed_league_owner(pool, "grp-out-x")
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, a))
+        resp = await client.post("/chat/conversations/group", json={"owner_ids": [b, outsider]})
+
+    assert resp.status_code == 404
+
+
+async def test_anyone_in_a_group_can_add_people_but_not_to_a_dm(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    _, [(user_a, a), (user_b, b), (_, c), (_, d)] = await _seed_group_league(pool, "grp-add", 4)
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, a))
+        group_id = (await client.post("/chat/conversations/group", json={"owner_ids": [b, c]})).json()["conversation_id"]
+        dm_id = (await client.post("/chat/conversations/direct", json={"owner_id": b})).json()["conversation_id"]
+        client.cookies.update(_league_session_cookie(user_b, b))
+        added = await client.post(f"/chat/conversations/{group_id}/participants", json={"owner_ids": [d]})
+        client.cookies.update(_league_session_cookie(user_a, a))
+        to_dm = await client.post(f"/chat/conversations/{dm_id}/participants", json={"owner_ids": [d]})
+
+    assert added.status_code == 200
+    assert {m["owner_id"] for m in added.json()["members"]} == {a, b, c, d}
+    assert to_dm.status_code == 400
+
+
+async def test_deleting_a_chat_hides_it_for_you_until_a_new_message(pool, monkeypatch):
+    from app.domain.chat import get_conversation_messages, get_conversations_summary
+
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    league_id, [(user_a, a), (_, b)] = await _seed_group_league(pool, "del", 2)
+    async with pool.acquire() as conn:
+        dm_id = await chat_queries.get_or_create_direct_conversation(conn, a, b)
+        await chat_queries.insert_message(conn, dm_id, b, "old news", None)
+        league_chat = await chat_queries.create_conversation_for_league(conn, league_id, "league", [a, b])
+
+    async with _client() as client:
+        client.cookies.update(_league_session_cookie(user_a, a))
+        deleted = await client.delete(f"/chat/conversations/{dm_id}")
+        league_delete = await client.delete(f"/chat/conversations/{league_chat}")
+
+    assert deleted.status_code == 200
+    assert league_delete.status_code == 400
+    async with pool.acquire() as conn:
+        assert dm_id not in [x["id"] for x in await get_conversations_summary(conn, a, league_id)]
+        assert dm_id in [x["id"] for x in await get_conversations_summary(conn, b, league_id)]  # theirs to keep
+
+        await chat_queries.insert_message(conn, dm_id, b, "fresh", None)
+        back = next(x for x in await get_conversations_summary(conn, a, league_id) if x["id"] == dm_id)
+        messages = await get_conversation_messages(conn, dm_id, None, 50, a)
+
+    assert back["last_message"]["body"] == "fresh"
+    assert back["unread_count"] == 1
+    assert [m["body"] for m in messages] == ["fresh"]  # the deleted history stays gone

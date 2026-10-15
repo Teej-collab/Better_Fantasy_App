@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
@@ -10,6 +11,7 @@ import { Card, LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { markConversationRead } from '@/lib/chatSocket';
 import { queryClient, useChatConversations } from '@/lib/queries';
+import { canDeleteConversation, confirmDeleteConversation } from '@/lib/chatActions';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 import { useAppearance } from '@/lib/appearance';
 
@@ -50,10 +52,35 @@ function ChatListScreenContent() {
       <WatchPartyBar />
       <Card style={styles.listCard}>
         {list.map((c, i) => (
-          <View key={c.id} style={i > 0 ? styles.divided : undefined}>
+          <Swipeable
+            key={c.id}
+            containerStyle={i > 0 ? styles.divided : undefined}
+            enabled={canDeleteConversation(c)}
+            friction={2}
+            rightThreshold={40}
+            overshootRight={false}
+            renderRightActions={(_progress, _translation, swipe) => (
+              <Pressable
+                onPress={() => {
+                  swipe.close();
+                  confirmDeleteConversation(c);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${conversationTitle(c)}`}
+                style={styles.deleteAction}>
+                <Text style={styles.deleteText}>Delete</Text>
+              </Pressable>
+            )}>
             <PreviewLink
               href={{ pathname: '/chat/[id]', params: { id: String(c.id) } }}
-              menu={c.unread_count > 0 ? [{ title: 'Mark as Read', icon: 'checkmark.message', onPress: () => markConversationRead(c.id) }] : undefined}
+              menu={[
+                ...(c.unread_count > 0
+                  ? [{ title: 'Mark as Read', icon: 'checkmark.message' as const, onPress: () => markConversationRead(c.id) }]
+                  : []),
+                ...(canDeleteConversation(c)
+                  ? [{ title: 'Delete Chat', icon: 'trash' as const, destructive: true, onPress: () => confirmDeleteConversation(c) }]
+                  : []),
+              ]}
               style={styles.chatRow}
               pressedStyle={styles.chatRowPressed}>
               <View style={styles.row}>
@@ -78,7 +105,7 @@ function ChatListScreenContent() {
                 </View>
               </View>
             </PreviewLink>
-          </View>
+          </Swipeable>
         ))}
       </Card>
     </ScrollView>
@@ -93,8 +120,11 @@ const styles = StyleSheet.create({
   newButton: { minHeight: 36, borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, justifyContent: 'center' },
   newButtonText: { color: Colors.bg, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.7 },
+  deleteAction: { width: 88, backgroundColor: Colors.loss, alignItems: 'center', justifyContent: 'center' },
+  deleteText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   listCard: { padding: 0, overflow: 'hidden' },
-  chatRow: { paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg },
+  // Solid, so the swipe's Delete button stays hidden until you swipe.
+  chatRow: { paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg, backgroundColor: Colors.surface },
   chatRowPressed: { backgroundColor: Colors.border },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },

@@ -13,6 +13,8 @@ import {
   markConversationRead,
   reactToMessage,
   startDirectConversation,
+  startGroupConversation,
+  fetchChatConversations,
   updatePreferences,
   type ChatConversation,
   type ChatMember,
@@ -179,6 +181,10 @@ export function ChatApp({
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   useEffect(() => {
     getChatMembers().then(setMembers);
@@ -342,6 +348,9 @@ export function ChatApp({
           if (existing.some((m) => m.id === message.id)) return prev;
           return { ...prev, [message.conversation_id]: capMessages([...existing, message]) };
         });
+        // A new DM or group someone just started, or one you deleted
+        // that this message brings back, isn't in the list yet.
+        if (!conversationsRef.current.some((c) => c.id === message.conversation_id)) void refreshConversations();
         setConversations((prev) => {
           const isOpen = message.conversation_id === selectedIdRef.current;
           return prev
@@ -535,30 +544,31 @@ export function ChatApp({
     setHasMoreByConversation((prev) => ({ ...prev, [selectedId]: page.length >= PAGE_SIZE }));
   }
 
-  async function startNewConversation(ownerId: number) {
-    const conversationId = await startDirectConversation(ownerId);
+  async function refreshConversations() {
+    const fresh = await fetchChatConversations().catch(() => null);
+    if (fresh) setConversations([...fresh].sort(compareConversations));
+  }
+
+  // One person opens your DM; two or more start (or reopen) a group.
+  async function startNewConversation(ownerIds: number[], groupName: string) {
+    const conversationId =
+      ownerIds.length === 1
+        ? await startDirectConversation(ownerIds[0])
+        : await startGroupConversation(ownerIds, groupName);
     setShowNewMessage(false);
-    if (!conversations.some((c) => c.id === conversationId)) {
-      const member = members.find((m) => m.owner_id === ownerId);
-      setConversations((prev) => [
-        ...prev,
-        {
-          id: conversationId,
-          type: "direct",
-          member_count: 2,
-          other_owner_id: ownerId,
-          other_owner_name: member?.display_name ?? "Direct Message",
-          other_owner_chat_color: null,
-          other_owner_logo_url: null,
-          other_last_read_message_id: null,
-          avatar_group: null,
-          unread_count: 0,
-          last_message: null,
-          can_post: true,
-        },
-      ]);
-    }
+    await refreshConversations();
     selectConversation(conversationId);
+  }
+
+  function conversationDeleted(conversationId: number) {
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setMessagesByConversation((prev) => {
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+    loadedConversations.current.delete(conversationId);
+    setSelectedId(null);
   }
 
   const selectedConversation = conversations.find((c) => c.id === selectedId) ?? null;
@@ -637,6 +647,8 @@ export function ChatApp({
             onDelete={remove}
             onTyping={() => sendTyping(selectedConversation.id)}
             onBack={() => setSelectedId(null)}
+            onConversationChanged={() => void refreshConversations()}
+            onConversationDeleted={() => conversationDeleted(selectedConversation.id)}
           />
         </div>
       ) : (

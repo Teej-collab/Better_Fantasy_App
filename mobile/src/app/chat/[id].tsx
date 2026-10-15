@@ -330,7 +330,24 @@ export default function ConversationScreen() {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={insets.top + 44}>
-      <Stack.Screen options={{ title: headerTitle }} />
+      <Stack.Screen
+        options={{
+          title: headerTitle,
+          // A DM's or group's details: who's in it, Add People, Delete Chat.
+          headerRight:
+            conversation?.type === 'direct' || conversation?.type === 'group'
+              ? () => (
+                  <Pressable
+                    onPress={() => router.push(`/chat/info?id=${conversationId}` as Href)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Chat info">
+                    <Text style={styles.infoButton}>ⓘ</Text>
+                  </Pressable>
+                )
+              : undefined,
+        }}
+      />
       <FlatList
         inverted
         data={newestFirst}
@@ -814,6 +831,7 @@ function ReceiptsLine({ messageId, mine }: { messageId: number; mine: boolean })
 }
 
 const styles = StyleSheet.create({
+  infoButton: { color: Colors.accent, fontSize: 22, fontWeight: '600', paddingHorizontal: 4 },
   link: { textDecorationLine: 'underline', fontWeight: '700' },
   receipts: { marginTop: 3, paddingHorizontal: 4 },
   receiptsSummary: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },

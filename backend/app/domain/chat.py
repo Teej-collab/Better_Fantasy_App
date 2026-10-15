@@ -52,7 +52,8 @@ def _build_seen_by_message(message_ids: list[int], participants) -> dict[int, li
 
 
 async def get_conversation_messages(conn, conversation_id: int, before_id: int | None, limit: int, requesting_owner_id: int):
-    rows = await chat_queries.list_messages(conn, conversation_id, before_id, limit)
+    cleared = await chat_queries.get_cleared_message_id(conn, conversation_id, requesting_owner_id)
+    rows = await chat_queries.list_messages(conn, conversation_id, before_id, limit, after_id=cleared)
     # Messages from anyone this owner has blocked never come back.
     blocked = await chat_safety_queries.blocked_owner_ids(conn, requesting_owner_id)
     if blocked:
@@ -158,7 +159,9 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
     result = []
     for r in rows:
         last_message = None
-        if r["last_message_id"] is not None:
+        # Nothing you deleted along with the chat shows in its preview.
+        cleared = r["cleared_message_id"] or 0
+        if r["last_message_id"] is not None and r["last_message_id"] > cleared:
             deleted = r["last_message_deleted_at"] is not None
             body = r["last_message_body"]
             if deleted:
@@ -180,7 +183,7 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
         # conversation list surfaces a tapback as the latest line,
         # composed here (not left to the frontend) the same way the
         # "📷 Photo" substitution above already is.
-        if r["last_reaction_at"] is not None and (
+        if r["last_reaction_at"] is not None and r["last_reaction_message_id"] > cleared and (
             last_message is None or r["last_reaction_at"] > r["last_message_at"]
         ):
             reactor = "You" if r["last_reaction_owner_id"] == owner_id else r["last_reaction_owner_name"]
@@ -193,7 +196,7 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
             # the reactor's name a second time so that composition still
             # reads correctly instead of doubling it up.
             last_message = {
-                "id": r["last_message_id"],
+                "id": r["last_message_id"] or r["last_reaction_message_id"],
                 "owner_name": reactor,
                 "body": f"reacted {r['last_reaction_emoji']} to “{quoted}”",
                 "created_at": r["last_reaction_at"].isoformat(),
@@ -218,7 +221,15 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
         # couple of these (at most one league + one commish_corner per
         # league they're in), not one per conversation in the whole list.
         avatar_group = None
-        if r["type"] in ("league", "commish_corner"):
+        member_names = None
+        if r["type"] == "group":
+            # Everyone but you, for an unnamed group's title ("Ian, Niko").
+            member_names = [
+                m["display_name"]
+                for m in await chat_queries.list_all_conversation_participants(conn, r["id"])
+                if m["owner_id"] != owner_id
+            ]
+        if r["type"] in ("league", "commish_corner", "group"):
             avatar_group = [
                 {"owner_id": a["owner_id"], "display_name": a["display_name"], "chat_color": a["chat_color"], "logo_url": a["logo_url"]}
                 for a in await chat_queries.list_conversation_preview_avatars(conn, r["id"])
@@ -228,6 +239,8 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
             {
                 "id": r["id"],
                 "type": r["type"],
+                "name": r["name"],
+                "member_names": member_names,
                 "member_count": r["member_count"],
                 "other_owner_id": r["other_owner_id"],
                 "other_owner_name": r["other_owner_name"],

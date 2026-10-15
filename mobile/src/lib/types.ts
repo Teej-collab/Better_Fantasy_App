@@ -269,7 +269,10 @@ export type ChatMessage = {
 
 export type ChatConversation = {
   id: number;
-  type: 'league' | 'direct' | 'commish_corner';
+  type: 'league' | 'direct' | 'commish_corner' | 'group';
+  // A group chat's name, if someone gave it one, and everyone in it but you.
+  name?: string | null;
+  member_names?: string[] | null;
   member_count: number;
   other_owner_id: number | null;
   other_owner_name: string | null;
@@ -1049,6 +1052,9 @@ export type MyKeepers = {
   }[];
   selections: { espn_player_id: number; player_name: string; consecutive_years_kept: number }[];
 };
+
+// GET /chat/conversations/{id}/members.
+export type ChatConversationMember = { owner_id: number; display_name: string; chat_color: string | null; logo_url: string | null };
 
 // Chat's DM-eligible league members (GET /chat/members).
 export type ChatMember = { owner_id: number; display_name: string; team_name: string; online: boolean };

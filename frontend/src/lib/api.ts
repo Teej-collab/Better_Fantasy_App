@@ -2247,7 +2247,11 @@ export type ChatAvatar = { owner_id: number; display_name: string; chat_color: s
 
 export type ChatConversation = {
   id: number;
-  type: "league" | "direct" | "commish_corner";
+  type: "league" | "direct" | "commish_corner" | "group";
+  // A group chat's name, if someone gave it one, and everyone in it but
+  // you (an unnamed group's title). Null for every other type.
+  name?: string | null;
+  member_names?: string[] | null;
   member_count: number;
   other_owner_id: number | null;
   other_owner_name: string | null;
@@ -2364,6 +2368,54 @@ export async function startDirectConversation(ownerId: number): Promise<number> 
   if (!res.ok) throw new Error(`Failed to start conversation: ${res.status}`);
   const { conversation_id } = await res.json();
   return conversation_id;
+}
+
+// Two or more people: a group chat. The same people as an existing
+// group opens that group; one person opens your DM.
+export async function startGroupConversation(ownerIds: number[], name?: string): Promise<number> {
+  const res = await fetch(`/api/backend/chat/conversations/group`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner_ids: ownerIds, name: name || null }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.detail ?? `Failed to start the group (${res.status})`);
+  return data.conversation_id;
+}
+
+export async function fetchChatConversations(): Promise<ChatConversation[] | null> {
+  const res = await fetch(`/api/backend/chat/conversations`, { cache: "no-store" });
+  if (!res.ok) return null;
+  const { conversations } = await res.json();
+  return conversations;
+}
+
+export async function addChatParticipants(conversationId: number, ownerIds: number[]): Promise<ChatAvatar[]> {
+  const res = await fetch(`/api/backend/chat/conversations/${conversationId}/participants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ owner_ids: ownerIds }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.detail ?? `Couldn't add them (${res.status})`);
+  return data.members;
+}
+
+export async function renameGroupChat(conversationId: number, name: string): Promise<void> {
+  const res = await fetch(`/api/backend/chat/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Couldn't rename the group (${res.status})`);
+}
+
+// Off your own list, history included, for you only. A new message
+// from anyone brings it back.
+export async function deleteConversation(conversationId: number): Promise<void> {
+  const res = await fetch(`/api/backend/chat/conversations/${conversationId}`, { method: "DELETE" });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.detail ?? `Couldn't delete that chat (${res.status})`);
 }
 
 export async function markConversationRead(conversationId: number): Promise<void> {

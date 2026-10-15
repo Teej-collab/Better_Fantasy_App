@@ -69,6 +69,12 @@ def chat_direct_message(sender_name: str, body: str, conversation_id: int) -> di
     return _payload(sender_name, _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_direct_message")
 
 
+def chat_group_message(sender_name: str, body: str, conversation_id: int) -> dict:
+    # A group chat is people you picked, so it rides on the Direct
+    # Messages switch, not League Chat.
+    return _payload(f"{sender_name} in your group chat", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_direct_message")
+
+
 def chat_league_message(sender_name: str, body: str, conversation_id: int) -> dict:
     return _payload(f"{sender_name} in League Chat", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_league_message")
 

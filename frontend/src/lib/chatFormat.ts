@@ -1,3 +1,25 @@
+import type { ChatConversation } from "@/lib/api";
+
+export function conversationTitle(c: ChatConversation): string {
+  if (c.type === "league") return "League Chat";
+  if (c.type === "commish_corner") return "Commish's Corner";
+  if (c.type === "group") return c.name || groupMemberNames(c.member_names ?? []);
+  return c.other_owner_name ?? "Direct Message";
+}
+
+// "Ian, Niko & Clay", or "Ian, Niko & 3 others" for a big group.
+export function groupMemberNames(names: string[]): string {
+  const first = names.map((n) => n.split(" ")[0]);
+  if (first.length === 0) return "Group chat";
+  if (first.length <= 3) return first.length === 1 ? first[0] : `${first.slice(0, -1).join(", ")} & ${first.at(-1)}`;
+  return `${first.slice(0, 2).join(", ")} & ${first.length - 2} others`;
+}
+
+// League Chat and Commish's Corner belong to the whole league.
+export function canDeleteConversation(c: ChatConversation): boolean {
+  return c.type === "direct" || c.type === "group";
+}
+
 // Human-friendly timestamps per the chat brief: "7:42 PM / Yesterday /
 // Monday / Aug 18" — never more precision than that.
 export function formatMessageTimestamp(iso: string): string {

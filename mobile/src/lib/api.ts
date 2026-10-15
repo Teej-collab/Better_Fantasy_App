@@ -7,6 +7,7 @@ import type {
   BetLegStatus,
   BetStatus,
   ChatGif,
+  ChatConversationMember,
   ChatMember,
   CommissionerAddResult,
   DraftBet,
@@ -549,6 +550,26 @@ export const api = {
         body: JSON.stringify({ owner_id: ownerId }),
       })
     ).conversation_id,
+  // Two or more people: a group chat (one person opens your DM instead).
+  startGroupConversation: async (ownerIds: number[], name?: string) =>
+    (
+      await request<{ conversation_id: number }>('/chat/conversations/group', {
+        method: 'POST',
+        body: JSON.stringify({ owner_ids: ownerIds, name: name || null }),
+      })
+    ).conversation_id,
+  chatConversationMembers: async (conversationId: number) =>
+    (await request<{ members: ChatConversationMember[] }>(`/chat/conversations/${conversationId}/members`)).members,
+  addChatParticipants: (conversationId: number, ownerIds: number[]) =>
+    request<{ members: ChatConversationMember[] }>(`/chat/conversations/${conversationId}/participants`, {
+      method: 'POST',
+      body: JSON.stringify({ owner_ids: ownerIds }),
+    }),
+  renameGroupChat: (conversationId: number, name: string) =>
+    request<{ ok: boolean }>(`/chat/conversations/${conversationId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  // Off your own list, history included; a new message brings it back.
+  deleteConversation: (conversationId: number) =>
+    request<{ ok: boolean }>(`/chat/conversations/${conversationId}`, { method: 'DELETE' }),
   // Bet tracking — tracking only. Private unless shared to league chat.
   bets: () => request<{ enabled: boolean; bets: Bet[] }>('/bets'),
   betsInGame: (eventId: string) => request<{ enabled: boolean; bets: Bet[] }>(`/bets/games/${encodeURIComponent(eventId)}`),

@@ -172,6 +172,85 @@ async def get_or_create_direct_conversation(conn, owner_a: int, owner_b: int) ->
     return conversation_id
 
 
+MAX_GROUP_NAME_LENGTH = 60
+
+
+async def get_or_create_group_conversation(conn, league_id: int, owner_ids: list[int], name: str | None) -> int:
+    """A group chat with exactly these people (the creator included). An
+    existing group in this league with the same members opens instead
+    of a second copy, like Messages does."""
+    members = sorted(set(owner_ids))
+    existing = await conn.fetchval(
+        """
+        SELECT c.id FROM conversations c
+        WHERE c.type = 'group' AND c.league_id = $1
+          AND (SELECT array_agg(cp.owner_id ORDER BY cp.owner_id)
+               FROM conversation_participants cp WHERE cp.conversation_id = c.id) = $2::int[]
+        ORDER BY c.id DESC
+        LIMIT 1
+        """,
+        league_id, members,
+    )
+    if existing is not None:
+        return existing
+    conversation_id = await conn.fetchval(
+        "INSERT INTO conversations (type, league_id, name) VALUES ('group', $1, $2) RETURNING id",
+        league_id, (name or "").strip()[:MAX_GROUP_NAME_LENGTH] or None,
+    )
+    await add_participants(conn, conversation_id, members)
+    return conversation_id
+
+
+async def add_participants(conn, conversation_id: int, owner_ids: list[int]) -> None:
+    await conn.execute(
+        """
+        INSERT INTO conversation_participants (conversation_id, owner_id)
+        SELECT $1, unnest($2::int[])
+        ON CONFLICT DO NOTHING
+        """,
+        conversation_id, owner_ids,
+    )
+
+
+async def show_conversation_for(conn, conversation_id: int, owner_id: int) -> None:
+    """Opening a chat you deleted (New Message to the same person) puts
+    it back on your list; what you deleted stays cleared."""
+    await conn.execute(
+        "UPDATE conversation_participants SET hidden = FALSE WHERE conversation_id = $1 AND owner_id = $2",
+        conversation_id, owner_id,
+    )
+
+
+async def delete_conversation_for(conn, conversation_id: int, owner_id: int) -> None:
+    """Deletes a chat from one person's list, history included, for them
+    only. Everyone else keeps it, and a new message brings it back."""
+    await conn.execute(
+        """
+        UPDATE conversation_participants
+        SET hidden = TRUE,
+            cleared_message_id = COALESCE(
+                (SELECT MAX(id) FROM messages WHERE conversation_id = $1), cleared_message_id
+            )
+        WHERE conversation_id = $1 AND owner_id = $2
+        """,
+        conversation_id, owner_id,
+    )
+
+
+async def get_cleared_message_id(conn, conversation_id: int, owner_id: int) -> int | None:
+    return await conn.fetchval(
+        "SELECT cleared_message_id FROM conversation_participants WHERE conversation_id = $1 AND owner_id = $2",
+        conversation_id, owner_id,
+    )
+
+
+async def set_group_name(conn, conversation_id: int, name: str | None) -> None:
+    await conn.execute(
+        "UPDATE conversations SET name = $2 WHERE id = $1 AND type = 'group'",
+        conversation_id, (name or "").strip()[:MAX_GROUP_NAME_LENGTH] or None,
+    )
+
+
 async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
     """Everything the conversation list needs in one shot: type, the
     other participant's name for a direct conversation, member count
@@ -186,9 +265,11 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
     rows = await conn.fetch(
         """
         WITH mine AS (
-            SELECT conversation_id, last_read_message_id
+            SELECT conversation_id, last_read_message_id, cleared_message_id
             FROM conversation_participants
-            WHERE owner_id = $1
+            -- A chat you deleted stays off your list until someone
+            -- sends a new message (insert_message un-hides it).
+            WHERE owner_id = $1 AND NOT hidden
         ),
         last_message AS (
             SELECT DISTINCT ON (m.conversation_id)
@@ -199,7 +280,7 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
         ),
         last_reaction AS (
             SELECT DISTINCT ON (m.conversation_id)
-                m.conversation_id, r.emoji, r.created_at, r.owner_id AS reactor_owner_id,
+                m.conversation_id, m.id AS reacted_message_id, r.emoji, r.created_at, r.owner_id AS reactor_owner_id,
                 ro.display_name AS reactor_name, m.body AS reacted_message_body
             FROM message_reactions r
             JOIN messages m ON m.id = r.message_id
@@ -213,10 +294,11 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
             WHERE m.deleted_at IS NULL
               AND m.owner_id != $1
               AND (mine.last_read_message_id IS NULL OR m.id > mine.last_read_message_id)
+              AND (mine.cleared_message_id IS NULL OR m.id > mine.cleared_message_id)
             GROUP BY m.conversation_id
         )
         SELECT
-            c.id, c.type, c.league_id,
+            c.id, c.type, c.league_id, c.name, mine.cleared_message_id,
             lm.id AS last_message_id, lm.body AS last_message_body, lm.image_url AS last_message_image_url, lm.video AS last_message_video, lm.created_at AS last_message_at,
             lm.deleted_at AS last_message_deleted_at, lm.owner_name AS last_message_owner_name,
             COALESCE(u.unread_count, 0) AS unread_count,
@@ -230,6 +312,7 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
             -- only fires when the reader's own preference allows it.
             CASE WHEN COALESCE(other_prefs.read_receipts_enabled, true)
                  THEN other_cp.last_read_message_id END AS other_last_read_message_id,
+            lr.reacted_message_id AS last_reaction_message_id,
             lr.emoji AS last_reaction_emoji, lr.created_at AS last_reaction_at,
             lr.reactor_owner_id AS last_reaction_owner_id, lr.reactor_name AS last_reaction_owner_name,
             lr.reacted_message_body AS last_reaction_message_body
@@ -260,7 +343,7 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
     return rows
 
 
-async def list_messages(conn, conversation_id: int, before_id: int | None, limit: int):
+async def list_messages(conn, conversation_id: int, before_id: int | None, limit: int, after_id: int | None = None):
     """Newest-first page (before_id for pagination), returned in
     chronological order for display. Reply-to previews and reaction
     counts are batch-fetched separately by the caller (app/domain/chat.py)
@@ -273,7 +356,10 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
     (chat_domain.py's reply_previews, built from a separate by-ID
     lookup that isn't filtered this way) — useful context on the
     message that's still visible, not the deleted message reappearing
-    in the main thread."""
+    in the main thread.
+
+    after_id: the viewer deleted this chat once, so only messages newer
+    than the last one they deleted come back (cleared_message_id)."""
     if before_id is not None:
         rows = await conn.fetch(
             """
@@ -283,10 +369,11 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.id < $2 AND m.deleted_at IS NULL
+              AND ($4::int IS NULL OR m.id > $4)
             ORDER BY m.id DESC
             LIMIT $3
             """,
-            conversation_id, before_id, limit,
+            conversation_id, before_id, limit, after_id,
         )
     else:
         rows = await conn.fetch(
@@ -297,10 +384,11 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
+              AND ($3::int IS NULL OR m.id > $3)
             ORDER BY m.id DESC
             LIMIT $2
             """,
-            conversation_id, limit,
+            conversation_id, limit, after_id,
         )
     return list(reversed(rows))
 
@@ -362,6 +450,11 @@ async def insert_message(
     # Every message passes the chat filter here, whichever route sent it
     # (app/moderation.py): the built-in list plus the league's own words.
     league_id = await conn.fetchval("SELECT league_id FROM conversations WHERE id = $1", conversation_id)
+    # Anyone who deleted this chat gets it back with this message (and
+    # only what's newer than what they deleted), like Messages.
+    await conn.execute(
+        "UPDATE conversation_participants SET hidden = FALSE WHERE conversation_id = $1 AND hidden", conversation_id
+    )
     keys = await moderation.league_keys(conn, league_id)
     body = moderation.clean(body, keys)
     title = moderation.clean(title, keys)

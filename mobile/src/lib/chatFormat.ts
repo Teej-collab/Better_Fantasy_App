@@ -14,7 +14,16 @@ export function compareConversations(a: ChatConversation, b: ChatConversation): 
 export function conversationTitle(c: ChatConversation): string {
   if (c.type === 'league') return 'League Chat';
   if (c.type === 'commish_corner') return 'Commish Corner';
+  if (c.type === 'group') return c.name || groupMemberNames(c.member_names ?? []);
   return c.other_owner_name ?? 'Direct message';
+}
+
+// "Ian, Niko & Clay", or "Ian, Niko & 3 others" for a big group.
+export function groupMemberNames(names: string[]): string {
+  const first = names.map((n) => n.split(' ')[0]);
+  if (first.length === 0) return 'Group chat';
+  if (first.length <= 3) return first.length === 1 ? first[0] : `${first.slice(0, -1).join(', ')} & ${first.at(-1)}`;
+  return `${first.slice(0, 2).join(', ')} & ${first.length - 2} others`;
 }
 
 // "3:42 PM" today, "Tue" this week, else "Sep 12".

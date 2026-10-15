@@ -324,7 +324,7 @@ async def cleanup_test_season(pool):
             "DELETE FROM conversation_participants WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute(
-            "DELETE FROM conversations WHERE type = 'direct' "
+            "DELETE FROM conversations WHERE type IN ('direct', 'group') "
             "AND id NOT IN (SELECT conversation_id FROM conversation_participants)"
         )
         # trade_assets/trades reference teams_by_season(id) (and

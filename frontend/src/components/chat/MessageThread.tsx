@@ -7,7 +7,7 @@ import { GroupInfoModal } from "@/components/chat/GroupInfoModal";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { MessageComposer } from "@/components/chat/MessageComposer";
 import { PostAnnouncementForm } from "@/components/chat/PostAnnouncementForm";
-import { formatMessageTimestamp, isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
+import { conversationTitle, formatMessageTimestamp, isGroupedWithNext, isGroupedWithPrevious } from "@/lib/chatFormat";
 import { usePresence } from "@/components/PresenceProvider";
 
 const AT_BOTTOM_THRESHOLD_PX = 80;
@@ -31,6 +31,8 @@ export function MessageThread({
   onDelete,
   onTyping,
   onBack,
+  onConversationChanged,
+  onConversationDeleted,
   beta = false,
 }: {
   conversation: ChatConversation;
@@ -61,6 +63,8 @@ export function MessageThread({
   onDelete: (messageId: number) => void;
   onTyping: () => void;
   onBack: () => void;
+  onConversationChanged?: () => void;
+  onConversationDeleted?: () => void;
 }) {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -70,7 +74,8 @@ export function MessageThread({
   // away like iMessage; each disappears once the backend has sent the
   // real message (it arrives over the chat socket).
   const [outgoing, setOutgoing] = useState<OutgoingVideo[]>([]);
-  const isGroupConversation = conversation.type === "league" || conversation.type === "commish_corner";
+  const isGroupConversation =
+    conversation.type === "league" || conversation.type === "commish_corner" || conversation.type === "group";
   // Commish's Corner reads as a feed of tap-to-expand announcement
   // cards (matching History's own card list), not a chat bubble
   // stream — a commissioner's post is closer to a short article than
@@ -168,18 +173,15 @@ export function MessageThread({
     document.getElementById(`chat-message-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  const title =
-    conversation.type === "league"
-      ? "League Chat"
-      : conversation.type === "commish_corner"
-        ? "Commish's Corner"
-        : conversation.other_owner_name ?? "Direct Message";
+  const title = conversationTitle(conversation);
   // -1 never matches a real owner_id — a harmless always-false fallback
   // for the league conversation, where there's no single "other" person
   // to show presence for. Hooks always run either way (rules of hooks).
   const otherOnline = usePresence(conversation.other_owner_id ?? -1, false);
   const subtitle =
-    conversation.type === "league" || conversation.type === "commish_corner"
+    conversation.type === "group"
+      ? `${conversation.member_count} people`
+      : conversation.type === "league" || conversation.type === "commish_corner"
       ? `${conversation.member_count} managers`
       : otherOnline
         ? "Online now"
@@ -233,7 +235,11 @@ export function MessageThread({
             </span>
           </button>
         ) : (
-          <div className="flex min-w-0 flex-col">
+          <button
+            onClick={() => setShowGroupInfo(true)}
+            className="flex min-w-0 flex-col text-left"
+            aria-label={`${title} info`}
+          >
             <span className="flex items-center gap-1.5 min-w-0 wrap-break-word font-display font-bold" style={{ color: "var(--wl-text)" }}>
               {title}
               {otherOnline && (
@@ -247,11 +253,22 @@ export function MessageThread({
               )}
             </span>
             <span className="min-w-0 wrap-break-word text-xs" style={{ color: "var(--wl-text-secondary)" }}>{subtitle}</span>
-          </div>
+          </button>
         )}
       </div>
 
-      {showGroupInfo && <GroupInfoModal conversation={conversation} onClose={() => setShowGroupInfo(false)} />}
+      {showGroupInfo && (
+        <GroupInfoModal
+          conversation={conversation}
+          leagueMembers={members}
+          onClose={() => setShowGroupInfo(false)}
+          onChanged={onConversationChanged}
+          onDeleted={() => {
+            setShowGroupInfo(false);
+            onConversationDeleted?.();
+          }}
+        />
+      )}
 
       {isAnnouncementFeed ? (
         <AnnouncementFeed

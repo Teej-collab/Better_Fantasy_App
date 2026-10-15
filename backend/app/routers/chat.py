@@ -161,7 +161,109 @@ async def start_direct_conversation(request: Request, pool=Depends(get_pool)):
         if target_owner_id not in eligible_ids:
             raise HTTPException(status_code=404, detail="Not a current league member")
         conversation_id = await chat_queries.get_or_create_direct_conversation(conn, owner_id, target_owner_id)
+        await chat_queries.show_conversation_for(conn, conversation_id, owner_id)
     return {"conversation_id": conversation_id}
+
+
+MAX_GROUP_SIZE = 20
+
+
+async def _eligible_ids(conn, payload, owner_id: int) -> tuple[int, set[int]]:
+    league_id = await require_active_league_id(conn, payload)
+    active_season = int(_require("ACTIVE_SEASON"))
+    rows = await chat_queries.list_eligible_members(conn, active_season, league_id, owner_id)
+    return league_id, {m["owner_id"] for m in rows}
+
+
+def _owner_id_list(body: dict) -> list[int]:
+    raw = body.get("owner_ids")
+    if not isinstance(raw, list) or not all(isinstance(o, int) for o in raw):
+        raise HTTPException(status_code=400, detail="owner_ids must be a list of owner ids")
+    return list(dict.fromkeys(raw))
+
+
+@router.post("/conversations/group")
+async def start_group_conversation(request: Request, pool=Depends(get_pool)):
+    """A group chat with two or more league members (one person is just
+    a DM, so that opens the DM instead). Same members as an existing
+    group in this league opens that group."""
+    payload = _require_session(request)
+    body = await request.json()
+    others = _owner_id_list(body)
+    name = body.get("name") if isinstance(body.get("name"), str) else None
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        others = [o for o in others if o != owner_id]
+        if not others:
+            raise HTTPException(status_code=400, detail="Pick at least one person")
+        if len(others) + 1 > MAX_GROUP_SIZE:
+            raise HTTPException(status_code=400, detail=f"A group can have up to {MAX_GROUP_SIZE} people")
+        league_id, eligible = await _eligible_ids(conn, payload, owner_id)
+        if any(o not in eligible for o in others):
+            raise HTTPException(status_code=404, detail="Not a current league member")
+        if len(others) == 1:
+            conversation_id = await chat_queries.get_or_create_direct_conversation(conn, owner_id, others[0])
+        else:
+            conversation_id = await chat_queries.get_or_create_group_conversation(
+                conn, league_id, [owner_id, *others], name
+            )
+        await chat_queries.show_conversation_for(conn, conversation_id, owner_id)
+    return {"conversation_id": conversation_id}
+
+
+@router.post("/conversations/{conversation_id}/participants")
+async def add_group_participants(conversation_id: int, request: Request, pool=Depends(get_pool)):
+    """Anyone in a group chat can add more league members to it."""
+    payload = _require_session(request)
+    body = await request.json()
+    new_ids = _owner_id_list(body)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        if await chat_queries.get_conversation_type(conn, conversation_id) != "group":
+            raise HTTPException(status_code=400, detail="People can only be added to a group chat")
+        _, eligible = await _eligible_ids(conn, payload, owner_id)
+        current = set(await chat_queries.list_conversation_participant_ids(conn, conversation_id))
+        new_ids = [o for o in new_ids if o not in current]
+        if any(o not in eligible for o in new_ids):
+            raise HTTPException(status_code=404, detail="Not a current league member")
+        if len(current) + len(new_ids) > MAX_GROUP_SIZE:
+            raise HTTPException(status_code=400, detail=f"A group can have up to {MAX_GROUP_SIZE} people")
+        await chat_queries.add_participants(conn, conversation_id, new_ids)
+        members = await chat_queries.list_all_conversation_participants(conn, conversation_id)
+    return {"members": members}
+
+
+@router.patch("/conversations/{conversation_id}")
+async def rename_group(conversation_id: int, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    body = await request.json()
+    name = body.get("name")
+    if name is not None and not isinstance(name, str):
+        raise HTTPException(status_code=400, detail="name must be text")
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        if await chat_queries.get_conversation_type(conn, conversation_id) != "group":
+            raise HTTPException(status_code=400, detail="Only a group chat has a name")
+        await chat_queries.set_group_name(conn, conversation_id, name)
+    return {"ok": True}
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: int, request: Request, pool=Depends(get_pool)):
+    """Deletes a DM or group chat from your own list, history included,
+    for you only. A new message brings it back with just that message.
+    League Chat and Commish's Corner are the whole league's, so they
+    stay."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        if await chat_queries.get_conversation_type(conn, conversation_id) not in ("direct", "group"):
+            raise HTTPException(status_code=400, detail="League chats can't be deleted")
+        await chat_queries.delete_conversation_for(conn, conversation_id, owner_id)
+    return {"ok": True}
 
 
 @router.get("/members")
@@ -666,6 +768,8 @@ async def _push_notify_new_message(
                     category, build = "notify_replies", formatter.chat_reply
                 elif conversation_type == "direct":
                     category, build = "notify_direct_messages", formatter.chat_direct_message
+                elif conversation_type == "group":
+                    category, build = "notify_direct_messages", formatter.chat_group_message
                 else:
                     category, build = "notify_league_chat", formatter.chat_league_message
 

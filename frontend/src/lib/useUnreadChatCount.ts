@@ -24,7 +24,7 @@ export function useUnreadChatCount(): number {
         if (!data) return;
         const total = data.conversations.reduce((sum, c) => {
           if (prefs && c.type === "league" && !prefs.notify_league_chat) return sum;
-          if (prefs && c.type === "direct" && !prefs.notify_direct_messages) return sum;
+          if (prefs && (c.type === "direct" || c.type === "group") && !prefs.notify_direct_messages) return sum;
           return sum + c.unread_count;
         }, 0);
         setUnread(total);

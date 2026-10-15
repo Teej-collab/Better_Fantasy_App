@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { ChatAvatar, ChatConversation } from "@/lib/api";
-import { formatConversationListTimestamp } from "@/lib/chatFormat";
+import { conversationTitle, formatConversationListTimestamp } from "@/lib/chatFormat";
 import { initialsFor } from "@/components/chat/MessageBubble";
 import { usePresence } from "@/components/PresenceProvider";
 
@@ -110,11 +110,10 @@ function ConversationRow({
   onSelect: (id: number) => void;
 }) {
   const c = conversation;
-  const isGroup = c.type === "league" || c.type === "commish_corner";
-  const title =
-    c.type === "league" ? "League Chat" : c.type === "commish_corner" ? "Commish's Corner" : (c.other_owner_name ?? "Direct Message");
+  const isGroup = c.type === "league" || c.type === "commish_corner" || c.type === "group";
+  const title = conversationTitle(c);
   const subtitle = isGroup
-    ? `${c.member_count} managers`
+    ? `${c.member_count} ${c.type === "group" ? "people" : "managers"}`
     : c.last_message && messagePreviewsEnabled
       ? c.last_message.body
       : "";
