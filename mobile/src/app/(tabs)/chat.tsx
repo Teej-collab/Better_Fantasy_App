@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
@@ -10,10 +11,12 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { markConversationRead } from '@/lib/chatSocket';
 import { queryClient, useChatConversations } from '@/lib/queries';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
+import { useAppearance } from '@/lib/appearance';
 
 function ChatListScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
   const conversations = useChatConversations();
+  const accent = useAppearance().accent;
   const [refreshing, setRefreshing] = useState(false);
 
   async function onRefresh() {
@@ -33,7 +36,17 @@ function ChatListScreenContent() {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
-      <Text style={styles.title}>Chat</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Chat</Text>
+        <Pressable
+          onPress={() => router.push('/chat/new')}
+          accessibilityRole="button"
+          accessibilityLabel="New message"
+          hitSlop={8}
+          style={({ pressed }) => [styles.newButton, { backgroundColor: accent }, pressed && styles.pressed]}>
+          <Text style={styles.newButtonText}>✎ New</Text>
+        </Pressable>
+      </View>
       <WatchPartyBar />
       <Card style={styles.listCard}>
         {list.map((c, i) => (
@@ -75,7 +88,11 @@ function ChatListScreenContent() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2 },
-  title: { color: Colors.text, fontSize: 28, fontWeight: '800', marginBottom: Spacing.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.lg },
+  title: { color: Colors.text, fontSize: 28, fontWeight: '800' },
+  newButton: { minHeight: 36, borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, justifyContent: 'center' },
+  newButtonText: { color: Colors.bg, fontSize: 15, fontWeight: '800' },
+  pressed: { opacity: 0.7 },
   listCard: { padding: 0, overflow: 'hidden' },
   chatRow: { paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg },
   chatRowPressed: { backgroundColor: Colors.border },

@@ -55,16 +55,16 @@ function capMessages(messages: ChatMessage[]): ChatMessage[] {
 
 type TypingUser = { owner_id: number; owner_name: string };
 
-// Mirrors the backend's own pin order (app/queries/chat.py's
-// list_conversations_for_owner: commish_corner, then league, then
-// everything else — announcements pinned above ordinary chat) — kept
-// in sync here only for the case of a live message reordering the list
-// client-side; the initial server-rendered order already comes
-// pre-sorted this way.
-function conversationTypeRank(type: ChatConversation["type"]): number {
-  if (type === "commish_corner") return 0;
-  if (type === "league") return 1;
-  return 2;
+// Mirrors the backend's own order (app/queries/chat.py's
+// list_conversations_for_owner): Commish Corner pinned on top, then
+// everything else newest message first, like Messages. Kept in sync
+// here for a live message reordering the list client-side.
+function compareConversations(a: ChatConversation, b: ChatConversation): number {
+  const pin = (c: ChatConversation) => (c.type === "commish_corner" ? 0 : 1);
+  if (pin(a) !== pin(b)) return pin(a) - pin(b);
+  const at = a.last_message ? Date.parse(a.last_message.created_at) : 0;
+  const bt = b.last_message ? Date.parse(b.last_message.created_at) : 0;
+  return bt - at || b.id - a.id;
 }
 
 export function ChatApp({
@@ -96,7 +96,7 @@ export function ChatApp({
   const [conversations, setConversations] = useState(initialConversations);
   // Opens to the conversation list, like iMessage does, rather than
   // always auto-selecting the first conversation — which (per
-  // conversationTypeRank above) is always Commish's Corner, so every
+  // compareConversations above) is always Commish's Corner, so every
   // single chat visit used to jump straight into it regardless of what
   // the person actually wanted to look at. A ?conversation=<id> deep
   // link (push notification, see initialConversationId's own comment)
@@ -354,7 +354,7 @@ export function ChatApp({
                   }
                 : c
             )
-            .sort((a, b) => conversationTypeRank(a.type) - conversationTypeRank(b.type));
+            .sort(compareConversations);
         });
         if (message.conversation_id === selectedIdRef.current) {
           markConversationRead(message.conversation_id);

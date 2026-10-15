@@ -1,5 +1,16 @@
 import type { ChatConversation } from '@/lib/types';
 
+// Commish Corner pinned on top, then everything else newest message
+// first, like Messages. Same order the server sends; this keeps it as
+// live messages come in.
+export function compareConversations(a: ChatConversation, b: ChatConversation): number {
+  const pin = (c: ChatConversation) => (c.type === 'commish_corner' ? 0 : 1);
+  if (pin(a) !== pin(b)) return pin(a) - pin(b);
+  const at = a.last_message ? Date.parse(a.last_message.created_at) : 0;
+  const bt = b.last_message ? Date.parse(b.last_message.created_at) : 0;
+  return bt - at || b.id - a.id;
+}
+
 export function conversationTitle(c: ChatConversation): string {
   if (c.type === 'league') return 'League Chat';
   if (c.type === 'commish_corner') return 'Commish Corner';

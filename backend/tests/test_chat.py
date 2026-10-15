@@ -188,21 +188,26 @@ async def test_conversations_summary_includes_avatar_group_for_league_type(pool)
     assert {m["owner_id"] for m in conv["avatar_group"]} == {a, b}
 
 
-async def test_conversations_summary_pins_commish_corner_above_league(pool):
+async def test_conversations_summary_pins_commish_corner_then_newest_first(pool):
     from app.domain.chat import get_conversations_summary
 
     _, a, league_id = await _seed_league_owner(pool, "pin-order-a")
     async with pool.acquire() as conn:
         league_conversation_id = await chat_queries.create_conversation_for_league(conn, league_id, "league", [a])
         commish_corner_id = await chat_queries.create_conversation_for_league(conn, league_id, "commish_corner", [a])
-        # A direct message too, to confirm it still sorts to the bottom.
         b = await _seed_owner(pool, 98)
         direct_id = await _seed_direct_conversation(pool, a, b)
+        # League chat first, then the DM: the DM is newer, so it sorts
+        # above the league chat. Commish Corner stays on top with no
+        # messages at all.
+        await chat_queries.insert_message(conn, league_conversation_id, a, "older", None)
+        await conn.execute("UPDATE messages SET created_at = now() - interval '1 minute' WHERE conversation_id = $1", league_conversation_id)
+        await chat_queries.insert_message(conn, direct_id, a, "newer", None)
 
         a_view = await get_conversations_summary(conn, a, league_id)
 
     ids_in_order = [c["id"] for c in a_view if c["id"] in (league_conversation_id, commish_corner_id, direct_id)]
-    assert ids_in_order == [commish_corner_id, league_conversation_id, direct_id]
+    assert ids_in_order == [commish_corner_id, direct_id, league_conversation_id]
 
 
 async def test_conversations_summary_gates_read_receipt_on_the_other_owners_preference(pool):

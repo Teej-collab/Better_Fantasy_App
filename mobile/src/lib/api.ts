@@ -541,6 +541,14 @@ export const api = {
   // carry the Authorization header (backend/app/routers/auth.py's issue_ticket).
   chatSocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=ws', { method: 'POST' }),
   chatMembers: async () => (await request<{ members: ChatMember[] }>('/chat/members')).members,
+  // Opens (or creates) your one-on-one conversation with a league member.
+  startDirectConversation: async (ownerId: number) =>
+    (
+      await request<{ conversation_id: number }>('/chat/conversations/direct', {
+        method: 'POST',
+        body: JSON.stringify({ owner_id: ownerId }),
+      })
+    ).conversation_id,
   // Bet tracking — tracking only. Private unless shared to league chat.
   bets: () => request<{ enabled: boolean; bets: Bet[] }>('/bets'),
   betsInGame: (eventId: string) => request<{ enabled: boolean; bets: Bet[] }>(`/bets/games/${encodeURIComponent(eventId)}`),

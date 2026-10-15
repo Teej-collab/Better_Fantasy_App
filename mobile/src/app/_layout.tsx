@@ -173,6 +173,7 @@ function RootStack() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="matchup/[id]" options={{ title: 'Matchup', headerBackTitle: 'Back' }} />
           <Stack.Screen name="chat/[id]" options={{ title: 'Chat', headerBackTitle: 'Chat' }} />
+          <Stack.Screen name="chat/new" options={{ title: 'New Message', presentation: 'modal' }} />
           <Stack.Screen name="waivers" options={{ title: 'My claims', headerBackTitle: 'Players' }} />
           <Stack.Screen name="waiver-history" options={{ title: 'Past claims', headerBackTitle: 'My claims' }} />
           <Stack.Screen name="player/[id]" options={{ title: 'Player', headerBackTitle: 'Back' }} />

@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import { api, chatSocketUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { compareConversations } from '@/lib/chatFormat';
 import { queryClient } from '@/lib/queries';
 import type { ChatConversation, ChatMessage, ChatReaction } from '@/lib/types';
 
@@ -114,21 +115,28 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
         prev && !prev.some((m) => m.id === message.id) ? [...prev, message] : prev,
       );
       const isOpen = message.conversation_id === openConversationRef.current;
+      const known = queryClient.getQueryData<ChatConversation[]>(['chat-conversations']);
+      // A brand-new DM someone just started isn't in the list yet.
+      if (known && !known.some((c) => c.id === message.conversation_id)) {
+        void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+      }
       queryClient.setQueryData<ChatConversation[]>(['chat-conversations'], (prev) =>
-        prev?.map((c) =>
-          c.id === message.conversation_id
-            ? {
-                ...c,
-                last_message: {
-                  id: message.id,
-                  owner_name: message.owner_name,
-                  body: message.body || (message.video ? '🎥 Video' : message.image_url ? '📷 Photo' : ''),
-                  created_at: message.created_at,
-                },
-                unread_count: isOpen || message.owner_id === myOwnerId ? c.unread_count : c.unread_count + 1,
-              }
-            : c,
-        ),
+        prev
+          ?.map((c) =>
+            c.id === message.conversation_id
+              ? {
+                  ...c,
+                  last_message: {
+                    id: message.id,
+                    owner_name: message.owner_name,
+                    body: message.body || (message.video ? '🎥 Video' : message.image_url ? '📷 Photo' : ''),
+                    created_at: message.created_at,
+                  },
+                  unread_count: isOpen || message.owner_id === myOwnerId ? c.unread_count : c.unread_count + 1,
+                }
+              : c,
+          )
+          .sort(compareConversations),
       );
       if (isOpen && message.owner_id !== myOwnerId) markConversationRead(message.conversation_id);
     } else if (event.type === 'typing') {

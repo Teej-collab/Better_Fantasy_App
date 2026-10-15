@@ -247,9 +247,12 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
         -- room itself), not surfaced a second time as an ordinary thread
         -- in this list — see app/queries/watch_party.py's own docstring.
         WHERE (c.type = 'direct' OR c.league_id = $2) AND c.type != 'watch_party'
+        -- Commish Corner stays pinned; everything else, the league chat
+        -- included, goes newest message first like Messages (2026-10).
         ORDER BY
-            CASE c.type WHEN 'commish_corner' THEN 0 WHEN 'league' THEN 1 ELSE 2 END,
-            lm.created_at DESC NULLS LAST
+            CASE c.type WHEN 'commish_corner' THEN 0 ELSE 1 END,
+            lm.created_at DESC NULLS LAST,
+            c.id DESC
         """,
         owner_id,
         league_id,
