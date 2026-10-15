@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
@@ -12,12 +13,12 @@ import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { api, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
+import { api, postChatVideo, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
-import { pickChatPhoto, type PhotoSource } from '@/lib/chatImage';
+import { pickChatPhoto, pickChatVideo, type PhotoSource } from '@/lib/chatImage';
 import { markConversationRead, useChatSocket } from '@/lib/chatSocket';
 import { queryClient, useChatConversations, useChatMembers, useChatMessages, useMe, usePreferences } from '@/lib/queries';
-import type { AnnouncementReceipts, ChatGif, ChatMember, ChatMessage } from '@/lib/types';
+import type { AnnouncementReceipts, ChatGif, ChatMember, ChatMessage, ChatVideo } from '@/lib/types';
 
 // backend/app/routers/chat.py's ALLOWED_REACTIONS and DEFAULT_PAGE_SIZE.
 const REACTIONS = ['😂', '🔥', '💀', '👍', '❤️', '😭'];
@@ -27,6 +28,9 @@ const TYPING_SEND_INTERVAL_MS = 2000;
 // One attachment at a time, like the web composer. A GIF is one too:
 // already hosted by GIPHY, so it's ready to send straight away.
 type PendingImage = { status: 'uploading' | 'done' | 'error'; localUri: string; url?: string; gif?: boolean };
+// A video waits here until Send, then posts with the message text; the
+// backend converts it and sends the message itself (postChatVideo).
+type PendingVideo = { status: 'ready' | 'posting' | 'error'; localUri: string; error?: string };
 
 export default function ConversationScreen() {
   // `title` names a conversation that isn't in the chat list, like a
@@ -51,6 +55,8 @@ export default function ConversationScreen() {
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
+  const [viewingVideo, setViewingVideo] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [reachedStart, setReachedStart] = useState(false);
@@ -115,11 +121,37 @@ export default function ConversationScreen() {
   }
 
   const imageReady = pendingImage?.status === 'done';
-  const canSend =
-    connected && pendingImage?.status !== 'uploading' && (!!draft.trim() || imageReady) && (!isAnnouncements || !!title.trim());
+  const videoReady = pendingVideo !== null && pendingVideo.status !== 'posting';
+  const canSend = videoReady
+    ? !isAnnouncements
+    : connected && pendingImage?.status !== 'uploading' && pendingVideo === null && (!!draft.trim() || imageReady) && (!isAnnouncements || !!title.trim());
+
+  async function sendVideo(video: PendingVideo) {
+    const body = draft.trim();
+    setPendingVideo({ ...video, status: 'posting', error: undefined });
+    try {
+      const message = await postChatVideo(conversationId, video.localUri, body, replyTo?.id ?? null);
+      // Usually already here over the socket; this covers a dropped one.
+      queryClient.setQueryData<ChatMessage[]>(['chat-messages', conversationId], (prev) =>
+        prev && !prev.some((m) => m.id === message.id) ? [...prev, message] : prev,
+      );
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setDraft((d) => (d.trim() === body ? '' : d));
+      setSelectionEnd(0);
+      setPendingMentions(new Map());
+      setPendingVideo(null);
+      setReplyTo(null);
+    } catch (e) {
+      setPendingVideo({ ...video, status: 'error', error: e instanceof Error ? e.message : "Couldn't post that video." });
+    }
+  }
 
   function onSend() {
     if (!canSend) return;
+    if (pendingVideo) {
+      void sendVideo(pendingVideo);
+      return;
+    }
     const event: Record<string, unknown> = { type: 'message', conversation_id: conversationId, body: draft.trim() };
     if (isAnnouncements) event.title = title.trim();
     if (imageReady) event.image_url = pendingImage.url;
@@ -219,6 +251,7 @@ export default function ConversationScreen() {
       return;
     }
     if (!localUri) return;
+    setPendingVideo(null);
     setPendingImage({ status: 'uploading', localUri });
     try {
       const url = await uploadChatImage(localUri);
@@ -228,17 +261,38 @@ export default function ConversationScreen() {
     }
   }
 
+  async function attachVideo(source: PhotoSource) {
+    let localUri: string | null;
+    try {
+      localUri = await pickChatVideo(source);
+    } catch {
+      Alert.alert("Couldn't open that video");
+      return;
+    }
+    if (!localUri) return;
+    setPendingImage(null);
+    setPendingVideo({ status: 'ready', localUri });
+  }
+
   function pickGif(gif: ChatGif) {
     setGifPickerOpen(false);
+    setPendingVideo(null);
     setPendingImage({ status: 'done', localUri: gif.preview_url, url: gif.url, gif: true });
   }
 
   function chooseAttachment() {
-    if (pendingImage?.status === 'uploading') return;
-    Alert.alert('Add a photo', undefined, [
+    if (pendingImage?.status === 'uploading' || pendingVideo?.status === 'posting') return;
+    // No videos in Commish's Corner (the backend refuses them there).
+    Alert.alert(isAnnouncements ? 'Add a photo' : 'Add a photo or video', undefined, [
       { text: 'Photo library', onPress: () => void attach('library') },
       { text: 'Take photo', onPress: () => void attach('camera') },
-      { text: 'Cancel', style: 'cancel' },
+      ...(isAnnouncements
+        ? []
+        : [
+            { text: 'Video library', onPress: () => void attachVideo('library') },
+            { text: 'Record video', onPress: () => void attachVideo('camera') },
+          ]),
+      { text: 'Cancel', style: 'cancel' as const },
     ]);
   }
 
@@ -283,6 +337,7 @@ export default function ConversationScreen() {
                 setActionsFor(item);
               }}
               onOpenImage={setViewingImage}
+              onOpenVideo={setViewingVideo}
             />
           );
         }}
@@ -310,7 +365,7 @@ export default function ConversationScreen() {
               <View style={styles.replyBannerText}>
                 <Text style={styles.replyName}>Replying to {replyTo.owner_name}</Text>
                 <Text style={styles.replyBody} numberOfLines={1}>
-                  {replyTo.body || 'Photo'}
+                  {replyTo.body || (replyTo.video ? 'Video' : 'Photo')}
                 </Text>
               </View>
               <Pressable onPress={() => setReplyTo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Cancel reply">
@@ -335,6 +390,25 @@ export default function ConversationScreen() {
               </Pressable>
             </View>
           )}
+          {pendingVideo && (
+            <View style={styles.pendingImage}>
+              <View style={[styles.pendingThumb, styles.videoThumb]}>
+                {pendingVideo.status === 'posting' ? <ActivityIndicator color={Colors.text} /> : <Text style={styles.playGlyph}>▶</Text>}
+              </View>
+              <Text style={[styles.pendingText, pendingVideo.status === 'error' && styles.pendingError]}>
+                {pendingVideo.status === 'posting'
+                  ? 'Posting video… this can take a minute'
+                  : pendingVideo.status === 'error'
+                    ? `${pendingVideo.error} Tap Send to try again.`
+                    : 'Video ready to send'}
+              </Text>
+              {pendingVideo.status !== 'posting' && (
+                <Pressable onPress={() => setPendingVideo(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove video">
+                  <Text style={styles.dismiss}>✕</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
           {mentionMatches.length > 0 && (
             <View style={styles.mentionList}>
               {mentionMatches.map((m, i) => (
@@ -353,12 +427,12 @@ export default function ConversationScreen() {
             </View>
           )}
           <View style={styles.composerRow}>
-            <Pressable onPress={chooseAttachment} hitSlop={8} accessibilityRole="button" accessibilityLabel="Attach a photo" style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
+            <Pressable onPress={chooseAttachment} hitSlop={8} accessibilityRole="button" accessibilityLabel={isAnnouncements ? 'Attach a photo' : 'Attach a photo or video'} style={({ pressed }) => [styles.attachButton, pressed && styles.pressed]}>
               <Text style={styles.attachText}>+</Text>
             </Pressable>
             <Pressable
               onPress={() => {
-                if (pendingImage?.status === 'uploading') return;
+                if (pendingImage?.status === 'uploading' || pendingVideo?.status === 'posting') return;
                 setGifPickerOpen(true);
               }}
               hitSlop={8}
@@ -427,8 +501,49 @@ export default function ConversationScreen() {
           {viewingImage && <Image source={{ uri: viewingImage }} style={styles.fullImage} contentFit="contain" />}
         </Pressable>
       </Modal>
+
+      <Modal visible={viewingVideo !== null} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => setViewingVideo(null)}>
+        <View style={[styles.imageViewer, { paddingTop: insets.top }]}>
+          <Pressable onPress={() => setViewingVideo(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close video" style={styles.closeVideo}>
+            <Text style={styles.closeVideoText}>Done</Text>
+          </Pressable>
+          {viewingVideo && <ChatVideoPlayer url={viewingVideo} />}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
+}
+
+// A video in the thread: its poster with a play button and the length.
+// Nothing downloads until someone taps it; then it plays full screen.
+function VideoTile({ video, from, onOpen, onLongPress }: { video: ChatVideo; from: string; onOpen: (url: string) => void; onLongPress: () => void }) {
+  const portrait = (video.height ?? 0) > (video.width ?? 0);
+  const width = portrait ? 170 : 240;
+  const aspect = video.width && video.height ? video.width / video.height : portrait ? 9 / 16 : 16 / 9;
+  const seconds = Math.round(video.duration ?? 0);
+  return (
+    <Pressable
+      onPress={() => onOpen(video.url)}
+      onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Play video from ${from}${seconds ? `, ${seconds} seconds` : ''}`}
+      style={[styles.videoTile, { width, aspectRatio: aspect }]}>
+      <Image source={{ uri: video.poster_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
+      <View style={styles.playBadge}>
+        <Text style={styles.playGlyph}>▶</Text>
+      </View>
+      {seconds > 0 && (
+        <Text style={styles.videoLength}>
+          {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+function ChatVideoPlayer({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (p) => p.play());
+  return <VideoView player={player} nativeControls contentFit="contain" style={styles.fullVideo} fullscreenOptions={{ enable: true }} />;
 }
 
 function MessageBubble(props: {
@@ -442,6 +557,7 @@ function MessageBubble(props: {
   canSeeReceipts: boolean;
   onLongPress: () => void;
   onOpenImage: (url: string) => void;
+  onOpenVideo: (url: string) => void;
 }) {
   const { message, mine } = props;
   return (
@@ -468,6 +584,7 @@ function MessageBubble(props: {
               <Image source={{ uri: message.image_url }} style={styles.image} contentFit="cover" transition={150} />
             </Pressable>
           )}
+          {message.video && <VideoTile video={message.video} from={message.owner_name} onOpen={props.onOpenVideo} onLongPress={props.onLongPress} />}
           {!!message.body && (
             <Text style={[styles.body, mine && styles.textMine]}>
               {props.announcement ? (
@@ -763,6 +880,14 @@ const styles = StyleSheet.create({
   gifText: { color: Colors.text, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   imageViewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
   fullImage: { width: '100%', height: '80%' },
+  fullVideo: { flex: 1, width: '100%' },
+  closeVideo: { alignSelf: 'flex-end', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, minHeight: 44, justifyContent: 'center' },
+  closeVideoText: { color: Colors.text, fontSize: 16, fontWeight: '700' },
+  videoTile: { borderRadius: Radius.md, overflow: 'hidden', backgroundColor: '#000', marginVertical: Spacing.xs, alignItems: 'center', justifyContent: 'center' },
+  videoThumb: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  playBadge: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
+  playGlyph: { color: '#fff', fontSize: 18, marginLeft: 3 },
+  videoLength: { position: 'absolute', right: 8, bottom: 6, color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 3 },
 });
 
 /** A shared What-If bracket (…/standings?view=playoffs&w=…) opens in

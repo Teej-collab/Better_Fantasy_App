@@ -768,7 +768,9 @@ async def reset_password(body: ResetPasswordRequest):
     return {"message": "Password updated — sign in with your new password."}
 
 
-TICKET_PURPOSES = {"ws", "chug_upload", "watch_party_ws"}
+# chat_upload (2026-10): a video posted to chat, same long life as a
+# chug upload since it too has to outlast the whole file transfer.
+TICKET_PURPOSES = {"ws", "chug_upload", "watch_party_ws", "chat_upload"}
 
 
 @router.post("/ticket")
@@ -821,7 +823,7 @@ async def issue_ticket(request: Request, purpose: str):
         # plain "ws" purpose (chat, gamecast) keeps the short default; a
         # WebSocket handshake really does complete in well under a second.
         max_age_seconds=(
-            CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS if purpose == "chug_upload"
+            CHUG_UPLOAD_TICKET_MAX_AGE_SECONDS if purpose in ("chug_upload", "chat_upload")
             else WATCH_PARTY_WS_TICKET_MAX_AGE_SECONDS if purpose == "watch_party_ws"
             else TICKET_MAX_AGE_SECONDS
         ),

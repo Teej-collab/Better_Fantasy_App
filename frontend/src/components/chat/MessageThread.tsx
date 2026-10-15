@@ -318,6 +318,7 @@ export function MessageThread({
           )
         ) : conversation.can_post ? (
           <MessageComposer
+            conversationId={conversation.type === "commish_corner" ? undefined : conversation.id}
             members={members}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}

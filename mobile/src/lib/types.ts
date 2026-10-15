@@ -233,6 +233,14 @@ export type AnnouncementReceipts = {
 };
 export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolean; reactor_names: string[] };
 
+export type ChatVideo = {
+  url: string;
+  poster_url: string;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+};
+
 export type ChatMessage = {
   id: number;
   conversation_id: number;
@@ -242,6 +250,9 @@ export type ChatMessage = {
   owner_logo_url: string | null;
   body: string;
   image_url: string | null;
+  // A posted video (backend app/domain/chat_video.py): signed links to
+  // an H.264 MP4 and its poster frame, with its upright size and length.
+  video?: ChatVideo | null;
   // Commish Corner announcements only.
   title: string | null;
   // A bet shared from the bet tracker — rendered as a live bet card.

@@ -28,3 +28,30 @@ export async function pickChatPhoto(source: PhotoSource): Promise<string | null>
   const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: JPEG_QUALITY });
   return saved.uri;
 }
+
+// Videos: up to the backend's 3 minutes (app/domain/chat_video.py).
+// From the library, iOS exports H.264 at 720p, which the backend can
+// store as-is instead of converting; a fresh recording is converted
+// there if it needs to be.
+export const MAX_CHAT_VIDEO_SECONDS = 180;
+
+export async function pickChatVideo(source: PhotoSource): Promise<string | null> {
+  if (source === 'camera') {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return null;
+  }
+  const result =
+    source === 'camera'
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ['videos'],
+          videoMaxDuration: MAX_CHAT_VIDEO_SECONDS,
+          videoQuality: ImagePicker.UIImagePickerControllerQualityType.High,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['videos'],
+          videoMaxDuration: MAX_CHAT_VIDEO_SECONDS,
+          videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+        });
+  if (result.canceled || !result.assets[0]) return null;
+  return result.assets[0].uri;
+}

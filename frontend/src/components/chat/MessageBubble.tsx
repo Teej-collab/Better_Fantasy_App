@@ -195,6 +195,30 @@ export function MessageBubble({
             </div>
           )}
 
+          {!message.deleted && message.video && (
+            <div className="relative w-fit max-w-full">
+              {/* preload="none": the poster shows until someone taps play,
+                  so scrolling a thread full of videos downloads nothing. */}
+              <video
+                src={message.video.url}
+                poster={message.video.poster_url}
+                controls
+                playsInline
+                preload="none"
+                aria-label="Video"
+                className="max-h-80 max-w-full rounded-xl bg-black"
+                style={
+                  message.video.width && message.video.height
+                    ? { aspectRatio: `${message.video.width} / ${message.video.height}`, width: message.video.width >= message.video.height ? 320 : 200 }
+                    : { width: 280 }
+                }
+              />
+              {!message.body && message.reactions.length > 0 && (
+                <ReactionBadge mine={mine} reactions={message.reactions} />
+              )}
+            </div>
+          )}
+
           {(message.deleted || message.body) && (
             <div className="relative w-fit">
               {/* A <div>, not a <span> — the previous inline-element

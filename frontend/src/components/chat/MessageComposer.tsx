@@ -2,13 +2,16 @@
 
 import { upload } from "@vercel/blob/client";
 import { useEffect, useRef, useState } from "react";
-import type { ChatGif, ChatMember, ChatMessage } from "@/lib/api";
+import { MAX_CHAT_VIDEO_BYTES, postChatVideo, type ChatGif, type ChatMember, type ChatMessage } from "@/lib/api";
 import { AiTrainingNoticeModal } from "@/components/chat/AiTrainingNoticeModal";
 import { GifPicker } from "@/components/chat/GifPicker";
 
 const MAX_LENGTH = 2000;
 const TYPING_DEBOUNCE_MS = 2000;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+// Anything the backend can read; it converts to an MP4 every player
+// handles (backend app/domain/chat_video.py).
+const isVideo = (file: File) => file.type.startsWith("video/");
 
 // BottomNav.tsx/BottomNavBeta.tsx are `position: fixed` app-shell chrome
 // that lives outside this component entirely — the id is theirs
@@ -28,12 +31,20 @@ function setBottomNavHidden(hidden: boolean) {
   if (nav) nav.style.display = hidden ? "none" : "";
 }
 
+// A video waits here until Send, then posts with the message text
+// (postChatVideo); the backend sends the message itself.
+type PendingVideo =
+  | { status: "ready"; file: File; previewUrl: string }
+  | { status: "posting"; file: File; previewUrl: string; progress: number }
+  | { status: "error"; file: File; previewUrl: string; message: string };
+
 type PendingImage =
   | { status: "uploading"; previewUrl: string }
   | { status: "done"; previewUrl: string; url: string }
   | { status: "error" };
 
 export function MessageComposer({
+  conversationId,
   members,
   replyTo,
   onCancelReply,
@@ -42,6 +53,8 @@ export function MessageComposer({
   aiNoticeSeen,
   onAiNoticeResolved,
 }: {
+  // Set where videos can be posted (not Commish's Corner).
+  conversationId?: number;
   members: ChatMember[];
   replyTo: ChatMessage | null;
   onCancelReply: () => void;
@@ -58,6 +71,7 @@ export function MessageComposer({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showAiNotice, setShowAiNotice] = useState(false);
   // True while a drag carrying a file hovers the composer — dragCounter
@@ -118,7 +132,20 @@ export function MessageComposer({
   // and the 8MB server-side cap (app/api/chat/upload/route.ts) are
   // enforced identically regardless of how the file arrived.
   async function uploadImageFile(file: File) {
+    if (isVideo(file) && conversationId !== undefined) {
+      if (pendingVideo?.status === "posting") return;
+      removeImage();
+      if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl);
+      const previewUrl = URL.createObjectURL(file);
+      setPendingVideo(
+        file.size > MAX_CHAT_VIDEO_BYTES
+          ? { status: "error", file, previewUrl, message: "That video is too big. Try a shorter clip." }
+          : { status: "ready", file, previewUrl }
+      );
+      return;
+    }
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return;
+    removeVideo();
     // One attachment slot, one upload at a time — a second pick/paste/
     // drop while one is already in flight would otherwise race it: two
     // concurrent uploads both resolve into the same pendingImage state,
@@ -186,8 +213,32 @@ export function MessageComposer({
     e.preventDefault();
     dragCounter.current = 0;
     setIsDragActive(false);
-    const file = Array.from(e.dataTransfer.files).find((f) => ALLOWED_IMAGE_TYPES.includes(f.type));
+    const file = Array.from(e.dataTransfer.files).find((f) => ALLOWED_IMAGE_TYPES.includes(f.type) || (isVideo(f) && conversationId !== undefined));
     if (file) uploadImageFile(file);
+  }
+
+  function removeVideo() {
+    if (pendingVideo?.status === "posting") return;
+    if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl);
+    setPendingVideo(null);
+  }
+
+  async function sendVideo(video: PendingVideo, body: string) {
+    if (conversationId === undefined) return;
+    const { file, previewUrl } = video;
+    setPendingVideo({ status: "posting", file, previewUrl, progress: 0 });
+    try {
+      await postChatVideo(conversationId, file, body, replyTo?.id ?? null, (progress) =>
+        setPendingVideo({ status: "posting", file, previewUrl, progress })
+      );
+      URL.revokeObjectURL(previewUrl);
+      setPendingVideo(null);
+      onCancelReply();
+    } catch (e) {
+      setPendingVideo({ status: "error", file, previewUrl, message: e instanceof Error ? e.message : "Upload failed." });
+      // Put the text back so nothing they wrote is lost.
+      if (body) setValue((v) => v || body);
+    }
   }
 
   function removeImage() {
@@ -208,6 +259,14 @@ export function MessageComposer({
 
   function doSend() {
     const body = value.trim();
+    if (pendingVideo) {
+      if (pendingVideo.status === "posting" || pendingVideo.file.size > MAX_CHAT_VIDEO_BYTES) return;
+      setValue("");
+      setPendingMentions(new Map());
+      setMentionQuery(null);
+      void sendVideo(pendingVideo, body);
+      return;
+    }
     const imageUrl = pendingImage?.status === "done" ? pendingImage.url : null;
     if (!body && !imageUrl) return;
     if (pendingImage?.status === "uploading") return;
@@ -224,8 +283,8 @@ export function MessageComposer({
   function send() {
     // Nothing to actually send (empty box, still uploading) — never
     // trigger the one-time consent warning over a no-op send attempt.
-    const hasContent = value.trim() || pendingImage?.status === "done";
-    if (!hasContent || pendingImage?.status === "uploading") return;
+    const hasContent = value.trim() || pendingImage?.status === "done" || (pendingVideo && pendingVideo.status !== "posting");
+    if (!hasContent || pendingImage?.status === "uploading" || pendingVideo?.status === "posting") return;
 
     if (!aiNoticeSeen) {
       setShowAiNotice(true);
@@ -250,7 +309,9 @@ export function MessageComposer({
     >
       {isDragActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-t-2xl border-2 border-dashed border-[var(--wl-accent-dim)] bg-[var(--background)]/90">
-          <span className="text-sm font-medium text-[var(--wl-accent-dim)]">Drop image to attach</span>
+          <span className="text-sm font-medium text-[var(--wl-accent-dim)]">
+            {conversationId !== undefined ? "Drop a photo or video to attach" : "Drop image to attach"}
+          </span>
         </div>
       )}
 
@@ -294,6 +355,38 @@ export function MessageComposer({
         </div>
       )}
 
+      {pendingVideo && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-black/[0.04] p-1.5 dark:bg-white/[0.06]">
+          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-black">
+            <video src={pendingVideo.previewUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+            {pendingVideo.status === "posting" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-[11px] font-semibold text-white">
+                {pendingVideo.progress < 1 ? `${Math.round(pendingVideo.progress * 100)}%` : "…"}
+              </div>
+            )}
+          </div>
+          <span className={`min-w-0 flex-1 truncate px-1 text-xs ${pendingVideo.status === "error" ? "text-red-500" : "text-black/60 dark:text-white/60"}`}>
+            {pendingVideo.status === "error"
+              ? pendingVideo.message
+              : pendingVideo.status === "posting"
+                ? pendingVideo.progress < 1
+                  ? "Uploading video…"
+                  : "Processing video…"
+                : "Video ready. Add a message or hit send."}
+          </span>
+          {pendingVideo.status !== "posting" && (
+            <button
+              type="button"
+              onClick={removeVideo}
+              aria-label="Remove video"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {showGifPicker && <GifPicker onSelect={pickGif} onClose={() => setShowGifPicker(false)} />}
 
       {filteredMembers.length > 0 && (
@@ -321,14 +414,14 @@ export function MessageComposer({
         <input
           ref={fileInputRef}
           type="file"
-          accept={ALLOWED_IMAGE_TYPES.join(",")}
+          accept={conversationId !== undefined ? [...ALLOWED_IMAGE_TYPES, "video/*"].join(",") : ALLOWED_IMAGE_TYPES.join(",")}
           onChange={pickImage}
           className="hidden"
         />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          aria-label="Add image"
+          aria-label={conversationId !== undefined ? "Add photo or video" : "Add image"}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
         >
           +
@@ -365,7 +458,7 @@ export function MessageComposer({
         />
         <button
           type="submit"
-          disabled={!value.trim() && pendingImage?.status !== "done"}
+          disabled={(!value.trim() && pendingImage?.status !== "done" && (!pendingVideo || pendingVideo.status === "error")) || pendingVideo?.status === "posting"}
           aria-label="Send"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--wl-accent-dim)] text-white transition-transform active:scale-90 disabled:opacity-30"
         >

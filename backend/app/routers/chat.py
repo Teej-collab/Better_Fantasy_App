@@ -15,11 +15,16 @@ Every route checks conversation membership server-side
 (chat_queries.is_participant) before returning or mutating anything —
 never trusts the client's own idea of which conversations it can see.
 """
+import asyncio
 import json
 import logging
+import os
+import shutil
+import tempfile
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, resolve_owner_id
@@ -28,6 +33,7 @@ from app.chat.manager import manager
 from app.config import _require
 from app.db import get_pool
 from app.domain import chat as chat_domain
+from app.domain import chat_video
 from app.image_url import validate_blob_image_url
 from app.notifications import admin_alerts, dispatcher, formatter
 from app.providers import giphy
@@ -333,6 +339,97 @@ async def share_to_league_chat(request: Request, pool=Depends(get_pool)):
     await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
     await _push_notify_new_message(conversation_id, owner_id, owner_name or "Someone", body, None, [], participant_ids)
     return {"conversation_id": conversation_id, "message_id": row["id"]}
+
+
+# A video post keeps the connection alive with a space this often while
+# it converts, the same trick as the chug upload (app/routers/chug.py's
+# upload_chug): Railway closes a request that sends nothing for 5 minutes.
+VIDEO_HEARTBEAT_SECONDS = 20
+
+
+@router.post("/conversations/{conversation_id}/video")
+async def post_video(
+    conversation_id: int,
+    request: Request,
+    video: UploadFile = File(...),
+    body: str = Form(""),
+    reply_to_id: int | None = Form(None),
+    ticket: str | None = None,
+    pool=Depends(get_pool),
+):
+    """Posts a video to a conversation (2026-10), from the web composer
+    or the native app: stored and converted by app/domain/chat_video.py,
+    then sent exactly like a socket message (insert, broadcast, push).
+    The upload goes straight to the backend, not through a Vercel
+    function, so it carries a chat_upload ticket the way a chug upload
+    does (or the native app's Bearer token).
+
+    Streamed as text: a space every VIDEO_HEARTBEAT_SECONDS, then one
+    final JSON line, {"message": ...} or {"error": ..., "status": ...}."""
+    payload = _decode_session(get_session_token(request))
+    if payload is None and ticket:
+        payload = decode_ticket_token(SessionConfig().session_secret, ticket, expected_purpose="chat_upload")
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    if not chat_video.storage_ready():
+        raise HTTPException(status_code=503, detail="Video posting isn't set up yet")
+    body = body.strip()
+    if len(body) > MAX_MESSAGE_LENGTH:
+        raise HTTPException(status_code=400, detail="Message is too long")
+    if video.size is not None and video.size > chat_video.MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="That video is too big. Try a shorter clip.")
+
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        await _require_participant(conn, payload, conversation_id, owner_id)
+        conversation = await chat_queries.get_conversation_type_and_league(conn, conversation_id)
+        if conversation and conversation["type"] == "commish_corner":
+            raise HTTPException(status_code=400, detail="Videos can't be posted in Commish's Corner")
+        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+        if conversation and conversation["type"] == "direct":
+            other_ids = [p for p in participant_ids if p != owner_id]
+            if other_ids and await chat_safety_queries.is_blocked_either_way(conn, owner_id, other_ids[0]):
+                raise HTTPException(status_code=403, detail="You can't message this person")
+        owner_name = await conn.fetchval("SELECT display_name FROM owners WHERE owner_id = $1", owner_id)
+        if reply_to_id is not None:
+            original = await chat_queries.get_message_owner_and_conversation(conn, reply_to_id)
+            if not original or original["conversation_id"] != conversation_id:
+                reply_to_id = None
+
+    async def work() -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "upload" + (os.path.splitext(video.filename or "")[1].lower() or ".mp4"))
+            with open(src, "wb") as out:
+                await asyncio.to_thread(shutil.copyfileobj, video.file, out)
+            if os.path.getsize(src) > chat_video.MAX_VIDEO_BYTES:
+                raise chat_video.ChatVideoError("That video is too big. Try a shorter clip.")
+            stored = await chat_video.process_upload(src, conversation_id)
+        async with pool.acquire() as conn:
+            blockers = await chat_safety_queries.owners_blocking(conn, owner_id, participant_ids)
+            recipients = [p for p in participant_ids if p not in blockers]
+            row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, reply_to_id, video=stored)
+            message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+        await manager.broadcast_to_owners(recipients, {"type": "message", "message": message})
+        await _push_notify_new_message(
+            conversation_id, owner_id, owner_name or "Someone", body or "🎥 Video", reply_to_id, [], recipients
+        )
+        return {"message": message}
+
+    async def stream():
+        task = asyncio.ensure_future(work())
+        while not task.done():
+            _, pending = await asyncio.wait({task}, timeout=VIDEO_HEARTBEAT_SECONDS)
+            if pending:
+                yield " "
+        try:
+            yield "\n" + json.dumps(await task)
+        except chat_video.ChatVideoError as e:
+            yield "\n" + json.dumps({"error": str(e), "status": 400})
+        except Exception:
+            logger.exception("Posting a chat video failed (conversation_id=%s)", conversation_id)
+            yield "\n" + json.dumps({"error": "Something went wrong posting that video. Try again.", "status": 500})
+
+    return StreamingResponse(stream(), media_type="text/plain")
 
 
 @router.post("/conversations/{conversation_id}/read")

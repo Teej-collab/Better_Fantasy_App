@@ -90,3 +90,24 @@ def presigned_video_url(key: str) -> str:
         Params={"Bucket": CHUG_BUCKET_NAME, "Key": key},
         ExpiresIn=PRESIGNED_URL_TTL_SECONDS,
     )
+
+
+# Chat videos (2026-10, app/domain/chat_video.py) share this bucket
+# under their own "chat-videos/" prefix. Their links ride along on every
+# message a client loads, so they last longer than a chug's 15 minutes:
+# a chat screen left open (or a cached message list) keeps playing, and
+# any reload signs fresh ones. Still only ever handed to a conversation's
+# own participants.
+CHAT_URL_TTL_SECONDS = 6 * 24 * 60 * 60
+
+
+def upload_object(local_path: str, key: str, content_type: str) -> None:
+    _client().upload_file(local_path, CHUG_BUCKET_NAME, key, ExtraArgs={"ContentType": content_type})
+
+
+def presigned_url(key: str, ttl_seconds: int) -> str:
+    return _client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": CHUG_BUCKET_NAME, "Key": key},
+        ExpiresIn=ttl_seconds,
+    )

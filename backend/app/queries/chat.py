@@ -4,6 +4,8 @@ reactions, mentions, read state. See app/routers/chat.py and
 migration 03417db98bb5.
 """
 
+import json
+
 from app import moderation
 
 
@@ -190,7 +192,7 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
         ),
         last_message AS (
             SELECT DISTINCT ON (m.conversation_id)
-                m.conversation_id, m.id, m.body, m.image_url, m.created_at, m.deleted_at, o.display_name AS owner_name
+                m.conversation_id, m.id, m.body, m.image_url, m.video, m.created_at, m.deleted_at, o.display_name AS owner_name
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             ORDER BY m.conversation_id, m.created_at DESC
@@ -215,7 +217,7 @@ async def list_conversations_for_owner(conn, owner_id: int, league_id: int):
         )
         SELECT
             c.id, c.type, c.league_id,
-            lm.id AS last_message_id, lm.body AS last_message_body, lm.image_url AS last_message_image_url, lm.created_at AS last_message_at,
+            lm.id AS last_message_id, lm.body AS last_message_body, lm.image_url AS last_message_image_url, lm.video AS last_message_video, lm.created_at AS last_message_at,
             lm.deleted_at AS last_message_deleted_at, lm.owner_name AS last_message_owner_name,
             COALESCE(u.unread_count, 0) AS unread_count,
             (SELECT COUNT(*) FROM conversation_participants cp WHERE cp.conversation_id = c.id) AS member_count,
@@ -274,7 +276,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id, m.video
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.id < $2 AND m.deleted_at IS NULL
@@ -288,7 +290,7 @@ async def list_messages(conn, conversation_id: int, before_id: int | None, limit
             """
             SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                    o.logo_url AS owner_logo_url,
-                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
+                   m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id, m.video
             FROM messages m
             JOIN owners o ON o.owner_id = m.owner_id
             WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
@@ -305,7 +307,7 @@ async def get_messages_by_id(conn, message_ids: list[int]):
         return []
     return await conn.fetch(
         """
-        SELECT m.id, o.display_name AS owner_name, m.body, m.image_url, m.deleted_at
+        SELECT m.id, o.display_name AS owner_name, m.body, m.image_url, m.video, m.deleted_at
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])
         """,
@@ -348,6 +350,7 @@ async def insert_message(
     image_url: str | None = None,
     title: str | None = None,
     bet_id: int | None = None,
+    video: dict | None = None,
 ):
     # title is only ever non-NULL for a commish_corner announcement
     # (app/routers/chat.py's WS handler is the sole caller that ever
@@ -361,11 +364,11 @@ async def insert_message(
     title = moderation.clean(title, keys)
     return await conn.fetchrow(
         """
-        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url, title, bet_id
+        INSERT INTO messages (conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id, video)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        RETURNING id, conversation_id, owner_id, body, created_at, deleted_at, reply_to_id, image_url, title, bet_id, video
         """,
-        conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id,
+        conversation_id, owner_id, body, reply_to_id, image_url, title, bet_id, json.dumps(video) if video else None,
     )
 
 

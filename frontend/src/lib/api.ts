@@ -2199,6 +2199,14 @@ export type ChatReaction = { emoji: string; count: number; reacted_by_me: boolea
 
 export type ChatReplyPreview = { id: number; owner_name: string; body: string };
 
+export type ChatVideo = {
+  url: string;
+  poster_url: string;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+};
+
 export type ChatMessage = {
   id: number;
   conversation_id: number;
@@ -2208,6 +2216,9 @@ export type ChatMessage = {
   owner_logo_url: string | null;
   body: string;
   image_url: string | null;
+  // A posted video (backend app/domain/chat_video.py): signed links to
+  // an H.264 MP4 and its poster frame, with its upright size and length.
+  video?: ChatVideo | null;
   // Commish's Corner announcements only — a real headline the
   // commissioner wrote, distinct from the body. Always null for every
   // other conversation type (league/direct never set or accept one).
@@ -2630,6 +2641,53 @@ export async function getChugUploadTicket(): Promise<string | null> {
   if (!res.ok) return null;
   const { ticket } = await res.json();
   return ticket ?? null;
+}
+
+export const MAX_CHAT_VIDEO_BYTES = 250 * 1024 * 1024;
+
+// Posts a video to a chat (backend POST /chat/conversations/{id}/video).
+// Goes straight to the backend with a chat_upload ticket, like the chug
+// upload, since a video is far over a Vercel function's body limit. The
+// backend converts it and sends the message itself; it reaches this
+// thread over the chat socket like any other. The response is a space
+// every ~20s while it converts, then one JSON line.
+export async function postChatVideo(
+  conversationId: number,
+  file: File,
+  body: string,
+  replyToId: number | null,
+  onProgress: (fraction: number) => void
+): Promise<ChatMessage> {
+  const res = await fetch("/auth/ticket?purpose=chat_upload", { method: "POST" });
+  const { ticket } = res.ok ? await res.json() : { ticket: null };
+  if (!ticket) throw new Error("Not signed in");
+  const form = new FormData();
+  form.append("video", file, file.name || "video.mp4");
+  form.append("body", body);
+  if (replyToId !== null) form.append("reply_to_id", String(replyToId));
+  const text = await new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}/chat/conversations/${conversationId}/video?ticket=${encodeURIComponent(ticket)}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+      else {
+        let detail = `Upload failed (${xhr.status})`;
+        try {
+          detail = JSON.parse(xhr.responseText).detail ?? detail;
+        } catch {}
+        reject(new Error(detail));
+      }
+    };
+    xhr.onerror = () => reject(new Error("The upload didn't go through. Check your connection and try again."));
+    xhr.send(form);
+  });
+  const last = text.trim().split("\n").pop() ?? "";
+  const result = JSON.parse(last) as { message?: ChatMessage; error?: string };
+  if (!result.message) throw new Error(result.error ?? "Something went wrong posting that video.");
+  return result.message;
 }
 
 // ws:// for a plain http API_BASE_URL, wss:// for https — same origin

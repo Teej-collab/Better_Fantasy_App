@@ -113,7 +113,7 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
                 last_message: {
                   id: message.id,
                   owner_name: message.owner_name,
-                  body: message.body,
+                  body: message.body || (message.video ? '🎥 Video' : message.image_url ? '📷 Photo' : ''),
                   created_at: message.created_at,
                 },
                 unread_count: isOpen || message.owner_id === myOwnerId ? c.unread_count : c.unread_count + 1,

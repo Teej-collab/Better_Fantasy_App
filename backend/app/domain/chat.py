@@ -5,6 +5,7 @@ querying per-message — same N+1-avoidance discipline as the weekly
 awards rewrite earlier this session. See app/queries/chat.py for the
 underlying reads.
 """
+from app.domain import chat_video
 from app.queries import chat as chat_queries
 from app.queries import chat_safety as chat_safety_queries
 
@@ -21,6 +22,8 @@ def _serialize_message_row(row, reply_previews: dict, reactions_by_message: dict
         "owner_logo_url": row["owner_logo_url"],
         "body": "This message was deleted." if deleted else row["body"],
         "image_url": None if deleted else row["image_url"],
+        # A posted video (app/domain/chat_video.py): signed links, size, length.
+        "video": None if deleted else chat_video.public_video(row.get("video")),
         "title": None if deleted else row["title"],
         # A bet shared from the bet tracker (app/routers/bets.py): the
         # client renders a live bet card from GET /bets/shared/{id}.
@@ -67,7 +70,7 @@ async def get_conversation_messages(conn, conversation_id: int, before_id: int |
             "owner_name": r["owner_name"],
             "body": "This message was deleted."
             if r["deleted_at"] is not None
-            else (r["body"] or ("📷 Photo" if r["image_url"] else "")),
+            else (r["body"] or ("🎥 Video" if r["video"] else "📷 Photo" if r["image_url"] else "")),
         }
         for r in reply_rows
     }
@@ -108,7 +111,7 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
         """
         SELECT m.id, m.conversation_id, m.owner_id, o.display_name AS owner_name, o.chat_color AS owner_chat_color,
                o.logo_url AS owner_logo_url,
-               m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id
+               m.body, m.created_at, m.deleted_at, m.reply_to_id, m.image_url, m.title, m.bet_id, m.video
         FROM messages m JOIN owners o ON o.owner_id = m.owner_id
         WHERE m.id = ANY($1::int[])
         ORDER BY m.id
@@ -123,7 +126,7 @@ async def get_conversation_messages_by_ids(conn, message_ids: list[int], request
             "owner_name": r["owner_name"],
             "body": "This message was deleted."
             if r["deleted_at"] is not None
-            else (r["body"] or ("📷 Photo" if r["image_url"] else "")),
+            else (r["body"] or ("🎥 Video" if r["video"] else "📷 Photo" if r["image_url"] else "")),
         }
         for r in reply_rows
     }
@@ -160,6 +163,8 @@ async def get_conversations_summary(conn, owner_id: int, league_id: int):
             body = r["last_message_body"]
             if deleted:
                 body = "This message was deleted."
+            elif not body and r["last_message_video"]:
+                body = "🎥 Video"
             elif not body and r["last_message_image_url"]:
                 body = "📷 Photo"
             last_message = {

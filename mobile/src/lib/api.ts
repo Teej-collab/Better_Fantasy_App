@@ -880,6 +880,48 @@ export async function uploadChatImage(uri: string): Promise<string> {
   return url;
 }
 
+// Posts a video to a chat (backend POST /chat/conversations/{id}/video),
+// straight to the backend with a chat_upload ticket like a chug upload.
+// The backend converts it and sends the message itself, so it also
+// arrives over the chat socket. The response is a space every ~20s while
+// it converts, then one JSON line.
+export async function postChatVideo(
+  conversationId: number,
+  uri: string,
+  body: string,
+  replyToId: number | null,
+): Promise<ChatMessage> {
+  const { ticket } = await request<{ ticket: string }>('/auth/ticket?purpose=chat_upload', { method: 'POST' });
+  const { File } = await import('expo-file-system');
+  const form = new FormData();
+  form.append('video', new File(uri) as unknown as Blob);
+  form.append('body', body);
+  if (replyToId !== null) form.append('reply_to_id', String(replyToId));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(`${API_BASE_URL}/chat/conversations/${conversationId}/video?ticket=${encodeURIComponent(ticket)}`, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+    text = await res.text();
+  } catch (e) {
+    if (controller.signal.aborted) throw new ApiError(0, 'The upload took too long. Check your connection and try again.');
+    if (isNetworkFailure(e)) throw new ApiError(0, OFFLINE_MESSAGE);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!ok(res.status)) throw uploadError(res.status, text);
+  const last = text.trim().split('\n').pop() ?? '';
+  const data = JSON.parse(last) as { message?: ChatMessage; error?: string; status?: number };
+  if (!data.message) throw new ApiError(data.status ?? 500, data.error ?? 'Something went wrong posting that video.');
+  return data.message;
+}
+
 // Player-card photos (2026-10) go straight to the backend, into its private
 // bucket — never a public host. Yours, or anyone's if you're commissioner.
 export async function uploadCardPhoto(ownerId: number, uri: string): Promise<void> {
