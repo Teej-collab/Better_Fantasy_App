@@ -5,11 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { Text } from '@/components/Text';
+import { TeamAvatar } from '@/components/ui';
 import { Fonts } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
+import { formatGameTime } from '@/lib/format';
 import { formatStatLine } from '@/lib/matchups';
 import { lastName, onField, startersInGame, type LoungeSweat } from '@/lib/loungeSweat';
-import type { Bet, BetLeg, LiveGame, RosterPlayer } from '@/lib/types';
+import { slotDisplayLabel } from '@/lib/rosterSlots';
+import type { Bet, BetLeg, LiveGame, MatchupContextSide, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
 
 const fmt = (n: number | null | undefined) => (n ?? 0).toFixed(1);
 
@@ -92,6 +95,15 @@ export function SweatSheet({
   const accent = useAppearance().accent;
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'matchup' | 'bets' | 'league'>('matchup');
+  // A team's roster, opened from a name in Matchup or a row in the
+  // Scoreboard; shown in the sheet so the TV keeps playing up top.
+  const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
+  const mine = sweat.league.find((m) => m.matchup_id === sweat.matchupId) ?? null;
+  const mySide = mine ? (mine.home.team_name === sweat.myTeamName ? mine.home : mine.away) : null;
+  const theirSide = mine && mySide ? (mySide === mine.home ? mine.away : mine.home) : null;
+  const rosterSide = rosterTeamId === null ? null : findSide(sweat.league, rosterTeamId);
+  // Your matchup leads the scoreboard.
+  const scoreboard = mine ? [mine, ...sweat.league.filter((m) => m !== mine)] : sweat.league;
   const playing = sweat.myStarters.filter((p) => p.game_status === 'in_progress');
   const toPlay = sweat.myStarters.filter((p) => p.game_status === 'scheduled' || p.game_status === null);
 
@@ -115,33 +127,52 @@ export function SweatSheet({
               return (
                 <Pressable
                   key={id}
-                  onPress={() => setTab(id)}
+                  onPress={() => {
+                    setTab(id);
+                    setRosterTeamId(null);
+                  }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: on }}
                   style={[styles.tab, on && { backgroundColor: accent, borderColor: accent }]}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{id === 'matchup' ? 'Matchup' : id === 'bets' ? 'Bets' : 'League'}</Text>
+                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{id === 'matchup' ? 'Matchup' : id === 'bets' ? 'Bets' : 'Scoreboard'}</Text>
                 </Pressable>
               );
             })}
           </View>
           <ScrollView contentContainerStyle={[styles.sheetBody, { paddingBottom: insets.bottom + 16 }]}>
-            {tab === 'matchup' && (
+            {rosterSide && <TeamRoster side={rosterSide} accent={accent} onBack={() => setRosterTeamId(null)} />}
+            {!rosterSide && tab === 'matchup' && (
               <>
                 <View style={styles.versus}>
-                  <View style={styles.versusSide}>
-                    <Text style={styles.versusName}>{sweat.myTeamName} · you</Text>
+                  <Pressable
+                    style={styles.versusSide}
+                    disabled={!mySide}
+                    onPress={() => mySide && setRosterTeamId(mySide.team_id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${sweat.myTeamName ?? 'Your team'}, see roster`}>
+                    <Text style={[styles.versusName, mySide && styles.linkName]} numberOfLines={1}>
+                      {sweat.myTeamName} · you{mySide ? ' ›' : ''}
+                    </Text>
                     <Text style={styles.versusScore}>{fmt(sweat.myScore)}</Text>
                     <Text style={styles.versusProj}>proj {fmt(sweat.myProjected)}</Text>
-                  </View>
+                  </Pressable>
                   <View style={styles.versusMid}>
                     <Text style={[styles.versusPct, { color: accent }]}>{sweat.winPct !== null ? `${Math.round(sweat.winPct)}%` : '—'}</Text>
                     <Text style={styles.toWin}>TO WIN</Text>
                   </View>
-                  <View style={[styles.versusSide, styles.right]}>
-                    <Text style={styles.versusName}>{sweat.opponentName}</Text>
+                  <Pressable
+                    style={[styles.versusSide, styles.right]}
+                    disabled={!theirSide}
+                    onPress={() => theirSide && setRosterTeamId(theirSide.team_id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${sweat.opponentName ?? 'Opponent'}, see roster`}>
+                    <Text style={[styles.versusName, theirSide && styles.linkName]} numberOfLines={1}>
+                      {sweat.opponentName}
+                      {theirSide ? ' ›' : ''}
+                    </Text>
                     <Text style={styles.versusScore}>{fmt(sweat.opponentScore)}</Text>
                     <Text style={styles.versusProj}>proj {fmt(sweat.opponentProjected)}</Text>
-                  </View>
+                  </Pressable>
                 </View>
                 {playing.length > 0 && <Text style={styles.section}>PLAYING NOW</Text>}
                 {playing.map((p) => (
@@ -149,11 +180,11 @@ export function SweatSheet({
                 ))}
                 {toPlay.length > 0 && <Text style={styles.section}>STILL TO PLAY</Text>}
                 {toPlay.map((p) => (
-                  <PlayerRow key={String(p.player_id)} p={p} dot="#4b5263" status={`${p.pro_team ?? ''} · ${p.game_time ?? 'Upcoming'}`} value={p.on_bye ? 'Bye week' : `proj ${fmt(p.points_projected)}`} muted />
+                  <PlayerRow key={String(p.player_id)} p={p} dot="#4b5263" status={`${p.pro_team ?? ''} · ${p.game_time ? formatGameTime(p.game_time) : 'Upcoming'}`} value={p.on_bye ? 'Bye week' : `proj ${fmt(p.points_projected)}`} muted />
                 ))}
               </>
             )}
-            {tab === 'bets' &&
+            {!rosterSide && tab === 'bets' &&
               (sweat.openBets.length === 0 ? (
                 <Text style={styles.empty}>No open bets. Add one from Bets.</Text>
               ) : (
@@ -185,28 +216,156 @@ export function SweatSheet({
                   </View>
                 ))
               ))}
-            {tab === 'league' &&
-              sweat.league.map((m) => (
-                <View key={m.matchup_id} style={styles.leagueRow}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.leagueLine} numberOfLines={1}>
-                      <Text style={styles.bold}>{m.home.team_name}</Text> {fmt(m.home.score)}
-                    </Text>
-                    <Text style={styles.leagueLine} numberOfLines={1}>
-                      <Text style={styles.bold}>{m.away.team_name}</Text> {fmt(m.away.score)}
-                    </Text>
-                  </View>
-                  {m.home.win_probability !== null && (
-                    <Text style={styles.odds}>
-                      {Math.round(m.home.win_probability)}% / {Math.round(100 - m.home.win_probability)}%
-                    </Text>
-                  )}
-                </View>
+            {!rosterSide && tab === 'league' &&
+              (scoreboard.length === 0 ? (
+                <Text style={styles.empty}>No matchups this week yet.</Text>
+              ) : (
+                scoreboard.map((m) => (
+                  <ScoreboardCard key={m.matchup_id} item={m} mine={m === mine} accent={accent} onOpenTeam={setRosterTeamId} />
+                ))
               ))}
           </ScrollView>
         </View>
       </View>
     </Modal>
+  );
+}
+
+function findSide(league: WeekMatchupContextItem[], teamId: number): MatchupContextSide | null {
+  for (const m of league) {
+    if (m.home.team_id === teamId) return m.home;
+    if (m.away.team_id === teamId) return m.away;
+  }
+  return null;
+}
+
+const STARTER = (p: RosterPlayer) => !['BE', 'IR', 'TAXI'].includes(p.lineup_slot ?? '');
+
+// "2 playing · 3 to go" for a side's starters.
+function leftLine(side: MatchupContextSide): string {
+  const starters = side.roster.filter(STARTER);
+  const live = starters.filter((p) => p.game_status === 'in_progress').length;
+  const toGo = starters.filter((p) => (p.game_status === 'scheduled' || p.game_status === null) && !p.on_bye).length;
+  if (live + toGo === 0) return 'Done';
+  return [live ? `${live} playing` : null, toGo ? `${toGo} to go` : null].filter(Boolean).join(' · ');
+}
+
+// One league matchup on the Scoreboard tab: both teams with logo, record,
+// score, projection and players left, and a win-chance bar. Tap a team to
+// see its roster.
+function ScoreboardCard({
+  item,
+  mine,
+  accent,
+  onOpenTeam,
+}: {
+  item: WeekMatchupContextItem;
+  mine: boolean;
+  accent: string;
+  onOpenTeam: (teamId: number) => void;
+}) {
+  const homePct = item.home.win_probability;
+  const homeAhead = (item.home.score ?? 0) >= (item.away.score ?? 0);
+  return (
+    <View style={[styles.boardCard, mine && { borderColor: accent }]}>
+      {(mine || item.is_rivalry || item.is_game_of_the_week) && (
+        <Text style={[styles.boardTag, { color: mine ? accent : '#fbbf24' }]}>
+          {mine ? 'YOUR MATCHUP' : item.is_rivalry ? `${item.rivalry?.emoji ?? '⚔️'} RIVALRY` : 'GAME OF THE WEEK'}
+        </Text>
+      )}
+      {[item.away, item.home].map((side) => {
+        const leading = side === item.home ? homeAhead : !homeAhead;
+        return (
+          <Pressable
+            key={side.team_id}
+            onPress={() => onOpenTeam(side.team_id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${side.team_name}, ${fmt(side.score)} points. See roster`}
+            style={({ pressed }) => [styles.boardRow, pressed && styles.pressed]}>
+            <TeamAvatar name={side.owner_name || side.team_name} logoUrl={side.logo_url} size={34} />
+            <View style={styles.boardTeam}>
+              <Text style={styles.boardName} numberOfLines={1}>
+                {side.team_name}
+              </Text>
+              <Text style={styles.boardMeta} numberOfLines={1}>
+                {[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            <View style={styles.boardScoreCol}>
+              <Text style={[styles.boardScore, !leading && styles.boardScoreTrailing]}>{fmt(side.score)}</Text>
+              {side.projected_total !== null && <Text style={styles.boardProj}>proj {fmt(side.projected_total)}</Text>}
+            </View>
+          </Pressable>
+        );
+      })}
+      {homePct !== null && (
+        <View style={styles.boardOdds}>
+          <Text style={styles.boardPct}>{Math.round(100 - homePct)}%</Text>
+          <View style={styles.boardBar}>
+            <View style={[styles.boardBarFill, { width: `${100 - homePct}%`, backgroundColor: accent }]} />
+          </View>
+          <Text style={styles.boardPct}>{Math.round(homePct)}%</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// A team's lineup for the week, inside the sheet.
+function TeamRoster({ side, accent, onBack }: { side: MatchupContextSide; accent: string; onBack: () => void }) {
+  const starters = side.roster.filter(STARTER);
+  const bench = side.roster.filter((p) => !STARTER(p));
+  const row = (p: RosterPlayer) => {
+    const live = p.game_status === 'in_progress';
+    const upcoming = p.game_status === 'scheduled' || p.game_status === null;
+    const status = p.on_bye
+      ? 'Bye week'
+      : upcoming
+        ? `${p.pro_team ?? ''}${p.game_time ? ` · ${formatGameTime(p.game_time)}` : ''}`
+        : statusFor(p, null);
+    return (
+      <View key={`${p.player_id}-${p.lineup_slot}`} style={styles.playerRow}>
+        <Text style={styles.slot}>{slotDisplayLabel(p.lineup_slot ?? '')}</Text>
+        <View style={[styles.dot, { backgroundColor: live ? (p.is_redzone ? '#f87171' : accent) : '#4b5263' }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.playerName} numberOfLines={1}>
+            {p.player_name}
+          </Text>
+          <Text style={styles.playerStatus} numberOfLines={1}>
+            {status}
+          </Text>
+        </View>
+        <Text style={[styles.playerPts, upcoming && styles.playerPtsMuted]}>
+          {upcoming ? (p.on_bye ? '—' : `proj ${fmt(p.points_projected)}`) : fmt(p.points_scored)}
+        </Text>
+      </View>
+    );
+  };
+  return (
+    <>
+      <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" style={styles.back}>
+        <Text style={[styles.backText, { color: accent }]}>‹ Back</Text>
+      </Pressable>
+      <View style={styles.rosterHead}>
+        <TeamAvatar name={side.owner_name || side.team_name} logoUrl={side.logo_url} size={44} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rosterName} numberOfLines={1}>
+            {side.team_name}
+          </Text>
+          <Text style={styles.boardMeta} numberOfLines={1}>
+            {[side.owner_name, side.record, leftLine(side)].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        <View style={styles.boardScoreCol}>
+          <Text style={styles.versusScore}>{fmt(side.score)}</Text>
+          {side.projected_total !== null && <Text style={styles.versusProj}>proj {fmt(side.projected_total)}</Text>}
+        </View>
+      </View>
+      <Text style={styles.section}>STARTERS</Text>
+      {starters.map(row)}
+      {bench.length > 0 && <Text style={styles.section}>BENCH</Text>}
+      {bench.map(row)}
+    </>
   );
 }
 
@@ -288,8 +447,25 @@ const styles = StyleSheet.create({
   legProgress: { fontFamily: Fonts.mono, fontSize: 13 },
   legBar: { height: 6, borderRadius: 3, backgroundColor: '#2b2f3a', overflow: 'hidden' },
   legFill: { height: '100%' },
-  leagueRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#161a24' },
-  leagueLine: { color: '#f3f4f6', fontSize: 13 },
-  bold: { fontWeight: '700' },
-  odds: { color: '#f3f4f6', fontFamily: Fonts.mono, fontSize: 12, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  linkName: { color: '#f3f4f6', fontWeight: '700' },
+  pressed: { opacity: 0.7 },
+  boardCard: { padding: 12, borderRadius: 14, backgroundColor: '#161a24', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 8 },
+  boardTag: { fontFamily: Fonts.display, fontSize: 10.5, letterSpacing: 1.2 },
+  boardRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+  boardTeam: { flex: 1, minWidth: 0, gap: 1 },
+  boardName: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
+  boardMeta: { color: '#9aa3b2', fontSize: 11.5 },
+  boardScoreCol: { alignItems: 'flex-end', flexShrink: 0 },
+  boardScore: { color: '#f3f4f6', fontFamily: Fonts.monoBold, fontSize: 20 },
+  boardScoreTrailing: { color: '#9aa3b2' },
+  boardProj: { color: '#9aa3b2', fontSize: 10.5 },
+  boardOdds: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  boardPct: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 11, minWidth: 30, textAlign: 'center' },
+  boardBar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: '#2b2f3a', overflow: 'hidden' },
+  boardBarFill: { height: '100%' },
+  back: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  backText: { fontSize: 15, fontWeight: '700' },
+  rosterHead: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: '#161a24' },
+  rosterName: { color: '#f3f4f6', fontSize: 17, fontWeight: '800' },
+  slot: { color: '#9aa3b2', fontSize: 11, fontWeight: '700', width: 34 },
 });
