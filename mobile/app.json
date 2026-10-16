@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "appleTeamId": "5K8V6776KS",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
@@ -65,6 +65,7 @@
       ],
       "expo-quick-actions",
       "expo-asset",
+      "./plugins/withShareExtensionTeam",
       [
         "expo-sharing",
         {
