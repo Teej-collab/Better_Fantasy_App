@@ -3,16 +3,10 @@ import { useState } from 'react';
 
 import type { MatchupContextSide, NflGame, RosterEntry, YourWeek } from '@/lib/types';
 
-// The living home screen (2026-10-13) is native-only and, for now, only
-// for TJ (owner 4) and Niko (owner 1) to try before anyone else sees it.
-const TESTER_OWNER_IDS = new Set([1, 4]);
-
-export function isLivingHomeTester(ownerId: number | null | undefined): boolean {
-  return ownerId != null && TESTER_OWNER_IDS.has(ownerId);
-}
-
-// A tester can flip back to the classic home from the bottom of the new
-// one (and back again from the classic one); remembered on this phone.
+// The living home screen (2026-10-13) is the app's Home for everyone
+// since 2026-10-16 (it started with two testers). Anyone can flip back
+// to the classic home from the bottom of it, and back again from the
+// classic one; remembered on this phone.
 const OFF_KEY = 'living-home-off';
 
 export function useLivingHomeSwitch(): [boolean, (on: boolean) => void] {

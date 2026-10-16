@@ -513,7 +513,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       {chug?.deadline && <ChugCountdownCard deadline={chug.deadline} isPast={chug.is_past} mine={chug.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
       <Pressable onPress={onUseClassic} hitSlop={8} style={styles.footer} accessibilityRole="button">
-        <Text style={styles.footerText}>Testing the new home · Switch to the classic one</Text>
+        <Text style={styles.footerText}>Switch to the classic home</Text>
       </Pressable>
     </ScrollView>
   );
