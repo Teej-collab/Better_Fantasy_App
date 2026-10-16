@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { generateWeeklyRecap, type WeeklyNarrative } from "@/lib/api";
 import { trackRecapOpened } from "@/lib/analyticsEvents";
 import { DESTINATIONS } from "@/lib/navDestinations";
+import { recapIsFresh } from "@/lib/recapFreshness";
 import { panelGlowStyle } from "@/lib/sectionColors";
 
 // A teaser for the week that just wrapped's whole-week recap
@@ -47,6 +49,10 @@ import { panelGlowStyle } from "@/lib/sectionColors";
 // that gap, using the real `force` flag (see generateWeeklyRecap /
 // backend generate_weekly_recap's own docstrings) so it actually
 // re-generates instead of just re-showing the same cached text.
+//
+// 2026-10-16: full only on recap day (Tuesday from the noon PT drop);
+// from Wednesday it's a slim "Missed the recap?" card whose pill opens
+// the recap's own page. A commissioner's pre-release preview stays full.
 const RECAP_TEASER_MAX_CHARS = 220;
 
 export function WeeklyRecapTeaser({
@@ -73,6 +79,29 @@ export function WeeklyRecapTeaser({
   }
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  if (recap.released !== false && !recapIsFresh()) {
+    return (
+      <div
+        className="neon-panel flex items-center justify-between gap-3 rounded-xl border border-black/10 px-4 py-3 dark:border-white/10"
+        style={panelGlowStyle(DESTINATIONS.awards.color)}
+      >
+        <div className="flex min-w-0 flex-col">
+          <span className="text-xs font-bold tracking-wide uppercase" style={{ color: DESTINATIONS.awards.color }}>
+            📰 Missed the recap?
+          </span>
+          <span className="truncate text-sm text-black/60 dark:text-white/60">Week {week}&apos;s story, awards and all</span>
+        </div>
+        <Link
+          href={`/seasons/${season}/weeks/${week}/recap`}
+          className="shrink-0 rounded-full px-3 py-1 text-sm font-semibold text-black dark:text-white"
+          style={{ backgroundColor: `color-mix(in srgb, ${DESTINATIONS.awards.color} 18%, transparent)` }}
+        >
+          Read Week {week} →
+        </Link>
+      </div>
+    );
+  }
+
   const fullText = recap.text.trim();
   const flatPreview = fullText.replace(/\s+/g, " ");
   const truncatable = flatPreview.length > RECAP_TEASER_MAX_CHARS;

@@ -4,7 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { TickerStrips } from '@/components/TickerStrips';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
-import { AwardsCard } from '@/components/home/AwardsCard';
+import { RecapCard } from '@/components/home/RecapCard';
 import { ChugCountdownCard, DraftCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard, ChugFeedCard } from '@/components/home/FeedCards';
 import { DiscoverCard, LiveNowCard, OtherMatchupsCard, PowerRankingsCard, RivalriesCard, StandingsCard } from '@/components/home/LeagueCards';
@@ -131,10 +131,9 @@ function HomeScreenContent({ onTryLiving }: { onTryLiving?: () => void }) {
 
   const cards: Record<string, ReactNode> = {
     yourWeek: <YourWeekSlot myWeek={myWeek.data ?? null} isGameDay={isGameDay} leagueName={leagueName} color={appearance.yourWeek} colors={appearance.yourWeekColors} />,
-    awards:
-      awards && week !== null ? (
-        <AwardsCard awards={awards.awards} awardsWeek={awards.week} currentWeek={week} recap={recap} />
-      ) : null,
+    // The recap (the awards grid left Home 2026-10-16; the awards are in
+    // the recap). Keyed "awards" so saved card orders keep its place.
+    awards: recap ? <RecapCard recap={recap.recap} week={recap.week} season={recap.season} /> : null,
     standings: standings.length > 0 ? <StandingsCard standings={standings} /> : null,
     powerRankings:
       powerRankings.length > 0 || (!weekPlayed && season !== null) ? (

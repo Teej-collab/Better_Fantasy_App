@@ -4,7 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { TickerStrips } from '@/components/TickerStrips';
 import { useTabScrollRef } from '@/components/TabFrame';
-import { AwardsCard } from '@/components/home/AwardsCard';
+import { RecapCard } from '@/components/home/RecapCard';
 import { ChugCountdownCard } from '@/components/home/CountdownCard';
 import { ActivityCard } from '@/components/home/FeedCards';
 import { YourWeekCard } from '@/components/home/YourWeekCard';
@@ -46,7 +46,6 @@ import {
   StandingsMoveCard,
   TradesCard,
   WhatIfCard,
-  YourAwardsCard,
 } from '@/components/living/WeekCards';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
@@ -232,7 +231,10 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
 
   // Who to root for this week, from the What-If engine (Your Week up top
   // already covers the matchup itself).
-  const whatIf = odds ? <WhatIfCard odds={odds} teamId={teamId} standings={standings} /> : null;
+  // Tuesday–Saturday it's your playoff odds and what this week's result
+  // does to them; Sunday–Monday, the other games to root for.
+  const whatIfHalf = etDayHour(now).day <= 1 ? 'root' : 'odds';
+  const whatIf = odds ? <WhatIfCard odds={odds} teamId={teamId} standings={standings} half={whatIfHalf} /> : null;
   const turning =
     history && mine ? <TurningPointsCard history={history} meIsHome={mine.item.home.team_id === teamId} opponent={mine.them.owner_name} /> : null;
   // Your bets, Thursday morning to Monday night, on whatever the mood is.
@@ -291,7 +293,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       header = { kicker: 'Tuesday · Recap day', title: greeting(name, now) };
       body = (
         <>
-          {awards && <YourAwardsCard awards={awards.awards} teamName={myWeek.data.team_name} />}
           <PowerMoveCard trend={trend} teamId={teamId} />
           {whatIf}
           {m && <NextOpponentCard matchup={m} item={mine?.item ?? null} teamId={teamId} />}
@@ -402,6 +403,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <PlayersNowCard players={onNow} title="Your players right now" />
           {betsCard}
           {mine && <TouchdownFeedCard me={mine.me} them={mine.them} />}
+          {whatIf}
           {mine && <GameWindowsCard me={mine.me} them={mine.them} now={now} />}
           <LeagueScoreboardCard matchups={weekMatchups} teamId={teamId} title="Around the league · live" live />
           {liveGames.length > 0 && <LiveNowCard games={liveGames} findGamecastId={findGamecastId} />}
@@ -426,6 +428,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
           <TonightGamesCard games={tonightGames} title="Tonight" findGamecastId={findGamecastId} />
           {betsCard}
           <MatchupsAliveCard matchups={weekMatchups} teamId={teamId} />
+          {whatIf}
           {mine && <TouchdownFeedCard me={mine.me} them={mine.them} />}
           <LoungeCard title="Sweat it together" body="The Lounge is open for tonight's game" />
         </>
@@ -435,14 +438,13 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   }
 
   // The classic home's Your Week card leads every day, with the week's
-  // recap right under it and the awards after, both exactly as the
-  // classic home shows them. Before the recap is out on a final week, a
-  // countdown takes its place. On days about the week ahead, the awards
-  // move below that day's cards.
-  const awardsFirst = phase === 'final' || phase === 'recap' || phase === 'waivers';
+  // recap right under it, exactly as the classic home shows it (full on
+  // recap day, then "Missed the recap?"). Before the recap is out on a
+  // final week, a countdown takes its place. On days about the week
+  // ahead, it moves below that day's cards.
+  const recapFirst = phase === 'final' || phase === 'recap' || phase === 'waivers';
   const shownRecap = phase === 'final' ? (recap && recap.week === week ? recap : null) : recap;
-  const awardsCard =
-    awards && week !== null ? <AwardsCard awards={awards.awards} awardsWeek={awards.week} currentWeek={week} recap={shownRecap} /> : null;
+  const recapCard = shownRecap ? <RecapCard recap={shownRecap.recap} week={shownRecap.week} season={shownRecap.season} /> : null;
   const recapCountdown =
     phase === 'final' && !shownRecap ? (
       <Panel tint={SectionColors.awards}>
@@ -505,9 +507,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
         </Panel>
       )}
       {recapCountdown}
-      {awardsFirst && awardsCard}
+      {recapFirst && recapCard}
       {body}
-      {!awardsFirst && awardsCard}
+      {!recapFirst && recapCard}
       {chug?.deadline && <ChugCountdownCard deadline={chug.deadline} isPast={chug.is_past} mine={chug.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
       <Pressable onPress={onUseClassic} hitSlop={8} style={styles.footer} accessibilityRole="button">

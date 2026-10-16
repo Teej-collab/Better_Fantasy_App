@@ -232,7 +232,6 @@ export default async function HomePage() {
   let powerRankings: WeekPowerRanking[] = [];
   let weeklyRecap: WeeklyNarrative | null = null;
   let weeklyRecapWeek: number | null = null;
-  let weeklyAwardsWeek: number | null = null;
   let chugFeed: ChugFeedEntry[] = [];
   let leagueActivity: LeagueActivityItem[] = [];
 
@@ -259,13 +258,11 @@ export default async function HomePage() {
     standings = standingsRes.standings;
     // Prefer the active week's own awards once it has any real data;
     // fall back to the week that just wrapped otherwise (see the
-    // prevWeekAwardsRes fetch above).
+    // prevWeekAwardsRes fetch above). Only the ticker uses them now.
     if (hasAwardsData(awardsRes)) {
       weeklyAwards = awardsRes;
-      weeklyAwardsWeek = week;
     } else if (hasAwardsData(prevWeekAwardsRes)) {
       weeklyAwards = prevWeekAwardsRes;
-      weeklyAwardsWeek = week - 1;
     }
     weekMatchups = matchupContextRes.matchups;
     powerRankings = powerRankingsRes.rankings;
@@ -549,10 +546,12 @@ export default async function HomePage() {
     );
   }
 
-  if (weeklyAwards && season !== null && week !== null) {
+  // The awards grid left Home (2026-10-16: it was skimmed past; the
+  // awards live in the recap). This slot is the recap now — the "awards"
+  // key stays so saved card orders keep it in place.
+  if (season !== null && week !== null) {
     cards.awards = (
       <section className="flex flex-col gap-2">
-        {/* The week's recap leads, above its awards (2026-10-12). */}
         {season !== null && week !== null && (
           weeklyRecap && weeklyRecapWeek !== null ? (
             <WeeklyRecapTeaser
@@ -574,11 +573,6 @@ export default async function HomePage() {
             me.is_commissioner && <WeekRecapSection season={season} week={week} narrative={null} canGenerate />
           )
         )}
-        <SectionHeader
-          title={weeklyAwardsWeek === week ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
-          href={`/seasons/${season}/awards`}
-        />
-        <AwardsPreview awards={weeklyAwards} />
       </section>
     );
   }
@@ -612,8 +606,6 @@ export default async function HomePage() {
           otherMatchups={otherMatchups}
           currentWeek={week}
           rivalryGamesThisWeek={rivalryGamesThisWeek}
-          weeklyAwards={weeklyAwards}
-          weeklyAwardsWeek={weeklyAwardsWeek}
           weeklyRecap={weeklyRecap}
           weeklyRecapWeek={weeklyRecapWeek}
           isCommissioner={me.is_commissioner}

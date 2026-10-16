@@ -17,7 +17,6 @@ import type {
   StandingsRow,
   TradeSettings,
   Trade,
-  WeeklyAwards,
   WeekMatchupContextItem,
   YourWeekMatchup,
 } from '@/lib/types';
@@ -203,27 +202,6 @@ export function RivalryResultCard({ item, teamId }: { item: WeekMatchupContextIt
   );
 }
 
-// Awards you picked up (or got hit with) this week.
-export function YourAwardsCard({ awards, teamName }: { awards: WeeklyAwards; teamName: string }) {
-  const mine: { label: string; detail: string; good: boolean }[] = [];
-  if (awards.boom_leaders[0]?.team_name === teamName) mine.push({ label: 'Boom of the Week', detail: `${awards.boom_leaders[0].player_name} · ${awards.boom_leaders[0].points_scored.toFixed(1)}`, good: true });
-  if (awards.bust_leaders[0]?.team_name === teamName) mine.push({ label: 'Bust of the Week', detail: awards.bust_leaders[0].player_name, good: false });
-  if (awards.biggest_bench_crime?.team_name === teamName) mine.push({ label: 'Biggest Bench Crime', detail: `${awards.biggest_bench_crime.bench_player} +${awards.biggest_bench_crime.points_diff.toFixed(1)}`, good: false });
-  if (awards.clutch?.team_name === teamName) mine.push({ label: 'Clutch', detail: awards.clutch.reason, good: true });
-  if (awards.choke?.team_name === teamName) mine.push({ label: 'Choke of the Week', detail: awards.choke.reason, good: false });
-  if (awards.overachiever?.team_name === teamName) mine.push({ label: 'Overachiever', detail: `+${awards.overachiever.diff.toFixed(1)} over projection`, good: true });
-  if (awards.meltdown?.team_name === teamName) mine.push({ label: 'Meltdown', detail: `${awards.meltdown.diff.toFixed(1)} under projection`, good: false });
-  if (mine.length === 0) return null;
-  return (
-    <Panel tint={mine.some((a) => a.good) ? UP : DOWN}>
-      <Kicker color={mine.some((a) => a.good) ? UP : DOWN}>Your awards</Kicker>
-      {mine.map((a, i) => (
-        <Row key={a.label} first={i === 0} left={a.label} right={<Text style={[styles.right, { color: a.good ? UP : DOWN }]} numberOfLines={1}>{a.detail}</Text>} />
-      ))}
-    </Panel>
-  );
-}
-
 // Your power ranking now and how far it moved.
 export function PowerMoveCard({ trend, teamId }: { trend: PowerRankTrendTeam[]; teamId: number }) {
   const mine = trend.find((t) => t.team_id === teamId);
@@ -282,7 +260,20 @@ export function PlayoffOddsCard({ odds, teamId }: { odds: PlayoffOdds; teamId: n
 const WHAT_IF = '#c084fc';
 const MATTERS = 0.5;
 
-export function WhatIfCard({ odds, teamId, standings }: { odds: PlayoffOdds; teamId: number; standings: StandingsRow[] }) {
+// Half the card at a time (2026-10-16): "odds" (Tuesday–Saturday) is
+// your playoff chances and what this week's result does to them;
+// "root" (Sunday–Monday) is the other games to root for this week.
+export function WhatIfCard({
+  odds,
+  teamId,
+  standings,
+  half,
+}: {
+  odds: PlayoffOdds;
+  teamId: number;
+  standings: StandingsRow[];
+  half: 'odds' | 'root';
+}) {
   const mine = odds.teams.find((t) => t.team_id === teamId);
   const focus = odds.focus?.team_id === teamId ? odds.focus : null;
   if (!mine || !focus || focus.games_left === 0) return null;
@@ -302,25 +293,27 @@ export function WhatIfCard({ odds, teamId, standings }: { odds: PlayoffOdds; tea
       tint={WHAT_IF}
       onPress={() => router.navigate({ pathname: '/league', params: { section: 'standings', view: 'playoffs', w } } as unknown as Href)}
       label="Play out this week in What-If">
-      <Kicker color={WHAT_IF}>What-If · Your playoff picture</Kicker>
-      <View style={styles.bigRow}>
-        <Display style={styles.big}>{pct(mine.playoff_pct)}</Display>
-        <Text style={styles.muted}>to make the playoffs right now</Text>
-      </View>
-      {next && next.if_win_pct != null && next.if_loss_pct != null && (
-        <View style={styles.stakes}>
-          <View style={[styles.stake, { borderColor: `${UP}55` }]}>
-            <Text style={styles.small}>Beat {name(next.opponent_team_id)}</Text>
-            <Text style={[styles.stakeNum, { color: UP }]}>{pct(next.if_win_pct)}</Text>
+      <Kicker color={WHAT_IF}>{half === 'odds' ? 'What-If · Your playoff picture' : 'What-If · Root for this week'}</Kicker>
+      {half === 'odds' ? (
+        <>
+          <View style={styles.bigRow}>
+            <Display style={styles.big}>{pct(mine.playoff_pct)}</Display>
+            <Text style={styles.muted}>to make the playoffs right now</Text>
           </View>
-          <View style={[styles.stake, { borderColor: `${DOWN}55` }]}>
-            <Text style={styles.small}>Lose</Text>
-            <Text style={[styles.stakeNum, { color: DOWN }]}>{pct(next.if_loss_pct)}</Text>
-          </View>
-        </View>
-      )}
-      <Text style={[styles.small, styles.section]}>ROOT FOR THIS WEEK</Text>
-      {shown.length === 0 ? (
+          {next && next.if_win_pct != null && next.if_loss_pct != null && (
+            <View style={styles.stakes}>
+              <View style={[styles.stake, { borderColor: `${UP}55` }]}>
+                <Text style={styles.small}>Beat {name(next.opponent_team_id)}</Text>
+                <Text style={[styles.stakeNum, { color: UP }]}>{pct(next.if_win_pct)}</Text>
+              </View>
+              <View style={[styles.stake, { borderColor: `${DOWN}55` }]}>
+                <Text style={styles.small}>Lose</Text>
+                <Text style={[styles.stakeNum, { color: DOWN }]}>{pct(next.if_loss_pct)}</Text>
+              </View>
+            </View>
+          )}
+        </>
+      ) : shown.length === 0 ? (
         <Text style={styles.body}>No other game this week moves your odds much. It&apos;s all on your own matchup.</Text>
       ) : (
         shown.map((r, i) => (
@@ -561,6 +554,5 @@ const styles = StyleSheet.create({
   stakes: { flexDirection: 'row', gap: 8 },
   stake: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 10, gap: 2, backgroundColor: Colors.tile },
   stakeNum: { fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  section: { letterSpacing: 1.2, fontWeight: '700', marginTop: 4 },
   rootName: { color: Colors.text, fontWeight: '700' },
 });

@@ -8,11 +8,9 @@ import {
   type TickerItem,
   type WeekMatchupContextItem,
   type WeekPowerRanking,
-  type WeeklyAwards,
   type WeeklyNarrative,
   type YourWeek,
 } from "@/lib/api";
-import { AwardsPreview } from "@/app/(home)/page";
 import { ChugFeed } from "@/components/ChugFeed";
 import { LeagueActivityFeed } from "@/components/LeagueActivityFeed";
 import { MovementBadge } from "@/components/MovementBadge";
@@ -58,8 +56,6 @@ export function HomePageBeta({
   otherMatchups,
   currentWeek,
   rivalryGamesThisWeek,
-  weeklyAwards,
-  weeklyAwardsWeek,
   weeklyRecap,
   weeklyRecapWeek,
   isCommissioner,
@@ -80,8 +76,6 @@ export function HomePageBeta({
   otherMatchups: WeekMatchupContextItem[];
   currentWeek: number | null;
   rivalryGamesThisWeek: WeekMatchupContextItem[];
-  weeklyAwards: WeeklyAwards | null;
-  weeklyAwardsWeek: number | null;
   weeklyRecap: WeeklyNarrative | null;
   weeklyRecapWeek: number | null;
   isCommissioner: boolean;
@@ -151,7 +145,8 @@ export function HomePageBeta({
           are actually in the books, so it's a highlight worth surfacing
           right after the live/hero content rather than buried below the
           full-season standings that are always there (2026-09 request). */}
-      {weeklyAwards && season !== null && currentWeek !== null && (
+      {/* The recap (the awards grid left Home 2026-10-16; they're in the recap). */}
+      {season !== null && currentWeek !== null && (
         <section className="flex flex-col gap-2">
           {weeklyRecap && weeklyRecapWeek !== null ? (
             <WeeklyRecapTeaser recap={weeklyRecap} season={season} week={weeklyRecapWeek} isCommissioner={isCommissioner} />
@@ -161,11 +156,6 @@ export function HomePageBeta({
             // has rolled over yet.
             isCommissioner && <WeekRecapSection season={season} week={currentWeek} narrative={null} canGenerate />
           )}
-          <SectionHeaderBeta
-            title={weeklyAwardsWeek === currentWeek ? "This Week's Awards" : `Week ${weeklyAwardsWeek} Awards`}
-            href={`/seasons/${season}/awards`}
-          />
-          <AwardsPreview awards={weeklyAwards} />
         </section>
       )}
 

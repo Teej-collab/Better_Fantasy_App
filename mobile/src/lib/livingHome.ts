@@ -88,6 +88,15 @@ export function nextEt(day: number, hour: number, from = new Date()): Date {
   return t;
 }
 
+// The week's recap drops Tuesday at noon PT (3 PM Eastern). Home shows
+// it in full from then until the end of Tuesday; from Wednesday it
+// shrinks to a "Missed the recap?" link until the next one drops. Same
+// rule as the web's frontend/src/lib/recapFreshness.ts.
+export function recapIsFresh(now = new Date()): boolean {
+  const { day, hour } = etDayHour(now);
+  return day === 2 && hour >= 15;
+}
+
 // The betting weekend: Thursday 6 AM Eastern until Tuesday 6 AM, so the
 // Monday night game (which can run past midnight) still counts.
 export function inBetsWeekend(now = new Date()): boolean {
