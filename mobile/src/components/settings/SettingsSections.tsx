@@ -9,6 +9,7 @@ import { ColorPicker, Host } from '@expo/ui/swift-ui';
 import { requireOptionalNativeModule } from 'expo';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
+import { ImageViewer } from '@/components/ImageViewer';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
@@ -972,6 +973,7 @@ export function FeedbackSettings() {
   const [image, setImage] = useState<{ status: 'uploading' | 'done' | 'error'; local: string; url?: string } | null>(null);
   const [status, setStatus] = useState<'idle' | 'saving' | 'sent' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   async function attach() {
     const local = await pickChatPhoto('library').catch(() => null);
@@ -1008,6 +1010,7 @@ export function FeedbackSettings() {
   return (
     <View style={styles.gap}>
       <Header title="Feedback" subtitle="Found a bug, or have an idea for the league? Send it straight through — attach a screenshot if it helps." />
+      <ImageViewer uri={viewing} onClose={() => setViewing(null)} />
       <Panel>
         <TextInput
           value={message}
@@ -1023,7 +1026,9 @@ export function FeedbackSettings() {
         />
         {image && image.status !== 'error' && (
           <View style={styles.attachment}>
-            <Image source={{ uri: image.local }} style={[styles.attachmentImage, image.status === 'uploading' && styles.dim]} contentFit="cover" />
+            <Pressable onPress={() => setViewing(image.local)} accessibilityRole="imagebutton" accessibilityLabel="Open screenshot">
+              <Image source={{ uri: image.local }} style={[styles.attachmentImage, image.status === 'uploading' && styles.dim]} contentFit="cover" />
+            </Pressable>
             <Pressable onPress={() => setImage(null)} style={styles.removeImage} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove screenshot">
               <Text style={styles.removeText}>✕</Text>
             </Pressable>
@@ -1058,8 +1063,10 @@ export function FeedbackSettings() {
 
 function RecentFeedback() {
   const q = useFeedbackList(true);
+  const [viewing, setViewing] = useState<string | null>(null);
   return (
     <Panel title="Recent Feedback">
+      <ImageViewer uri={viewing} onClose={() => setViewing(null)} />
       {q.isPending ? (
         <ActivityIndicator />
       ) : (q.data ?? []).length === 0 ? (
@@ -1068,7 +1075,11 @@ function RecentFeedback() {
         (q.data ?? []).map((item, i) => (
           <View key={item.id} style={[styles.feedbackItem, i > 0 && styles.divided]}>
             <Text style={styles.body}>{item.message}</Text>
-            {item.image_url && <Image source={{ uri: item.image_url }} style={styles.feedbackImage} contentFit="contain" />}
+            {item.image_url && (
+              <Pressable onPress={() => setViewing(item.image_url)} accessibilityRole="imagebutton" accessibilityLabel="Open screenshot">
+                <Image source={{ uri: item.image_url }} style={styles.feedbackImage} contentFit="contain" />
+              </Pressable>
+            )}
             <Text style={styles.small}>
               {item.submitted_by} · {new Date(item.created_at).toLocaleString()}
               {item.page_url ? ` · ${item.page_url}` : ''}

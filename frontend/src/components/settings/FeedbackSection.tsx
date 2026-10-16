@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { upload } from "@vercel/blob/client";
 import { getFeedback, submitFeedback, type FeedbackItem } from "@/lib/api";
 
@@ -34,6 +35,7 @@ export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean })
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Bumped on every successful submit — passed to RecentFeedback as a
   // dependency so a commissioner submitting their own report sees it
@@ -107,13 +109,15 @@ export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean })
             className="min-w-0 resize-none rounded-lg border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-black/20"
           />
 
+          <ImageLightbox src={viewing} onClose={() => setViewing(null)} />
           {pendingImage && pendingImage.status !== "error" && (
             <div className="relative w-fit">
               {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL / freshly-uploaded Blob URL, not a static/known-at-build-time asset */}
               <img
                 src={pendingImage.status === "done" ? pendingImage.url : pendingImage.previewUrl}
                 alt="Attached screenshot"
-                className={`h-auto max-h-40 w-auto max-w-full rounded-lg ${pendingImage.status === "uploading" ? "opacity-50" : ""}`}
+                onClick={() => setViewing(pendingImage.status === "done" ? pendingImage.url : pendingImage.previewUrl)}
+                className={`h-auto max-h-40 w-auto max-w-full cursor-zoom-in rounded-lg ${pendingImage.status === "uploading" ? "opacity-50" : ""}`}
               />
               <button
                 type="button"
@@ -176,6 +180,7 @@ export function FeedbackSection({ isCommissioner }: { isCommissioner: boolean })
 function RecentFeedback({ refreshCount }: { refreshCount: number }) {
   const [items, setItems] = useState<FeedbackItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   useEffect(() => {
     // setTimeout(0) — same lint-satisfying pattern used across this
@@ -194,6 +199,7 @@ function RecentFeedback({ refreshCount }: { refreshCount: number }) {
   return (
     <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
       <h2 className="text-sm font-semibold tracking-wide uppercase">Recent Feedback</h2>
+      <ImageLightbox src={viewing} onClose={() => setViewing(null)} />
       {error && <p className="text-xs text-red-500">{error}</p>}
       {!items && !error && <p className="text-xs text-black/50 dark:text-white/50">Loading…</p>}
       {items && items.length === 0 && (
@@ -205,7 +211,7 @@ function RecentFeedback({ refreshCount }: { refreshCount: number }) {
             <li key={item.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
               {item.message && <p className="text-sm whitespace-pre-wrap">{item.message}</p>}
               {item.image_url && (
-                <a href={item.image_url} target="_blank" rel="noopener noreferrer" className="w-fit">
+                <button type="button" onClick={() => setViewing(item.image_url)} aria-label="Open screenshot" className="w-fit cursor-zoom-in">
                   <Image
                     src={item.image_url}
                     alt="Attached screenshot"
@@ -213,7 +219,7 @@ function RecentFeedback({ refreshCount }: { refreshCount: number }) {
                     height={400}
                     className="h-auto max-h-56 w-auto max-w-full rounded-lg"
                   />
-                </a>
+                </button>
               )}
               <p className="text-xs text-black/50 dark:text-white/50">
                 {item.submitted_by} · {new Date(item.created_at).toLocaleString()}
