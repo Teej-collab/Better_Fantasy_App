@@ -36,14 +36,16 @@ const TARGET_BUNDLE_SUFFIX = '.expo-sharing-extension';
 function withTeam(config) {
   return withXcodeProject(config, (cfg) => {
     const team = cfg.ios?.appleTeamId;
-    if (!team) return cfg;
     const configurations = cfg.modResults.pbxXCBuildConfigurationSection();
     let found = 0;
     for (const entry of Object.values(configurations)) {
       const settings = entry?.buildSettings;
       const bundleId = String(settings?.PRODUCT_BUNDLE_IDENTIFIER ?? '').replace(/"/g, '');
       if (!bundleId.endsWith(TARGET_BUNDLE_SUFFIX)) continue;
-      settings.DEVELOPMENT_TEAM = team;
+      if (team) settings.DEVELOPMENT_TEAM = team;
+      // Xcode's own copy of the name (General > Display Name), so it
+      // agrees with the Info.plist set below.
+      settings.INFOPLIST_KEY_CFBundleDisplayName = JSON.stringify(cfg.name);
       found++;
     }
     if (found === 0) {
