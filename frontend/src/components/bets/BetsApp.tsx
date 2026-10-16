@@ -113,10 +113,8 @@ export function BetsApp() {
       {adding && (
         <AddBetFlow
           onCancel={() => setAdding(false)}
-          onSaved={(bet) => {
-            setAdding(false);
-            setBets((all) => [bet, ...(all ?? [])]);
-          }}
+          onSaved={(bet) => setBets((all) => [bet, ...(all ?? [])])}
+          onDone={() => setAdding(false)}
         />
       )}
 

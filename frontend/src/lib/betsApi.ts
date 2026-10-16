@@ -61,6 +61,8 @@ export type DraftLeg = {
   direction: BetDirection | null;
   odds_american: number | null;
   matched?: boolean;
+  // Read off a slip, but missing something or not a real player/game this week.
+  needs_check?: boolean;
 };
 
 export type DraftBet = {
@@ -69,7 +71,13 @@ export type DraftBet = {
   odds_american: number | null;
   payout: number | null;
   legs: DraftLeg[];
+  // From a slip: read cleanly enough for a one-tap "looks right".
+  ready?: boolean;
 };
+
+// POST /bets/parse-slip: every bet on the screenshot (the first one's
+// fields are repeated at the top level too).
+export type ParsedSlip = DraftBet & { bets?: DraftBet[] };
 
 // Same keys as backend app/domain/bets.py's STAT_KEYS.
 export const BET_STATS: { key: string; label: string }[] = [
@@ -118,7 +126,7 @@ export const listBets = () => call<{ enabled: boolean; bets: Bet[] }>("");
 export const betsInGame = (eventId: string) => call<{ enabled: boolean; bets: Bet[] }>(`/games/${encodeURIComponent(eventId)}`);
 export const sharedBet = (betId: number) => call<Bet>(`/shared/${betId}`);
 export const parseSlip = (imageBase64: string, mediaType: string) =>
-  call<DraftBet>("/parse-slip", { method: "POST", body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) });
+  call<ParsedSlip>("/parse-slip", { method: "POST", body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) });
 export const createBet = (bet: DraftBet & { source: "screenshot" | "manual"; note?: string | null }) =>
   call<Bet>("", { method: "POST", body: JSON.stringify(bet) });
 export const setBetStatus = (betId: number, status: BetStatus | "auto") =>

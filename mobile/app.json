@@ -65,7 +65,18 @@
       ],
       "expo-quick-actions",
       "expo-asset",
-      "expo-sharing",
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "appGroupId": "group.com.weekendleague.native",
+            "activationRule": {
+              "supportsImageWithMaxCount": 1
+            }
+          }
+        }
+      ],
       [
         "expo-notifications",
         {

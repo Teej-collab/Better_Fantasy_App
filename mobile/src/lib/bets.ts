@@ -76,10 +76,22 @@ export async function pickSlipScreenshot(): Promise<{ base64: string; mediaType:
   const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
   if (result.canceled || !result.assets[0]) return null;
   const asset = result.assets[0];
-  let context = ImageManipulator.manipulate(asset.uri);
-  const longest = Math.max(asset.width, asset.height);
+  return prepareSlipImage(asset.uri, asset.width, asset.height);
+}
+
+// Any slip image on the phone (picked, or shared in from a sportsbook
+// app) shrunk to a JPEG the server takes. Pass 0 for an unknown size.
+export async function prepareSlipImage(uri: string, width: number, height: number): Promise<{ base64: string; mediaType: string } | null> {
+  let context = ImageManipulator.manipulate(uri);
+  if (!width || !height) {
+    const probe = await context.renderAsync();
+    width = probe.width;
+    height = probe.height;
+    context = ImageManipulator.manipulate(uri);
+  }
+  const longest = Math.max(width, height);
   if (longest > 1800) {
-    context = asset.height >= asset.width ? context.resize({ height: 1800 }) : context.resize({ width: 1800 });
+    context = height >= width ? context.resize({ height: 1800 }) : context.resize({ width: 1800 });
   }
   const rendered = await context.renderAsync();
   const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.8, base64: true });

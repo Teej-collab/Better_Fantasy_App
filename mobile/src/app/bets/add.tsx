@@ -1,19 +1,22 @@
-import { router, Stack } from 'expo-router';
-import { useState } from 'react';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
-import { BET_STATS, describeDraftLeg, pickSlipScreenshot } from '@/lib/bets';
+import { BET_STATS, describeDraftLeg, pickSlipScreenshot, prepareSlipImage } from '@/lib/bets';
 import { haptics } from '@/lib/haptics';
 import { queryClient } from '@/lib/queries';
+import { takeSharedSlipImage } from '@/lib/shareIntent';
 import type { BetDirection, BetMarket, DraftBet, DraftLeg } from '@/lib/types';
 
 // Add a bet (port of the web's AddBetFlow): a bet-slip screenshot read by
-// Claude on the server — then thrown away — or typed in by hand; every
-// leg is checked here before anything is saved.
+// Claude on the server — then thrown away — or typed in by hand. Every
+// bet on the screenshot gets a "Does this look right?" card: a clean
+// read saves with one tap, and anything the reader wasn't sure of opens
+// in the editor with those legs marked.
 
 const EMPTY_LEG: DraftLeg = {
   description: '',
@@ -34,12 +37,60 @@ const MARKETS: { key: BetMarket; label: string }[] = [
   { key: 'other', label: 'Other' },
 ];
 
+// One bet read off a screenshot, on the "Does this look right?" list.
+type Slip = { draft: DraftBet; ready: boolean; saved: boolean };
+
+function cleanLegs(draft: DraftBet): DraftBet {
+  return {
+    ...draft,
+    legs: draft.legs.map((l) => ({
+      ...l,
+      description: describeDraftLeg(l),
+      player_name: l.player_name?.trim() || null,
+      team_abbr: l.team_abbr?.trim().toUpperCase() || null,
+    })),
+  };
+}
+
 export default function AddBetScreen() {
   const accent = useAppearance().accent;
+  // A slip shared in from a sportsbook app (lib/shareIntent.ts) is read
+  // straight away.
+  const { shared } = useLocalSearchParams<{ shared?: string }>();
   const [draft, setDraft] = useState<DraftBet | null>(null);
   const [source, setSource] = useState<'screenshot' | 'manual'>('manual');
+  // Every bet on the screenshot, and which one is open in the editor.
+  const [slips, setSlips] = useState<Slip[] | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState<'reading' | 'saving' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function readImage(image: { base64: string; mediaType: string } | null) {
+    if (!image) return;
+    setBusy('reading');
+    try {
+      const parsed = await api.parseBetSlip(image.base64, image.mediaType);
+      haptics.success();
+      setSource('screenshot');
+      const bets = parsed.bets ?? [parsed];
+      const read = bets.map((b) => ({
+        draft: { ...b, legs: b.legs.map((l) => ({ ...EMPTY_LEG, ...l })) },
+        ready: b.ready ?? false,
+        saved: false,
+      }));
+      setSlips(read);
+      // One bet that needs fixing goes straight to the editor.
+      if (read.length === 1 && !read[0].ready) {
+        setEditing(0);
+        setDraft(read[0].draft);
+      }
+    } catch (e) {
+      haptics.error();
+      setError(e instanceof Error ? e.message : "Couldn't read that slip.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function readScreenshot() {
     setError(null);
@@ -50,19 +101,59 @@ export default function AddBetScreen() {
       setError("Couldn't open that screenshot.");
       return;
     }
-    if (!image) return;
+    await readImage(image);
+  }
+
+  const sharedRead = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shared || sharedRead.current === shared) return;
+    sharedRead.current = shared;
+    setError(null);
+    setDraft(null);
+    setEditing(null);
+    setSlips(null);
     setBusy('reading');
+    takeSharedSlipImage()
+      .then((uri) => (uri ? prepareSlipImage(uri, 0, 0) : null))
+      .then((image) => {
+        if (image) return readImage(image);
+        setBusy(null);
+        setError("That share didn't include a screenshot — share the slip as an image, or choose one below.");
+      })
+      .catch(() => {
+        setBusy(null);
+        setError("Couldn't open that screenshot.");
+      });
+  }, [shared]);
+
+  function finishIfDone(next: Slip[]) {
+    if (next.every((x) => x.saved)) {
+      void queryClient.invalidateQueries({ queryKey: ['bets'] });
+      router.back();
+    }
+  }
+
+  // Saves the given slips (by index) as they are; the rest stay on the list.
+  async function saveSlips(indexes: number[]) {
+    if (!slips) return;
+    setError(null);
+    setBusy('saving');
+    const next = [...slips];
     try {
-      const parsed = await api.parseBetSlip(image.base64, image.mediaType);
+      for (const i of indexes) {
+        await api.createBet({ ...cleanLegs(next[i].draft), source: 'screenshot' });
+        next[i] = { ...next[i], saved: true };
+      }
       haptics.success();
-      setSource('screenshot');
-      setDraft({ ...parsed, legs: parsed.legs.map((l) => ({ ...EMPTY_LEG, ...l })) });
     } catch (e) {
       haptics.error();
-      setError(e instanceof Error ? e.message : "Couldn't read that slip.");
+      setError(e instanceof Error ? e.message : "Couldn't save that bet.");
     } finally {
+      setSlips(next);
       setBusy(null);
     }
+    void queryClient.invalidateQueries({ queryKey: ['bets'] });
+    finishIfDone(next);
   }
 
   async function save() {
@@ -70,18 +161,17 @@ export default function AddBetScreen() {
     setError(null);
     setBusy('saving');
     try {
-      await api.createBet({
-        ...draft,
-        source,
-        legs: draft.legs.map((l) => ({
-          ...l,
-          description: describeDraftLeg(l),
-          player_name: l.player_name?.trim() || null,
-          team_abbr: l.team_abbr?.trim().toUpperCase() || null,
-        })),
-      });
+      await api.createBet({ ...cleanLegs(draft), source });
       haptics.success();
       await queryClient.invalidateQueries({ queryKey: ['bets'] });
+      if (slips && editing !== null) {
+        const next = slips.map((x, i) => (i === editing ? { ...x, draft, saved: true } : x));
+        setSlips(next);
+        setEditing(null);
+        setDraft(null);
+        finishIfDone(next);
+        return;
+      }
       router.back();
     } catch (e) {
       haptics.error();
@@ -91,8 +181,54 @@ export default function AddBetScreen() {
     }
   }
 
+  function startOver() {
+    setDraft(null);
+    setEditing(null);
+    setSlips(null);
+    setError(null);
+  }
+
   function updateLeg(i: number, patch: Partial<DraftLeg>) {
-    setDraft((d) => (d ? { ...d, legs: d.legs.map((l, j) => (j === i ? { ...l, ...patch, matched: undefined } : l)) } : d));
+    setDraft((d) =>
+      d ? { ...d, legs: d.legs.map((l, j) => (j === i ? { ...l, ...patch, matched: undefined, needs_check: undefined } : l)) } : d,
+    );
+  }
+
+  if (!draft && slips) {
+    const readyToSave = slips.map((x, i) => (x.ready && !x.saved ? i : -1)).filter((i) => i >= 0);
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic">
+        <Stack.Screen options={{ title: 'Does this look right?' }} />
+        <Text style={styles.soft}>
+          {slips.length === 1 ? 'Here’s what your slip says.' : `Found ${slips.length} bets on your slip.`}
+        </Text>
+        {slips.map((slip, i) => (
+          <SlipCard
+            key={i}
+            slip={slip}
+            busy={busy !== null}
+            onConfirm={() => void saveSlips([i])}
+            onFix={() => {
+              setEditing(i);
+              setDraft(slip.draft);
+            }}
+          />
+        ))}
+        {error && <Text style={styles.error}>{error}</Text>}
+        {readyToSave.length > 1 && (
+          <Pressable
+            onPress={() => void saveSlips(readyToSave)}
+            disabled={busy !== null}
+            accessibilityRole="button"
+            style={[styles.primary, { backgroundColor: accent }, busy !== null && styles.dim]}>
+            {busy === 'saving' ? <ActivityIndicator color="#06110a" /> : <Text style={styles.primaryText}>✓ Save All {readyToSave.length}</Text>}
+          </Pressable>
+        )}
+        <Pressable onPress={startOver} accessibilityRole="button" style={styles.linkButton}>
+          <Text style={styles.soft}>Start over</Text>
+        </Pressable>
+      </ScrollView>
+    );
   }
 
   if (!draft) {
@@ -107,7 +243,7 @@ export default function AddBetScreen() {
           {busy === 'reading' ? <ActivityIndicator color={accent} /> : <Text style={styles.dropIcon}>🧾</Text>}
           <Text style={styles.dropTitle}>{busy === 'reading' ? 'Reading your slip…' : 'Choose a bet-slip screenshot'}</Text>
           <Text style={styles.soft}>
-            Any sportsbook. The screenshot is read and then thrown away — only the legs you confirm are saved.
+            Any sportsbook, one bet or several. The screenshot is read and then thrown away — only the bets you confirm are saved.
           </Text>
         </Pressable>
         <Pressable
@@ -174,7 +310,11 @@ export default function AddBetScreen() {
           <View style={styles.legTop}>
             <Text style={styles.legTitle}>
               Leg {i + 1}
-              {leg.matched === false ? <Text style={styles.warn}> · game not found this week</Text> : null}
+              {leg.matched === false ? (
+                <Text style={styles.warn}> · game not found this week</Text>
+              ) : leg.needs_check ? (
+                <Text style={styles.warn}> · check this leg</Text>
+              ) : null}
             </Text>
             {draft.legs.length > 1 && (
               <Pressable
@@ -302,10 +442,64 @@ export default function AddBetScreen() {
         style={[styles.primary, { backgroundColor: accent }, busy !== null && styles.dim]}>
         {busy === 'saving' ? <ActivityIndicator color="#06110a" /> : <Text style={styles.primaryText}>Save bet</Text>}
       </Pressable>
-      <Pressable onPress={() => setDraft(null)} accessibilityRole="button" style={styles.linkButton}>
-        <Text style={styles.soft}>Start over</Text>
+      <Pressable
+        onPress={() => {
+          if (slips && slips.length > 1) {
+            setDraft(null);
+            setEditing(null);
+          } else startOver();
+        }}
+        accessibilityRole="button"
+        style={styles.linkButton}>
+        <Text style={styles.soft}>{slips && slips.length > 1 ? 'Back to your slip' : 'Start over'}</Text>
       </Pressable>
     </ScrollView>
+  );
+}
+
+function SlipCard({ slip, busy, onConfirm, onFix }: { slip: Slip; busy: boolean; onConfirm: () => void; onFix: () => void }) {
+  const accent = useAppearance().accent;
+  const d = slip.draft;
+  const odds = d.odds_american === null ? null : d.odds_american > 0 ? `+${d.odds_american}` : String(d.odds_american);
+  const head = [d.sportsbook, d.stake !== null ? `$${d.stake}` : 'Wager?', odds ?? (d.payout !== null ? `pays $${d.payout}` : 'Odds?')]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <View style={[styles.leg, slip.saved && styles.dim]}>
+      <View style={styles.legTop}>
+        <Text style={styles.legTitle}>{d.legs.length > 1 ? `${d.legs.length}-leg parlay` : 'Straight bet'}</Text>
+        {slip.saved ? <Text style={[styles.savedText, { color: accent }]}>Saved ✓</Text> : null}
+      </View>
+      <Text style={styles.slipHead}>{head}</Text>
+      {d.legs.map((l, j) => (
+        <Text key={j} style={styles.slipLeg}>
+          {l.needs_check || l.matched === false ? '⚠️ ' : '• '}
+          {describeDraftLeg(l)}
+        </Text>
+      ))}
+      {!slip.saved &&
+        (slip.ready ? (
+          <View style={styles.row}>
+            <Pressable
+              onPress={onConfirm}
+              disabled={busy}
+              accessibilityRole="button"
+              style={[styles.confirm, { backgroundColor: accent }, busy && styles.dim]}>
+              <Text style={styles.primaryText}>✓ Looks Right</Text>
+            </Pressable>
+            <Pressable onPress={onFix} disabled={busy} accessibilityRole="button" style={styles.fix}>
+              <Text style={styles.fixText}>✗ Fix It</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.warn}>Some of this needs a quick look before it&apos;s saved.</Text>
+            <Pressable onPress={onFix} disabled={busy} accessibilityRole="button" style={[styles.confirm, styles.fix]}>
+              <Text style={styles.fixText}>Check It</Text>
+            </Pressable>
+          </>
+        ))}
+    </View>
   );
 }
 
@@ -429,4 +623,10 @@ const styles = StyleSheet.create({
   chipTextOn: { color: '#06110a' },
   primary: { borderRadius: Radius.pill, paddingVertical: 13, alignItems: 'center' },
   primaryText: { color: '#06110a', fontSize: 15, fontWeight: '700' },
+  slipHead: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  slipLeg: { color: Colors.text, fontSize: 14, lineHeight: 20 },
+  savedText: { fontSize: 13, fontWeight: '700' },
+  confirm: { flex: 1, borderRadius: Radius.pill, paddingVertical: 11, alignItems: 'center' },
+  fix: { flex: 1, borderRadius: Radius.pill, paddingVertical: 11, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  fixText: { color: Colors.text, fontSize: 15, fontWeight: '700' },
 });

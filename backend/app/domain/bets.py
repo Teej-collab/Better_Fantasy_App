@@ -220,6 +220,27 @@ def normalize_leg(raw: dict) -> dict:
     }
 
 
+def leg_is_complete(leg: dict) -> bool:
+    """A leg read off a slip (normalized and resolved to a player and
+    game) with everything it needs to grade itself — so the person only
+    has to glance at it, not fix it. "Other" legs never are: those are
+    graded by hand."""
+    if leg.get("espn_event_id") is None:
+        return False
+    market, line, direction = leg.get("market"), leg.get("line"), leg.get("direction")
+    if market == "player_prop":
+        if leg.get("espn_player_id") is None or not leg.get("stat_key") or direction is None:
+            return False
+        return line is not None or leg["stat_key"] == "anytime_td"
+    if market == "spread":
+        return bool(leg.get("team_abbr")) and line is not None
+    if market == "moneyline":
+        return bool(leg.get("team_abbr"))
+    if market == "total":
+        return line is not None and direction in ("over", "under")
+    return False
+
+
 def name_key(name: str | None) -> str:
     """Comparable form of a player's name: no accents, punctuation or
     suffixes ("Kenneth Walker III" == "kenneth walker")."""

@@ -48,6 +48,7 @@ _PARSE_MAX_PER_WINDOW = 40
 _MAX_IMAGE_BYTES = 6 * 1024 * 1024
 _ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _MAX_LEGS = 25
+_MAX_BETS_PER_SLIP = 10
 _BET_STATUSES = {"open", "won", "lost", "push", "void", "cashed_out"}
 
 
@@ -300,22 +301,40 @@ async def parse_slip(body: SlipIn, request: Request, pool=Depends(get_pool)):
     except Exception:
         logger.exception("Bet slip read failed")
         raise HTTPException(status_code=502, detail="Couldn't read that slip — try again, or enter it by hand")
-    if not slip.get("is_bet_slip", True) or not slip.get("legs"):
+    # An older reader answered with one bet's fields at the top level.
+    raw_bets = slip.get("bets") if "bets" in slip else [slip]
+    raw_bets = [b for b in (raw_bets or []) if b.get("legs")][:_MAX_BETS_PER_SLIP]
+    if not slip.get("is_bet_slip", True) or not raw_bets:
         raise HTTPException(status_code=422, detail="That doesn't look like a bet slip")
-    legs = [bet_domain.normalize_leg(l) for l in slip["legs"][:_MAX_LEGS]]
+    bets = []
     async with pool.acquire() as conn:
-        legs = await _resolve_legs(conn, legs)
-    return {
-        "sportsbook": slip.get("sportsbook"),
-        "stake": slip.get("stake"),
-        "odds_american": slip.get("odds_american"),
-        "payout": slip.get("payout"),
-        "legs": [
-            {k: leg.get(k) for k in ("description", "market", "player_name", "team_abbr", "stat_key", "line", "direction", "odds_american")}
-            | {"matched": leg.get("espn_event_id") is not None}
-            for leg in legs
-        ],
-    }
+        for raw in raw_bets:
+            legs = await _resolve_legs(conn, [bet_domain.normalize_leg(l) for l in raw["legs"][:_MAX_LEGS]])
+            out_legs = [
+                {k: leg.get(k) for k in ("description", "market", "player_name", "team_abbr", "stat_key", "line", "direction", "odds_american")}
+                | {"matched": leg.get("espn_event_id") is not None, "needs_check": not bet_domain.leg_is_complete(leg)}
+                for leg in legs
+            ]
+            bet = {
+                "sportsbook": raw.get("sportsbook"),
+                "stake": raw.get("stake"),
+                "odds_american": raw.get("odds_american"),
+                "payout": raw.get("payout"),
+                "legs": out_legs,
+            }
+            # Ready for a one-tap "looks right": the reader wasn't guessing,
+            # the wager and odds were read, and every leg is a real player
+            # and game this week with nothing missing.
+            bet["ready"] = (
+                not raw.get("unclear", False)
+                and bet["stake"] is not None
+                and (bet["odds_american"] is not None or bet["payout"] is not None)
+                and not any(l["needs_check"] for l in out_legs)
+            )
+            bets.append(bet)
+    # The first bet's fields stay at the top level for app versions that
+    # only know one bet per slip.
+    return bets[0] | {"bets": bets}
 
 
 @router.post("")

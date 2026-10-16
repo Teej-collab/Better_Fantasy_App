@@ -173,6 +173,41 @@ async def test_parse_slip_returns_a_checked_draft(pool, game_state, seeded_playe
         assert bad.status_code == 422
 
 
+async def test_parse_slip_reads_every_bet_on_a_screenshot(pool, game_state, seeded_player, monkeypatch):
+    gibbs = {"description": "Jahmyr Gibbs 80+ Rushing Yards", "market": "player_prop", "player_name": "Jahmyr Gibbs",
+             "team_abbr": "DET", "stat_key": "rush_yd", "line": 79.5, "direction": "over"}
+
+    def fake_reader(image_base64, media_type):
+        return {
+            "is_bet_slip": True,
+            "bets": [
+                {"sportsbook": "FanDuel", "stake": 10, "odds_american": -110, "unclear": False, "legs": [gibbs]},
+                {"sportsbook": "FanDuel", "stake": 5, "odds_american": 300, "unclear": False,
+                 "legs": [gibbs, {"description": "First TD: Amon-Ra St. Brown", "market": "other"}]},
+                {"sportsbook": "FanDuel", "stake": None, "odds_american": 150, "unclear": True,
+                 "legs": [{"description": "DET -3.5", "market": "spread", "team_abbr": "DET", "line": -3.5}]},
+                {"sportsbook": "FanDuel", "stake": 5, "legs": []},
+            ],
+        }
+
+    monkeypatch.setattr(bets_router.bet_slip_reader, "read_bet_slip", fake_reader)
+    user_id = await make_safe_session_user_id(pool)
+    async with _client() as c:
+        res = await c.post("/bets/parse-slip", json={"image_base64": "aGVsbG8=", "media_type": "image/png"}, cookies=_cookie(user_id))
+    assert res.status_code == 200, res.text
+    body = res.json()
+    bets = body["bets"]
+    # The empty one is dropped; the rest come back top first.
+    assert [b["stake"] for b in bets] == [10, 5, None]
+    # A clean read of a real player and game is ready for one tap.
+    assert bets[0]["ready"] and not bets[0]["legs"][0]["needs_check"]
+    # A hand-graded "other" leg, or a guessed-at bet, needs a look.
+    assert not bets[1]["ready"] and [l["needs_check"] for l in bets[1]["legs"]] == [False, True]
+    assert not bets[2]["ready"]
+    # Older app versions still get the first bet at the top level.
+    assert body["stake"] == 10 and body["legs"][0]["matched"]
+
+
 async def test_turning_bet_tracking_off_hides_bets(pool, game_state, seeded_player):
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(

@@ -11,6 +11,7 @@ import type {
   ChatMember,
   CommissionerAddResult,
   DraftBet,
+  ParsedSlip,
   EspnConnectionStatus,
   LeagueInfo,
   LeaguePreview,
@@ -575,7 +576,7 @@ export const api = {
   betsInGame: (eventId: string) => request<{ enabled: boolean; bets: Bet[] }>(`/bets/games/${encodeURIComponent(eventId)}`),
   sharedBet: (betId: number) => request<Bet>(`/bets/shared/${betId}`),
   parseBetSlip: (imageBase64: string, mediaType: string) =>
-    request<DraftBet>('/bets/parse-slip', { method: 'POST', body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) }),
+    request<ParsedSlip>('/bets/parse-slip', { method: 'POST', body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) }),
   createBet: (bet: DraftBet & { source: 'screenshot' | 'manual' }) => request<Bet>('/bets', { method: 'POST', body: JSON.stringify(bet) }),
   setBetStatus: (betId: number, status: BetStatus | 'auto') =>
     request<Bet>(`/bets/${betId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),

@@ -1275,6 +1275,8 @@ export type DraftLeg = {
   direction: BetDirection | null;
   odds_american: number | null;
   matched?: boolean;
+  // Read off a slip, but missing something or not a real player/game this week.
+  needs_check?: boolean;
 };
 
 export type DraftBet = {
@@ -1283,7 +1285,13 @@ export type DraftBet = {
   odds_american: number | null;
   payout: number | null;
   legs: DraftLeg[];
+  // From a slip: read cleanly enough for a one-tap "looks right".
+  ready?: boolean;
 };
+
+// POST /bets/parse-slip: every bet on the screenshot (the first one's
+// fields are repeated at the top level for older app versions).
+export type ParsedSlip = DraftBet & { bets?: DraftBet[] };
 
 // GET /watch-party/lobby (backend/app/routers/watch_party.py): this
 // week's games, ranked by what's riding on them for you.

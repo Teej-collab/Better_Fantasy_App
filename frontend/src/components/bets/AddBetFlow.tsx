@@ -14,8 +14,10 @@ import {
 } from "@/lib/betsApi";
 
 // Add a bet: upload a bet-slip screenshot (read by Claude on the server,
-// then thrown away) or type it in, check every leg, save. Nothing is
-// saved until the user confirms.
+// then thrown away) or type it in. Every bet on the screenshot gets a
+// "Does this look right?" card: a clean read saves with one click, and
+// anything the reader wasn't sure of opens in the editor with those legs
+// marked. Nothing is saved until the user confirms.
 
 const EMPTY_LEG: DraftLeg = {
   description: "",
@@ -36,8 +38,27 @@ const MARKETS: { key: BetMarket; label: string }[] = [
   { key: "other", label: "Other" },
 ];
 
-export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void; onCancel: () => void }) {
+// One bet read off a screenshot, on the "Does this look right?" list.
+type Slip = { draft: DraftBet; ready: boolean; saved: boolean };
+
+function cleanLegs(draft: DraftBet): DraftBet {
+  return {
+    ...draft,
+    legs: draft.legs.map((l) => ({
+      ...l,
+      description: l.description.trim() || describe(l),
+      player_name: l.player_name?.trim() || null,
+      team_abbr: l.team_abbr?.trim().toUpperCase() || null,
+    })),
+  };
+}
+
+// onSaved runs for each bet saved (a screenshot can hold several);
+// onDone once they're all in.
+export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) => void; onDone: () => void; onCancel: () => void }) {
   const [draft, setDraft] = useState<DraftBet | null>(null);
+  const [slips, setSlips] = useState<Slip[] | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const [source, setSource] = useState<"screenshot" | "manual">("manual");
   const [busy, setBusy] = useState<"reading" | "saving" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +71,17 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
       const { base64, mediaType } = await imageFileToBase64(file);
       const parsed = await parseSlip(base64, mediaType);
       setSource("screenshot");
-      setDraft({ ...parsed, legs: parsed.legs.map((l) => ({ ...EMPTY_LEG, ...l })) });
+      const read = (parsed.bets ?? [parsed]).map((b) => ({
+        draft: { ...b, legs: b.legs.map((l) => ({ ...EMPTY_LEG, ...l })) },
+        ready: b.ready ?? false,
+        saved: false,
+      }));
+      setSlips(read);
+      // One bet that needs fixing goes straight to the editor.
+      if (read.length === 1 && !read[0].ready) {
+        setEditing(0);
+        setDraft(read[0].draft);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't read that slip.");
     } finally {
@@ -59,18 +90,41 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
     }
   }
 
+  // Saves the given slips (by index) as they are; the rest stay on the list.
+  async function saveSlips(indexes: number[]) {
+    if (!slips) return;
+    setError(null);
+    setBusy("saving");
+    const next = [...slips];
+    try {
+      for (const i of indexes) {
+        onSaved(await createBet({ ...cleanLegs(next[i].draft), source: "screenshot" }));
+        next[i] = { ...next[i], saved: true };
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save that bet.");
+    } finally {
+      setSlips(next);
+      setBusy(null);
+    }
+    if (next.every((x) => x.saved)) onDone();
+  }
+
   async function save() {
     if (!draft) return;
     setError(null);
     setBusy("saving");
     try {
-      const legs = draft.legs.map((l) => ({
-        ...l,
-        description: l.description.trim() || describe(l),
-        player_name: l.player_name?.trim() || null,
-        team_abbr: l.team_abbr?.trim().toUpperCase() || null,
-      }));
-      onSaved(await createBet({ ...draft, legs, source }));
+      onSaved(await createBet({ ...cleanLegs(draft), source }));
+      if (slips && editing !== null) {
+        const next = slips.map((x, i) => (i === editing ? { ...x, draft, saved: true } : x));
+        setSlips(next);
+        setEditing(null);
+        setDraft(null);
+        if (next.every((x) => x.saved)) onDone();
+        return;
+      }
+      onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save that bet.");
     } finally {
@@ -78,8 +132,62 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
     }
   }
 
+  function startOver() {
+    setDraft(null);
+    setEditing(null);
+    setSlips(null);
+    setError(null);
+  }
+
   function updateLeg(i: number, patch: Partial<DraftLeg>) {
-    setDraft((d) => (d ? { ...d, legs: d.legs.map((l, j) => (j === i ? { ...l, ...patch, matched: undefined } : l)) } : d));
+    setDraft((d) =>
+      d ? { ...d, legs: d.legs.map((l, j) => (j === i ? { ...l, ...patch, matched: undefined, needs_check: undefined } : l)) } : d
+    );
+  }
+
+  if (!draft && slips) {
+    const readyToSave = slips.map((x, i) => (x.ready && !x.saved ? i : -1)).filter((i) => i >= 0);
+    return (
+      <div className="wl-card flex flex-col gap-4 rounded-xl p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Does this look right?</h2>
+          <button type="button" onClick={onCancel} className="text-sm text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80">
+            {slips.some((x) => x.saved) ? "Done" : "Cancel"}
+          </button>
+        </div>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          {slips.length === 1 ? "Here’s what your slip says." : `Found ${slips.length} bets on your slip.`}
+        </p>
+        {slips.map((slip, i) => (
+          <SlipCard
+            key={i}
+            slip={slip}
+            busy={busy !== null}
+            onConfirm={() => void saveSlips([i])}
+            onFix={() => {
+              setEditing(i);
+              setDraft(slip.draft);
+            }}
+          />
+        ))}
+        {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={startOver} className="rounded-full px-4 py-2 text-sm text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10">
+            Start over
+          </button>
+          {readyToSave.length > 1 && (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void saveSlips(readyToSave)}
+              className="rounded-full bg-[var(--wl-accent)] px-5 py-2 text-sm font-semibold text-black disabled:opacity-60"
+            >
+              {busy === "saving" ? "Saving…" : `✓ Save All ${readyToSave.length}`}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (!draft) {
@@ -109,7 +217,7 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
           </span>
           <span className="font-semibold">{busy === "reading" ? "Reading your slip…" : "Upload a bet-slip screenshot"}</span>
           <span className="text-xs text-black/50 dark:text-white/50">
-            Any sportsbook. The screenshot is read and then thrown away — only the legs you confirm are saved.
+            Any sportsbook, one bet or several. The screenshot is read and then thrown away — only the bets you confirm are saved.
           </span>
         </button>
         <button
@@ -161,7 +269,11 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
                 Leg {i + 1}
-                {leg.matched === false && <span className="ml-2 normal-case text-amber-500">· game not found this week</span>}
+                {leg.matched === false ? (
+                  <span className="ml-2 normal-case text-amber-500">· game not found this week</span>
+                ) : leg.needs_check ? (
+                  <span className="ml-2 normal-case text-amber-500">· check this leg</span>
+                ) : null}
               </span>
               {draft.legs.length > 1 && (
                 <button type="button" onClick={() => setDraft({ ...draft, legs: draft.legs.filter((_, j) => j !== i) })} className="text-xs text-red-500 hover:underline">
@@ -250,8 +362,17 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
 
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       <div className="flex justify-end gap-3">
-        <button type="button" onClick={() => setDraft(null)} className="rounded-full px-4 py-2 text-sm text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10">
-          Back
+        <button
+          type="button"
+          onClick={() => {
+            if (slips && slips.length > 1) {
+              setDraft(null);
+              setEditing(null);
+            } else startOver();
+          }}
+          className="rounded-full px-4 py-2 text-sm text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+        >
+          {slips && slips.length > 1 ? "Back to your slip" : "Back"}
         </button>
         <button
           type="button"
@@ -262,6 +383,51 @@ export function AddBetFlow({ onSaved, onCancel }: { onSaved: (bet: Bet) => void;
           {busy === "saving" ? "Saving…" : "Save bet"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function SlipCard({ slip, busy, onConfirm, onFix }: { slip: Slip; busy: boolean; onConfirm: () => void; onFix: () => void }) {
+  const d = slip.draft;
+  const odds = d.odds_american === null ? null : d.odds_american > 0 ? `+${d.odds_american}` : String(d.odds_american);
+  const head = [d.sportsbook, d.stake !== null ? `$${d.stake}` : "Wager?", odds ?? (d.payout !== null ? `pays $${d.payout}` : "Odds?")]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className={`flex flex-col gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10 ${slip.saved ? "opacity-60" : ""}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          {d.legs.length > 1 ? `${d.legs.length}-leg parlay` : "Straight bet"}
+        </span>
+        {slip.saved && <span className="text-xs font-semibold text-[var(--wl-accent-dim)]">Saved ✓</span>}
+      </div>
+      <p className="font-semibold">{head}</p>
+      <ul className="flex flex-col gap-0.5 text-sm">
+        {d.legs.map((l, j) => (
+          <li key={j}>
+            {l.needs_check || l.matched === false ? "⚠️ " : "• "}
+            {l.description.trim() || describe(l)}
+          </li>
+        ))}
+      </ul>
+      {!slip.saved &&
+        (slip.ready ? (
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={onConfirm} className="flex-1 rounded-full bg-[var(--wl-accent)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-60">
+              ✓ Looks Right
+            </button>
+            <button type="button" disabled={busy} onClick={onFix} className="flex-1 rounded-full border border-black/15 px-4 py-2 text-sm font-semibold dark:border-white/15">
+              ✗ Fix It
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-amber-500">Some of this needs a quick look before it&apos;s saved.</p>
+            <button type="button" disabled={busy} onClick={onFix} className="rounded-full border border-black/15 px-4 py-2 text-sm font-semibold dark:border-white/15">
+              Check It
+            </button>
+          </>
+        ))}
     </div>
   );
 }
