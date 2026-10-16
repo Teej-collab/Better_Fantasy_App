@@ -301,10 +301,8 @@ async def parse_slip(body: SlipIn, request: Request, pool=Depends(get_pool)):
     except Exception:
         logger.exception("Bet slip read failed")
         raise HTTPException(status_code=502, detail="Couldn't read that slip — try again, or enter it by hand")
-    # An older reader answered with one bet's fields at the top level.
-    raw_bets = slip.get("bets") if "bets" in slip else [slip]
-    raw_bets = [b for b in (raw_bets or []) if b.get("legs")][:_MAX_BETS_PER_SLIP]
-    if not slip.get("is_bet_slip", True) or not raw_bets:
+    raw_bets = bet_domain.slip_bets(slip)[:_MAX_BETS_PER_SLIP]
+    if slip.get("is_bet_slip") is False or not raw_bets:
         raise HTTPException(status_code=422, detail="That doesn't look like a bet slip")
     bets = []
     async with pool.acquire() as conn:

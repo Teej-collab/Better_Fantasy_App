@@ -18,6 +18,7 @@ the final.
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 
@@ -218,6 +219,40 @@ def normalize_leg(raw: dict) -> dict:
         "direction": direction,
         "odds_american": _int(raw.get("odds_american")),
     }
+
+
+def _json_value(value):
+    """The model sometimes sends a nested list or object in its tool call
+    as a JSON string instead of the value itself."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return None
+    return value
+
+
+def slip_bets(slip: dict) -> list[dict]:
+    """Every bet in the slip reader's answer (app/providers/
+    bet_slip_reader.py), as dicts that each have a list of leg dicts;
+    anything malformed is dropped. An older reader answered with one
+    bet's fields at the top level."""
+    raw = _json_value(slip.get("bets")) if "bets" in slip else [slip]
+    # It has also sent the whole answer as a string: {"bets": [...]}.
+    while isinstance(raw, dict) and "bets" in raw:
+        raw = _json_value(raw["bets"])
+    if isinstance(raw, dict):
+        raw = [raw]
+    bets = []
+    for bet in raw if isinstance(raw, list) else []:
+        bet = _json_value(bet)
+        if not isinstance(bet, dict):
+            continue
+        legs = _json_value(bet.get("legs"))
+        legs = [l for l in (_json_value(l) for l in (legs if isinstance(legs, list) else [])) if isinstance(l, dict)]
+        if legs:
+            bets.append({**bet, "legs": legs})
+    return bets
 
 
 def leg_is_complete(leg: dict) -> bool:

@@ -1,3 +1,5 @@
+import json
+
 from app.domain import bets
 
 
@@ -90,3 +92,21 @@ def test_normalize_leg_from_slip_text():
 def test_name_key_ignores_suffixes_and_accents():
     assert bets.name_key("Kenneth Walker III") == bets.name_key("kenneth walker")
     assert bets.name_key("Amon-Ra St. Brown") == "amon ra st brown"
+
+
+def test_slip_bets_takes_lists_sent_as_json_strings():
+    leg = {"description": "Rashod Bateman 60+ Receiving Yards", "market": "player_prop"}
+    as_strings = {"is_bet_slip": True, "bets": json.dumps([{"stake": 5, "legs": json.dumps([leg])}])}
+    assert bets.slip_bets(as_strings) == [{"stake": 5, "legs": [leg]}]
+    # Or the whole answer as one string (seen on a real DraftKings slip).
+    whole = {"bets": json.dumps({"bets": [{"stake": 5, "legs": [leg, leg]}]})}
+    assert bet_domain_legs(whole) == 2
+    # Junk is dropped rather than crashing the read.
+    assert bets.slip_bets({"bets": "not json"}) == []
+    assert bets.slip_bets({"bets": ["oops", {"stake": 1, "legs": ["x", leg]}, {"legs": []}]}) == [{"stake": 1, "legs": [leg]}]
+    # An older reader's single bet at the top level still works.
+    assert bets.slip_bets({"is_bet_slip": True, "stake": 5, "legs": [leg]})[0]["legs"] == [leg]
+
+
+def bet_domain_legs(slip: dict) -> int:
+    return sum(len(b["legs"]) for b in bets.slip_bets(slip))
