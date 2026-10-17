@@ -25,6 +25,7 @@ from app.routers import (
     gamecast,
     keepers,
     league,
+    league_bets,
     league_settings,
     leagues,
     lounge,
@@ -161,6 +162,7 @@ app.include_router(draft.router)
 app.include_router(feedback.router)
 app.include_router(free_agents.router)
 app.include_router(game_day.router)
+app.include_router(league_bets.router)
 app.include_router(bets.router)
 app.include_router(gamecast.router)
 app.include_router(keepers.router)

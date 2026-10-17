@@ -5,6 +5,7 @@ import type {
   AddFreeAgentResult,
   Bet,
   BetLegStatus,
+  BetReaction,
   BetStatus,
   ChatGif,
   ChatConversationMember,
@@ -13,7 +14,12 @@ import type {
   DraftBet,
   ParsedSlip,
   EspnConnectionStatus,
+  LeagueBoard,
+  LeagueFeed,
+  LeagueGame,
+  LeagueGameSummary,
   LeagueInfo,
+  LeagueMemberCard,
   LeaguePreview,
   LeagueMember,
   LeagueTeam,
@@ -21,6 +27,7 @@ import type {
   PlayerViewKey,
   PlayoffOdds,
   PlayoffSettings,
+  ReactionCounts,
   ScoringRule,
   TradeReviewMode,
   TradeSettings,
@@ -575,6 +582,18 @@ export const api = {
   bets: () => request<{ enabled: boolean; bets: Bet[] }>('/bets'),
   betsInGame: (eventId: string) => request<{ enabled: boolean; bets: Bet[] }>(`/bets/games/${encodeURIComponent(eventId)}`),
   sharedBet: (betId: number) => request<Bet>(`/bets/shared/${betId}`),
+  // League Bets (backend app/routers/league_bets.py).
+  leagueBets: () => request<LeagueFeed>('/bets/league'),
+  leagueBetsBoard: (range: 'season' | 'week', parlays: boolean) =>
+    request<LeagueBoard>(`/bets/league/board?range=${range}&parlays=${parlays}`),
+  leagueBetGames: () => request<{ games: LeagueGameSummary[] }>('/bets/league/games'),
+  leagueBetGame: (eventId: string) => request<LeagueGame>(`/bets/league/games/${encodeURIComponent(eventId)}`),
+  leagueBetMember: (userId: number) => request<LeagueMemberCard>(`/bets/league/members/${userId}`),
+  tailBet: (betId: number) => request<{ tailed: boolean; bet_id: number }>(`/bets/league/bets/${betId}/tail`, { method: 'POST' }),
+  reactToBet: (betId: number, kind: BetReaction, on: boolean) =>
+    request<ReactionCounts>(`/bets/league/bets/${betId}/reactions/${kind}`, { method: on ? 'PUT' : 'DELETE' }),
+  followBettor: (userId: number, on: boolean) =>
+    request<{ following: boolean }>(`/bets/league/members/${userId}/follow`, { method: on ? 'PUT' : 'DELETE' }),
   parseBetSlip: (imageBase64: string, mediaType: string) =>
     request<ParsedSlip>('/bets/parse-slip', { method: 'POST', body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) }),
   // A shared-bet link's page text, read on the phone (components/bets/BetLinkReader.tsx).

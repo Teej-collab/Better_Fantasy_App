@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from app.auth.league_context import _decode_session_or_401, resolve_owner_id
 from app.auth.rate_limit import _check as check_rate_limit
 from app.chat.manager import manager
+from app.notifications import dispatcher, formatter
 from app.db import get_pool
 from app.domain import bets as bet_domain
 from app.domain import chat as chat_domain
@@ -38,6 +39,7 @@ from app.providers.nfl_scoreboard import get_nfl_scoreboard
 from app.providers.nfl_stats.espn_public import get_game_stats
 from app.queries import bets as bet_queries
 from app.queries import chat as chat_queries
+from app.queries import league_bets as league_bet_queries
 from app.queries import leagues as league_queries
 from app.queries import owner_preferences as preferences_queries
 
@@ -392,6 +394,7 @@ async def create_bet(body: BetIn, request: Request, pool=Depends(get_pool)):
         bet = (await _build(conn, [row], persist=False))[0]
     if posted:
         await manager.broadcast_to_owners(posted[1], {"type": "message", "message": posted[0]})
+        _ping_followers_later(pool, payload["user_id"], bet_id)
     return bet
 
 
@@ -479,7 +482,37 @@ async def share_bet(bet_id: int, request: Request, pool=Depends(get_pool)):
         return {"shared": True, "posted": False}
     message, participant_ids, conversation_id = posted
     await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
+    _ping_followers_later(pool, payload["user_id"], bet_id)
     return {"shared": True, "posted": True, "conversation_id": conversation_id}
+
+
+_ping_tasks: set[asyncio.Task] = set()
+
+
+def _ping_followers_later(pool, user_id: int, bet_id: int) -> None:
+    """League Bets' "ping me when they bet": pushes to everyone following
+    this bettor, after the response goes out."""
+    task = asyncio.create_task(_ping_followers(pool, user_id, bet_id))
+    _ping_tasks.add(task)
+    task.add_done_callback(_ping_tasks.discard)
+
+
+async def _ping_followers(pool, user_id: int, bet_id: int) -> None:
+    try:
+        async with pool.acquire() as conn:
+            bet = await bet_queries.get_user_bet(conn, user_id, bet_id)
+            if bet is None or bet["league_id"] is None:
+                return
+            owner_ids = await league_bet_queries.follower_owner_ids(conn, user_id, bet["league_id"])
+            if not owner_ids:
+                return
+            legs = (await bet_queries.legs_for_bets(conn, [bet_id])).get(bet_id, [])
+            name = (await bet_queries.bet_owner_names(conn, [user_id])).get(user_id, "Someone")
+            for owner_id in owner_ids:
+                if (await preferences_queries.get_preferences(conn, owner_id))["push_enabled"]:
+                    await dispatcher.send_to_owner(conn, owner_id, formatter.bet_shared(name, len(legs)))
+    except Exception:
+        logger.exception("Couldn't ping followers about bet %s", bet_id)
 
 
 async def _share(conn, payload: dict, bet) -> tuple[dict, list[int], int] | None:

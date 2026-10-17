@@ -83,6 +83,13 @@ def chat_mention(sender_name: str, body: str, conversation_id: int) -> dict:
     return _payload(f"{sender_name} mentioned you", _preview(body) or "Sent an image", _chat_url(conversation_id), "chat_mention")
 
 
+def bet_shared(bettor_name: str, leg_count: int) -> dict:
+    """Someone you follow on League Bets shared a bet (you asked to be
+    pinged, so you can tail it)."""
+    what = f"a {leg_count}-leg parlay" if leg_count > 1 else "a bet"
+    return _payload(f"{bettor_name} just bet", f"{bettor_name} shared {what}. Tail it or fade it.", "/bets/league", "bet_shared")
+
+
 def lounge_mention(sender_name: str, body: str, room_id: int, room_name: str) -> dict:
     """Tagged in a Lounge / watch party's chat — the tap opens the room
     itself (the web's ?party=, the app's lounge-room/party-<id>), so

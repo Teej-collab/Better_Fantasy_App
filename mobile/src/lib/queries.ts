@@ -735,6 +735,39 @@ export function useBetsInGame(eventId: string, live: boolean) {
   });
 }
 
+// League Bets: refreshes while anything in it is live.
+export function useLeagueBets() {
+  return useQuery({
+    queryKey: ['league-bets'],
+    queryFn: api.leagueBets,
+    refetchInterval: (q) => (q.state.data?.enabled && q.state.data.sweat.alive > 0 ? 30_000 : false),
+  });
+}
+
+export function useLeagueBetsBoard(range: 'season' | 'week', parlays: boolean) {
+  return useQuery({ queryKey: ['league-bets-board', range, parlays], queryFn: () => api.leagueBetsBoard(range, parlays) });
+}
+
+export function useLeagueBetGames() {
+  return useQuery({
+    queryKey: ['league-bet-games'],
+    queryFn: api.leagueBetGames,
+    refetchInterval: (q) => (q.state.data?.games.some((g) => g.game?.state === 'in') ? 30_000 : false),
+  });
+}
+
+export function useLeagueBetGame(eventId: string) {
+  return useQuery({
+    queryKey: ['league-bet-game', eventId],
+    queryFn: () => api.leagueBetGame(eventId),
+    refetchInterval: (q) => (q.state.data?.game?.state === 'in' ? LIVE_REFRESH_MS : false),
+  });
+}
+
+export function useLeagueBetMember(userId: number) {
+  return useQuery({ queryKey: ['league-bet-member', userId], queryFn: () => api.leagueBetMember(userId) });
+}
+
 export function useSharedBet(betId: number) {
   return useQuery({
     queryKey: ['shared-bet', betId],

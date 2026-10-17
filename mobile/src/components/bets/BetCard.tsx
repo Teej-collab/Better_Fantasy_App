@@ -35,6 +35,7 @@ export function BetCard({
   bet,
   shared = false,
   onlyEventId,
+  header,
   footer,
 }: {
   bet: Bet;
@@ -42,6 +43,8 @@ export function BetCard({
   shared?: boolean;
   // Gamecast: the legs riding on this game stand out, the rest dim.
   onlyEventId?: string;
+  // League Bets: who placed it, above the slip.
+  header?: ReactNode;
   footer?: ReactNode;
 }) {
   const parlay = bet.legs.length > 1;
@@ -49,6 +52,7 @@ export function BetCard({
   const showMoney = !shared && (bet.stake != null || bet.payout != null);
   return (
     <View style={styles.card}>
+      {header}
       <View style={styles.top}>
         <View style={styles.flex}>
           <Text style={styles.kicker}>

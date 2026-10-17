@@ -81,6 +81,12 @@ export default function BetsScreen() {
         accessibilityRole="button">
         <Text style={styles.primaryText}>+ Add a bet</Text>
       </Pressable>
+      <Pressable
+        onPress={() => router.push('/bets/league')}
+        style={({ pressed }) => [styles.leagueLink, pressed && { opacity: 0.7 }]}
+        accessibilityRole="button">
+        <Text style={[styles.leagueLinkText, { color: accent }]}>League Bets: see everyone&apos;s bets →</Text>
+      </Pressable>
       {error && <Text style={styles.error}>{error}</Text>}
 
       {bets.length === 0 && (
@@ -225,6 +231,8 @@ function OwnBet({ bet, run }: { bet: Bet; run: (action: () => Promise<unknown>) 
 }
 
 const styles = StyleSheet.create({
+  leagueLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  leagueLinkText: { fontSize: 14, fontWeight: '700' },
   screen: { flex: 1 },
   content: {
     padding: Spacing.lg,

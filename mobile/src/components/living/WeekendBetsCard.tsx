@@ -7,6 +7,7 @@ import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { formatOdds, formatStat, legPick } from '@/lib/bets';
 import { formatGameTime } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
+import { useLeagueBets } from '@/lib/queries';
 import type { Bet, BetLeg, NflGame } from '@/lib/types';
 
 // Your bets for the weekend (2026-10-15, mockup on the Living Home
@@ -157,26 +158,53 @@ export function WeekendBetsCard({ bets, games, enabled }: { bets: Bet[]; games: 
 
 function BetButtons({ more }: { more: number }) {
   return (
-    <View style={styles.buttons}>
-      <Pressable
-        onPress={() => {
-          haptics.tap();
-          router.push('/bets/add');
-        }}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.button, styles.buttonPrimary, pressed && styles.pressed]}>
-        <Text style={[styles.buttonText, { color: Colors.bg }]}>Add a bet slip</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => {
-          haptics.tap();
-          router.push('/bets');
-        }}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.pressed]}>
-        <Text style={styles.buttonText}>{more > 0 ? `All bets (+${more})` : 'All bets'}</Text>
-      </Pressable>
+    <View style={styles.buttonStack}>
+      <View style={styles.buttons}>
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            router.push('/bets/add');
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, styles.buttonPrimary, pressed && styles.pressed]}>
+          <Text style={[styles.buttonText, { color: Colors.bg }]}>Add a bet slip</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            router.push('/bets');
+          }}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.pressed]}>
+          <Text style={styles.buttonText}>{more > 0 ? `All bets (+${more})` : 'All bets'}</Text>
+        </Pressable>
+      </View>
+      <LeagueBetsPill />
     </View>
+  );
+}
+
+// Everyone's bets: League Bets, with how many are live right now.
+function LeagueBetsPill() {
+  const q = useLeagueBets();
+  const live = q.data?.enabled ? q.data.sweat.alive : 0;
+  const away = q.data?.enabled ? q.data.sweat.one_leg_away : 0;
+  const detail = away > 0 ? `${away} one leg away` : live > 0 ? `${live} live` : 'See everyone’s bets';
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.tap();
+        router.push('/bets/league');
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`League Bets. ${detail}.`}
+      style={({ pressed }) => [styles.button, styles.leaguePill, pressed && styles.pressed]}>
+      {live > 0 && <View style={styles.liveDot} />}
+      <Text style={styles.buttonText}>League Bets</Text>
+      <Text style={styles.leagueDetail} numberOfLines={1}>
+        · {detail}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -277,7 +305,11 @@ const styles = StyleSheet.create({
   fill: { height: '100%', borderRadius: 99 },
   legs: { flexDirection: 'row', gap: 4 },
   leg: { flex: 1, height: 6, borderRadius: 99 },
-  buttons: { flexDirection: 'row', gap: Spacing.sm, paddingTop: 4 },
+  buttonStack: { gap: Spacing.sm, paddingTop: 4 },
+  buttons: { flexDirection: 'row', gap: Spacing.sm },
+  leaguePill: { flexDirection: 'row', gap: 6, backgroundColor: withAlpha(ACCENT, 0.12), borderWidth: 1, borderColor: withAlpha(ACCENT, 0.35) },
+  leagueDetail: { color: ACCENT, fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: LIVE },
   button: { flex: 1, minHeight: 44, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
   buttonPrimary: { backgroundColor: ACCENT },
   buttonSecondary: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
