@@ -96,7 +96,7 @@ export function BetsApp() {
         <div>
           <h1 className="text-2xl font-semibold">My Bets</h1>
           <p className="text-sm text-black/60 dark:text-white/60">
-            Tracked live from the box score. Only you can see these unless you share one.
+            Tracked live from the box score. Shared bets show your league the picks, never the wager or payout.
             {settled.length > 0 && ` Record: ${record.won}–${record.lost}.`}
           </p>
         </div>

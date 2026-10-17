@@ -139,8 +139,17 @@ async def test_sharing_posts_a_card_league_members_can_read_without_the_money(po
             await c.delete(f"/bets/{bet['id']}/share", cookies=_cookie(bettor, owner_id))
             assert (await c.get(f"/bets/shared/{bet['id']}", cookies=_cookie(member))).status_code == 404
 
+            # Saved with share on: shared and posted in one go.
+            auto = (await c.post("/bets", json=_GIBBS_OVER | {"share": True}, cookies=_cookie(bettor, owner_id))).json()
+            assert auto["shared"] and auto["stake"] is not None
+            assert (await c.get(f"/bets/shared/{auto['id']}", cookies=_cookie(member))).status_code == 200
+            # Not in a league: still saved, just private.
+            lone = await c.post("/bets", json=_GIBBS_OVER | {"share": True}, cookies=_cookie(outsider))
+            assert lone.status_code == 200 and not lone.json()["shared"]
+
         async with pool.acquire() as conn:
             assert await conn.fetchval("SELECT count(*) FROM messages WHERE bet_id = $1", bet["id"]) == 1
+            assert await conn.fetchval("SELECT count(*) FROM messages WHERE bet_id = $1", auto["id"]) == 1
     finally:
         async with pool.acquire() as conn:
             await conn.execute("DELETE FROM messages WHERE owner_id = $1", owner_id)

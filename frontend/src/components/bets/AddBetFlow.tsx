@@ -12,6 +12,7 @@ import {
   type DraftBet,
   type DraftLeg,
 } from "@/lib/betsApi";
+import { ToggleRow } from "@/components/settings/ToggleRow";
 
 // Add a bet: upload a bet-slip screenshot (read by Claude on the server,
 // then thrown away) or type it in. Every bet on the screenshot gets a
@@ -62,6 +63,9 @@ export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) 
   const [source, setSource] = useState<"screenshot" | "manual">("manual");
   const [busy, setBusy] = useState<"reading" | "saving" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // New bets go to league chat unless you switch it off; the wager and
+  // payout never do.
+  const [share, setShare] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function readScreenshot(file: File) {
@@ -98,7 +102,7 @@ export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) 
     const next = [...slips];
     try {
       for (const i of indexes) {
-        onSaved(await createBet({ ...cleanLegs(next[i].draft), source: "screenshot" }));
+        onSaved(await createBet({ ...cleanLegs(next[i].draft), source: "screenshot", share }));
         next[i] = { ...next[i], saved: true };
       }
     } catch (e) {
@@ -115,7 +119,7 @@ export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) 
     setError(null);
     setBusy("saving");
     try {
-      onSaved(await createBet({ ...cleanLegs(draft), source }));
+      onSaved(await createBet({ ...cleanLegs(draft), source, share }));
       if (slips && editing !== null) {
         const next = slips.map((x, i) => (i === editing ? { ...x, draft, saved: true } : x));
         setSlips(next);
@@ -170,6 +174,12 @@ export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) 
             }}
           />
         ))}
+        <ToggleRow
+          label="Share with my league"
+          description={share ? "Posts the picks to league chat. Your wager and payout stay private." : "Only you will see this bet."}
+          checked={share}
+          onChange={setShare}
+        />
         {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
         <div className="flex justify-end gap-3">
           <button type="button" onClick={startOver} className="rounded-full px-4 py-2 text-sm text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10">
@@ -360,6 +370,12 @@ export function AddBetFlow({ onSaved, onDone, onCancel }: { onSaved: (bet: Bet) 
         + Add a leg
       </button>
 
+      <ToggleRow
+        label="Share with my league"
+        description={share ? "Posts the picks to league chat. Your wager and payout stay private." : "Only you will see this bet."}
+        checked={share}
+        onChange={setShare}
+      />
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}
       <div className="flex justify-end gap-3">
         <button

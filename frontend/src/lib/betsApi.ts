@@ -127,7 +127,7 @@ export const betsInGame = (eventId: string) => call<{ enabled: boolean; bets: Be
 export const sharedBet = (betId: number) => call<Bet>(`/shared/${betId}`);
 export const parseSlip = (imageBase64: string, mediaType: string) =>
   call<ParsedSlip>("/parse-slip", { method: "POST", body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) });
-export const createBet = (bet: DraftBet & { source: "screenshot" | "manual"; note?: string | null }) =>
+export const createBet = (bet: DraftBet & { source: "screenshot" | "manual"; note?: string | null; share?: boolean }) =>
   call<Bet>("", { method: "POST", body: JSON.stringify(bet) });
 export const setBetStatus = (betId: number, status: BetStatus | "auto") =>
   call<Bet>(`/${betId}`, { method: "PATCH", body: JSON.stringify({ status }) });

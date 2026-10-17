@@ -15,8 +15,9 @@ import { queryClient, useBets } from '@/lib/queries';
 import type { Bet, BetLegStatus, BetStatus } from '@/lib/types';
 
 // My Bets (port of the web's /bets): your tracked bets, graded live from
-// the box score. Private unless you share one to league chat. Tracking
-// only — nothing here places a bet.
+// the box score. Shared to league chat as they're saved unless you
+// switch that off (the wager and payout never are). Tracking only —
+// nothing here places a bet.
 export default function BetsScreen() {
   const accent = useAppearance().accent;
   const q = useBets();
@@ -69,7 +70,7 @@ export default function BetsScreen() {
         <View style={styles.flex}>
           <Display style={styles.title}>My Bets</Display>
           <Text style={styles.soft}>
-            Tracked live. Only you can see these unless you share one.
+            Tracked live. Shared bets show your league the picks, never the wager or payout.
             {settled.length > 0 ? ` Record: ${won}–${lost}.` : ''}
           </Text>
         </View>

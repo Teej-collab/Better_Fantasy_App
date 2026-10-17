@@ -580,7 +580,7 @@ export const api = {
   // A shared-bet link's page text, read on the phone (components/bets/BetLinkReader.tsx).
   parseBetPage: (url: string, text: string) =>
     request<ParsedSlip>('/bets/parse-page', { method: 'POST', body: JSON.stringify({ url, text }) }),
-  createBet: (bet: DraftBet & { source: 'screenshot' | 'manual' }) => request<Bet>('/bets', { method: 'POST', body: JSON.stringify(bet) }),
+  createBet: (bet: DraftBet & { source: 'screenshot' | 'manual'; share?: boolean }) => request<Bet>('/bets', { method: 'POST', body: JSON.stringify(bet) }),
   setBetStatus: (betId: number, status: BetStatus | 'auto') =>
     request<Bet>(`/bets/${betId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   setBetLegStatus: (betId: number, legId: number, status: BetLegStatus) =>

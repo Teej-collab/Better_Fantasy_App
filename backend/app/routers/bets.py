@@ -76,6 +76,9 @@ class BetIn(BaseModel):
     note: str | None = Field(default=None, max_length=280)
     source: str = "manual"
     legs: list[LegIn] = Field(min_length=1, max_length=_MAX_LEGS)
+    # Share it with the league (a chat card) as it's saved. Skipped
+    # quietly if you're not in a league's chat; the bet still saves.
+    share: bool = False
 
 
 class SlipIn(BaseModel):
@@ -379,8 +382,17 @@ async def create_bet(body: BetIn, request: Request, pool=Depends(get_pool)):
             },
             legs,
         )
+        posted = None
+        if body.share:
+            try:
+                posted = await _share(conn, payload, await bet_queries.get_user_bet(conn, payload["user_id"], bet_id))
+            except HTTPException:
+                posted = None
         row = await bet_queries.get_user_bet(conn, payload["user_id"], bet_id)
-        return (await _build(conn, [row], persist=False))[0]
+        bet = (await _build(conn, [row], persist=False))[0]
+    if posted:
+        await manager.broadcast_to_owners(posted[1], {"type": "message", "message": posted[0]})
+    return bet
 
 
 @router.get("/games/{event_id}")
@@ -462,24 +474,36 @@ async def share_bet(bet_id: int, request: Request, pool=Depends(get_pool)):
         bet = await bet_queries.get_user_bet(conn, payload["user_id"], bet_id)
         if bet is None:
             raise HTTPException(status_code=404, detail="Bet not found")
-        owner_id = await resolve_owner_id(conn, payload)
-        league_id = bet["league_id"] or await league_queries.get_active_league_id(conn, payload["user_id"])
-        conversation_id = await chat_queries.get_league_conversation_id(conn, league_id) if league_id else None
-        if owner_id is None or conversation_id is None:
-            raise HTTPException(status_code=409, detail="Join a league with a team to share bets")
-        if not await chat_queries.is_participant(conn, conversation_id, owner_id):
-            raise HTTPException(status_code=403, detail="You're not in this league's chat")
-        already = bet["shared_at"] is not None and await chat_queries.bet_message_exists(conn, bet_id)
-        await bet_queries.set_shared(conn, payload["user_id"], bet_id, True)
-        if already:
-            return {"shared": True, "posted": False}
-        legs = (await bet_queries.legs_for_bets(conn, [bet_id])).get(bet_id, [])
-        body = f"🎟️ Shared a {len(legs)}-leg parlay" if len(legs) > 1 else "🎟️ Shared a bet"
-        row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, None, None, None, bet_id=bet_id)
-        message = await chat_domain.get_single_message(conn, row["id"], owner_id)
-        participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+        posted = await _share(conn, payload, bet)
+    if posted is None:
+        return {"shared": True, "posted": False}
+    message, participant_ids, conversation_id = posted
     await manager.broadcast_to_owners(participant_ids, {"type": "message", "message": message})
     return {"shared": True, "posted": True, "conversation_id": conversation_id}
+
+
+async def _share(conn, payload: dict, bet) -> tuple[dict, list[int], int] | None:
+    """Marks the bet shared and posts its chat card: (message, who to
+    send it to, conversation id), or None if the card was already there.
+    Raises 409/403 if the bettor isn't in a league's chat."""
+    owner_id = await resolve_owner_id(conn, payload)
+    league_id = bet["league_id"] or await league_queries.get_active_league_id(conn, payload["user_id"])
+    conversation_id = await chat_queries.get_league_conversation_id(conn, league_id) if league_id else None
+    if owner_id is None or conversation_id is None:
+        raise HTTPException(status_code=409, detail="Join a league with a team to share bets")
+    if not await chat_queries.is_participant(conn, conversation_id, owner_id):
+        raise HTTPException(status_code=403, detail="You're not in this league's chat")
+    bet_id = bet["id"]
+    already = bet["shared_at"] is not None and await chat_queries.bet_message_exists(conn, bet_id)
+    await bet_queries.set_shared(conn, payload["user_id"], bet_id, True)
+    if already:
+        return None
+    legs = (await bet_queries.legs_for_bets(conn, [bet_id])).get(bet_id, [])
+    body = f"🎟️ Shared a {len(legs)}-leg parlay" if len(legs) > 1 else "🎟️ Shared a bet"
+    row = await chat_queries.insert_message(conn, conversation_id, owner_id, body, None, None, None, bet_id=bet_id)
+    message = await chat_domain.get_single_message(conn, row["id"], owner_id)
+    participant_ids = await chat_queries.list_conversation_participant_ids(conn, conversation_id)
+    return message, participant_ids, conversation_id
 
 
 @router.delete("/{bet_id}/share")

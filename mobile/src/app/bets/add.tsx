@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { BetLinkReader } from '@/components/bets/BetLinkReader';
 import { Text } from '@/components/Text';
@@ -68,6 +68,9 @@ export default function AddBetScreen() {
   const [error, setError] = useState<string | null>(null);
   // A shared-bet link being opened out of sight to read the bet off it.
   const [link, setLink] = useState<string | null>(null);
+  // New bets go to league chat unless you switch it off; the wager and
+  // payout never do.
+  const [share, setShare] = useState(true);
 
   async function readImage(image: { base64: string; mediaType: string } | null) {
     if (!image) return;
@@ -158,7 +161,7 @@ export default function AddBetScreen() {
     const next = [...slips];
     try {
       for (const i of indexes) {
-        await api.createBet({ ...cleanLegs(next[i].draft), source: 'screenshot' });
+        await api.createBet({ ...cleanLegs(next[i].draft), source: 'screenshot', share });
         next[i] = { ...next[i], saved: true };
       }
       haptics.success();
@@ -178,7 +181,7 @@ export default function AddBetScreen() {
     setError(null);
     setBusy('saving');
     try {
-      await api.createBet({ ...cleanLegs(draft), source });
+      await api.createBet({ ...cleanLegs(draft), source, share });
       haptics.success();
       await queryClient.invalidateQueries({ queryKey: ['bets'] });
       if (slips && editing !== null) {
@@ -231,6 +234,7 @@ export default function AddBetScreen() {
             }}
           />
         ))}
+        <ShareToggle value={share} onChange={setShare} />
         {error && <Text style={styles.error}>{error}</Text>}
         {readyToSave.length > 1 && (
           <Pressable
@@ -469,6 +473,7 @@ export default function AddBetScreen() {
         style={styles.linkButton}>
         <Text style={[styles.linkText, { color: accent }]}>+ Add a leg</Text>
       </Pressable>
+      <ShareToggle value={share} onChange={setShare} />
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
         onPress={() => void save()}
@@ -534,6 +539,27 @@ function SlipCard({ slip, busy, onConfirm, onFix }: { slip: Slip; busy: boolean;
             </Pressable>
           </>
         ))}
+    </View>
+  );
+}
+
+function ShareToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  const accent = useAppearance().accent;
+  const label = 'Share with my league';
+  const hint = value ? 'Posts the picks to league chat. Your wager and payout stay private.' : 'Only you will see this bet.';
+  return (
+    <View style={styles.shareRow}>
+      <View style={styles.shareText}>
+        <Text style={styles.shareLabel}>{label}</Text>
+        <Text style={styles.shareHint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+        trackColor={{ true: accent, false: 'rgba(255,255,255,0.25)' }}
+      />
     </View>
   );
 }
@@ -610,6 +636,19 @@ const styles = StyleSheet.create({
   error: { color: Colors.loss, fontSize: 13 },
   pressed: { opacity: 0.7 },
   dim: { opacity: 0.6 },
+  shareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  shareText: { flex: 1, gap: 2 },
+  shareLabel: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  shareHint: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17 },
   drop: {
     alignItems: 'center',
     gap: Spacing.sm,
