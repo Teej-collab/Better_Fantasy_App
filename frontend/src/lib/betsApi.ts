@@ -79,6 +79,157 @@ export type DraftBet = {
 // fields are repeated at the top level too).
 export type ParsedSlip = DraftBet & { bets?: DraftBet[] };
 
+// League Bets (backend app/routers/league_bets.py): the league's shared
+// bets and who placed them. Never a wager or payout; units count every
+// bet as one unit at its odds.
+export type BetMember = {
+  user_id: number;
+  name: string;
+  team_name: string | null;
+  logo_url: string | null;
+  color: string | null;
+};
+
+export type BetReaction = "fade" | "sweat" | "rip";
+export type ReactionCounts = Record<BetReaction, { count: number; mine: boolean }>;
+
+export type LeagueBet = Bet & {
+  member: BetMember;
+  mine: boolean;
+  this_week: boolean;
+  member_record: string;
+  units: number | null;
+  one_leg_away: { leg_id: number; needs_more: number | null } | null;
+  bad_beat: { leg_id: number; missed_by: number | null } | null;
+  tails: { count: number; names: string[]; mine: boolean };
+  reactions: ReactionCounts;
+};
+
+export type LeaguePick = {
+  player_name: string | null;
+  market: BetMarket;
+  stat_key: string | null;
+  stat_label: string | null;
+  line: number | null;
+  direction: BetDirection | null;
+  team_abbr: string | null;
+  description: string;
+};
+
+export type LeagueSweat = {
+  alive: number;
+  one_leg_away: number;
+  riding_units: number;
+  closest: {
+    bet_id: number;
+    member: BetMember;
+    odds_american: number | null;
+    legs: number;
+    leg: LeaguePick & { current: number | null; target: number | null; game: BetLeg["game"] };
+    needs_more: number | null;
+  } | null;
+};
+
+export type LeagueConsensus = {
+  player_name: string;
+  count: number;
+  of: number;
+  members: BetMember[];
+  top_picks: { direction: BetDirection | null; line: number | null; stat_label: string | null; count: number }[];
+};
+
+export type LeagueFeed =
+  | { enabled: false }
+  | { enabled: true; week_start: string; sweat: LeagueSweat; consensus: LeagueConsensus | null; bets: LeagueBet[] };
+
+export type BetRecord = {
+  wins: number;
+  losses: number;
+  pushes: number;
+  hit_rate: number | null;
+  units: number;
+  streak: string | null;
+  open: number;
+};
+
+export type LeagueBoardRow = BetMember & BetRecord & { me: boolean; bets: number; bad_beats: number; rank: number };
+
+export type LeagueBoard = {
+  range: "season" | "week";
+  season: number;
+  rows: LeagueBoardRow[];
+  trophies: {
+    longest_shot: { member: BetMember; odds_american: number; legs: number; bet_id: number } | null;
+    bad_beat_king: { member: BetMember; count: number } | null;
+    most_tailed: { member: BetMember; count: number } | null;
+    best_fade: { member: BetMember; wins: number; losses: number } | null;
+  };
+  tendencies: {
+    overs_share: number | null;
+    overs: { wins: number; losses: number };
+    unders: { wins: number; losses: number };
+    parlay_hit_rate: number | null;
+  };
+};
+
+export type LeagueGameSummary = {
+  event_id: string;
+  game: BetLeg["game"];
+  legs: number;
+  alive: number;
+  members: BetMember[];
+  member_count: number;
+};
+
+export type LeagueGameEntry = {
+  member: BetMember;
+  bet_id: number;
+  line: number | null;
+  direction: BetDirection | null;
+  status: BetLegStatus;
+  parlay_legs: number;
+};
+
+export type LeagueGameProp = {
+  player_name: string;
+  sleeper_player_id: string | null;
+  team_abbr: string | null;
+  stat_key: string | null;
+  stat_label: string | null;
+  current: number | null;
+  entries: LeagueGameEntry[];
+};
+
+export type LeagueGame = {
+  event_id: string;
+  game: BetLeg["game"];
+  legs: number;
+  member_count: number;
+  props: LeagueGameProp[];
+  lines: (LeaguePick & { status: BetLegStatus; entries: LeagueGameEntry[] })[];
+  rooting: { team: string; share: number }[];
+};
+
+export type LeagueMemberCard = {
+  member: BetMember;
+  me: boolean;
+  rank: number | null;
+  of: number;
+  record: BetRecord;
+  form: ("won" | "lost" | "push" | "open")[];
+  style: {
+    favorite_player: { player_name: string; legs: number; wins: number; losses: number } | null;
+    go_to_stat: { label: string; share: number } | null;
+    parlay_rate: number | null;
+    avg_parlay_legs: number | null;
+    overs_share: number | null;
+  };
+  biggest_hit: { bet_id: number; odds_american: number; legs: LeaguePick[]; tails: number; created_at: string } | null;
+  vs: { you: BetRecord; them: BetRecord; shared_players: string[] } | null;
+  following: boolean;
+  bets: LeagueBet[];
+};
+
 // Same keys as backend app/domain/bets.py's STAT_KEYS.
 export const BET_STATS: { key: string; label: string }[] = [
   { key: "pass_yd", label: "Passing yards" },
@@ -136,6 +287,17 @@ export const setLegStatus = (betId: number, legId: number, status: BetLegStatus)
 export const deleteBet = (betId: number) => call<{ deleted: boolean }>(`/${betId}`, { method: "DELETE" });
 export const shareBet = (betId: number) =>
   call<{ shared: boolean; posted: boolean; conversation_id?: number }>(`/${betId}/share`, { method: "POST" });
+export const leagueBets = () => call<LeagueFeed>("/league");
+export const leagueBoard = (range: "season" | "week", parlays: boolean) =>
+  call<LeagueBoard>(`/league/board?range=${range}&parlays=${parlays}`);
+export const leagueGames = () => call<{ games: LeagueGameSummary[] }>("/league/games");
+export const leagueGame = (eventId: string) => call<LeagueGame>(`/league/games/${encodeURIComponent(eventId)}`);
+export const leagueMember = (userId: number) => call<LeagueMemberCard>(`/league/members/${userId}`);
+export const tailBet = (betId: number) => call<{ tailed: boolean; bet_id: number }>(`/league/bets/${betId}/tail`, { method: "POST" });
+export const reactToBet = (betId: number, kind: BetReaction, on: boolean) =>
+  call<ReactionCounts>(`/league/bets/${betId}/reactions/${kind}`, { method: on ? "PUT" : "DELETE" });
+export const followBettor = (userId: number, on: boolean) =>
+  call<{ following: boolean }>(`/league/members/${userId}/follow`, { method: on ? "PUT" : "DELETE" });
 export const unshareBet = (betId: number) => call<{ shared: boolean }>(`/${betId}/share`, { method: "DELETE" });
 
 export function formatOdds(odds: number | null | undefined): string {

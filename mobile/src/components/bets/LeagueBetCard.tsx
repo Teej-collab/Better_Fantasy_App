@@ -121,7 +121,7 @@ function BettorRow({ bet }: { bet: LeagueBet }) {
           {m.team_name ? <Text style={styles.soft}> · {m.team_name}</Text> : null}
         </Text>
         <Text style={styles.soft} numberOfLines={1}>
-          {[bet.sportsbook, timeAgo(bet.created_at), `${bet.member_record} this season`].filter(Boolean).join(' · ')}
+          {timeAgo(bet.created_at)} · {bet.member_record} this season
         </Text>
       </View>
       {away && (

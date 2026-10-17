@@ -100,11 +100,16 @@ export function BetsApp() {
             {settled.length > 0 && ` Record: ${record.won}–${record.lost}.`}
           </p>
         </div>
-        {!adding && (
-          <button type="button" onClick={() => setAdding(true)} className="rounded-full bg-[var(--wl-accent)] px-5 py-2 text-sm font-semibold text-black">
-            + Add a bet
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <Link href="/bets/league" className="rounded-full border border-black/15 px-4 py-2 text-sm font-semibold hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10">
+            League Bets
+          </Link>
+          {!adding && (
+            <button type="button" onClick={() => setAdding(true)} className="rounded-full bg-[var(--wl-accent)] px-5 py-2 text-sm font-semibold text-black">
+              + Add a bet
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <p role="alert" className="text-sm text-red-500">{error}</p>}

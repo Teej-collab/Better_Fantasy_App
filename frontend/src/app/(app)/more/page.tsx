@@ -48,7 +48,8 @@ export default async function MorePage() {
 
   const otherTiles = [
     { href: "/gamecast", title: "Gamecast", description: "Live NFL scores, drives, and play-by-play" },
-    { href: "/bets", title: "My Bets", description: "Track your bets live — private unless you share" },
+    { href: "/bets", title: "My Bets", description: "Track your bets live — your wager always stays private" },
+    { href: "/bets/league", title: "League Bets", description: "Every bet in the league, The Board and who's sweating what" },
     { href: "/start", title: "Leagues", description: "Switch leagues, join one, or create your own" },
     { href: "/settings", title: "Settings", description: "Profile, appearance, and notifications" },
     ...(me.is_commissioner

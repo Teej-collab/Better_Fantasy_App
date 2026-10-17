@@ -28,6 +28,7 @@ export function BetCard({
   bet,
   shared = false,
   onlyEventId,
+  header,
   footer,
 }: {
   bet: Bet;
@@ -35,12 +36,15 @@ export function BetCard({
   shared?: boolean;
   // Gamecast: highlight the legs riding on this game, dim the rest.
   onlyEventId?: string;
+  // League Bets: who placed it, above the slip.
+  header?: ReactNode;
   footer?: ReactNode;
 }) {
   const parlay = bet.legs.length > 1;
   const settled = bet.legs.filter((l) => l.status !== "open").length;
   return (
     <div className="wl-card flex flex-col gap-3 rounded-xl p-4">
+      {header}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
