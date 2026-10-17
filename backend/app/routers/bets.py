@@ -4,6 +4,8 @@ Bet tracking — tracking only: nothing here places a bet or moves money.
 - POST /bets/parse-slip: a bet-slip screenshot in, a draft bet out
   (read by Claude, app/providers/bet_slip_reader.py). The image is never
   stored. The user checks the draft before saving.
+- POST /bets/parse-page: the same from a sportsbook's shared-bet link —
+  the app opens the link on the phone and sends the page's text.
 - POST /bets, GET /bets, PATCH/DELETE /bets/{id}: the user's own bets,
   graded live from ESPN's box score (app/domain/bets.py) and settled
   for good once each leg's game is final.
@@ -49,6 +51,7 @@ _MAX_IMAGE_BYTES = 6 * 1024 * 1024
 _ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _MAX_LEGS = 25
 _MAX_BETS_PER_SLIP = 10
+_MAX_PAGE_CHARS = 20_000
 _BET_STATUSES = {"open", "won", "lost", "push", "void", "cashed_out"}
 
 
@@ -78,6 +81,11 @@ class BetIn(BaseModel):
 class SlipIn(BaseModel):
     image_base64: str
     media_type: str = "image/jpeg"
+
+
+class PageIn(BaseModel):
+    url: str = Field(max_length=2000)
+    text: str = Field(min_length=1, max_length=_MAX_PAGE_CHARS)
 
 
 class BetPatch(BaseModel):
@@ -294,8 +302,22 @@ async def parse_slip(body: SlipIn, request: Request, pool=Depends(get_pool)):
     if len(raw) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="That screenshot is too large")
     check_rate_limit(f"bet-slip:{payload['user_id']}", _PARSE_WINDOW_SECONDS, _PARSE_MAX_PER_WINDOW)
+    return await _read_drafts(pool, bet_slip_reader.read_bet_slip, body.image_base64, body.media_type)
+
+
+@router.post("/parse-page")
+async def parse_page(body: PageIn, request: Request, pool=Depends(get_pool)):
+    payload = _decode_session_or_401(request)
+    if not body.url.startswith("https://"):
+        raise HTTPException(status_code=422, detail="That link couldn't be read")
+    check_rate_limit(f"bet-slip:{payload['user_id']}", _PARSE_WINDOW_SECONDS, _PARSE_MAX_PER_WINDOW)
+    return await _read_drafts(pool, bet_slip_reader.read_bet_page, body.text.strip(), body.url)
+
+
+async def _read_drafts(pool, read, *args) -> dict:
+    """Runs a slip reader and turns what it read into draft bets."""
     try:
-        slip = await asyncio.to_thread(bet_slip_reader.read_bet_slip, body.image_base64, body.media_type)
+        slip = await asyncio.to_thread(read, *args)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception:

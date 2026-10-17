@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import { BetLinkReader } from '@/components/bets/BetLinkReader';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -9,8 +10,8 @@ import { useAppearance } from '@/lib/appearance';
 import { BET_STATS, describeDraftLeg, pickSlipScreenshot, prepareSlipImage } from '@/lib/bets';
 import { haptics } from '@/lib/haptics';
 import { queryClient } from '@/lib/queries';
-import { takeSharedSlipImage } from '@/lib/shareIntent';
-import type { BetDirection, BetMarket, DraftBet, DraftLeg } from '@/lib/types';
+import { takeSharedSlip } from '@/lib/shareIntent';
+import type { BetDirection, BetMarket, DraftBet, DraftLeg, ParsedSlip } from '@/lib/types';
 
 // Add a bet (port of the web's AddBetFlow): a bet-slip screenshot read by
 // Claude on the server — then thrown away — or typed in by hand. Every
@@ -55,7 +56,8 @@ function cleanLegs(draft: DraftBet): DraftBet {
 export default function AddBetScreen() {
   const accent = useAppearance().accent;
   // A slip shared in from a sportsbook app (lib/shareIntent.ts) is read
-  // straight away.
+  // straight away — a screenshot, or a shared-bet link opened out of
+  // sight first (components/bets/BetLinkReader.tsx).
   const { shared } = useLocalSearchParams<{ shared?: string }>();
   const [draft, setDraft] = useState<DraftBet | null>(null);
   const [source, setSource] = useState<'screenshot' | 'manual'>('manual');
@@ -64,12 +66,18 @@ export default function AddBetScreen() {
   const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState<'reading' | 'saving' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A shared-bet link being opened out of sight to read the bet off it.
+  const [link, setLink] = useState<string | null>(null);
 
   async function readImage(image: { base64: string; mediaType: string } | null) {
     if (!image) return;
+    await readSlip(() => api.parseBetSlip(image.base64, image.mediaType));
+  }
+
+  async function readSlip(parse: () => Promise<ParsedSlip>, failure?: string) {
     setBusy('reading');
     try {
-      const parsed = await api.parseBetSlip(image.base64, image.mediaType);
+      const parsed = await parse();
       haptics.success();
       setSource('screenshot');
       const bets = parsed.bets ?? [parsed];
@@ -86,11 +94,13 @@ export default function AddBetScreen() {
       }
     } catch (e) {
       haptics.error();
-      setError(e instanceof Error ? e.message : "Couldn't read that slip.");
+      setError(failure ?? (e instanceof Error ? e.message : "Couldn't read that slip."));
     } finally {
       setBusy(null);
     }
   }
+
+  const LINK_FAILED = 'Couldn’t read the bet from that link. Take a screenshot of the slip and share that instead, or choose one below.';
 
   async function readScreenshot() {
     setError(null);
@@ -113,17 +123,24 @@ export default function AddBetScreen() {
     setEditing(null);
     setSlips(null);
     setBusy('reading');
-    takeSharedSlipImage()
-      .then((uri) => (uri ? prepareSlipImage(uri, 0, 0) : null))
-      .then((image) => {
+    setLink(null);
+    takeSharedSlip()
+      .then(async (share) => {
+        if (share?.kind === 'link') {
+          setLink(share.url);
+          return;
+        }
+        const image = share ? await prepareSlipImage(share.uri, 0, 0) : null;
         if (image) return readImage(image);
         setBusy(null);
-        setError("That share didn't include a screenshot — share the slip as an image, or choose one below.");
+        setError("That share didn't include a bet slip — share the slip's link or a screenshot, or choose one below.");
       })
       .catch(() => {
         setBusy(null);
-        setError("Couldn't open that screenshot.");
+        setError("Couldn't open that share.");
       });
+    // Once per share; readImage is a fresh function every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shared]);
 
   function finishIfDone(next: Slip[]) {
@@ -241,7 +258,9 @@ export default function AddBetScreen() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.drop, pressed && styles.pressed]}>
           {busy === 'reading' ? <ActivityIndicator color={accent} /> : <Text style={styles.dropIcon}>🧾</Text>}
-          <Text style={styles.dropTitle}>{busy === 'reading' ? 'Reading your slip…' : 'Choose a bet-slip screenshot'}</Text>
+          <Text style={styles.dropTitle}>
+            {busy !== 'reading' ? 'Choose a bet-slip screenshot' : link ? 'Opening your bet link…' : 'Reading your slip…'}
+          </Text>
           <Text style={styles.soft}>
             Any sportsbook, one bet or several. The screenshot is read and then thrown away — only the bets you confirm are saved.
           </Text>
@@ -257,6 +276,22 @@ export default function AddBetScreen() {
           <Text style={[styles.linkText, { color: accent }]}>Or enter it by hand</Text>
         </Pressable>
         {error && <Text style={styles.error}>{error}</Text>}
+        {link && (
+          <BetLinkReader
+            url={link}
+            onText={(text) => {
+              const url = link;
+              setLink(null);
+              void readSlip(() => api.parseBetPage(url, text), LINK_FAILED);
+            }}
+            onFail={() => {
+              setLink(null);
+              setBusy(null);
+              haptics.error();
+              setError(LINK_FAILED);
+            }}
+          />
+        )}
       </ScrollView>
     );
   }

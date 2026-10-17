@@ -577,6 +577,9 @@ export const api = {
   sharedBet: (betId: number) => request<Bet>(`/bets/shared/${betId}`),
   parseBetSlip: (imageBase64: string, mediaType: string) =>
     request<ParsedSlip>('/bets/parse-slip', { method: 'POST', body: JSON.stringify({ image_base64: imageBase64, media_type: mediaType }) }),
+  // A shared-bet link's page text, read on the phone (components/bets/BetLinkReader.tsx).
+  parseBetPage: (url: string, text: string) =>
+    request<ParsedSlip>('/bets/parse-page', { method: 'POST', body: JSON.stringify({ url, text }) }),
   createBet: (bet: DraftBet & { source: 'screenshot' | 'manual' }) => request<Bet>('/bets', { method: 'POST', body: JSON.stringify(bet) }),
   setBetStatus: (betId: number, status: BetStatus | 'auto') =>
     request<Bet>(`/bets/${betId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),

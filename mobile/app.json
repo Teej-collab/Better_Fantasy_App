@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.weekendleague.native",
-      "buildNumber": "6",
+      "buildNumber": "7",
       "appleTeamId": "5K8V6776KS",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The Weekend uses your microphone so you can talk with friends in the Lounge.",
@@ -73,7 +73,9 @@
             "enabled": true,
             "appGroupId": "group.com.weekendleague.native",
             "activationRule": {
-              "supportsImageWithMaxCount": 1
+              "supportsImageWithMaxCount": 1,
+              "supportsWebUrlWithMaxCount": 1,
+              "supportsText": true
             }
           }
         }

@@ -208,6 +208,30 @@ async def test_parse_slip_reads_every_bet_on_a_screenshot(pool, game_state, seed
     assert body["stake"] == 10 and body["legs"][0]["matched"]
 
 
+async def test_parse_page_reads_a_shared_bet_link(pool, game_state, seeded_player, monkeypatch):
+    seen = {}
+
+    def fake_reader(page_text, url):
+        seen.update(text=page_text, url=url)
+        return {
+            "is_bet_slip": True,
+            "bets": [{"sportsbook": "DraftKings", "stake": 5, "odds_american": 450, "unclear": False,
+                      "legs": [{"description": "Jahmyr Gibbs 80+ Rushing Yards", "market": "player_prop",
+                                "player_name": "Jahmyr Gibbs", "team_abbr": "DET", "stat_key": "rush_yd",
+                                "line": 79.5, "direction": "over"}]}],
+        }
+
+    monkeypatch.setattr(bets_router.bet_slip_reader, "read_bet_page", fake_reader)
+    user_id = await make_safe_session_user_id(pool)
+    url = "https://sportsbook.draftkings.com/social/post/abc"
+    async with _client() as c:
+        res = await c.post("/bets/parse-page", json={"url": url, "text": "  Parlay  Wager: $5.00 "}, cookies=_cookie(user_id))
+        assert res.status_code == 200, res.text
+        assert res.json()["bets"][0]["ready"] and seen == {"text": "Parlay  Wager: $5.00", "url": url}
+        assert (await c.post("/bets/parse-page", json={"url": "http://x.test/a", "text": "x"}, cookies=_cookie(user_id))).status_code == 422
+        assert (await c.post("/bets/parse-page", json={"url": url, "text": "x"})).status_code == 401
+
+
 async def test_turning_bet_tracking_off_hides_bets(pool, game_state, seeded_player):
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(

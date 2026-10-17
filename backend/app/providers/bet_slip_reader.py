@@ -1,10 +1,13 @@
 """
-Reads a sportsbook bet-slip screenshot with Claude's vision and returns
-every bet on it as structured data, for the user to check before it's saved
-(app/routers/bets.py's POST /bets/parse-slip). Tracking only.
+Reads a sportsbook bet-slip screenshot with Claude's vision — or the text
+of a sportsbook's shared-bet web page — and returns every bet on it as
+structured data, for the user to check before it's saved
+(app/routers/bets.py's POST /bets/parse-slip and /bets/parse-page).
+Tracking only.
 
-The screenshot is passed straight through and never stored — a slip can
-show account details, and only the confirmed legs are worth keeping.
+The screenshot or page is passed straight through and never stored — a
+slip can show account details, and only the confirmed legs are worth
+keeping.
 Uses a forced tool call so the answer is always the JSON shape below,
 never prose.
 """
@@ -84,7 +87,9 @@ _SYSTEM = (
     "Spreads: line is the picked team's number (-3.5, +7). Totals: line is the game total with over/under, "
     "and team_abbr is either team in the game. "
     "Ignore account balances, promos and anything that isn't a bet. "
-    "Set unclear on a bet if you had to guess at any part of it; it's checked by hand then."
+    "Set unclear on a bet if you had to guess at any part of it; it's checked by hand then. "
+    "Sometimes you get the text of a sportsbook's shared-bet web page instead of a screenshot: read it the same way, "
+    "ignoring the site's menus, app banners and legal fine print, and set is_bet_slip false if it shows no bet."
 )
 
 _MAX_TOKENS = 4000
@@ -94,6 +99,28 @@ def read_bet_slip(image_base64: str, media_type: str) -> dict:
     """The tool call's input dict (see _TOOL): {"is_bet_slip", "bets"}.
     Raises RuntimeError if the key isn't configured or the model didn't
     answer with the tool."""
+    return _read(
+        [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_base64}},
+            {"type": "text", "text": "Record the bets on this slip."},
+        ]
+    )
+
+
+def read_bet_page(page_text: str, url: str) -> dict:
+    """Same as read_bet_slip, from the visible text of a shared-bet page
+    (the app opens the link on the phone and sends what it shows)."""
+    return _read(
+        [
+            {
+                "type": "text",
+                "text": f"This is the text of a shared bet page from {url}:\n\n<page>\n{page_text}\n</page>\n\nRecord the bets on it.",
+            }
+        ]
+    )
+
+
+def _read(content: list[dict]) -> dict:
     if not config.ANTHROPIC_API_KEY:
         raise RuntimeError("Bet-slip reading isn't set up (ANTHROPIC_API_KEY is missing).")
     client = _get_client()
@@ -103,15 +130,7 @@ def read_bet_slip(image_base64: str, media_type: str) -> dict:
         system=_SYSTEM,
         tools=[_TOOL],
         tool_choice={"type": "tool", "name": _TOOL["name"]},
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_base64}},
-                    {"type": "text", "text": "Record the bets on this slip."},
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
     )
     for block in response.content:
         if getattr(block, "type", None) == "tool_use":
