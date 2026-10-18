@@ -256,6 +256,28 @@ export default function ConversationScreen() {
     ]);
   }
 
+  function deleteMessage() {
+    const target = actionsFor;
+    setActionsFor(null);
+    if (!target) return;
+    Alert.alert('Delete this message?', "It's removed for everyone in the chat.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void api
+            .deleteMessage(target.id)
+            .then(() => {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              queryClient.setQueryData<ChatMessage[]>(['chat-messages', conversationId], (prev) => prev?.filter((m) => m.id !== target.id));
+              void queryClient.invalidateQueries({ queryKey: ['chat-conversations'] });
+            })
+            .catch((e) => Alert.alert("Couldn't delete it", e instanceof Error ? e.message : 'Try again in a moment.')),
+      },
+    ]);
+  }
+
   function startReply() {
     const target = actionsFor;
     setActionsFor(null);
@@ -520,6 +542,11 @@ export default function ConversationScreen() {
           {canPost && (
             <Pressable onPress={startReply} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
               <Text style={styles.replyActionText}>Reply</Text>
+            </Pressable>
+          )}
+          {actionsFor && actionsFor.owner_id === myOwnerId && !actionsFor.deleted && (
+            <Pressable onPress={deleteMessage} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
+              <Text style={[styles.replyActionText, styles.dangerText]}>Delete message</Text>
             </Pressable>
           )}
           {actionsFor && actionsFor.owner_id !== myOwnerId && (

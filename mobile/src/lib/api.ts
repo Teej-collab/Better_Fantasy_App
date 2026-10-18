@@ -535,6 +535,8 @@ export const api = {
   // Toggles; the server broadcasts the result to everyone over the socket.
   reactToMessage: (messageId: number, emoji: string) =>
     request<{ added: boolean }>(`/chat/messages/${messageId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
+  // Your own messages only; it disappears for everyone over the socket.
+  deleteMessage: (messageId: number) => request<{ status: string }>(`/chat/messages/${messageId}`, { method: 'DELETE' }),
   // Report and block (App Review's rule for user-generated content).
   reportMessage: (messageId: number, reason: ReportReason, details?: string) =>
     request<{ status: string }>(`/chat/messages/${messageId}/report`, { method: 'POST', body: JSON.stringify({ reason, details }) }),
