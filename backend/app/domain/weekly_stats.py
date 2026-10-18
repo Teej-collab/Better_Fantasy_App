@@ -98,12 +98,6 @@ async def compute_week_stats(
     if not rules:
         raise ValueError(f"No league_scoring_rules configured for season {season}")
 
-    crosswalk_rows = await conn.fetch(
-        "SELECT espn_player_id, sleeper_player_id, position FROM players WHERE espn_player_id IS NOT NULL"
-    )
-    espn_to_sleeper = {row["espn_player_id"]: row["sleeper_player_id"] for row in crosswalk_rows}
-    espn_to_position = {row["espn_player_id"]: row["position"] for row in crosswalk_rows}
-
     dst_rows = await conn.fetch("SELECT sleeper_player_id FROM players WHERE position = 'DEF'")
     known_dst_ids = {row["sleeper_player_id"] for row in dst_rows}
 
@@ -116,6 +110,17 @@ async def compute_week_stats(
     # Fetched up front, concurrently, and outside the transaction — no
     # point holding a DB transaction open across network calls.
     games = await asyncio.gather(*(fetch(event_id) for event_id in event_ids))
+
+    # Only the players in these games (2026-10): this runs every 20s per
+    # league during games, and loading the whole ~7,400-player crosswalk
+    # each time was most of the database's bandwidth.
+    espn_ids = list({p["espn_player_id"] for game in games for p in game["players"]})
+    crosswalk_rows = await conn.fetch(
+        "SELECT espn_player_id, sleeper_player_id, position FROM players WHERE espn_player_id = ANY($1::int[])",
+        espn_ids,
+    )
+    espn_to_sleeper = {row["espn_player_id"]: row["sleeper_player_id"] for row in crosswalk_rows}
+    espn_to_position = {row["espn_player_id"]: row["position"] for row in crosswalk_rows}
 
     counts = {"players": 0, "team_dst": 0}
     injury_plays: list[dict] = []
