@@ -30,8 +30,11 @@ import { AWAY_RESET_MS, openedByLinkRecently } from '@/lib/freshStart';
 import { ChatSocketProvider } from '@/lib/chatSocket';
 import { takeLinkForAfterSignIn } from '@/lib/inviteLinks';
 import { queryClient, queryPersister, useMe } from '@/lib/queries';
+import { lockPortrait } from '@/lib/orientation';
 
 SplashScreen.preventAutoHideAsync();
+// Portrait everywhere but the Lounge's full-screen TV (lib/orientation.ts).
+void lockPortrait();
 // Uncaught JavaScript errors go to Admin > Errors, like the web's.
 startErrorReporter();
 

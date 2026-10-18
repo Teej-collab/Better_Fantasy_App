@@ -2,7 +2,7 @@ import { VideoTrack, type TrackReference } from '@livekit/react-native';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Track, type RemoteParticipant } from 'livekit-client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -11,14 +11,15 @@ import { Fonts } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
 import { clockLabel, downLabel } from '@/lib/loungeLive';
+import { canRotate, lockLandscape, lockPortrait } from '@/lib/orientation';
 import { nflTeamColor } from '@/lib/nflTeams';
 import type { LiveGame } from '@/lib/types';
 
 // The room's TV (mockup 1): whoever's sharing the game, a LIVE badge,
 // and an ESPN-style scorebug for the game on the TV — shown at the
 // room's delay, so it matches the picture — with your own volume for
-// the game on the right. Full screen turns the picture sideways to fill
-// the phone (the app itself stays portrait), so you just turn the phone.
+// the game on the right. Full screen puts the phone in landscape (on
+// older builds, it turns the picture sideways to fill the phone).
 export function LoungeTv({
   share,
   game,
@@ -119,14 +120,31 @@ export function LoungeTv({
   );
 }
 
-/** The TV across the whole phone, turned sideways. */
+/** The TV across the whole phone, in landscape: the phone itself
+ *  rotates on builds that can (build 8+); older ones turn the picture
+ *  sideways instead. */
 function FullScreenTv({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const { width, height } = useWindowDimensions();
+  useEffect(() => {
+    if (!canRotate) return;
+    void lockLandscape();
+    return () => void lockPortrait();
+  }, []);
   return (
-    <Modal visible animationType="fade" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+    <Modal
+      visible
+      animationType="fade"
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      transparent
+      supportedOrientations={['portrait', 'landscape-left', 'landscape-right']}>
       <StatusBar hidden />
       <View style={styles.fullScreen}>
-        <View style={{ width: height, height: width, transform: [{ rotate: '90deg' }] }}>{children}</View>
+        {canRotate ? (
+          <View style={StyleSheet.absoluteFill}>{children}</View>
+        ) : (
+          <View style={{ width: height, height: width, transform: [{ rotate: '90deg' }] }}>{children}</View>
+        )}
       </View>
     </Modal>
   );
