@@ -13,7 +13,7 @@
 // already delayed instead of on a spoiler.
 import { useEffect, useRef, useState } from "react";
 import type { LeagueTickerItem, NflGame, WeekMatchupContext, WeekMatchupContextItem, YourWeek } from "@/lib/api";
-import type { Bet } from "@/lib/betsApi";
+import type { Bet, LeagueFeed } from "@/lib/betsApi";
 import type { GamecastPlay, LiveGame } from "@/lib/gamecastApi";
 
 const POLL_MS = 2000;
@@ -46,6 +46,7 @@ export const loungeApi = {
   leagueTicker: (season: number, week: number) => get<{ items: LeagueTickerItem[] }>(`/seasons/${season}/weeks/${week}/ticker`),
   scoreboard: () => get<{ games: NflGame[] }>("/nfl/scoreboard"),
   bets: () => get<{ enabled: boolean; bets: Bet[] }>("/bets"),
+  leagueBets: () => get<LeagueFeed>("/bets/league"),
 };
 
 /** Polls `fetcher` every `ms` while `key` is set; the latest result. */

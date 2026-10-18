@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { MatchupContextSide, RosterPlayer, WeekMatchupContextItem, YourWeek } from "@/lib/api";
-import type { Bet } from "@/lib/betsApi";
+import { BetAvatar } from "@/components/bets/league/LeagueBetParts";
+import type { Bet, BetMember, LeagueBet } from "@/lib/betsApi";
 import { formatGameTime } from "@/lib/gameTime";
 import { formatStatLine } from "@/lib/statLine";
 
@@ -65,16 +66,20 @@ export function LoungeSweatPanel({
   week,
   league,
   bets,
+  leagueBets,
   myOwnerId,
   accent,
 }: {
   week: YourWeek | undefined;
   league: WeekMatchupContextItem[];
   bets: Bet[];
+  // Everyone else's open bets (League Bets).
+  leagueBets: LeagueBet[];
   myOwnerId: number;
   accent: string;
 }) {
   const [tab, setTab] = useState<"matchup" | "bets" | "scoreboard">("matchup");
+  const [betsView, setBetsView] = useState<"mine" | "league">("mine");
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
   const m = week?.matchup ?? null;
   const mine = league.find((x) => x.matchup_id === m?.matchup_id) ?? null;
@@ -167,41 +172,73 @@ export function LoungeSweatPanel({
             <p className="py-6 text-center text-sm text-[#9aa3b2]">No matchup this week yet.</p>
           )
         ) : tab === "bets" ? (
-          open.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[#9aa3b2]">No open bets. Add one from Bets.</p>
-          ) : (
-            open.map((b) => (
-              <div key={b.id} className="flex flex-col gap-2.5 rounded-[14px] border bg-[#161a24] p-3 text-[13px]" style={{ borderColor: "rgba(96,165,250,0.35)" }}>
-                <div className="flex items-center justify-between">
-                  <b className="text-sm">{b.legs.length > 1 ? `${b.legs.length}-leg parlay` : "Straight bet"}</b>
-                  {b.payout ? <span className="font-mono text-[#93c5fd]">to win ${b.payout.toFixed(0)}</span> : null}
-                </div>
-                {b.legs.map((leg) => {
-                  const pct = leg.status === "won" ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
-                  const color = leg.status === "won" ? accent : leg.status === "lost" ? "#f87171" : "#93c5fd";
-                  return (
-                    <div key={leg.id} className="flex flex-col gap-1">
-                      <div className="flex justify-between gap-2">
-                        <span className="truncate">{leg.description}</span>
-                        <span className="font-mono" style={{ color }}>
-                          {leg.status === "won" ? "Hit" : leg.status === "lost" ? "Missed" : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ""}` : "Live"}
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-[#2b2f3a]">
-                        <div className="h-full" style={{ width: `${pct}%`, background: color }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))
-          )
+          <>
+            <div role="tablist" aria-label="Whose bets" className="flex self-center rounded-full border border-white/[0.08] bg-[#161a24] p-[3px]">
+              {(["mine", "league"] as const).map((id) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={betsView === id}
+                  onClick={() => setBetsView(id)}
+                  className={`rounded-full px-4 py-1.5 text-[13px] font-bold ${betsView === id ? "bg-white/[0.14] text-[#f3f4f6]" : "text-[#9aa3b2]"}`}
+                >
+                  {id === "mine" ? "Mine" : `League${leagueBets.length ? ` · ${leagueBets.length}` : ""}`}
+                </button>
+              ))}
+            </div>
+            {betsView === "mine" ? (
+              open.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#9aa3b2]">No open bets. Add one from Bets.</p>
+              ) : (
+                open.map((b) => <SweatBet key={b.id} bet={b} accent={accent} />)
+              )
+            ) : leagueBets.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[#9aa3b2]">No one else in the league has an open bet right now.</p>
+            ) : (
+              leagueBets.map((b) => <SweatBet key={b.id} bet={b} member={b.member} accent={accent} />)
+            )}
+          </>
         ) : scoreboard.length === 0 ? (
           <p className="py-6 text-center text-sm text-[#9aa3b2]">No matchups this week yet.</p>
         ) : (
           scoreboard.map((x) => <ScoreboardCard key={x.matchup_id} item={x} mine={x === mine} accent={accent} onOpenTeam={setRosterTeamId} />)
         )}
       </div>
+    </div>
+  );
+}
+
+/** An open bet's legs with how close each is; a league-mate's shows who placed it. */
+function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accent: string }) {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[14px] border bg-[#161a24] p-3 text-[13px]" style={{ borderColor: "rgba(96,165,250,0.35)" }}>
+      {member && (
+        <div className="flex items-center gap-2">
+          <BetAvatar member={member} size={22} />
+          <b className="truncate text-[13px]">{member.name}</b>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <b className="text-sm">{bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : "Straight bet"}</b>
+        {bet.payout ? <span className="font-mono text-[#93c5fd]">to win ${bet.payout.toFixed(0)}</span> : null}
+      </div>
+      {bet.legs.map((leg) => {
+        const pct = leg.status === "won" ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
+        const color = leg.status === "won" ? accent : leg.status === "lost" ? "#f87171" : "#93c5fd";
+        return (
+          <div key={leg.id} className="flex flex-col gap-1">
+            <div className="flex justify-between gap-2">
+              <span className="truncate">{leg.description}</span>
+              <span className="font-mono" style={{ color }}>
+                {leg.status === "won" ? "Hit" : leg.status === "lost" ? "Missed" : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ""}` : "Live"}
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#2b2f3a]">
+              <div className="h-full" style={{ width: `${pct}%`, background: color }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

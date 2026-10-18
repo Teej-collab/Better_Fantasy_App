@@ -1,7 +1,7 @@
 import { useDelayedValue } from '@/lib/loungeLive';
 import { orientMatchupForViewer } from '@/lib/matchups';
-import { useBets, useMatchup, useMatchupContext, useMe, useMyWeek } from '@/lib/queries';
-import type { Bet, LiveGame, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
+import { useBets, useLeagueBets, useMatchup, useMatchupContext, useMe, useMyWeek } from '@/lib/queries';
+import type { Bet, LeagueBet, LiveGame, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
 
 // Everything "Your Sweat" (mockups 1 and 3) shows — your matchup, both
 // lineups, your open bets, and the rest of the league — held back by the
@@ -22,6 +22,8 @@ export type LoungeSweat = {
   openBets: Bet[];
   // Every bet, settled ones included (the room's bet-leg alerts).
   allBets: Bet[];
+  // Everyone else's open bets (League Bets).
+  leagueOpenBets: LeagueBet[];
   league: WeekMatchupContextItem[];
 };
 
@@ -34,6 +36,7 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
   const detailQuery = useMatchup(matchupId);
   const detail = useDelayedValue(matchupId ? detailQuery.data : undefined, delaySeconds);
   const bets = useDelayedValue(useBets().data, delaySeconds);
+  const leagueBets = useDelayedValue(useLeagueBets().data, delaySeconds);
   const league = useDelayedValue(useMatchupContext(week?.season ?? null, week?.week ?? null).data, delaySeconds);
 
   const oriented = detail ? orientMatchupForViewer(detail, me?.owner_id ?? null) : null;
@@ -52,6 +55,7 @@ export function useLoungeSweat(delaySeconds: number): LoungeSweat {
     opponentStarters: (oriented?.away.roster ?? []).filter((p) => !BENCH.has(p.lineup_slot ?? '')),
     openBets: (bets?.bets ?? []).filter((b) => b.status === 'open'),
     allBets: bets?.bets ?? [],
+    leagueOpenBets: leagueBets?.enabled ? leagueBets.bets.filter((b) => b.status === 'open' && !b.mine) : [],
     league: league?.matchups ?? [],
   };
 }

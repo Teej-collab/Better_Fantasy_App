@@ -160,6 +160,7 @@ export function WebLoungeRoom({
   const matchupId = week?.matchup?.matchup_id ?? null;
   const detail = useDelayedValue(usePolled(matchupId ? `m${matchupId}` : null, () => loungeApi.matchup(matchupId!), 15000), tv.delaySeconds);
   const bets = useDelayedValue(usePolled("bets", loungeApi.bets, 20000), tv.delaySeconds);
+  const leagueBets = useDelayedValue(usePolled("league-bets", loungeApi.leagueBets, 30000), tv.delaySeconds);
   const ticker = useDelayedValue(
     usePolled(week?.week ? `t${week.season}-${week.week}` : null, () => loungeApi.leagueTicker(week!.season, week!.week!), 15000),
     tv.delaySeconds
@@ -447,7 +448,7 @@ export function WebLoungeRoom({
             <ChatPanel feed={feed} members={members} onSend={(body, mentions) => onSend(body, mentions, null, null)} onReact={react} counts={counts} accent={accent} />
           )}
           {tab === "sweat" && (
-            <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} myOwnerId={myOwnerId} accent={accent} />
+            <LoungeSweatPanel week={week} league={leagueContext?.matchups ?? []} bets={bets?.bets ?? []} leagueBets={leagueBets?.enabled ? leagueBets.bets.filter((b) => b.status === "open" && !b.mine) : []} myOwnerId={myOwnerId} accent={accent} />
           )}
           {tab === "plays" && <PlaysPanel game={game} />}
         </aside>

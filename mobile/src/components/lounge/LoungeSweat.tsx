@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BetAvatar } from '@/components/bets/LeagueBetCard';
 import { LoungeTv } from '@/components/lounge/LoungeTv';
 import { Text } from '@/components/Text';
 import { TeamAvatar } from '@/components/ui';
@@ -12,7 +13,7 @@ import { formatGameTime } from '@/lib/format';
 import { formatStatLine } from '@/lib/matchups';
 import { lastName, onField, startersInGame, type LoungeSweat } from '@/lib/loungeSweat';
 import { slotDisplayLabel } from '@/lib/rosterSlots';
-import type { Bet, BetLeg, LiveGame, MatchupContextSide, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
+import type { Bet, BetLeg, BetMember, LiveGame, MatchupContextSide, RosterPlayer, WeekMatchupContextItem } from '@/lib/types';
 
 const fmt = (n: number | null | undefined) => (n ?? 0).toFixed(1);
 
@@ -95,6 +96,7 @@ export function SweatSheet({
   const accent = useAppearance().accent;
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'matchup' | 'bets' | 'league'>('matchup');
+  const [betsView, setBetsView] = useState<'mine' | 'league'>('mine');
   // A team's roster, opened from a name in Matchup or a row in the
   // Scoreboard; shown in the sheet so the TV keeps playing up top.
   const [rosterTeamId, setRosterTeamId] = useState<number | null>(null);
@@ -184,38 +186,39 @@ export function SweatSheet({
                 ))}
               </>
             )}
-            {!rosterSide && tab === 'bets' &&
-              (sweat.openBets.length === 0 ? (
-                <Text style={styles.empty}>No open bets. Add one from Bets.</Text>
-              ) : (
-                sweat.openBets.map((b) => (
-                  <View key={b.id} style={styles.betCard}>
-                    <View style={styles.betHead}>
-                      <Text style={styles.betTitle}>{b.legs.length > 1 ? `${b.legs.length}-leg parlay` : 'Straight bet'}</Text>
-                      {b.payout ? <Text style={styles.betWin}>to win ${b.payout.toFixed(0)}</Text> : null}
-                    </View>
-                    {b.legs.map((leg) => {
-                      const pct = leg.status === 'won' ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
-                      const color = leg.status === 'won' ? accent : leg.status === 'lost' ? '#f87171' : '#93c5fd';
-                      return (
-                        <View key={leg.id} style={styles.leg}>
-                          <View style={styles.legHead}>
-                            <Text style={styles.legText} numberOfLines={1}>
-                              {leg.description}
-                            </Text>
-                            <Text style={[styles.legProgress, { color }]}>
-                              {leg.status === 'won' ? 'Hit' : leg.status === 'lost' ? 'Missed' : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ''}` : 'Live'}
-                            </Text>
-                          </View>
-                          <View style={styles.legBar}>
-                            <View style={[styles.legFill, { width: `${pct}%`, backgroundColor: color }]} />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ))
-              ))}
+            {!rosterSide && tab === 'bets' && (
+              <>
+                <View style={styles.betsSwitch} accessibilityRole="tablist">
+                  {(['mine', 'league'] as const).map((id) => {
+                    const on = betsView === id;
+                    return (
+                      <Pressable
+                        key={id}
+                        onPress={() => setBetsView(id)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: on }}
+                        style={[styles.betsSwitchBtn, on && styles.betsSwitchBtnOn]}>
+                        <Text style={[styles.betsSwitchText, on && styles.betsSwitchTextOn]}>
+                          {id === 'mine' ? 'Mine' : `League${sweat.leagueOpenBets.length ? ` · ${sweat.leagueOpenBets.length}` : ''}`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {betsView === 'mine' &&
+                  (sweat.openBets.length === 0 ? (
+                    <Text style={styles.empty}>No open bets. Add one from Bets.</Text>
+                  ) : (
+                    sweat.openBets.map((b) => <SweatBet key={b.id} bet={b} accent={accent} />)
+                  ))}
+                {betsView === 'league' &&
+                  (sweat.leagueOpenBets.length === 0 ? (
+                    <Text style={styles.empty}>No one else in the league has an open bet right now.</Text>
+                  ) : (
+                    sweat.leagueOpenBets.map((b) => <SweatBet key={b.id} bet={b} member={b.member} accent={accent} />)
+                  ))}
+              </>
+            )}
             {!rosterSide && tab === 'league' &&
               (scoreboard.length === 0 ? (
                 <Text style={styles.empty}>No matchups this week yet.</Text>
@@ -228,6 +231,45 @@ export function SweatSheet({
         </View>
       </View>
     </Modal>
+  );
+}
+
+/** An open bet's legs with how close each is; a league-mate's shows who placed it. */
+function SweatBet({ bet, member, accent }: { bet: Bet; member?: BetMember; accent: string }) {
+  return (
+    <View style={styles.betCard}>
+      {member && (
+        <View style={styles.betMember}>
+          <BetAvatar member={member} size={22} />
+          <Text style={styles.betMemberName} numberOfLines={1}>
+            {member.name}
+          </Text>
+        </View>
+      )}
+      <View style={styles.betHead}>
+        <Text style={styles.betTitle}>{bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : 'Straight bet'}</Text>
+        {bet.payout ? <Text style={styles.betWin}>to win ${bet.payout.toFixed(0)}</Text> : null}
+      </View>
+      {bet.legs.map((leg) => {
+        const pct = leg.status === 'won' ? 100 : leg.current !== null && leg.target ? Math.min(100, (leg.current / leg.target) * 100) : 0;
+        const color = leg.status === 'won' ? accent : leg.status === 'lost' ? '#f87171' : '#93c5fd';
+        return (
+          <View key={leg.id} style={styles.leg}>
+            <View style={styles.legHead}>
+              <Text style={styles.legText} numberOfLines={1}>
+                {leg.description}
+              </Text>
+              <Text style={[styles.legProgress, { color }]}>
+                {leg.status === 'won' ? 'Hit' : leg.status === 'lost' ? 'Missed' : leg.current !== null ? `${leg.current} / ${leg.target ?? leg.line ?? ''}` : 'Live'}
+              </Text>
+            </View>
+            <View style={styles.legBar}>
+              <View style={[styles.legFill, { width: `${pct}%`, backgroundColor: color }]} />
+            </View>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -437,6 +479,13 @@ const styles = StyleSheet.create({
   playerPts: { color: '#f3f4f6', fontFamily: Fonts.monoBold, fontSize: 16 },
   playerPtsMuted: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 13 },
   empty: { color: '#9aa3b2', fontSize: 14, textAlign: 'center', paddingVertical: 24 },
+  betsSwitch: { flexDirection: 'row', alignSelf: 'center', padding: 3, borderRadius: 999, backgroundColor: '#161a24', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  betsSwitchBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 999 },
+  betsSwitchBtnOn: { backgroundColor: 'rgba(255,255,255,0.14)' },
+  betsSwitchText: { color: '#9aa3b2', fontSize: 13, fontWeight: '700' },
+  betsSwitchTextOn: { color: '#f3f4f6' },
+  betMember: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  betMemberName: { flex: 1, color: '#f3f4f6', fontSize: 13, fontWeight: '700' },
   betCard: { padding: 12, borderRadius: 14, backgroundColor: '#161a24', borderWidth: 1, borderColor: 'rgba(96,165,250,0.35)', gap: 10 },
   betHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   betTitle: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
