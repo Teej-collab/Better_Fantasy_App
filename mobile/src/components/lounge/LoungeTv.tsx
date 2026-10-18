@@ -3,7 +3,7 @@ import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Track, type RemoteParticipant } from 'livekit-client';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { Text } from '@/components/Text';
@@ -17,7 +17,8 @@ import type { LiveGame } from '@/lib/types';
 // The room's TV (mockup 1): whoever's sharing the game, a LIVE badge,
 // and an ESPN-style scorebug for the game on the TV — shown at the
 // room's delay, so it matches the picture — with your own volume for
-// the game on the right.
+// the game on the right. Full screen turns the picture sideways to fill
+// the phone (the app itself stays portrait), so you just turn the phone.
 export function LoungeTv({
   share,
   game,
@@ -25,6 +26,7 @@ export function LoungeTv({
   height = 216,
   compact = false,
   onPressScorebug,
+  onExitFullScreen,
 }: {
   share: TrackReference | undefined;
   game: LiveGame | null;
@@ -32,10 +34,14 @@ export function LoungeTv({
   height?: number;
   compact?: boolean;
   onPressScorebug?: () => void;
+  // Set when this is the full-screen TV: its own way back out.
+  onExitFullScreen?: () => void;
 }) {
   const sharer = share?.participant;
+  const fullScreen = !!onExitFullScreen;
+  const [full, setFull] = useState(false);
   return (
-    <View style={[styles.tv, { height }]} accessibilityLabel={game ? `${game.away_team.abbr} at ${game.home_team.abbr} on the TV` : 'The TV'}>
+    <View style={[styles.tv, fullScreen ? styles.tvFull : { height }]} accessibilityLabel={game ? `${game.away_team.abbr} at ${game.home_team.abbr} on the TV` : 'The TV'}>
       <LinearGradient colors={['#1d3a24', '#0f1f14', '#070b08']} style={StyleSheet.absoluteFill} />
       {share ? (
         <VideoTrack trackRef={share} style={StyleSheet.absoluteFill} objectFit="contain" />
@@ -45,6 +51,9 @@ export function LoungeTv({
           <Text style={styles.emptyHint}>{"Whoever's hosting shares the game from a computer."}</Text>
         </View>
       )}
+      {/* Everything over the picture; full screen keeps it clear of the
+          notch and home bar, which end up on its left and right. */}
+      <View style={[StyleSheet.absoluteFill, fullScreen && styles.fullInset]} pointerEvents="box-none">
       {share && !compact && (
         <View style={styles.badges}>
           <Text style={styles.live}>LIVE</Text>
@@ -52,6 +61,27 @@ export function LoungeTv({
         </View>
       )}
       {!compact && sharer && !sharer.isLocal && <GameVolume participant={sharer as RemoteParticipant} />}
+      {(share || fullScreen) && !compact && (
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            if (fullScreen) onExitFullScreen();
+            else setFull(true);
+          }}
+          hitSlop={10}
+          style={styles.fullBtn}
+          accessibilityRole="button"
+          accessibilityLabel={fullScreen ? 'Exit full screen' : 'Full screen'}>
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            <Path d={fullScreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'} />
+          </Svg>
+        </Pressable>
+      )}
+      {!fullScreen && full && (
+        <FullScreenTv onClose={() => setFull(false)}>
+          <LoungeTv share={share} game={game} catchingUp={catchingUp} onPressScorebug={onPressScorebug} onExitFullScreen={() => setFull(false)} />
+        </FullScreenTv>
+      )}
       {/* A broadcast-style bug in the corner, only as wide as the scores:
           quarter and clock on top, the score (a dot for who has the ball),
           down and distance underneath. */}
@@ -84,7 +114,21 @@ export function LoungeTv({
           )}
         </Pressable>
       )}
+      </View>
     </View>
+  );
+}
+
+/** The TV across the whole phone, turned sideways. */
+function FullScreenTv({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const { width, height } = useWindowDimensions();
+  return (
+    <Modal visible animationType="fade" onRequestClose={onClose} presentationStyle="overFullScreen" transparent>
+      <StatusBar hidden />
+      <View style={styles.fullScreen}>
+        <View style={{ width: height, height: width, transform: [{ rotate: '90deg' }] }}>{children}</View>
+      </View>
+    </Modal>
   );
 }
 
@@ -131,6 +175,10 @@ function GameVolume({ participant }: { participant: RemoteParticipant }) {
 
 const styles = StyleSheet.create({
   tv: { marginHorizontal: 10, marginTop: 10, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: '#070b08' },
+  tvFull: { flex: 1, margin: 0, marginTop: 0, marginHorizontal: 0, borderRadius: 0, borderWidth: 0, backgroundColor: '#000' },
+  fullInset: { left: 44, right: 44 },
+  fullScreen: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  fullBtn: { position: 'absolute', right: 10, bottom: 10, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 24 },
   emptyTitle: { color: '#f3f4f6', fontSize: 14, fontWeight: '700' },
   emptyHint: { color: 'rgba(255,255,255,0.5)', fontSize: 12, textAlign: 'center' },
