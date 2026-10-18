@@ -12,9 +12,10 @@ import {
 } from '@livekit/react-native';
 import Slider from '@react-native-community/slider';
 import { useKeepAwake } from 'expo-keep-awake';
+import { mediaDevices } from '@livekit/react-native-webrtc';
 import { Track, type Participant, type RemoteParticipant } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -663,11 +664,10 @@ function CameraRail({
   );
 }
 
-// Your mic and camera (and, with the camera on, front/back), in the
+// Your mic and camera (and, with the camera on, which camera), in the
 // footer and on the full-screen TV's camera rail.
 function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
-  const [front, setFront] = useState(true);
   // Off takes the camera out of the room entirely (stopped and
   // unpublished): LiveKit's own off only mutes it in place, which on the
   // phone could leave it stuck on with no way to turn it off.
@@ -678,17 +678,32 @@ function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
         await localParticipant.unpublishTrack(camera, true);
       } else {
         await localParticipant.setCameraEnabled(true);
-        setFront(true);
       }
     } catch {
       Alert.alert("Couldn't change your camera", 'Try again in a moment.');
     }
   }
-  async function flip() {
+  // Any camera the phone has (front, wide, ultra wide, telephoto), like
+  // the web's camera list. iOS's combined "Dual"/"Triple" cameras are left
+  // out: they're the same lenses again.
+  async function chooseCamera() {
     const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
     if (!track) return;
-    await track.restartTrack({ facingMode: front ? 'environment' : 'user' });
-    setFront(!front);
+    const devices = ((await mediaDevices.enumerateDevices().catch(() => [])) ?? []) as { kind: string; deviceId: string; label: string }[];
+    const cameras = devices.filter((d) => d.kind === 'videoinput' && !/dual|triple/i.test(d.label));
+    if (cameras.length === 0) return;
+    const switchTo = (i: number) =>
+      void track.restartTrack({ deviceId: cameras[i].deviceId }).catch(() => Alert.alert("Couldn't switch cameras", 'Try another one.'));
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: 'Camera', options: [...cameras.map((c) => c.label), 'Cancel'], cancelButtonIndex: cameras.length },
+        (i) => {
+          if (i < cameras.length) switchTo(i);
+        },
+      );
+    } else {
+      Alert.alert('Camera', undefined, [...cameras.map((c, i) => ({ text: c.label, onPress: () => switchTo(i) })), { text: 'Cancel', style: 'cancel' as const }]);
+    }
   }
   return (
     <>
@@ -723,11 +738,11 @@ function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
         <Pressable
           onPress={() => {
             haptics.tap();
-            void flip();
+            void chooseCamera();
           }}
           style={styles.roundBtn}
           accessibilityRole="button"
-          accessibilityLabel={front ? 'Switch to the back camera' : 'Switch to the front camera'}>
+          accessibilityLabel="Choose a camera">
           <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <Path d="M3 7h3l2-3h8l2 3h3v12H3z" />
             <Path d="M9 13a3 3 0 015.2-2M15 13a3 3 0 01-5.2 2" />
