@@ -21,9 +21,9 @@ import type { LiveGame } from '@/lib/types';
 // room's delay, so it matches the picture — with your own volume for
 // the game on the right. Full screen puts the phone in landscape (on
 // older builds, it turns the picture sideways to fill the phone), with
-// everyone's camera down a rail beside it (mockup A); there the badges,
-// volume and exit button fade after a few seconds (LIVE shrinks to a red
-// dot) and a tap on the game brings them back.
+// everyone's camera down a rail beside it (mockup A). Either way up, the
+// badges, volume and full-screen button fade after a few seconds (LIVE
+// shrinks to a red dot) and a tap on the game brings them back.
 const CHROME_FADE_MS = 3000;
 
 export function LoungeTv({
@@ -50,8 +50,10 @@ export function LoungeTv({
   const sharer = share?.participant;
   const fullScreen = !!onExitFullScreen;
   const [full, setFull] = useState(false);
-  // Full screen only: whether the badges and buttons are showing. Any
-  // touch on them keeps them up; they fade CHROME_FADE_MS after the last.
+  // Whether the badges and buttons are showing (the sweat sheet's small
+  // TV has none). Any touch on them keeps them up; they fade
+  // CHROME_FADE_MS after the last.
+  const fades = !compact && !!share;
   const [chrome, setChrome] = useState(true);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeLater = useCallback(() => {
@@ -59,17 +61,18 @@ export function LoungeTv({
     fadeTimer.current = setTimeout(() => setChrome(false), CHROME_FADE_MS);
   }, []);
   const keepChrome = useCallback(() => {
-    if (!fullScreen) return;
+    if (!fades) return;
     setChrome(true);
     fadeLater();
-  }, [fullScreen, fadeLater]);
+  }, [fades, fadeLater]);
   useEffect(() => {
-    if (fullScreen) fadeLater();
+    if (fades) fadeLater();
     return () => {
       if (fadeTimer.current) clearTimeout(fadeTimer.current);
     };
-  }, [fullScreen, fadeLater]);
-  const chromeShown = !fullScreen || chrome;
+  }, [fades, fadeLater]);
+  // Nothing on the TV: the full-screen exit button stays put.
+  const chromeShown = !fades || chrome;
   const chromeStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 1 : 0, { duration: 350 }) }));
   const dotStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 0 : 1, { duration: 350 }) }));
   return (
@@ -83,7 +86,7 @@ export function LoungeTv({
           <Text style={styles.emptyHint}>{"Whoever's hosting shares the game from a computer."}</Text>
         </View>
       )}
-      {fullScreen && (
+      {fades && (
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={() => {
@@ -99,11 +102,11 @@ export function LoungeTv({
       {/* Everything over the picture; full screen keeps it clear of the
           notch and home bar, which end up on its left and right. */}
       <View style={[StyleSheet.absoluteFill, fullScreen && styles.fullInset]} pointerEvents="box-none">
-      {fullScreen && share && <Animated.View style={[styles.liveDot, dotStyle]} pointerEvents="none" accessibilityLabel="Live" />}
+      {fades && <Animated.View style={[styles.liveDot, dotStyle]} pointerEvents="none" accessibilityLabel="Live" />}
       <Animated.View
         style={[StyleSheet.absoluteFill, chromeStyle]}
         pointerEvents={chromeShown ? 'box-none' : 'none'}
-        onTouchStart={fullScreen ? keepChrome : undefined}>
+        onTouchStart={fades ? keepChrome : undefined}>
       {share && !compact && (
         <View style={styles.badges}>
           <Text style={styles.live}>LIVE</Text>
