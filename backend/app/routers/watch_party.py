@@ -15,6 +15,7 @@ scoping uses the same require_active_league_id/resolve_owner_id this
 whole app's league-scoped routers already depend on.
 """
 import asyncio
+import secrets
 import time
 
 import jwt
@@ -447,7 +448,11 @@ async def get_room_token(room_id: int, request: Request, pool=Depends(get_pool))
     livekit_room_name = f"league-{league_id}-room-{room_id}"
     claims = {
         "iss": api_key,
-        "sub": str(owner_id),
+        # owner_id, then "#" and this device's own tag: LiveKit drops
+        # whoever already holds an identity, so a shared one meant joining
+        # from your phone kicked your PC and its stream. The apps read the
+        # owner back from the part before "#".
+        "sub": f"{owner_id}#{secrets.token_hex(3)}",
         "name": display_name or "Owner",
         "nbf": now,
         "exp": now + TOKEN_TTL_SECONDS,

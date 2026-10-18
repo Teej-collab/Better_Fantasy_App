@@ -9,7 +9,6 @@ import {
   useIsSpeaking,
   useLocalParticipant,
   useMediaDeviceSelect,
-  useParticipants,
   useRoomContext,
   useTracks,
   type TrackReference,
@@ -38,6 +37,7 @@ import {
   useRoomTv,
 } from "@/lib/loungeLive";
 import { nflTeamColor } from "@/lib/nfl-teams";
+import { personOf, useOwnDevices, useRoomPeople } from "@/lib/loungePeople";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
@@ -95,7 +95,9 @@ export function WebLoungeRoom({
     if (tv.closed) onLeave();
   }, [tv.closed, onLeave]);
   const isHost = room.kind === "party" && room.created_by_owner_id === myOwnerId;
-  const participants = useParticipants();
+  // One per person, though they may be here from a PC and a phone.
+  const participants = useRoomPeople();
+  useOwnDevices();
   const share = (useTracks([Track.Source.ScreenShare]) as TrackReference[])[0];
   const { localParticipant, isScreenShareEnabled, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const [devicesOpen, setDevicesOpen] = useState(false);
@@ -187,7 +189,7 @@ export function WebLoungeRoom({
     league: leagueContext?.matchups ?? EMPTY_LEAGUE,
     bets: bets?.bets ?? EMPTY_BETS,
     myOwnerId,
-    roomOwnerIds: participants.map((p) => p.identity),
+    roomOwnerIds: participants.map((p) => personOf(p.identity)),
     chugEnabled: !!activeLeague?.chug_enabled,
     chugRuleName: activeLeague?.chug_rule_name ?? null,
   });
@@ -408,7 +410,7 @@ export function WebLoungeRoom({
           </div>
           <CameraGrid count={participants.length}>
             {participants.map((p) => (
-              <Tile key={p.identity} participant={p} accent={accent} impact={rm.tileImpacts[p.identity]} owesChug={rm.chugOwner === p.identity} />
+              <Tile key={p.identity} participant={p} accent={accent} impact={rm.tileImpacts[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} />
             ))}
           </CameraGrid>
         </section>

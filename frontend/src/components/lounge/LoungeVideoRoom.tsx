@@ -14,6 +14,7 @@ import {
 } from "@livekit/components-react";
 import { Track, type Participant, type RemoteParticipant } from "livekit-client";
 import { LIVEKIT_ROOM_OPTIONS, toggleGameShare } from "@/lib/livekitMedia";
+import { useOwnDevices } from "@/lib/loungePeople";
 import "@livekit/components-styles";
 import { buildNflTickerItems, getNflScoreboard, type TickerItem } from "@/lib/api";
 import { LiveTicker } from "@/components/LiveTicker";
@@ -197,6 +198,7 @@ function ControlsBar({
   volumeOpen: boolean;
 }) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
+  useOwnDevices();
   const [copied, setCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);

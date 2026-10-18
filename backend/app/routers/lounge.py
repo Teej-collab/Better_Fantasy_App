@@ -187,7 +187,10 @@ async def join_room(slug: str, request: Request, pool=Depends(get_pool)):
         # a guest must supply one.
         raw_name = _clean_display_name(body.get("display_name") or "")
         if session_payload is not None:
-            identity = f"user-{session_payload['user_id']}"
+            # One identity per device (the part before "#" is the person):
+            # LiveKit drops whoever already holds an identity, so a shared
+            # one meant joining from your phone kicked your PC and its stream.
+            identity = f"user-{session_payload['user_id']}#{secrets.token_hex(3)}"
             display_name = raw_name or (
                 await conn.fetchval(
                     "SELECT display_name FROM users WHERE id = $1", session_payload["user_id"]

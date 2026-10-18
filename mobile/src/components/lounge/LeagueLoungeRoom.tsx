@@ -5,7 +5,6 @@ import {
   useDataChannel,
   useIsSpeaking,
   useLocalParticipant,
-  useParticipants,
   useRemoteParticipants,
   useTracks,
   VideoTrack,
@@ -34,6 +33,7 @@ import { useAppearance } from '@/lib/appearance';
 import { useChatSocket } from '@/lib/chatSocket';
 import { haptics } from '@/lib/haptics';
 import { useDelayedGame } from '@/lib/loungeLive';
+import { personOf, useOwnDevices, useRoomPeople } from '@/lib/loungePeople';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments } from '@/lib/rosterMoments';
@@ -132,7 +132,9 @@ type FeedItem =
 function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndParty }: LoungeRoomProps & { error: string | null }) {
   const accent = useAppearance().accent;
   const insets = useSafeAreaInsets();
-  const participants = useParticipants();
+  // One per person, though they may be here from a PC and a phone.
+  const participants = useRoomPeople();
+  useOwnDevices();
   const shares = useTracks([Track.Source.ScreenShare]) as TrackReference[];
   const share = shares[0];
   const sweat = useLoungeSweat(delaySeconds);
@@ -155,7 +157,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const rm = useRoomMoments({
     sweat,
     myOwnerId: me?.owner_id ?? null,
-    roomOwnerIds: participants.map((p) => p.identity),
+    roomOwnerIds: participants.map((p) => personOf(p.identity)),
     chugEnabled: !!activeLeague?.chug_enabled,
     chugRuleName: activeLeague?.chug_rule_name ?? null,
   });
@@ -318,8 +320,8 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
                 key={p.identity}
                 participant={p}
                 accent={accent}
-                impact={rm.tileImpacts[p.identity]}
-                owesChug={rm.chugOwner === p.identity}
+                impact={rm.tileImpacts[personOf(p.identity)]}
+                owesChug={rm.chugOwner === personOf(p.identity)}
                 onPress={() => setVolumeOpen(true)}
               />
             ))}
