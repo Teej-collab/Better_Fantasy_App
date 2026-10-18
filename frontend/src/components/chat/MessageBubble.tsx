@@ -153,7 +153,7 @@ export function MessageBubble({
             deleted={message.deleted}
             onReply={() => onReply(message)}
             onToggleReactionPicker={() => setShowReactionPicker((v) => !v)}
-            onCopy={() => navigator.clipboard.writeText(message.body)}
+            onCopy={message.body ? () => navigator.clipboard.writeText(message.body) : null}
             onDelete={() => onDelete(message.id)}
           />
         )}
@@ -316,7 +316,7 @@ export function MessageBubble({
             deleted={message.deleted}
             onReply={() => onReply(message)}
             onToggleReactionPicker={() => setShowReactionPicker((v) => !v)}
-            onCopy={() => navigator.clipboard.writeText(message.body)}
+            onCopy={message.body ? () => navigator.clipboard.writeText(message.body) : null}
             onDelete={() => onDelete(message.id)}
           />
         )}
@@ -404,9 +404,11 @@ function MessageActions({
   deleted: boolean;
   onReply: () => void;
   onToggleReactionPicker: () => void;
-  onCopy: () => void;
+  // Null when there's no text to copy (a photo or video on its own).
+  onCopy: (() => Promise<void>) | null;
   onDelete: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
   if (deleted) return null;
   return (
     <div
@@ -434,16 +436,22 @@ function MessageActions({
       >
         ↩
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy();
-        }}
-        title="Copy"
-        className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
-      >
-        📋
-      </button>
+      {onCopy && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void onCopy().then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }, () => {});
+          }}
+          title={copied ? "Copied" : "Copy"}
+          aria-label={copied ? "Copied" : "Copy message"}
+          className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
+        >
+          {copied ? "✓" : "📋"}
+        </button>
+      )}
       {mine && (
         <button
           onClick={(e) => {

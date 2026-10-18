@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Image } from 'expo-image';
@@ -5,7 +6,10 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import { ChatNameText } from '@/components/ChatNameText';
 import { SharedBetCard } from '@/components/bets/SharedBetCard';
@@ -52,8 +56,10 @@ export default function ConversationScreen() {
   // the ones still in the text when it's sent count (the web composer's rule).
   const [pendingMentions, setPendingMentions] = useState<Map<string, number>>(new Map());
   const [title, setTitle] = useState('');
-  // The message whose long-press menu is open (reactions, Reply, Report, Block).
+  // The message whose long-press menu is open (reactions, Reply, Copy,
+  // Report, Block). A double tap opens just the reactions, like iMessage.
   const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
+  const [reactionsOnly, setReactionsOnly] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -278,6 +284,13 @@ export default function ConversationScreen() {
     ]);
   }
 
+  function copyMessage() {
+    const target = actionsFor;
+    setActionsFor(null);
+    if (!target?.body) return;
+    void Clipboard.setStringAsync(target.body).then(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+  }
+
   function startReply() {
     const target = actionsFor;
     setActionsFor(null);
@@ -405,8 +418,26 @@ export default function ConversationScreen() {
               canSeeReceipts={isAnnouncements && (canPost || item.owner_id === myOwnerId)}
               onLongPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setReactionsOnly(false);
                 setActionsFor(item);
               }}
+              onDoubleTap={
+                item.deleted
+                  ? undefined
+                  : () => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setReactionsOnly(true);
+                      setActionsFor(item);
+                    }
+              }
+              onSwipeReply={
+                canPost && !item.deleted
+                  ? () => {
+                      setReplyTo(item);
+                      inputRef.current?.focus();
+                    }
+                  : undefined
+              }
               onOpenImage={setViewingImage}
               onOpenVideo={setViewingVideo}
             />
@@ -539,17 +570,22 @@ export default function ConversationScreen() {
               </Pressable>
             ))}
           </View>
-          {canPost && (
+          {canPost && !reactionsOnly && (
             <Pressable onPress={startReply} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
               <Text style={styles.replyActionText}>Reply</Text>
             </Pressable>
           )}
-          {actionsFor && actionsFor.owner_id === myOwnerId && !actionsFor.deleted && (
+          {actionsFor && !!actionsFor.body && !actionsFor.deleted && !reactionsOnly && (
+            <Pressable onPress={copyMessage} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
+              <Text style={styles.replyActionText}>Copy</Text>
+            </Pressable>
+          )}
+          {actionsFor && actionsFor.owner_id === myOwnerId && !actionsFor.deleted && !reactionsOnly && (
             <Pressable onPress={deleteMessage} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
               <Text style={[styles.replyActionText, styles.dangerText]}>Delete message</Text>
             </Pressable>
           )}
-          {actionsFor && actionsFor.owner_id !== myOwnerId && (
+          {actionsFor && actionsFor.owner_id !== myOwnerId && !reactionsOnly && (
             <>
               <Pressable onPress={reportMessage} style={({ pressed }) => [styles.replyAction, pressed && styles.pressed]}>
                 <Text style={[styles.replyActionText, styles.dangerText]}>Report message</Text>
@@ -666,15 +702,21 @@ function MessageBubble(props: {
   mentionsMe: boolean;
   canSeeReceipts: boolean;
   onLongPress: () => void;
+  // Unset where they don't apply (deleted messages; reply where you can't post).
+  onDoubleTap?: () => void;
+  onSwipeReply?: () => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string) => void;
 }) {
   const { message, mine } = props;
+  // A tap on a photo or video opens it, so double tap stays off those.
+  const doubleTap = message.image_url || message.video ? undefined : props.onDoubleTap;
   return (
     <View style={[styles.messageWrap, mine ? styles.alignEnd : styles.alignStart]}>
       {props.showName && (
         <ChatNameText name={message.owner_name} chatColor={message.owner_chat_color} style={styles.sender} />
       )}
+      <SwipeToReply onReply={props.onSwipeReply} onDoubleTap={doubleTap}>
       <Pressable onLongPress={props.onLongPress} delayLongPress={300}>
         {/* A shared bet's live card sits above its "Shared a bet" bubble,
             outside it, so it keeps its own colors. */}
@@ -710,6 +752,7 @@ function MessageBubble(props: {
           <Text style={[styles.time, mine && styles.timeMine]}>{formatMessageTime(message.created_at)}</Text>
         </View>
       </Pressable>
+      </SwipeToReply>
       {message.reactions.length > 0 && (
         <View style={[styles.reactions, mine && styles.alignEnd]}>
           {message.reactions.map((r) => (
@@ -723,6 +766,62 @@ function MessageBubble(props: {
       )}
       {props.canSeeReceipts && !message.deleted && <ReceiptsLine messageId={message.id} mine={mine} />}
     </View>
+  );
+}
+
+const SWIPE_REPLY_AT = 56;
+const SWIPE_MAX = 80;
+
+/** Like iMessage: drag a message right to reply (a reply arrow fills in
+ *  behind it, with a tick when it's far enough), and double tap to react. */
+function SwipeToReply({ onReply, onDoubleTap, children }: { onReply?: () => void; onDoubleTap?: () => void; children: ReactNode }) {
+  const x = useSharedValue(0);
+  const armed = useSharedValue(false);
+  const tick = () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const reply = () => onReply?.();
+  const react = () => onDoubleTap?.();
+  const pan = Gesture.Pan()
+    .enabled(!!onReply)
+    // Rightward only, and a vertical drag stays a scroll.
+    .activeOffsetX(14)
+    .failOffsetY([-10, 10])
+    .onUpdate((e) => {
+      x.set(Math.min(Math.max(e.translationX * 0.6, 0), SWIPE_MAX));
+      const over = x.get() >= SWIPE_REPLY_AT;
+      if (over !== armed.get()) {
+        armed.set(over);
+        if (over) runOnJS(tick)();
+      }
+    })
+    .onFinalize(() => {
+      if (armed.get()) runOnJS(reply)();
+      armed.set(false);
+      x.set(withSpring(0, { damping: 18, stiffness: 220 }));
+    });
+  const doubleTap = Gesture.Tap()
+    .enabled(!!onDoubleTap)
+    .numberOfTaps(2)
+    .maxDelay(250)
+    .onEnd((_e, success) => {
+      if (success) runOnJS(react)();
+    });
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
+  const arrow = useAnimatedStyle(() => ({
+    opacity: interpolate(x.get(), [10, SWIPE_REPLY_AT], [0, 1], 'clamp'),
+    transform: [{ scale: interpolate(x.get(), [10, SWIPE_REPLY_AT], [0.6, 1], 'clamp') }],
+  }));
+  return (
+    <GestureDetector gesture={Gesture.Race(pan, doubleTap)}>
+      <View>
+        <Animated.View style={[styles.swipeArrow, arrow]} pointerEvents="none">
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={Colors.text} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M9 14L4 9l5-5" />
+            <Path d="M4 9h10a6 6 0 016 6v4" />
+          </Svg>
+        </Animated.View>
+        <Animated.View style={slide}>{children}</Animated.View>
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -872,6 +971,7 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
   olderSpinner: { marginVertical: Spacing.lg },
   messageWrap: { marginVertical: 3, maxWidth: '82%' },
+  swipeArrow: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, alignItems: 'center', justifyContent: 'center' },
   alignStart: { alignSelf: 'flex-start' },
   alignEnd: { alignSelf: 'flex-end' },
   sender: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 2, marginLeft: Spacing.sm },
