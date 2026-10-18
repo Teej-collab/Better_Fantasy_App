@@ -2,8 +2,9 @@ import { VideoTrack, type TrackReference } from '@livekit/react-native';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Track, type RemoteParticipant } from 'livekit-client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 import { Text } from '@/components/Text';
@@ -19,7 +20,12 @@ import type { LiveGame } from '@/lib/types';
 // and an ESPN-style scorebug for the game on the TV — shown at the
 // room's delay, so it matches the picture — with your own volume for
 // the game on the right. Full screen puts the phone in landscape (on
-// older builds, it turns the picture sideways to fill the phone).
+// older builds, it turns the picture sideways to fill the phone), with
+// everyone's camera down a rail beside it (mockup A); there the badges,
+// volume and exit button fade after a few seconds (LIVE shrinks to a red
+// dot) and a tap on the game brings them back.
+const CHROME_FADE_MS = 3000;
+
 export function LoungeTv({
   share,
   game,
@@ -28,6 +34,7 @@ export function LoungeTv({
   compact = false,
   onPressScorebug,
   onExitFullScreen,
+  fullScreenRail,
 }: {
   share: TrackReference | undefined;
   game: LiveGame | null;
@@ -37,10 +44,34 @@ export function LoungeTv({
   onPressScorebug?: () => void;
   // Set when this is the full-screen TV: its own way back out.
   onExitFullScreen?: () => void;
+  // Shown beside the picture in full screen: the room's cameras.
+  fullScreenRail?: ReactNode;
 }) {
   const sharer = share?.participant;
   const fullScreen = !!onExitFullScreen;
   const [full, setFull] = useState(false);
+  // Full screen only: whether the badges and buttons are showing. Any
+  // touch on them keeps them up; they fade CHROME_FADE_MS after the last.
+  const [chrome, setChrome] = useState(true);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeLater = useCallback(() => {
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    fadeTimer.current = setTimeout(() => setChrome(false), CHROME_FADE_MS);
+  }, []);
+  const keepChrome = useCallback(() => {
+    if (!fullScreen) return;
+    setChrome(true);
+    fadeLater();
+  }, [fullScreen, fadeLater]);
+  useEffect(() => {
+    if (fullScreen) fadeLater();
+    return () => {
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    };
+  }, [fullScreen, fadeLater]);
+  const chromeShown = !fullScreen || chrome;
+  const chromeStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 1 : 0, { duration: 350 }) }));
+  const dotStyle = useAnimatedStyle(() => ({ opacity: withTiming(chromeShown ? 0 : 1, { duration: 350 }) }));
   return (
     <View style={[styles.tv, fullScreen ? styles.tvFull : { height }]} accessibilityLabel={game ? `${game.away_team.abbr} at ${game.home_team.abbr} on the TV` : 'The TV'}>
       <LinearGradient colors={['#1d3a24', '#0f1f14', '#070b08']} style={StyleSheet.absoluteFill} />
@@ -52,9 +83,27 @@ export function LoungeTv({
           <Text style={styles.emptyHint}>{"Whoever's hosting shares the game from a computer."}</Text>
         </View>
       )}
+      {fullScreen && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            if (chrome) {
+              if (fadeTimer.current) clearTimeout(fadeTimer.current);
+              setChrome(false);
+            } else keepChrome();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={chrome ? 'Hide the controls' : 'Show the controls'}
+        />
+      )}
       {/* Everything over the picture; full screen keeps it clear of the
           notch and home bar, which end up on its left and right. */}
       <View style={[StyleSheet.absoluteFill, fullScreen && styles.fullInset]} pointerEvents="box-none">
+      {fullScreen && share && <Animated.View style={[styles.liveDot, dotStyle]} pointerEvents="none" accessibilityLabel="Live" />}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, chromeStyle]}
+        pointerEvents={chromeShown ? 'box-none' : 'none'}
+        onTouchStart={fullScreen ? keepChrome : undefined}>
       {share && !compact && (
         <View style={styles.badges}>
           <Text style={styles.live}>LIVE</Text>
@@ -78,9 +127,13 @@ export function LoungeTv({
           </Svg>
         </Pressable>
       )}
+      </Animated.View>
       {!fullScreen && full && (
         <FullScreenTv onClose={() => setFull(false)}>
-          <LoungeTv share={share} game={game} catchingUp={catchingUp} onPressScorebug={onPressScorebug} onExitFullScreen={() => setFull(false)} />
+          <View style={styles.fullRow}>
+            <LoungeTv share={share} game={game} catchingUp={catchingUp} onPressScorebug={onPressScorebug} onExitFullScreen={() => setFull(false)} />
+            {fullScreenRail}
+          </View>
         </FullScreenTv>
       )}
       {/* A broadcast-style bug in the corner, only as wide as the scores:
@@ -194,7 +247,9 @@ function GameVolume({ participant }: { participant: RemoteParticipant }) {
 const styles = StyleSheet.create({
   tv: { marginHorizontal: 10, marginTop: 10, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', backgroundColor: '#070b08' },
   tvFull: { flex: 1, margin: 0, marginTop: 0, marginHorizontal: 0, borderRadius: 0, borderWidth: 0, backgroundColor: '#000' },
-  fullInset: { left: 44, right: 44 },
+  fullInset: { left: 44, right: 12 },
+  fullRow: { flex: 1, flexDirection: 'row' },
+  liveDot: { position: 'absolute', top: 16, left: 10, width: 10, height: 10, borderRadius: 5, backgroundColor: '#dc143c' },
   fullScreen: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   fullBtn: { position: 'absolute', right: 10, bottom: 10, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 24 },

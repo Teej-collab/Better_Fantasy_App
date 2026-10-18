@@ -295,7 +295,12 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
       {!keyboardOpen && <LoungeTickers tvGame={game} delaySeconds={delaySeconds} />}
 
       <View onTouchStart={Keyboard.dismiss}>
-        <LoungeTv share={share} game={game} catchingUp={delayed.catchingUp} />
+        <LoungeTv
+          share={share}
+          game={game}
+          catchingUp={delayed.catchingUp}
+          fullScreenRail={<CameraRail participants={participants} accent={accent} tileImpacts={rm.tileImpacts} chugOwner={rm.chugOwner} />}
+        />
         {rm.big?.tier === 1 && <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} />}
         {burst && (
           <View style={styles.burst} pointerEvents="none">
@@ -418,13 +423,16 @@ function Person({
   impact,
   owesChug,
   onPress,
+  rail = false,
 }: {
   participant: Participant;
   accent: string;
   // What the moment on screen did to this person's matchup.
   impact?: number;
   owesChug?: boolean;
-  onPress: () => void;
+  onPress?: () => void;
+  // A slimmer tile for the full-screen TV's camera rail.
+  rail?: boolean;
 }) {
   const speaking = useIsSpeaking(participant);
   const camera = (useTracks([Track.Source.Camera]) as TrackReference[]).find((t) => t.participant.identity === participant.identity);
@@ -433,8 +441,10 @@ function Person({
   return (
     <Pressable
       onPress={onPress}
+      disabled={!onPress}
       style={[
         styles.person,
+        rail && styles.personRail,
         { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] },
         speaking && { borderColor: accent },
         impact !== undefined && Math.abs(impact) >= 0.05 && { borderColor: impact > 0 ? accent : '#f87171', borderWidth: 3 },
@@ -495,31 +505,7 @@ function Footer({
   bottomInset: number;
   keyboardOpen: boolean;
 }) {
-  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const { send: chatSocketSend } = useChatSocket();
-  const [front, setFront] = useState(true);
-  // Off takes the camera out of the room entirely (stopped and
-  // unpublished): LiveKit's own off only mutes it in place, which on the
-  // phone could leave it stuck on with no way to turn it off.
-  async function toggleCamera() {
-    try {
-      const camera = localParticipant.getTrackPublication(Track.Source.Camera)?.track;
-      if (isCameraEnabled && camera) {
-        await localParticipant.unpublishTrack(camera, true);
-      } else {
-        await localParticipant.setCameraEnabled(true);
-        setFront(true);
-      }
-    } catch {
-      Alert.alert("Couldn't change your camera", 'Try again in a moment.');
-    }
-  }
-  async function flip() {
-    const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
-    if (!track) return;
-    await track.restartTrack({ facingMode: front ? 'environment' : 'user' });
-    setFront(!front);
-  }
   const lk = useChat();
   const [draft, setDraft] = useState('');
   // @mentions (Watch Party chats only — a password Lounge's chat is
@@ -634,52 +620,121 @@ function Footer({
             </>
           ) : (
             <>
-              <Pressable
-                onPress={() => {
-                  haptics.tap();
-                  void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
-                }}
-                style={[styles.roundBtn, !isMicrophoneEnabled && styles.roundBtnOff]}
-                accessibilityRole="button"
-                accessibilityLabel={isMicrophoneEnabled ? 'Microphone on' : 'Microphone off'}>
-                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <Rect x={9} y={3} width={6} height={11} rx={3} />
-                  <Path d="M5 11a7 7 0 0014 0M12 18v3" />
-                  {!isMicrophoneEnabled && <Path d="M3 3l18 18" />}
-                </Svg>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  haptics.tap();
-                  void toggleCamera();
-                }}
-                style={[styles.roundBtn, !isCameraEnabled && styles.roundBtnOff]}
-                accessibilityRole="button"
-                accessibilityLabel={isCameraEnabled ? 'Camera on' : 'Camera off'}>
-                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <Path d="M16 10l5-3v10l-5-3M3 7h13v10H3z" />
-                  {!isCameraEnabled && <Path d="M2 2l20 20" />}
-                </Svg>
-              </Pressable>
-              {isCameraEnabled && (
-                <Pressable
-                  onPress={() => {
-                    haptics.tap();
-                    void flip();
-                  }}
-                  style={styles.roundBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={front ? 'Switch to the back camera' : 'Switch to the front camera'}>
-                  <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <Path d="M3 7h3l2-3h8l2 3h3v12H3z" />
-                    <Path d="M9 13a3 3 0 015.2-2M15 13a3 3 0 01-5.2 2" />
-                  </Svg>
-                </Pressable>
-              )}
+              <MicAndCamera />
             </>
           )}
         </View>
       </View>
+  );
+}
+
+/** The full-screen TV's right side (mockup A): everyone's camera down
+ *  a rail, your mic and camera under it. */
+function CameraRail({
+  participants,
+  accent,
+  tileImpacts,
+  chugOwner,
+}: {
+  participants: Participant[];
+  accent: string;
+  tileImpacts: Record<string, number>;
+  chugOwner: string | null;
+}) {
+  return (
+    <View style={styles.rail}>
+      <Text style={styles.railTitle}>IN THE ROOM · {participants.length}</Text>
+      <ScrollView style={styles.railList} contentContainerStyle={styles.railListContent} showsVerticalScrollIndicator={false}>
+        {participants.map((p) => (
+          <Person
+            key={p.identity}
+            participant={p}
+            accent={accent}
+            impact={tileImpacts[personOf(p.identity)]}
+            owesChug={chugOwner === personOf(p.identity)}
+            rail
+          />
+        ))}
+      </ScrollView>
+      <View style={styles.railButtons}>
+        <MicAndCamera flip={false} />
+      </View>
+    </View>
+  );
+}
+
+// Your mic and camera (and, with the camera on, front/back), in the
+// footer and on the full-screen TV's camera rail.
+function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
+  const [front, setFront] = useState(true);
+  // Off takes the camera out of the room entirely (stopped and
+  // unpublished): LiveKit's own off only mutes it in place, which on the
+  // phone could leave it stuck on with no way to turn it off.
+  async function toggleCamera() {
+    try {
+      const camera = localParticipant.getTrackPublication(Track.Source.Camera)?.track;
+      if (isCameraEnabled && camera) {
+        await localParticipant.unpublishTrack(camera, true);
+      } else {
+        await localParticipant.setCameraEnabled(true);
+        setFront(true);
+      }
+    } catch {
+      Alert.alert("Couldn't change your camera", 'Try again in a moment.');
+    }
+  }
+  async function flip() {
+    const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+    if (!track) return;
+    await track.restartTrack({ facingMode: front ? 'environment' : 'user' });
+    setFront(!front);
+  }
+  return (
+    <>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+        }}
+        style={[styles.roundBtn, !isMicrophoneEnabled && styles.roundBtnOff]}
+        accessibilityRole="button"
+        accessibilityLabel={isMicrophoneEnabled ? 'Microphone on' : 'Microphone off'}>
+        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#f3f4f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <Rect x={9} y={3} width={6} height={11} rx={3} />
+          <Path d="M5 11a7 7 0 0014 0M12 18v3" />
+          {!isMicrophoneEnabled && <Path d="M3 3l18 18" />}
+        </Svg>
+      </Pressable>
+      <Pressable
+        onPress={() => {
+          haptics.tap();
+          void toggleCamera();
+        }}
+        style={[styles.roundBtn, !isCameraEnabled && styles.roundBtnOff]}
+        accessibilityRole="button"
+        accessibilityLabel={isCameraEnabled ? 'Camera on' : 'Camera off'}>
+        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <Path d="M16 10l5-3v10l-5-3M3 7h13v10H3z" />
+          {!isCameraEnabled && <Path d="M2 2l20 20" />}
+        </Svg>
+      </Pressable>
+      {showFlip && isCameraEnabled && (
+        <Pressable
+          onPress={() => {
+            haptics.tap();
+            void flip();
+          }}
+          style={styles.roundBtn}
+          accessibilityRole="button"
+          accessibilityLabel={front ? 'Switch to the back camera' : 'Switch to the front camera'}>
+          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M3 7h3l2-3h8l2 3h3v12H3z" />
+            <Path d="M9 13a3 3 0 015.2-2M15 13a3 3 0 01-5.2 2" />
+          </Svg>
+        </Pressable>
+      )}
+    </>
   );
 }
 
@@ -764,6 +819,12 @@ const styles = StyleSheet.create({
   burstText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   peopleScroll: { flexGrow: 0 },
   people: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
+  personRail: { width: '100%', height: 74 },
+  rail: { width: 176, paddingTop: 12, paddingBottom: 12, paddingLeft: 10, paddingRight: 34, backgroundColor: '#0d1016', borderLeftWidth: 1, borderLeftColor: '#1c2027', gap: 8 },
+  railTitle: { color: '#9aa3b2', fontFamily: Fonts.display, fontSize: 12, letterSpacing: 1.2 },
+  railList: { flex: 1 },
+  railListContent: { gap: 8 },
+  railButtons: { flexDirection: 'row', justifyContent: 'space-between' },
   person: { width: 132, height: 99, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
   personInitials: { color: 'rgba(255,255,255,0.75)', fontSize: 26, fontFamily: Fonts.displayBold },
   personName: { position: 'absolute', left: 6, bottom: 6, maxWidth: 116, color: '#fff', fontSize: 11, fontWeight: '700', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, paddingVertical: 2 },
