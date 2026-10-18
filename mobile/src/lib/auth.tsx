@@ -9,17 +9,44 @@ import { endAll as endAllLiveActivities } from '@/lib/liveActivity';
 import { unregisterForPush } from '@/lib/pushRegistration';
 import { updateMatchupWidget } from '@/lib/homeWidget';
 
-export const TOKEN_KEY = 'weekend-league.session';
+export const TOKEN_KEY = 'weekend-league.session.v2';
+// Where sessions were kept before 2026-10-18, locked with the phone.
+const LEGACY_TOKEN_KEY = 'weekend-league.session';
 // Readable after the phone's first unlock since boot, not only while it's
 // unlocked: the background widget refresh (lib/backgroundTasks.ts) runs
 // with the phone locked. Still never leaves the device or its backups.
 export const TOKEN_STORE_OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
 
-// Saves the session with TOKEN_STORE_OPTIONS. iOS keeps an existing item's
-// accessibility on update, so the old entry is removed first.
+// Saving never deletes first. It used to (iOS keeps an existing item's
+// accessibility on update, so the old entry was removed and re-added), on
+// every launch — background launches too, every 15 minutes on game days
+// for the widget. iOS suspending one between the delete and the add left
+// no session, and Niko signing in again several times a day (2026-10-18).
+// The new key gets the right accessibility from its first write instead.
 async function saveToken(token: string) {
-  await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
   await SecureStore.setItemAsync(TOKEN_KEY, token, TOKEN_STORE_OPTIONS);
+}
+
+/** The saved session, moving one from the old key over (the old copy is
+ *  only removed once the new one is written). Throws if the keychain
+ *  refuses the read. */
+export async function readSavedToken(): Promise<string | null> {
+  const saved = await SecureStore.getItemAsync(TOKEN_KEY);
+  if (saved) return saved;
+  const legacy = await SecureStore.getItemAsync(LEGACY_TOKEN_KEY);
+  if (!legacy) return null;
+  try {
+    await saveToken(legacy);
+    await SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY);
+  } catch {
+    // Still readable from the old key next time.
+  }
+  return legacy;
+}
+
+async function clearSavedToken() {
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY).catch(() => {});
 }
 
 // Must match app.json's "scheme" and the backend's
@@ -94,7 +121,7 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     setSessionToken(next);
     setToken(next);
     if (next) await saveToken(next);
-    else await SecureStore.deleteItemAsync(TOKEN_KEY);
+    else await clearSavedToken();
   }, []);
 
   const signOut = useCallback(async () => {
@@ -121,14 +148,12 @@ export function AuthProvider({ children, onSignOut }: { children: ReactNode; onS
     let failures = 0;
     let sub: { remove: () => void } | null = null;
     const load = () => {
-      SecureStore.getItemAsync(TOKEN_KEY)
+      readSavedToken()
         .then((saved) => {
           if (cancelled) return;
           sub?.remove();
           setSessionToken(saved);
           setToken(saved);
-          // Sessions saved before 2026-10 were locked with the phone; re-save them.
-          if (saved) void saveToken(saved).catch(() => {});
         })
         .catch(() => {
           if (cancelled) return;

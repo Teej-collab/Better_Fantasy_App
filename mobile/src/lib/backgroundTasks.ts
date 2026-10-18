@@ -1,8 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
-import * as SecureStore from 'expo-secure-store';
 
 import { api, setSessionToken } from '@/lib/api';
-import { TOKEN_KEY } from '@/lib/auth';
+import { readSavedToken } from '@/lib/auth';
 import { updateMatchupWidget } from '@/lib/homeWidget';
 
 // Game-day widget refresh (2026-10): while NFL games are live, the backend
@@ -26,7 +25,7 @@ if (requireOptionalNativeModule('ExpoTaskManager') && requireOptionalNativeModul
 
   TaskManager.defineTask(TASK, async () => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
+      const token = await readSavedToken();
       if (!token) return Notifications.BackgroundNotificationTaskResult.NoData;
       setSessionToken(token);
       const [week, team, scoreboard] = await Promise.all([
