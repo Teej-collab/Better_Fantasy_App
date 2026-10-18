@@ -38,6 +38,8 @@ import {
 } from "@/lib/loungeLive";
 import { nflTeamColor } from "@/lib/nfl-teams";
 import { personOf, useOwnDevices, useRoomPeople } from "@/lib/loungePeople";
+import { HexFrame } from "@/components/lounge/HexFrame";
+import { useScoringHighlights, type ScoringHit } from "@/lib/scoringHighlights";
 import { useRosterMoments, type RosterMoment } from "@/lib/rosterMoments";
 import { isHexColor, MULTI, MULTI_COLORS } from "@/components/settings/ColorChoices";
 
@@ -172,6 +174,9 @@ export function WebLoungeRoom({
     usePolled(week?.week ? `c${week.season}-${week.week}` : null, () => loungeApi.matchupContext(week!.season, week!.week!), 15000),
     tv.delaySeconds
   );
+
+  // Whose score just moved, for everyone's tiles (lib/scoringHighlights.ts).
+  const hits = useScoringHighlights(leagueContext?.matchups ?? EMPTY_LEAGUE, matchupId !== null ? String(matchupId) : null);
 
   const mySide = detail ? (detail.home.owner_id === myOwnerId ? detail.home : detail.away) : null;
   const myStarters = (mySide?.roster ?? []).filter((p) => p.lineup_slot !== "BE" && p.lineup_slot !== "IR");
@@ -411,7 +416,7 @@ export function WebLoungeRoom({
           </div>
           <CameraGrid count={participants.length}>
             {participants.map((p) => (
-              <Tile key={p.identity} participant={p} accent={accent} impact={rm.tileImpacts[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} />
+              <Tile key={p.identity} participant={p} accent={accent} hit={hits[personOf(p.identity)]} owesChug={rm.chugOwner === personOf(p.identity)} />
             ))}
           </CameraGrid>
         </section>
@@ -756,43 +761,30 @@ function CameraGrid({ count, children }: { count: number; children: React.ReactN
   );
 }
 
-function Tile({ participant, accent, impact, owesChug }: { participant: Participant; accent: string; impact?: number; owesChug?: boolean }) {
+// A camera tile in its honeycomb frame, which lights up in an NFL team's
+// colors when that team moves this person's score (HexFrame).
+function Tile({ participant, accent, hit, owesChug }: { participant: Participant; accent: string; hit?: ScoringHit; owesChug?: boolean }) {
   const speaking = useIsSpeaking(participant);
   const camera = useTracks([Track.Source.Camera]).find((t) => t.participant.identity === participant.identity) as TrackReference | undefined;
   const name = participant.isLocal ? "You" : participant.name || participant.identity;
-  const hasImpact = impact !== undefined && Math.abs(impact) >= 0.05;
+  const cameraOn = !!camera && !camera.publication?.isMuted;
   return (
-    <div
-      className="relative flex items-end overflow-hidden rounded-xl p-2 text-[13px] font-bold"
-      style={{
-        aspectRatio: "16 / 9",
-        background: TILE_COLORS[hash(name, TILE_COLORS.length)],
-        // What the moment on screen did to this person's matchup.
-        boxShadow: owesChug
-          ? "inset 0 0 0 3px #facc15, 0 0 24px rgba(250,204,21,0.4)"
-          : hasImpact
-            ? `inset 0 0 0 3px ${impact! > 0 ? accent : "#f87171"}`
-            : speaking
-              ? `0 0 0 2px ${accent}`
-              : "none",
-      }}
-    >
-      {camera && !camera.publication?.isMuted && <VideoTrack trackRef={camera} className="absolute inset-0 h-full w-full object-cover" />}
-      {!(camera && !camera.publication?.isMuted) && (
-        <span className="font-display absolute inset-0 flex items-center justify-center text-3xl text-white/70">{name.slice(0, 1).toUpperCase()}</span>
+    <HexFrame hit={hit} style={{ aspectRatio: "16 / 9" }}>
+      <div className="absolute inset-0 flex items-center justify-center" style={{ background: TILE_COLORS[hash(name, TILE_COLORS.length)] }}>
+        {cameraOn ? (
+          <VideoTrack trackRef={camera} className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <span className="font-display text-3xl text-white/70">{name.slice(0, 1).toUpperCase()}</span>
+        )}
+      </div>
+      <span className="absolute bottom-2 left-2 rounded-md bg-black/55 px-2 py-0.5 text-[13px] font-bold">{name}</span>
+      {owesChug && <span className="font-display absolute top-2 left-2 rounded-full bg-[#facc15] px-2 py-0.5 text-[11px] font-bold text-[#120f02]">OWES 1</span>}
+      {(speaking || owesChug) && (
+        <span className="pointer-events-none absolute inset-0 rounded-[9px]" style={{ boxShadow: `inset 0 0 0 2px ${owesChug ? "#facc15" : accent}` }} />
       )}
-      <span className="relative rounded-md bg-black/55 px-2 py-0.5">{name}</span>
-      {hasImpact && (
-        <span className="absolute top-2 right-2 rounded-full px-2 py-0.5 font-mono text-xs font-bold text-[#05060a]" style={{ background: impact! > 0 ? accent : "#f87171" }}>
-          {impact! > 0 ? "+" : "−"}
-          {Math.abs(impact!).toFixed(1)}
-        </span>
-      )}
-      {owesChug && <span className="font-display absolute top-2 right-2 rounded-full bg-[#facc15] px-2 py-0.5 text-[11px] font-bold text-[#120f02]">OWES 1</span>}
-    </div>
+    </HexFrame>
   );
 }
-
 
 function ChatPanel({
   feed,

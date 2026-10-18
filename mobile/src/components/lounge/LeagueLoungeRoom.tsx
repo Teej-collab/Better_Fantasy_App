@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
 import { ChatNameText } from '@/components/ChatNameText';
+import { HexFrame } from '@/components/lounge/HexFrame';
 import { LoungeField } from '@/components/lounge/LoungeField';
 import { SweatCard, SweatSheet } from '@/components/lounge/LoungeSweat';
 import { LoungeTickers } from '@/components/lounge/LoungeTickers';
@@ -38,6 +39,7 @@ import { personOf, useOwnDevices, useRoomPeople } from '@/lib/loungePeople';
 import { lastName, useLoungeSweat } from '@/lib/loungeSweat';
 import { useActiveLeague, useChatMembers, useChatMessages, useMe } from '@/lib/queries';
 import { useRosterMoments } from '@/lib/rosterMoments';
+import { useScoringHighlights, type ScoringHit } from '@/lib/scoringHighlights';
 import type { GamecastPlay, LiveGame } from '@/lib/types';
 
 // LiveKit's WebRTC globals. This module is only loaded once
@@ -139,6 +141,8 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
   const shares = useTracks([Track.Source.ScreenShare]) as TrackReference[];
   const share = shares[0];
   const sweat = useLoungeSweat(delaySeconds);
+  // Whose score just moved, for everyone's tiles (lib/scoringHighlights.ts).
+  const hits = useScoringHighlights(sweat.league, sweat.matchupId !== null ? String(sweat.matchupId) : null);
   const [sweatOpen, setSweatOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [moments, setMoments] = useState<FeedItem[]>([]);
@@ -300,7 +304,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
           share={share}
           game={game}
           catchingUp={delayed.catchingUp}
-          fullScreenRail={<CameraRail participants={participants} accent={accent} tileImpacts={rm.tileImpacts} chugOwner={rm.chugOwner} />}
+          fullScreenRail={<CameraRail participants={participants} accent={accent} hits={hits} chugOwner={rm.chugOwner} />}
         />
         {rm.big?.tier === 1 && <MomentRibbon moment={rm.big} accent={accent} onDismiss={rm.dismissBig} />}
         {burst && (
@@ -326,7 +330,7 @@ function Room({ roomName, party, tvGameId, delaySeconds, error, onLeave, onEndPa
                 key={p.identity}
                 participant={p}
                 accent={accent}
-                impact={rm.tileImpacts[personOf(p.identity)]}
+                hit={hits[personOf(p.identity)]}
                 owesChug={rm.chugOwner === personOf(p.identity)}
                 onPress={() => setVolumeOpen(true)}
               />
@@ -416,20 +420,21 @@ function useFeed(party: LoungeRoomProps['party'], moments: FeedItem[]): FeedItem
   return [...messages, ...moments].reverse();
 }
 
-/** A camera tile — their video when their camera's on, else initials.
- *  Tap for everyone's volume. */
+/** A camera tile — their video when their camera's on, else initials —
+ *  in a honeycomb frame that lights up in an NFL team's colors when
+ *  that team moves their score (HexFrame). Tap for everyone's volume. */
 function Person({
   participant,
   accent,
-  impact,
+  hit,
   owesChug,
   onPress,
   rail = false,
 }: {
   participant: Participant;
   accent: string;
-  // What the moment on screen did to this person's matchup.
-  impact?: number;
+  // Their score just moved (lib/scoringHighlights.ts).
+  hit?: ScoringHit;
   owesChug?: boolean;
   onPress?: () => void;
   // A slimmer tile for the full-screen TV's camera rail.
@@ -439,39 +444,33 @@ function Person({
   const camera = (useTracks([Track.Source.Camera]) as TrackReference[]).find((t) => t.participant.identity === participant.identity);
   const name = participant.isLocal ? 'You' : participant.name || participant.identity;
   const showVideo = !!camera && !camera.publication?.isMuted;
+  const scored = hit ? `, ${hit.points >= 0 ? 'up' : 'down'} ${Math.abs(hit.points).toFixed(1)}` : '';
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[
-        styles.person,
-        rail && styles.personRail,
-        { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] },
-        speaking && { borderColor: accent },
-        impact !== undefined && Math.abs(impact) >= 0.05 && { borderColor: impact > 0 ? accent : '#f87171', borderWidth: 3 },
-        owesChug && { borderColor: '#facc15', borderWidth: 3 },
-      ]}
       accessibilityRole="button"
-      accessibilityLabel={`${name}${speaking ? ', talking' : ''} — adjust volume`}>
-      {showVideo ? (
-        <VideoTrack trackRef={camera} style={StyleSheet.absoluteFill} objectFit="cover" mirror={participant.isLocal} />
-      ) : (
-        <Text style={styles.personInitials}>{initialsOf(name)}</Text>
-      )}
-      <Text style={styles.personName} numberOfLines={1}>
-        {name}
-      </Text>
-      {impact !== undefined && Math.abs(impact) >= 0.05 && (
-        <Text style={[styles.personBadge, { backgroundColor: impact > 0 ? accent : '#f87171' }]} maxFontSizeMultiplier={1.1}>
-          {impact > 0 ? '+' : '−'}
-          {Math.abs(impact).toFixed(1)}
+      accessibilityLabel={`${name}${speaking ? ', talking' : ''}${scored} — adjust volume`}>
+      <HexFrame width={132} height={rail ? 74 : 99} hit={hit} fallback={accent} rail={rail}>
+        <View style={[StyleSheet.absoluteFill, styles.personBody, { backgroundColor: PERSON_COLORS[hashIndex(name, PERSON_COLORS.length)] }]}>
+          {showVideo ? (
+            <VideoTrack trackRef={camera} style={StyleSheet.absoluteFill} objectFit="cover" mirror={participant.isLocal} />
+          ) : (
+            <Text style={[styles.personInitials, rail && styles.personInitialsRail]}>{initialsOf(name)}</Text>
+          )}
+        </View>
+        <Text style={[styles.personName, rail && styles.personNameRail]} numberOfLines={1}>
+          {name}
         </Text>
-      )}
-      {owesChug && (
-        <Text style={[styles.personBadge, { backgroundColor: '#facc15' }]} maxFontSizeMultiplier={1.1}>
-          OWES 1
-        </Text>
-      )}
+        {owesChug && (
+          <Text style={[styles.personBadge, { backgroundColor: '#facc15' }]} maxFontSizeMultiplier={1.1}>
+            OWES 1
+          </Text>
+        )}
+        {(speaking || owesChug) && (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.personRing, { borderColor: owesChug ? '#facc15' : accent }]} />
+        )}
+      </HexFrame>
     </Pressable>
   );
 }
@@ -634,12 +633,12 @@ function Footer({
 function CameraRail({
   participants,
   accent,
-  tileImpacts,
+  hits,
   chugOwner,
 }: {
   participants: Participant[];
   accent: string;
-  tileImpacts: Record<string, number>;
+  hits: Record<string, ScoringHit>;
   chugOwner: string | null;
 }) {
   return (
@@ -651,7 +650,7 @@ function CameraRail({
             key={p.identity}
             participant={p}
             accent={accent}
-            impact={tileImpacts[personOf(p.identity)]}
+            hit={hits[personOf(p.identity)]}
             owesChug={chugOwner === personOf(p.identity)}
             rail
           />
@@ -829,18 +828,20 @@ const styles = StyleSheet.create({
   error: { color: '#f87171', fontSize: 12, paddingHorizontal: 14 },
   reactCount: { color: '#9aa3b2', fontFamily: Fonts.mono, fontSize: 11 },
   feedWrap: { flex: 1, position: 'relative' },
-  personBadge: { position: 'absolute', top: 6, right: 6, color: '#05060a', fontFamily: Fonts.monoBold, fontSize: 11, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
+  personBadge: { position: 'absolute', top: 6, left: 6, color: '#05060a', fontFamily: Fonts.monoBold, fontSize: 11, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
   burst: { position: 'absolute', top: 18, right: 18, backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   burstText: { color: '#fff', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   peopleScroll: { flexGrow: 0 },
   people: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
-  personRail: { width: '100%', height: 74 },
   rail: { width: 176, paddingTop: 12, paddingBottom: 12, paddingLeft: 10, paddingRight: 34, backgroundColor: '#0d1016', borderLeftWidth: 1, borderLeftColor: '#1c2027', gap: 8 },
   railTitle: { color: '#9aa3b2', fontFamily: Fonts.display, fontSize: 12, letterSpacing: 1.2 },
   railList: { flex: 1 },
   railListContent: { gap: 8 },
   railButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-  person: { width: 132, height: 99, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  personBody: { alignItems: 'center', justifyContent: 'center' },
+  personRing: { borderWidth: 2, borderRadius: 9 },
+  personInitialsRail: { fontSize: 18 },
+  personNameRail: { left: 4, bottom: 4, fontSize: 10, paddingHorizontal: 5 },
   personInitials: { color: 'rgba(255,255,255,0.75)', fontSize: 26, fontFamily: Fonts.displayBold },
   personName: { position: 'absolute', left: 6, bottom: 6, maxWidth: 116, color: '#fff', fontSize: 11, fontWeight: '700', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, paddingVertical: 2 },
   rosterBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1 },
