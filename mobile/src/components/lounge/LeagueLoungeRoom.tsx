@@ -14,7 +14,7 @@ import Slider from '@react-native-community/slider';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Track, type Participant, type RemoteParticipant } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect } from 'react-native-svg';
 
@@ -498,6 +498,22 @@ function Footer({
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const { send: chatSocketSend } = useChatSocket();
   const [front, setFront] = useState(true);
+  // Off takes the camera out of the room entirely (stopped and
+  // unpublished): LiveKit's own off only mutes it in place, which on the
+  // phone could leave it stuck on with no way to turn it off.
+  async function toggleCamera() {
+    try {
+      const camera = localParticipant.getTrackPublication(Track.Source.Camera)?.track;
+      if (isCameraEnabled && camera) {
+        await localParticipant.unpublishTrack(camera, true);
+      } else {
+        await localParticipant.setCameraEnabled(true);
+        setFront(true);
+      }
+    } catch {
+      Alert.alert("Couldn't change your camera", 'Try again in a moment.');
+    }
+  }
   async function flip() {
     const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
     if (!track) return;
@@ -635,7 +651,7 @@ function Footer({
               <Pressable
                 onPress={() => {
                   haptics.tap();
-                  void localParticipant.setCameraEnabled(!isCameraEnabled);
+                  void toggleCamera();
                 }}
                 style={[styles.roundBtn, !isCameraEnabled && styles.roundBtnOff]}
                 accessibilityRole="button"
