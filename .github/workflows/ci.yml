@@ -27,9 +27,29 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
+    # Stand-ins for the settings backend/.env gives a laptop. None of
+    # these are real credentials; tests that sign sessions or encrypt
+    # just need some value to be set.
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bfa
       PGPASSWORD: postgres
+      SESSION_SECRET: ci-only-session-secret-not-used-anywhere-real
+      ACTIVE_SEASON: "2026"
+      LEAGUE_START_SEASON: "2023"
+      ESPN_LEAGUE_ID: "1"
+      ESPN_S2: ci-placeholder
+      ESPN_SWID: "{00000000-0000-0000-0000-000000000000}"
+      ESPN_DRY_RUN: "true"
+      ESPN_CREDENTIAL_ENCRYPTION_KEY: DwMUzImqxgNrljdH5YszO_i-BWpf39gXvjcXsF_LKB0=
+      FRONTEND_URL: http://localhost:3000
+      SESSION_COOKIE_SECURE: "false"
+      DISCORD_CLIENT_ID: ci-placeholder
+      DISCORD_CLIENT_SECRET: ci-placeholder
+      DISCORD_REDIRECT_URI: http://localhost:8000/auth/discord/callback
+      GOOGLE_CLIENT_ID: ci-placeholder
+      GOOGLE_CLIENT_SECRET: ci-placeholder
+      GOOGLE_REDIRECT_URI: http://localhost:8000/auth/google/callback
+      COMMISSIONER_DISCORD_ID: "1"
     defaults:
       run:
         working-directory: backend
