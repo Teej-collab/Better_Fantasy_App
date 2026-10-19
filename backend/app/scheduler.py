@@ -148,6 +148,7 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   owner's quiet hours, every 5 minutes. In-game injury alerts ride the
   weekly compute job instead, right after it records them.
 """
+import functools
 import logging
 import time
 import os
@@ -193,6 +194,7 @@ from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
 from app.queries import league_espn_connections as espn_connection_queries
 from app.queries import watch_party as watch_party_queries
+from app import scheduler_lease
 from app.scheduler_status import record_job_run
 from app.watch_party.manager import manager as watch_party_manager
 
@@ -1248,13 +1250,32 @@ def start_scheduler():
         started_any = True
 
     if started_any:
+        # Only the copy holding the lease runs anything (see
+        # app/scheduler_lease.py) — every job above skips its tick
+        # otherwise. The heartbeat runs first thing, so the lease is
+        # settled before the first job comes due.
+        for job in _scheduler.get_jobs():
+            job.modify(func=_leader_only(job.func))
+        _scheduler.add_job(
+            scheduler_lease.heartbeat, "interval", seconds=scheduler_lease.HEARTBEAT_SECONDS,
+            id="scheduler_lease", next_run_time=datetime.now(timezone.utc),
+        )
         _scheduler.start()
     else:
         _scheduler = None
 
 
-def stop_scheduler():
+def _leader_only(func):
+    @functools.wraps(func)
+    async def run(*args, **kwargs):
+        if scheduler_lease.is_leader():
+            return await func(*args, **kwargs)
+    return run
+
+
+async def stop_scheduler():
     global _scheduler
     if _scheduler is not None:
         _scheduler.shutdown()
         _scheduler = None
+        await scheduler_lease.give_up()

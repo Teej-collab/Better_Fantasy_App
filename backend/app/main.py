@@ -47,7 +47,7 @@ from app.scheduler import start_scheduler, stop_scheduler
 async def lifespan(app: FastAPI):
     start_scheduler()
     yield
-    stop_scheduler()
+    await stop_scheduler()
 
 
 app = FastAPI(title="Better Fantasy App API", lifespan=lifespan)
