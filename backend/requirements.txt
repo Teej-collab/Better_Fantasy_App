@@ -4,6 +4,9 @@ uvicorn[standard]==0.52.3
 asyncpg==0.31.0
 python-dotenv==1.2.3
 alembic==1.19.1
+# 2.1 switched the default postgresql:// driver to psycopg 3; alembic
+# here runs on psycopg2-binary.
+SQLAlchemy==2.0.52
 psycopg2-binary==2.9.12
 espn_api==0.46.0
 apscheduler==3.11.3

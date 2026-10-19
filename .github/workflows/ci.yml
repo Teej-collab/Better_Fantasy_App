@@ -72,6 +72,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # Route types (LayoutProps, PageProps) are generated, not checked in.
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npx eslint
 
