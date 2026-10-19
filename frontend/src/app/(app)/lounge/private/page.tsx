@@ -49,6 +49,8 @@ export default function LoungePage() {
 
   useEffect(() => {
     if (signedIn !== "in") return;
+    // Loads the list once signed-in is known; the setState lands after the fetch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Couldn't load your lounges."));
   }, [signedIn]);
 

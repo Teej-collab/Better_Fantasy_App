@@ -35,6 +35,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab("Overview"); // this modal is one shared instance — reset the tab when a different player opens into it
     getPlayerCard(sleeperPlayerId)
       .then((c) => {

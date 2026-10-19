@@ -7,7 +7,7 @@ import pytest
 
 from app.queries import leagues as league_queries
 from tests.conftest import make_safe_session_user_id
-from tests.test_bets_router import _EVENT, _GIBBS_OVER, _client, _cookie, game_state, seeded_player  # noqa: F401
+from tests.test_bets_router import _EVENT, _GIBBS_OVER, _client, _cookie, _session_secret, game_state, seeded_player  # noqa: F401
 
 
 @pytest.fixture

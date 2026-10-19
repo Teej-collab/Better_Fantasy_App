@@ -963,8 +963,7 @@ async def test_delete_account_unlinks_a_claimed_owner_without_deleting_league_hi
         linked = await conn.fetchval("SELECT 1 FROM owner_users WHERE owner_id = $1", owner_id)
     assert user_row is None
     assert owner_row is not None
-    assert linked is None  # the deleted login's owner_users row is gone too
-    assert owner_row["user_id"] is None
+    assert linked is None  # the deleted login's owner_users row is gone too (owners.user_id no longer exists)
     assert owner_row["display_name"] == "Deletable Discord User"
 
 

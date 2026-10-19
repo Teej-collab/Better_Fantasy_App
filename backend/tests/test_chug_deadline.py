@@ -179,7 +179,7 @@ async def test_deadline_endpoint_uses_cached_current_week_not_the_stuck_espn_wee
 
     future_monday_game = {
         "name": "Dallas Cowboys at New York Giants",
-        "date": "2026-09-22T00:15Z",  # a later, still-upcoming Monday
+        "date": "2037-09-22T00:15Z",  # a later, still-upcoming Monday (far enough out to stay upcoming)
     }
 
     async def fake_week_scoreboard(week, year, season_type=2):
@@ -208,7 +208,7 @@ async def test_deadline_endpoint_uses_cached_current_week_not_the_stuck_espn_wee
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["deadline"] == "2026-09-21T20:15:00-04:00"
+    assert body["deadline"] == "2037-09-21T20:15:00-04:00"
     assert body["is_past"] is False
 
 

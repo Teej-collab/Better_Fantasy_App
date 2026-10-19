@@ -49,9 +49,9 @@ def test_a_tie_is_neither_clutch_nor_choke():
 
 def test_power_rank_win_pct_input_accepts_half_wins():
     ranks = compute_power_ranks([
-        {"team_id": 1, "win_pct": 0.5, "avg_points": 100, "recent_form": 100},  # 1-1
-        {"team_id": 2, "win_pct": 0.75, "avg_points": 100, "recent_form": 100},  # 1-0-1
-        {"team_id": 3, "win_pct": 0.25, "avg_points": 100, "recent_form": 100},  # 0-1-1
+        {"team_id": 1, "win_pct": 0.5, "all_play_pct": 0.5, "avg_points": 100, "recent_form": 100, "avg_margin": 0},  # 1-1
+        {"team_id": 2, "win_pct": 0.75, "all_play_pct": 0.5, "avg_points": 100, "recent_form": 100, "avg_margin": 0},  # 1-0-1
+        {"team_id": 3, "win_pct": 0.25, "all_play_pct": 0.5, "avg_points": 100, "recent_form": 100, "avg_margin": 0},  # 0-1-1
     ])
     assert ranks == {2: 1, 1: 2, 3: 3}
 

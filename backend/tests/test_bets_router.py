@@ -25,6 +25,12 @@ def _cookie(user_id: int, owner_id: int | None = None):
     return {"session": create_session_token(_SESSION_SECRET, user_id=user_id, owner_id=owner_id, discord_user_id=None, is_commissioner=False)}
 
 
+@pytest.fixture(autouse=True)
+def _session_secret(monkeypatch):
+    # _cookie() signs with _SESSION_SECRET; the app has to verify with it.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+
+
 @pytest.fixture
 def game_state(monkeypatch):
     """A fake this-week slate and a box score the test can move along."""

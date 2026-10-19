@@ -91,6 +91,8 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
   // whatever the very first filter/search happened to return — the
   // position tabs visibly doing nothing was exactly this (2026-09-02).
   useEffect(() => {
+    // Deliberate: re-seed local state from new server data (see above).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlayers(initialPlayers);
   }, [initialPlayers]);
 

@@ -46,6 +46,13 @@ async def test_run_full_sync_caches_current_week_for_end_season(pool, espn_confi
     fake_league = FakeLeague(teams=fake_teams, current_week=4)
     monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: fake_league)
 
+    # Full sync takes the week from the real NFL scoreboard, not ESPN
+    # fantasy's own week; pin it rather than ask the live one.
+    async def real_current_week():
+        return 4
+
+    monkeypatch.setattr("app.providers.sync.get_real_current_week", real_current_week)
+
     provider = ESPNProvider(espn_config)
     await run_full_sync(provider, TEST_SEASON, TEST_SEASON)
 
