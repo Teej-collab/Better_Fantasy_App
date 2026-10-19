@@ -9,15 +9,24 @@ import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/t
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter, nextEt, untilText } from '@/lib/livingHome';
 import type { MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
+import { useScreenFocused } from '@/lib/screenFocus';
 import { pendingClaims } from '@/lib/waiverClaims';
 
-// Re-renders every `ms` so countdowns tick.
+// Re-renders every `ms` so countdowns tick, while its screen is on
+// view; catches up the moment you come back.
 export function useNow(ms = 30_000): Date {
+  const focused = useScreenFocused();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), ms);
-    return () => clearInterval(id);
-  }, [ms]);
+    if (!focused) return;
+    const tick = () => setNow(new Date());
+    const catchUp = setTimeout(tick, 0);
+    const id = setInterval(tick, ms);
+    return () => {
+      clearTimeout(catchUp);
+      clearInterval(id);
+    };
+  }, [ms, focused]);
   return now;
 }
 

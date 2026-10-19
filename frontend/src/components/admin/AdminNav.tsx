@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getAdminBadges, type AdminBadges } from "@/lib/api";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 type Section = { href: string; label: string; icon: string; badge?: keyof AdminBadges };
 
@@ -59,10 +60,10 @@ export function AdminNav() {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, BADGE_POLL_MS);
+    const stop = startVisibleInterval(load, BADGE_POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [pathname]);
 

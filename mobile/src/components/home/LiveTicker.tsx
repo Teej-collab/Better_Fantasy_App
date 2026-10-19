@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -13,6 +13,7 @@ import { Text } from '@/components/Text';
 import { Colors, Radius, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useGamecastIdFinder } from '@/lib/queries';
+import { useScreenFocused } from '@/lib/screenFocus';
 import type { TickerItem } from '@/lib/ticker';
 
 // Points per second the strip scrolls; faster on game day, like the
@@ -70,7 +71,11 @@ export function LiveTicker({
     return x;
   }
 
-  useFrameCallback((frame) => {
+  // Runs only while its screen is the one on view: a hidden tab's strip
+  // would otherwise keep moving every frame (lib/screenFocus.tsx). It
+  // picks up from the same spot when you come back.
+  const focused = useScreenFocused();
+  const frameCallback = useFrameCallback((frame) => {
     const p = period.get();
     if (p <= 0 || held.get()) return;
     const dt = (frame.timeSincePreviousFrame ?? 16) / 1000;
@@ -86,6 +91,9 @@ export function LiveTicker({
     }
     offset.set(wrap(x, p));
   });
+  useEffect(() => {
+    frameCallback.setActive(focused);
+  }, [focused, frameCallback]);
 
   const pan = Gesture.Pan()
     // Horizontal swipes only, so taps reach the items and vertical

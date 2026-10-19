@@ -16,6 +16,7 @@ import {
   type BetStatus,
 } from "@/lib/betsApi";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 // My Bets: your tracked bets (open first), graded live. Private unless
 // you share one — sharing posts it to league chat as a live card.
@@ -48,8 +49,7 @@ export function BetsApp() {
   const anyOpen = (bets ?? []).some((b) => b.status === "open");
   useEffect(() => {
     if (!anyOpen) return;
-    const id = setInterval(load, LIVE_REFRESH_MS);
-    return () => clearInterval(id);
+    return startVisibleInterval(load, LIVE_REFRESH_MS);
   }, [anyOpen, load]);
   useOnAppRefresh(load);
 

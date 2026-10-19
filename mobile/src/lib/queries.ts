@@ -1,12 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { focusManager, QueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import {
+  focusManager,
+  QueryClient,
+  useMutation,
+  useQuery,
+  type DefaultError,
+  type QueryKey,
+  type UseQueryOptions,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { Alert, AppState } from 'react-native';
 
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useScreenFocused } from '@/lib/screenFocus';
 import type { MyTeam, RosterEntry, WeeklyAwards } from '@/lib/types';
 
 // This is the main reason the native app feels faster than the web one:
@@ -37,12 +48,42 @@ focusManager.setEventListener((setFocused) => {
   return () => sub.remove();
 });
 
+// Every query that refreshes on a timer goes through this. The timer
+// runs only while the query's screen is the one you're looking at
+// (lib/screenFocus.tsx): native tabs keep every visited tab mounted and
+// a pushed screen keeps the ones under it mounted, so otherwise every
+// one of them kept polling out of sight. Coming back to a screen whose
+// data is older than its refresh beat refetches straight away, so it's
+// never staler on return than when everything polled all the time.
+function useLiveQuery<TQueryFnData = unknown, TError = DefaultError, TData = TQueryFnData, TQueryKey extends QueryKey = QueryKey>(
+  options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
+): UseQueryResult<TData, TError> {
+  const focused = useScreenFocused();
+  const { refetchInterval } = options;
+  const result = useQuery({ ...options, refetchInterval: focused ? refetchInterval : false });
+  const wasFocused = useRef(focused);
+  useEffect(() => {
+    const cameBack = focused && !wasFocused.current;
+    wasFocused.current = focused;
+    if (!cameBack || !refetchInterval || options.enabled === false || result.dataUpdatedAt === 0) return;
+    let beat: number | false | undefined;
+    if (typeof refetchInterval === 'function') {
+      const query = queryClient.getQueryCache().find({ queryKey: options.queryKey, exact: true });
+      beat = query ? refetchInterval(query as unknown as Parameters<typeof refetchInterval>[0]) : false;
+    } else {
+      beat = refetchInterval;
+    }
+    if (beat && Date.now() - result.dataUpdatedAt >= beat) void result.refetch();
+  });
+  return result;
+}
+
 // While any NFL game is in progress, scores refetch on this beat — the
 // same 15 s the web's GameDayRefresher uses for its client data.
 const LIVE_REFRESH_MS = 15_000;
 
 export function useNflScoreboard() {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['nfl-scoreboard'],
     queryFn: async () => (await api.nflScoreboard()).games,
     // Faster during games so a kickoff flips everything live quickly.
@@ -77,12 +118,12 @@ export function useSeasonWeek() {
 
 export function useMyWeek() {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({ queryKey: ['my-week'], queryFn: api.myWeek, refetchInterval });
+  return useLiveQuery({ queryKey: ['my-week'], queryFn: api.myWeek, refetchInterval });
 }
 
 export function useMatchupContext(season: number | null, week: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({
+  return useLiveQuery({
     refetchInterval,
     queryKey: ['matchup-context', season, week],
     queryFn: () => api.matchupContext(season!, week!),
@@ -100,7 +141,7 @@ export function useStandings(season: number | null) {
 
 export function useMatchup(matchupId: number) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId), refetchInterval });
+  return useLiveQuery({ queryKey: ['matchup', matchupId], queryFn: () => api.matchup(matchupId), refetchInterval });
 }
 
 // No week (or null) is the live, editable lineup under ['my-team'], the
@@ -108,7 +149,7 @@ export function useMatchup(matchupId: number) {
 // under ['my-team', week] (still cleared by invalidating ['my-team']).
 export function useMyTeam(week?: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({
+  return useLiveQuery({
     queryKey: week ? ['my-team', week] : ['my-team'],
     queryFn: () => api.myTeam(week),
     refetchInterval,
@@ -178,7 +219,7 @@ export function useFreeAgents(position: string | undefined, search: string) {
 
 export function useWinProbHistory(season: number | null, matchupId: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['win-prob-history', season, matchupId],
     queryFn: () => api.winProbHistory(season!, matchupId!),
     enabled: season !== null && matchupId !== null,
@@ -257,7 +298,7 @@ export function useDraftQueue() {
 
 export function useGamecastGames() {
   const live = useIsGameLive();
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['gamecast-games'],
     queryFn: async () => (await api.gamecastGames()).games,
     refetchInterval: live ? 60_000 : false,
@@ -280,7 +321,7 @@ export function useGamecastGame(gameId: string) {
 
 // The full box score; refreshes on the live beat while the game is on.
 export function useGamecastBoxScore(gameId: string, live: boolean) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['gamecast-boxscore', gameId],
     queryFn: () => api.gamecastBoxScore(gameId),
     refetchInterval: live ? LIVE_REFRESH_MS : false,
@@ -288,7 +329,7 @@ export function useGamecastBoxScore(gameId: string, live: boolean) {
 }
 
 export function useFantasyImpact(gameId: string, live: boolean) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['fantasy-impact', gameId],
     queryFn: () => api.fantasyImpact(gameId),
     refetchInterval: live ? LIVE_REFRESH_MS : false,
@@ -299,7 +340,7 @@ export function useFantasyImpact(gameId: string, live: boolean) {
 // seconds old can come back before ESPN has attached its players, and a
 // reviewed play can change.
 export function usePlayFantasy(gameId: string, playId: string | null, live = false) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['play-fantasy', gameId, playId],
     queryFn: async () => (await api.playFantasy(gameId, playId!)).players,
     enabled: playId !== null,
@@ -357,7 +398,7 @@ function hasAwardsData(a: WeeklyAwards): boolean {
 // week that just wrapped on screen until then (2026-09-15 ask).
 export function useHomeAwards(season: number | null, week: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['weekly-awards', season, week],
     enabled: season !== null && week !== null,
     refetchInterval,
@@ -393,7 +434,7 @@ export function useHomeRecap(season: number | null, week: number | null) {
 
 export function useLeagueTicker(season: number | null, week: number | null) {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['league-ticker', season, week],
     queryFn: async () => (await api.leagueTicker(season!, week!)).items,
     enabled: season !== null && week !== null,
@@ -645,12 +686,12 @@ export function useChatMembers() {
 // The Lounge lobby's games, ranked by your fantasy and bet stakes.
 export function useLoungeLobby() {
   const refetchInterval = useLiveRefetchInterval();
-  return useQuery({ queryKey: ['lounge-lobby'], queryFn: api.loungeLobby, refetchInterval });
+  return useLiveQuery({ queryKey: ['lounge-lobby'], queryFn: api.loungeLobby, refetchInterval });
 }
 
 export function useWatchPartyRooms() {
   // Live dots and member counts change as people come and go.
-  return useQuery({ queryKey: ['watch-party-rooms'], queryFn: api.watchPartyRooms, refetchInterval: 30_000 });
+  return useLiveQuery({ queryKey: ['watch-party-rooms'], queryFn: api.watchPartyRooms, refetchInterval: 30_000 });
 }
 
 export function useWatchPartyMembers(roomId: number) {
@@ -719,7 +760,7 @@ export function useEspnConnection() {
 // ---- Bet tracking ----
 
 export function useBets() {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['bets'],
     queryFn: api.bets,
     // Open legs move with the games.
@@ -728,7 +769,7 @@ export function useBets() {
 }
 
 export function useBetsInGame(eventId: string, live: boolean) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['bets-in-game', eventId],
     queryFn: () => api.betsInGame(eventId),
     refetchInterval: live ? LIVE_REFRESH_MS : false,
@@ -737,7 +778,7 @@ export function useBetsInGame(eventId: string, live: boolean) {
 
 // League Bets: refreshes while anything in it is live.
 export function useLeagueBets() {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['league-bets'],
     queryFn: api.leagueBets,
     refetchInterval: (q) => (q.state.data?.enabled && q.state.data.sweat.alive > 0 ? 30_000 : false),
@@ -749,7 +790,7 @@ export function useLeagueBetsBoard(range: 'season' | 'week', parlays: boolean) {
 }
 
 export function useLeagueBetGames() {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['league-bet-games'],
     queryFn: api.leagueBetGames,
     refetchInterval: (q) => (q.state.data?.games.some((g) => g.game?.state === 'in') ? 30_000 : false),
@@ -757,7 +798,7 @@ export function useLeagueBetGames() {
 }
 
 export function useLeagueBetGame(eventId: string) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['league-bet-game', eventId],
     queryFn: () => api.leagueBetGame(eventId),
     refetchInterval: (q) => (q.state.data?.game?.state === 'in' ? LIVE_REFRESH_MS : false),
@@ -769,7 +810,7 @@ export function useLeagueBetMember(userId: number) {
 }
 
 export function useSharedBet(betId: number) {
-  return useQuery({
+  return useLiveQuery({
     queryKey: ['shared-bet', betId],
     queryFn: () => api.sharedBet(betId),
     retry: false,

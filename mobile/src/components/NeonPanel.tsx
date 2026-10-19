@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   makeMutable,
   useAnimatedStyle,
@@ -12,6 +13,7 @@ import Animated, {
 
 import { Colors, Radius } from '@/constants/theme';
 import { ringColorFor, ringColorsFor, useAppearance } from '@/lib/appearance';
+import { useScreenFocused } from '@/lib/screenFocus';
 
 const RING_WIDTH = 1.5;
 const ROTATION_MS = 5000;
@@ -26,12 +28,22 @@ const GRADIENT_SIZE = 128;
 // One rotation shared by every panel, like the web's single
 // --panel-border-angle timeline (frontend/src/app/globals.css, the
 // 2026-09 battery pass): ten cards on Home still run one animation.
+// It runs only while at least one panel is on a screen you're looking
+// at: with every panel on a hidden tab or under another screen (Chat,
+// the Lounge), it stops, and it carries on from the same angle when a
+// panel comes back into view.
 const rotation = makeMutable(0);
-let rotationStarted = false;
-function startRotation() {
-  if (rotationStarted) return;
-  rotationStarted = true;
-  rotation.value = withRepeat(withTiming(360, { duration: ROTATION_MS, easing: Easing.linear }), -1, false);
+let spinning = 0;
+function startSpinning() {
+  spinning += 1;
+  if (spinning > 1) return;
+  const from = rotation.value % 360;
+  rotation.value = from;
+  rotation.value = withRepeat(withTiming(from + 360, { duration: ROTATION_MS, easing: Easing.linear }), -1, false);
+}
+function stopSpinning() {
+  spinning -= 1;
+  if (spinning === 0) cancelAnimation(rotation);
 }
 
 type Props = {
@@ -68,9 +80,12 @@ export function NeonPanel({ children, color: sectionColor, ring, style, contentS
   const systemReduced = useReducedMotion();
   const reduceMotion = systemReduced || appearance.reducedMotion;
   const [size, setSize] = useState(0);
+  const focused = useScreenFocused();
   useEffect(() => {
-    if (!reduceMotion) startRotation();
-  }, [reduceMotion]);
+    if (reduceMotion || !focused) return;
+    startSpinning();
+    return stopSpinning;
+  }, [reduceMotion, focused]);
 
   const scale = size / GRADIENT_SIZE;
   const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }, { scale }] }), [scale]);

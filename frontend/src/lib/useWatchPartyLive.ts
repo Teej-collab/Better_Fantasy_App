@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getWatchPartyRooms } from "@/lib/api";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 export type LoungeStatus = { live: boolean; watching: number; rooms: number };
 
@@ -27,10 +28,10 @@ export function useLoungeStatus(): LoungeStatus {
         })
         .catch(() => {});
     void load();
-    const id = setInterval(load, 60_000);
+    const stop = startVisibleInterval(() => void load(), 60_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, []);
   return status;

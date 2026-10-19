@@ -31,6 +31,7 @@ import { ChatSocketProvider } from '@/lib/chatSocket';
 import { takeLinkForAfterSignIn } from '@/lib/inviteLinks';
 import { queryClient, queryPersister, useMe } from '@/lib/queries';
 import { lockPortrait } from '@/lib/orientation';
+import { ScreenFocusProvider } from '@/lib/screenFocus';
 
 SplashScreen.preventAutoHideAsync();
 // Portrait everywhere but the Lounge's full-screen TV (lib/orientation.ts).
@@ -61,12 +62,16 @@ const NO_TICKER = /^(\(tabs\)|sign-in|chat\/|watch-party\/|lounge-room\/|lounge$
 function withTickerBar({ route, children }: { route: { name: string }; children: ReactNode }) {
   // The tabs draw their own banner and ticker (components/TabFrame.tsx).
   if (route.name === '(tabs)') return <>{children}</>;
+  // Lets anything on this screen pause its animations and polling while
+  // another screen covers it (lib/screenFocus.tsx).
   return (
-    <View style={{ flex: 1 }}>
-      <OfflineBanner />
-      {!NO_TICKER.test(route.name) && <AppTickerBar nflOnly={route.name.startsWith('start/')} />}
-      <View style={{ flex: 1 }}>{children}</View>
-    </View>
+    <ScreenFocusProvider>
+      <View style={{ flex: 1 }}>
+        <OfflineBanner />
+        {!NO_TICKER.test(route.name) && <AppTickerBar nflOnly={route.name.startsWith('start/')} />}
+        <View style={{ flex: 1 }}>{children}</View>
+      </View>
+    </ScreenFocusProvider>
   );
 }
 

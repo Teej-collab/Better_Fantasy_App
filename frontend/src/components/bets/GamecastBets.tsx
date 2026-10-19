@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BetCard } from "@/components/bets/BetCard";
 import { betsInGame, type Bet } from "@/lib/betsApi";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 // The Gamecast's Your Bets panel: every bet of yours with a leg in this
 // game, graded live from the box score. Renders nothing when bet tracking
@@ -35,11 +36,11 @@ export function GamecastBets({ gameId, live }: { gameId: string; live: boolean }
       }
     }
     const first = setTimeout(load, 0);
-    const id = live ? setInterval(load, LIVE_REFRESH_MS) : undefined;
+    const stop = live ? startVisibleInterval(load, LIVE_REFRESH_MS) : undefined;
     return () => {
       cancelled = true;
       clearTimeout(first);
-      if (id) clearInterval(id);
+      stop?.();
     };
   }, [gameId, live]);
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getAdminBadges, type AdminBadges } from "@/lib/api";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 const POLL_MS = 60 * 1000;
 
@@ -25,10 +26,10 @@ export function AdminHealthStrip() {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, POLL_MS);
+    const stop = startVisibleInterval(load, POLL_MS);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, []);
 

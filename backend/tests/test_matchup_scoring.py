@@ -78,6 +78,40 @@ async def test_compute_matchup_scores_for_week_updates_both_teams(pool):
     assert float(row["away_score"]) == 22.25
 
 
+async def test_compute_matchup_scores_skips_unchanged_and_writes_changed(pool):
+    """A rerun with the same points leaves the matchup row untouched; a
+    real points change still lands."""
+    home_id = await _seed_team(pool, "home2", 606)
+    away_id = await _seed_team(pool, "away2", 607)
+    await _seed_player(pool, "test-ms-home2")
+    await _seed_player(pool, "test-ms-away2")
+    await _seed_roster_and_stats(pool, home_id, "test-ms-home2", "WR", 10.0)
+    await _seed_roster_and_stats(pool, away_id, "test-ms-away2", "WR", 7.5)
+
+    query = "SELECT xmin::text AS v, home_score, away_score FROM matchups WHERE id = $1"
+    async with pool.acquire() as conn:
+        matchup_id = await conn.fetchval(
+            "INSERT INTO matchups (season, week, home_team_id, away_team_id) VALUES ($1, $2, $3, $4) RETURNING id",
+            TEST_SEASON, 1, home_id, away_id,
+        )
+        await matchup_scoring.compute_matchup_scores_for_week(conn, TEST_SEASON, 1)
+        first = await conn.fetchrow(query, matchup_id)
+        await matchup_scoring.compute_matchup_scores_for_week(conn, TEST_SEASON, 1)
+        unchanged = await conn.fetchrow(query, matchup_id)
+        await conn.execute(
+            "UPDATE player_week_stats SET fantasy_points = 16.0 WHERE season = $1 AND week = 1 AND sleeper_player_id = $2",
+            TEST_SEASON, "test-ms-home2",
+        )
+        updated = await matchup_scoring.compute_matchup_scores_for_week(conn, TEST_SEASON, 1)
+        changed = await conn.fetchrow(query, matchup_id)
+
+    assert unchanged["v"] == first["v"]
+    assert updated == 1
+    assert float(changed["home_score"]) == 16.0
+    assert float(changed["away_score"]) == 7.5
+    assert changed["v"] != first["v"]
+
+
 async def test_compute_matchup_scores_for_week_is_a_noop_with_no_matchups(pool):
     async with pool.acquire() as conn:
         updated = await matchup_scoring.compute_matchup_scores_for_week(conn, TEST_SEASON, 1)

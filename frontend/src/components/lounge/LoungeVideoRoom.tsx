@@ -19,6 +19,7 @@ import "@livekit/components-styles";
 import { buildNflTickerItems, getNflScoreboard, type TickerItem } from "@/lib/api";
 import { LiveTicker } from "@/components/LiveTicker";
 import { ParticipantVolumePanel } from "@/components/watchparty/ParticipantVolumePanel";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 /**
  * Custom Lounge layout — built from LiveKit's own primitives
@@ -142,10 +143,10 @@ function NflTickerStrip() {
         });
     }
     load();
-    const interval = setInterval(load, 30_000);
+    const stop = startVisibleInterval(load, 30_000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
     };
   }, []);
 

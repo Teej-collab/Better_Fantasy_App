@@ -124,6 +124,27 @@ async def test_compute_week_stats_is_idempotent_on_rerun(pool, monkeypatch):
     assert dst_count == 1
 
 
+async def test_compute_week_stats_leaves_unchanged_rows_alone(pool, monkeypatch):
+    """Live compute re-sends every player every 20s; a row whose stats
+    and points haven't moved must not be rewritten (xmin is the row
+    version Postgres bumps on every write)."""
+    monkeypatch.setattr(weekly_stats, "get_game_stats", _fake_get_game_stats)
+    await _seed_rules(pool)
+    await _seed_player(pool, "test-weeklystats-qb3", espn_player_id=111, position="QB")
+
+    query = (
+        "SELECT xmin::text AS v, fantasy_points FROM player_week_stats "
+        "WHERE season = $1 AND week = 1 AND sleeper_player_id = $2"
+    )
+    async with pool.acquire() as conn:
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        first = await conn.fetchrow(query, TEST_SEASON, "test-weeklystats-qb3")
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        second = await conn.fetchrow(query, TEST_SEASON, "test-weeklystats-qb3")
+    assert second["v"] == first["v"]
+    assert second["fantasy_points"] == first["fantasy_points"]
+
+
 async def test_compute_week_stats_recomputes_from_scratch_on_a_stat_correction(pool, monkeypatch):
     """A later poll reporting a corrected/updated box score (a real
     scenario: reconnects, provider corrections, a play reversal) must

@@ -80,8 +80,11 @@ async def compute_matchup_scores_for_week(conn, season: int, week: int, league_i
             # its rounded decimal string — the round(..., 2) above (and
             # weekly_team_stats.py's own copy of this bug, fixed
             # 2026-09-09) doesn't survive the trip on its own.
+            # Skips the write when the score didn't move (most of a live
+            # Sunday's 20s ticks, and every finished matchup).
             await conn.execute(
-                "UPDATE matchups SET home_score = $1::numeric(10,2), away_score = $2::numeric(10,2) WHERE id = $3",
+                "UPDATE matchups SET home_score = $1::numeric(10,2), away_score = $2::numeric(10,2) "
+                "WHERE id = $3 AND (home_score, away_score) IS DISTINCT FROM ($1::numeric(10,2), $2::numeric(10,2))",
                 home_score, away_score, row["id"],
             )
             updated += 1

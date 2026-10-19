@@ -21,6 +21,7 @@ import { KpiCard } from "@/components/admin/KpiCard";
 import { LineChart } from "@/components/admin/LineChart";
 import { DonutChart } from "@/components/admin/DonutChart";
 import { AdminHealthStrip } from "@/components/admin/AdminHealthStrip";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 const ONLINE_POLL_INTERVAL_MS = 20 * 1000;
 const OVERVIEW_POLL_INTERVAL_MS = 60 * 1000;
@@ -96,12 +97,12 @@ export function AdminOverview({
   const [online, setOnline] = useState(initialOnline);
 
   useEffect(() => {
-    const onlineId = setInterval(() => {
+    const stopOnline = startVisibleInterval(() => {
       getOnlineOwners()
         .then((d) => setOnline(d.owners))
         .catch(() => {});
     }, ONLINE_POLL_INTERVAL_MS);
-    const overviewId = setInterval(() => {
+    const stopOverview = startVisibleInterval(() => {
       getAdminOverview(overview.window_days)
         .then(setOverview)
         .catch(() => {});
@@ -119,8 +120,8 @@ export function AdminOverview({
         .catch(() => {});
     }, OVERVIEW_POLL_INTERVAL_MS);
     return () => {
-      clearInterval(onlineId);
-      clearInterval(overviewId);
+      stopOnline();
+      stopOverview();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

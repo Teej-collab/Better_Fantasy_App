@@ -10,6 +10,7 @@ import { TabHeader } from '@/components/TabHeader';
 import { Colors } from '@/constants/theme';
 import { useConnectivity } from '@/lib/connectivity';
 import { useMe } from '@/lib/queries';
+import { ScreenFocusValue } from '@/lib/screenFocus';
 
 // Tapping the tab you're already on scrolls it back to the top. iOS's own
 // version of that only finds a scroll view that's the first view all the
@@ -56,20 +57,22 @@ export function TabFrame({ children, ticker = false }: { children: ReactNode; ti
   // to join or create one instead.
   const noLeague = me !== undefined && me.active_league_id === null;
   return (
-    <View style={styles.frame}>
-      {focused ? <HoneycombBackground /> : <View style={[StyleSheet.absoluteFill, styles.plain]} />}
-      {/* Every tab's top bar: your league and your account menu. */}
-      <TabHeader />
-      {(ticker && !noLeague) || !online ? (
-        <View>
-          <OfflineBanner />
-          {ticker && !noLeague && <AppTickerBar />}
-        </View>
-      ) : null}
-      <TabScrollContext.Provider value={scrollRef}>
-        <View style={styles.flex}>{noLeague ? <NeedsLeague displayName={me.display_name} /> : children}</View>
-      </TabScrollContext.Provider>
-    </View>
+    <ScreenFocusValue focused={focused}>
+      <View style={styles.frame}>
+        {focused ? <HoneycombBackground /> : <View style={[StyleSheet.absoluteFill, styles.plain]} />}
+        {/* Every tab's top bar: your league and your account menu. */}
+        <TabHeader />
+        {(ticker && !noLeague) || !online ? (
+          <View>
+            <OfflineBanner />
+            {ticker && !noLeague && <AppTickerBar />}
+          </View>
+        ) : null}
+        <TabScrollContext.Provider value={scrollRef}>
+          <View style={styles.flex}>{noLeague ? <NeedsLeague displayName={me.display_name} /> : children}</View>
+        </TabScrollContext.Provider>
+      </View>
+    </ScreenFocusValue>
   );
 }
 

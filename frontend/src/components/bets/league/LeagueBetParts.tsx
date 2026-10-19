@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BetCard } from "@/components/bets/BetCard";
 import { reactToBet, tailBet, type BetMember, type BetReaction, type LeagueBet } from "@/lib/betsApi";
 import { useOnAppRefresh } from "@/lib/usePullToRefresh";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 // League Bets' shared pieces (2026-10-17, "League Bets Mockups" canvas;
 // same screens as the app's mobile/src/app/bets/league): a bettor's
@@ -99,8 +100,7 @@ export function useLive<T>(fetcher: () => Promise<T>, live: (data: T) => boolean
   const isLive = data !== null && live(data);
   useEffect(() => {
     if (!isLive) return;
-    const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
+    return startVisibleInterval(load, 30_000);
   }, [isLive, load]);
   useOnAppRefresh(load);
   return { data, error, reload: load };

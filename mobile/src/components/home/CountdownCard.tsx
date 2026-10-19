@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { useHouseRules } from '@/lib/queries';
+import { useScreenFocused } from '@/lib/screenFocus';
 import { Colors, Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
 
 type Remaining = { days: number; hours: number; minutes: number; seconds: number };
@@ -23,15 +24,22 @@ function remainingUntil(targetMs: number): Remaining | null {
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
-// Ticks once a second; null once the target has passed.
+// Ticks once a second while its screen is on view; null once the
+// target has passed. Catches up the moment you come back.
 function useRemaining(iso: string): Remaining | null {
   const targetMs = new Date(iso).getTime();
+  const focused = useScreenFocused();
   const [remaining, setRemaining] = useState<Remaining | null>(() => remainingUntil(targetMs));
   useEffect(() => {
+    if (!focused) return;
     const tick = () => setRemaining(remainingUntil(targetMs));
+    const catchUp = setTimeout(tick, 0);
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [targetMs]);
+    return () => {
+      clearTimeout(catchUp);
+      clearInterval(id);
+    };
+  }, [targetMs, focused]);
   return remaining;
 }
 

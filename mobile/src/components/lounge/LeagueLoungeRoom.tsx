@@ -13,7 +13,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { useKeepAwake } from 'expo-keep-awake';
 import { mediaDevices } from '@livekit/react-native-webrtc';
-import { Track, type Participant, type RemoteParticipant } from 'livekit-client';
+import { Track, VideoPresets, type Participant, type RemoteParticipant } from 'livekit-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,6 +97,19 @@ function initialsOf(name: string): string {
     .toUpperCase();
 }
 
+// Your camera goes out at 540p (still 30fps) rather than LiveKit's
+// default 720p: in the room it's a small tile or a rail thumbnail, and
+// even a big Watch Party grid on a monitor rarely draws a phone's tile
+// wider than 960px. That's about 44% fewer pixels for the phone to
+// encode and upload every frame, for the length of a game. The shared
+// game itself comes from the web and keeps its own 1080p settings
+// (frontend/src/lib/livekitMedia.ts).
+const ROOM_OPTIONS = {
+  adaptiveStream: true,
+  dynacast: true,
+  videoCaptureDefaults: { resolution: VideoPresets.h540.resolution },
+};
+
 export function LeagueLoungeRoom(props: LoungeRoomProps) {
   useKeepAwake();
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +122,7 @@ export function LeagueLoungeRoom(props: LoungeRoomProps) {
         connect
         audio
         video={false}
-        options={{ adaptiveStream: true, dynacast: true }}
+        options={ROOM_OPTIONS}
         onDisconnected={() => {
           if (leaving.current) props.onLeave();
           else setError('Disconnected from the lounge.');
@@ -692,7 +705,7 @@ function MicAndCamera({ flip: showFlip = true }: { flip?: boolean }) {
     const cameras = devices.filter((d) => d.kind === 'videoinput' && !/dual|triple/i.test(d.label));
     if (cameras.length === 0) return;
     const switchTo = (i: number) =>
-      void track.restartTrack({ deviceId: cameras[i].deviceId }).catch(() => Alert.alert("Couldn't switch cameras", 'Try another one.'));
+      void track.restartTrack({ deviceId: cameras[i].deviceId, resolution: ROOM_OPTIONS.videoCaptureDefaults.resolution }).catch(() => Alert.alert("Couldn't switch cameras", 'Try another one.'));
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         { title: 'Camera', options: [...cameras.map((c) => c.label), 'Cancel'], cancelButtonIndex: cameras.length },

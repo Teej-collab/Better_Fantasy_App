@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createWatchParty, getWatchPartyRooms, type WatchPartyRoom, type WatchPartyRoomsResponse } from "@/lib/api";
 import { lastName, loungeApi } from "@/lib/loungeLive";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 // The Lounge lobby on the web — the same screen as the native app's
 // (mobile/src/app/lounge-lobby.tsx, mockup 4): who's watching what, the
@@ -79,10 +80,10 @@ export function LoungeLobby() {
       }
     }
     void load();
-    const id = setInterval(load, 30_000);
+    const stop = startVisibleInterval(() => void load(), 30_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, []);
 

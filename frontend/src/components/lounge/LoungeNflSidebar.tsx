@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getNflScoreboard, type NflGame } from "@/lib/api";
 import { nflTeamColor } from "@/lib/nfl-teams";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 function statusLabel(game: NflGame): string {
   if (game.state === "post") return game.status_detail?.toUpperCase().includes("OT") ? "FINAL/OT" : "FINAL";
@@ -28,7 +29,7 @@ export function LoungeNflSidebar() {
       .catch(() => {
         if (!cancelled) setGames([]);
       });
-    const interval = setInterval(() => {
+    const stop = startVisibleInterval(() => {
       getNflScoreboard()
         .then((g) => {
           if (!cancelled) setGames(g);
@@ -37,7 +38,7 @@ export function LoungeNflSidebar() {
     }, 30_000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
     };
   }, []);
 

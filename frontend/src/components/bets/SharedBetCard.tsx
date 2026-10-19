@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BetCard } from "@/components/bets/BetCard";
 import { sharedBet, type Bet } from "@/lib/betsApi";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 // A bet shared to league chat (messages.bet_id), loaded live so its legs
 // keep moving with the games. Once the bettor makes it private again —
@@ -27,11 +28,11 @@ export function SharedBetCard({ betId, mine }: { betId: number; mine: boolean })
       }
     }
     const first = setTimeout(load, 0);
-    const id = setInterval(load, LIVE_REFRESH_MS);
+    const stop = startVisibleInterval(load, LIVE_REFRESH_MS);
     return () => {
       cancelled = true;
       clearTimeout(first);
-      clearInterval(id);
+      stop();
     };
   }, [betId]);
 

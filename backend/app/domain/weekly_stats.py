@@ -66,6 +66,13 @@ async def _upsert_player_week_stats(conn, rows: list[tuple]) -> None:
             raw_stats = EXCLUDED.raw_stats,
             fantasy_points = EXCLUDED.fantasy_points,
             computed_at = now()
+        -- Live compute re-sends every rostered player every 20s all
+        -- Sunday, including everyone whose game ended hours ago; only
+        -- rows whose stats or points actually moved get rewritten
+        -- (nothing reads computed_at, so it's fine to leave it at the
+        -- last real change).
+        WHERE (player_week_stats.raw_stats, player_week_stats.fantasy_points)
+            IS DISTINCT FROM (EXCLUDED.raw_stats, EXCLUDED.fantasy_points)
         """,
         rows,
     )
