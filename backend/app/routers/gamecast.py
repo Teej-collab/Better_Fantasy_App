@@ -42,10 +42,28 @@ async def live_games():
     return {"games": [g.model_dump(mode="json") for g in games]}
 
 
+# A live game's cached state older than this gets refetched by the REST
+# route itself. Signed-out web Gamecast viewers poll this route (no
+# WebSocket ticket), and the scheduler only refreshes games someone has
+# a socket open to, so without this they'd see the same snapshot
+# forever. Longer than the scheduler's 4s beat on purpose: while anyone
+# is on the socket the scheduler keeps it fresh and this never fires,
+# so it can't take a fantasy-impact event the socket viewers should get.
+_STATE_MAX_AGE_SECONDS = 10
+
+
 @router.get("/games/{game_id}")
 async def game_state(game_id: str):
     cached = service.get_cached_state(game_id)
     if cached is not None:
+        live = cached.status.value in ("in_progress", "halftime", "scheduled")
+        if live and service.is_stale(game_id, _STATE_MAX_AGE_SECONDS):
+            pool = await get_pool()
+            try:
+                await service.refresh_if_stale(pool.acquire, game_id, _STATE_MAX_AGE_SECONDS)
+            except Exception:
+                pass  # serve what's cached
+            cached = service.get_cached_state(game_id) or cached
         return cached.model_dump(mode="json")
 
     # Cache miss — either nobody's polled this game yet (scheduler off,

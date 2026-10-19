@@ -14,9 +14,12 @@ import { PlayByPlay } from "@/components/gamecast/PlayByPlay";
 import { ScoringSummary } from "@/components/gamecast/ScoringSummary";
 import { FantasyImpact } from "@/components/gamecast/FantasyImpact";
 import { GamecastBets } from "@/components/bets/GamecastBets";
+import { startVisibleInterval } from "@/lib/visibleInterval";
 
 const RECONNECT_DELAY_MS = 2000;
 const CLOCK_TICK_MS = 1000;
+// Signed-out visitors (no WebSocket ticket) poll instead.
+const POLL_FALLBACK_MS = 10_000;
 
 /**
  * Owns the Gamecast WebSocket connection — same connect/reconnect
@@ -56,6 +59,18 @@ export function GamecastShell({
   useEffect(() => {
     if (!isLiveStatus) return;
     let cancelled = false;
+    // While the tab is hidden the socket stays open but only the newest
+    // frame is kept, instead of re-rendering the whole Gamecast for every
+    // play nobody's watching; it's shown the moment the tab is back.
+    let pending: LiveGame | null = null;
+    let stopPolling: (() => void) | null = null;
+    function showPending() {
+      if (document.visibilityState === "visible" && pending) {
+        setGame(pending);
+        pending = null;
+      }
+    }
+    document.addEventListener("visibilitychange", showPending);
     let socket: WebSocket;
 
     async function connect() {
@@ -64,9 +79,26 @@ export function GamecastShell({
       if (cancelled) return;
       if (!ticket) {
         // Not signed in (or the mint failed) — Gamecast is read-only
-        // and doesn't strictly require auth server-side, but the WS
-        // ticket path does today for consistency with chat's. Fall
-        // back to periodic REST polling instead of giving up entirely.
+        // and doesn't require auth server-side, but the WS ticket path
+        // does today for consistency with chat's. Fall back to polling
+        // the same game state over REST (through the same-origin
+        // proxy) while the tab is visible, instead of freezing on
+        // "Reconnecting…" as it used to.
+        const poll = () => {
+          fetch(`/api/backend/nfl/games/${encodeURIComponent(gameId)}`, { cache: "no-store" })
+            .then((res) => (res.ok ? (res.json() as Promise<LiveGame>) : Promise.reject(new Error(String(res.status)))))
+            .then((next) => {
+              if (cancelled) return;
+              setGame(next);
+              setConnected(true);
+            })
+            .catch(() => {
+              if (!cancelled) setConnected(false);
+            });
+        };
+        if (stopPolling) return;
+        poll();
+        stopPolling = startVisibleInterval(poll, POLL_FALLBACK_MS);
         return;
       }
       socket = new WebSocket(getGamecastWebSocketUrl(ticket, gameId));
@@ -83,7 +115,8 @@ export function GamecastShell({
         try {
           const data = JSON.parse(event.data);
           if (data.type === "game_state" && data.game) {
-            setGame(data.game as LiveGame);
+            if (document.visibilityState === "visible") setGame(data.game as LiveGame);
+            else pending = data.game as LiveGame;
           }
         } catch {
           // Malformed frame — ignore rather than crash the connection.
@@ -94,6 +127,8 @@ export function GamecastShell({
     connect();
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", showPending);
+      stopPolling?.();
       socketRef.current?.close();
     };
   }, [gameId, isLiveStatus]);

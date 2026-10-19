@@ -218,3 +218,49 @@ async def test_websocket_closes_with_4404_for_an_unknown_game_id(pool, monkeypat
         received = ws.receive_json()
         assert received == {"type": "error", "detail": "Unknown game_id"}
     await _use_fresh_pool_for_websocket()
+
+
+async def test_game_state_refreshes_a_stale_live_game_and_not_a_fresh_one(monkeypatch):
+    """Signed-out web viewers poll GET /nfl/games/{id} instead of holding a
+    socket, and the scheduler only refreshes games with socket viewers, so
+    the route refreshes a live game itself once it's gone stale."""
+    from app.gamecast.models import LiveGame
+    from app.routers import gamecast as gamecast_router
+
+    game_id = "test-stale-998877"
+    live = LiveGame.model_validate({
+        "game_id": game_id, "provider": "espn", "status": "in_progress", "season": 2026, "week": 5,
+        "scheduled_start": "2026-10-11T17:00:00Z",
+        "home_team": {"abbr": "KC", "name": "Chiefs", "score": 0},
+        "away_team": {"abbr": "LV", "name": "Raiders", "score": 0},
+        "period": 2, "clock": "10:00", "is_redzone": False, "drives": [], "plays": [], "scoring_plays": [],
+        "last_updated": "2026-10-11T17:30:00Z",
+    })
+    refreshed = live.model_copy(update={"home_team": live.home_team.model_copy(update={"score": 7})})
+    calls = []
+
+    async def fake_refresh_if_stale(conn_factory, gid, max_age):
+        calls.append(gid)
+        service._current_state[gid] = refreshed
+
+    class _Pool:
+        acquire = None
+
+    async def fake_get_pool():
+        return _Pool()
+
+    monkeypatch.setattr(service, "refresh_if_stale", fake_refresh_if_stale)
+    monkeypatch.setattr(gamecast_router, "get_pool", fake_get_pool)
+    service._current_state[game_id] = live
+    try:
+        monkeypatch.setattr(service, "is_stale", lambda gid, age: False)
+        fresh = await gamecast_router.game_state(game_id)
+        assert calls == []
+        assert fresh["home_team"]["score"] == 0
+
+        monkeypatch.setattr(service, "is_stale", lambda gid, age: True)
+        stale = await gamecast_router.game_state(game_id)
+        assert calls == [game_id]
+        assert stale["home_team"]["score"] == 7
+    finally:
+        service._current_state.pop(game_id, None)
