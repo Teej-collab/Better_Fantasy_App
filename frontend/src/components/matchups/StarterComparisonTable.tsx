@@ -182,7 +182,7 @@ function ScoreBreakdownModal({
         </div>
 
         <div className="mt-4 flex flex-col divide-y divide-black/5 dark:divide-white/5">
-          <div className="grid grid-cols-[1fr_3.5rem_2rem_3rem] gap-2 pb-2 text-[10px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+          <div className="grid grid-cols-[1fr_3.5rem_2rem_3rem] gap-2 pb-2 text-[10px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             <span>Scoring Category</span>
             <span className="text-right">Pts Per</span>
             <span className="text-right">#</span>
@@ -316,7 +316,7 @@ function PlayerCell({
       ) : (
         scored != null &&
         player.points_projected != null && (
-          <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
+          <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
             {player.points_projected.toFixed(1)}
           </span>
         )
@@ -447,7 +447,7 @@ function ComparisonRows({
       {rows.map((row, i) => (
         <div key={i} className="grid grid-cols-[1fr_2.5rem_1fr] items-center gap-2 py-4">
           <PlayerCell player={row.home} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
-          <span className="text-center text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+          <span className="text-center text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
             {row.slot}
           </span>
           <PlayerCell player={row.away} mounted={mounted} onOpen={onOpen} onOpenBreakdown={onOpenBreakdown} />
@@ -517,7 +517,7 @@ export function StarterComparisonTable({
 
       {benchRows.length > 0 && (
         <div className="mt-3 flex flex-col gap-1 border-t border-black/10 pt-3 dark:border-white/10">
-          <h3 className="text-xs font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">Bench</h3>
+          <h3 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Bench</h3>
           <ComparisonRows rows={benchRows} mounted={mounted} onOpen={openPlayerCard} onOpenBreakdown={setBreakdownPlayer} />
         </div>
       )}

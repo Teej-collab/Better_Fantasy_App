@@ -74,7 +74,7 @@ export function WeekScoreboardBrowser({
           onClick={() => goTo(week - 1)}
           disabled={week <= 1}
           aria-label="Previous week"
-          className="rounded-full px-2 py-1 text-lg text-black/40 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
+          className="rounded-full px-2 py-1 text-lg text-black/50 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
         >
           ‹
         </button>
@@ -84,7 +84,7 @@ export function WeekScoreboardBrowser({
           onClick={() => goTo(week + 1)}
           disabled={week >= MAX_WEEK}
           aria-label="Next week"
-          className="rounded-full px-2 py-1 text-lg text-black/40 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white"
+          className="rounded-full px-2 py-1 text-lg text-black/50 transition-colors hover:bg-black/5 hover:text-black disabled:pointer-events-none disabled:opacity-20 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
         >
           ›
         </button>

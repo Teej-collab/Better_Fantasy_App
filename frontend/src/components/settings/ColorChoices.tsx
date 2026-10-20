@@ -95,7 +95,7 @@ export function ColorChoices(props: {
       </label>
       {props.offOption && (
         <ChoiceButton on={current === "off"} onClick={() => pick("off")} swatch={{ border: "1px solid rgba(127,127,127,0.5)" }} name="Off">
-          <span className="text-sm text-black/40 dark:text-white/50">✕</span>
+          <span className="text-sm text-black/50 dark:text-white/50">✕</span>
         </ChoiceButton>
       )}
     </div>

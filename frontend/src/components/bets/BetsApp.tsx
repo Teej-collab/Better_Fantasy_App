@@ -138,7 +138,7 @@ export function BetsApp() {
       {open.length > 0 && <BetList title="Open" bets={open} onChange={replace} onRemove={(id) => setBets((all) => (all ?? []).filter((b) => b.id !== id))} run={run} setNotice={setNotice} />}
       {settled.length > 0 && <BetList title="Settled" bets={settled} onChange={replace} onRemove={(id) => setBets((all) => (all ?? []).filter((b) => b.id !== id))} run={run} setNotice={setNotice} />}
 
-      <p className="text-center text-xs text-black/40 dark:text-white/40">
+      <p className="text-center text-xs text-black/50 dark:text-white/50">
         The Weekend only tracks bets — it never places them or touches money. 21+. If gambling stops being fun, call or text 1-800-GAMBLER.
       </p>
     </div>

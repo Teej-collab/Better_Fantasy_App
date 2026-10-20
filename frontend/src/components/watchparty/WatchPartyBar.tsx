@@ -111,7 +111,7 @@ export function WatchPartyBar({
             <button
               onClick={() => onManage(r)}
               aria-label={`Manage ${r.name}`}
-              className="shrink-0 rounded-full p-1.5 text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
+              className="shrink-0 rounded-full p-1.5 text-black/50 hover:bg-black/5 dark:text-white/50 dark:hover:bg-white/10"
             >
               ⚙
             </button>

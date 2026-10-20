@@ -99,7 +99,7 @@ export function ChatFilterSection() {
                 aria-label={`Remove ${word}`}
                 className="flex items-center gap-1.5 rounded-full bg-black/5 px-3 py-1 text-sm dark:bg-white/10"
               >
-                {word} <span className="text-black/40 dark:text-white/40">✕</span>
+                {word} <span className="text-black/50 dark:text-white/50">✕</span>
               </button>
             </li>
           ))}

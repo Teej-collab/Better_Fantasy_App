@@ -53,7 +53,7 @@ export function BetCard({
             {bet.sportsbook ? ` · ${bet.sportsbook}` : ""}
           </p>
           {parlay && bet.status === "open" && (
-            <p className="text-xs text-black/40 dark:text-white/40">
+            <p className="text-xs text-black/50 dark:text-white/50">
               {settled} of {bet.legs.length} legs settled
             </p>
           )}
@@ -110,7 +110,7 @@ function LegRow({ leg, dim }: { leg: BetLeg; dim: boolean }) {
         {leg.tracked && leg.current !== null && leg.market === "player_prop" && (
           <span className="shrink-0 font-mono text-sm font-semibold tabular-nums">
             {formatStat(leg.current)}
-            {leg.target !== null && <span className="text-black/40 dark:text-white/40"> / {formatStat(leg.target)}</span>}
+            {leg.target !== null && <span className="text-black/50 dark:text-white/50"> / {formatStat(leg.target)}</span>}
           </span>
         )}
       </div>

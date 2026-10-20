@@ -83,7 +83,7 @@ export function GifPicker({ onSelect, onClose }: { onSelect: (gif: ChatGif) => v
             Couldn&apos;t reach GIF search — try again in a moment.
           </p>
         ) : status === "loading" && gifs.length === 0 ? (
-          <p className="mt-8 text-center text-xs text-black/40 dark:text-white/40">Searching…</p>
+          <p className="mt-8 text-center text-xs text-black/50 dark:text-white/50">Searching…</p>
         ) : gifs.length === 0 ? (
           <p className="mt-8 text-center text-xs text-black/50 dark:text-white/50">No GIFs found.</p>
         ) : (

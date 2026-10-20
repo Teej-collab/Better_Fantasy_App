@@ -59,7 +59,7 @@ export function DraftGradesLeaderboard({
                     {Math.round(g.percentile)}th percentile · {g.total_projected_points.toFixed(1)} pts drafted
                   </span>
                 </span>
-                <span className="shrink-0 text-xs text-black/40 dark:text-white/40">
+                <span className="shrink-0 text-xs text-black/50 dark:text-white/50">
                   {isOpen ? "Hide recap ▲" : "Read recap ▼"}
                 </span>
               </button>

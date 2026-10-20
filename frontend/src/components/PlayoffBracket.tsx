@@ -23,8 +23,8 @@ function TeamRow({
       className={`flex items-center justify-between gap-2 px-3 py-2 text-sm ${isWinner ? "font-semibold" : "text-black/70 dark:text-white/70"}`}
     >
       <span className="flex min-w-0 items-center gap-1.5">
-        {seed !== null && <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{seed}</span>}
-        <span className="min-w-0 wrap-break-word">{name ?? <span className="text-black/40 dark:text-white/40">TBD</span>}</span>
+        {seed !== null && <span className="w-4 shrink-0 text-xs text-black/50 dark:text-white/50">{seed}</span>}
+        <span className="min-w-0 wrap-break-word">{name ?? <span className="text-black/50 dark:text-white/50">TBD</span>}</span>
         {isWinner && <span className="shrink-0 text-emerald-500">&#10003;</span>}
       </span>
       {score !== null && (
@@ -76,7 +76,7 @@ export function PlayoffBracket({ nodes }: { nodes: PlayoffBracketNode[] }) {
       <div className="flex gap-4 overflow-x-auto pb-1">
         {rounds.map((round) => (
           <div key={round} className="flex min-w-[200px] flex-col gap-2">
-            <h3 className="text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+            <h3 className="text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
               {roundLabel(round, maxRound)}
             </h3>
             <div className="flex flex-1 flex-col justify-around gap-3">
@@ -128,11 +128,11 @@ export function ProjectedPlayoffPicture({ matchups }: { matchups: ProjectedPlayo
               className="flex min-w-[200px] flex-1 flex-col divide-y divide-black/5 rounded-lg border border-dashed border-black/15 dark:divide-white/5 dark:border-white/15"
             >
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
-                <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_a_seed}</span>
+                <span className="w-4 shrink-0 text-xs text-black/50 dark:text-white/50">{m.team_a_seed}</span>
                 <span className="min-w-0 wrap-break-word">{m.team_a_name}</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-black/70 dark:text-white/70">
-                <span className="w-4 shrink-0 text-xs text-black/40 dark:text-white/40">{m.team_b_seed}</span>
+                <span className="w-4 shrink-0 text-xs text-black/50 dark:text-white/50">{m.team_b_seed}</span>
                 <span className="min-w-0 wrap-break-word">{m.team_b_name}</span>
               </div>
             </div>

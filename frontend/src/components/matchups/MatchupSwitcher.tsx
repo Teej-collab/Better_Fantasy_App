@@ -39,7 +39,7 @@ export function MatchupSwitcher({
           >
             <LogoAvatar logoUrl={m.home.logo_url} name={m.home.owner_name} size={32} />
             {active ? (
-              <span className="text-black/40 dark:text-white/40">vs</span>
+              <span className="text-black/50 dark:text-white/50">vs</span>
             ) : (
               <span>
                 {(m.home.score ?? 0).toFixed(0)}-{(m.away.score ?? 0).toFixed(0)}

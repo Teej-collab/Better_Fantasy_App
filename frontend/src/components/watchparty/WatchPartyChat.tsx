@@ -65,7 +65,7 @@ export function WatchPartyChat({
     <div className="absolute inset-x-0 bottom-0 z-30 flex max-h-[65%] flex-col rounded-t-2xl bg-[var(--background)] shadow-2xl">
       <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 dark:border-white/10">
         <span className="text-sm font-bold" style={{ color: "var(--wl-text)" }}>
-          Room Chat {!connected && <span className="font-normal text-black/40 dark:text-white/40">· Reconnecting…</span>}
+          Room Chat {!connected && <span className="font-normal text-black/50 dark:text-white/50">· Reconnecting…</span>}
         </span>
         <button
           onClick={onClose}

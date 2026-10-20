@@ -304,7 +304,7 @@ function PendingRow({
         <button
           type="button"
           aria-label={`Drag to reorder ${claim.add_player_name}, currently #${rank}`}
-          className="flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-black/40 hover:bg-black/5 active:cursor-grabbing dark:text-white/40 dark:hover:bg-white/10"
+          className="flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-black/50 hover:bg-black/5 active:cursor-grabbing dark:text-white/50 dark:hover:bg-white/10"
           {...attributes}
           {...listeners}
         >

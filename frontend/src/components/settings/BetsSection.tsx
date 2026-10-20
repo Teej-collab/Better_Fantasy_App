@@ -69,7 +69,7 @@ export function BetsSection() {
           Go to My Bets →
         </Link>
       )}
-      <p className="text-xs text-black/40 dark:text-white/40">21+. If gambling stops being fun, call or text 1-800-GAMBLER.</p>
+      <p className="text-xs text-black/50 dark:text-white/50">21+. If gambling stops being fun, call or text 1-800-GAMBLER.</p>
     </div>
   );
 }

@@ -120,14 +120,14 @@ function ImpactSection({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
         <h3 className="text-[0.65rem] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">{label}</h3>
-        {team && <span className="min-w-0 wrap-break-word text-xs text-black/40 dark:text-white/40">{team.team_name}</span>}
+        {team && <span className="min-w-0 wrap-break-word text-xs text-black/50 dark:text-white/50">{team.team_name}</span>}
       </div>
       {signedOutLabel ? (
-        <p className="text-xs text-black/40 dark:text-white/40">{signedOutLabel}</p>
+        <p className="text-xs text-black/50 dark:text-white/50">{signedOutLabel}</p>
       ) : !team ? (
-        <p className="text-xs text-black/40 dark:text-white/40">No team in this league this season.</p>
+        <p className="text-xs text-black/50 dark:text-white/50">No team in this league this season.</p>
       ) : players.length === 0 ? (
-        <p className="text-xs text-black/40 dark:text-white/40">No players in this game.</p>
+        <p className="text-xs text-black/50 dark:text-white/50">No players in this game.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {players.map((p) => (
@@ -163,7 +163,7 @@ function GameLeaders({ leaders }: { leaders: GamecastFantasyImpact["game_leaders
                 {side.leaders.map((p) => (
                   <li key={p.player_id ?? p.player_name} className="flex items-center justify-between gap-2 text-xs">
                     <span className="min-w-0 wrap-break-word text-black/70 dark:text-white/70">
-                      {p.player_name} <span className="text-black/40 dark:text-white/40">{p.position}</span>
+                      {p.player_name} <span className="text-black/50 dark:text-white/50">{p.position}</span>
                     </span>
                     <span className="shrink-0 font-mono tabular-nums text-black/70 dark:text-white/70">
                       {p.points_scored.toFixed(1)}

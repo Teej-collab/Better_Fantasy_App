@@ -448,7 +448,7 @@ function OutgoingVideoBubble({ item, onRetry, onDiscard }: { item: OutgoingVideo
           </button>
         </div>
       ) : (
-        <span className="text-[11px] text-black/40 dark:text-white/40">{pct < 100 ? "Sending…" : "Almost there…"}</span>
+        <span className="text-[11px] text-black/50 dark:text-white/50">{pct < 100 ? "Sending…" : "Almost there…"}</span>
       )}
     </div>
   );

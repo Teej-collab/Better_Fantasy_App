@@ -122,7 +122,7 @@ function TeamScoreBlock({ side, align, week }: { side: MatchupContextSide; align
         )}
       </span>
       {side.season_points !== null && (
-        <span className="text-xs tabular-nums text-black/40 dark:text-white/40">
+        <span className="text-xs tabular-nums text-black/50 dark:text-white/50">
           Season {side.season_points.toFixed(1)}
         </span>
       )}

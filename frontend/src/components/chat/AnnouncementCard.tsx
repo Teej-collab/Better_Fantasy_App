@@ -201,7 +201,7 @@ export function AnnouncementCard({
         >
           {expanded && !message.deleted ? <LinkedBody text={message.body ?? ""} messageId={message.id} /> : previewBody}
         </span>
-        <span className="text-xs text-black/40 dark:text-white/40">
+        <span className="text-xs text-black/50 dark:text-white/50">
           {message.owner_name} · {formatMessageTimestamp(message.created_at)}
         </span>
       </div>
@@ -296,7 +296,7 @@ export function AnnouncementCard({
             <ReceiptsLine messageId={message.id} />
           ) : (
             message.seen_by.length > 0 && (
-              <p className="text-xs text-black/40 dark:text-white/40">Seen by {message.seen_by.join(", ")}</p>
+              <p className="text-xs text-black/50 dark:text-white/50">Seen by {message.seen_by.join(", ")}</p>
             )
           )}
         </div>

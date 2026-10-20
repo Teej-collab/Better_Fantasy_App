@@ -228,7 +228,7 @@ function ViewSection({
         <table className="w-max min-w-full border-collapse text-xs">
           <thead>
             {groups.length > 0 && (
-              <tr className="text-[10px] tracking-wide text-black/40 uppercase dark:text-white/40">
+              <tr className="text-[10px] tracking-wide text-black/50 uppercase dark:text-white/50">
                 <th className="sticky left-0 z-10" style={{ background: "var(--wl-surface)" }} />
                 {groups.map((g, i) => (
                   <th key={i} colSpan={g.span} className="border-b border-white/10 px-2 pt-2 pb-1 text-center font-semibold">
@@ -237,7 +237,7 @@ function ViewSection({
                 ))}
               </tr>
             )}
-            <tr className="text-[11px] font-semibold tracking-wide text-black/40 uppercase dark:text-white/40">
+            <tr className="text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
               <th
                 className="sticky left-0 z-10 px-3 py-2 text-left font-semibold"
                 style={{ background: "var(--wl-surface)" }}
@@ -267,7 +267,7 @@ function ViewSection({
                       </td>
                     ))
                   : r === rows[0] && (
-                      <td rowSpan={rows.length} className="px-4 py-2.5 text-black/40 dark:text-white/40">
+                      <td rowSpan={rows.length} className="px-4 py-2.5 text-black/50 dark:text-white/50">
                         Loading…
                       </td>
                     )}
@@ -276,7 +276,7 @@ function ViewSection({
           </tbody>
         </table>
       </div>
-      {current?.note && <p className="px-3 py-2 text-[11px] text-black/40 dark:text-white/40">{current.note}</p>}
+      {current?.note && <p className="px-3 py-2 text-[11px] text-black/50 dark:text-white/50">{current.note}</p>}
     </div>
   );
 }

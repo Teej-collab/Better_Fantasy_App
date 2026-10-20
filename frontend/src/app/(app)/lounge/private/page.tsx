@@ -204,7 +204,7 @@ export default function LoungePage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold">{room.name}</span>
                     {room.closed ? (
-                      <span className="text-xs text-black/40 dark:text-white/40">Closed</span>
+                      <span className="text-xs text-black/50 dark:text-white/50">Closed</span>
                     ) : (
                       <div className="flex items-center gap-2">
                         <button

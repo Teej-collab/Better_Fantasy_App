@@ -87,7 +87,7 @@ export function DraftBoard({
             ‹
           </button>
           <span className="text-sm font-semibold">
-            Round {clampedRound} <span className="text-black/40 dark:text-white/40">of {totalRounds}</span>
+            Round {clampedRound} <span className="text-black/50 dark:text-white/50">of {totalRounds}</span>
           </span>
           <button
             type="button"

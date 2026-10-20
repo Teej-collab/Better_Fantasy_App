@@ -420,7 +420,7 @@ export function DraftRoom({
         key: `presence-${p.ownerId}-${p.at}`,
         at: p.at,
         node: (
-          <p key={`presence-${p.ownerId}-${p.at}`} className="text-center text-xs text-black/40 italic dark:text-white/40">
+          <p key={`presence-${p.ownerId}-${p.at}`} className="text-center text-xs text-black/50 italic dark:text-white/50">
             {teamNameByOwner.get(p.ownerId) ?? `Owner ${p.ownerId}`} {p.online ? "joined" : "left"} the room
           </p>
         ),
@@ -755,7 +755,7 @@ export function DraftRoom({
               </h2>
               <div ref={chatLogRef} className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
                 {chatTimeline.length === 0 ? (
-                  <p className="text-xs text-black/40 dark:text-white/40">No messages yet — say hi.</p>
+                  <p className="text-xs text-black/50 dark:text-white/50">No messages yet — say hi.</p>
                 ) : (
                   chatTimeline.map((item) => item.node)
                 )}

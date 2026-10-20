@@ -147,7 +147,7 @@ function RosterRow({
             {slotDisplayLabel(entry.lineup_slot)}
           </button>
         ) : (
-          <span className="flex min-h-11 shrink-0 items-center rounded-full border border-black/10 px-2.5 text-center text-[10px] font-semibold text-black/40 dark:border-white/10 dark:text-white/40">
+          <span className="flex min-h-11 shrink-0 items-center rounded-full border border-black/10 px-2.5 text-center text-[10px] font-semibold text-black/50 dark:border-white/10 dark:text-white/50">
             {slotDisplayLabel(entry.lineup_slot)}
           </span>
         )}
@@ -234,7 +234,7 @@ function RosterRow({
           {slotDisplayLabel(entry.lineup_slot)}
         </button>
       ) : (
-        <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/40 dark:border-white/10 dark:text-white/40">
+        <span className="shrink-0 rounded-full border border-black/10 px-2 py-1 text-center text-[10px] font-semibold text-black/50 dark:border-white/10 dark:text-white/50">
           {slotDisplayLabel(entry.lineup_slot)}
         </span>
       )}
@@ -594,7 +594,7 @@ export function MyTeamApp({
         <button
           onClick={() => goToWeek(week - 1)}
           disabled={week <= 1 || weekLoading}
-          className="text-lg text-black/40 disabled:opacity-30 dark:text-white/40"
+          className="text-lg text-black/50 disabled:opacity-30 dark:text-white/50"
           aria-label="Previous week"
         >
           ‹
@@ -603,7 +603,7 @@ export function MyTeamApp({
         <button
           onClick={() => goToWeek(week + 1)}
           disabled={week >= 17 || weekLoading}
-          className="text-lg text-black/40 disabled:opacity-30 dark:text-white/40"
+          className="text-lg text-black/50 disabled:opacity-30 dark:text-white/50"
           aria-label="Next week"
         >
           ›
@@ -879,7 +879,7 @@ function EditLineupOptionRow({
           {slotDisplayLabel(option.slot)}
         </span>
         <span className="min-w-0 flex-1 text-sm wrap-break-word">
-          {option.occupant ? option.occupant.player_name : <span className="text-black/40 dark:text-white/40">Empty</span>}
+          {option.occupant ? option.occupant.player_name : <span className="text-black/50 dark:text-white/50">Empty</span>}
         </span>
       </button>
     </li>

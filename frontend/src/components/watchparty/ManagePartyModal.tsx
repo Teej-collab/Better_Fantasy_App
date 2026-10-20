@@ -75,7 +75,7 @@ export function ManagePartyModal({ room, myOwnerId, onClose }: { room: WatchPart
                 <span className="flex-1 min-w-0 wrap-break-word text-sm font-medium">
                   {m.display_name}
                   {m.owner_id === room.created_by_owner_id && (
-                    <span className="ml-1.5 text-xs font-normal text-black/40 dark:text-white/40">Host</span>
+                    <span className="ml-1.5 text-xs font-normal text-black/50 dark:text-white/50">Host</span>
                   )}
                 </span>
                 {m.owner_id !== room.created_by_owner_id && m.owner_id !== myOwnerId && (

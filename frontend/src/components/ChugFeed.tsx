@@ -52,7 +52,7 @@ function ChugCard({ chug }: { chug: ChugFeedEntry }) {
         <span className="flex min-w-0 items-center gap-2">
           {chug.has_video && (
             <span
-              className={`shrink-0 text-black/40 transition-transform dark:text-white/40 ${open ? "rotate-90" : ""}`}
+              className={`shrink-0 text-black/50 transition-transform dark:text-white/50 ${open ? "rotate-90" : ""}`}
               aria-hidden
             >
               ▶

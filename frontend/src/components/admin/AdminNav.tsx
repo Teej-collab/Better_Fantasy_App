@@ -75,7 +75,7 @@ export function AdminNav() {
     <nav aria-label="Admin sections" className="flex flex-col gap-3 sm:sticky sm:top-4 sm:h-fit sm:w-48 sm:shrink-0">
       {GROUPS.map((group) => (
         <div key={group.title} className="flex flex-col gap-1">
-          <span className="px-1 text-[10px] font-semibold tracking-wider text-black/40 uppercase dark:text-white/40">
+          <span className="px-1 text-[10px] font-semibold tracking-wider text-black/50 uppercase dark:text-white/50">
             {group.title}
           </span>
           <div className="grid grid-cols-2 gap-1 min-[420px]:grid-cols-3 sm:grid-cols-1">

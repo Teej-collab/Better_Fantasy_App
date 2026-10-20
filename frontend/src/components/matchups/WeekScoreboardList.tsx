@@ -101,7 +101,7 @@ function ScoreboardRow({
           {side.score !== null ? side.score.toFixed(1) : "—"}
         </span>
         {side.projected_total !== null && (
-          <span className="text-[11px] tabular-nums text-black/40 dark:text-white/40">
+          <span className="text-[11px] tabular-nums text-black/50 dark:text-white/50">
             Proj <LiveProjectionValue live={side.projected_total} pregame={side.pregame_projected_total} />
           </span>
         )}

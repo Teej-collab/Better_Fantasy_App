@@ -114,7 +114,7 @@ export function AdminNavigationHeatmap({
                 key={`${t.from_page}-${t.to_page}`}
                 label={
                   <>
-                    {eventLabel(t.from_page)} <span className="text-black/40 dark:text-white/40">→</span>{" "}
+                    {eventLabel(t.from_page)} <span className="text-black/50 dark:text-white/50">→</span>{" "}
                     {eventLabel(t.to_page)}
                   </>
                 }

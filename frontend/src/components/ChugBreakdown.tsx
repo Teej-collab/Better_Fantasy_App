@@ -67,12 +67,12 @@ export function ChugBreakdown({ events }: { events: ChugLedgerEvent[] }) {
               <span className="min-w-0 flex-1 wrap-break-word">{detail}</span>
               <span
                 className={`w-8 shrink-0 text-right font-mono tabular-nums ${
-                  e.change > 0 ? "text-amber-600 dark:text-amber-400" : e.change < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-black/40 dark:text-white/40"
+                  e.change > 0 ? "text-amber-600 dark:text-amber-400" : e.change < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-black/50 dark:text-white/50"
                 }`}
               >
                 {signed(e.change)}
               </span>
-              <span className="w-10 shrink-0 text-right font-mono text-black/40 tabular-nums dark:text-white/40" title="Owed after this">
+              <span className="w-10 shrink-0 text-right font-mono text-black/50 tabular-nums dark:text-white/50" title="Owed after this">
                 = {e.balance}
               </span>
             </li>

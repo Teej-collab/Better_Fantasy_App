@@ -251,7 +251,7 @@ export function FreeAgentsList({ players: initialPlayers, bidding = false }: { p
     <div className="flex flex-col gap-2">
       {header}
         <div className="neon-panel flex flex-col rounded-lg bg-black/[0.015] dark:bg-white/[0.03]">
-        <div className="flex items-center justify-between gap-2 border-b border-black/5 px-3 py-2 text-[11px] sm:gap-3 sm:px-4 font-semibold tracking-wide text-black/40 uppercase dark:border-white/5 dark:text-white/40">
+        <div className="flex items-center justify-between gap-2 border-b border-black/5 px-3 py-2 text-[11px] sm:gap-3 sm:px-4 font-semibold tracking-wide text-black/50 uppercase dark:border-white/5 dark:text-white/50">
           <span>Players</span>
           <span className="flex shrink-0 items-center gap-2 sm:gap-4">
             <span className="w-10 text-right">Proj</span>

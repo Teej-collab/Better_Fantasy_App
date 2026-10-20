@@ -159,7 +159,7 @@ export function AdminOverview({
               { label: "Signups", color: "#f59e0b", values: timeseries.days.map((d) => d.signups) },
             ]}
           />
-          <p className="text-[11px] text-black/40 dark:text-white/40">
+          <p className="text-[11px] text-black/50 dark:text-white/50">
             Real data — genuinely sparse this early on. Fills in as usage accumulates.
           </p>
         </section>
@@ -187,7 +187,7 @@ export function AdminOverview({
                     <span className="text-black/50 dark:text-white/50">{ACTIVITY_LABELS[item.kind]}:</span>{" "}
                     {item.label}
                   </span>
-                  <span className="shrink-0 text-xs text-black/40 dark:text-white/40">{timeAgo(item.created_at)}</span>
+                  <span className="shrink-0 text-xs text-black/50 dark:text-white/50">{timeAgo(item.created_at)}</span>
                 </li>
               ))}
             </ul>

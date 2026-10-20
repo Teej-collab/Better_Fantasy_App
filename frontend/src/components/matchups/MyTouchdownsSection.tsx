@@ -44,7 +44,7 @@ function TouchdownList({
     <div className={`flex flex-col gap-1 ${align === "right" ? "items-end text-right" : "items-start text-left"}`}>
       <span className="text-xs text-black/50 dark:text-white/50">{teamName}</span>
       {touchdowns.length === 0 ? (
-        <span className="text-black/40 dark:text-white/40">No touchdowns yet</span>
+        <span className="text-black/50 dark:text-white/50">No touchdowns yet</span>
       ) : (
         touchdowns.map((td) => (
           <span key={td.player_name}>

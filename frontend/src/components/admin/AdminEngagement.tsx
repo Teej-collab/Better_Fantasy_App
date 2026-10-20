@@ -121,7 +121,7 @@ export function AdminEngagement({ initial }: { initial: AdminEngagementData }) {
               <span className="w-8 shrink-0" />
               <div className="grid flex-1" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
                 {Array.from({ length: 24 }, (_, hour) => (
-                  <span key={hour} className="text-[9px] text-black/40 dark:text-white/40">
+                  <span key={hour} className="text-[9px] text-black/50 dark:text-white/50">
                     {HOUR_LABELS[hour] ?? ""}
                   </span>
                 ))}
