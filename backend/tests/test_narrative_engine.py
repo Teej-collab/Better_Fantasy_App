@@ -446,3 +446,13 @@ def test_first_names_use_the_owner_first_name_and_last_initial_on_a_clash():
         "Ryan's Other Team": "Ryan S.",
         "No Owner Name": "No Owner Name",
     }
+
+
+async def test_recent_weekly_openings_are_first_sentences_newest_first(pool):
+    from app.queries import narrative as narrative_queries
+
+    async with pool.acquire() as conn:
+        for week, text in ((1, "Alright degenerates, week one. More."), (2, "Week 2 is in the books! Then this."), (3, "Later week.")):
+            await narrative_queries.save_weekly_narrative(conn, TEST_SEASON, week, 1, "recap", text, "test")
+        openings = await narrative_queries.get_recent_weekly_openings(conn, TEST_SEASON, 3, 1, "recap")
+    assert openings == ["Week 2 is in the books!", "Alright degenerates, week one."]

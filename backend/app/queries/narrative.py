@@ -35,6 +35,28 @@ async def get_cached_weekly_narrative(conn, season: int, week: int, league_id: i
     )
 
 
+async def get_recent_weekly_openings(conn, season: int, week: int, league_id: int, kind: str, limit: int = 4) -> list[str]:
+    """The first sentence of this league's last few weekly narratives of
+    this kind, newest first, so the next one can open differently."""
+    rows = await conn.fetch(
+        """
+        SELECT text FROM weekly_narratives
+        WHERE season = $1 AND week < $2 AND league_id = $3 AND kind = $4
+        ORDER BY week DESC LIMIT $5
+        """,
+        season, week, league_id, kind, limit,
+    )
+    openings = []
+    for row in rows:
+        first = row["text"].strip().split("\n", 1)[0]
+        for end in (". ", "! ", "? "):
+            if end in first:
+                first = first.split(end, 1)[0] + end.strip()
+                break
+        openings.append(first[:200])
+    return openings
+
+
 async def save_weekly_narrative(conn, season: int, week: int, league_id: int, kind: str, text: str, model: str) -> None:
     await conn.execute(
         """

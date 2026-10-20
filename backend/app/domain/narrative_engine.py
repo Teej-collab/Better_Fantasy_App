@@ -133,7 +133,11 @@ guess at a cause the facts don't give you, and never imply when something happen
 "new" streak) unless a fact says so. Every claim must trace to a specific fact.
 
 How a great recap goes:
-- Open with the shape of the week for the whole league, from LEAGUE CONTEXT: was it a big scoring week \
+- Open fresh every week. RECENT OPENINGS (when given) are how the last few recaps started: never reuse \
+their first words, greeting or sentence shape — no stock openers like "Alright degenerates" or "Week N is in \
+the books". Lead with this week's own hook instead: a number, a name, a result, a question, whatever only \
+this week could start with.
+- Then the shape of the week for the whole league, from LEAGUE CONTEXT: was it a big scoring week \
 or a dud, did the top power-ranked teams collide and how did it shake out, who's still unbeaten or \
 winless (only if the facts name someone — never point out that nobody is), and anything unusual — running backs going off, a QB feeding his own receiver, a pile \
 of interceptions or missed field goals. Lines marked (notable) are the ones worth talking about.
@@ -675,6 +679,10 @@ async def generate_weekly_recap(
         if text is None and ANTHROPIC_API_KEY:
             system_prompt = WEEKLY_RECAP_PROMPT if kind == "recap" else WEEKLY_PREVIEW_PROMPT
             facts = await _build_weekly_facts(conn, week_context, league_id, kind)
+            if kind == "recap":
+                openings = await narrative_queries.get_recent_weekly_openings(conn, season, week, league_id, kind)
+                if openings:
+                    facts += "\n\nRECENT OPENINGS (don't reuse):\n" + "\n".join(f"- {o}" for o in openings)
             text = await asyncio.to_thread(generate_narrative, system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
             await narrative_queries.save_weekly_narrative(conn, season, week, league_id, kind, text, MODEL)
         if text is not None:
