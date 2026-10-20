@@ -917,7 +917,7 @@ body {
 
 /* ============================================================
    "The Weekend" landing page — WeekendLanding.tsx
-   Real photo backdrop (public/images/weekend-room.jpg) + neon hero
+   Real photo backdrop (public/images/weekend-room.webp) + neon hero
    title + six neon "vacancy sign" nav links, each with its own
    distinct idle animation per the project owner's spec.
    ============================================================ */
@@ -925,7 +925,7 @@ body {
 .weekend-room-bg {
   position: absolute;
   inset: 0;
-  background-image: url("/images/weekend-room.jpg");
+  background-image: url("/images/weekend-room.webp");
   background-size: cover;
   background-position: center;
 }

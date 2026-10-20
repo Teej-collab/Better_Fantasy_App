@@ -7,17 +7,6 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: "The Weekend for Commissioners",
   description: DESCRIPTION,
-  openGraph: {
-    title: "The Weekend for Commissioners",
-    description: DESCRIPTION,
-    images: ["/images/weekend-league-emblem.png"],
-  },
-  twitter: {
-    card: "summary",
-    title: "The Weekend for Commissioners",
-    description: DESCRIPTION,
-    images: ["/images/weekend-league-emblem.png"],
-  },
 };
 
 const OBJECTIONS = [

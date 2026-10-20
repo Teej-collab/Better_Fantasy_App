@@ -92,8 +92,16 @@ export const metadata: Metadata = {
   // production domain when the env var isn't set, e.g. in local dev.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://weekend-league-web.vercel.app"),
   title: "The Weekend",
-  description: "League standings, matchups, and rosters.",
+  description:
+    "Free fantasy football for leagues that care: real drafts, live scoring, league chat, AI recaps, and a record book that writes itself.",
   manifest: "/manifest.json",
+  // Defaults for every link unfurl. The image comes from
+  // app/opengraph-image.tsx and titles/descriptions fill in from each
+  // page's own metadata. A page that sets its own openGraph/twitter
+  // object loses the file-based image, so don't. Set title and
+  // description instead.
+  openGraph: { type: "website", siteName: "The Weekend" },
+  twitter: { card: "summary_large_image" },
   // Lets iOS treat a Home Screen install as a standalone app (own
   // window, no Safari chrome) instead of just a bookmark — required
   // for push notifications to work at all on iPhone/iPad, which only

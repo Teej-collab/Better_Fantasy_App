@@ -23,7 +23,7 @@ type Sign = {
  * "The Weekend" landing page — hero title, tagline, and six neon
  * "vacancy sign" nav links, each with its own distinct idle animation
  * per the project owner's spec. Background photo lives at
- * public/images/weekend-room.jpg (see globals.css's .weekend-room-bg
+ * public/images/weekend-room.webp (see globals.css's .weekend-room-bg
  * for the scrim overlay that keeps text legible over it).
  *
  * No audio here — this page used to reach for a pour sound + looping

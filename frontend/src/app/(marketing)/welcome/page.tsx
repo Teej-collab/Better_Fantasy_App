@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { CreateLeagueCta, MarketingFooter, MarketingHeader } from "@/components/marketing/MarketingChrome";
 
-// The first page in the app to set real Open Graph/Twitter Card
-// fields (see app/layout.tsx's new metadataBase — required for the
-// relative image path below to resolve to an absolute URL). Every
+// Sets its own Open Graph/Twitter title and description; the preview
+// image itself comes from app/opengraph-image.tsx, inherited. Every
 // claim in this page's copy is checked against what's actually
 // shipped today (Documentation/Marketing/01_Brand_Positioning.md's own
 // voice rule) — nothing here is "coming soon."
@@ -13,17 +12,6 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: "The Weekend — Fantasy Football, With a Memory",
   description: DESCRIPTION,
-  openGraph: {
-    title: "The Weekend",
-    description: DESCRIPTION,
-    images: ["/images/weekend-league-emblem.png"],
-  },
-  twitter: {
-    card: "summary",
-    title: "The Weekend",
-    description: DESCRIPTION,
-    images: ["/images/weekend-league-emblem.png"],
-  },
 };
 
 const FEATURES = [
