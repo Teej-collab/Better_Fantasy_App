@@ -7,6 +7,8 @@ app/domain/ + app/queries/awards.py instead — see MIGRATION_MAP.md.
 
 """
 
+import asyncpg
+
 from app.domain.league_format import get_league_format, ranks_by_points
 from app.config import DEFAULT_LEAGUE_ID
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
@@ -27,6 +29,51 @@ async def get_cached_current_week(conn, season: int):
     return await conn.fetchval(
         "SELECT current_week FROM league_state WHERE season = $1", season
     )
+
+
+async def get_week_state(conn, season: int) -> tuple[int | None, int | None]:
+    """(current_week, lineups_frozen_week). The second is the current
+    week once its last game is final and its lineups are the record
+    (migration b7e3c9a1d4f2), else None. Before that migration is
+    applied it's always None — every week behaves as it did before."""
+    try:
+        row = await conn.fetchrow(
+            "SELECT current_week, lineups_frozen_week FROM league_state WHERE season = $1", season
+        )
+    except asyncpg.UndefinedColumnError:
+        return await get_cached_current_week(conn, season), None
+    if row is None:
+        return None, None
+    return row["current_week"], row["lineups_frozen_week"]
+
+
+def lineup_week_for(current_week: int | None, frozen_week: int | None) -> int | None:
+    """The week the live lineup (current_rosters) belongs to: the
+    current week, or the next one once the current week is frozen."""
+    if current_week is None:
+        return None
+    return current_week + 1 if frozen_week == current_week else current_week
+
+
+async def get_lineup_week(conn, season: int) -> int | None:
+    """The week lineup edits apply to — next week from the moment this
+    week's last game ends, not from the Tuesday flip."""
+    return lineup_week_for(*await get_week_state(conn, season))
+
+
+async def freeze_current_week_lineups(conn, season: int, week: int) -> bool:
+    """Marks `week` (still the current week) as over: its roster_history
+    snapshot stops mirroring the live lineup and becomes the record, and
+    the live lineup becomes next week's. True the first time only."""
+    try:
+        status = await conn.execute(
+            "UPDATE league_state SET lineups_frozen_week = $2 "
+            "WHERE season = $1 AND current_week = $2 AND lineups_frozen_week IS DISTINCT FROM $2",
+            season, week,
+        )
+    except asyncpg.UndefinedColumnError:
+        return False
+    return status.endswith(" 1")
 
 
 async def get_bye_weeks(conn, season: int) -> dict[str, int]:
@@ -486,8 +533,10 @@ async def get_current_rosters(conn, season: int, team_ids: list[int], week: int)
 # app/routers/league.py — from reading the wrong (ESPN's own,
 # disconnected) league's roster for every week it shows.
 async def get_roster_for_week(conn, season: int, team_id: int, week: int):
-    current_week = await get_cached_current_week(conn, season)
-    if current_week is not None and week == current_week:
+    # The live lineup is the lineup week's (the current week until its
+    # last game ends, then the next one); a frozen current week reads
+    # its final snapshot like any past week.
+    if week == await get_lineup_week(conn, season):
         return await get_current_roster(conn, season, team_id, week)
     return await _get_past_roster(conn, season, team_id, week)
 
@@ -510,8 +559,7 @@ async def get_rosters_for_week(conn, season: int, team_ids: list[int], week: int
     roster_history, but look up the current week once, not per team."""
     if not team_ids:
         return {}
-    current_week = await get_cached_current_week(conn, season)
-    if current_week is not None and week == current_week:
+    if week == await get_lineup_week(conn, season):
         return await get_current_rosters(conn, season, team_ids, week)
     return {tid: await _get_past_roster(conn, season, tid, week) for tid in team_ids}
 

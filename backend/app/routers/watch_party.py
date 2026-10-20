@@ -216,8 +216,8 @@ async def lobby(request: Request, pool=Depends(get_pool)):
                 "WHERE season = $2 AND week = $3 AND league_id = $4 AND $1 IN (home_team_id, away_team_id)",
                 my_team_id, season, week, league_id,
             )
-        mine = await league_queries.get_current_roster(conn, season, my_team_id, week) if my_team_id and week else []
-        theirs = await league_queries.get_current_roster(conn, season, opp_team_id, week) if opp_team_id and week else []
+        mine = await league_queries.get_roster_for_week(conn, season, my_team_id, week) if my_team_id and week else []
+        theirs = await league_queries.get_roster_for_week(conn, season, opp_team_id, week) if opp_team_id and week else []
         opp_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", opp_team_id) if opp_team_id else None
         bet_rows = await conn.fetch(
             """

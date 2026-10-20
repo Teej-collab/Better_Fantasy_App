@@ -159,12 +159,13 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
     _waiver_locked_pro_teams below instead, which also covers the week
     that just ended — never feed that into the lineup lock, or every
     team from last week reads as "game already started" for the new
-    week's lineups (real 2026-09-23 bug)."""
-    current_week = await league_queries.get_cached_current_week(conn, active_season)
-    if current_week is None:
+    week's lineups (real 2026-09-23 bug). The week is the lineup week:
+    next week's games as soon as the current week's last game ends."""
+    lineup_week = await league_queries.get_lineup_week(conn, active_season)
+    if lineup_week is None:
         return frozenset()
     try:
-        games = await get_week_scoreboard(current_week, active_season)
+        games = await get_week_scoreboard(lineup_week, active_season)
     except Exception:
         return frozenset()
     return locked_pro_teams(games)
@@ -329,7 +330,10 @@ async def my_team(request: Request, week: int | None = None):
     # None pre-draft/pre-season (nothing synced yet) — get_roster
     # falls back to its no-score shape in that case, same as before
     # this endpoint knew about weeks at all.
-    current_week = await on_own_conn(league_queries.get_cached_current_week, active_season)
+    # The editable week is the lineup week: the current week, or the
+    # next one once the current week's last game has ended (its lineup
+    # is then the record, shown read-only like any past week).
+    current_week = await on_own_conn(league_queries.get_lineup_week, active_season)
     requested_week = week if week is not None else current_week
     is_editable = current_week is None or requested_week == current_week
 
@@ -734,7 +738,8 @@ async def my_player_views(view: str, request: Request, ids: str = ""):
     pool = await get_pool()
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
-        week = await league_queries.get_cached_current_week(conn, active_season) or 1
+        # The My Team screen's views, so the same week as its lineup.
+        week = await league_queries.get_lineup_week(conn, active_season) or 1
         try:
             result = await player_views.build_view(conn, view, player_ids, active_season, week, league_id)
         except httpx.HTTPError:

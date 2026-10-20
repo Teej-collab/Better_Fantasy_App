@@ -1158,3 +1158,26 @@ async def test_waiver_claims_list_has_player_details_and_priority(pool, monkeypa
     assert claim["add_player_pro_team"] == "GB"
     assert body["priority"]["rank"] >= 1
     assert body["priority"]["of"] >= body["priority"]["rank"]
+
+
+async def test_lineup_lock_checks_next_weeks_games_once_the_week_is_frozen(pool, monkeypatch):
+    # Monday night's game is over: Week 6 is the record, and the lock
+    # follows Week 7's kickoffs, so nobody is locked until Thursday.
+    from app.routers import me as me_router
+
+    seen = []
+
+    async def fake_scoreboard(week, season):
+        seen.append(week)
+        return []
+
+    monkeypatch.setattr(me_router, "get_week_scoreboard", fake_scoreboard)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_state (season, current_week, lineups_frozen_week) VALUES ($1, 6, 6) "
+            "ON CONFLICT (season) DO UPDATE SET current_week = 6, lineups_frozen_week = 6",
+            TEST_SEASON,
+        )
+        locked = await me_router._locked_pro_teams_for_current_week(conn, TEST_SEASON)
+    assert seen == [7]
+    assert locked == frozenset()

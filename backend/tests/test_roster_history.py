@@ -153,3 +153,78 @@ async def test_get_roster_for_week_falls_back_to_live_when_no_snapshot_exists_at
         # No snapshot ever taken, no league_state cached either.
         roster = await get_roster_for_week(conn, TEST_SEASON, team_id, 5)
         assert [p["player_id"] for p in roster] == ["test-rh-p6"]
+
+
+async def _set_week(conn, current_week, frozen_week=None):
+    await conn.execute(
+        "INSERT INTO league_state (season, current_week, lineups_frozen_week) VALUES ($1, $2, $3) "
+        "ON CONFLICT (season) DO UPDATE SET current_week = EXCLUDED.current_week, lineups_frozen_week = EXCLUDED.lineups_frozen_week",
+        TEST_SEASON, current_week, frozen_week,
+    )
+
+
+def test_lineup_week_moves_to_next_week_once_the_current_week_is_frozen():
+    from app.queries.league import lineup_week_for
+
+    assert lineup_week_for(6, None) == 6
+    assert lineup_week_for(6, 5) == 6
+    assert lineup_week_for(6, 6) == 7
+    assert lineup_week_for(None, None) is None
+
+
+async def test_freezing_the_week_keeps_its_lineup_and_opens_next_weeks(pool):
+    """Once the week's last game ends, the live lineup becomes next
+    week's: a change made then shows in next week's lineup and never
+    rewrites the finished week's."""
+    from app.queries.league import freeze_current_week_lineups, get_lineup_week
+
+    team_id = await _seed_team(pool, 41)
+    async with pool.acquire() as conn:
+        await _add_player(conn, "test-rh-f1", "Starter", team_id, "RB")
+        await _add_player(conn, "test-rh-f2", "Bench Guy", team_id, "BE")
+        await _set_week(conn, 6)
+        await snapshot_week(conn, TEST_SEASON, 6)
+
+        assert await freeze_current_week_lineups(conn, TEST_SEASON, 6) is True
+        assert await freeze_current_week_lineups(conn, TEST_SEASON, 6) is False  # once
+        assert await get_lineup_week(conn, TEST_SEASON) == 7
+
+        # Swap the two for next week.
+        await conn.execute(
+            "UPDATE current_rosters SET lineup_slot = CASE lineup_slot WHEN 'RB' THEN 'BE' ELSE 'RB' END "
+            "WHERE season = $1 AND team_id = $2", TEST_SEASON, team_id,
+        )
+        week6 = {r["player_id"]: r["lineup_slot"] for r in await get_roster_for_week(conn, TEST_SEASON, team_id, 6)}
+        week7 = {r["player_id"]: r["lineup_slot"] for r in await get_roster_for_week(conn, TEST_SEASON, team_id, 7)}
+    assert week6 == {"test-rh-f1": "RB", "test-rh-f2": "BE"}
+    assert week7 == {"test-rh-f1": "BE", "test-rh-f2": "RB"}
+
+
+async def test_freeze_only_applies_to_the_current_week(pool):
+    from app.queries.league import freeze_current_week_lineups, get_lineup_week
+
+    async with pool.acquire() as conn:
+        await _set_week(conn, 6)
+        assert await freeze_current_week_lineups(conn, TEST_SEASON, 5) is False
+        assert await get_lineup_week(conn, TEST_SEASON) == 6
+
+
+async def test_sync_stops_snapshotting_a_frozen_week(pool):
+    from app.providers.sync import update_league_state
+
+    team_id = await _seed_team(pool, 42)
+    async with pool.acquire() as conn:
+        await _add_player(conn, "test-rh-s1", "Starter", team_id, "RB")
+        await _set_week(conn, 6, frozen_week=6)
+        await snapshot_week(conn, TEST_SEASON, 6)
+        await conn.execute(
+            "UPDATE current_rosters SET lineup_slot = 'BE' WHERE season = $1 AND team_id = $2", TEST_SEASON, team_id
+        )
+
+    await update_league_state(pool, TEST_SEASON, 6)  # a sync tick after the freeze
+
+    async with pool.acquire() as conn:
+        slot = await conn.fetchval(
+            "SELECT lineup_slot FROM roster_history WHERE season = $1 AND week = 6 AND team_id = $2", TEST_SEASON, team_id
+        )
+    assert slot == "RB"

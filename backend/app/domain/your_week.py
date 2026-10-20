@@ -149,8 +149,8 @@ async def build_your_week(conn, owner_id: int, season: int, league_id: int = DEF
     pair = [team["team_id"], opp_team_id]
     power_rank_by_team, my_roster, opp_roster, result_streaks, teams_by_id = await asyncio.gather(
         on_own_conn(get_latest_power_rank_by_team, season, pair, league_id),
-        on_own_conn(queries.get_current_roster, season, team["team_id"], week),
-        on_own_conn(queries.get_current_roster, season, opp_team_id, week),
+        on_own_conn(queries.get_roster_for_week, season, team["team_id"], week),
+        on_own_conn(queries.get_roster_for_week, season, opp_team_id, week),
         on_own_conn(
             get_result_streaks, season, pair, week, exclude_week=None if is_week_final(games) else week
         ),

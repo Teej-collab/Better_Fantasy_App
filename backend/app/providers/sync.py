@@ -47,6 +47,7 @@ from app.domain.weekly_team_stats import (
 from app.config import DEFAULT_LEAGUE_ID
 from app.providers.base import FantasyProvider
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week
+from app.queries import league as league_queries
 from app.queries import roster_history as roster_history_queries
 
 
@@ -94,7 +95,12 @@ async def update_league_state(pool, season: int, current_week: int, *, advance: 
             """,
             season, current_week, advance,
         )
-        await roster_history_queries.snapshot_week(conn, season, current_week)
+        # A week frozen once its last game ended (league_queries.
+        # freeze_current_week_lineups) keeps its final snapshot: the live
+        # lineup belongs to next week by then.
+        _, frozen_week = await league_queries.get_week_state(conn, season)
+        if frozen_week is None or current_week > frozen_week:
+            await roster_history_queries.snapshot_week(conn, season, current_week)
 
 
 async def run_full_sync(

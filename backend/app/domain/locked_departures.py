@@ -54,7 +54,10 @@ async def keep_if_played(conn, season: int, league_id: int, team_id: int, sleepe
     )
     if row is None or row["lineup_slot"] in _NON_STARTER_SLOTS:
         return False
-    week = await league_queries.get_cached_current_week(conn, season)
+    # The lineup week: once the current week is frozen its final
+    # snapshot already holds everyone who played, and the live lineup
+    # is next week's.
+    week = await league_queries.get_lineup_week(conn, season)
     if week is None or not await _has_played(conn, season, week, league_id, sleeper_player_id, row["pro_team"]):
         return False
     await conn.execute(

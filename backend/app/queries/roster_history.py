@@ -94,7 +94,8 @@ async def get_roster_history_for_week(conn, season: int, team_id: int, snapshot_
                     WHEN p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = rh.season AND tbw.bye_week = $4) THEN 0
                     ELSE COALESCE(pwp.projected_points, p.projected_avg_points) END AS points_projected,
                rh.sleeper_player_id AS player_id, p.pro_team, p.injury_status,
-               ($3 = $4 AND rh.is_boom) AS is_boom, ($3 = $4 AND rh.is_bust) AS is_bust
+               ($3 = $4 AND rh.is_boom) AS is_boom, ($3 = $4 AND rh.is_bust) AS is_bust,
+               p.pro_team IN (SELECT tbw.pro_team FROM team_bye_weeks tbw WHERE tbw.season = rh.season AND tbw.bye_week = $4) AS on_bye
         FROM roster_history rh
         JOIN players p ON p.sleeper_player_id = rh.sleeper_player_id
         JOIN teams_by_season tbs ON tbs.id = rh.team_id

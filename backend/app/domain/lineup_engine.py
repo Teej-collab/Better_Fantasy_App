@@ -31,6 +31,7 @@ from app.domain.lineup_exceptions import (
 )
 from app.domain.league_format import extra_draftable_positions
 from app.domain.roster_slots import BENCH_SLOT_LABEL, is_eligible_for_slot, total_draftable_slots
+from app.queries import league as league_queries
 from app.queries.roster_transactions import log_transaction
 
 _ROSTER_ENTRY_SQL = """
@@ -118,15 +119,15 @@ async def _find_displacement(conn, season: int, team_id: int, to_slot: str, rost
     )
     capacity = roster_slots.get(to_slot, 0)
     # A starter who played this week and then left the roster still
-    # holds this slot until the week ends (app/domain/locked_departures.py).
+    # holds this slot until the week ends (app/domain/locked_departures.py)
+    # — the lineup week's, so last week's never block next week's lineup.
     held = await conn.fetch(
         """
         SELECT p.full_name AS player_name FROM locked_departures ld
         JOIN players p ON p.sleeper_player_id = ld.sleeper_player_id
-        WHERE ld.season = $1 AND ld.team_id = $2 AND ld.lineup_slot = $3
-          AND ld.week = (SELECT current_week FROM league_state WHERE season = $1 LIMIT 1)
+        WHERE ld.season = $1 AND ld.team_id = $2 AND ld.lineup_slot = $3 AND ld.week = $4
         """,
-        season, team_id, to_slot,
+        season, team_id, to_slot, await league_queries.get_lineup_week(conn, season),
     )
     capacity -= len(held)
     if held and capacity <= 0:

@@ -480,6 +480,13 @@ async def _run_week_settlement_job():
     if not week_is_final:
         return
 
+    # Every game is final, so this week's lineups are the record from
+    # here: its snapshot stops following the live lineup, and lineups
+    # open for next week now rather than at the Tuesday flip below.
+    async with pool.acquire() as conn:
+        if await league_queries.freeze_current_week_lineups(conn, season, settle_week):
+            logger.info("Week %s lineups frozen; week %s lineups open (season=%s)", settle_week, settle_week + 1, season)
+
     async with pool.acquire() as conn:
         league_rows = await conn.fetch(
             "SELECT DISTINCT league_id FROM teams_by_season WHERE season = $1 ORDER BY league_id",
