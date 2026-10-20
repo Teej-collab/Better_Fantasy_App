@@ -190,3 +190,20 @@ async def test_touchdown_moment_alerts_once_then_stays_as_latest_play(pool, harn
         assert all("alert" not in a for _, a in harness["sent"])  # alerted once only
     finally:
         await _cleanup(pool, owner)
+
+
+async def test_expired_token_counts_as_gone(monkeypatch):
+    # An ended or dismissed activity's token comes back ExpiredToken;
+    # it has to be dropped, not re-sent every 30s.
+    class _Result:
+        is_successful = False
+        status = "410"
+        description = "ExpiredToken"
+
+    class _Client:
+        async def send_notification(self, request):
+            return _Result()
+
+    monkeypatch.setattr(apns_client, "require_apns_configured", lambda: ("k", "t", "com.example.app", "p"))
+    monkeypatch.setattr(apns_client, "_get_client", lambda sandbox=False: _Client())
+    assert await apns_client.send_live_activity("tok", {"event": "update"}) == (False, True)

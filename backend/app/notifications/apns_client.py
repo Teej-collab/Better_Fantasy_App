@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 # APNs' JSON error body's "reason" field (see Apple's Table 8) for a
 # token that will never succeed again — anything else (rate limits,
 # 5xx, a dropped connection) is worth retrying on the next event.
-_PERMANENT_FAILURE_REASONS = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"}
+# ExpiredToken is a Live Activity whose token iOS has retired (the
+# activity ended or was dismissed); left in, it was re-sent every 30s.
+_PERMANENT_FAILURE_REASONS = {"BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic", "ExpiredToken"}
 
 _client: APNs | None = None
 # Builds run straight from Xcode get APNs *sandbox* tokens; TestFlight

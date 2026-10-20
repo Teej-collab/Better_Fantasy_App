@@ -986,9 +986,16 @@ async def _run_weekly_compute_job():
         )
     league_ids = [row["league_id"] for row in league_rows]
 
-    for league_id in league_ids:
+    # Injuries are NFL-wide, so only the first league's compute records
+    # them; the other leagues skip that repeat work every round.
+    round_started = time.monotonic()
+    league_seconds: dict[int, float] = {}
+    for index, league_id in enumerate(league_ids):
+        league_started = time.monotonic()
         try:
-            results = await weekly_stats.compute_and_store_week(pool, season, week, league_id=league_id)
+            results = await weekly_stats.compute_and_store_week(
+                pool, season, week, league_id=league_id, record_injuries=index == 0
+            )
             logger.info(
                 "Weekly compute finished (season=%s week=%s league_id=%s): %s", season, week, league_id, results
             )
@@ -1011,6 +1018,7 @@ async def _run_weekly_compute_job():
             logger.exception(
                 "Playoff bracket resolution failed (season=%s week=%s league_id=%s)", season, week, league_id
             )
+        league_seconds[league_id] = round(time.monotonic() - league_started, 1)
 
     # In-game injuries were just recorded by the compute above
     # (NFL-wide, not per league), so announce any new ones once here.
@@ -1019,6 +1027,12 @@ async def _run_weekly_compute_job():
             await injury_events.notify_in_game_injuries(conn, season, week)
     except Exception:
         logger.exception("In-game injury alerts failed (season=%s week=%s)", season, week)
+
+    # The job runs every 20s; a round that takes longer makes the next
+    # one skip, so scores land less often. Say where the time went.
+    round_seconds = time.monotonic() - round_started
+    if round_seconds > 20:
+        logger.warning("Weekly compute round took %.1fs (seconds per league: %s)", round_seconds, league_seconds)
 
     record_job_run("weekly_compute")
 

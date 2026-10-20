@@ -79,7 +79,8 @@ async def _upsert_player_week_stats(conn, rows: list[tuple]) -> None:
 
 
 async def compute_week_stats(
-    conn, season: int, week: int, event_ids: list[str], league_id: int = DEFAULT_LEAGUE_ID
+    conn, season: int, week: int, event_ids: list[str], league_id: int = DEFAULT_LEAGUE_ID,
+    record_injuries: bool = True,
 ) -> dict[str, int]:
     """Fetches raw stats for every given event (one network round-trip
     per event, covering both individual players and team D/ST — see
@@ -167,7 +168,11 @@ async def compute_week_stats(
 
     # In-game injuries for live projections — outside the scoring
     # transaction and best-effort, so an injury-parsing problem can
-    # never roll back or block the week's actual points.
+    # never roll back or block the week's actual points. They're
+    # NFL-wide, not per league, so the live job records them for only
+    # one league per round (record_injuries).
+    if not record_injuries:
+        return counts
     try:
         async with conn.transaction():
             await live_injuries.record_play_injuries(conn, season, week, injury_plays)
@@ -177,7 +182,9 @@ async def compute_week_stats(
     return counts
 
 
-async def compute_and_store_week(pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> dict:
+async def compute_and_store_week(
+    pool, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID, record_injuries: bool = True
+) -> dict:
     """The real weekly-compute entry point: pulls this fantasy week's
     real NFL event ids from ESPN's public scoreboard, stores every
     player/team-D-ST's fantasy points for the week (compute_week_stats
@@ -191,7 +198,7 @@ async def compute_and_store_week(pool, season: int, week: int, league_id: int = 
     event_ids = [g["id"] for g in games if g["id"]]
 
     async with pool.acquire() as conn:
-        stat_counts = await compute_week_stats(conn, season, week, event_ids, league_id)
+        stat_counts = await compute_week_stats(conn, season, week, event_ids, league_id, record_injuries)
         # Best ball (2026-10): every lineup is set to its best possible
         # lineup before it's scored.
         if lineups_are_automatic(await get_league_format(conn, league_id)):
@@ -199,7 +206,7 @@ async def compute_and_store_week(pool, season: int, week: int, league_id: int = 
         matchups_updated = await compute_matchup_scores_for_week(conn, season, week, league_id)
         # ESPN's in-game rulings ("ruled out", "questionable to
         # return") — only while a game is in progress, best-effort.
-        if any(g.get("state") == "in" for g in games):
+        if record_injuries and any(g.get("state") == "in" for g in games):
             try:
                 news = live_injuries.parse_injury_news(await fetch_injury_news())
                 async with conn.transaction():

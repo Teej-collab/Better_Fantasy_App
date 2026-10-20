@@ -312,3 +312,23 @@ async def test_compute_and_store_week_sources_events_and_updates_matchups(pool, 
     # 250*0.04=10, 2*4=8, 1*-2=-2 -> 16, matching the QB's stat line above.
     assert float(row["home_score"]) == 16.0
     assert float(row["away_score"]) == 0.0
+
+
+async def test_compute_week_stats_records_injuries_only_when_asked(pool, monkeypatch):
+    # Injuries are NFL-wide; the live job records them for one league
+    # per round and skips the repeat for every other league.
+    monkeypatch.setattr(weekly_stats, "get_game_stats", _fake_get_game_stats)
+    calls = []
+
+    async def fake_record(conn, season, week, plays):
+        calls.append(week)
+        return 0
+
+    monkeypatch.setattr(weekly_stats.live_injuries, "record_play_injuries", fake_record)
+    await _seed_rules(pool)
+
+    async with pool.acquire() as conn:
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"], record_injuries=False)
+        assert calls == []
+        await weekly_stats.compute_week_stats(conn, TEST_SEASON, 1, ["event-1"])
+        assert calls == [1]
