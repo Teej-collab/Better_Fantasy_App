@@ -82,8 +82,13 @@ export function BracketExperience({
   const altOdds = altQ.data ?? null;
   const oddsUpdating = (encoded !== '' && (settled !== encoded || altQ.isFetching)) || realQ.isFetching;
 
-  const base = useMemo(() => (world ? buildWorld(world) : null), [world]);
-  const alt = useMemo(() => (world ? buildWorld(world, scenario) : null), [world, scenario]);
+  // Records and seeds come from the same simulated seasons as the odds;
+  // a what-if keeps its last simulation on screen until the new one lands.
+  const base = useMemo(() => (world ? buildWorld(world, EMPTY_SCENARIO, realOdds?.teams) : null), [world, realOdds]);
+  const alt = useMemo(
+    () => (world ? buildWorld(world, scenario, (altOdds ?? realOdds)?.teams) : null),
+    [world, scenario, altOdds, realOdds],
+  );
 
   if (q.isPending || season === null) return <LoadingState />;
   if (!world || !base || !alt) return <MessageState message="The bracket appears once the league's playoff settings are in place." />;
@@ -134,7 +139,9 @@ export function BracketExperience({
             </Svg>
           </Pressable>
           <Text style={styles.status} numberOfLines={2}>
-            {world.status === 'live' ? 'Live — real results, favorites for what’s left' : 'Projected — the rest goes to the favorites'}
+            {world.status === 'live'
+              ? 'Live — real results, favorites for what’s left'
+              : 'Projected from 10,000 simulated seasons · playoff games go to the favorite'}
           </Text>
         </View>
 

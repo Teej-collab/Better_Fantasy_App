@@ -327,7 +327,7 @@ export function WhatIfView({
 
       <View style={styles.section}>
         <Text style={styles.h2}>THE BRACKET, IN THIS WORLD</Text>
-        <Text style={styles.help}>Tap a team to pick them; tap again to go back to the favorite.</Text>
+        <Text style={styles.help}>Tap a team to pick them; tap again to leave it to the simulation.</Text>
       </View>
       <FullBracket world={world} w={alt} teams={teams} records={altRecords} me={me} onPick={pickPlayoff} />
     </View>

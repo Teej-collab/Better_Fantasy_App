@@ -68,7 +68,21 @@ export type Scenario = {
 };
 export const EMPTY_SCENARIO: Scenario = { flips: [], picks: {}, playoff: {} };
 
-export type StandingRow = { team_id: number; wins: number; losses: number; ties: number; points_for: number; ppg: number; seed: number };
+export type StandingRow = {
+  team_id: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  points_for: number;
+  ppg: number;
+  seed: number;
+  /** Wins and losses are the simulated seasons' average, not a final record. */
+  projected?: boolean;
+};
+/** One team's simulated seasons (the backend's playoff odds,
+ *  backend/app/domain/playoff_odds.py): its average wins and average
+ *  finishing spot across every simulated season. */
+export type SimTeam = { team_id: number; projected_wins: number; avg_seed: number };
 export type Decided = 'real' | 'pick' | 'favorite' | 'pending';
 export type BracketGame = SpecGame & {
   a: number | null;
@@ -121,7 +135,7 @@ function favorite(a: number, b: number, ppg: Record<number, number>): number {
 
 /** The whole season and bracket in one world — reality when the
  *  scenario is empty, a what-if otherwise. */
-export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENARIO): World {
+export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENARIO, sim?: SimTeam[] | null): World {
   const ppg = realPpg(world);
   const flips = new Set(scenario.flips);
   const results: Record<number, number | null> = {};
@@ -152,11 +166,34 @@ export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENA
   }
 
   const byRecord = (x: { wins: number; ties: number }, y: { wins: number; ties: number }) => y.wins + 0.5 * y.ties - (x.wins + 0.5 * x.ties);
-  const standings = Object.values(rows)
+  let ordered = Object.values(rows)
     .sort((x, y) =>
       world.rank_by === 'points' ? y.points_for - x.points_for || byRecord(x, y) : byRecord(x, y) || y.points_for - x.points_for,
-    )
-    .map((r, i) => ({ ...r, seed: i + 1 }));
+    );
+  // With the simulated seasons, the regular season still to play is
+  // projected rather than handed to the favorites: each team's record is
+  // its average across the simulated seasons (its real results already in
+  // it) and the seeds follow its average finish. Played-out seasons keep
+  // their real records.
+  const simBy = new Map((sim ?? []).map((t) => [t.team_id, t]));
+  if (simBy.size > 0 && world.schedule.some((g) => !g.played)) {
+    const games: Record<number, number> = {};
+    for (const t of world.teams) games[t.team_id] = 0;
+    for (const g of world.schedule) {
+      games[g.home_team_id] += 1;
+      games[g.away_team_id] += 1;
+    }
+    ordered = ordered
+      .map((r) => {
+        const s = simBy.get(r.team_id);
+        if (!s) return r;
+        const decided = games[r.team_id] - r.ties;
+        const wins = Math.min(decided, Math.max(0, Math.round(s.projected_wins - 0.5 * r.ties)));
+        return { ...r, wins, losses: decided - wins, projected: true };
+      })
+      .sort((x, y) => (simBy.get(x.team_id)?.avg_seed ?? Infinity) - (simBy.get(y.team_id)?.avg_seed ?? Infinity));
+  }
+  const standings = ordered.map((r, i) => ({ ...r, seed: i + 1 }));
   const seedOf: Record<number, number> = {};
   for (const r of standings) seedOf[r.team_id] = r.seed;
 
@@ -221,8 +258,8 @@ export function ordinal(n: number): string {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
-export function recordOf(r: Pick<StandingRow, 'wins' | 'losses' | 'ties'>): string {
-  return `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}`;
+export function recordOf(r: Pick<StandingRow, 'wins' | 'losses' | 'ties' | 'projected'>): string {
+  return `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}${r.projected ? ' proj.' : ''}`;
 }
 
 // Share links: the scenario rides in the URL (?w=...), so a what-if

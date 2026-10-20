@@ -92,8 +92,12 @@ export function BracketExperience({
     };
   }, [world, season, focusTeam, encoded, oddsKey]);
 
-  const base = useMemo(() => (world ? buildWorld(world) : null), [world]);
-  const alt = useMemo(() => (world ? buildWorld(world, scenario) : null), [world, scenario]);
+  // Records and seeds come from the same simulated seasons as the odds;
+  // a what-if keeps its last simulation on screen until the new one lands.
+  const realSim = odds?.real?.teams;
+  const altSim = (odds?.alt ?? odds?.real)?.teams;
+  const base = useMemo(() => (world ? buildWorld(world, EMPTY_SCENARIO, realSim) : null), [world, realSim]);
+  const alt = useMemo(() => (world ? buildWorld(world, scenario, altSim) : null), [world, scenario, altSim]);
 
   if (world === undefined) return <div className="h-96 animate-pulse rounded-3xl bg-[#12161c]" aria-label="Loading the bracket" />;
   if (world === null || !base || !alt) {
@@ -176,7 +180,7 @@ export function BracketExperience({
         <span className="text-sm text-black/60 dark:text-white/60">
           {world.status === "live"
             ? "Live — real results, favorites for what's left."
-            : "Projected — the rest of the season and every playoff game go to the favorites."}
+            : "Projected from 10,000 simulated seasons · playoff games go to the favorite."}
         </span>
       </div>
 

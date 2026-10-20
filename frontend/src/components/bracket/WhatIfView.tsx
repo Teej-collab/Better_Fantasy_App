@@ -277,7 +277,7 @@ export function WhatIfView({
 
       <section className="flex min-w-0 flex-col gap-2">
         <h2 className="font-display text-xl tracking-wide">THE BRACKET, IN THIS WORLD</h2>
-        <p className="text-xs text-[#9aa3b2]">Tap a team to pick them to win; tap again to go back to the favorite.</p>
+        <p className="text-xs text-[#9aa3b2]">Tap a team to pick them to win; tap again to leave it to the simulation.</p>
         <BracketBoard world={world} w={alt} teams={teams} records={altRecords} me={me} onPick={pickPlayoff} />
       </section>
     </div>
