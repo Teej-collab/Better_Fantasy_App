@@ -12,8 +12,6 @@ import {
 import "./globals.css";
 import { AudioWarmup } from "@/components/AudioWarmup";
 import { CinematicHoneycombBackground } from "@/components/CinematicHoneycombBackground";
-import { NativeDeepLinks } from "@/components/NativeDeepLinks";
-import { NativePushRegistration } from "@/components/NativePushRegistration";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageViewTracker } from "@/components/PageViewTracker";
 import { CrashReporter } from "@/components/CrashReporter";
@@ -91,8 +89,7 @@ export const metadata: Metadata = {
   // Required for Open Graph/Twitter Card image tags to resolve to an
   // absolute URL (app/(marketing)/welcome and .../commissioners are
   // the first pages in the app to set them) — falls back to the real
-  // production domain (capacitor.config.ts's own server.url) when the
-  // env var isn't set, e.g. in local dev.
+  // production domain when the env var isn't set, e.g. in local dev.
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://weekend-league-web.vercel.app"),
   title: "The Weekend",
   description: "League standings, matchups, and rosters.",
@@ -208,14 +205,6 @@ const APPEARANCE_SCRIPT = `
     if (dir && (dir[1] === "broadcast" || dir[1] === "stadium")) {
       document.documentElement.setAttribute("data-wl-direction", dir[1]);
     }
-    // Inside the iOS/Android app shell — Capacitor injects
-    // window.Capacitor before any page script runs. Turns on
-    // globals.css's [data-native-app] touch behavior (no tap flash,
-    // no rubber-band bounce, no long-press link previews), which would
-    // be wrong for the plain website.
-    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-      document.documentElement.setAttribute("data-native-app", "");
-    }
   } catch (e) {}
 })();
 `;
@@ -256,8 +245,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <PlayerCardProvider>{children}</PlayerCardProvider>
         </PresenceProvider>
         <ServiceWorkerRegistration />
-        <NativePushRegistration />
-        <NativeDeepLinks />
         <AudioWarmup />
       </body>
     </html>

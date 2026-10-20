@@ -1,5 +1,3 @@
-import { Capacitor } from "@capacitor/core";
-
 import { detectDeviceType, detectPlatform, getSessionId } from "@/lib/analyticsEvents";
 import { trackAnalyticsEvent } from "@/lib/api";
 
@@ -61,14 +59,6 @@ export function screenSize(): string {
   return `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
 }
 
-function isNative(): boolean {
-  try {
-    return Capacitor.isNativePlatform();
-  } catch {
-    return false;
-  }
-}
-
 function report(beacon: Beacon, now: number): void {
   const route = beacon.trail[beacon.trail.length - 1] ?? null;
   void trackAnalyticsEvent({
@@ -82,7 +72,6 @@ function report(beacon: Beacon, now: number): void {
       silent_s: Math.round((now - beacon.t) / 1000),
       os: osVersion(),
       screen: screenSize(),
-      native: isNative(),
     },
     device_type: detectDeviceType(),
     platform: detectPlatform(),

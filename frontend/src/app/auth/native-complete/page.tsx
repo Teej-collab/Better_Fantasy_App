@@ -9,23 +9,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /**
- * Landing point for the native OAuth deep link — see
- * backend/app/routers/auth.py's discord_callback/google_callback
- * (client=native branch) and docs/NATIVE_PHASE_1_PLAN.md §7 for the
- * full lifecycle. A native client's OAuth login opens in the system
- * browser, not this app's own embedded Capacitor WebView (required by
- * Google/Apple's OAuth policies, and why this can't just reuse
- * /auth/complete's #token= fragment — a cookie set in that separate
- * browser session would never be visible to the app's own WebView).
- * The backend hands back a short-lived, single-use ticket instead —
- * this page exchanges it via POST /auth/native/redeem for a real
- * session token, then finishes sign-in exactly like the web flow does
- * (completeSignIn sets this app's own first-party cookie), which is
- * enough for this app's Capacitor shell today (a WebView pointed at
- * this same site — see frontend/capacitor.config.ts) since it shares
- * this origin's cookie jar. A separate, non-WebView native client
- * would instead store the token itself (Keychain/Keystore) and send
- * it as Authorization: Bearer thereafter — not needed yet.
+ * Redeems a single-use ticket for a real session, then finishes
+ * sign-in exactly like the web flow (completeSignIn sets this site's
+ * own first-party cookie). The native app (mobile/) sends people here
+ * through its web handoff (mobile/src/lib/webHandoff.ts, POST
+ * /auth/native/web-handoff) to open a page of the site already signed
+ * in; the ticket is exchanged via POST /auth/native/redeem. The old
+ * Capacitor wrapper that also used this page is gone (2026-10-20).
  */
 function NativeCompleteInner() {
   const router = useRouter();

@@ -13,10 +13,6 @@
       {
         "appID": "5K8V6776KS.com.weekendleague.native",
         "paths": ["/start", "/join-co-owner", "/lounge/*"]
-      },
-      {
-        "appID": "5K8V6776KS.com.weekendleague.app",
-        "paths": ["/auth/native-complete*"]
       }
     ]
   }

@@ -67,8 +67,7 @@ function LiveMark() {
  *
  * Solid background, no backdrop-filter (2026-09 fix): `fixed` combined
  * with `backdrop-filter`/`backdrop-blur-*` on the same element is a
- * real, widely-reported WebKit bug — iOS Safari and WKWebView (this
- * app's Capacitor shell) can promote the element into the wrong
+ * real, widely-reported WebKit bug — iOS Safari and WKWebView can promote the element into the wrong
  * compositing layer mid-scroll, so it detaches from the viewport and
  * appears to scroll up the page with the content instead of staying
  * pinned to the bottom, then "sticks" wherever it ends up. Confirmed
