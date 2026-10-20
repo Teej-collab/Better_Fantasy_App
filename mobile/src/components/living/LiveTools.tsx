@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { Chip, Kicker, Panel, Row } from '@/components/living/LivingCards';
 import { Display, Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
+import { haptics } from '@/lib/haptics';
 import { fmt, isStarter } from '@/lib/livingHome';
 import type { MatchupContextSide, NflGame, RosterPlayer, WatchPartyRoom, WeekMatchupContextItem, WinProbHistory } from '@/lib/types';
 
@@ -171,6 +174,9 @@ export function WhatYouNeedCard({ me, them, winProbability }: { me: MatchupConte
 
 // How the odds moved this week and what moved them.
 export function TurningPointsCard({ history, meIsHome, opponent }: { history: WinProbHistory; meIsHome: boolean; opponent: string }) {
+  // Tap a bar, or drag across the chart, to read the odds at that moment.
+  const [picked, setPicked] = useState<number | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
   const pts = history.points;
   if (pts.length < 2) return null;
   const mine = (pct: number) => (meIsHome ? pct : 100 - pct);
@@ -178,6 +184,32 @@ export function TurningPointsCard({ history, meIsHome, opponent }: { history: Wi
   const last = mine(pts[pts.length - 1].home_win_pct);
   const step = Math.max(1, Math.floor(pts.length / 40));
   const bars = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+  const barAt = (x: number) => {
+    const inner = chartWidth - 8;
+    return inner > 0 ? Math.min(bars.length - 1, Math.max(0, Math.floor(((x - 4) / inner) * bars.length))) : null;
+  };
+  const scrub = (x: number) => {
+    const i = barAt(x);
+    if (i === null || i === picked) return;
+    haptics.select();
+    setPicked(i);
+  };
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd((e) => {
+      const i = barAt(e.x);
+      if (i === null) return;
+      haptics.select();
+      setPicked(i === picked ? null : i);
+    });
+  // Sideways only, so a vertical drag still scrolls the page.
+  const drag = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-8, 8])
+    .failOffsetY([-10, 10])
+    .onStart((e) => scrub(e.x))
+    .onUpdate((e) => scrub(e.x));
+  const at = picked !== null ? bars[picked] : null;
   return (
     <Panel>
       <Kicker>Win % this week</Kicker>
@@ -188,13 +220,37 @@ export function TurningPointsCard({ history, meIsHome, opponent }: { history: Wi
           {Math.abs(last - first).toFixed(0)} since kickoff
         </Chip>
       </View>
-      <View style={styles.chart} accessibilityLabel={`Win chance went from ${Math.round(first)} to ${Math.round(last)} percent`}>
-        <View style={styles.midline} />
-        {bars.map((p) => {
-          const v = mine(p.home_win_pct);
-          return <View key={p.at} style={[styles.chartBar, { height: `${Math.max(3, v)}%`, backgroundColor: v >= 50 ? UP : DOWN }]} />;
-        })}
-      </View>
+      <GestureDetector gesture={Gesture.Race(drag, tap)}>
+        <View
+          style={styles.chart}
+          onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
+          accessibilityLabel={`Win chance went from ${Math.round(first)} to ${Math.round(last)} percent`}>
+          <View style={styles.midline} />
+          {bars.map((p, i) => {
+            const v = mine(p.home_win_pct);
+            return (
+              <View
+                key={p.at}
+                style={[
+                  styles.chartBar,
+                  { height: `${Math.max(3, v)}%`, backgroundColor: v >= 50 ? UP : DOWN },
+                  picked !== null && (i === picked ? styles.chartBarPicked : styles.chartBarDim),
+                ]}
+              />
+            );
+          })}
+        </View>
+      </GestureDetector>
+      {at ? (
+        <View style={styles.readout}>
+          <Text style={[styles.readoutPct, { color: mine(at.home_win_pct) >= 50 ? UP : DOWN }]}>{Math.round(mine(at.home_win_pct))}%</Text>
+          <Text style={styles.small}>
+            {when(at.at)} · You {(meIsHome ? at.home_score : at.away_score).toFixed(1)} – {(meIsHome ? at.away_score : at.home_score).toFixed(1)} {opponent}
+          </Text>
+        </View>
+      ) : (
+        <Text style={[styles.small, styles.readout]}>Tap or drag across the bars to see your odds at any point</Text>
+      )}
       {history.turning_points.map((t, i) => {
         const forMe = (t.side === 'home') === meIsHome;
         const change = meIsHome ? t.home_win_pct_change : -t.home_win_pct_change;
@@ -337,5 +393,9 @@ const styles = StyleSheet.create({
   chart: { height: 64, flexDirection: 'row', alignItems: 'flex-end', gap: 1, backgroundColor: Colors.tile, borderRadius: 8, padding: 4 },
   midline: { position: 'absolute', left: 4, right: 4, top: '50%', height: StyleSheet.hairlineWidth, backgroundColor: Colors.textSecondary },
   chartBar: { flex: 1, borderRadius: 1, opacity: 0.85 },
+  chartBarPicked: { opacity: 1, borderWidth: 1, borderColor: '#ffffff' },
+  chartBarDim: { opacity: 0.35 },
+  readout: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm, minHeight: 22 },
+  readoutPct: { fontSize: 17, fontWeight: '700' },
   lounge: { backgroundColor: '#1d1630' },
 });

@@ -150,7 +150,9 @@ export function LeagueScoreboardCard({
   title: string;
   live?: boolean;
 }) {
-  const rows = matchups.filter((m) => m.home.team_id !== teamId && m.away.team_id !== teamId);
+  // Your own game always leads the list.
+  const mineFirst = (m: WeekMatchupContextItem) => (m.home.team_id === teamId || m.away.team_id === teamId ? 0 : 1);
+  const rows = [...matchups].sort((x, y) => mineFirst(x) - mineFirst(y));
   if (rows.length === 0) return null;
   const closest = live
     ? [...rows].sort((a, b) => Math.abs((a.home.score ?? 0) - (a.away.score ?? 0)) - Math.abs((b.home.score ?? 0) - (b.away.score ?? 0)))[0]
@@ -165,16 +167,25 @@ export function LeagueScoreboardCard({
         const margin = Math.abs(h - a);
         const upset = !live && win.power_rank != null && lose.power_rank != null && win.power_rank - lose.power_rank >= 3;
         const tag = upset ? 'Upset' : !live && margin >= 40 ? 'Blowout' : closest === m ? 'Closest' : null;
+        const yours = mineFirst(m) === 0;
         return (
           <Row
             key={m.matchup_id}
             first={i === 0}
             left={
-              <Text style={styles.rowText} numberOfLines={1}>
+              <Text style={[styles.rowText, yours && styles.yourGame]} numberOfLines={1}>
                 {win.owner_name} {fmt(win.score)} – {fmt(lose.score)} {lose.owner_name}
               </Text>
             }
-            right={tag ? <Chip color={tag === 'Upset' ? '#f5b942' : tag === 'Closest' ? '#4cc3ff' : DOWN}>{tag}</Chip> : ''}
+            right={
+              tag ? (
+                <Chip color={tag === 'Upset' ? '#f5b942' : tag === 'Closest' ? '#4cc3ff' : DOWN}>{tag}</Chip>
+              ) : yours ? (
+                <Chip color={Colors.accent}>You</Chip>
+              ) : (
+                ''
+              )
+            }
           />
         );
       })}
@@ -541,6 +552,7 @@ const styles = StyleSheet.create({
   small: { color: Colors.textSecondary, fontSize: 12 },
   right: { fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   rowText: { color: Colors.text, fontSize: 14 },
+  yourGame: { fontWeight: '700' },
   rowScore: { fontSize: 20, color: Colors.text },
   cardTitle: { color: Colors.text, fontSize: 17, fontWeight: '700' },
   gap2: { gap: 2, flexShrink: 1 },
