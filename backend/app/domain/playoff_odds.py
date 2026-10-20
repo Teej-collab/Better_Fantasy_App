@@ -5,16 +5,18 @@ playoffs — thousands of times and count.
 Each simulated game draws real scores, not just a winner, because the
 standings' tiebreaker is points for: wins (ties half), then points for,
 exactly app/queries/league.py's get_standings. A team's expected score
-blends what the commissioner asked for:
-  - its season scoring average            55%
-  - its recent form (last 3, newest heaviest) 25%
-  - its power-rankings strength            20% (weekly_team_stats.
-    compute_power_scores: record, all-play, scoring, form, margin)
-pulled toward the league average early in the season (few games = less
-certainty), with week-to-week spread from its own boom/bust history,
-also shrunk toward the league's. Then the bracket plays out by
-playoffs.bracket_spec, so the odds cover the title, the Toilet Bowl and
-last place too.
+is its season scoring average pulled hard toward the league average
+(as if it had also scored the league average in MEAN_PRIOR_GAMES more
+games), with week-to-week spread from its own boom/bust history, also
+shrunk toward the league's. Backtested on this league's 2023–2025
+seasons (2026-10-20): week-to-week fantasy scores barely predict the
+next game, so the old blend (55% average, 25% last-three form, 20%
+power rankings, 3-game prior) called games worse than a coin flip and
+swung everyone's odds on one big or bad week. The strong pull toward
+the league average called games and playoff spots best of everything
+tried, and adding recent form, power or lineup projections made it
+worse. Then the bracket plays out by playoffs.bracket_spec, so the odds
+cover the title, the Toilet Bowl and last place too.
 
 It takes the same what-if scenario the clients build (flipped results,
 picked games, picked playoff games), so the What-If Lab shows live odds
@@ -31,13 +33,11 @@ from collections import OrderedDict
 from statistics import mean, pstdev
 
 from app.domain.playoffs import get_playoff_world
-from app.domain.weekly_team_stats import compute_power_scores, recent_form
 
 DEFAULT_SIMS = 10000
-# Points of expected score per unit of power score (a z-score blend).
-POWER_POINTS = 8.0
-# Prior games' weight when shrinking a team's numbers toward the league.
-MEAN_PRIOR_GAMES = 3
+# Prior games' weight when shrinking a team's numbers toward the league
+# (see the module docstring for why the mean's prior is this strong).
+MEAN_PRIOR_GAMES = 12
 SPREAD_PRIOR_GAMES = 4
 FALLBACK_SD = 22.0
 
@@ -78,50 +78,11 @@ def _team_models(world: dict, scenario: dict) -> dict[int, dict]:
     league_avg = mean(every) if every else 110.0
     league_sd = pstdev(every) if len(every) > 4 else FALLBACK_SD
 
-    # Power score from the same blend the power rankings use, on this
-    # world's records (a flipped result changes a record, not points).
-    stats = []
-    for t in team_ids:
-        mine = [g for g in played if t in (g["home_team_id"], g["away_team_id"])]
-        if not mine:
-            continue
-        wins = ties = 0.0
-        margins, all_play = [], []
-        for g in mine:
-            home = g["home_team_id"] == t
-            me_s, opp_s = (g["home_score"], g["away_score"]) if home else (g["away_score"], g["home_score"])
-            if me_s == opp_s:
-                ties += 1
-            else:
-                won = me_s > opp_s
-                if g["id"] in scenario["flips"]:
-                    won = not won
-                wins += 1 if won else 0
-            margins.append(me_s - opp_s)
-            week_scores = [s for x in played if x["week"] == g["week"] for s in (x["home_score"], x["away_score"])]
-            others = len(week_scores) - 1
-            beat = sum(1 for s in week_scores if me_s > s) + 0.5 * (sum(1 for s in week_scores if s == me_s) - 1)
-            all_play.append(beat / others if others else 0.5)
-        stats.append({
-            "team_id": t,
-            "win_pct": (wins + 0.5 * ties) / len(mine),
-            "all_play_pct": mean(all_play),
-            "avg_points": mean(scores[t]),
-            "recent_form": recent_form(scores[t]),
-            "avg_margin": mean(margins),
-        })
-    power = compute_power_scores(stats) if len(stats) > 1 else {}
-
     models = {}
     for t in team_ids:
         n = len(scores[t])
         if n:
-            raw = (
-                0.55 * mean(scores[t])
-                + 0.25 * recent_form(scores[t])
-                + 0.20 * (league_avg + POWER_POINTS * power.get(t, 0.0))
-            )
-            mu = (n * raw + MEAN_PRIOR_GAMES * league_avg) / (n + MEAN_PRIOR_GAMES)
+            mu = (sum(scores[t]) + MEAN_PRIOR_GAMES * league_avg) / (n + MEAN_PRIOR_GAMES)
             sd_t = pstdev(scores[t]) if n > 1 else league_sd
             sd = ((n * sd_t**2 + SPREAD_PRIOR_GAMES * league_sd**2) / (n + SPREAD_PRIOR_GAMES)) ** 0.5
         else:
