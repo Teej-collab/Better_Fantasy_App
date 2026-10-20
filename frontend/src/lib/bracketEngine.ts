@@ -173,8 +173,9 @@ export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENA
   // With the simulated seasons, the regular season still to play is
   // projected rather than handed to the favorites: each team's record is
   // its average across the simulated seasons (its real results already in
-  // it) and the seeds follow its average finish. Played-out seasons keep
-  // their real records.
+  // it). Seeds go by that record, and a tie goes to the better average
+  // finish, which carries the points-for tiebreak. Played-out seasons
+  // keep their real records.
   const simBy = new Map((sim ?? []).map((t) => [t.team_id, t]));
   if (simBy.size > 0 && world.schedule.some((g) => !g.played)) {
     const games: Record<number, number> = {};
@@ -191,7 +192,11 @@ export function buildWorld(world: PlayoffWorld, scenario: Scenario = EMPTY_SCENA
         const wins = Math.min(decided, Math.max(0, Math.round(s.projected_wins - 0.5 * r.ties)));
         return { ...r, wins, losses: decided - wins, projected: true };
       })
-      .sort((x, y) => (simBy.get(x.team_id)?.avg_seed ?? Infinity) - (simBy.get(y.team_id)?.avg_seed ?? Infinity));
+      .sort(
+        (x, y) =>
+          (world.rank_by === "points" ? 0 : byRecord(x, y)) ||
+          (simBy.get(x.team_id)?.avg_seed ?? Infinity) - (simBy.get(y.team_id)?.avg_seed ?? Infinity),
+      );
   }
   const standings = ordered.map((r, i) => ({ ...r, seed: i + 1 }));
   const seedOf: Record<number, number> = {};
