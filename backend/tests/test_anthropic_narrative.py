@@ -106,3 +106,20 @@ def test_generate_narrative_does_not_warn_on_a_normal_completion(monkeypatch, ca
         anthropic_narrative.generate_narrative("system prompt", "facts")
 
     assert len(caplog.records) == 0
+
+
+def test_generate_narrative_says_when_thinking_used_the_whole_budget(monkeypatch):
+    # 2026-10-20, real report: a recap regeneration spent its whole
+    # max_tokens on thinking and came back with no text at all.
+    monkeypatch.setattr(anthropic_narrative, "config", SimpleNamespace(ANTHROPIC_API_KEY="fake-key"))
+    blocks = [SimpleNamespace(type="thinking", thinking="still thinking")]
+    fake_client = SimpleNamespace(
+        messages=SimpleNamespace(create=lambda **kwargs: _fake_response(blocks, stop_reason="max_tokens"))
+    )
+    monkeypatch.setattr(anthropic_narrative, "_client", fake_client)
+
+    try:
+        anthropic_narrative.generate_narrative("system prompt", "facts", max_tokens=2400)
+        assert False, "expected a RuntimeError"
+    except RuntimeError as e:
+        assert "thinking" in str(e)

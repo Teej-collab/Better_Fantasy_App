@@ -175,7 +175,11 @@ no headline, no lists, no markdown of any kind."""
 # 2026-10: the recap's cap went to 750 words (commissioner's call, so it
 # has room for the league context, power rankings and playoff race) —
 # ~1,000 tokens, with headroom so it never cuts off mid-sentence.
-WEEKLY_MAX_TOKENS = 2400
+# 2026-10-20, real report: the model thinks before it writes, and that
+# thinking counts against this cap — a regeneration spent all 2,400 on
+# thinking and returned no text. The 750-word limit in the prompt still
+# sets the length; this only has to cover thinking plus the recap.
+WEEKLY_MAX_TOKENS = 8000
 
 
 def _fmt_boom_bust(roster: list[dict]) -> tuple[list[str], list[str]]:

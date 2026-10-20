@@ -85,4 +85,6 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
         if getattr(block, "type", None) == "text":
             text = block.text.strip()
             return _LEADING_MARKDOWN_HEADING.sub("", text).strip()
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise RuntimeError(f"The model used all {max_tokens} tokens thinking and wrote no text — raise max_tokens")
     raise RuntimeError("Anthropic response contained no text block")
