@@ -1,3 +1,6 @@
+// First, so a showreel recording's demo clock is in place before anything
+// reads the time (lib/demoClock.ts; does nothing in a real build).
+import '@/lib/demoClock';
 import { Anton_400Regular } from '@expo-google-fonts/anton';
 import { GeistMono_500Medium, GeistMono_700Bold } from '@expo-google-fonts/geist-mono';
 import {
