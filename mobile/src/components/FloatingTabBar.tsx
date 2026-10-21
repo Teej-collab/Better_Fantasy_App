@@ -1,12 +1,13 @@
 import { router, type Href } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EngineIcon, TabIcon, type EngineIconName, type TabIconName } from '@/components/NavIcons';
 import { Text } from '@/components/Text';
 import { Colors, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
@@ -23,27 +24,24 @@ import { TAB_BAR_HEIGHT, setTabBarHidden, tabBarHidden } from '@/lib/tabBar';
 // Players is no longer a tab; it stays a route (Team → Free Agents, the
 // Home free-agent cards), just without an icon here.
 
-const ICONS: Record<string, { sf: SFSymbol; label: string }> = {
-  index: { sf: 'house.fill', label: 'Home' },
-  team: { sf: 'person.3.fill', label: 'Team' },
-  chat: { sf: 'bubble.left.and.bubble.right.fill', label: 'Chat' },
-  league: { sf: 'trophy.fill', label: 'League' },
-};
+// Tab icons are the "Neon line" drawings and engine icons the
+// "Playbook" ones (components/NavIcons.tsx, 2026-10-21).
+const LABELS: Record<TabIconName, string> = { index: 'Home', team: 'Team', chat: 'Chat', league: 'League' };
 
-type Engine = { key: string; label: string; sf: SFSymbol; color: string; href: Href };
+type Engine = { key: EngineIconName; label: string; color: string; href: Href };
 
 function useEngines(): Engine[] {
   const matchupId = useMyWeek().data?.matchup?.matchup_id ?? null;
   const chugEnabled = useHouseRules().data?.chugEnabled ?? false;
   return [
     ...(matchupId !== null
-      ? [{ key: 'matchup', label: 'Matchup', sf: 'flag.2.crossed.fill', color: '#39ff14', href: { pathname: '/matchup/[id]', params: { id: String(matchupId) } } } as Engine]
+      ? [{ key: 'matchup', label: 'Matchup', color: '#39ff14', href: { pathname: '/matchup/[id]', params: { id: String(matchupId) } } } as Engine]
       : []),
-    { key: 'whatif', label: 'What-If', sf: 'arrow.triangle.branch', color: '#facc15', href: { pathname: '/league', params: { section: 'standings', view: 'playoffs' } } as unknown as Href },
-    { key: 'lounge', label: 'Lounge', sf: 'tv.fill', color: '#f472b6', href: '/lounge' as Href },
-    { key: 'gamecast', label: 'Gamecast', sf: 'football.fill', color: '#4cc3ff', href: '/gamecast' },
-    { key: 'bets', label: 'League Bets', sf: 'ticket.fill', color: '#c084fc', href: '/bets/league' as Href },
-    ...(chugEnabled ? [{ key: 'chug', label: 'Chug', sf: 'mug.fill', color: '#ff8a3d', href: '/chug' } as Engine] : []),
+    { key: 'whatif', label: 'What-If', color: '#facc15', href: { pathname: '/league', params: { section: 'standings', view: 'playoffs' } } as unknown as Href },
+    { key: 'lounge', label: 'Lounge', color: '#f472b6', href: '/lounge' as Href },
+    { key: 'gamecast', label: 'Gamecast', color: '#4cc3ff', href: '/gamecast' },
+    { key: 'bets', label: 'League Bets', color: '#c084fc', href: '/bets/league' as Href },
+    ...(chugEnabled ? [{ key: 'chug', label: 'Chug', color: '#ff8a3d', href: '/chug' } as Engine] : []),
   ];
 }
 
@@ -62,15 +60,16 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
 
   const items = state.routes.map((route, index) => {
     const focused = state.index === index;
-    const icon = ICONS[route.name];
-    if (!icon) return null;
+    const name = route.name as TabIconName;
+    const label = LABELS[name];
+    if (!label) return null;
     const badge = badges[route.name] ?? 0;
     return (
       <Pressable
         key={route.key}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
-        accessibilityLabel={badge > 0 ? `${icon.label}, ${badge} unread` : icon.label}
+        accessibilityLabel={badge > 0 ? `${label}, ${badge} unread` : label}
         onPress={() => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) {
@@ -82,7 +81,7 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
         onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
         style={styles.item}>
         <View style={[styles.itemInner, focused && { backgroundColor: withAlpha(accent, 0.16) }]}>
-          <SymbolView name={icon.sf} size={21} tintColor={focused ? accent : Colors.textSecondary} fallback={<Text style={{ color: focused ? accent : Colors.textSecondary }}>{icon.label[0]}</Text>} />
+          <TabIcon name={name} focused={focused} color={focused ? accent : Colors.textSecondary} />
           {badge > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -142,7 +141,7 @@ export function FloatingTabBar({ state, navigation, accent, badges }: BottomTabB
                     { backgroundColor: withAlpha(engine.color, 0.1), borderColor: withAlpha(engine.color, 0.35) },
                     pressed && styles.pressed,
                   ]}>
-                  <SymbolView name={engine.sf} size={26} tintColor={engine.color} fallback={<Text style={{ color: engine.color }}>{engine.label[0]}</Text>} />
+                  <EngineIcon name={engine.key} color={engine.color} />
                   <Text style={styles.tileText} numberOfLines={1}>
                     {engine.label}
                   </Text>
