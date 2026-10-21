@@ -76,7 +76,6 @@ import {
   isStarter,
   nextEt,
   PHASE_COLOR,
-  setHomeLayout,
   sideFor,
   startersPlayingToday,
   untilText,
@@ -604,33 +603,7 @@ export function LivingHome({
       {!recapFirst && recapCard}
       {chugDeadline?.deadline && <ChugCountdownCard deadline={chugDeadline.deadline} isPast={chugDeadline.is_past} mine={chugDeadline.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
-      <button
-        type="button"
-        onClick={() => {
-          setHomeLayout("classic");
-          router.refresh();
-        }}
-        className="self-center py-3 text-xs text-[#8790a0] hover:text-[#eceef1]"
-      >
-        Switch to the classic home
-      </button>
     </div>
   );
 }
 
-// On the classic home: the way back to the Living Home.
-export function TryLivingHomeButton() {
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setHomeLayout("living");
-        router.refresh();
-      }}
-      className="self-center py-3 text-xs text-black/50 hover:text-black dark:text-white/50 dark:hover:text-white"
-    >
-      Try the Living Home
-    </button>
-  );
-}

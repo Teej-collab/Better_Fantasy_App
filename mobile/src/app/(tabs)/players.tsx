@@ -16,6 +16,7 @@ import { formatGameTime, formatPoints } from '@/lib/format';
 import { proposeTradeFor } from '@/lib/tradeLinks';
 import { openPlayer, useFreeAgents, useMe } from '@/lib/queries';
 import type { FreeAgent } from '@/lib/types';
+import { useTabBarScroll } from '@/lib/tabBar';
 
 // Label → stored players.position value. Defenses are stored as "DEF"
 // (same mapping as the web's free-agents page).
@@ -41,6 +42,7 @@ const IDP_POSITIONS: { label: string; value: string | undefined }[] = [
 
 function PlayersScreenContent() {
   const scrollRef = useTabScrollRef<FlatList<FreeAgent>>();
+  const tabBarScroll = useTabBarScroll();
   const idp = useMe().data?.league_format?.roster_preset === 'idp';
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
@@ -68,6 +70,7 @@ function PlayersScreenContent() {
     <View style={styles.screen}>
       <FlatList
       ref={scrollRef}
+      {...tabBarScroll}
         data={view === 'matchup' ? list : []}
         keyExtractor={(p) => p.sleeper_player_id}
         contentInsetAdjustmentBehavior="automatic"

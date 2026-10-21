@@ -11,6 +11,7 @@ import { Colors } from '@/constants/theme';
 import { useConnectivity } from '@/lib/connectivity';
 import { useMe } from '@/lib/queries';
 import { ScreenFocusValue } from '@/lib/screenFocus';
+import { setTabBarHidden } from '@/lib/tabBar';
 
 // Tapping the tab you're already on scrolls it back to the top. iOS's own
 // version of that only finds a scroll view that's the first view all the
@@ -53,6 +54,10 @@ export function TabFrame({ children, ticker = false }: { children: ReactNode; ti
   const { online } = useConnectivity();
   const scrollRef = useRef<Scrollable | null>(null);
   useScrollToTopOnTabPress(scrollRef);
+  // A tab you switch to starts with the tab bar showing.
+  useEffect(() => {
+    if (focused) setTabBarHidden(false);
+  }, [focused]);
   // Signed in but in no league yet: every tab is league data, so offer
   // to join or create one instead.
   const noLeague = me !== undefined && me.active_league_id === null;

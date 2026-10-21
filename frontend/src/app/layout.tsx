@@ -193,26 +193,10 @@ const APPEARANCE_SCRIPT = `
     }
     var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
     document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");
-    // Settings > Labs > "Try the new look" (wl_beta_layout, mirrored by
-    // LabsSection.tsx same as every other cookie above) — data-wl-layout
-    // gates the redesigned nav/page components (NavBar.tsx picks
-    // PrimaryNav/BottomNav vs. their Beta counterparts from this same
-    // signal server-side via owner_preferences.beta_layout; this
-    // attribute is what lets any CSS that needs to know before
-    // hydration read it too, same reasoning as data-wl-theme above).
-    if (/(?:^|; )wl_beta_layout=1(?:;|$)/.test(document.cookie)) {
-      document.documentElement.setAttribute("data-wl-layout", "beta");
-    }
-    // Settings > Labs > Design Direction (wl_direction, mirrored by
-    // LabsSection.tsx same as every other cookie above) — a strict
-    // allowlist, not a passthrough, same discipline as data-wl-theme
-    // above: a malformed/hand-edited cookie just falls back to
-    // "default" rather than reaching an unstyled data-wl-direction
-    // value with no matching globals.css block.
-    var dir = document.cookie.match(/(?:^|; )wl_direction=([^;]+)/);
-    if (dir && (dir[1] === "broadcast" || dir[1] === "stadium")) {
-      document.documentElement.setAttribute("data-wl-direction", dir[1]);
-    }
+    // The hamburger-nav layout is everyone's now (2026-10-20); the
+    // design directions are gone. data-wl-layout lets CSS that needs to
+    // know before hydration read it, same as data-wl-theme above.
+    document.documentElement.setAttribute("data-wl-layout", "beta");
   } catch (e) {}
 })();
 `;

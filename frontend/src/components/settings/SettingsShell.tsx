@@ -5,10 +5,8 @@ import { ProfileSection } from "@/components/settings/ProfileSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
 import { ChatSection } from "@/components/settings/ChatSection";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
-import { NavigationSection } from "@/components/settings/NavigationSection";
 import { AccountSection } from "@/components/settings/AccountSection";
 import { FeedbackSection } from "@/components/settings/FeedbackSection";
-import { LabsSection } from "@/components/settings/LabsSection";
 import { BetsSection } from "@/components/settings/BetsSection";
 
 const SECTIONS = [
@@ -17,8 +15,6 @@ const SECTIONS = [
   { key: "chat", label: "Chat" },
   { key: "appearance", label: "Appearance" },
   { key: "bets", label: "Bets" },
-  { key: "navigation", label: "Navigation" },
-  { key: "labs", label: "Labs" },
   { key: "account", label: "Account & Security" },
   { key: "feedback", label: "Feedback" },
 ] as const;
@@ -82,8 +78,6 @@ export function SettingsShell({
         {active === "notifications" && <NotificationsSection />}
         {active === "chat" && <ChatSection />}
         {active === "appearance" && <AppearanceSection />}
-        {active === "navigation" && <NavigationSection />}
-        {active === "labs" && <LabsSection />}
         {active === "bets" && <BetsSection />}
         {active === "account" && <AccountSection initial={initial} />}
         {active === "feedback" && <FeedbackSection isCommissioner={isCommissioner} />}

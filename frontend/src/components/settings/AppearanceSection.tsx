@@ -312,32 +312,6 @@ export function AppearanceSection() {
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Theme</h2>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            The Weekend&apos;s signature look is dark — Light mode isn&apos;t ready yet.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Theme">
-          <span className="rounded-full border-2 border-black dark:border-white px-3 py-1.5 text-sm font-medium">
-            Dark
-          </span>
-          <span className="rounded-full border-2 border-transparent bg-black/5 px-3 py-1.5 text-sm text-black/50 dark:bg-white/10 dark:text-white/50">
-            System
-          </span>
-          <span
-            className="flex items-center gap-1.5 rounded-full border-2 border-transparent bg-black/5 px-3 py-1.5 text-sm text-black/30 dark:bg-white/10 dark:text-white/30"
-            title="Not available yet"
-          >
-            Light
-            <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase dark:bg-white/10">
-              Soon
-            </span>
-          </span>
-        </div>
-      </section>
-
-      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-        <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Neon Intensity</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
             How strong The Weekend&apos;s decorative glow reads — never affects text or contrast.

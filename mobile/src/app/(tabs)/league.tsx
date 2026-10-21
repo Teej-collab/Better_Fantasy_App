@@ -19,6 +19,7 @@ import { haptics } from '@/lib/haptics';
 import { LEAGUE_SECTION_ROUTES, trackPageView } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useActiveLeagueName, useSeasons } from '@/lib/queries';
+import { useTabBarScroll } from '@/lib/tabBar';
 
 // The web's LEAGUE_SUBNAV_ORDER (frontend/src/lib/navDestinations.ts).
 const LEAGUE_SECTIONS = [
@@ -55,6 +56,7 @@ function LeagueScreenContent() {
   const [season, setSeason] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useTabScrollRef<ScrollView>();
+  const tabBarScroll = useTabBarScroll();
   const shownSeason = season ?? latest;
 
   async function onRefresh() {
@@ -66,6 +68,7 @@ function LeagueScreenContent() {
   return (
     <ScrollView
       ref={scrollRef}
+      {...tabBarScroll}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"

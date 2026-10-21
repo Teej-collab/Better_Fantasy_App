@@ -11,7 +11,6 @@ import {
   FeedbackSettings,
   NotificationSettings,
   ProfileSettings,
-  WebOnlySettings,
 } from '@/components/settings/SettingsSections';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
@@ -27,8 +26,6 @@ const SECTIONS = [
   { key: 'chat', label: 'Chat' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'bets', label: 'Bets' },
-  { key: 'navigation', label: 'Navigation' },
-  { key: 'labs', label: 'Labs' },
   { key: 'account', label: 'Account & Security' },
   { key: 'feedback', label: 'Feedback' },
 ] as const;
@@ -103,8 +100,6 @@ export default function SettingsScreen() {
       {section === 'chat' && <ChatSettings />}
       {section === 'appearance' && <AppearanceSettings />}
       {section === 'bets' && <BetSettings />}
-      {section === 'navigation' && <WebOnlySettings title="Navigation" />}
-      {section === 'labs' && <WebOnlySettings title="Labs" />}
       {section === 'account' && <AccountSettings />}
       {section === 'feedback' && <FeedbackSettings />}
       <Text style={styles.version}>{appVersionLabel()}</Text>

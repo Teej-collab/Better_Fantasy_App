@@ -1,10 +1,10 @@
 import * as QuickActions from 'expo-quick-actions';
 import { useQuickActionRouting } from 'expo-quick-actions/router';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { Tabs } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { FloatingTabBar } from '@/components/FloatingTabBar';
 import { useAppearance, useThemeSync } from '@/lib/appearance';
 import { leagueWidgetPropsFor, updateLeagueWidget, updateMatchupWidget } from '@/lib/homeWidget';
 import { listenForPushToStart, syncLiveActivity } from '@/lib/liveActivity';
@@ -137,30 +137,18 @@ export default function TabsLayout() {
   const unread = (useChatConversations().data ?? []).reduce((sum, c) => sum + c.unread_count, 0);
   // Settings > Appearance > Accent Color colors the current tab.
   const accent = useAppearance().accent;
+  // The floating, icons-only bar that hides while you scroll down
+  // (components/FloatingTabBar.tsx), 2026-10-20 — replacing the system
+  // tab bar, which can't shrink or hide on scroll.
   return (
-    <NativeTabs backgroundColor={Colors.surface} tintColor={accent}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="house.fill" md="home" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="team">
-        <NativeTabs.Trigger.Label>Team</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="person.3.fill" md="groups" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="players">
-        <NativeTabs.Trigger.Label>Players</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="chat">
-        <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right.fill" md="chat" />
-        {/* Not rendered at all at zero: hidden={true} still showed a "0". */}
-        {unread > 0 && <NativeTabs.Trigger.Badge>{unread > 99 ? '99+' : String(unread)}</NativeTabs.Trigger.Badge>}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="league">
-        <NativeTabs.Trigger.Label>League</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="trophy.fill" md="emoji_events" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: 'transparent' } }}
+      tabBar={(props) => <FloatingTabBar {...props} accent={accent} badges={{ chat: unread }} />}>
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="team" options={{ title: 'Team' }} />
+      <Tabs.Screen name="players" options={{ title: 'Players' }} />
+      <Tabs.Screen name="chat" options={{ title: 'Chat' }} />
+      <Tabs.Screen name="league" options={{ title: 'League' }} />
+    </Tabs>
   );
 }

@@ -95,6 +95,7 @@ import {
 import type { MatchupContextSide, WeekMatchupContextItem, YourWeek } from '@/lib/types';
 import { buildKickoffCountdownItem, buildLeagueTickerItems, buildTickerItems } from '@/lib/ticker';
 import { lastRun } from '@/lib/waiverClaims';
+import { useTabBarScroll } from '@/lib/tabBar';
 
 // Last week's matchup in the Your Week card's own shape, so recap day
 // can show last week's final in exactly the same card.
@@ -160,8 +161,9 @@ function sameEtDate(iso: string | null, now: Date): boolean {
  * countdowns before games, the live score on game day and the sweat on
  * Monday night. Each day's cards are listed in the switch below.
  */
-export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
+export function LivingHome() {
   const scrollRef = useTabScrollRef<ScrollView>();
+  const tabBarScroll = useTabBarScroll();
   const now = useNow();
   const me = useMe().data ?? null;
   const appearance = useAppearance();
@@ -515,6 +517,7 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   return (
     <ScrollView
       ref={scrollRef}
+      {...tabBarScroll}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
@@ -565,9 +568,6 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       {!recapFirst && recapCard}
       {chug?.deadline && <ChugCountdownCard deadline={chug.deadline} isPast={chug.is_past} mine={chug.mine} />}
       <DeadlinesCard trade={tradeSettings} keeper={keeperRules} now={now} />
-      <Pressable onPress={onUseClassic} hitSlop={8} style={styles.footer} accessibilityRole="button">
-        <Text style={styles.footerText}>Switch to the classic home</Text>
-      </Pressable>
     </ScrollView>
   );
 }
@@ -594,6 +594,4 @@ const styles = StyleSheet.create({
   buttonQuietText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   unread: { backgroundColor: withAlpha(Colors.accent, 0.16), borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
   unreadText: { color: Colors.accent, fontSize: 12, fontWeight: '700' },
-  footer: { alignSelf: 'center', paddingVertical: Spacing.md },
-  footerText: { color: Colors.textSecondary, fontSize: 12 },
 });

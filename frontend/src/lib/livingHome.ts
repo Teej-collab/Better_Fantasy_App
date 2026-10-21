@@ -4,14 +4,6 @@ import type { MatchupContextSide, NflGame, RosterEntry, YourWeek } from "@/lib/a
 // mobile/src/lib/livingHome.ts, so both show the same screen for the
 // same moment. Keep the two in step.
 
-// The home switch: Living Home unless this cookie says classic. Read
-// server-side by app/(home)/page.tsx; set from either home's footer.
-export const HOME_LAYOUT_COOKIE = "wl_home";
-
-export function setHomeLayout(layout: "living" | "classic") {
-  document.cookie = `${HOME_LAYOUT_COOKIE}=${layout}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-}
-
 // The fantasy week's moods, in the order a week goes.
 export type HomePhase =
   | "recap" // Tuesday after the flip: last week's story

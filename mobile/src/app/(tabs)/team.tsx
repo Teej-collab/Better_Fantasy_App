@@ -26,9 +26,11 @@ import {
 } from '@/lib/rosterSlots';
 import { formatGameTime, formatPoints } from '@/lib/format';
 import type { MyTeam, RosterEntry } from '@/lib/types';
+import { useTabBarScroll } from '@/lib/tabBar';
 
 function TeamScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
+  const tabBarScroll = useTabBarScroll();
   // null = the live week (the editable lineup); any other week is a
   // read-only look at that week's roster and projections.
   const [week, setWeek] = useState<number | null>(null);
@@ -69,6 +71,7 @@ function TeamScreenContent() {
       <ScrollView
         style={styles.screen}
       ref={scrollRef}
+      {...tabBarScroll}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>

@@ -1505,6 +1505,14 @@ export async function getMySettings(sessionCookie: string | undefined): Promise<
 // server components (like (home)/page.tsx) that need the owner's
 // preferences during SSR and can't use the client-only /api/backend
 // proxy getPreferences() relies on.
+// The layout is fixed for everyone (2026-10-20): the hamburger nav
+// (beta_layout), the default design, and the standard nav order. The
+// only looks left to pick are Calm/Cosmic and the colors, so any older
+// saved choice is overridden here, where every page reads preferences.
+function withFixedLayout(prefs: OwnerPreferences): OwnerPreferences {
+  return { ...prefs, beta_layout: true, design_direction: "default", bottom_nav_order: null };
+}
+
 export async function getMyPreferences(sessionCookie: string | undefined): Promise<OwnerPreferences | null> {
   if (!sessionCookie) return null;
   const res = await fetch(`${API_BASE_URL}/settings/preferences`, {
@@ -1512,7 +1520,7 @@ export async function getMyPreferences(sessionCookie: string | undefined): Promi
     headers: { Cookie: `session=${sessionCookie}` },
   });
   if (!res.ok) return null;
-  return res.json();
+  return withFixedLayout(await res.json());
 }
 
 async function _settingsRequest(path: string, method: string, body?: object): Promise<void> {
@@ -1664,7 +1672,7 @@ async function _preferencesRequest(path: string, method: string, body?: object):
     const data = await res.json().catch(() => null);
     throw new Error(data?.detail ?? `Request failed (${res.status})`);
   }
-  return res.json();
+  return withFixedLayout(await res.json());
 }
 
 export function getPreferences(): Promise<OwnerPreferences> {
@@ -1679,15 +1687,7 @@ export function applySundayMode(preset: SundayMode): Promise<OwnerPreferences> {
   return _preferencesRequest("/sunday-mode", "POST", { preset });
 }
 
-// BottomNav's reorder UI (Settings > Navigation) — a thin wrapper over
-// updatePreferences so the caller doesn't have to remember to
-// JSON-encode the array itself.
-export function updateBottomNavOrder(order: string[]): Promise<OwnerPreferences> {
-  return updatePreferences({ bottom_nav_order: JSON.stringify(order) });
-}
-
-// HomeCardDeck's reorder UI — same thin JSON-encoding wrapper as
-// updateBottomNavOrder above.
+// HomeCardDeck's reorder UI — a thin JSON-encoding wrapper.
 export function updateHomeCardOrder(order: string[]): Promise<OwnerPreferences> {
   return updatePreferences({ home_card_order: JSON.stringify(order) });
 }

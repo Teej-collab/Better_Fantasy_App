@@ -14,9 +14,11 @@ import { queryClient, useChatConversations } from '@/lib/queries';
 import { canDeleteConversation, confirmDeleteConversation } from '@/lib/chatActions';
 import { conversationTitle, formatWhen } from '@/lib/chatFormat';
 import { useAppearance } from '@/lib/appearance';
+import { useTabBarScroll } from '@/lib/tabBar';
 
 function ChatListScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
+  const tabBarScroll = useTabBarScroll();
   const conversations = useChatConversations();
   const accent = useAppearance().accent;
   const [refreshing, setRefreshing] = useState(false);
@@ -34,6 +36,7 @@ function ChatListScreenContent() {
   return (
     <ScrollView
       ref={scrollRef}
+      {...tabBarScroll}
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"

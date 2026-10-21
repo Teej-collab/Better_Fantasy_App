@@ -712,8 +712,6 @@ export function AppearanceSettings() {
   // once you're done here, not while you're still picking.
   useFocusEffect(useCallback(() => () => flushAccentReload(), []));
   if (!prefs) return <LoadingState />;
-  const direction = prefs.design_direction !== 'default';
-
   return (
     <View style={styles.gap}>
       <Header title="Appearance" subtitle="The Weekend's look, tuned to your taste." saved={saved} />
@@ -721,27 +719,18 @@ export function AppearanceSettings() {
 
       <Panel
         title="Look"
-        description={
-          direction
-            ? 'Controlled by your Design Direction in Labs right now — a Direction sets its own palette. Switch back to Default there to choose Calm or Cosmic again.'
-            : "Calm is The Weekend's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch."
-        }>
+        description="Calm is The Weekend's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch.">
         <Segment
           options={[
             { key: 'calm', label: 'Calm' },
             { key: 'cosmic', label: 'Cosmic' },
           ]}
           value={prefs.theme}
-          disabled={direction}
           onChange={(theme) => {
             // The app reloads into the new palette once it's saved.
             void patch({ theme }).then((ok) => ok && applyTheme(theme));
           }}
         />
-      </Panel>
-
-      <Panel title="Theme" description="The Weekend's signature look is dark — Light mode isn't ready yet.">
-        <Segment options={[{ key: 'dark', label: 'Dark' }]} value="dark" onChange={() => {}} />
       </Panel>
 
       <Panel title="Neon Intensity" description="How strong The Weekend's decorative glow reads — never affects text or contrast.">
@@ -882,29 +871,6 @@ function IntroSoundSetting() {
         }}
       />
     </Panel>
-  );
-}
-
-// ---- Navigation & Labs ----
-
-// The web's bottom-nav reorder and Labs (beta layout, design
-// directions) restyle the website itself; the app's tab bar and look
-// are fixed, so these only explain where to change them.
-export function WebOnlySettings({ title }: { title: 'Navigation' | 'Labs' }) {
-  return (
-    <View style={styles.gap}>
-      <Header
-        title={title}
-        subtitle={title === 'Navigation' ? 'The order of the bottom navigation bar.' : 'Early looks at redesigns before they ship.'}
-      />
-      <Panel>
-        <Text style={styles.body}>
-          {title === 'Navigation'
-            ? "The app's tab bar is fixed: Home, Team, Players, Chat, and League. Reordering the bottom bar is for the website, in Settings → Navigation there."
-            : 'Labs experiments (the new layout and Design Directions) restyle the website. Try them in Settings → Labs on the web; the app keeps its own look.'}
-        </Text>
-      </Panel>
-    </View>
   );
 }
 

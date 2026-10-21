@@ -52,8 +52,7 @@ import { OpeningExperience } from "@/components/OpeningExperience";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
 import { YourWeekCard } from "@/components/YourWeekCard";
-import { LivingHome, TryLivingHomeButton } from "@/components/living/LivingHome";
-import { HOME_LAYOUT_COOKIE } from "@/lib/livingHome";
+import { LivingHome } from "@/components/living/LivingHome";
 import { findGamecastId, getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import {
@@ -616,12 +615,10 @@ export default async function HomePage() {
     </div>
   );
 
-  // The Living Home (2026-10-20, same as the app): the default once
-  // there's a real matchup to build it around, whatever the Labs look
-  // (beta_layout defaults on for everyone); the classic home is one click
-  // away (cookie wl_home=classic).
+  // The Living Home (2026-10-20, same as the app) is everyone's home
+  // once there's a matchup to build it around; the dashboard below only
+  // shows before that (no team yet, preseason, a bye).
   if (
-    cookieStore.get(HOME_LAYOUT_COOKIE)?.value !== "classic" &&
     myWeek?.matchup &&
     season !== null &&
     week !== null &&
@@ -686,11 +683,6 @@ export default async function HomePage() {
           gamecastGames={gamecastGames}
           draftCountdownOrChugCard={cards.draftCountdown ?? null}
         />
-        {myWeek?.matchup && (
-          <div className="flex justify-center">
-            <TryLivingHomeButton />
-          </div>
-        )}
       </HomeWelcomeBackEntry>
     );
   }
@@ -745,7 +737,6 @@ export default async function HomePage() {
             discover: cards.discover,
           }}
         />
-        {myWeek?.matchup && <TryLivingHomeButton />}
       </div>
     </HomeWelcomeBackEntry>
   );

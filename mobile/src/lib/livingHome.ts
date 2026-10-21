@@ -1,32 +1,7 @@
-import * as SecureStore from 'expo-secure-store';
-import { useState } from 'react';
-
 import type { MatchupContextSide, NflGame, RosterEntry, YourWeek } from '@/lib/types';
 
-// The living home screen (2026-10-13) is the app's Home for everyone
-// since 2026-10-16 (it started with two testers). Anyone can flip back
-// to the classic home from the bottom of it, and back again from the
-// classic one; remembered on this phone.
-const OFF_KEY = 'living-home-off';
-
-export function useLivingHomeSwitch(): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(() => {
-    try {
-      return SecureStore.getItem(OFF_KEY) !== '1';
-    } catch {
-      return true;
-    }
-  });
-  function set(next: boolean) {
-    setOn(next);
-    try {
-      SecureStore.setItem(OFF_KEY, next ? '0' : '1');
-    } catch {
-      // Not remembered; fine for this session.
-    }
-  }
-  return [on, set];
-}
+// The living home screen (2026-10-13): the app's only Home since
+// 2026-10-20.
 
 // The fantasy week's moods, in the order a week goes.
 export type HomePhase =
