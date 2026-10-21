@@ -20,8 +20,9 @@ export function canDeleteConversation(c: ChatConversation): boolean {
   return c.type === "direct" || c.type === "group";
 }
 
-// Human-friendly timestamps per the chat brief: "7:42 PM / Yesterday /
-// Monday / Aug 18" — never more precision than that.
+// Human-friendly timestamps, always with the time: "7:42 PM",
+// "Yesterday 7:42 PM", "Monday 7:42 PM", "Aug 18, 7:42 PM". Same rule
+// as the app's formatMessageTime.
 export function formatMessageTimestamp(iso: string): string {
   const date = new Date(iso);
   const now = new Date();
@@ -33,10 +34,17 @@ export function formatMessageTimestamp(iso: string): string {
   yesterday.setDate(now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
 
+  // Older ones keep the time too (2026-10: an announcement from two weeks
+  // back showed only its date on the web, only its time in the app).
   const daysAgo = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysAgo < 6) return date.toLocaleDateString([], { weekday: "long" });
+  if (daysAgo < 6) return `${date.toLocaleDateString([], { weekday: "long" })} ${time}`;
 
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  const day = date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() && { year: "numeric" }),
+  });
+  return `${day}, ${time}`;
 }
 
 export function formatConversationListTimestamp(iso: string): string {

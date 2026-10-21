@@ -39,6 +39,25 @@ export function formatWhen(iso: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+// A message's own stamp, always with the time: "5:57 PM" today,
+// "Yesterday 5:57 PM", "Tuesday 5:57 PM" this week, else "Oct 6, 5:57 PM"
+// (with the year once it's not this year). Same rule as the web's
+// formatMessageTimestamp.
 export function formatMessageTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  if (now.getTime() - date.getTime() < 6 * 24 * 60 * 60 * 1000) {
+    return `${date.toLocaleDateString(undefined, { weekday: 'long' })} ${time}`;
+  }
+  const day = date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
+  });
+  return `${day}, ${time}`;
 }
