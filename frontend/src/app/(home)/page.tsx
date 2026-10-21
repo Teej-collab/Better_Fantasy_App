@@ -617,11 +617,11 @@ export default async function HomePage() {
   );
 
   // The Living Home (2026-10-20, same as the app): the default once
-  // there's a real matchup to build it around; the classic home below is
-  // one click away (cookie wl_home=classic).
+  // there's a real matchup to build it around, whatever the Labs look
+  // (beta_layout defaults on for everyone); the classic home is one click
+  // away (cookie wl_home=classic).
   if (
     cookieStore.get(HOME_LAYOUT_COOKIE)?.value !== "classic" &&
-    !betaLayout &&
     myWeek?.matchup &&
     season !== null &&
     week !== null &&
@@ -686,6 +686,11 @@ export default async function HomePage() {
           gamecastGames={gamecastGames}
           draftCountdownOrChugCard={cards.draftCountdown ?? null}
         />
+        {myWeek?.matchup && (
+          <div className="flex justify-center">
+            <TryLivingHomeButton />
+          </div>
+        )}
       </HomeWelcomeBackEntry>
     );
   }
