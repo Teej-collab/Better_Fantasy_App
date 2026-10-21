@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { addFreeAgent, dropPlayer, getMyTeam, submitWaiverClaim, type RosterEntry } from "@/lib/api";
+import { addFreeAgent, dropPlayer, getMyTeam, listMyWaiverClaims, submitWaiverClaim, type RosterEntry } from "@/lib/api";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
@@ -17,10 +17,12 @@ type Tab = (typeof TABS)[number];
 // one, if there's room), confirm, then one add. A player still on
 // waivers comes back on_waivers, and that same pick is filed as a claim,
 // the same two calls the free agents page makes (FreeAgentsList.tsx).
+// In a league that bids on waivers (FAAB), the confirm step takes a bid.
+type Faab = { remaining: number; budget: number } | null;
 type Pickup =
   | { step: "loading" }
-  | { step: "pick"; roster: RosterEntry[]; rosterFull: boolean }
-  | { step: "confirm"; drop: RosterEntry | null }
+  | { step: "pick"; roster: RosterEntry[]; rosterFull: boolean; faab: Faab }
+  | { step: "confirm"; drop: RosterEntry | null; faab: Faab }
   | { step: "busy" }
   | { step: "done"; message: string }
   | { step: "error"; message: string };
@@ -46,6 +48,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   const [dropError, setDropError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
   const [pickup, setPickup] = useState<Pickup | null>(null);
+  const [bid, setBid] = useState("1");
 
   useEffect(() => {
     let cancelled = false;
@@ -91,13 +94,16 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
 
   function startPickup() {
     setPickup({ step: "loading" });
-    getMyTeam()
-      .then((team) => setPickup({ step: "pick", roster: team.roster, rosterFull: Boolean(team.roster_full) }))
+    Promise.all([getMyTeam(), listMyWaiverClaims().catch(() => null)])
+      .then(([team, claims]) =>
+        setPickup({ step: "pick", roster: team.roster, rosterFull: Boolean(team.roster_full), faab: claims?.faab ?? null })
+      )
       .catch((e) => setPickup({ step: "error", message: e instanceof Error ? e.message : "Couldn't load your roster" }));
   }
 
-  async function submitPickup(drop: RosterEntry | null) {
+  async function submitPickup(drop: RosterEntry | null, faab: Faab) {
     if (!card) return;
+    const bidAmount = faab ? Math.max(0, Math.floor(Number(bid) || 0)) : undefined;
     setPickup({ step: "busy" });
     const dropId = drop?.player_id;
     try {
@@ -108,8 +114,11 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
           message: drop ? `Added ${card.full_name}, dropped ${drop.player_name}.` : `Added ${card.full_name} to your bench.`,
         });
       } else if (result.status === "on_waivers") {
-        await submitWaiverClaim(card.sleeper_player_id, dropId);
-        setPickup({ step: "done", message: `Claim filed on ${card.full_name}. It runs with the next waiver clear.` });
+        await submitWaiverClaim(card.sleeper_player_id, dropId, bidAmount);
+        setPickup({
+          step: "done",
+          message: `Claim filed on ${card.full_name}${bidAmount !== undefined ? ` with a $${bidAmount} bid` : ""}. It runs with the next waiver clear.`,
+        });
       } else {
         setPickup({ step: "error", message: "Your roster is full. Pick someone to drop." });
       }
@@ -257,7 +266,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                     <div className="flex flex-wrap gap-1.5">
                       {!pickup.rosterFull && (
                         <button
-                          onClick={() => setPickup({ step: "confirm", drop: null })}
+                          onClick={() => setPickup({ step: "confirm", drop: null, faab: pickup.faab })}
                           className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                         >
                           No drop
@@ -266,7 +275,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                       {pickup.roster.map((entry) => (
                         <button
                           key={entry.player_id}
-                          onClick={() => setPickup({ step: "confirm", drop: entry })}
+                          onClick={() => setPickup({ step: "confirm", drop: entry, faab: pickup.faab })}
                           className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                         >
                           {entry.player_name}
@@ -290,9 +299,25 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                       ) : null}
                       ? If they&apos;re on waivers, this files a claim instead.
                     </p>
+                    {pickup.faab && (
+                      <label className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
+                        FAAB bid $
+                        <input
+                          type="number"
+                          min={0}
+                          max={pickup.faab.remaining}
+                          value={bid}
+                          onChange={(e) => setBid(e.target.value)}
+                          className="w-20 rounded-lg border border-black/10 bg-transparent px-2 py-1 text-sm tabular-nums dark:border-white/10"
+                        />
+                        <span>
+                          ${pickup.faab.remaining} of ${pickup.faab.budget} left · highest bid wins
+                        </span>
+                      </label>
+                    )}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => submitPickup(pickup.drop)}
+                        onClick={() => submitPickup(pickup.drop, pickup.faab)}
                         className="rounded-full bg-[var(--user-accent,#4cc3ff)] px-3 py-1.5 text-xs font-semibold text-white"
                       >
                         Confirm

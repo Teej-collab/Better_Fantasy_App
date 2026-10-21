@@ -2160,12 +2160,17 @@ export async function submitWaiverClaim(addSleeperPlayerId: string, dropSleeperP
 }
 
 // Your claims plus where you sit in this week's waiver order
-// ("Priority #4 of 12").
-export type MyWaiverClaims = { claims: WaiverClaim[]; priority: { rank: number; of: number } | null };
+// ("Priority #4 of 12"). faab: your bidding budget, in a league that
+// bids on waivers (guillotine); null otherwise.
+export type MyWaiverClaims = {
+  claims: WaiverClaim[];
+  priority: { rank: number; of: number } | null;
+  faab?: { remaining: number; budget: number } | null;
+};
 
 export async function listMyWaiverClaims(): Promise<MyWaiverClaims> {
-  const { claims, priority } = await authedGet<MyWaiverClaims>("/me/team/waivers");
-  return { claims, priority: priority ?? null };
+  const { claims, priority, faab } = await authedGet<MyWaiverClaims>("/me/team/waivers");
+  return { claims, priority: priority ?? null, faab: faab ?? null };
 }
 
 export async function cancelWaiverClaim(claimId: number): Promise<void> {
