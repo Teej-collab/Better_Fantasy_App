@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPreferences, updatePreferences, type OwnerPreferences } from "@/lib/api";
+import { getPreferences, listBlockedChatOwners, unblockChatOwner, updatePreferences, type OwnerPreferences } from "@/lib/api";
 import { ToggleRow } from "@/components/settings/ToggleRow";
 import { SavedIndicator } from "@/components/settings/SavedIndicator";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
@@ -109,6 +109,55 @@ export function ChatSection() {
           onChange={(checked) => patch("ai_training_opt_out", !checked)}
         />
       </section>
+
+      <BlockedPeople />
     </div>
+  );
+}
+
+// Everyone you've blocked from a chat message's "⋯" menu, with a way
+// back — same list as the app's Settings → Chat → Blocked people.
+function BlockedPeople() {
+  const [blocked, setBlocked] = useState<{ owner_id: number; display_name: string }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listBlockedChatOwners()
+      .then(setBlocked)
+      .catch(() => setError("Couldn't load your blocked list."));
+  }, []);
+
+  async function unblock(ownerId: number) {
+    try {
+      await unblockChatOwner(ownerId);
+      setBlocked((prev) => (prev ?? []).filter((b) => b.owner_id !== ownerId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't unblock");
+    }
+  }
+
+  return (
+    <section
+      className="neon-panel flex flex-col gap-2 rounded-xl bg-black/[0.015] px-5 py-4 dark:bg-white/[0.03]"
+      style={panelGlowStyle(SECTION_COLORS.chat)}
+    >
+      <h2 className="text-sm font-semibold">Blocked people</h2>
+      <p className="text-xs text-black/50 dark:text-white/50">
+        You don&apos;t see their messages, they can&apos;t DM you, and you don&apos;t get notifications from them.
+      </p>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      {blocked && blocked.length === 0 && <p className="text-sm text-black/50 dark:text-white/50">No one.</p>}
+      {blocked?.map((b) => (
+        <div key={b.owner_id} className="flex items-center justify-between gap-3 border-t border-black/5 py-2 text-sm dark:border-white/5">
+          <span>{b.display_name}</span>
+          <button
+            onClick={() => void unblock(b.owner_id)}
+            className="rounded-full bg-black/10 px-3 py-1 text-xs font-semibold hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15"
+          >
+            Unblock
+          </button>
+        </div>
+      ))}
+    </section>
   );
 }

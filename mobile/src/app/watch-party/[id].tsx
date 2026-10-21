@@ -23,8 +23,9 @@ function useFantasyDigest(roomId: number) {
 
 // A Watch Party room. The web runs the call inside Chat (LiveKit's
 // VideoConference with chat, volume and scores panels); here the room
-// is a native screen with its chat and the fantasy ticker, and the
-// call itself opens in the in-app browser, signed in.
+// is a native screen with its chat and the fantasy ticker, and the call
+// runs natively (app/lounge-room/[slug].tsx). Only a build without the
+// WebRTC module falls back to the in-app browser, signed in.
 export default function WatchPartyScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const roomId = Number(id);

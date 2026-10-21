@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import type { ChatMessage, ChatReaction } from "@/lib/api";
+import { blockChatOwner, reportChatMessage, type ChatMessage, type ChatReaction, type ChatReportReason } from "@/lib/api";
 import { formatMessageTimestamp } from "@/lib/chatFormat";
 import { SharedBetCard } from "@/components/bets/SharedBetCard";
 
@@ -318,6 +318,7 @@ export function MessageBubble({
             onToggleReactionPicker={() => setShowReactionPicker((v) => !v)}
             onCopy={message.body ? () => navigator.clipboard.writeText(message.body) : null}
             onDelete={() => onDelete(message.id)}
+            safety={{ messageId: message.id, ownerId: message.owner_id, ownerName: message.owner_name }}
           />
         )}
       </div>
@@ -398,6 +399,7 @@ function MessageActions({
   onToggleReactionPicker,
   onCopy,
   onDelete,
+  safety,
 }: {
   visible: boolean;
   mine: boolean;
@@ -407,6 +409,8 @@ function MessageActions({
   // Null when there's no text to copy (a photo or video on its own).
   onCopy: (() => Promise<void>) | null;
   onDelete: () => void;
+  // Someone else's message: report it or block them.
+  safety?: { messageId: number; ownerId: number; ownerName: string };
 }) {
   const [copied, setCopied] = useState(false);
   if (deleted) return null;
@@ -452,6 +456,7 @@ function MessageActions({
           {copied ? "✓" : "📋"}
         </button>
       )}
+      {!mine && safety && <SafetyMenu {...safety} />}
       {mine && (
         <button
           onClick={(e) => {
@@ -463,6 +468,106 @@ function MessageActions({
         >
           🗑
         </button>
+      )}
+    </div>
+  );
+}
+
+const REPORT_REASONS: { label: string; value: ChatReportReason }[] = [
+  { label: "Harassment or bullying", value: "harassment" },
+  { label: "Hate speech", value: "hate" },
+  { label: "Sexual content", value: "sexual" },
+  { label: "Spam", value: "spam" },
+  { label: "Something else", value: "other" },
+];
+
+// Report a message or block its sender — the app's long-press actions
+// (app/chat/[id].tsx). Blocking hides their messages everywhere, so the
+// page reloads to drop them; unblock lives in Settings → Chat.
+function SafetyMenu({ messageId, ownerId, ownerName }: { messageId: number; ownerId: number; ownerName: string }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  async function report(reason: ChatReportReason) {
+    try {
+      await reportChatMessage(messageId, reason);
+      setNote("Thanks for reporting. We'll review it within 24 hours.");
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Couldn't send the report");
+    }
+  }
+
+  async function block() {
+    if (
+      !confirm(
+        `Block ${ownerName}? You won't see their messages in any chat, they can't DM you, and you won't get notifications from them. You can unblock them in Settings → Chat.`
+      )
+    )
+      return;
+    try {
+      await blockChatOwner(ownerId);
+      window.location.reload();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Couldn't block");
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+          setNote(null);
+        }}
+        title="Report or block"
+        aria-label="Report or block"
+        aria-expanded={open}
+        className="rounded-full p-1.5 text-black/50 hover:bg-black/5 hover:text-black/70 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white/70"
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-full left-0 z-20 mb-1 flex w-60 flex-col rounded-xl border border-black/10 bg-[var(--background)] p-1.5 text-sm shadow-xl dark:border-white/10"
+        >
+          {note ? (
+            <p className="px-2 py-1.5 text-black/70 dark:text-white/70">{note}</p>
+          ) : (
+            <>
+              <span className="px-2 pt-1 pb-0.5 text-[11px] font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+                Report this message
+              </span>
+              {REPORT_REASONS.map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => void report(r.value)}
+                  className="rounded-lg px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  {r.label}
+                </button>
+              ))}
+              <div className="my-1 border-t border-black/10 dark:border-white/10" />
+              <button
+                onClick={() => void block()}
+                className="rounded-lg px-2 py-1.5 text-left font-semibold text-red-500 hover:bg-red-500/10"
+              >
+                Block {ownerName}
+              </button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

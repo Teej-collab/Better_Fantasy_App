@@ -157,6 +157,31 @@ export async function getFantasyImpact(gameId: string): Promise<GamecastFantasyI
   }
 }
 
+// The full box score, ESPN-style (backend/app/gamecast/boxscore.py).
+// Public like the game itself; the card marks your players from
+// fantasy-impact. Same shape as the app's GamecastBoxScore.
+export type BoxScoreAthlete = {
+  espn_id: number | null;
+  player_id: string | null;
+  name: string | null;
+  short_name: string | null;
+  position: string | null;
+  stats: string[];
+};
+export type BoxScoreCategory = { key: string; title: string; labels: string[]; athletes: BoxScoreAthlete[]; totals: string[] };
+export type BoxScoreTeam = { abbr: string; name: string; logo: string | null; home_away: "home" | "away" | null; categories: BoxScoreCategory[] };
+export type GamecastBoxScore = { final: boolean; teams: BoxScoreTeam[] };
+
+export async function getBoxScore(gameId: string): Promise<GamecastBoxScore | null> {
+  try {
+    const res = await fetch(`/api/backend/nfl/games/${encodeURIComponent(gameId)}/boxscore`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 // The Last Play card's fantasy half — see backend
 // app/gamecast/last_play.py. Only players rostered in the viewer's
 // league; empty signed out.

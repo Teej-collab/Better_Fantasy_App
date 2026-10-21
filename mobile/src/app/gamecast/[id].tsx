@@ -1,20 +1,21 @@
 import { requireOptionalNativeModule } from 'expo';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { GamecastBets } from '@/components/bets/GamecastBets';
 import { BoxScore } from '@/components/gamecast/BoxScore';
 import { GamecastField } from '@/components/gamecast/GamecastField';
 import { DriveChart, LastPlayCard, PlayByPlay, Scoreboard, ScoringCard, StakeCard } from '@/components/gamecast/GamecastSections';
 import { MomentBanner, useGameMoments } from '@/components/gamecast/MomentBanner';
+import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { trackGamecastGameSelected } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { api, gamecastSocketUrl } from '@/lib/api';
 import { isLive, lastSnap } from '@/lib/gamecast';
-import { queryClient, useFantasyImpact, useGamecastBoxScore, useGamecastGame, usePlayFantasy } from '@/lib/queries';
+import { queryClient, useFantasyImpact, useGamecastBoxScore, useGamecastGame, useGamecastGames, usePlayFantasy } from '@/lib/queries';
 import type { LiveGame } from '@/lib/types';
 
 const RECONNECT_DELAY_MS = 2000;
@@ -124,6 +125,7 @@ export default function GamecastScreen() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
+        <OtherLiveGames currentId={id} />
         <Scoreboard game={g} connected={connected} />
         <GamecastField game={g} />
         {g.status !== 'scheduled' && <LastPlayCard play={lastPlay} fantasy={playFantasy.data ?? []} />}
@@ -139,7 +141,48 @@ export default function GamecastScreen() {
   );
 }
 
+// Every other game on right now, one tap away — the website's "switch
+// to another live game" row. Replaces this screen, so Back still goes to
+// the Gamecast list.
+function OtherLiveGames({ currentId }: { currentId: string }) {
+  const games = (useGamecastGames().data ?? []).filter(
+    (g) => g.game_id !== currentId && (g.status === 'in_progress' || g.status === 'halftime'),
+  );
+  if (games.length === 0) return null;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.switcher}>
+      {games.map((g) => (
+        <Pressable
+          key={g.game_id}
+          onPress={() => router.replace({ pathname: '/gamecast/[id]', params: { id: g.game_id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`Switch to ${g.away_team.abbr} at ${g.home_team.abbr}`}
+          style={({ pressed }) => [styles.switchChip, pressed && styles.pressed]}>
+          <View style={styles.liveDot} />
+          <Text style={styles.switchText}>
+            {g.away_team.abbr} @ {g.home_team.abbr}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.md },
+  switcher: { gap: Spacing.sm },
+  switchChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  switchText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.live },
+  pressed: { opacity: 0.6 },
 });

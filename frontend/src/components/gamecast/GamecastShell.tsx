@@ -13,6 +13,8 @@ import { CurrentDrive } from "@/components/gamecast/CurrentDrive";
 import { PlayByPlay } from "@/components/gamecast/PlayByPlay";
 import { ScoringSummary } from "@/components/gamecast/ScoringSummary";
 import { FantasyImpact } from "@/components/gamecast/FantasyImpact";
+import { BoxScore } from "@/components/gamecast/BoxScore";
+import { DriveChart } from "@/components/gamecast/DriveChart";
 import { GamecastBets } from "@/components/bets/GamecastBets";
 import { startVisibleInterval } from "@/lib/visibleInterval";
 
@@ -164,6 +166,9 @@ export function GamecastShell({
         <FantasyImpact game={game} isSignedIn={isSignedIn} beta={beta} />
       </div>
       {isSignedIn && <GamecastBets gameId={gameId} live={game.status === "in_progress" || game.status === "halftime"} />}
+
+      {game.status !== "scheduled" && <BoxScore game={game} beta={beta} />}
+      <DriveChart game={game} beta={beta} />
 
       <PlayByPlay game={game} beta={beta} />
     </div>

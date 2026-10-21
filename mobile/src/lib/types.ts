@@ -784,6 +784,9 @@ export type OwnerPreferences = {
   notify_league: boolean;
   notify_watch_parties: boolean;
   ai_training_opt_out: boolean;
+  // False until the one-time "AI learning from chat" notice is answered
+  // (shown before your first chat send, same as the web's).
+  ai_training_notice_seen?: boolean;
 };
 
 // GET /settings/me (frontend/src/lib/api.ts MySettings).

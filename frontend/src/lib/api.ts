@@ -2359,6 +2359,39 @@ export class GifSearchError extends Error {
 
 // Backend proxies GIPHY server-side (app/providers/giphy.py) so the API
 // key never reaches the client.
+// Report and block (2026-10, the app's App Review rule for user-generated
+// content, now on the web too). Reasons match backend REPORT_REASONS.
+export type ChatReportReason = "harassment" | "hate" | "sexual" | "spam" | "other";
+
+async function chatSafetyCall(path: string, method: "POST" | "DELETE", body?: unknown): Promise<void> {
+  const res = await fetch(`/api/backend/chat${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+  }
+}
+
+export function reportChatMessage(messageId: number, reason: ChatReportReason): Promise<void> {
+  return chatSafetyCall(`/messages/${messageId}/report`, "POST", { reason });
+}
+
+export function blockChatOwner(ownerId: number): Promise<void> {
+  return chatSafetyCall(`/blocks/${ownerId}`, "POST");
+}
+
+export function unblockChatOwner(ownerId: number): Promise<void> {
+  return chatSafetyCall(`/blocks/${ownerId}`, "DELETE");
+}
+
+export async function listBlockedChatOwners(): Promise<{ owner_id: number; display_name: string }[]> {
+  const { blocked } = await authedGet<{ blocked: { owner_id: number; display_name: string }[] }>("/chat/blocks");
+  return blocked;
+}
+
 export async function searchGifs(query: string): Promise<ChatGif[]> {
   const res = await fetch(`/api/backend/chat/gifs?search=${encodeURIComponent(query)}`);
   if (!res.ok) {

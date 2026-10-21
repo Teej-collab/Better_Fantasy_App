@@ -83,7 +83,8 @@ export default function ConversationScreen() {
   const canPost = conversation?.can_post ?? true;
   const typists = (typingByConversation[conversationId] ?? []).filter((t) => t.owner_id !== myOwnerId);
   const members = useChatMembers().data ?? [];
-  const highlightMentions = usePreferences().data?.mention_highlighting_enabled ?? true;
+  const preferences = usePreferences().data;
+  const highlightMentions = preferences?.mention_highlighting_enabled ?? true;
   const memberNames: Record<number, string> = Object.fromEntries(members.map((m) => [m.owner_id, m.display_name]));
   if (myOwnerId !== null && me.data?.display_name) memberNames[myOwnerId] = me.data.display_name;
 
@@ -160,8 +161,33 @@ export default function ConversationScreen() {
     ]);
   }
 
+  // Asked once, before your first-ever chat send — the web's
+  // AiTrainingNoticeModal. Either answer sends the message; Settings →
+  // Chat carries the same choice afterward.
   function onSend() {
     if (!canSend) return;
+    if (preferences && preferences.ai_training_notice_seen === false) {
+      const answer = (optOut: boolean) => {
+        void api
+          .updatePreferences({ ai_training_notice_seen: true, ai_training_opt_out: optOut })
+          .then((updated) => queryClient.setQueryData(['preferences'], updated))
+          .catch(() => {});
+        sendNow();
+      };
+      Alert.alert(
+        'Before you send your first message',
+        "We're considering a future feature where the app's AI learns to talk trash by studying real league chat messages. It doesn't exist yet, but we wanted to ask up front rather than surprise you later.\n\nBy default your messages would be eligible if that feature ships. You can opt out now, or change your mind anytime in Settings → Chat.",
+        [
+          { text: 'Continue — keep me opted in', onPress: () => answer(false) },
+          { text: 'Opt me out', onPress: () => answer(true) },
+        ],
+      );
+      return;
+    }
+    sendNow();
+  }
+
+  function sendNow() {
     if (pendingVideo) {
       const item: OutgoingVideo = {
         key: `${Date.now()}`,
