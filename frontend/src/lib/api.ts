@@ -1010,6 +1010,9 @@ export type NflGame = {
   broadcast: string | null;
   // The real NFL week this game belongs to.
   week: number | null;
+  // ESPN's forecast for a game not yet played, and whether it's a dome.
+  weather?: { condition: string | null; temperature: number | null } | null;
+  indoor?: boolean;
 };
 
 export async function getNflScoreboard(): Promise<NflGame[]> {
@@ -1702,6 +1705,8 @@ export type RosterEntry = {
   position: string;
   pro_team: string | null;
   injury_status: string | null;
+  // This week's practice report: "Full" / "Limited" / "DNP".
+  practice_participation?: string | null;
   acquired_via: string;
   // Taxi squad eligibility (dynasty): first- or second-year players.
   years_exp?: number | null;

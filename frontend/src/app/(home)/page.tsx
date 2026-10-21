@@ -52,6 +52,8 @@ import { OpeningExperience } from "@/components/OpeningExperience";
 import { WeekRecapSection } from "@/components/WeekRecapSection";
 import { WeeklyRecapTeaser } from "@/components/WeeklyRecapTeaser";
 import { YourWeekCard } from "@/components/YourWeekCard";
+import { LivingHome, TryLivingHomeButton } from "@/components/living/LivingHome";
+import { HOME_LAYOUT_COOKIE } from "@/lib/livingHome";
 import { findGamecastId, getLiveGames, withGamecastLinks } from "@/lib/gamecastApi";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import {
@@ -587,6 +589,75 @@ export default async function HomePage() {
 
   cards.discover = <DiscoveryGrid />;
 
+  // The tickers across the top, shared by the Living Home and the classic home.
+  const tickerHeader = (
+    <div className="rise-in">
+      <div className="flex items-center gap-2">
+        <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
+        <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+          The Weekend Live
+        </span>
+        {leagueTickerItems.length > 0 && activeLeagueName && (
+          <span className="truncate text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
+            · {activeLeagueName}
+          </span>
+        )}
+        {isGameDay && (
+          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
+            Game Day
+          </span>
+        )}
+      </div>
+      {/* League name lives in the label row above, not wedged between
+          the two strips — keeps them stacked tight like AppTickerBar. */}
+      <div className="mt-2 flex flex-col gap-1.5">
+        <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={isGameDay} />
+      </div>
+    </div>
+  );
+
+  // The Living Home (2026-10-20, same as the app): the default once
+  // there's a real matchup to build it around; the classic home below is
+  // one click away (cookie wl_home=classic).
+  if (
+    cookieStore.get(HOME_LAYOUT_COOKIE)?.value !== "classic" &&
+    !betaLayout &&
+    myWeek?.matchup &&
+    season !== null &&
+    week !== null &&
+    leagueBatch !== null
+  ) {
+    return (
+      <HomeWelcomeBackEntry
+        displayName={me.display_name}
+        needsLeague={me.active_league_id === null}
+        pickLeague={opensOnLeaguePicker(me)}
+      >
+        <div className="flex flex-col gap-6">
+          <div className="home-ambient" aria-hidden />
+          {isGameDay && <GameDayRefresher />}
+          {tickerHeader}
+          <LivingHome
+            me={{ display_name: me.display_name, is_commissioner: me.is_commissioner, owner_id: me.owner_id }}
+            season={season}
+            week={week}
+            myWeek={myWeek}
+            nflGames={nflGames}
+            gamecastGames={gamecastGames}
+            standings={standings}
+            weekMatchups={weekMatchups}
+            weeklyRecap={weeklyRecap}
+            weeklyRecapWeek={weeklyRecapWeek}
+            chugDeadline={chugDeadline}
+            activeLeagueName={activeLeagueName}
+            leagueActivity={leagueActivity}
+            isGameDay={isGameDay}
+          />
+        </div>
+      </HomeWelcomeBackEntry>
+    );
+  }
+
   if (betaLayout) {
     return (
       <HomeWelcomeBackEntry
@@ -634,29 +705,7 @@ export default async function HomePage() {
         <div className="home-ambient" aria-hidden />
         {isGameDay && <GameDayRefresher />}
 
-        <div className="rise-in">
-          <div className="flex items-center gap-2">
-            <span className={isGameDay ? "live-dot" : "live-dot live-dot--idle"} aria-hidden />
-            <span className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-              The Weekend Live
-            </span>
-            {leagueTickerItems.length > 0 && activeLeagueName && (
-              <span className="truncate text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
-                · {activeLeagueName}
-              </span>
-            )}
-            {isGameDay && (
-              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-500 uppercase">
-                Game Day
-              </span>
-            )}
-          </div>
-          {/* League name lives in the label row above, not wedged between
-              the two strips — keeps them stacked tight like AppTickerBar. */}
-          <div className="mt-2 flex flex-col gap-1.5">
-            <TickerStrips nfl={tickerItems} league={leagueTickerItems} fast={isGameDay} />
-          </div>
-        </div>
+        {tickerHeader}
 
         {/* Leads the whole page, above even Your Week, whenever it's
             showing — real, time-sensitive content that's also temporary
@@ -691,6 +740,7 @@ export default async function HomePage() {
             discover: cards.discover,
           }}
         />
+        {myWeek?.matchup && <TryLivingHomeButton />}
       </div>
     </HomeWelcomeBackEntry>
   );
