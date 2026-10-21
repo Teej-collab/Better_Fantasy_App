@@ -8,7 +8,7 @@ import { NeonPanel } from '@/components/NeonPanel';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { fmt, isStarter, nextEt, untilText } from '@/lib/livingHome';
-import type { MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
+import type { LeagueActivityItem, MatchupContextSide, RosterEntry, RosterPlayer, WaiverClaim, WaiverClaimsResponse } from '@/lib/types';
 import { useScreenFocused } from '@/lib/screenFocus';
 import { pendingClaims } from '@/lib/waiverClaims';
 
@@ -198,9 +198,13 @@ export function WaiversCountdownCard({ claims, now, color }: { claims: WaiverCla
   );
 }
 
-// What the last waiver run did for you.
-export function ClaimResultsCard({ run, color }: { run: WaiverClaim[]; color: string }) {
+// What the last waiver run did for you, then everyone else's moves from
+// it: the first three, with the rest one tap away so the card stays short.
+export function ClaimResultsCard({ run, color, others = [] }: { run: WaiverClaim[]; color: string; others?: LeagueActivityItem[] }) {
   const won = run.filter((c) => c.status === 'successful');
+  const [showAll, setShowAll] = useState(false);
+  const moves = others.filter((a) => a.kind === 'roster');
+  const shownMoves = showAll ? moves : moves.slice(0, 3);
   return (
     <Panel tint={color}>
       <Kicker color={color}>Your claims · last run</Kicker>
@@ -222,6 +226,37 @@ export function ClaimResultsCard({ run, color }: { run: WaiverClaim[]; color: st
             right={<OutcomeChip status={c.status} />}
           />
         ))
+      )}
+      {moves.length > 0 && (
+        <View style={styles.moves}>
+          <View style={styles.movesHead}>
+            <Kicker>Everyone&apos;s moves</Kicker>
+            <Text style={styles.small}>{moves.length} overnight</Text>
+          </View>
+          {shownMoves.map((a, i) =>
+            a.kind === 'roster' ? (
+              <View key={`${a.owner_id}-${a.timestamp}-${i}`} style={styles.moveRow}>
+                <Text style={[styles.rowText, styles.moveText]} numberOfLines={1}>
+                  {a.owner_name} added {a.added_player_name ?? 'a player'}
+                </Text>
+                {a.dropped_player_name ? (
+                  <Text style={styles.small} numberOfLines={1}>
+                    dropped {a.dropped_player_name}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null,
+          )}
+          {moves.length > 3 && (
+            <Pressable
+              onPress={() => setShowAll((v) => !v)}
+              style={styles.movesToggle}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAll }}>
+              <Text style={styles.movesToggleText}>{showAll ? 'Show fewer' : `Show all ${moves.length} moves`}</Text>
+            </Pressable>
+          )}
+        </View>
       )}
       {won.length > 0 ? (
         <LinkText color={color} onPress={() => router.navigate('/team')}>
@@ -335,6 +370,12 @@ export function LoungeCard({ title, body }: { title: string; body: string }) {
 }
 
 const styles = StyleSheet.create({
+  moves: { backgroundColor: Colors.tile, borderRadius: Radius.md, padding: Spacing.md, gap: 8, marginTop: 4 },
+  movesHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  moveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  moveText: { flexShrink: 1, fontSize: 13 },
+  movesToggle: { minHeight: 44, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  movesToggleText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   panel: { gap: 10 },
   pressed: { opacity: 0.75 },
   kicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },

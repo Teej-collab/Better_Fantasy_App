@@ -198,6 +198,8 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
   const phase: HomePhase = homePhase({ now, myWeek: myWeek.data ?? null, games, roster });
   const lastWeek = phase === 'recap' && week !== null && week > 1 ? week - 1 : null;
   const lastContext = useMatchupContext(lastWeek !== null ? season : null, lastWeek).data ?? null;
+  // Wednesday: everyone's moves from the overnight waiver run.
+  const waiverActivity = useLeagueActivity(phase === 'waivers' ? season : null, 40).data ?? [];
   const m = myWeek.data?.matchup ?? null;
   const history = useWinProbHistory(phase === 'sweat' || phase === 'live' || phase === 'final' ? season : null, m?.matchup_id ?? null).data ?? null;
 
@@ -308,15 +310,17 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
     case 'waivers': {
       const run = lastRun(claims?.claims ?? []).filter((c) => now.getTime() - new Date(c.processed_at!).getTime() < 36 * 3600_000);
       const bigAdd = activity.find((a) => a.kind === 'roster' && a.source === 'waiver');
+      const othersMoves = waiverActivity.filter(
+        (a) =>
+          a.kind === 'roster' &&
+          a.source === 'waiver' &&
+          a.owner_id !== me?.owner_id &&
+          now.getTime() - new Date(a.timestamp).getTime() < 36 * 3600_000,
+      );
       header = { kicker: 'Wednesday · Waivers cleared', title: `Week ${week} starts now` };
       body = (
         <>
-          <ClaimResultsCard run={run} color={color} />
-          {claims?.priority && (
-            <Text style={styles.note}>
-              You&apos;re #{claims.priority.rank} of {claims.priority.of} in the waiver order now.
-            </Text>
-          )}
+          <ClaimResultsCard run={run} color={color} others={othersMoves} />
           {bigAdd && bigAdd.kind === 'roster' && bigAdd.added_player_name && (
             <Panel>
               <Kicker>Biggest add of the night</Kicker>
@@ -325,6 +329,11 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
                 {bigAdd.dropped_player_name ? ` (dropped ${bigAdd.dropped_player_name})` : ''}
               </Text>
             </Panel>
+          )}
+          {claims?.priority && (
+            <Text style={styles.note}>
+              You&apos;re #{claims.priority.rank} of {claims.priority.of} in the waiver order now.
+            </Text>
           )}
           {whatIf}
           {mine && <PositionEdgeCard me={mine.me} them={mine.them} />}
@@ -360,27 +369,69 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       break;
     }
 
-    // Thu–Sun before kickoff: get the lineup right.
-    case 'prep': {
+    // Thursday through Sunday before your players' games, each day its
+    // own screen (2026-10-20 layout). Monday shares The sweat's cards.
+    case 'thu':
+    case 'fri':
+    case 'sat':
+    case 'sun': {
       const upcoming = roster.filter((p) => isStarter(p.lineup_slot) && !p.is_locked && p.game_time && new Date(p.game_time) > now);
       header = {
-        kicker: `${day} · Lineup prep`,
+        kicker: phase === 'sun' ? 'Sunday morning' : day,
         title: upcoming.length > 0 ? `${upcoming.length} of your starters still to play` : 'Get your lineup right',
       };
-      body = (
-        <>
-          {m && m.started && <HeadStartCard matchup={m} />}
-          <LineupFixCard roster={roster} slots={myTeam?.roster_slots ?? null} week={week} color={color} />
-          <StartSitCard roster={roster} context={mine?.me ?? null} week={week} />
-          <WeatherCard games={games} roster={roster} />
-          <InjuryReportCard lastWeek={[]} roster={roster.filter((p) => isStarter(p.lineup_slot))} title="Final injury report" />
-          <KickoffCard players={upcoming} now={now} color={color} title="Your next kickoff" />
-          {betsCard}
-          {whatIf}
-          {mine && <PositionEdgeCard me={mine.me} them={mine.them} />}
-          {mine && <OpponentIntelCard them={mine.them} title={`${mine.them.owner_name}'s hurt starters`} />}
-        </>
-      );
+      const headStart = m && m.started ? <HeadStartCard matchup={m} /> : null;
+      const edge = mine ? <PositionEdgeCard me={mine.me} them={mine.them} /> : null;
+      const kickoff = <KickoffCard players={upcoming} now={now} color={color} title="Your next kickoff" />;
+      if (phase === 'thu') {
+        body = (
+          <>
+            <TonightGamesCard games={tonightGames} title="Tonight" findGamecastId={findGamecastId} />
+            {betsCard}
+            {whatIf}
+            {edge}
+            <LoungeCard title="Tonight in the Lounge" body="Watch the game with your league" />
+          </>
+        );
+      } else if (phase === 'fri') {
+        body = (
+          <>
+            {headStart}
+            <TonightGamesCard games={tonightGames} title="Tonight" findGamecastId={findGamecastId} />
+            {betsCard}
+            {whatIf}
+            {edge}
+            <LoungeCard title="League Lounge" body="Hang out with the league before Sunday" />
+          </>
+        );
+      } else if (phase === 'sat') {
+        body = (
+          <>
+            {headStart}
+            <LineupFixCard roster={roster} slots={myTeam?.roster_slots ?? null} week={week} color={color} />
+            <StartSitCard roster={roster} context={mine?.me ?? null} week={week} />
+            <WeatherCard games={games} roster={roster} />
+            <InjuryReportCard lastWeek={[]} roster={roster.filter((p) => isStarter(p.lineup_slot))} title="Final injury report" />
+            {kickoff}
+            {betsCard}
+            {whatIf}
+            {edge}
+            {mine && <OpponentIntelCard them={mine.them} title={`${mine.them.owner_name}'s hurt starters`} />}
+          </>
+        );
+      } else {
+        body = (
+          <>
+            {kickoff}
+            {headStart}
+            <TonightGamesCard games={tonightGames} title="On today" findGamecastId={findGamecastId} />
+            {betsCard}
+            {whatIf}
+            {edge}
+            <LoungeCard title="League Lounge" body="Watch the early games together" />
+          </>
+        );
+      }
       break;
     }
 
@@ -414,7 +465,9 @@ export function LivingHome({ onUseClassic }: { onUseClassic: () => void }) {
       break;
     }
 
-    // Monday (or Sunday night) with your matchup still undecided.
+    // Monday (or Sunday night) with your matchup still undecided. Monday
+    // before the night game shows the same cards.
+    case 'mon':
     case 'sweat': {
       const margin = (m?.my_score ?? 0) - (m?.opponent_score ?? 0);
       header = {

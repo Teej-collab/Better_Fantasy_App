@@ -33,7 +33,13 @@ export type HomePhase =
   | 'recap' // Tuesday after the flip: last week's story
   | 'waivers' // Wednesday: what the 3 AM run did, the new matchup
   | 'lock' // a game tonight with one of your starters in it
-  | 'prep' // Thu–Sun before kickoff: lineup checks
+  // Each other day its own screen (2026-10-20 layout): Thursday through
+  // Monday before your players' games.
+  | 'thu'
+  | 'fri'
+  | 'sat'
+  | 'sun'
+  | 'mon'
   | 'live' // games on with your players in them
   | 'sweat' // Monday with your matchup still undecided
   | 'final'; // your matchup is done, the week hasn't flipped yet
@@ -138,7 +144,7 @@ export function homePhase({
   if (day === 2) return 'recap';
   if (day === 3) return 'waivers';
   if (startersPlayingToday(roster, now).length > 0) return 'lock';
-  return 'prep';
+  return (['sun', 'mon', 'recap', 'waivers', 'thu', 'fri', 'sat'] as const)[day] as HomePhase;
 }
 
 // The phase's label color, so the screen looks different by mood.
@@ -146,7 +152,11 @@ export const PHASE_COLOR: Record<HomePhase, string> = {
   recap: '#f5b942',
   waivers: '#4cc3ff',
   lock: '#ff8a3d',
-  prep: '#2dd4bf',
+  thu: '#2dd4bf',
+  fri: '#f472b6',
+  sat: '#c084fc',
+  sun: '#facc15',
+  mon: '#60a5fa',
   live: '#39ff14',
   sweat: '#ff8a3d',
   final: '#39ff14',
