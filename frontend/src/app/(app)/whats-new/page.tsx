@@ -68,11 +68,11 @@ const HOME: [string, string][] = [
   ],
   [
     "Thursday to Saturday:",
-    "the matchup ahead, who's playing today, weather and practice reports, close start/sit calls, and your bets.",
+    "the matchup ahead, who's playing today, practice reports, close start/sit calls, and your bets.",
   ],
   [
     "Game time:",
-    "your players' games, live win % you can scrub to any moment, and your game leading Around the League.",
+    "a weather alert before kickoff if rain, snow or freezing cold is coming for your starters, your players' games, live win % you can scrub to any moment, and your game leading Around the League.",
   ],
   [
     "The sweat:",

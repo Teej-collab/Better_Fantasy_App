@@ -18,8 +18,8 @@ type Item = [lead: string, text: string];
 const HOME: Item[] = [
   ['Tuesday:', 'last week\'s final and the recap, your power-ranking move, injuries from Sunday, the free agents who went off, and a countdown to waivers.'],
   ['Wednesday:', 'what the 3 AM waiver run did for you, your new waiver priority, then everyone else\'s moves from overnight.'],
-  ['Thursday to Saturday:', 'the matchup ahead, who\'s playing today, weather and practice reports, close start/sit calls, and your bets.'],
-  ['Game time:', 'your players\' games, live win % you can scrub to any moment, and your game leading Around the League.'],
+  ['Thursday to Saturday:', 'the matchup ahead, who\'s playing today, practice reports, close start/sit calls, and your bets.'],
+  ['Game time:', 'a weather alert before kickoff if rain, snow or freezing cold is coming for your starters, your players\' games, live win % you can scrub to any moment, and your game leading Around the League.'],
   ['The sweat:', 'Sunday night and Monday, when your matchup is still undecided, Home is all about the games left.'],
   ['Swap from Home:', 'one-tap lineup swaps right from the cards.'],
   ['Tap a free agent', 'to open their card and add or claim them, with a bid in leagues that bid on waivers.'],
