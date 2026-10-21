@@ -20,6 +20,7 @@ import type { Trade, TradeSettings } from "@/lib/tradesApi";
 import { encodeScenario } from "@/lib/bracketEngine";
 import { fmt, isStarter, nextEt, ordinal, untilText } from "@/lib/livingHome";
 import { Big, Chip, DOWN, Kicker, LinkText, Panel, Row, Small, UP } from "@/components/living/LivingParts";
+import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 
 // The Living Home's cards (the website's copy of the app's
 // mobile/src/components/living/LivingCards.tsx and WeekCards.tsx).
@@ -525,14 +526,21 @@ export function InjuryReportCard({ lastWeek, roster, title }: { lastWeek: Roster
 export function FreeAgentsCard({ players, by, title, color }: { players: MyFreeAgent[]; by: "last" | "projected"; title: string; color: string }) {
   const value = (p: MyFreeAgent) => (by === "last" ? p.last_week_score : p.projected_points) ?? 0;
   const top = players.filter((p) => !p.rostered_team_id && value(p) > 0).sort((a, b) => value(b) - value(a)).slice(0, 4);
+  const { openPlayerCard } = usePlayerCard();
   if (top.length === 0) return null;
   return (
     <Panel>
       <Kicker>{title}</Kicker>
       <div>
         {top.map((p, i) => (
-          <Row
+          // Each player opens their card, where you can claim or add them.
+          <button
             key={p.sleeper_player_id}
+            type="button"
+            onClick={() => openPlayerCard(p.sleeper_player_id)}
+            className="block w-full cursor-pointer text-left hover:opacity-80"
+          >
+          <Row
             first={i === 0}
             left={
               <div className="flex flex-col gap-0.5">
@@ -548,6 +556,7 @@ export function FreeAgentsCard({ players, by, title, color }: { players: MyFreeA
             }
             right={<span className="font-display text-xl tabular-nums">{value(p).toFixed(1)}</span>}
           />
+          </button>
         ))}
       </div>
       <LinkText color={color} href="/free-agents">

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { dropPlayer } from "@/lib/api";
+import { addFreeAgent, dropPlayer, getMyTeam, submitWaiverClaim, type RosterEntry } from "@/lib/api";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
@@ -11,6 +11,19 @@ import { GameLogTable } from "@/components/players/GameLogTable";
 
 const TABS = ["Overview", "Game Log"] as const;
 type Tab = (typeof TABS)[number];
+
+// Picking up a free agent from the card (2026-10, so the Living Home's
+// free-agent rows can go straight to a claim): pick who to drop (or no
+// one, if there's room), confirm, then one add. A player still on
+// waivers comes back on_waivers, and that same pick is filed as a claim,
+// the same two calls the free agents page makes (FreeAgentsList.tsx).
+type Pickup =
+  | { step: "loading" }
+  | { step: "pick"; roster: RosterEntry[]; rosterFull: boolean }
+  | { step: "confirm"; drop: RosterEntry | null }
+  | { step: "busy" }
+  | { step: "done"; message: string }
+  | { step: "error"; message: string };
 
 // Click a player's name anywhere it's rendered inside a
 // PlayerCardModal.Provider-less caller — this modal is self-contained
@@ -32,11 +45,13 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   const [dropping, setDropping] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Overview");
+  const [pickup, setPickup] = useState<Pickup | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab("Overview"); // this modal is one shared instance — reset the tab when a different player opens into it
+    setPickup(null);
     getPlayerCard(sleeperPlayerId)
       .then((c) => {
         if (!cancelled) setCard(c);
@@ -71,6 +86,35 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
     } catch (e) {
       setDropError(e instanceof Error ? e.message : "Drop failed");
       setDropping(false);
+    }
+  }
+
+  function startPickup() {
+    setPickup({ step: "loading" });
+    getMyTeam()
+      .then((team) => setPickup({ step: "pick", roster: team.roster, rosterFull: Boolean(team.roster_full) }))
+      .catch((e) => setPickup({ step: "error", message: e instanceof Error ? e.message : "Couldn't load your roster" }));
+  }
+
+  async function submitPickup(drop: RosterEntry | null) {
+    if (!card) return;
+    setPickup({ step: "busy" });
+    const dropId = drop?.player_id;
+    try {
+      const result = await addFreeAgent(card.sleeper_player_id, dropId);
+      if (result.status === "ok") {
+        setPickup({
+          step: "done",
+          message: drop ? `Added ${card.full_name}, dropped ${drop.player_name}.` : `Added ${card.full_name} to your bench.`,
+        });
+      } else if (result.status === "on_waivers") {
+        await submitWaiverClaim(card.sleeper_player_id, dropId);
+        setPickup({ step: "done", message: `Claim filed on ${card.full_name}. It runs with the next waiver clear.` });
+      } else {
+        setPickup({ step: "error", message: "Your roster is full. Pick someone to drop." });
+      }
+    } catch (e) {
+      setPickup({ step: "error", message: e instanceof Error ? e.message : "Pickup failed" });
     }
   }
 
@@ -189,6 +233,97 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
               </div>
             )}
             {dropError && <p className="text-xs text-red-500">{dropError}</p>}
+
+            {card.rostered_team_id === null && !card.is_on_my_team && (
+              <div className="flex flex-col gap-2 text-sm">
+                {pickup === null && (
+                  <button
+                    onClick={startPickup}
+                    className="self-start rounded-full bg-[var(--user-accent,#4cc3ff)] px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    + Add / Claim
+                  </button>
+                )}
+                {(pickup?.step === "loading" || pickup?.step === "busy") && (
+                  <p className="text-black/50 dark:text-white/50">{pickup.step === "busy" ? "Working…" : "Loading your roster…"}</p>
+                )}
+                {pickup?.step === "pick" && (
+                  <>
+                    <p className="text-black/70 dark:text-white/70">
+                      {pickup.rosterFull
+                        ? `Your roster is full. Pick who to drop for ${card.full_name}.`
+                        : `Drop someone for ${card.full_name}, or keep everyone.`}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {!pickup.rosterFull && (
+                        <button
+                          onClick={() => setPickup({ step: "confirm", drop: null })}
+                          className="rounded-full border border-black/10 px-3 py-1.5 text-xs font-semibold hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                        >
+                          No drop
+                        </button>
+                      )}
+                      {pickup.roster.map((entry) => (
+                        <button
+                          key={entry.player_id}
+                          onClick={() => setPickup({ step: "confirm", drop: entry })}
+                          className="rounded-full border border-black/10 px-3 py-1.5 text-xs hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                        >
+                          {entry.player_name}
+                          <span className="ml-1 text-black/50 dark:text-white/50">({entry.lineup_slot})</span>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setPickup(null)} className="self-start text-xs text-black/50 hover:underline dark:text-white/50">
+                      Cancel
+                    </button>
+                  </>
+                )}
+                {pickup?.step === "confirm" && (
+                  <>
+                    <p className="text-black/70 dark:text-white/70">
+                      Pick up <strong>{card.full_name}</strong>
+                      {pickup.drop ? (
+                        <>
+                          {" "}and drop <strong>{pickup.drop.player_name}</strong>
+                        </>
+                      ) : null}
+                      ? If they&apos;re on waivers, this files a claim instead.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitPickup(pickup.drop)}
+                        className="rounded-full bg-[var(--user-accent,#4cc3ff)] px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={startPickup}
+                        className="rounded-full bg-black/10 px-3 py-1.5 text-xs font-semibold hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </>
+                )}
+                {pickup?.step === "done" && (
+                  <p className="text-green-600 dark:text-green-400">
+                    {pickup.message}{" "}
+                    <Link href="/free-agents" className="font-semibold underline">
+                      Your claims →
+                    </Link>
+                  </p>
+                )}
+                {pickup?.step === "error" && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-red-500">{pickup.message}</p>
+                    <button onClick={startPickup} className="text-xs font-semibold underline">
+                      Try again
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-5 gap-1 rounded-xl bg-black/5 p-3 text-center dark:bg-white/5">
               <StatTile label="Pos Rank" value={card.overview?.position_rank != null ? `#${card.overview.position_rank}` : "—"} />

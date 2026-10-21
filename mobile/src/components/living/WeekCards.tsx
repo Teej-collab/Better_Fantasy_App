@@ -1,11 +1,12 @@
 import { router, type Href } from 'expo-router';
-import { StyleSheet, Text as RNText, View } from 'react-native';
+import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 
 import { Chip, Kicker, LinkText, Panel, Row } from '@/components/living/LivingCards';
 import { Display, Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
 import { encodeScenario } from '@/lib/bracketEngine';
 import { fmt, isStarter, untilText } from '@/lib/livingHome';
+import { openPlayer } from '@/lib/queries';
 import type {
   FreeAgent,
   KeeperRules,
@@ -424,8 +425,14 @@ export function FreeAgentsCard({ players, by, title, color }: { players: FreeAge
     <Panel>
       <Kicker>{title}</Kicker>
       {top.map((p, i) => (
-        <Row
+        // Each player opens their page, where you can claim or add them.
+        <Pressable
           key={p.sleeper_player_id}
+          onPress={() => openPlayer(p.sleeper_player_id)}
+          accessibilityRole="button"
+          accessibilityLabel={p.full_name}
+          style={({ pressed }) => pressed && styles.pressed}>
+        <Row
           first={i === 0}
           left={
             <View style={styles.gap2}>
@@ -437,6 +444,7 @@ export function FreeAgentsCard({ players, by, title, color }: { players: FreeAge
           }
           right={<Display style={styles.rowScore}>{value(p).toFixed(1)}</Display>}
         />
+        </Pressable>
       ))}
       <LinkText color={color} onPress={() => router.navigate('/players')}>
         All free agents →
@@ -544,6 +552,7 @@ export function DeadlinesCard({ trade, keeper, now }: { trade: TradeSettings | n
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: 0.75 },
   bigRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flexWrap: 'wrap' },
   big: { fontSize: 40, lineHeight: 46, color: Colors.text },
   arrow: { color: Colors.textSecondary, fontSize: 22 },
