@@ -63,13 +63,16 @@ export function nextEt(day: number, hour: number, from = new Date()): Date {
   return t;
 }
 
+// Waivers run Wednesday at 3 AM Eastern (backend/app/domain/waivers.py).
+export const WAIVER_RUN_HOUR_ET = 3;
+
 // The week's recap drops Tuesday at noon PT (3 PM Eastern). Home shows
-// it in full from then until the end of Tuesday; from Wednesday it
+// it in full from then until the 3 AM ET waiver run Wednesday; after it
 // shrinks to a "Missed the recap?" link until the next one drops. Same
 // rule as the web's frontend/src/lib/recapFreshness.ts.
 export function recapIsFresh(now = new Date()): boolean {
   const { day, hour } = etDayHour(now);
-  return day === 2 && hour >= 15;
+  return (day === 2 && hour >= 15) || (day === 3 && hour < WAIVER_RUN_HOUR_ET);
 }
 
 // The betting weekend: Thursday 6 AM Eastern until Tuesday 6 AM, so the
@@ -107,7 +110,7 @@ export function homePhase({
   games: NflGame[];
   roster: RosterEntry[];
 }): HomePhase {
-  const { day } = etDayHour(now);
+  const { day, hour } = etDayHour(now);
   const m = myWeek?.matchup;
   if (matchupDone(myWeek)) return 'final';
   const live = games.some((g) => g.state === 'in');
@@ -116,7 +119,9 @@ export function homePhase({
   // Sunday night once the day's games are done, with Monday still to come.
   const moreToday = games.some((g) => g.state === 'pre' && g.date && sameEtDay(new Date(g.date), now));
   if (m?.started && day === 0 && !moreToday) return 'sweat';
-  if (day === 2) return 'recap';
+  // Tuesday's screen (with the waivers countdown) stays up until the
+  // 3 AM ET run on Wednesday; only then is there a run to show.
+  if (day === 2 || (day === 3 && hour < WAIVER_RUN_HOUR_ET)) return 'recap';
   if (day === 3) return 'waivers';
   if (startersPlayingToday(roster, now).length > 0) return 'lock';
   return (['sun', 'mon', 'recap', 'waivers', 'thu', 'fri', 'sat'] as const)[day] as HomePhase;

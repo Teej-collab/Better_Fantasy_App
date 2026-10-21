@@ -61,6 +61,9 @@ export function nextEt(day: number, hour: number, from = new Date()): Date {
   return t;
 }
 
+// Waivers run Wednesday at 3 AM Eastern (backend/app/domain/waivers.py).
+export const WAIVER_RUN_HOUR_ET = 3;
+
 // The betting weekend: Thursday 6 AM Eastern until Tuesday 6 AM.
 export function inBetsWeekend(now = new Date()): boolean {
   const { day, hour } = etDayHour(now);
@@ -93,7 +96,7 @@ export function homePhase({
   games: NflGame[];
   roster: RosterEntry[];
 }): HomePhase {
-  const { day } = etDayHour(now);
+  const { day, hour } = etDayHour(now);
   const m = myWeek?.matchup;
   if (matchupDone(myWeek)) return "final";
   const live = games.some((g) => g.state === "in");
@@ -101,7 +104,9 @@ export function homePhase({
   if (m?.started && day === 1) return "sweat";
   const moreToday = games.some((g) => g.state === "pre" && g.date && sameEtDay(new Date(g.date), now));
   if (m?.started && day === 0 && !moreToday) return "sweat";
-  if (day === 2) return "recap";
+  // Tuesday's screen (with the waivers countdown) stays up until the
+  // 3 AM ET run on Wednesday; only then is there a run to show.
+  if (day === 2 || (day === 3 && hour < WAIVER_RUN_HOUR_ET)) return "recap";
   if (day === 3) return "waivers";
   if (startersPlayingToday(roster, now).length > 0) return "lock";
   return (["sun", "mon", "recap", "waivers", "thu", "fri", "sat"] as const)[day];
