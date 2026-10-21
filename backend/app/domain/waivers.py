@@ -61,6 +61,7 @@ has no playoff-elimination concept yet anyway, see the competitive
 audit's schedule/playoff finding).
 """
 import json
+from time import monotonic
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -113,8 +114,19 @@ def _next_wednesday_clear_et(now: datetime) -> datetime:
     return candidate.astimezone(timezone.utc)
 
 
+def _last_kickoff(games: list[dict]) -> datetime | None:
+    kickoffs = []
+    for game in games:
+        try:
+            kickoffs.append(datetime.fromisoformat(game["date"].replace("Z", "+00:00")))
+        except (KeyError, AttributeError, ValueError):
+            continue
+    return max(kickoffs) if kickoffs else None
+
+
 def waiver_locked_pro_teams(
     current_week_games: list[dict], prior_week_games: list[dict] | None, now: datetime | None = None,
+    all_teams: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     """Every real NFL team whose free agents currently need a waiver
     claim instead of an instant add — NOT the same set as the lineup
@@ -129,23 +141,43 @@ def waiver_locked_pro_teams(
     every week-2 team counted as "game already started" (nobody could
     move a single player for week 3) and every free agent stayed a
     claim well past the Wednesday clear, with each add attempt starting
-    a fresh clock out to the FOLLOWING Wednesday."""
+    a fresh clock out to the FOLLOWING Wednesday.
+
+    2026-10-20 league rule: once the week's last game (Monday night)
+    kicks off, EVERY player is locked until that Wednesday clear,
+    bye-week teams included (`all_teams`), so nobody can grab a
+    bye-week player before the waiver run (Samaje Perine, Cincinnati on
+    bye in Week 6, was added instantly that Tuesday)."""
     now = now or datetime.now(timezone.utc)
     locked = locked_pro_teams(current_week_games, now)
+    last = _last_kickoff(current_week_games)
+    if locked and last is not None and last <= now:
+        return locked | all_teams
     if locked or not prior_week_games:
         return locked
     prior_locked = locked_pro_teams(prior_week_games, now)
-    kickoffs = []
-    for game in prior_week_games:
-        try:
-            kickoffs.append(datetime.fromisoformat(game["date"].replace("Z", "+00:00")))
-        except (KeyError, AttributeError, ValueError):
-            continue
-    if not prior_locked or not kickoffs:
+    prior_last = _last_kickoff(prior_week_games)
+    if not prior_locked or prior_last is None:
         return locked
-    if now >= _next_wednesday_clear_et(max(kickoffs)):
+    if now >= _next_wednesday_clear_et(prior_last):
         return locked
-    return prior_locked
+    return prior_locked | (all_teams if prior_last <= now else frozenset())
+
+
+_all_teams_cache: tuple[float, frozenset[str]] | None = None
+
+
+async def all_pro_teams(conn) -> frozenset[str]:
+    """Every NFL team a player belongs to, for the Monday-night
+    everyone-locks rule above (bye-week teams aren't on that week's
+    scoreboard). Cached for an hour."""
+    global _all_teams_cache
+    if _all_teams_cache and monotonic() - _all_teams_cache[0] < 3600:
+        return _all_teams_cache[1]
+    rows = await conn.fetch("SELECT DISTINCT pro_team FROM players WHERE pro_team IS NOT NULL")
+    teams = frozenset(r["pro_team"] for r in rows)
+    _all_teams_cache = (monotonic(), teams)
+    return teams
 
 
 async def current_waiver_locked_pro_teams(conn, season: int) -> frozenset[str]:
@@ -165,7 +197,7 @@ async def current_waiver_locked_pro_teams(conn, season: int) -> frozenset[str]:
             prior_games = await get_week_scoreboard(current_week - 1, season)
         except Exception:
             prior_games = None
-    return waiver_locked_pro_teams(games, prior_games)
+    return waiver_locked_pro_teams(games, prior_games, all_teams=await all_pro_teams(conn))
 
 
 async def hold_played_until_wednesday(

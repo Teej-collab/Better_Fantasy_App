@@ -194,7 +194,7 @@ async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
             prior_games = await get_week_scoreboard(current_week - 1, active_season)
         except Exception:
             prior_games = None
-    return waivers.waiver_locked_pro_teams(games, prior_games)
+    return waivers.waiver_locked_pro_teams(games, prior_games, all_teams=await waivers.all_pro_teams(conn))
 
 
 async def _espn_ids_for(conn, sleeper_player_ids: list[str]) -> dict[str, int]:

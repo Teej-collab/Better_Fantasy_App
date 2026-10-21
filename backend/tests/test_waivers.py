@@ -30,6 +30,15 @@ def _no_games_kicked_off(monkeypatch):
     monkeypatch.setattr(waivers, "current_waiver_locked_pro_teams", none)
 
 
+@pytest.fixture(autouse=True)
+def _no_bye_teams(monkeypatch):
+    """The Monday-night everyone-locks rule adds every NFL team; tests
+    that want it pass their own list."""
+    async def none(conn):
+        return frozenset()
+    monkeypatch.setattr(waivers, "all_pro_teams", none)
+
+
 async def _seed_owner_with_team(pool, suffix, espn_team_id):
     async with pool.acquire() as conn:
         owner_id = await conn.fetchval(
@@ -757,3 +766,42 @@ async def test_claim_dropping_a_starter_who_already_played_keeps_their_points_th
             assert False, "expected LineupLockedError"
         except LineupLockedError:
             pass
+
+
+def test_everyone_locks_from_monday_night_until_the_wednesday_clear():
+    # 2026-10-20 rule: Week 6's last game is MNF (Mon 2026-10-19 8:15pm ET);
+    # Cincinnati was on bye, so it's on no scoreboard but still locks.
+    all_teams = frozenset({"KC", "BUF", "DAL", "NYG", "CIN"})
+    week6 = [
+        {"date": "2026-10-18T17:00:00Z", "home_team": "KC", "away_team": "BUF"},
+        {"date": "2026-10-20T00:15:00Z", "home_team": "DAL", "away_team": "NYG"},
+    ]
+    week7 = [{"date": "2026-10-23T00:15:00Z", "home_team": "KC", "away_team": "DAL"}]
+    sunday = datetime(2026, 10, 18, 20, 0, tzinfo=timezone.utc)
+    monday_kickoff = datetime(2026, 10, 20, 0, 16, tzinfo=timezone.utc)
+    tuesday_after_flip = datetime(2026, 10, 20, 21, 0, tzinfo=timezone.utc)
+    wednesday_clear = datetime(2026, 10, 21, 7, 0, tzinfo=timezone.utc)
+
+    # Before Monday's game, only teams that have played are locked.
+    assert waivers.waiver_locked_pro_teams(week6, None, sunday, all_teams) == frozenset({"KC", "BUF"})
+    # From Monday night's kickoff, everyone, Cincinnati included.
+    assert waivers.waiver_locked_pro_teams(week6, None, monday_kickoff, all_teams) == all_teams
+    # After Tuesday's flip, still everyone until the Wednesday clear.
+    assert waivers.waiver_locked_pro_teams(week7, week6, tuesday_after_flip, all_teams) == all_teams
+    assert waivers.waiver_locked_pro_teams(week7, week6, wednesday_clear, all_teams) == frozenset()
+
+
+async def test_free_agent_lock_includes_bye_teams_after_monday_night(pool, monkeypatch):
+    await _seed_current_week(pool, week=6)
+    kicked_off = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+    async def fake_week_scoreboard(week, year, season_type=2):
+        return [{"date": kicked_off, "home_team": "KC", "away_team": "BUF"}]
+
+    async def teams(conn):
+        return frozenset({"KC", "BUF", "CIN"})
+
+    monkeypatch.setattr("app.routers.me.get_week_scoreboard", fake_week_scoreboard)
+    monkeypatch.setattr(waivers, "all_pro_teams", teams)
+    async with pool.acquire() as conn:
+        assert await me_waiver_locked_pro_teams(conn, TEST_SEASON) == frozenset({"KC", "BUF", "CIN"})
