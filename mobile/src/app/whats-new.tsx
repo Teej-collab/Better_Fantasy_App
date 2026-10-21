@@ -87,7 +87,7 @@ const MORE: Item[] = [
 ];
 
 const APP: Item[] = [
-  ['Tab bar:', 'a slim floating bar that tucks away when you scroll down and comes back when you scroll up.'],
+  ['Tab bar:', 'four tabs (Home, Team, Chat, League) around an Engines button in the middle that opens Matchup, What-If, Lounge, Gamecast, League Bets and Chug. The bar tucks away when you scroll down and comes back when you scroll up.'],
   ['Widgets:', 'every size, plus Lock Screen widgets, with team logos in the Dynamic Island.'],
   ['Live score on your Lock Screen,', 'with live projections.'],
   ['Add a bet from a sportsbook:', 'share the slip to The Weekend and it reads it.'],
