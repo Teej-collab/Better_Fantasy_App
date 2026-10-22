@@ -1,32 +1,34 @@
 import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PreviewLink } from '@/components/PreviewLink';
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
+import { LineupAdviceCard, LineupEditor, MoveBar, UndoBar } from '@/components/team/LineupEditor';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
 import { WeekStepper } from '@/components/WeekStepper';
 import { Text } from '@/components/Text';
-import { Card, LoadingState, MessageState, SectionTitle, TeamAvatar } from '@/components/ui';
+import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { api, WEB_BASE_URL } from '@/lib/api';
-import { confirmDropPlayer, openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
-import {
-  BENCH_SLOT_LABEL,
-  IR_SLOT_LABEL,
-  lineupOptions,
-  slotDisplayLabel,
-  starterSortIndex,
-  TAXI_SLOT_LABEL,
-  type LineupOption,
-} from '@/lib/rosterSlots';
-import { formatGameTime, formatPoints } from '@/lib/format';
-import type { MyTeam, RosterEntry } from '@/lib/types';
-import { useTabBarScroll } from '@/lib/tabBar';
+import { undoChange, type MoveTarget } from '@/lib/lineupMoves';
+import { openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
+import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, starterSortIndex, TAXI_SLOT_LABEL } from '@/lib/rosterSlots';
+import { formatPoints } from '@/lib/format';
+import type { RosterEntry } from '@/lib/types';
+import { TAB_BAR_HEIGHT, useTabBarScroll } from '@/lib/tabBar';
+
+const UNDO_MS = 10_000;
+
+function describe(change: LineupChange): string {
+  return change.kind === 'swap'
+    ? `Swapped ${change.player.player_name} and ${change.other.player_name}.`
+    : `Moved ${change.player.player_name} to ${slotDisplayLabel(change.toSlot)}.`;
+}
 
 function TeamScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
@@ -35,9 +37,40 @@ function TeamScreenContent() {
   // read-only look at that week's roster and projections.
   const [week, setWeek] = useState<number | null>(null);
   const team = useMyTeam(week);
-  const [editing, setEditing] = useState<RosterEntry | null>(null);
+  const [moving, setMoving] = useState<RosterEntry | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [undo, setUndo] = useState<{ label: string; changes: LineupChange[] } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = usePlayerView('wl:player-view:roster');
+  const change = useLineupChange();
+  const insets = useSafeAreaInsets();
+  const barBottom = Math.max(insets.bottom - 14, 12) + TAB_BAR_HEIGHT + 12;
+
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
+  // Each change applies on screen at once (lib/queries.ts's useLineupChange);
+  // several run one after another so each sees the last one's result.
+  async function run(changes: LineupChange[], label: string | null) {
+    setMoving(null);
+    setUndo(null);
+    try {
+      for (const c of changes) await change.mutateAsync(c);
+      haptics.success();
+      if (label) setUndo({ label, changes });
+    } catch (e) {
+      haptics.error();
+      Alert.alert("Couldn't make that move", e instanceof Error ? e.message : undefined);
+    }
+  }
+  const apply = (target: MoveTarget) => void run([target.change], describe(target.change));
+  const undoLast = () => {
+    if (!undo) return;
+    void run([...undo.changes].reverse().map(undoChange), null);
+  };
 
   async function onRefresh() {
     setRefreshing(true);
@@ -70,8 +103,9 @@ function TeamScreenContent() {
     <>
       <ScrollView
         style={styles.screen}
-      ref={scrollRef}
-      {...tabBarScroll}
+        ref={scrollRef}
+        scrollEnabled={!dragging}
+        {...tabBarScroll}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
@@ -121,7 +155,8 @@ function TeamScreenContent() {
                     disabled={!editable || e.is_locked}
                     onPress={() => {
                       void Haptics.selectionAsync();
-                      setEditing(e);
+                      setView('matchup');
+                      setMoving(e);
                     }}
                     hitSlop={8}
                     accessibilityRole="button"
@@ -144,15 +179,19 @@ function TeamScreenContent() {
           />
         ) : (
           <>
-            <RosterSection title="Starters" entries={starters} editable={editable} onEdit={setEditing} />
-            {bench.length > 0 && <RosterSection title="Bench" entries={bench} editable={editable} onEdit={setEditing} />}
-            {ir.length > 0 && <RosterSection title="Injured reserve" entries={ir} editable={editable} onEdit={setEditing} />}
-            {taxi.length > 0 && <RosterSection title="Taxi squad" entries={taxi} editable={editable} onEdit={setEditing} />}
+            {editable && !moving && (
+              <LineupAdviceCard
+                team={data}
+                onApply={(advice) => void run(advice.map((a) => a.change), advice.map((a) => describe(a.change)).join(' '))}
+              />
+            )}
+            <LineupEditor team={data} editable={editable} moving={moving} onMove={setMoving} onApply={apply} onDragChange={setDragging} />
           </>
         )}
       </ScrollView>
 
-      {editing && <LineupSheet entry={editing} team={data} onClose={() => setEditing(null)} />}
+      {moving && !dragging && <MoveBar entry={moving} onCancel={() => setMoving(null)} bottom={barBottom} />}
+      {!moving && undo && <UndoBar label={undo.label} onUndo={undoLast} bottom={barBottom} />}
     </>
   );
 }
@@ -213,166 +252,6 @@ function TeamSubNav() {
   );
 }
 
-function RosterSection(props: {
-  title: string;
-  entries: RosterEntry[];
-  editable: boolean;
-  onEdit: (entry: RosterEntry) => void;
-}) {
-  return (
-    <>
-      <SectionTitle>{props.title}</SectionTitle>
-      <Card style={styles.listCard}>
-        {props.entries.map((entry, i) => (
-          <RosterRow key={entry.player_id} entry={entry} divided={i > 0} editable={props.editable} onEdit={props.onEdit} />
-        ))}
-      </Card>
-    </>
-  );
-}
-
-function RosterRow(props: { entry: RosterEntry; divided: boolean; editable: boolean; onEdit: (e: RosterEntry) => void }) {
-  const { entry } = props;
-  const canEdit = props.editable && !entry.is_locked;
-  const detail = [
-    `${entry.position}${entry.pro_team ? ` · ${entry.pro_team}` : ''}`,
-    entry.next_opponent && (entry.game_time ? `${entry.next_opponent} ${formatGameTime(entry.game_time)}` : entry.next_opponent),
-    entry.bye_week !== null && !entry.next_opponent ? `Bye Wk ${entry.bye_week}` : null,
-  ]
-    .filter(Boolean)
-    .join('  ·  ');
-
-  return (
-    <View style={[styles.row, props.divided && styles.divided]}>
-      <PositionStripe position={entry.position} />
-      <Pressable
-        disabled={!canEdit}
-        onPress={() => {
-          void Haptics.selectionAsync();
-          props.onEdit(entry);
-        }}
-        hitSlop={6}
-        style={({ pressed }) => [styles.slotPill, canEdit && styles.slotPillEditable, pressed && styles.pressed]}>
-        <Text style={[styles.slotText, canEdit && styles.slotTextEditable]}>{slotDisplayLabel(entry.lineup_slot)}</Text>
-      </Pressable>
-
-      <PlayerHeadshot url={entry.headshot_url} position={entry.position} />
-
-      <PreviewLink
-        href={{ pathname: '/player/[id]', params: { id: entry.player_id } }}
-        menu={
-          props.editable
-            ? [
-                ...(canEdit
-                  ? [{ title: 'Change Lineup Slot', icon: 'arrow.up.arrow.down' as const, onPress: () => props.onEdit(entry) }]
-                  : []),
-                {
-                  title: 'Drop Player',
-                  icon: 'minus.circle' as const,
-                  destructive: true,
-                  onPress: () => confirmDropPlayer({ id: entry.player_id, name: entry.player_name }),
-                },
-              ]
-            : undefined
-        }
-        style={styles.player}
-        pressedStyle={styles.pressed}>
-        <View style={styles.nameLine}>
-          <Text style={styles.playerName} numberOfLines={1}>
-            {entry.player_name}
-          </Text>
-          {entry.injury_status && <Text style={styles.injury}>{entry.injury_status}</Text>}
-          {entry.is_locked && <Text style={styles.locked}>Locked</Text>}
-        </View>
-        <Text style={styles.detail} numberOfLines={1}>
-          {detail}
-        </Text>
-      </PreviewLink>
-
-      <View style={styles.points}>
-        <Text style={styles.pointsValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
-          {formatPoints(entry.points)}
-        </Text>
-        <Text style={styles.detail} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.15}>
-          {entry.on_bye ? 'Bye week' : formatPoints(entry.live_projected ?? entry.points_projected)}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-// Native bottom sheet listing every legal destination for `entry`.
-// An empty slot is a move; an occupied one swaps the two players.
-function LineupSheet({ entry, team, onClose }: { entry: RosterEntry; team: MyTeam; onClose: () => void }) {
-  const change = useLineupChange();
-  const options = lineupOptions(entry, team.roster, team.roster_slots ?? {});
-
-  function pick(option: LineupOption) {
-    const next: LineupChange =
-      option.occupant === null
-        ? { kind: 'move', player: entry, toSlot: option.slot }
-        : { kind: 'swap', player: entry, other: option.occupant };
-    change.mutate(next, {
-      onSuccess: () => {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        onClose();
-      },
-      onError: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
-    });
-  }
-
-  return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.sheet}>
-        <View style={styles.sheetHeader}>
-          <View style={styles.sheetTitleWrap}>
-            <Text style={styles.sheetKicker}>Move</Text>
-            <Text style={styles.sheetTitle} numberOfLines={1}>
-              {entry.player_name}
-            </Text>
-          </View>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Text style={styles.done}>Done</Text>
-          </Pressable>
-        </View>
-
-        {change.isError && <Text style={styles.error}>{change.error.message}</Text>}
-
-        <ScrollView contentContainerStyle={styles.sheetContent}>
-          <Card style={styles.listCard}>
-            {options.map((option, i) => {
-              const isCurrent = option.occupant?.player_id === entry.player_id;
-              return (
-                <Pressable
-                  key={`${option.slot}-${option.occupant?.player_id ?? 'empty'}-${i}`}
-                  disabled={isCurrent || change.isPending}
-                  onPress={() => pick(option)}
-                  style={({ pressed }) => [styles.optionRow, i > 0 && styles.divided, pressed && styles.optionPressed]}>
-                  <Text style={styles.optionSlot}>{slotDisplayLabel(option.slot)}</Text>
-                  <Text style={[styles.optionName, !option.occupant && styles.optionEmpty]} numberOfLines={1}>
-                    {option.occupant ? option.occupant.player_name : 'Empty'}
-                  </Text>
-                  <Text style={styles.optionAction}>
-                    {isCurrent ? 'Here now' : option.occupant ? 'Swap' : 'Move'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </Card>
-          {change.isPending && <ActivityIndicator color={Colors.accent} style={styles.spinner} />}
-          <Pressable
-            disabled={change.isPending}
-            onPress={() => confirmDropPlayer({ id: entry.player_id, name: entry.player_name }, onClose)}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.dropButton, pressed && styles.optionPressed]}>
-            <Text style={styles.dropText}>Drop {entry.player_name}</Text>
-          </Pressable>
-        </ScrollView>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   viewsRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   viewCell: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
@@ -392,63 +271,12 @@ const styles = StyleSheet.create({
   subnavText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   subnavTextActive: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   subtitle: { color: Colors.textSecondary, fontSize: 14, marginTop: Spacing.xs },
-  listCard: { padding: 0, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
-  divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border },
-  slotPill: { backgroundColor: Colors.surface,
-    minWidth: 48,
-    minHeight: 32,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   slotPillEditable: { borderColor: Colors.accent },
-  slotText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
   slotTextEditable: { color: Colors.accent },
   pressed: { opacity: 0.6 },
   player: { flex: 1, minWidth: 0, gap: 2 },
-  nameLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   playerName: { color: Colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  injury: { color: Colors.loss, fontSize: 11, fontWeight: '700' },
-  locked: { color: Colors.textSecondary, fontSize: 11 },
   detail: { color: Colors.textSecondary, fontSize: 12, fontVariant: ['tabular-nums'] },
-  points: { alignItems: 'flex-end', minWidth: 52, flexShrink: 0 },
-  pointsValue: { color: Colors.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  sheet: { flex: 1, backgroundColor: Colors.bg },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-  },
-  sheetTitleWrap: { flex: 1 },
-  sheetKicker: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  sheetTitle: { color: Colors.text, fontSize: 20, fontWeight: '800' },
-  done: { color: Colors.accent, fontSize: 16, fontWeight: '600' },
-  error: { color: Colors.loss, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
-  sheetContent: { padding: Spacing.lg },
-  optionRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg },
-  optionPressed: { backgroundColor: Colors.border },
-  optionSlot: { width: 48, color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
-  optionName: { flex: 1, color: Colors.text, fontSize: 15 },
-  optionEmpty: { color: Colors.textSecondary, fontStyle: 'italic' },
-  optionAction: { color: Colors.accent, fontSize: 13, fontWeight: '600' },
-  spinner: { marginTop: Spacing.lg },
-  dropButton: {
-    marginTop: Spacing.xl,
-    minHeight: 48,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.loss,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  dropText: { color: Colors.loss, fontSize: 15, fontWeight: '700' },
 });
 
 export default function TeamScreen() {

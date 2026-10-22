@@ -19,6 +19,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useScreenFocused } from '@/lib/screenFocus';
 import type { MyTeam, RosterEntry, WeeklyAwards } from '@/lib/types';
+import { applyChange } from '@/lib/lineupMoves';
 
 // This is the main reason the native app feels faster than the web one:
 // every screen renders the last data it saw immediately (saved on the
@@ -179,6 +180,17 @@ export function useLineupChange() {
       change.kind === 'move'
         ? api.moveLineup(change.player.player_id, change.toSlot)
         : api.swapLineup(change.player.player_id, change.other.player_id),
+    // The lineup changes on screen at once (players slide into place) and
+    // goes back if the server says no.
+    onMutate: async (change) => {
+      await queryClient.cancelQueries({ queryKey: ['my-team'], exact: true });
+      const before = queryClient.getQueryData<MyTeam>(['my-team']);
+      if (before) queryClient.setQueryData<MyTeam>(['my-team'], { ...before, roster: applyChange(before.roster, change) });
+      return { before };
+    },
+    onError: (_error, _change, context) => {
+      if (context?.before) queryClient.setQueryData<MyTeam>(['my-team'], context.before);
+    },
     onSuccess: ({ roster }) => {
       queryClient.setQueryData<MyTeam>(['my-team'], (prev) =>
         prev ? { ...prev, roster: applyLineupSlots(prev.roster, roster) } : prev,
