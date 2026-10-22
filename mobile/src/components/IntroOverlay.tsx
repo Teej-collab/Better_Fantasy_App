@@ -115,7 +115,14 @@ function useIntroSounds(enabled: boolean) {
     const p = players.current?.[which];
     if (!p) return;
     p.seekTo(0).catch(() => {});
-    p.play();
+    // iOS refuses the audio session now and then (a call, Siri, another
+    // app holding it): "Session activation failed" (2026-10-22). The
+    // intro goes on silently.
+    try {
+      p.play();
+    } catch {
+      // No sound this time.
+    }
   }
   return {
     // Each light switching on lands as a firm tap; the can cracking open as a success buzz.
