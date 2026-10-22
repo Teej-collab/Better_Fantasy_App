@@ -1,0 +1,66 @@
+# Is the app up? Checked from outside every 5 minutes (2026-10-22). The
+# server's own health watch (backend/app/notifications/health_watch.py)
+# pushes the admins about problems it can see, but it can't report itself
+# being down, and its pushes come from the server. So this checks the
+# server and the website from GitHub: if either still fails after three
+# tries over 40 seconds (longer than a deploy's 15-20 second restart), it
+# opens an "outage" issue mentioning the owner, which GitHub emails and
+# pushes to the GitHub app. It comments and closes the issue once both
+# answer again. GitHub runs scheduled workflows when it can, so a check
+# can come a few minutes late.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the server and the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          down=""
+          for target in "Server|https://weekend-league-api-production.up.railway.app/health" "Website|https://weekend-league-web.vercel.app/"; do
+            name="${target%%|*}"; url="${target#*|}"; ok=0; code=000
+            for try in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
+              if [ "$code" = 200 ]; then ok=1; break; fi
+              sleep 20
+            done
+            if [ "$ok" = 0 ]; then down="$down- **$name** isn't answering ($url, last response: HTTP $code)"$'\n'; fi
+          done
+
+          gh label create outage --repo "$REPO" --color d73a4a --description "Opened by the uptime check" --force >/dev/null
+          open=$(gh issue list --repo "$REPO" --label outage --state open --json number --jq '.[0].number // empty')
+          now=$(TZ=America/New_York date '+%a %b %-d, %-I:%M %p ET')
+
+          if [ -n "$down" ]; then
+            if [ -z "$open" ]; then
+              gh issue create --repo "$REPO" --label outage \
+                --title "Down: The Weekend isn't answering" \
+                --body "@$OWNER the uptime check couldn't reach the app at $now (three tries over 40 seconds):"$'\n\n'"$down"$'\n'"Railway: https://railway.com/project/fcc24d05-1c41-4bec-a7b1-5751e85b033a · This issue closes itself once both answer again."
+              echo "Opened an outage issue."
+            else
+              echo "Still down; outage issue #$open is already open."
+            fi
+          elif [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$REPO" --body "@$OWNER all clear: the server and the website are answering again ($now)."
+            gh issue close "$open" --repo "$REPO"
+            echo "Closed outage issue #$open."
+          else
+            echo "All up."
+          fi

@@ -32,12 +32,14 @@ _ticks: dict[str, dict] = {}
 
 def record_tick(job_id: str, ok: bool, error: str | None = None) -> None:
     now = datetime.now(timezone.utc)
-    tick = _ticks.setdefault(job_id, {"runs": 0, "failures": 0, "last_ok": None, "last_error": None, "last_error_at": None})
+    tick = _ticks.setdefault(job_id, {"runs": 0, "failures": 0, "failing_streak": 0, "last_ok": None, "last_error": None, "last_error_at": None})
     tick["runs"] += 1
     if ok:
         tick["last_ok"] = now
+        tick["failing_streak"] = 0
     else:
         tick["failures"] += 1
+        tick["failing_streak"] += 1
         tick["last_error"] = error
         tick["last_error_at"] = now
 

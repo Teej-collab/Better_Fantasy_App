@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { getAdminBadges, type AdminBadges } from "@/lib/api";
 import { startVisibleInterval } from "@/lib/visibleInterval";
 
-// `page`: a standalone page outside the app (the live system map at
+// `page`: a standalone page outside the app (the Brain, the live system map at
 // /brain), opened with a plain link rather than the client router.
 type Section = { href: string; label: string; icon: string; badge?: keyof AdminBadges; page?: boolean };
 
@@ -31,7 +31,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
   {
     title: "Health",
     sections: [
-      { href: "/brain", label: "System Map", icon: "◎", page: true },
+      { href: "/brain", label: "Brain", icon: "◎", page: true },
       { href: "/admin/crashes", label: "Crashes", icon: "◬", badge: "crashes" },
       { href: "/admin/errors", label: "Errors", icon: "◮", badge: "errors" },
       { href: "/admin/security", label: "Security", icon: "◘", badge: "security" },

@@ -311,6 +311,16 @@ def admin_error_alert(source: str, message: str, route: str | None, *, is_new: b
     )
 
 
+def admin_health_alert(key: str, title: str, body: str, *, recovered: bool) -> dict:
+    """app/notifications/health_watch.py: something on the live system
+    map went wrong, or came back. Opens the map (/admin/brain in the
+    app; the website sends that on to /brain)."""
+    return _payload(
+        f"✅ Back to normal: {title}" if recovered else f"🔴 {title}",
+        body, "/admin/brain", "admin_health", tag=f"admin-health-{key}",
+    )
+
+
 def admin_security_alert(body: str) -> dict:
     return _payload("🛡️ Sign-in attack?", body, "/admin/security", "admin_security", tag="admin-security")
 

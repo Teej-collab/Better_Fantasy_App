@@ -16,7 +16,7 @@ const WebView: typeof WebViewType | null = TurboModuleRegistry.get('RNCWebViewMo
     require('react-native-webview').WebView
   : null;
 
-// The website's live system map (frontend/src/app/brain/route.ts), signed
+// The Brain: the website's live system map (frontend/src/app/brain/route.ts), signed
 // in with the app's own session: the page and its 15-second status checks
 // both read the website's `session` cookie, set here before the page
 // loads. Site admins only; the website shows anyone else "Not found".
@@ -27,7 +27,7 @@ export default function AdminBrain() {
 
   let body: React.ReactNode;
   if (!WebView) body = <MessageState message="This build can't show web pages yet. Open weekend-league-web.vercel.app/brain in Safari instead." />;
-  else if (!token || !WEB_BASE_URL) body = <MessageState message="Sign in to see the system map." />;
+  else if (!token || !WEB_BASE_URL) body = <MessageState message="Sign in to see the Brain." />;
   else {
     // A first request's Cookie header isn't reliably sent by iOS's web
     // view, so a blank page on the website's own origin sets the cookie
@@ -55,7 +55,7 @@ export default function AdminBrain() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'System Map' }} />
+      <Stack.Screen options={{ title: 'Brain' }} />
       {body}
     </View>
   );

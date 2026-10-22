@@ -35,6 +35,7 @@ _ALWAYS_SEND = {
     # doesn't wait for morning.
     "admin_crash",
     "admin_error",
+    "admin_health",
     "admin_security",
 }
 # The recap and new feedback stay worth reading in the morning.

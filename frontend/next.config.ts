@@ -63,6 +63,11 @@ const nextConfig: NextConfig = {
     // is never older than that when tapped.
     staleTimes: { dynamic: 30, static: 30 },
   },
+  // Health alerts (backend/app/notifications/health_watch.py) link to
+  // the app's /admin/brain; on the website the Brain lives at /brain.
+  async redirects() {
+    return [{ source: "/admin/brain", destination: "/brain", permanent: false }];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

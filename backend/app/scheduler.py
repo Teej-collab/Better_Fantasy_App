@@ -1118,6 +1118,16 @@ async def _run_trade_processing_job():
     record_job_run("trade_processing")
 
 
+async def _run_health_watch_job():
+    """Pushes the admins when something on the live system map goes
+    wrong or comes back (app/notifications/health_watch.py)."""
+    from app.notifications import health_watch
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await health_watch.check(conn)
+
+
 def start_scheduler():
     global _scheduler
     _scheduler = AsyncIOScheduler()
@@ -1268,6 +1278,11 @@ def start_scheduler():
         )
         _scheduler.add_job(_run_deferred_push_job, "interval", minutes=5, id="deferred_pushes")
         logger.info("Injury alerts scheduler started (every %d hours at :45 Central)", every_hours)
+        started_any = True
+
+    if os.getenv("ENABLE_HEALTH_WATCH_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(_run_health_watch_job, "interval", seconds=60, id="health_watch")
+        logger.info("Health watch scheduler started (every minute)")
         started_any = True
 
     if started_any:
