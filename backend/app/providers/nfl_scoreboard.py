@@ -23,6 +23,8 @@ import time
 
 import httpx
 
+from app.providers.espn_http import espn_client
+
 logger = logging.getLogger(__name__)
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
@@ -320,7 +322,7 @@ async def _cached_games(key: tuple, fetch):
 
 
 async def _fetch_raw(params: dict | None) -> dict:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await (client.get(SCOREBOARD_URL, params=params) if params else client.get(SCOREBOARD_URL))
         response.raise_for_status()
         return response.json()

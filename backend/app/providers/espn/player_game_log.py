@@ -13,6 +13,8 @@ import time
 
 import httpx
 
+from app.providers.espn_http import espn_client
+
 GAMELOG_URL = "https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/{id}/gamelog"
 
 # A game log only moves when a game finishes; a few minutes is plenty.
@@ -68,7 +70,7 @@ async def get_player_game_log(espn_player_id: int, season: int) -> dict | None:
     cached = _CACHE.get(key)
     if cached and cached[0] > time.monotonic():
         return cached[1]
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await client.get(GAMELOG_URL.format(id=espn_player_id), params={"season": season})
         response.raise_for_status()
         result = parse_game_log(response.json())

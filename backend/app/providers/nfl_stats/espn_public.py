@@ -39,6 +39,8 @@ import time
 
 import httpx
 
+from app.providers.espn_http import espn_client
+
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary"
 INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries"
 
@@ -610,7 +612,7 @@ def _parse_made(value: str) -> float:
 
 
 async def _fetch_summary(event_id: str) -> dict:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await client.get(SUMMARY_URL, params={"event": event_id})
         response.raise_for_status()
         return response.json()
@@ -1052,7 +1054,7 @@ async def get_game_stats(event_id: str) -> dict:
 
 async def fetch_injury_news() -> dict:
     """ESPN's league-wide injuries feed — one call covers all 32 teams."""
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await client.get(INJURIES_URL)
         response.raise_for_status()
         return response.json()

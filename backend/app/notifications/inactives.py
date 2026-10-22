@@ -24,6 +24,7 @@ import httpx
 from app.notifications import dispatcher, formatter
 from app.notifications.game_alerts import BENCHED, _kickoff_label, claim_once
 from app.queries import owner_preferences as preferences_queries
+from app.providers.espn_http import espn_client
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,7 @@ async def check_inactives(pool, season: int, week: int, games: list[dict], now: 
     if not window:
         return 0
     sent = 0
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         for g in window:
             event_id = str(g.get("id"))
             try:

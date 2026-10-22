@@ -19,6 +19,8 @@ Railway debug-route workaround needed to confirm the shape this time.
 """
 import httpx
 
+from app.providers.espn_http import espn_client
+
 OVERVIEW_URL = "https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/{espn_player_id}/overview"
 
 # ESPN's own athlete page shows more than this, but a player card is a
@@ -49,7 +51,7 @@ async def get_player_overview(espn_player_id: int) -> dict | None:
     raises, same as nfl_scoreboard.py's httpx calls; the caller
     (app/domain/player_card.py) is the layer responsible for degrading
     this gracefully, same as it already does for player_info.py."""
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await client.get(OVERVIEW_URL.format(espn_player_id=espn_player_id))
         if response.status_code == 404:
             return None

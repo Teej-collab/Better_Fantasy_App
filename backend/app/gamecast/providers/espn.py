@@ -35,6 +35,7 @@ from app.gamecast.models import (
     TeamRef,
 )
 from app.gamecast.provider_base import NFLDataProvider
+from app.providers.espn_http import espn_client
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary"
@@ -289,7 +290,7 @@ def _overlay_scoreboard(game: LiveGame, scoreboard: dict) -> LiveGame:
 
 class ESPNNFLDataProvider(NFLDataProvider):
     async def list_live_games(self) -> list[LiveGameSummary]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with espn_client() as client:
             response = await client.get(SCOREBOARD_URL)
             response.raise_for_status()
             data = response.json()
@@ -327,7 +328,7 @@ class ESPNNFLDataProvider(NFLDataProvider):
         return summaries
 
     async def get_game_state(self, game_id: str) -> LiveGame:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with espn_client() as client:
             response, scoreboard = await asyncio.gather(
                 client.get(SUMMARY_URL, params={"event": game_id}),
                 _scoreboard(client),

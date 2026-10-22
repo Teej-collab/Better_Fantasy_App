@@ -26,6 +26,7 @@ import httpx
 from app.domain.scoring_engine import compute_player_points
 from app.domain.stat_derivations import derive_stat_line, tackle_category
 from app.providers.nfl_stats.espn_public import LONG_TD_YARDS, fg_made_tier
+from app.providers.espn_http import espn_client
 
 CORE_PLAY_URL = (
     "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/{game_id}"
@@ -56,7 +57,7 @@ async def fetch_core_play(game_id: str, play_id: str) -> dict:
     cached = _PARTICIPANTS_CACHE.get(play_id)
     if cached is not None:
         return cached
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with espn_client() as client:
         response = await client.get(CORE_PLAY_URL.format(game_id=game_id, play_id=play_id))
         response.raise_for_status()
         data = response.json()
