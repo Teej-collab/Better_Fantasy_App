@@ -707,3 +707,4 @@ async def test_system_status_is_for_admins_only(pool, monkeypatch):
     assert body["database"]["ok"] is True
     assert {"using_relay", "scoreboard"} <= set(body["espn"])
     assert {"requests_last_minute", "errors_last_5_minutes"} <= set(body["traffic"])
+    assert isinstance(body["recent_requests"], list)

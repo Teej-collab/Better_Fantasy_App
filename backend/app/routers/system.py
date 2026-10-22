@@ -18,7 +18,7 @@ from app.chat.manager import manager as chat_manager
 from app.db import get_pool
 from app.draft.manager import manager as draft_manager
 from app.gamecast.manager import manager as gamecast_manager
-from app.monitoring import traffic_counts
+from app.monitoring import recent_requests, traffic_counts
 from app.providers.espn_http import relay_status
 from app.providers.nfl_scoreboard import live_scoreboard_status
 from app.scheduler_lease import is_leader
@@ -62,6 +62,9 @@ async def status(request: Request, pool=Depends(get_pool)):
         },
         "jobs": get_job_ticks(),
         "traffic": traffic_counts(),
+        # Each request of the last 15 seconds, for the Brain to draw along
+        # its real path: [seconds_ago, "app"|"web", area, wrote].
+        "recent_requests": recent_requests(15),
         "connections": {
             "chat": len(chat_manager.connected_owner_ids()),
             "draft": draft_manager.total_connection_count(),

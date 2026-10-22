@@ -82,3 +82,18 @@ async def test_paused_scores_take_priority_over_the_relay(pool, pushes, monkeypa
         await health_watch.check(conn)
         await health_watch.check(conn)
     assert [p["title"] for p in pushes] == ["🔴 Live scores paused"]
+
+
+def test_requests_are_tagged_with_their_part_of_the_brain():
+    from app.monitoring import _area
+
+    assert _area("/me/week") == "scoring"
+    assert _area("/seasons/2026/standings") == "scoring"
+    assert _area("/chat/conversations/3/messages") == "chat"
+    assert _area("/nfl/gamecast/401873010") == "gamecast"
+    assert _area("/me/team/waivers") == "waivers"
+    assert _area("/me/team") == "roster"
+    assert _area("/bets/league") == "bets"
+    assert _area("/seasons/2026/weeks/6/recap") == "recaps"
+    assert _area("/auth/login") == "signin"
+    assert _area("/leagues/mine") == "server"

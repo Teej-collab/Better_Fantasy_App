@@ -245,31 +245,70 @@ def _route_template(request: Request) -> str:
     return getattr(route, "path", None) or request.url.path
 
 
-# Request and server-error times over the last five minutes, for the
-# website's live system map (app/routers/system.py).
+# Every request over the last five minutes, for the website's live system
+# map, the Brain (app/routers/system.py): when, whether it failed, where
+# it came from (the app or the website), which part of the map it belongs
+# to, and whether it changed anything. The Brain draws each one as a
+# signal along its real path.
 _TRAFFIC_WINDOW_SECONDS = 300
-_request_times: deque[float] = deque()
-_error_times: deque[float] = deque()
+_RECENT_LIMIT = 400
+_requests: deque[tuple[float, bool, str, str, bool]] = deque()
+
+# First match wins; anything else is the server on its own.
+_AREAS = [
+    (re.compile(r"^/(auth)(/|$)"), "signin"),
+    (re.compile(r"^/(chat|watch-party|lounge)(/|$)"), "chat"),
+    (re.compile(r"^/nfl/(gamecast|live-games|games)"), "gamecast"),
+    (re.compile(r"^/(me/team/waivers|trades)(/|$)|/waivers"), "waivers"),
+    (re.compile(r"^/(me/team|players|free-agents|admin/lineup)(/|$)|/lineup"), "roster"),
+    (re.compile(r"^/(bets)(/|$)"), "bets"),
+    (re.compile(r"^/(draft|keepers)(/|$)"), "draft"),
+    (re.compile(r"^/(chug|punishment-wheel)(/|$)"), "chug"),
+    (re.compile(r"^/push(/|$)"), "alerts"),
+    (re.compile(r"/(recap|awards|power-rankings|rivalries|records|history)"), "recaps"),
+    (re.compile(r"^/(me/week|matchups|nfl/scoreboard)|/(standings|matchup|ticker|playoffs|scoreboard)"), "scoring"),
+]
+# The Brain's own polling and load balancer checks aren't app traffic.
+_NOT_COUNTED = ("/system/status", "/health")
 
 
-def _note_request(failed: bool) -> None:
+def _area(path: str) -> str:
+    for pattern, area in _AREAS:
+        if pattern.search(path):
+            return area
+    return "server"
+
+
+def _note_request(request: Request, failed: bool) -> None:
+    path = request.url.path
+    if path in _NOT_COUNTED:
+        return
     now = time.monotonic()
-    _request_times.append(now)
-    if failed:
-        _error_times.append(now)
-    for times in (_request_times, _error_times):
-        while times and now - times[0] > _TRAFFIC_WINDOW_SECONDS:
-            times.popleft()
+    source = "app" if (request.headers.get("user-agent") or "").startswith("TheWeekend/") else "web"
+    _requests.append((now, failed, source, _area(path), request.method not in ("GET", "HEAD", "OPTIONS")))
+    while _requests and now - _requests[0][0] > _TRAFFIC_WINDOW_SECONDS:
+        _requests.popleft()
 
 
 def traffic_counts() -> dict:
     now = time.monotonic()
-    last_minute = sum(1 for t in _request_times if now - t <= 60)
     return {
-        "requests_last_minute": last_minute,
-        "requests_last_5_minutes": sum(1 for t in _request_times if now - t <= _TRAFFIC_WINDOW_SECONDS),
-        "errors_last_5_minutes": sum(1 for t in _error_times if now - t <= _TRAFFIC_WINDOW_SECONDS),
+        "requests_last_minute": sum(1 for r in _requests if now - r[0] <= 60),
+        "requests_last_5_minutes": sum(1 for r in _requests if now - r[0] <= _TRAFFIC_WINDOW_SECONDS),
+        "errors_last_5_minutes": sum(1 for r in _requests if r[1] and now - r[0] <= _TRAFFIC_WINDOW_SECONDS),
     }
+
+
+def recent_requests(seconds: float = 15) -> list[list]:
+    """[seconds_ago, source, area, wrote] for each request in the last
+    `seconds`, oldest first, capped so a busy Sunday stays a light
+    payload (an even sample of the window when there are more)."""
+    now = time.monotonic()
+    rows = [r for r in _requests if now - r[0] <= seconds]
+    if len(rows) > _RECENT_LIMIT:
+        step = len(rows) / _RECENT_LIMIT
+        rows = [rows[int(i * step)] for i in range(_RECENT_LIMIT)]
+    return [[round(now - t, 2), source, area, wrote] for t, _failed, source, area, wrote in rows]
 
 
 async def monitoring_middleware(request: Request, call_next):
@@ -280,7 +319,7 @@ async def monitoring_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception as exc:
-        _note_request(failed=True)
+        _note_request(request, failed=True)
         run_in_background(_record_server_error(
             f"{type(exc).__name__}: {exc}", traceback.format_exc(), _route_template(request),
             method, 500, session_user_id(request),
@@ -288,7 +327,7 @@ async def monitoring_middleware(request: Request, call_next):
         raise
 
     status = response.status_code
-    _note_request(failed=status >= 500)
+    _note_request(request, failed=status >= 500)
     if status >= 500:
         run_in_background(_record_server_error(
             f"{status} response from {method} {_route_template(request)}", None, _route_template(request),
