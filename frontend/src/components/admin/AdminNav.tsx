@@ -6,7 +6,9 @@ import { usePathname } from "next/navigation";
 import { getAdminBadges, type AdminBadges } from "@/lib/api";
 import { startVisibleInterval } from "@/lib/visibleInterval";
 
-type Section = { href: string; label: string; icon: string; badge?: keyof AdminBadges };
+// `page`: a standalone page outside the app (the live system map at
+// /brain), opened with a plain link rather than the client router.
+type Section = { href: string; label: string; icon: string; badge?: keyof AdminBadges; page?: boolean };
 
 const GROUPS: { title: string; sections: Section[] }[] = [
   {
@@ -29,6 +31,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
   {
     title: "Health",
     sections: [
+      { href: "/brain", label: "System Map", icon: "◎", page: true },
       { href: "/admin/crashes", label: "Crashes", icon: "◬", badge: "crashes" },
       { href: "/admin/errors", label: "Errors", icon: "◮", badge: "errors" },
       { href: "/admin/security", label: "Security", icon: "◘", badge: "security" },
@@ -82,16 +85,13 @@ export function AdminNav() {
             {group.sections.map((s) => {
               const active = isActive(s.href);
               const count = s.badge && badges ? badges[s.badge] : 0;
-              return (
-                <Link
-                  key={s.href}
-                  href={s.href}
-                  className={`flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)] text-[var(--admin-accent)]"
-                      : "bg-black/[0.03] text-black/65 hover:bg-black/5 sm:bg-transparent dark:bg-white/[0.04] dark:text-white/65 dark:hover:bg-white/5 sm:dark:bg-transparent"
-                  }`}
-                >
+              const className = `flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-[color-mix(in_srgb,var(--admin-accent)_15%,transparent)] text-[var(--admin-accent)]"
+                  : "bg-black/[0.03] text-black/65 hover:bg-black/5 sm:bg-transparent dark:bg-white/[0.04] dark:text-white/65 dark:hover:bg-white/5 sm:dark:bg-transparent"
+              }`;
+              const content = (
+                <>
                   <span aria-hidden className="text-xs">
                     {s.icon}
                   </span>
@@ -104,6 +104,15 @@ export function AdminNav() {
                       {count > 99 ? "99+" : count}
                     </span>
                   )}
+                </>
+              );
+              return s.page ? (
+                <a key={s.href} href={s.href} className={className}>
+                  {content}
+                </a>
+              ) : (
+                <Link key={s.href} href={s.href} className={className}>
+                  {content}
                 </Link>
               );
             })}

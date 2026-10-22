@@ -32,6 +32,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
   {
     title: 'Health',
     sections: [
+      { href: '/admin/brain', label: 'System Map', icon: '◎' },
       { href: '/admin/crashes', label: 'Crashes', icon: '◬', badge: 'crashes' },
       { href: '/admin/errors', label: 'Errors', icon: '◮', badge: 'errors' },
       { href: '/admin/security', label: 'Security', icon: '◘', badge: 'security' },
