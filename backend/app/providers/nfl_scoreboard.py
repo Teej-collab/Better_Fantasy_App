@@ -17,9 +17,13 @@ week.number field to cross-check against.
 """
 import asyncio
 import copy
+import json
+import logging
 import time
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 
@@ -182,24 +186,108 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
 # downstream polls for live scores, and short enough that a game going
 # final is picked up by the next scheduler run anyway. Concurrent
 # misses for the same key share one in-flight request instead of each
-# starting their own. Failures are never cached.
+# starting their own.
+#
+# When ESPN fails (2026-10-22: it answered every request from Railway
+# with 403 Forbidden for hours, and every page that reads the
+# scoreboard went down with it), each key's last good answer is served
+# instead, and ESPN isn't asked again for that key for a minute — the
+# 4-second Gamecast poll and every page load would otherwise keep
+# hammering a source that's refusing us. The last good answer is also
+# kept in nfl_scoreboard_snapshots, since a deploy restarts the process
+# and empties its memory. Only with no last good answer anywhere does a
+# failure reach the caller.
 _CACHE_TTL_SECONDS = 15.0
-_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_FAILURE_BACKOFF_SECONDS = 60.0
+_SNAPSHOT_EVERY_SECONDS = 60.0
+_cache: dict[tuple, tuple[float, object]] = {}
 _inflight: dict[tuple, asyncio.Task] = {}
+_last_good: dict[tuple, object] = {}
+_failed_until: dict[tuple, float] = {}
+_snapshot_at: dict[tuple, float] = {}
+
+# Tests turn this off: a snapshot one test's fake scoreboard wrote
+# would otherwise be served to a later test whose fake fails.
+persist_snapshots = True
+
+
+class ScoreboardUnavailable(Exception):
+    """ESPN is failing and there's no last good answer to fall back on."""
 
 
 def clear_scoreboard_cache() -> None:
     _cache.clear()
     _inflight.clear()
+    _last_good.clear()
+    _failed_until.clear()
+    _snapshot_at.clear()
 
 
-async def _cached_games(key: tuple, fetch) -> list[dict]:
+def _snapshot_key(key: tuple) -> str:
+    return json.dumps(key)
+
+
+async def _save_snapshot(key: tuple, payload) -> None:
+    now = time.monotonic()
+    if not persist_snapshots or now - _snapshot_at.get(key, float("-inf")) < _SNAPSHOT_EVERY_SECONDS:
+        return
+    _snapshot_at[key] = now
+    from app.db import get_pool
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO nfl_scoreboard_snapshots (cache_key, payload, fetched_at)
+                VALUES ($1, $2::jsonb, now())
+                ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = EXCLUDED.fetched_at
+                """,
+                _snapshot_key(key),
+                json.dumps(payload),
+            )
+    except Exception:
+        logger.warning("Couldn't save the scoreboard snapshot for %s", key, exc_info=True)
+
+
+async def _load_snapshot(key: tuple):
+    if not persist_snapshots:
+        return None
+    from app.db import get_pool
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            raw = await conn.fetchval(
+                "SELECT payload FROM nfl_scoreboard_snapshots WHERE cache_key = $1", _snapshot_key(key)
+            )
+    except Exception:
+        logger.warning("Couldn't read the scoreboard snapshot for %s", key, exc_info=True)
+        return None
+    return json.loads(raw) if isinstance(raw, str) else raw
+
+
+async def _fallback(key: tuple, error: BaseException | None):
+    payload = _last_good.get(key)
+    if payload is None:
+        payload = await _load_snapshot(key)
+        if payload is not None:
+            _last_good[key] = payload
+    if payload is None:
+        raise ScoreboardUnavailable(f"ESPN scoreboard unavailable for {key}") from error
+    return copy.deepcopy(payload)
+
+
+async def _cached_games(key: tuple, fetch):
+    now = time.monotonic()
     hit = _cache.get(key)
-    if hit is not None and time.monotonic() - hit[0] < _CACHE_TTL_SECONDS:
+    if hit is not None and now - hit[0] < _CACHE_TTL_SECONDS:
         # Deep copy: every caller gets its own list/dicts, same as an
         # uncached fetch, so one caller mutating a game can't leak into
         # another's response.
         return copy.deepcopy(hit[1])
+    if now < _failed_until.get(key, float("-inf")):
+        return await _fallback(key, None)
     task = _inflight.get(key)
     if task is None:
         task = asyncio.ensure_future(fetch())
@@ -207,25 +295,55 @@ async def _cached_games(key: tuple, fetch) -> list[dict]:
 
         def _store(t: asyncio.Task) -> None:
             _inflight.pop(key, None)
-            if not t.cancelled() and t.exception() is None:
-                _cache[key] = (time.monotonic(), t.result())
+            if t.cancelled():
+                return
+            error = t.exception()
+            if error is not None:
+                _failed_until[key] = time.monotonic() + _FAILURE_BACKOFF_SECONDS
+                logger.warning("ESPN scoreboard failed for %s (%r); serving the last good answer for a minute", key, error)
+                return
+            _failed_until.pop(key, None)
+            _cache[key] = (time.monotonic(), t.result())
+            _last_good[key] = t.result()
+            asyncio.ensure_future(_save_snapshot(key, t.result()))
 
         task.add_done_callback(_store)
     # shield: one caller's request being cancelled (a client
     # disconnecting mid-load) mustn't cancel the fetch the other callers
     # sharing it are still waiting on.
-    return copy.deepcopy(await asyncio.shield(task))
+    try:
+        return copy.deepcopy(await asyncio.shield(task))
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        return await _fallback(key, error)
 
 
-async def _fetch_scoreboard(params: dict | None) -> list[dict]:
+async def _fetch_raw(params: dict | None) -> dict:
     async with httpx.AsyncClient(timeout=10) as client:
         response = await (client.get(SCOREBOARD_URL, params=params) if params else client.get(SCOREBOARD_URL))
         response.raise_for_status()
-        return _parse_scoreboard_events(response.json())
+        return response.json()
+
+
+async def _fetch_scoreboard(params: dict | None) -> list[dict]:
+    return _parse_scoreboard_events(await _fetch_raw(params))
+
+
+async def _fetch_live() -> dict:
+    # The live scoreboard's own season type and week ride along with its
+    # games, so get_real_current_week shares this one cached request
+    # (and its fallback) instead of making its own.
+    data = await _fetch_raw(None)
+    return {
+        "games": _parse_scoreboard_events(data),
+        "season_type": (data.get("season") or {}).get("type"),
+        "week": (data.get("week") or {}).get("number"),
+    }
 
 
 async def get_nfl_scoreboard() -> list[dict]:
-    return await _cached_games(("live",), lambda: _fetch_scoreboard(None))
+    return (await _cached_games(("live",), _fetch_live))["games"]
 
 
 async def get_week_scoreboard(week: int, year: int, season_type: int = SEASON_TYPE_REGULAR) -> list[dict]:
@@ -259,10 +377,7 @@ async def get_real_current_week() -> int | None:
     correspond to real regular-season NFL weeks (see
     SEASON_TYPE_REGULAR above), so None here means "no real current
     fantasy week to sync/compute," not a guess."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(SCOREBOARD_URL)
-        response.raise_for_status()
-        data = response.json()
-    if data.get("season", {}).get("type") != SEASON_TYPE_REGULAR:
+    live = await _cached_games(("live",), _fetch_live)
+    if live["season_type"] != SEASON_TYPE_REGULAR:
         return None
-    return data.get("week", {}).get("number")
+    return live["week"]

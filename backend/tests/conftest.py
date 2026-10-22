@@ -22,6 +22,7 @@ from app.auth.rate_limit import reset_for_tests as _reset_rate_limits_for_tests
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
+from app.providers import nfl_scoreboard
 from app.providers.nfl_scoreboard import clear_scoreboard_cache
 from app.providers.nfl_stats.espn_public import clear_game_stats_cache
 
@@ -206,11 +207,13 @@ def _reset_rate_limits():
 
 
 @pytest.fixture(autouse=True)
-def _reset_scoreboard_cache():
+def _reset_scoreboard_cache(monkeypatch):
     """app/providers/nfl_scoreboard.py caches ESPN responses for a few
     seconds — without this, one test's faked scoreboard would be served
     to the next test that fakes a different one. Same for
-    espn_public's per-game stats cache."""
+    espn_public's per-game stats cache. Its database snapshots are off
+    for the same reason."""
+    monkeypatch.setattr(nfl_scoreboard, "persist_snapshots", False)
     clear_scoreboard_cache()
     clear_game_stats_cache()
 

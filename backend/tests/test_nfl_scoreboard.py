@@ -1,6 +1,10 @@
 """Never hits the real ESPN scoreboard endpoint in tests — httpx.AsyncClient
 is replaced with a fake that returns a canned response, same principle
 as the ESPN lineup-write tests never sending a real request."""
+import httpx
+import pytest
+
+from app.providers import nfl_scoreboard
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 
 
@@ -245,3 +249,40 @@ def test_scoreboard_games_carry_weather_and_dome():
     assert snow["indoor"] is False
     assert dome["weather"] is None
     assert dome["indoor"] is True
+
+
+class _ForbiddenAsyncClient(_FakeAsyncClient):
+    calls = 0
+
+    async def get(self, url, params=None):
+        type(self).calls += 1
+        request = httpx.Request("GET", url)
+        raise httpx.HTTPStatusError("403 Forbidden", request=request, response=httpx.Response(403, request=request))
+
+
+async def test_espn_failure_serves_the_last_good_scoreboard(monkeypatch):
+    # 2026-10-22: ESPN refused Railway with 403s for hours and every
+    # page reading the scoreboard went down with it.
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _FakeAsyncClient)
+    good = await get_nfl_scoreboard()
+    assert good
+
+    monkeypatch.setattr(nfl_scoreboard, "_CACHE_TTL_SECONDS", 0.0)
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _ForbiddenAsyncClient)
+    _ForbiddenAsyncClient.calls = 0
+
+    assert await get_nfl_scoreboard() == good
+    # Backed off: the next minute's callers get the same answer without
+    # asking ESPN again.
+    assert await get_nfl_scoreboard() == good
+    assert await get_real_current_week() is None
+    assert _ForbiddenAsyncClient.calls == 1
+
+
+async def test_espn_failure_with_nothing_to_fall_back_on_raises(monkeypatch):
+    monkeypatch.setattr("app.providers.nfl_scoreboard.httpx.AsyncClient", _ForbiddenAsyncClient)
+
+    with pytest.raises(nfl_scoreboard.ScoreboardUnavailable):
+        await get_week_scoreboard(week=5, year=2026)
+    with pytest.raises(nfl_scoreboard.ScoreboardUnavailable):
+        await get_week_scoreboard(week=5, year=2026)
