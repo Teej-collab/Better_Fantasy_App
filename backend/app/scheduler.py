@@ -194,7 +194,7 @@ from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
 from app.queries import league_espn_connections as espn_connection_queries
 from app.queries import watch_party as watch_party_queries
-from app import scheduler_lease
+from app import scheduler_lease, scheduler_status
 from app.scheduler_status import record_job_run
 from app.watch_party.manager import manager as watch_party_manager
 
@@ -1276,7 +1276,7 @@ def start_scheduler():
         # otherwise. The heartbeat runs first thing, so the lease is
         # settled before the first job comes due.
         for job in _scheduler.get_jobs():
-            job.modify(func=_leader_only(job.func))
+            job.modify(func=_leader_only(job.func, job.id))
         _scheduler.add_job(
             scheduler_lease.heartbeat, "interval", seconds=scheduler_lease.HEARTBEAT_SECONDS,
             id="scheduler_lease", next_run_time=datetime.now(timezone.utc),
@@ -1286,11 +1286,18 @@ def start_scheduler():
         _scheduler = None
 
 
-def _leader_only(func):
+def _leader_only(func, job_id: str):
     @functools.wraps(func)
     async def run(*args, **kwargs):
-        if scheduler_lease.is_leader():
-            return await func(*args, **kwargs)
+        if not scheduler_lease.is_leader():
+            return None
+        try:
+            result = await func(*args, **kwargs)
+        except Exception as error:
+            scheduler_status.record_tick(job_id, ok=False, error=repr(error)[:300])
+            raise
+        scheduler_status.record_tick(job_id, ok=True)
+        return result
     return run
 
 

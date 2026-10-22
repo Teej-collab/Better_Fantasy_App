@@ -217,6 +217,22 @@ class ScoreboardUnavailable(Exception):
     """ESPN is failing and there's no last good answer to fall back on."""
 
 
+def live_scoreboard_status() -> dict:
+    """For the live system map, without asking ESPN: how old the live
+    scoreboard is, whether it's the saved fallback, and how many NFL
+    games are in progress on it."""
+    key = ("live",)
+    hit = _cache.get(key)
+    payload = _last_good.get(key)
+    games = payload.get("games", []) if isinstance(payload, dict) else []
+    return {
+        "age_seconds": round(time.monotonic() - hit[0]) if hit else None,
+        "serving_fallback": time.monotonic() < _failed_until.get(key, float("-inf")),
+        "games_live": sum(1 for g in games if g.get("state") == "in"),
+        "games_today": len(games),
+    }
+
+
 def clear_scoreboard_cache() -> None:
     _cache.clear()
     _inflight.clear()

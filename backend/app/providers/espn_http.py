@@ -35,11 +35,23 @@ _RELAY_FOR_SECONDS = 300.0
 
 # monotonic time until which requests skip ESPN and use the relay.
 _relay_until = 0.0
+# wall-clock time ESPN last refused (or couldn't be reached by) the backend.
+last_refused_at: float | None = None
 
 
 def reset_relay_state() -> None:
     global _relay_until
     _relay_until = 0.0
+
+
+def relay_status() -> dict:
+    """For the live system map: is ESPN reached directly or through the
+    relay right now, and when did it last refuse the backend."""
+    return {
+        "relay_configured": _relay_config() is not None,
+        "using_relay": time.monotonic() < _relay_until,
+        "last_refused_at": last_refused_at,
+    }
 
 
 def _relay_config() -> tuple[str, str] | None:
@@ -53,7 +65,7 @@ class _EspnTransport(httpx.AsyncBaseTransport):
         self._inner = httpx.AsyncHTTPTransport()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        global _relay_until
+        global _relay_until, last_refused_at
         relay = _relay_config()
         if relay is None or request.method != "GET" or request.url.host not in ESPN_PUBLIC_HOSTS:
             return await self._inner.handle_async_request(request)
@@ -69,6 +81,7 @@ class _EspnTransport(httpx.AsyncBaseTransport):
                 reason = f"HTTP {response.status_code}"
                 await response.aclose()
             _relay_until = time.monotonic() + _RELAY_FOR_SECONDS
+            last_refused_at = time.time()
             logger.warning("ESPN refused the backend (%s); using the Vercel relay for %d minutes", reason, _RELAY_FOR_SECONDS // 60)
 
         relay_url, secret = relay

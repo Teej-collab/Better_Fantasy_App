@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import uuid
 
@@ -95,7 +96,7 @@ async def test_jobs_run_only_on_the_lease_holder(monkeypatch):
     async def job(x):
         ran.append(x)
 
-    guarded = scheduler._leader_only(job)
+    guarded = scheduler._leader_only(job, "test_job")
     assert guarded.__name__ == "job"
 
     monkeypatch.setattr(scheduler_lease, "_leader", False)
@@ -105,6 +106,26 @@ async def test_jobs_run_only_on_the_lease_holder(monkeypatch):
     monkeypatch.setattr(scheduler_lease, "_leader", True)
     await guarded(2)
     assert ran == [2]
+
+
+async def test_every_tick_is_recorded_with_failures(monkeypatch):
+    from app import scheduler_status
+
+    monkeypatch.setattr(scheduler_status, "_ticks", {})
+    monkeypatch.setattr(scheduler_lease, "_leader", True)
+
+    async def flaky(fail):
+        if fail:
+            raise RuntimeError("ESPN said no")
+
+    guarded = scheduler._leader_only(flaky, "flaky_job")
+    await guarded(False)
+    with pytest.raises(RuntimeError):
+        await guarded(True)
+
+    tick = scheduler_status.get_job_ticks()["flaky_job"]
+    assert tick["runs"] == 2 and tick["failures"] == 1
+    assert tick["last_ok"] is not None and "ESPN said no" in tick["last_error"]
 
 
 async def test_without_the_table_every_copy_runs_jobs_as_before(monkeypatch):

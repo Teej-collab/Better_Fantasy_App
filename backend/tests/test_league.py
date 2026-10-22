@@ -688,3 +688,15 @@ async def test_team_detail_404_for_unknown_id(pool, monkeypatch):
     cookies = await _member_cookies(pool, "team-404")
     resp = await _get("/teams/999999999", cookies)
     assert resp.status_code == 404
+
+
+async def test_system_status_is_for_members(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    assert (await _get("/system/status")).status_code == 401
+
+    resp = await _get("/system/status", await _member_cookies(pool, "system-status"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["database"]["ok"] is True
+    assert {"using_relay", "scoreboard"} <= set(body["espn"])
+    assert {"requests_last_minute", "errors_last_5_minutes"} <= set(body["traffic"])

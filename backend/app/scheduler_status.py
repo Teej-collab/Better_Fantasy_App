@@ -23,4 +23,30 @@ def get_job_statuses() -> dict[str, str | None]:
     return {name: dt.isoformat() for name, dt in _last_run.items()}
 
 
+# Every scheduled job's ticks, successful or not (2026-10-22, for the
+# website's live system map): app/scheduler.py's _leader_only wrapper
+# records each run by job id, so a job that fails every tick shows up
+# as failing instead of just going quiet.
+_ticks: dict[str, dict] = {}
+
+
+def record_tick(job_id: str, ok: bool, error: str | None = None) -> None:
+    now = datetime.now(timezone.utc)
+    tick = _ticks.setdefault(job_id, {"runs": 0, "failures": 0, "last_ok": None, "last_error": None, "last_error_at": None})
+    tick["runs"] += 1
+    if ok:
+        tick["last_ok"] = now
+    else:
+        tick["failures"] += 1
+        tick["last_error"] = error
+        tick["last_error_at"] = now
+
+
+def get_job_ticks() -> dict[str, dict]:
+    return {
+        job_id: {**tick, "last_ok": tick["last_ok"] and tick["last_ok"].isoformat(), "last_error_at": tick["last_error_at"] and tick["last_error_at"].isoformat()}
+        for job_id, tick in _ticks.items()
+    }
+
+
 PROCESS_STARTED_AT = datetime.now(timezone.utc)

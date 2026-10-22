@@ -21,6 +21,7 @@ and swallows its own failures — monitoring must never slow down or break
 the request it's watching.
 """
 import asyncio
+from collections import deque
 import hashlib
 import logging
 import re
@@ -244,6 +245,33 @@ def _route_template(request: Request) -> str:
     return getattr(route, "path", None) or request.url.path
 
 
+# Request and server-error times over the last five minutes, for the
+# website's live system map (app/routers/system.py).
+_TRAFFIC_WINDOW_SECONDS = 300
+_request_times: deque[float] = deque()
+_error_times: deque[float] = deque()
+
+
+def _note_request(failed: bool) -> None:
+    now = time.monotonic()
+    _request_times.append(now)
+    if failed:
+        _error_times.append(now)
+    for times in (_request_times, _error_times):
+        while times and now - times[0] > _TRAFFIC_WINDOW_SECONDS:
+            times.popleft()
+
+
+def traffic_counts() -> dict:
+    now = time.monotonic()
+    last_minute = sum(1 for t in _request_times if now - t <= 60)
+    return {
+        "requests_last_minute": last_minute,
+        "requests_last_5_minutes": sum(1 for t in _request_times if now - t <= _TRAFFIC_WINDOW_SECONDS),
+        "errors_last_5_minutes": sum(1 for t in _error_times if now - t <= _TRAFFIC_WINDOW_SECONDS),
+    }
+
+
 async def monitoring_middleware(request: Request, call_next):
     if is_test_request(request):
         return await call_next(request)
@@ -252,6 +280,7 @@ async def monitoring_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception as exc:
+        _note_request(failed=True)
         run_in_background(_record_server_error(
             f"{type(exc).__name__}: {exc}", traceback.format_exc(), _route_template(request),
             method, 500, session_user_id(request),
@@ -259,6 +288,7 @@ async def monitoring_middleware(request: Request, call_next):
         raise
 
     status = response.status_code
+    _note_request(failed=status >= 500)
     if status >= 500:
         run_in_background(_record_server_error(
             f"{status} response from {method} {_route_template(request)}", None, _route_template(request),
