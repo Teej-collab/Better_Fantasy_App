@@ -1,18 +1,19 @@
 """The live system map's data (2026-10-22): the website's /brain page
 reads this every few seconds and lights its parts from real values, not
-guesses. League members only (require_league_access) — it carries no
-league data, but there's no reason to show strangers how the server is
-doing. Everything here comes from this process's own memory or one
-trivial database query: no ESPN call, nothing that could slow down or
-break the server it's describing.
+guesses. Site admins only (require_site_admin, the admin dashboard's own
+gate: League #1's commissioner and anyone with users.is_admin), and the
+page itself is only served to whoever this lets through. Everything
+here comes from this process's own memory or one trivial database
+query: no ESPN call, nothing that could slow down or break the server
+it's describing.
 """
 import os
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.auth.league_context import require_league_access
+from app.auth.league_context import optional_session_payload, require_site_admin
 from app.chat.manager import manager as chat_manager
 from app.db import get_pool
 from app.draft.manager import manager as draft_manager
@@ -27,7 +28,12 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 
 @router.get("/status")
-async def status(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+async def status(request: Request, pool=Depends(get_pool)):
+    payload = optional_session_payload(request)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
     started = time.perf_counter()
     db_ok = True
     try:

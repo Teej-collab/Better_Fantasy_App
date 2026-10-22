@@ -63,10 +63,6 @@ const nextConfig: NextConfig = {
     // is never older than that when tapped.
     staleTimes: { dynamic: 30, static: 30 },
   },
-  // The live system map (public/brain.html) at a clean address.
-  async rewrites() {
-    return [{ source: "/brain", destination: "/brain.html" }];
-  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

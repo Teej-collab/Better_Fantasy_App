@@ -690,11 +690,18 @@ async def test_team_detail_404_for_unknown_id(pool, monkeypatch):
     assert resp.status_code == 404
 
 
-async def test_system_status_is_for_members(pool, monkeypatch):
+async def test_system_status_is_for_admins_only(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     assert (await _get("/system/status")).status_code == 401
+    # A league member who isn't an admin can't see it.
+    assert (await _get("/system/status", await _member_cookies(pool, "system-status"))).status_code == 403
 
-    resp = await _get("/system/status", await _member_cookies(pool, "system-status"))
+    async with pool.acquire() as conn:
+        admin_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name, is_admin) VALUES ($1, 'x', $2, TRUE) RETURNING id",
+            "test-league-router-admin@example.com", "Test Admin",
+        )
+    resp = await _get("/system/status", _session_cookie(admin_id))
     assert resp.status_code == 200
     body = resp.json()
     assert body["database"]["ok"] is True
