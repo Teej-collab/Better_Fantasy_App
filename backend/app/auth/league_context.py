@@ -121,6 +121,16 @@ async def require_league_commissioner(conn, payload: dict) -> int:
     return league_id
 
 
+def optional_session_payload(request: Request) -> dict | None:
+    """The signed-in session, or None when signed out or expired — for
+    routes that also serve signed-out visitors (see
+    resolve_active_league_id)."""
+    token = get_session_token(request)
+    if not token:
+        return None
+    return decode_session_token(SessionConfig().session_secret, token)
+
+
 def _decode_session_or_401(request: Request) -> dict:
     token = get_session_token(request)
     if not token:

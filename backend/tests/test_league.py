@@ -86,6 +86,35 @@ async def test_seasons_and_teams(pool, monkeypatch):
     assert names == {"Team Alpha", "Team Beta"}
 
 
+async def test_seasons_follow_the_active_league(pool, monkeypatch):
+    # 2026-10-22: /seasons listed League #1's seasons for everyone, so a
+    # member of another league got seasons their league never played.
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "INSERT INTO users (email, password_hash, display_name) VALUES ($1, 'x', $2) RETURNING id",
+            "test-league-router-other-league@example.com", "Other League Member",
+        )
+        other = await league_queries.create_league(conn, "Test League Other Seasons", user_id, "test-other-seasons")
+        await league_queries.add_member(conn, other, user_id, "commissioner")
+        await league_queries.set_active_league_id(conn, user_id, other)
+        owner = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+            "test-league-owner-other", "Other Owner",
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4, $5)",
+            TEST_SEASON, 301, owner, "Other Team", other,
+        )
+
+    resp = await _get("/seasons", _session_cookie(user_id))
+    assert resp.status_code == 200
+    assert resp.json()["seasons"] == [TEST_SEASON]
+
+    signed_out = await _get("/seasons")
+    assert signed_out.status_code == 200
+
+
 async def test_league_endpoints_require_session(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     for path in (

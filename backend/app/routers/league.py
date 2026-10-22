@@ -18,9 +18,9 @@ carry no league-private information (no team/owner/score/roster data),
 so gating them would just add friction to genuinely non-sensitive
 lookups without closing any real exposure.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.auth.league_context import require_league_access
+from app.auth.league_context import optional_session_payload, require_league_access, resolve_active_league_id
 from app.db import get_pool
 from app.domain import league_activity as league_activity_domain
 from app.domain.headshots import headshot_url
@@ -40,9 +40,14 @@ router = APIRouter(tags=["league"])
 
 
 @router.get("/seasons")
-async def seasons(pool=Depends(get_pool)):
+async def seasons(request: Request, pool=Depends(get_pool)):
+    """Your active league's seasons; signed out, League #1's (2026-10-22:
+    every league used to get League #1's list, so a league that started
+    this season saw seasons it never played, and the app's League hub
+    asked about the wrong ones)."""
     async with pool.acquire() as conn:
-        return {"seasons": await queries.list_seasons(conn)}
+        league_id = await resolve_active_league_id(conn, optional_session_payload(request))
+        return {"seasons": await queries.list_seasons(conn, league_id)}
 
 
 @router.get("/seasons/{season}/current-week")
