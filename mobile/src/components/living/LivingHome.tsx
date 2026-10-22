@@ -49,6 +49,7 @@ import {
 } from '@/components/living/WeekCards';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
+import { ApiError } from '@/lib/api';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import {
@@ -211,7 +212,14 @@ export function LivingHome() {
     setRefreshing(false);
   }
 
-  if (myWeek.isPending && seasonWeek.isPending) return <LoadingState />;
+  if (myWeek.isPending) return <LoadingState />;
+  // Only a 404 means "no team": anything else (2026-10-22: ESPN blocking
+  // the server turned /me/week into a 500) is a failed load, not an
+  // invitation to join a league you're already in.
+  const noTeam = myWeek.error instanceof ApiError && myWeek.error.status === 404;
+  if (!myWeek.data && !noTeam) {
+    return <MessageState message="Couldn't load your week. Try again in a minute." actionLabel="Try again" onAction={() => void myWeek.refetch()} />;
+  }
   if (!myWeek.data || teamId === null) {
     return <MessageState message="You're signed in, but not on a team yet. Join or create a league to get started." />;
   }

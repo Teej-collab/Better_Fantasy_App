@@ -94,10 +94,15 @@ export function SkeletonBlock({ height, width = '100%' }: { height: number; widt
   return <Animated.View style={[styles.bone, { height, width }, style]} />;
 }
 
-export function MessageState({ message }: { message: string }) {
+export function MessageState({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
   return (
     <View style={styles.center}>
       <Text style={styles.message}>{message}</Text>
+      {actionLabel && onAction ? (
+        <Pressable accessibilityRole="button" onPress={onAction} style={({ pressed }) => [styles.action, pressed && styles.rowPressed]}>
+          <Text style={styles.actionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -120,4 +125,6 @@ const styles = StyleSheet.create({
   rowPressed: { backgroundColor: Colors.border },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
   message: { color: Colors.textSecondary, fontSize: 15, textAlign: 'center' },
+  action: { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border },
+  actionText: { fontSize: 15, fontWeight: '600' },
 });
