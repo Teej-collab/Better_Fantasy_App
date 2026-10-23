@@ -30,9 +30,17 @@ export function ScoringSection() {
       </View>
       {groups.map((group) => (
         <Card key={group.key} style={styles.card}>
-          <Text style={styles.groupTitle} accessibilityRole="header">
-            {group.label}
-          </Text>
+          <View style={[styles.groupHead, { borderBottomColor: group.color }]}>
+            <View style={[styles.groupIcon, { backgroundColor: `${group.color}26`, borderColor: `${group.color}66` }]}>
+              <Text style={styles.groupIconText}>{group.icon}</Text>
+            </View>
+            <Text style={styles.groupTitle} accessibilityRole="header">
+              {group.label}
+            </Text>
+            <Text style={[styles.groupCount, { color: group.color }]}>
+              {group.stats.length} {group.stats.length === 1 ? 'rule' : 'rules'}
+            </Text>
+          </View>
           {group.stats.map((stat, i) => {
             const value = stat.value ?? 0;
             return (
@@ -63,7 +71,11 @@ const styles = StyleSheet.create({
   chip: { borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: Colors.tile, paddingHorizontal: Spacing.md, paddingVertical: 6 },
   chipText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
   card: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
-  groupTitle: { color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', paddingVertical: Spacing.xs },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, marginBottom: Spacing.xs, borderBottomWidth: 2 },
+  groupIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  groupIconText: { fontSize: 18 },
+  groupTitle: { flex: 1, color: Colors.text, fontSize: 20, fontWeight: '800' },
+  groupCount: { fontSize: 12, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm + 2 },
   divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)' },
   flex: { flex: 1, gap: 2 },

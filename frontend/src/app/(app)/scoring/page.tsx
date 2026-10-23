@@ -70,12 +70,24 @@ export default async function ScoringPage() {
                 style={panelGlowStyle(SECTION_COLORS.rules)}
                 aria-labelledby={`scoring-${group.key}`}
               >
-                <h2
-                  id={`scoring-${group.key}`}
-                  className="pb-1 text-xs font-bold tracking-widest text-black/55 uppercase dark:text-white/55"
-                >
-                  {group.label}
-                </h2>
+                <div className="mb-1 flex items-center gap-2.5 border-b-2 pb-2.5" style={{ borderBottomColor: group.color }}>
+                  <span
+                    aria-hidden
+                    className="flex size-9 shrink-0 items-center justify-center rounded-lg border text-lg"
+                    style={{
+                      backgroundColor: `color-mix(in srgb, ${group.color} 15%, transparent)`,
+                      borderColor: `color-mix(in srgb, ${group.color} 40%, transparent)`,
+                    }}
+                  >
+                    {group.icon}
+                  </span>
+                  <h2 id={`scoring-${group.key}`} className="flex-1 text-xl font-extrabold">
+                    {group.label}
+                  </h2>
+                  <span className="text-xs font-bold" style={{ color: group.color }}>
+                    {group.stats.length} {group.stats.length === 1 ? "rule" : "rules"}
+                  </span>
+                </div>
                 <dl className="flex flex-col">
                   {group.stats.map((stat) => {
                     const value = stat.value ?? 0;

@@ -61,7 +61,8 @@ _STATS: tuple[tuple[str, str, str, str, bool, bool], ...] = (
     ("def_fum_rec", "dst", "Fumble recovery", "per recovery", True, False),
     ("def_return_td", "dst", "Defensive or return TD", "per touchdown", True, False),
     ("def_block", "dst", "Blocked kick", "per block", True, False),
-    ("def_safety", "dst", "Safety", "per safety", False, False),
+    ("def_safety", "dst", "Safety", "per safety", True, False),
+    ("two_pt_return", "dst", "2-point return", "a blocked kick or failed try run back for 2", True, False),
     ("pts_allow_0", "dst", "0 points allowed", "per game", True, False),
     ("pts_allow_1_6", "dst", "1–6 points allowed", "per game", True, False),
     ("pts_allow_7_13", "dst", "7–13 points allowed", "per game", True, False),
@@ -100,8 +101,7 @@ _STATS: tuple[tuple[str, str, str, str, bool, bool], ...] = (
 
     ("fum_lost", "other", "Fumble lost", "per fumble", True, False),
     ("ret_td", "other", "Kick or punt return TD", "per touchdown, to the returner", True, False),
-    ("two_pt_return", "other", "2-point return", "per return", False, False),
-    ("safety_1pt", "other", "1-point safety", "per safety", False, False),
+    ("safety_1pt", "other", "1-point safety", "a safety during an extra-point or 2-point try (very rare)", False, False),
 )
 
 CATALOG: dict[str, dict] = {

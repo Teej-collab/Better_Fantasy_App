@@ -16,12 +16,10 @@ round-trip would be wasteful.
 
 Covers only the verified, well-supported stat categories — see
 SCORING_ENGINE_SOURCE.md's "Known gap" section for what's deliberately
-NOT here (safeties — def_safety [team, 2pts] and
-safety_1pt [individual, 1pt] — neither is in ESPN's boxscore stat
-tables at all, only in play-by-play, and unlike the blocked-FG fix
-below, no real safety has occurred this season to confirm ESPN's own
-play-type tag for one against, so it's deliberately left unimplemented
-rather than guessed at).
+NOT here (the 1-point safety, safety_1pt — a safety on a try scores
+for the team trying, so it can't be told apart from a kick; see
+_parse_scoring_play_dst_credits, which does cover def_safety and
+two_pt_return, 2026-10).
 Field-goal-by-yardage (fg_yds), missed AND blocked field goals by
 distance (fg_miss_0_29/30_39/40_49/50_plus), a blocked kick's own
 def_block (+2) credit to the blocking team's D/ST, and QB tackles were
@@ -703,6 +701,62 @@ def two_point_conversions(data: dict) -> list[tuple[str, str, str]]:
     return out
 
 
+# Safeties and defensive 2-point returns (2026-10). Neither is in the
+# boxscore's stat tables; both come from scoringPlays.
+#
+# A safety is its own scoring play with scoringType "safety", and its
+# team is the team that got the 2 points — the D/ST to credit. The one
+# real safety in weeks 1-7 of 2026 (LV @ LAC week 2, event 401872941,
+# "Team Safety", LV 24 -> 26) has exactly that shape.
+#
+# A defensive 2-point return (the defense takes a failed try back to the
+# other end zone) is scored on the OTHER team's touchdown, so it shows
+# up as the non-scoring team's score going up by 2 on that play. That
+# reads the scores rather than a play tag, so it can't credit the wrong
+# team: nothing else gives a team points on its opponent's play. Its
+# exact text hasn't been seen this season (no return in 94 games).
+#
+# A 1-point safety (a safety on a try — a handful in NFL history) isn't
+# here: it scores for the team trying, so it looks the same as a kick.
+_SAFETY_SCORING_TYPE = "safety"
+_DEFENSIVE_RETURN_POINTS = 2
+
+
+def _parse_scoring_play_dst_credits(data: dict) -> dict[str, dict[str, int]]:
+    """{team_abbreviation: {"def_safety": n, "two_pt_return": n}}."""
+    team_abbr_by_id = _team_abbr_by_id(data)
+    home = away = None
+    for competitor in data.get("header", {}).get("competitions", [{}])[0].get("competitors", []):
+        abbr = competitor.get("team", {}).get("abbreviation")
+        if competitor.get("homeAway") == "home":
+            home = abbr
+        elif competitor.get("homeAway") == "away":
+            away = abbr
+
+    out: dict[str, dict[str, int]] = {}
+
+    def credit(abbr: str | None, category: str) -> None:
+        if abbr:
+            bucket = out.setdefault(abbr, {})
+            bucket[category] = bucket.get(category, 0) + 1
+
+    prev_away = prev_home = 0
+    for play in data.get("scoringPlays", []):
+        abbr = play.get("team", {}).get("abbreviation") or team_abbr_by_id.get(str(play.get("team", {}).get("id")))
+        if play.get("scoringType", {}).get("name") == _SAFETY_SCORING_TYPE:
+            credit(abbr, "def_safety")
+        try:
+            away_score, home_score = int(play["awayScore"]), int(play["homeScore"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if home and away and abbr in (home, away):
+            other, other_gain = (away, away_score - prev_away) if abbr == home else (home, home_score - prev_home)
+            if other_gain == _DEFENSIVE_RETURN_POINTS:
+                credit(other, "two_pt_return")
+        prev_away, prev_home = away_score, home_score
+    return out
+
+
 def _parse_two_point_by_player(data: dict) -> tuple[dict[int, dict[str, float]], list[tuple[str, str, str]]]:
     """({espn_id: {category: count}}, the ones whose name didn't match a
     boxscore athlete — someone whose only touch was the conversion)."""
@@ -963,6 +1017,11 @@ def parse_team_dst_stats(data: dict) -> dict[str, dict]:
     for abbr, count in _parse_def_block_by_team(data).items():
         stat_lines.setdefault(abbr, {})
         stat_lines[abbr]["def_block"] = stat_lines[abbr].get("def_block", 0) + count
+
+    for abbr, credits in _parse_scoring_play_dst_credits(data).items():
+        line = stat_lines.setdefault(abbr, {})
+        for category, count in credits.items():
+            line[category] = line.get(category, 0) + count
 
     return stat_lines
 

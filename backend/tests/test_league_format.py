@@ -215,7 +215,8 @@ async def test_scoring_editor_adds_catalog_stats_and_lists_them(pool):
     assert by_key["k_tackle"]["value"] == 5
     assert "not_a_stat" not in by_key
     assert by_key["two_pt_pass"]["tracked"] is True
-    assert by_key["def_safety"]["tracked"] is False
+    assert by_key["def_safety"]["tracked"] is True
+    assert by_key["safety_1pt"]["tracked"] is False
     assert {g["key"] for g in catalog["groups"]} >= {"passing", "kicking", "bonuses"}
     assert request.status_code == 200
     async with pool.acquire() as conn:

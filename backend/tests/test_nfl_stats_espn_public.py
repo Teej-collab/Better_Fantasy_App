@@ -832,3 +832,34 @@ def test_two_point_conversion_with_an_unknown_name_is_skipped_not_guessed():
     credits, unmatched = espn_public._parse_two_point_by_player(data)
     assert credits == {}
     assert unmatched == [("CLE", "Someone Else", "two_pt_rush")]
+
+
+def _scoring_play_game(*plays: tuple[str, str, int, int]) -> dict:
+    """LV @ LAC; each play is (team, scoring type, away score, home score)."""
+    return {
+        "header": {"competitions": [{"competitors": [
+            {"homeAway": "home", "team": {"id": "24", "abbreviation": "LAC"}},
+            {"homeAway": "away", "team": {"id": "13", "abbreviation": "LV"}},
+        ]}]},
+        "scoringPlays": [
+            {"team": {"abbreviation": team}, "scoringType": {"name": kind}, "text": "", "awayScore": a, "homeScore": h}
+            for team, kind, a, h in plays
+        ],
+    }
+
+
+def test_a_safety_credits_the_team_that_scored_it():
+    """LV @ LAC week 2 (event 401872941): "Team Safety", LV 24 -> 26."""
+    data = _scoring_play_game(("LAC", "touchdown", 0, 7), ("LV", "touchdown", 24, 14), ("LV", "safety", 26, 14))
+    assert espn_public._parse_scoring_play_dst_credits(data) == {"LV": {"def_safety": 1}}
+
+
+def test_a_defensive_two_point_return_credits_the_team_that_did_not_score_the_touchdown():
+    # LAC scores 6, misses the try, and LV runs it back for 2 on the same play.
+    data = _scoring_play_game(("LV", "touchdown", 7, 0), ("LAC", "touchdown", 9, 6))
+    assert espn_public._parse_scoring_play_dst_credits(data) == {"LV": {"two_pt_return": 1}}
+
+
+def test_ordinary_scoring_credits_nothing():
+    data = _scoring_play_game(("LV", "touchdown", 8, 0), ("LAC", "field-goal", 8, 3), ("LAC", "touchdown", 8, 10))
+    assert espn_public._parse_scoring_play_dst_credits(data) == {}
