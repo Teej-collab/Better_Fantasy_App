@@ -26,20 +26,20 @@ export function detailLabel(stat: CatalogStat): string {
   return stat.hint ? stat.hint.charAt(0).toUpperCase() + stat.hint.slice(1) : '';
 }
 
-export type ScoringGroup = { key: string; label: string; icon: string; color: string; stats: CatalogStat[] };
+export type ScoringGroup = { key: string; label: string; color: string; stats: CatalogStat[] };
 
-// Each group's header badge and accent (2026-10-23), so Passing, Rushing,
+// Each group's header accent (2026-10-23), so Passing, Rushing,
 // D/ST and the rest read as clear sections rather than small gray text.
-const GROUP_LOOK: Record<string, { icon: string; color: string }> = {
-  passing: { icon: '🎯', color: '#38bdf8' },
-  rushing: { icon: '🏃', color: '#f97316' },
-  receiving: { icon: '🙌', color: '#a855f7' },
-  kicking: { icon: '🦵', color: '#facc15' },
-  dst: { icon: '🛡️', color: '#ef4444' },
-  defenders: { icon: '💪', color: '#f43f5e' },
-  bonuses: { icon: '⭐', color: '#4ade80' },
+const GROUP_LOOK: Record<string, { color: string }> = {
+  passing: { color: '#38bdf8' },
+  rushing: { color: '#f97316' },
+  receiving: { color: '#a855f7' },
+  kicking: { color: '#facc15' },
+  dst: { color: '#ef4444' },
+  defenders: { color: '#f43f5e' },
+  bonuses: { color: '#4ade80' },
 };
-const OTHER_LOOK = { icon: '➕', color: '#94a3b8' };
+const OTHER_LOOK = { color: '#94a3b8' };
 
 /** Groups with every stat the league has a rule for (a 0 the commissioner set too, so brackets have no gaps), in editor order. IDP only in IDP leagues. */
 export function scoredGroups(catalog: ScoringCatalog): ScoringGroup[] {

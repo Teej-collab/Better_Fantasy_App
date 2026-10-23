@@ -31,9 +31,6 @@ export function ScoringSection() {
       {groups.map((group) => (
         <Card key={group.key} style={styles.card}>
           <View style={[styles.groupHead, { borderBottomColor: group.color }]}>
-            <View style={[styles.groupIcon, { backgroundColor: `${group.color}26`, borderColor: `${group.color}66` }]}>
-              <Text style={styles.groupIconText}>{group.icon}</Text>
-            </View>
             <Text style={styles.groupTitle} accessibilityRole="header">
               {group.label}
             </Text>
@@ -72,8 +69,6 @@ const styles = StyleSheet.create({
   chipText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
   card: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
   groupHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingBottom: Spacing.sm, marginBottom: Spacing.xs, borderBottomWidth: 2 },
-  groupIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  groupIconText: { fontSize: 18 },
   groupTitle: { flex: 1, color: Colors.text, fontSize: 20, fontWeight: '800' },
   groupCount: { fontSize: 12, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.sm + 2 },
