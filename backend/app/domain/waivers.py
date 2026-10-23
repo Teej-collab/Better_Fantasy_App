@@ -65,7 +65,7 @@ from time import monotonic
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from app.domain.league_format import faab_budget, get_league_format, uses_faab
+from app.domain.waiver_settings import custom_league_settings, get_waiver_settings, is_default_schedule, next_clear
 from app.domain.locked_departures import keep_if_played
 from app.domain.ir_rules import count_roster_toward_limit, ineligible_ir_player_names, ir_violation_message
 from app.domain.lineup_exceptions import PlayerNotOnRosterError
@@ -85,9 +85,10 @@ from app.providers.nfl_scoreboard import get_week_scoreboard
 from app.queries.league import get_cached_current_week, get_standings
 from app.queries.roster_transactions import log_transaction
 
-# ESPN's own real "Standard Waivers" setting — not yet commissioner-
-# configurable in-app (see the competitive audit's Section 33 P2 list
-# for "settings become real, not just displayed").
+# ESPN's own real "Standard Waivers" setting: the default for every
+# league. A commissioner can change a league's own rules (2026-10-23,
+# app/domain/waiver_settings.py); every function here that knows its
+# league uses them.
 _ET = ZoneInfo("America/New_York")
 _WAIVER_CLEAR_TIME_ET = time(3, 0)  # 3:00 AM ET — start of ESPN's stated 3-5am processing window
 _WAIVER_CLEAR_WEEKDAY = 2  # Mon=0 ... Wed=2
@@ -99,13 +100,16 @@ _WAIVER_CLEAR_WEEKDAY = 2  # Mon=0 ... Wed=2
 DROP_WAIVER_PERIOD = timedelta(days=1)
 
 
-def _next_wednesday_clear_et(now: datetime) -> datetime:
+def _next_wednesday_clear_et(now: datetime, settings: dict | None = None) -> datetime:
     """The next real waiver-clear instant strictly after `now` — 3:00
     AM ET on the nearest upcoming Wednesday (ESPN's own "main weekly
     run"), or a full 7 days out if `now` is already sitting at (or
     past) this week's own Wednesday-3am mark. Every player waived at
     any point during the week clears at this SAME instant, not some
-    fixed offset from when they individually hit the wire."""
+    fixed offset from when they individually hit the wire. A league with
+    its own clear day and hour (`settings`) uses those instead."""
+    if settings is not None:
+        return next_clear(now, settings)
     now_et = now.astimezone(_ET)
     days_until = (_WAIVER_CLEAR_WEEKDAY - now_et.weekday()) % 7
     candidate = datetime.combine(now_et.date(), _WAIVER_CLEAR_TIME_ET, tzinfo=_ET) + timedelta(days=days_until)
@@ -126,7 +130,7 @@ def _last_kickoff(games: list[dict]) -> datetime | None:
 
 def waiver_locked_pro_teams(
     current_week_games: list[dict], prior_week_games: list[dict] | None, now: datetime | None = None,
-    all_teams: frozenset[str] = frozenset(),
+    all_teams: frozenset[str] = frozenset(), settings: dict | None = None,
 ) -> frozenset[str]:
     """Every real NFL team whose free agents currently need a waiver
     claim instead of an instant add — NOT the same set as the lineup
@@ -159,7 +163,7 @@ def waiver_locked_pro_teams(
     prior_last = _last_kickoff(prior_week_games)
     if not prior_locked or prior_last is None:
         return locked
-    if now >= _next_wednesday_clear_et(prior_last):
+    if now >= _next_wednesday_clear_et(prior_last, settings):
         return locked
     return prior_locked | (all_teams if prior_last <= now else frozenset())
 
@@ -180,7 +184,7 @@ async def all_pro_teams(conn) -> frozenset[str]:
     return teams
 
 
-async def current_waiver_locked_pro_teams(conn, season: int) -> frozenset[str]:
+async def current_waiver_locked_pro_teams(conn, season: int, league_id: int | None = None) -> frozenset[str]:
     """waiver_locked_pro_teams for right now, read off the cached ESPN
     scoreboard. Fails open (empty) when there's no current week or the
     scoreboard can't be reached, same as the routers' own copies."""
@@ -197,7 +201,8 @@ async def current_waiver_locked_pro_teams(conn, season: int) -> frozenset[str]:
             prior_games = await get_week_scoreboard(current_week - 1, season)
         except Exception:
             prior_games = None
-    return waiver_locked_pro_teams(games, prior_games, all_teams=await all_pro_teams(conn))
+    settings = await get_waiver_settings(conn, league_id) if league_id is not None else None
+    return waiver_locked_pro_teams(games, prior_games, all_teams=await all_pro_teams(conn), settings=settings)
 
 
 async def hold_played_until_wednesday(
@@ -209,20 +214,41 @@ async def hold_played_until_wednesday(
     run out mid-week (the 49ers D/ST, dropped Sunday morning, cleared
     Monday morning). Runs at the top of every waiver-processing tick,
     before anything expired is resolved, so it catches a clock that
-    started before kickoff. Returns how many waiver rows moved."""
+    started before kickoff. Returns how many waiver rows moved.
+
+    A league with its own rules (waiver_settings) is held to its own
+    clear, or not at all when it turned holding off."""
     if not locked:
         return 0
-    clears_at = _next_wednesday_clear_et(now or datetime.now(timezone.utc))
+    now = now or datetime.now(timezone.utc)
+    custom = await custom_league_settings(conn)
+    clears_at = _next_wednesday_clear_et(now)
     result = await conn.execute(
         """
         UPDATE waiver_wire w SET clears_at = $2
         FROM players p
         WHERE p.sleeper_player_id = w.sleeper_player_id
           AND w.season = $1 AND w.clears_at <> $2 AND p.pro_team = ANY($3::text[])
+          AND NOT (w.league_id = ANY($4::int[]))
         """,
-        season, clears_at, sorted(locked),
+        season, clears_at, sorted(locked), sorted(custom),
     )
-    return int(result.split()[-1])
+    moved = int(result.split()[-1])
+    for league_id, settings in custom.items():
+        if not settings["hold_played"]:
+            continue
+        league_clear = _next_wednesday_clear_et(now, settings)
+        result = await conn.execute(
+            """
+            UPDATE waiver_wire w SET clears_at = $3
+            FROM players p
+            WHERE p.sleeper_player_id = w.sleeper_player_id
+              AND w.season = $1 AND w.league_id = $2 AND w.clears_at <> $3 AND p.pro_team = ANY($4::text[])
+            """,
+            season, league_id, league_clear, sorted(locked),
+        )
+        moved += int(result.split()[-1])
+    return moved
 
 
 async def start_waiver_clock(
@@ -237,16 +263,17 @@ async def start_waiver_clock(
     Wednesday-3am-ET clear instead."""
     if clears_at is None:
         now = datetime.now(timezone.utc)
-        clears_at = now + DROP_WAIVER_PERIOD
+        settings = await get_waiver_settings(conn, league_id)
+        clears_at = now + timedelta(days=settings["drop_days"])
         # A player whose game has already kicked off waits for the
         # Wednesday clear instead (see hold_played_until_wednesday).
-        locked = await current_waiver_locked_pro_teams(conn, season)
+        locked = await current_waiver_locked_pro_teams(conn, season) if settings["hold_played"] else frozenset()
         if locked:
             pro_team = await conn.fetchval(
                 "SELECT pro_team FROM players WHERE sleeper_player_id = $1", sleeper_player_id
             )
             if pro_team in locked:
-                clears_at = _next_wednesday_clear_et(now)
+                clears_at = _next_wednesday_clear_et(now, settings)
     await conn.execute(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
@@ -269,7 +296,8 @@ async def put_new_players_on_waivers(conn, season: int, sleeper_player_ids: list
     anyone already rostered in that league. Returns rows added."""
     if not sleeper_player_ids:
         return 0
-    clears_at = _next_wednesday_clear_et(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    clears_at = _next_wednesday_clear_et(now)
     rows = await conn.fetch(
         """
         INSERT INTO waiver_wire (season, league_id, sleeper_player_id, waived_at, clears_at)
@@ -282,10 +310,21 @@ async def put_new_players_on_waivers(conn, season: int, sleeper_player_ids: list
               WHERE cr.season = $1 AND cr.league_id = d.league_id AND cr.sleeper_player_id = p.sid
           )
         ON CONFLICT (season, league_id, sleeper_player_id) DO NOTHING
-        RETURNING 1
+        RETURNING league_id, sleeper_player_id
         """,
         season, sleeper_player_ids, clears_at,
     )
+    # A league that runs claims on its own day and hour.
+    custom = await custom_league_settings(conn) if rows else {}
+    for league_id, settings in custom.items():
+        if is_default_schedule(settings):
+            continue
+        ids = [r["sleeper_player_id"] for r in rows if r["league_id"] == league_id]
+        if ids:
+            await conn.execute(
+                "UPDATE waiver_wire SET clears_at = $3 WHERE season = $1 AND league_id = $2 AND sleeper_player_id = ANY($4::text[])",
+                season, league_id, _next_wednesday_clear_et(now, settings), ids,
+            )
     return len(rows)
 
 
@@ -351,7 +390,7 @@ async def ensure_waiver_clock_if_game_locked(
         return
     await start_waiver_clock(
         conn, season, league_id, sleeper_player_id,
-        clears_at=_next_wednesday_clear_et(datetime.now(timezone.utc)),
+        clears_at=_next_wednesday_clear_et(datetime.now(timezone.utc), await get_waiver_settings(conn, league_id)),
     )
 
 
@@ -377,11 +416,11 @@ async def force_clear_waiver(conn, season: int, league_id: int, sleeper_player_i
     )
 
 
-async def faab_remaining(conn, season: int, league_id: int, team_id: int, fmt: dict | None = None) -> int | None:
+async def faab_remaining(conn, season: int, league_id: int, team_id: int, settings: dict | None = None) -> int | None:
     """This team's FAAB left (its budget minus every winning bid), or
     None in a league that doesn't bid."""
-    fmt = fmt or await get_league_format(conn, league_id)
-    if not uses_faab(fmt):
+    settings = settings or await get_waiver_settings(conn, league_id)
+    if settings["waiver_type"] != "faab":
         return None
     spent = await conn.fetchval(
         """
@@ -390,7 +429,7 @@ async def faab_remaining(conn, season: int, league_id: int, team_id: int, fmt: d
         """,
         season, league_id, team_id,
     )
-    return faab_budget(fmt) - int(spent)
+    return int(settings["faab_budget"]) - int(spent)
 
 
 async def submit_claim(
@@ -410,8 +449,10 @@ async def submit_claim(
     )
     if existing:
         raise DuplicateClaimError(f"You already have a pending claim on {add_sleeper_player_id}")
-    # FAAB (guillotine leagues, 2026-10): every claim is a bid.
-    remaining = await faab_remaining(conn, season, league_id, team_id)
+    # FAAB (guillotine leagues, 2026-10; any league whose commissioner
+    # picks it, 2026-10-23): every claim is a bid.
+    settings = await get_waiver_settings(conn, league_id)
+    remaining = await faab_remaining(conn, season, league_id, team_id, settings)
     if remaining is None:
         bid_amount = None
     else:
@@ -419,6 +460,8 @@ async def submit_claim(
             raise BidError("Enter a bid — this league bids on waivers with FAAB")
         if bid_amount < 0:
             raise BidError("A bid can't be negative")
+        if bid_amount < settings["min_bid"]:
+            raise BidError(f"The lowest bid in this league is ${settings['min_bid']}")
         if bid_amount > remaining:
             raise BidError(f"You have ${remaining} of FAAB left")
     ir_violations = await ineligible_ir_player_names(
@@ -512,9 +555,25 @@ async def cancel_claim(conn, season: int, league_id: int, team_id: int, claim_id
 async def _seed_priority_for_week(conn, season: int, league_id: int, week: int) -> None:
     """Worst record first (this league's real "inverse order of
     standings" rule) — get_standings is already sorted best-first
-    (wins DESC, points_for DESC), so priority 1 goes to the LAST row."""
+    (wins DESC, points_for DESC), so priority 1 goes to the LAST row.
+    A rolling-order league (waiver_settings) carries last week's final
+    order over instead, once there is one."""
     standings = await get_standings(conn, season, league_id)
     worst_first = list(reversed(standings))
+    if (await get_waiver_settings(conn, league_id))["waiver_type"] == "rolling":
+        previous = await conn.fetch(
+            """
+            SELECT team_id FROM team_waiver_priority
+            WHERE season = $1 AND league_id = $2
+              AND week = (SELECT MAX(week) FROM team_waiver_priority WHERE season = $1 AND league_id = $2 AND week < $3)
+            ORDER BY priority
+            """,
+            season, league_id, week,
+        )
+        if previous:
+            carried = [r["team_id"] for r in previous]
+            # A team new since then goes to the back.
+            worst_first = sorted(worst_first, key=lambda row: carried.index(row["team_id"]) if row["team_id"] in carried else len(carried))
     for priority, row in enumerate(worst_first, start=1):
         await conn.execute(
             """
@@ -601,7 +660,7 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
     # FAAB leagues (guillotine, 2026-10): the highest bid wins, waiver
     # priority breaks a tied bid. Elsewhere bid_amount is NULL for every
     # claim, so this is plain priority order exactly as before.
-    fmt = await get_league_format(conn, league_id)
+    settings = await get_waiver_settings(conn, league_id)
     claims = await conn.fetch(
         """
         SELECT wc.id, wc.team_id, wc.drop_sleeper_player_id, wc.bid_amount
@@ -629,7 +688,7 @@ async def _resolve_one_player(conn, season: int, league_id: int, week: int, slee
             continue
 
         if claim["bid_amount"] is not None:
-            remaining = await faab_remaining(conn, season, league_id, claim["team_id"], fmt)
+            remaining = await faab_remaining(conn, season, league_id, claim["team_id"], settings)
             if remaining is not None and claim["bid_amount"] > remaining:
                 await conn.execute(
                     "UPDATE waiver_claims SET status = 'failed', failure_reason = $1, processed_at = now() WHERE id = $2",

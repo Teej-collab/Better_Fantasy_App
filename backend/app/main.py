@@ -17,6 +17,7 @@ from app.routers import (
     bets,
     chat,
     chug,
+    commish,
     commissioner_lineup,
     draft,
     feedback,
@@ -158,6 +159,7 @@ app.include_router(auth.router)
 app.include_router(awards.router)
 app.include_router(chat.router)
 app.include_router(chug.router)
+app.include_router(commish.router)
 app.include_router(commissioner_lineup.router)
 app.include_router(draft.router)
 app.include_router(feedback.router)

@@ -50,6 +50,7 @@ JOB_NAMES = {
     "gamecast_poll": "Gamecast",
     "waiver_processing": "The waiver run",
     "trade_processing": "Trades",
+    "scheduled_posts": "Scheduled Commish Corner posts",
     "sleeper_player_sync": "The Sleeper player update",
     "injury_watch": "Injury checks",
     "game_alerts": "Game alerts",

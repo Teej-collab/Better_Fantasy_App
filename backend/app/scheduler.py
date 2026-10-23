@@ -188,7 +188,8 @@ from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync, update_league_state
-from app.domain import waivers
+from app.domain import announcements, waivers
+from app.domain.waiver_settings import get_waiver_settings
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
@@ -1108,6 +1109,10 @@ async def _run_waiver_processing_job():
                     await game_alerts.notify_waiver_results(conn, season, league_id, results)
                 except Exception:
                     logger.exception("Waiver result pushes failed (league_id=%s)", league_id)
+                # A league whose commissioner wants the results posted
+                # in Commish Corner (Commissioner → Waivers).
+                if (await get_waiver_settings(conn, league_id))["post_results"]:
+                    await announcements.post_waiver_results(conn, season, league_id, results)
     record_job_run("waiver_processing")
 
 
@@ -1128,6 +1133,17 @@ async def _run_trade_processing_job():
             logger.info("Trade processing: %s", [(t["id"], t["status"]) for t in changed])
             await trade_events.notify_processed_batch(conn, changed)
     record_job_run("trade_processing")
+
+
+async def _run_scheduled_posts_job():
+    """Posts Commish Corner announcements whose scheduled time has come
+    (Commissioner → Commish Corner → Schedule)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        posted = await announcements.post_due(conn)
+    if posted:
+        logger.info("Scheduled posts: posted %d Commish Corner announcement(s)", posted)
+    record_job_run("scheduled_posts")
 
 
 async def _run_health_watch_job():
@@ -1279,6 +1295,7 @@ def start_scheduler():
         interval_seconds = int(os.getenv("WAIVER_PROCESSING_INTERVAL_SECONDS", "3600"))
         _scheduler.add_job(_run_waiver_processing_job, "interval", seconds=interval_seconds, id="waiver_processing")
         _scheduler.add_job(_run_trade_processing_job, "interval", seconds=60, id="trade_processing")
+        _scheduler.add_job(_run_scheduled_posts_job, "interval", seconds=60, id="scheduled_posts")
         logger.info("Waiver processing scheduler started (every %d seconds)", interval_seconds)
         started_any = True
 

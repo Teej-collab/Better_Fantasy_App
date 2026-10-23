@@ -20,7 +20,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import league_format
+from app.domain import commish_log, league_format
 from app.domain import trades as trades_domain
 from app.domain.trade_exceptions import (
     NotYourTradeError,
@@ -253,18 +253,28 @@ async def cancel_trade(trade_id: int, request: Request, pool=Depends(get_pool)):
 
 class ReviewTradeRequest(BaseModel):
     approve: bool
+    # Why the commissioner vetoed it (2026-10-23): sent to both teams.
+    reason: str | None = None
 
 
 @router.post("/{trade_id}/review")
 async def review_trade(trade_id: int, body: ReviewTradeRequest, request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
-        await require_league_commissioner(conn, payload)
+        league_id = await require_league_commissioner(conn, payload)
         try:
             trade = await trades_domain.review_trade(conn, trade_id, body.approve)
         except TradeError as e:
             raise _map_trade_error(e) from e
         await trade_events.notify_trade_event(conn, trade, "processed" if body.approve else "vetoed")
+        reason = (body.reason or "").strip()[:300]
+        if reason and not body.approve:
+            await trade_events.notify_veto_reason(conn, trade, reason)
+        teams = f"{trade.get('proposing_team_name') or 'a team'} ↔ {trade.get('receiving_team_name') or 'a team'}"
+        await commish_log.record(
+            conn, league_id, payload["user_id"], "trades",
+            f"Approved a trade: {teams}" if body.approve else f"Vetoed a trade: {teams}" + (f" ({reason})" if reason else ""),
+        )
     return _trade_dict(trade)
 
 
@@ -298,8 +308,24 @@ async def update_trade_settings(body: TradeSettingsRequest, request: Request, po
             raise HTTPException(status_code=400, detail="Unknown review mode")
         if body.veto_votes_needed is not None and body.veto_votes_needed < 1:
             raise HTTPException(status_code=400, detail="Veto votes needed must be at least 1")
+        before = await trades_domain.get_trade_settings(conn, league_id, body.season)
         settings = await trades_domain.upsert_trade_settings(
             conn, league_id, body.season, body.trade_deadline, body.review_required,
             body.review_mode, body.review_hours, body.veto_votes_needed,
         )
+        modes = {"none": "no review", "commissioner": "commissioner review", "league_vote": "league vote", "approval": "commissioner approval"}
+        changes = [
+            commish_log.change(
+                "Trade deadline", commish_log.when(before.get("trade_deadline")), commish_log.when(settings.get("trade_deadline"))
+            ),
+            commish_log.change(
+                "Trade review", modes.get(before.get("review_mode"), before.get("review_mode")),
+                modes.get(settings.get("review_mode"), settings.get("review_mode")),
+            ),
+            commish_log.change("Review period", f"{before.get('review_hours')}h", f"{settings.get('review_hours')}h"),
+            commish_log.change("Veto votes needed", before.get("veto_votes_needed") or "default", settings.get("veto_votes_needed") or "default"),
+        ]
+        changes = [c for c in changes if c]
+        if changes:
+            await commish_log.record(conn, league_id, payload["user_id"], "trades", "; ".join(changes))
     return settings

@@ -396,6 +396,12 @@ def punishment_wheel_result(season: int, text: str) -> dict:
     )
 
 
+def commish_lineup_note(note: str) -> dict:
+    """The commissioner changed your lineup for you (Commissioner → Fix
+    a lineup), with their note."""
+    return _payload("🛠️ Your commissioner changed your lineup", _preview(note), "/team", "commish_lineup")
+
+
 def _trade_tag(trade_id: int) -> str:
     return f"trade-{trade_id}"
 

@@ -71,6 +71,18 @@ async def _commissioner_owner_ids(conn, trade: dict) -> list[int]:
     return [r["owner_id"] for r in rows]
 
 
+async def notify_veto_reason(conn, trade: dict, reason: str) -> None:
+    """The commissioner's reason for a veto, to both teams in it
+    (2026-10-23)."""
+    try:
+        await _send(
+            conn, [trade["proposing_owner_id"], trade["receiving_owner_id"]],
+            formatter.trade_update("🚫 Why your trade was vetoed", reason, trade["id"]), league_wide=False,
+        )
+    except Exception:
+        logger.exception("Veto reason push failed (trade %s)", trade.get("id"))
+
+
 async def notify_trade_event(conn, trade: dict | None, event: str, settings: dict | None = None) -> None:
     """`event` is what just happened: proposed, rejected, cancelled,
     accepted (the trade's own status says whether it's processed, under

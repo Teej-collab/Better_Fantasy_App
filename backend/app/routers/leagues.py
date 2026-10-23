@@ -24,7 +24,7 @@ from app.db import get_pool
 from app import monitoring
 from app.notifications import admin_alerts
 from app.notifications import email as email_notifications
-from app.domain import league_format
+from app.domain import commish_log, league_format
 from app.queries import auth as auth_queries
 from app.queries import chat as chat_queries
 from app.queries import draft as draft_queries
@@ -504,7 +504,10 @@ async def rename_league(league_id: int, body: RenameLeagueRequest, request: Requ
     pool = await get_pool()
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
+        old_name = await conn.fetchval("SELECT name FROM leagues WHERE id = $1", league_id)
         await league_queries.rename_league(conn, league_id, name)
+        if old_name != name:
+            await commish_log.record(conn, league_id, payload["user_id"], "league", f"League name: {old_name} → {name}")
         row = await league_queries.get_league(conn, league_id)
     return _league_dict(row)
 
@@ -522,12 +525,18 @@ async def update_house_rules(league_id: int, body: HouseRulesRequest, request: R
     pool = await get_pool()
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
+        before = await conn.fetchrow("SELECT chug_enabled, chug_rule_name FROM leagues WHERE id = $1", league_id)
         if body.chug_enabled is not None:
             await conn.execute("UPDATE leagues SET chug_enabled = $2 WHERE id = $1", league_id, body.chug_enabled)
         if body.chug_rule_name is not None:
             name = body.chug_rule_name.strip()[:40] or None
             await conn.execute("UPDATE leagues SET chug_rule_name = $2 WHERE id = $1", league_id, name)
         row = await league_queries.get_league(conn, league_id)
+        rule = row["chug_rule_name"] or "Chug rule"
+        if before["chug_enabled"] != row["chug_enabled"]:
+            await commish_log.record(conn, league_id, payload["user_id"], "league", f"Turned {rule} {'on' if row['chug_enabled'] else 'off'}")
+        elif before["chug_rule_name"] != row["chug_rule_name"]:
+            await commish_log.record(conn, league_id, payload["user_id"], "league", f"Renamed the house rule to {rule}")
     return _league_dict(row)
 
 
@@ -577,6 +586,11 @@ async def update_league_format(league_id: int, body: UpdateFormatRequest, reques
             body.type_settings if body.type_settings is not None else current["type_settings"],
         )
         await league_queries.set_league_format(conn, league_id, choices, type_settings)
+        format_changes = [f"{f.replace('_', ' ')}: {current[f]} → {choices[f]}" for f in choices if choices[f] != current[f]]
+        if body.type_settings is not None and type_settings != current["type_settings"]:
+            format_changes.append("league type settings")
+        if format_changes:
+            await commish_log.record(conn, league_id, payload["user_id"], "league", "League format: " + "; ".join(format_changes))
         if shapes_draft:
             await draft_queries.upsert_roster_slots_setting(
                 conn, season,
@@ -608,6 +622,11 @@ async def set_member_role(league_id: int, user_id: int, body: SetMemberRoleReque
         changed = await league_queries.set_member_role(conn, league_id, user_id, body.role)
         if not changed:
             raise HTTPException(status_code=404, detail="That user isn't a member of this league")
+        who = await commish_log.user_name(conn, user_id)
+        await commish_log.record(
+            conn, league_id, payload["user_id"], "members",
+            f"Made {who} a co-commissioner" if body.role == "commissioner" else f"Made {who} a regular member",
+        )
     return {"user_id": user_id, "role": body.role}
 
 
@@ -632,9 +651,11 @@ async def remove_member(league_id: int, user_id: int, request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
+        who = await commish_log.user_name(conn, user_id)
         removed = await league_queries.remove_member(conn, league_id, user_id)
         if not removed:
             raise HTTPException(status_code=404, detail="That user isn't a member of this league")
+        await commish_log.record(conn, league_id, payload["user_id"], "members", f"Removed {who} from the league")
     return {"user_id": user_id, "removed": True}
 
 
@@ -661,6 +682,11 @@ async def reassign_team(league_id: int, team_id: int, body: ReassignTeamRequest,
         team = await team_queries.reassign_team(conn, league_id, season, team_id, body.user_id, display_name)
         if team is None:
             raise HTTPException(status_code=404, detail="No team found for this league/season")
+        team_name = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", team_id)
+        await commish_log.record(
+            conn, league_id, payload["user_id"], "teams",
+            f"Gave {team_name or 'a team'} to {await commish_log.user_name(conn, body.user_id)}",
+        )
     return team
 
 
@@ -700,4 +726,5 @@ async def create_team_for_member(league_id: int, body: CreateTeamForMemberReques
             raise HTTPException(status_code=409, detail="That member already has a team in this league")
 
         team = await team_queries.create_team(conn, league_id, season, owner_id, team_name)
+        await commish_log.record(conn, league_id, payload["user_id"], "teams", f"Created {team_name} for {display_name}")
     return team

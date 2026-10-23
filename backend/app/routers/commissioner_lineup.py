@@ -20,8 +20,9 @@ from app.auth.league_context import require_commissioner_of
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import lineup_engine
+from app.domain import commish_log, lineup_engine
 from app.domain import waivers
+from app.domain.waiver_settings import get_waiver_settings
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     LineupError,
@@ -41,7 +42,7 @@ from app.queries import league as league_queries
 router = APIRouter(prefix="/leagues", tags=["commissioner-roster"])
 
 
-async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
+async def _waiver_locked_pro_teams(conn, active_season: int, league_id: int | None = None) -> frozenset[str]:
     """Same best-effort, fail-open lookup as app/routers/me.py's own
     helper of the same name (kept as a separate copy rather than a
     cross-router import, since these are two independently-evolving
@@ -65,7 +66,8 @@ async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
             prior_games = await get_week_scoreboard(current_week - 1, active_season)
         except Exception:
             prior_games = None
-    return waivers.waiver_locked_pro_teams(games, prior_games, all_teams=await waivers.all_pro_teams(conn))
+    settings = await get_waiver_settings(conn, league_id) if league_id is not None else None
+    return waivers.waiver_locked_pro_teams(games, prior_games, all_teams=await waivers.all_pro_teams(conn), settings=settings)
 
 
 def _require_session(request: Request) -> dict:
@@ -147,6 +149,18 @@ class CommissionerRosterDropRequest(BaseModel):
     sleeper_player_id: str
 
 
+async def _log_move(conn, league_id: int, payload: dict, team_id: int, template: str, *player_ids: str | None) -> None:
+    """One change-log line for a lineup fixed on a member's behalf;
+    `template` takes {team} and {p0}, {p1}… for the players' names."""
+    team = await conn.fetchval("SELECT team_name FROM teams_by_season WHERE id = $1", team_id)
+    names = {}
+    for i, pid in enumerate(player_ids):
+        names[f"p{i}"] = (
+            await conn.fetchval("SELECT full_name FROM players WHERE sleeper_player_id = $1", pid) if pid else None
+        ) or "a player"
+    await commish_log.record(conn, league_id, payload["user_id"], "lineups", template.format(team=team or "a team", **names))
+
+
 @router.post("/{league_id}/teams/{team_id}/roster/drop")
 async def commissioner_drop_player(league_id: int, team_id: int, body: CommissionerRosterDropRequest, request: Request):
     """Real write — sends a player back to free agency on the target
@@ -163,6 +177,7 @@ async def commissioner_drop_player(league_id: int, team_id: int, body: Commissio
                 conn, active_season, team_id, body.sleeper_player_id, league_id=league_id, source="commissioner"
             )
             await waivers.start_waiver_clock(conn, active_season, league_id, body.sleeper_player_id)
+            await _log_move(conn, league_id, payload, team_id, "Dropped {p0} from {team}", body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e
     return {"roster": [_roster_entry_dict(e) for e in roster]}
@@ -203,7 +218,7 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
                 # entirely under override_waivers, same as the check
                 # itself: that flag means "bypass waivers outright,"
                 # kickoff-based or not.
-                locked = await _waiver_locked_pro_teams(conn, active_season)
+                locked = await _waiver_locked_pro_teams(conn, active_season, league_id)
                 await waivers.ensure_waiver_clock_if_game_locked(
                     conn, active_season, league_id, body.sleeper_player_id, locked
                 )
@@ -232,6 +247,13 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
                     conn, active_season, league_id, body.sleeper_player_id,
                     reason="Force-added by the commissioner before waivers processed",
                 )
+            dropped = result["dropped_player"]["sleeper_player_id"] if result["dropped_player"] else None
+            await _log_move(
+                conn, league_id, payload, team_id,
+                "Added {p0} to {team}" + (", dropping {p1}" if dropped else "")
+                + (" (skipped waivers)" if body.override_waivers else ""),
+                body.sleeper_player_id, dropped,
+            )
     except RosterFullError as e:
         return JSONResponse(status_code=409, content={"error": "roster_full", "detail": str(e)})
     except LineupError as e:
@@ -272,6 +294,8 @@ async def commissioner_move_player(league_id: int, team_id: int, body: Commissio
             roster = await lineup_engine.move_player(
                 conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id,
             )
+            slot = "the bench" if body.to_slot == "BE" else body.to_slot
+            await _log_move(conn, league_id, payload, team_id, "Moved {p0} to " + slot + " for {team}", body.sleeper_player_id)
     except LineupError as e:
         raise _map_lineup_error(e) from e
     return {"roster": [_roster_entry_dict(e) for e in roster]}
@@ -297,6 +321,10 @@ async def commissioner_swap_players(league_id: int, team_id: int, body: Commissi
             await _require_team_in_league(conn, league_id, team_id, active_season)
             roster = await lineup_engine.swap_players(
                 conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,
+            )
+            await _log_move(
+                conn, league_id, payload, team_id, "Swapped {p0} and {p1} for {team}",
+                body.sleeper_player_id_a, body.sleeper_player_id_b,
             )
     except LineupError as e:
         raise _map_lineup_error(e) from e

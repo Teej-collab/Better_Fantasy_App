@@ -77,6 +77,7 @@ from app.config import _require
 from app.db import get_pool
 from app.providers.espn.lineup_client import ESPNLineupClient
 from app.providers.espn.slots import slot_label
+from app.domain import commish_log
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
@@ -326,9 +327,25 @@ async def set_keeper_rules(body: KeeperRulesBody, request: Request, pool=Depends
 
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
+        before = await keeper_queries.get_rules(conn, body.season, league_id)
         row = await keeper_queries.upsert_rules(
             conn, body.season, body.max_keepers, body.max_consecutive_years, body.keeper_deadline, league_id
         )
+        if row is not None:
+            changes = [
+                commish_log.change("Max keepers", before["max_keepers"] if before else None, row["max_keepers"]),
+                commish_log.change(
+                    "Max years in a row", (before["max_consecutive_years"] if before else None) or "no cap",
+                    row["max_consecutive_years"] or "no cap",
+                ),
+                commish_log.change(
+                    f"{body.season} keeper deadline", commish_log.when(before["keeper_deadline"] if before else None),
+                    commish_log.when(row["keeper_deadline"]),
+                ),
+            ]
+            changes = [c for c in changes if c and not c.startswith("Max keepers: None")]
+            if changes:
+                await commish_log.record(conn, league_id, payload["user_id"], "keepers", "; ".join(changes))
     if row is None:
         raise HTTPException(status_code=409, detail="Rules are locked for this season — unlock first to change them")
     return _rules_dict(row, body.season)
@@ -346,6 +363,8 @@ async def lock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(get
         row = await keeper_queries.lock_rules(conn, body.season, league_id)
         if row is None:
             row = await keeper_queries.get_rules(conn, body.season, league_id)
+        else:
+            await commish_log.record(conn, league_id, payload["user_id"], "keepers", f"Locked {body.season} keeper selections")
     return _rules_dict(row, body.season)
 
 
@@ -355,6 +374,8 @@ async def unlock_keeper_rules(body: SeasonBody, request: Request, pool=Depends(g
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         row = await keeper_queries.unlock_rules(conn, body.season, league_id)
+        if row is not None:
+            await commish_log.record(conn, league_id, payload["user_id"], "keepers", f"Unlocked {body.season} keeper selections")
     if row is None:
         raise HTTPException(status_code=404, detail=f"No keeper rules configured for {body.season}")
     return _rules_dict(row, body.season)

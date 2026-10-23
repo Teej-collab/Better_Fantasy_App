@@ -46,6 +46,7 @@ from app.domain.headshots import headshot_url
 from app.domain import lineup_engine
 from app.domain import player_views
 from app.domain import waivers
+from app.domain.waiver_settings import get_waiver_settings
 from app.domain.lineup_exceptions import (
     AmbiguousDisplacementError,
     LineupError,
@@ -171,7 +172,7 @@ async def _locked_pro_teams_for_current_week(conn, active_season: int) -> frozen
     return locked_pro_teams(games)
 
 
-async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
+async def _waiver_locked_pro_teams(conn, active_season: int, league_id: int | None = None) -> frozenset[str]:
     """The free-agent waiver-lock trigger (waivers.ensure_waiver_clock_
     if_game_locked and the free-agent list's game_locked flag) — NOT
     the lineup lock above. Same best-effort, fail-open lookup, plus the
@@ -194,7 +195,8 @@ async def _waiver_locked_pro_teams(conn, active_season: int) -> frozenset[str]:
             prior_games = await get_week_scoreboard(current_week - 1, active_season)
         except Exception:
             prior_games = None
-    return waivers.waiver_locked_pro_teams(games, prior_games, all_teams=await waivers.all_pro_teams(conn))
+    settings = await get_waiver_settings(conn, league_id) if league_id is not None else None
+    return waivers.waiver_locked_pro_teams(games, prior_games, all_teams=await waivers.all_pro_teams(conn), settings=settings)
 
 
 async def _espn_ids_for(conn, sleeper_player_ids: list[str]) -> dict[str, int]:
@@ -686,7 +688,7 @@ async def add_free_agent(body: FreeAgentAddRequest, request: Request):
             # kickoff; a no-op if they're already on waivers for a
             # real reason (a genuine recent drop).
             await _forbid_in_best_ball(conn, league_id, "roster")
-            locked = await _waiver_locked_pro_teams(conn, active_season)
+            locked = await _waiver_locked_pro_teams(conn, active_season, league_id)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.sleeper_player_id, locked
             )
@@ -851,7 +853,7 @@ async def list_free_agents(
         # happens on an actual add/claim attempt in
         # ensure_waiver_clock_if_game_locked), so this is a synthetic,
         # display-only flag derived straight from locked_pro_teams.
-        locked_pro_teams = await _waiver_locked_pro_teams(conn, active_season)
+        locked_pro_teams = await _waiver_locked_pro_teams(conn, active_season, league_id)
         for row in rows:
             clears_at = clears_at_by_player.get(row["sleeper_player_id"])
             row["waiver_clears_at"] = clears_at.isoformat() if clears_at else None
@@ -900,8 +902,8 @@ async def list_my_waiver_claims(request: Request):
     pool = await get_pool()
     async with pool.acquire() as conn:
         claims = await waivers.list_claims_for_team(conn, active_season, league_id, team_id)
-        fmt = await league_format.get_league_format(conn, league_id)
-        faab_left = await waivers.faab_remaining(conn, active_season, league_id, team_id, fmt)
+        waiver_rules = await get_waiver_settings(conn, league_id)
+        faab_left = await waivers.faab_remaining(conn, active_season, league_id, team_id, waiver_rules)
         # Where this team sits in this week's waiver order ("Priority #4 of 12").
         priority = None
         current_week = await league_queries.get_cached_current_week(conn, active_season)
@@ -922,7 +924,7 @@ async def list_my_waiver_claims(request: Request):
             for c in claims
         ],
         # FAAB leagues only (guillotine): what's left to bid, of the budget.
-        "faab": {"remaining": faab_left, "budget": league_format.faab_budget(fmt)} if faab_left is not None else None,
+        "faab": {"remaining": faab_left, "budget": waiver_rules["faab_budget"], "min_bid": waiver_rules["min_bid"]} if faab_left is not None else None,
         "priority": priority,
     }
 
@@ -954,7 +956,7 @@ async def submit_waiver_claim(body: WaiverClaimRequest, request: Request):
             # agent"), so this has to run before it, same as the
             # free-agent-add route above.
             await _forbid_in_best_ball(conn, league_id, "roster")
-            locked = await _waiver_locked_pro_teams(conn, active_season)
+            locked = await _waiver_locked_pro_teams(conn, active_season, league_id)
             await waivers.ensure_waiver_clock_if_game_locked(
                 conn, active_season, league_id, body.add_sleeper_player_id, locked
             )

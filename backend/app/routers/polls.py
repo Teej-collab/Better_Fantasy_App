@@ -20,6 +20,7 @@ from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, require_member_of
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
+from app.domain import commish_log
 from app.queries import polls as poll_queries
 
 router = APIRouter(prefix="/leagues", tags=["polls"])
@@ -69,6 +70,7 @@ async def create_poll(league_id: int, body: CreatePollRequest, request: Request)
     async with pool.acquire() as conn:
         await require_commissioner_of(conn, payload, league_id)
         row = await poll_queries.create_poll(conn, league_id, question, options, payload["user_id"])
+        await commish_log.record(conn, league_id, payload["user_id"], "polls", f"Opened a poll: “{question}”")
     return _poll_dict(row, {}, None)
 
 
@@ -120,6 +122,7 @@ async def close_poll(league_id: int, poll_id: int, request: Request):
         row = await poll_queries.close_poll(conn, league_id, poll_id)
         if row is None:
             raise HTTPException(status_code=404, detail="No open poll found for that id")
+        await commish_log.record(conn, league_id, payload["user_id"], "polls", f"Closed the poll “{row['question']}”")
         vote_counts = await poll_queries.get_vote_counts(conn, poll_id)
         my_vote = (await poll_queries.get_my_votes(conn, [poll_id], payload["user_id"])).get(poll_id)
     return _poll_dict(row, vote_counts, my_vote)

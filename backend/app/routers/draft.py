@@ -28,7 +28,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import auction_engine
+from app.domain import auction_engine, commish_log
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
@@ -292,6 +292,7 @@ async def setup_draft(body: SetupRequest, request: Request):
                 conn, season, body.draft_order, body.roster_slots, body.pick_time_limit_seconds,
                 league_id=league_id, position_max=position_max,
             )
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Set up the draft")
             state = await draft_queries.get_draft_state(conn, season, league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
@@ -347,6 +348,7 @@ async def set_draft_schedule(body: ScheduleRequest, request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             await draft_engine.set_scheduled_start(conn, season, body.scheduled_start, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", f"Draft time: {commish_log.when(body.scheduled_start)}")
             state = await draft_queries.get_draft_state(conn, season, league_id)
     except DraftError as e:
         raise _map_draft_error(e) from e
@@ -404,6 +406,7 @@ async def set_roster_slots(body: RosterSlotsRequest, request: Request):
                 detail="A draft already exists for this season — reset it first if you need to change roster shape",
             )
         await draft_queries.upsert_roster_slots_setting(conn, season, body.roster_slots, league_id)
+        await commish_log.record(conn, league_id, payload["user_id"], "roster", "Changed the roster slots")
     return {"season": season, "roster_slots": body.roster_slots, "editable": True}
 
 
@@ -448,6 +451,7 @@ async def set_position_max(body: PositionMaxRequest, request: Request):
             await draft_engine.update_position_max(conn, season, body.position_max, league_id)
         else:
             await draft_queries.upsert_position_max_setting(conn, season, body.position_max, league_id)
+        await commish_log.record(conn, league_id, payload["user_id"], "roster", "Changed the position limits")
     return {"season": season, "position_max": body.position_max, "editable": True}
 
 
@@ -470,6 +474,7 @@ async def set_draft_order(body: DraftOrderRequest, request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             config = await draft_engine.update_draft_order(conn, season, body.draft_order, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Changed the draft order")
     except DraftError as e:
         raise _map_draft_error(e) from e
     return config
@@ -487,6 +492,7 @@ async def reset_draft(request: Request):
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         await draft_engine.reset_draft(conn, season, league_id=league_id)
+        await commish_log.record(conn, league_id, payload["user_id"], "draft", "Reset the draft")
     await manager.broadcast_to_draft((season, league_id), {"type": "draft_reset"})
     return {"ok": True}
 
@@ -561,6 +567,7 @@ async def start_draft(request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             config = await draft_engine.start_draft(conn, season, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Started the draft")
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
@@ -583,6 +590,7 @@ async def pause_draft(request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             config = await draft_engine.pause_draft(conn, season, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Paused the draft")
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
@@ -599,6 +607,7 @@ async def resume_draft(request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             config = await draft_engine.resume_draft(conn, season, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Resumed the draft")
     except DraftError as e:
         raise _map_draft_error(e) from e
     result = {"type": "draft_status", "config": dict(config)}
@@ -616,6 +625,7 @@ async def undo_last_pick(request: Request):
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             result = await draft_engine.undo_last_pick(conn, season, league_id=league_id)
+            await commish_log.record(conn, league_id, payload["user_id"], "draft", "Undid the last draft pick")
     except DraftError as e:
         raise _map_draft_error(e) from e
     await manager.broadcast_to_draft((season, league_id), {"type": "pick_undone", **result})

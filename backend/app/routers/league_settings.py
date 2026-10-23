@@ -14,7 +14,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import league_format, scoring_catalog
+from app.domain import commish_log, league_format, scoring_catalog
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
 from app.domain.stat_derivations import derive_stat_line
 from app.domain.schedule import generate_regular_season_schedule
@@ -75,6 +75,7 @@ async def update_chat_filter(body: ChatFilterRequest, request: Request, pool=Dep
         raise HTTPException(status_code=400, detail=f"The filter holds up to {MAX_FILTER_WORDS} words")
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
+        before = set(await conn.fetchval("SELECT words FROM league_chat_filter_words WHERE league_id = $1", league_id) or [])
         await conn.execute(
             """
             INSERT INTO league_chat_filter_words (league_id, words) VALUES ($1, $2)
@@ -82,6 +83,13 @@ async def update_chat_filter(body: ChatFilterRequest, request: Request, pool=Dep
             """,
             league_id, words,
         )
+        added, removed = len(set(words) - before), len(before - set(words))
+        if added or removed:
+            parts = ([f"added {added} word{'s' if added != 1 else ''}"] if added else []) + (
+                [f"removed {removed} word{'s' if removed != 1 else ''}"] if removed else []
+            )
+            # The words themselves stay out of the log: members can read it.
+            await commish_log.record(conn, league_id, payload["user_id"], "chat", "Chat filter: " + " and ".join(parts))
     return {"words": words}
 
 
@@ -110,8 +118,23 @@ async def update_scoring_rules(body: ScoringRulesRequest, request: Request, pool
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
+        before = {
+            r["stat_category"]: float(r["points_per_unit"])
+            for r in await league_queries.get_scoring_rules(conn, league_id, body.season)
+        }
         await league_queries.upsert_scoring_rules(conn, league_id, body.season, body.rules)
         rows = await league_queries.get_scoring_rules(conn, league_id, body.season)
+        after = {r["stat_category"]: float(r["points_per_unit"]) for r in rows}
+        changes = []
+        for key in sorted(set(before) | set(after)):
+            if before.get(key) != after.get(key):
+                label = scoring_catalog.CATALOG.get(key, {}).get("label", key)
+                old = "not scored" if key not in before else f"{before[key]:g}"
+                new = "not scored" if key not in after else f"{after[key]:g}"
+                changes.append(f"{label}: {old} → {new}")
+        if changes:
+            shown = changes[:6] + ([f"and {len(changes) - 6} more"] if len(changes) > 6 else [])
+            await commish_log.record(conn, league_id, payload["user_id"], "scoring", "Scoring: " + "; ".join(shown))
     return {"season": body.season, "rules": [dict(r) for r in rows]}
 
 
@@ -237,9 +260,21 @@ async def update_playoff_settings(body: PlayoffSettingsRequest, request: Request
     payload = _require_session(request)
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
+        before = await league_read_queries.get_playoff_settings(conn, body.season, league_id)
         await league_queries.set_playoff_team_count(
             conn, league_id, body.season, body.playoff_team_count, body.weeks_per_matchup, body.start_week,
         )
+        changes = [
+            commish_log.change("Playoff teams", before["playoff_team_count"], body.playoff_team_count),
+            commish_log.change("Weeks per playoff round", before["weeks_per_matchup"], body.weeks_per_matchup),
+            commish_log.change(
+                "Playoffs start", f"Week {before['start_week']}" if before["start_week"] else "after the regular season",
+                f"Week {body.start_week}" if body.start_week else "after the regular season",
+            ),
+        ]
+        changes = [c for c in changes if c]
+        if changes:
+            await commish_log.record(conn, league_id, payload["user_id"], "playoffs", "; ".join(changes))
     return {
         "season": body.season,
         "playoff_team_count": body.playoff_team_count,
@@ -269,6 +304,9 @@ async def generate_schedule(body: GenerateScheduleRequest, request: Request, poo
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
             created = await generate_regular_season_schedule(conn, body.season, league_id, body.weeks)
+            await commish_log.record(
+                conn, league_id, payload["user_id"], "league", f"Made the {body.weeks}-week regular-season schedule"
+            )
     except ScheduleError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     return {"season": body.season, "weeks": body.weeks, "matchups": created}
@@ -346,6 +384,7 @@ async def connect_espn(body: ConnectEspnRequest, request: Request, pool=Depends(
             encrypt_secret(body.espn_s2), encrypt_secret(body.espn_swid),
             payload["user_id"],
         )
+        await commish_log.record(conn, league_id, payload["user_id"], "espn", f"Connected ESPN league {body.espn_league_id}")
     return {"connected": True, "espn_league_id": row["espn_league_id"]}
 
 
@@ -359,6 +398,7 @@ async def disconnect_espn(request: Request, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
         await espn_connection_queries.delete_connection(conn, league_id)
+        await commish_log.record(conn, league_id, payload["user_id"], "espn", "Disconnected ESPN")
     return Response(status_code=204)
 
 
