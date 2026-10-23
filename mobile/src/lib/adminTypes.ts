@@ -258,3 +258,20 @@ export type AdminRecapWeek = {
 };
 
 export type AdminRecaps = { league_id: number; league_name: string | null; season: number; weeks: AdminRecapWeek[] };
+
+// GET /admin/taps (2026-10-22): what members tap and change, and who.
+export type AdminTapTarget = {
+  target: string;
+  taps: number;
+  unique_people: number;
+  people: { owner_id: number; display_name: string; taps: number; last_at: string }[];
+};
+export type AdminTapPerson = {
+  owner_id: number;
+  display_name: string;
+  taps: number;
+  views: number;
+  top_taps: { target: string; taps: number }[];
+  top_screens: { screen: string; views: number }[];
+};
+export type AdminTaps = { window_days: number; total_taps: number; targets: AdminTapTarget[]; people: AdminTapPerson[] };

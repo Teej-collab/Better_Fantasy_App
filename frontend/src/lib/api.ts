@@ -3512,3 +3512,24 @@ export async function trackAnalyticsEvent(body: {
 export async function getScoringCatalogServer(sessionCookie: string | undefined): Promise<ScoringCatalog | null> {
   return getServerOrNull<ScoringCatalog>("/league/scoring-catalog", sessionCookie);
 }
+
+// GET /admin/taps (2026-10-22): what members tap and change, and who.
+export type AdminTapTarget = {
+  target: string;
+  taps: number;
+  unique_people: number;
+  people: { owner_id: number; display_name: string; taps: number; last_at: string }[];
+};
+export type AdminTapPerson = {
+  owner_id: number;
+  display_name: string;
+  taps: number;
+  views: number;
+  top_taps: { target: string; taps: number }[];
+  top_screens: { screen: string; views: number }[];
+};
+export type AdminTaps = { window_days: number; total_taps: number; targets: AdminTapTarget[]; people: AdminTapPerson[] };
+
+export async function getAdminTapsServer(sessionCookie: string | undefined, days: number): Promise<AdminTaps | null> {
+  return getServer<AdminTaps>(`/admin/taps?days=${days}`, sessionCookie).catch(() => null);
+}

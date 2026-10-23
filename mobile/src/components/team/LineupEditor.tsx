@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  scrollTo,
+  useAnimatedReaction,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useFrameCallback,
+  useScrollViewOffset,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  type AnimatedRef,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
@@ -10,9 +23,11 @@ import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { formatGameTime, formatPoints } from '@/lib/format';
 import { haptics } from '@/lib/haptics';
+import { trackTap } from '@/lib/analytics';
 import { lineupAdvice, moveTargets, openStarterSlots, type Advice, type MoveTarget } from '@/lib/lineupMoves';
 import { confirmDropPlayer } from '@/lib/queries';
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, slotDisplayLabel, STARTER_SLOT_ORDER, starterSortIndex, TAXI_SLOT_LABEL } from '@/lib/rosterSlots';
+import { TAB_BAR_CONTENT_INSET } from '@/lib/tabBar';
 import type { MyTeam, RosterEntry } from '@/lib/types';
 
 // My Team's lineup (2026-10-22, lineup-move mockups A + E with B's drag):
@@ -66,6 +81,66 @@ function layout(team: MyTeam, moving: RosterEntry | null): { items: Placed[]; he
   return { items: placed, height: top };
 }
 
+// Dragging near the top or bottom of the screen scrolls the page
+// (2026-10-22), faster the deeper into the edge, so a starter can be
+// dragged to the bench below the fold. The dragged row adds the
+// distance scrolled so it stays under your finger.
+const EDGE = 90;
+const MAX_SPEED = 14;
+
+export type DragAutoScroll = {
+  pos: SharedValue<number>;
+  speed: SharedValue<number>;
+  min: SharedValue<number>;
+  edges: SharedValue<{ top: number; bottom: number }>;
+  offset: SharedValue<number>;
+};
+
+/** For the screen's ScrollView: an animated ref, its props, and what LineupEditor needs. */
+export function useDragAutoScroll() {
+  const animatedRef = useAnimatedRef<Animated.ScrollView>();
+  const offset = useScrollViewOffset(animatedRef as AnimatedRef<Animated.ScrollView>);
+  const pos = useSharedValue(0);
+  const speed = useSharedValue(0);
+  const min = useSharedValue(0);
+  const max = useSharedValue(0);
+  const edges = useSharedValue({ top: 0, bottom: 0 });
+  const content = useSharedValue(0);
+  const view = useSharedValue(0);
+
+  useFrameCallback(() => {
+    const sp = speed.get();
+    if (sp === 0) return;
+    const next = Math.max(min.get(), Math.min(max.get(), pos.get() + sp));
+    if (next === pos.get()) return;
+    pos.set(next);
+    scrollTo(animatedRef, 0, next, false);
+  });
+
+  const updateMax = useCallback(() => max.set(Math.max(0, content.get() - view.get() + TAB_BAR_CONTENT_INSET)), [max, content, view]);
+  const ref = useCallback((node: Animated.ScrollView | null) => void animatedRef(node), [animatedRef]);
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      view.set(e.nativeEvent.layout.height);
+      updateMax();
+      // Where the scroll view sits on screen, minus the tab bar over its bottom.
+      (e.currentTarget as unknown as View).measureInWindow((_x, y, _w, h) => {
+        edges.set({ top: y, bottom: y + h - TAB_BAR_CONTENT_INSET });
+      });
+    },
+    [view, updateMax, edges],
+  );
+  const onContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      content.set(h);
+      updateMax();
+    },
+    [content, updateMax],
+  );
+  const autoScroll = useMemo<DragAutoScroll>(() => ({ pos, speed, min, edges, offset }), [pos, speed, min, edges, offset]);
+  return { ref, onLayout, onContentSizeChange, autoScroll };
+}
+
 const targetKeyOf = (item: Placed): string | null =>
   item.kind === 'player' ? item.key : item.kind === 'empty' ? item.target : item.target;
 
@@ -76,6 +151,7 @@ export function LineupEditor({
   onMove,
   onApply,
   onDragChange,
+  autoScroll,
 }: {
   team: MyTeam;
   editable: boolean;
@@ -83,6 +159,7 @@ export function LineupEditor({
   onMove: (entry: RosterEntry | null) => void;
   onApply: (target: MoveTarget) => void;
   onDragChange: (dragging: boolean) => void;
+  autoScroll?: DragAutoScroll;
 }) {
   const { items, height } = useMemo(() => layout(team, moving), [team, moving]);
   const targets = useMemo(
@@ -111,7 +188,10 @@ export function LineupEditor({
     }
     if (moving.player_id === entry.player_id) return onMove(null);
     const target = targets?.get(entry.player_id);
-    if (target) return onApply(target);
+    if (target) {
+      trackTap('lineup.tap_move');
+      return onApply(target);
+    }
     if (editable && !entry.is_locked) {
       haptics.select();
       onMove(entry);
@@ -120,7 +200,9 @@ export function LineupEditor({
 
   function pressTarget(key: string) {
     const target = targets?.get(key);
-    if (target) onApply(target);
+    if (!target) return;
+    trackTap('lineup.tap_move');
+    onApply(target);
   }
 
   function beginDrag(entry: RosterEntry) {
@@ -135,6 +217,7 @@ export function LineupEditor({
     setHover(null);
     onDragChange(false);
     const target = key ? targets?.get(key) : undefined;
+    trackTap(target ? 'lineup.drag_move' : 'lineup.drag_cancel');
     if (target) onApply(target);
     else onMove(null);
   }
@@ -193,6 +276,7 @@ export function LineupEditor({
             delta={target?.delta ?? null}
             dragging={draggingId === e.player_id}
             hits={hits}
+            autoScroll={autoScroll}
             onPress={() => press(e)}
             onBeginDrag={() => beginDrag(e)}
             onHover={hovered}
@@ -233,6 +317,7 @@ function PlayerRow({
   delta,
   dragging,
   hits,
+  autoScroll,
   onPress,
   onBeginDrag,
   onHover,
@@ -246,6 +331,7 @@ function PlayerRow({
   delta: number | null;
   dragging: boolean;
   hits: ReturnType<typeof useSharedValue<{ key: string; top: number; height: number }[]>>;
+  autoScroll?: DragAutoScroll;
   onPress: () => void;
   onBeginDrag: () => void;
   onHover: (key: string | null) => void;
@@ -256,6 +342,30 @@ function PlayerRow({
   const drag = useSharedValue(0);
   const lifted = useSharedValue(false);
   const over = useSharedValue<string | null>(null);
+  // How far the page has auto-scrolled since this drag began.
+  const startPos = useSharedValue(0);
+  const lastTranslation = useSharedValue(0);
+  const scrolled = () => {
+    'worklet';
+    return autoScroll ? autoScroll.pos.get() - startPos.get() : 0;
+  };
+  const hitTest = () => {
+    'worklet';
+    const center = y.get() + lastTranslation.get() + scrolled() + ROW / 2;
+    const hit = hits.get().find((h) => center >= h.top && center <= h.top + h.height);
+    const key = hit ? hit.key : null;
+    if (key !== over.get()) {
+      over.set(key);
+      runOnJS(onHover)(key);
+    }
+  };
+  // The page scrolling under a still finger changes what's under it too.
+  useAnimatedReaction(
+    () => (autoScroll ? autoScroll.pos.get() : 0),
+    (now, before) => {
+      if (lifted.get() && before !== null && now !== before) hitTest();
+    },
+  );
 
   useEffect(() => {
     if (!dragging) y.set(withSpring(top, SPRING));
@@ -267,22 +377,35 @@ function PlayerRow({
     .enabled(canEdit)
     .activateAfterLongPress(220)
     .onStart(() => {
+      if (autoScroll) {
+        const at = autoScroll.offset.get();
+        autoScroll.pos.set(at);
+        autoScroll.min.set(Math.min(at, 0));
+        startPos.set(at);
+      }
+      lastTranslation.set(0);
       lifted.set(true);
       over.set(null);
       runOnJS(onBeginDrag)();
     })
     .onUpdate((e) => {
       drag.set(e.translationY);
-      const center = y.get() + e.translationY + ROW / 2;
-      const hit = hits.get().find((h) => center >= h.top && center <= h.top + h.height);
-      const key = hit ? hit.key : null;
-      if (key !== over.get()) {
-        over.set(key);
-        runOnJS(onHover)(key);
+      lastTranslation.set(e.translationY);
+      hitTest();
+      if (autoScroll) {
+        const { top, bottom } = autoScroll.edges.get();
+        let sp = 0;
+        if (bottom > top && e.absoluteY > bottom - EDGE) sp = Math.min(1, (e.absoluteY - (bottom - EDGE)) / EDGE) * MAX_SPEED;
+        else if (bottom > top && e.absoluteY < top + EDGE) sp = -Math.min(1, (top + EDGE - e.absoluteY) / EDGE) * MAX_SPEED;
+        autoScroll.speed.set(sp);
       }
     })
     .onFinalize(() => {
+      if (autoScroll) autoScroll.speed.set(0);
       if (!lifted.get()) return;
+      // Fold the scrolled distance into the drag so the row springs home
+      // from where it is, not from a jump.
+      drag.set(drag.get() + scrolled());
       lifted.set(false);
       drag.set(withSpring(0, SPRING));
       runOnJS(onEndDrag)(over.get());
@@ -293,7 +416,7 @@ function PlayerRow({
     return {
       top: y.get(),
       zIndex: up ? 30 : state === 'lifted' ? 20 : 0,
-      transform: [{ translateY: drag.get() }, { scale: withSpring(up || state === 'lifted' ? 1.03 : 1, SPRING) }],
+      transform: [{ translateY: drag.get() + (up ? scrolled() : 0) }, { scale: withSpring(up || state === 'lifted' ? 1.03 : 1, SPRING) }],
       shadowOpacity: withTiming(up || state === 'lifted' ? 0.55 : 0),
       opacity: withTiming(state === 'dim' ? 0.35 : 1, { duration: 180 }),
     };
@@ -411,12 +534,18 @@ export function LineupAdviceCard({ team, onApply }: { team: MyTeam; onApply: (ad
         <Pressable
           onPress={() => {
             haptics.tap();
+            trackTap('lineup.advice_apply');
             onApply(advice);
           }}
           style={({ pressed }) => [styles.adviceGo, pressed && styles.pressed]}>
           <Text style={styles.adviceGoText}>{advice.length === 1 ? 'Make the move' : 'Make the moves'}</Text>
         </Pressable>
-        <Pressable onPress={() => setDismissed(signature)} style={({ pressed }) => [styles.adviceSkip, pressed && styles.pressed]}>
+        <Pressable
+          onPress={() => {
+            trackTap('lineup.advice_dismiss');
+            setDismissed(signature);
+          }}
+          style={({ pressed }) => [styles.adviceSkip, pressed && styles.pressed]}>
           <Text style={styles.adviceSkipText}>Not now</Text>
         </Pressable>
       </View>

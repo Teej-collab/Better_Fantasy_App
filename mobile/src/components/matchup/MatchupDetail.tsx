@@ -56,12 +56,12 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
       </NeonPanel>
       </ShareableCard>
 
+      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview ?? null} week={matchup.week} />
+
       <NeonPanel contentStyle={styles.card}>
         <Text style={styles.sectionTitle}>Starting Lineups</Text>
         <StarterComparison home={home.roster} away={away.roster} season={matchup.season} week={matchup.week} />
       </NeonPanel>
-
-      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview ?? null} week={matchup.week} />
 
       {hasTouchdowns && (
         <NeonPanel contentStyle={styles.card}>

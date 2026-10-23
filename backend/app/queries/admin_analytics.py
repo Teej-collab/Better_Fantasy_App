@@ -97,15 +97,72 @@ async def get_feature_usage(conn, days: int) -> list[dict]:
         """
         SELECT event_name, count(*) AS uses, count(DISTINCT owner_id) AS unique_owners
         FROM analytics_events
-        WHERE event_type = 'feature' AND event_name <> $2
+        WHERE event_type = 'feature' AND event_name <> ALL($2::text[])
           AND created_at >= now() - ($1 || ' days')::interval
         GROUP BY event_name
         ORDER BY uses DESC
         """,
         str(days),
-        taxonomy.CRASH_EVENT_NAME,
+        [taxonomy.CRASH_EVENT_NAME, taxonomy.TAP_EVENT_NAME],
     )
     return [dict(r) for r in rows]
+
+
+async def get_tap_usage(conn, days: int) -> dict:
+    """Admin > Taps (2026-10-22): what gets tapped and by whom. `targets`:
+    each tap target with its taps, distinct people, and who (most taps
+    first). `people`: each person's taps and screens, most used first,
+    so you can see what each member actually uses."""
+    window = str(days)
+    by_person = await conn.fetch(
+        """
+        SELECT e.metadata->>'target' AS target, e.owner_id, o.display_name, count(*) AS taps,
+               max(e.created_at) AS last_at
+        FROM analytics_events e JOIN owners o ON o.owner_id = e.owner_id
+        WHERE e.event_name = $2 AND e.created_at >= now() - ($1 || ' days')::interval
+        GROUP BY 1, 2, 3
+        """,
+        window, taxonomy.TAP_EVENT_NAME,
+    )
+    screens = await conn.fetch(
+        """
+        SELECT e.owner_id, o.display_name, e.event_name AS screen, count(*) AS views
+        FROM analytics_events e JOIN owners o ON o.owner_id = e.owner_id
+        WHERE e.event_type = 'page_view' AND e.created_at >= now() - ($1 || ' days')::interval
+        GROUP BY 1, 2, 3
+        """,
+        window,
+    )
+    targets: dict[str, dict] = {}
+    people: dict[int, dict] = {}
+
+    def person(owner_id: int, name: str) -> dict:
+        return people.setdefault(owner_id, {"owner_id": owner_id, "display_name": name, "taps": 0, "views": 0, "top_taps": [], "top_screens": []})
+
+    for r in by_person:
+        t = targets.setdefault(r["target"], {"target": r["target"], "taps": 0, "people": []})
+        t["taps"] += r["taps"]
+        t["people"].append({"owner_id": r["owner_id"], "display_name": r["display_name"], "taps": r["taps"], "last_at": r["last_at"]})
+        p = person(r["owner_id"], r["display_name"])
+        p["taps"] += r["taps"]
+        p["top_taps"].append({"target": r["target"], "taps": r["taps"]})
+    for r in screens:
+        p = person(r["owner_id"], r["display_name"])
+        p["views"] += r["views"]
+        p["top_screens"].append({"screen": r["screen"], "views": r["views"]})
+
+    for t in targets.values():
+        t["people"].sort(key=lambda x: -x["taps"])
+        t["unique_people"] = len(t["people"])
+    for p in people.values():
+        p["top_taps"] = sorted(p["top_taps"], key=lambda x: -x["taps"])[:8]
+        p["top_screens"] = sorted(p["top_screens"], key=lambda x: -x["views"])[:8]
+    return {
+        "window_days": days,
+        "total_taps": sum(t["taps"] for t in targets.values()),
+        "targets": sorted(targets.values(), key=lambda t: -t["taps"]),
+        "people": sorted(people.values(), key=lambda p: -(p["taps"] + p["views"])),
+    }
 
 
 async def get_crash_reports(conn, days: int, limit: int = 50) -> dict:

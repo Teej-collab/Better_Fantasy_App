@@ -473,6 +473,17 @@ async def get_feature_usage(request: Request, days: int = 30):
     return {"window_days": days, "features": features}
 
 
+@router.get("/taps")
+async def get_tap_usage(request: Request, days: int = 30):
+    """What members tap, and who taps what (taxonomy.py's "tap" event)."""
+    payload = _require_session(request)
+    days = _clamp_days(days)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await admin_analytics.get_tap_usage(conn, days)
+
+
 @router.get("/crashes")
 async def get_crash_reports(request: Request, days: int = 30):
     """App crashes reported by frontend/src/lib/crashReporter.ts — see

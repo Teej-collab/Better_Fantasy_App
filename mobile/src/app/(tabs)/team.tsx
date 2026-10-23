@@ -1,11 +1,12 @@
 import * as Haptics from 'expo-haptics';
 import { router, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
-import { LineupAdviceCard, LineupEditor, MoveBar, UndoBar } from '@/components/team/LineupEditor';
+import { LineupAdviceCard, LineupEditor, MoveBar, UndoBar, useDragAutoScroll } from '@/components/team/LineupEditor';
 import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/players/PlayerViews';
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
@@ -14,6 +15,7 @@ import { Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
+import { trackTap } from '@/lib/analytics';
 import { api, WEB_BASE_URL } from '@/lib/api';
 import { undoChange, type MoveTarget } from '@/lib/lineupMoves';
 import { openPlayer, useLineupChange, useMyTeam, useMyWeek, type LineupChange } from '@/lib/queries';
@@ -33,6 +35,15 @@ function describe(change: LineupChange): string {
 function TeamScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
   const tabBarScroll = useTabBarScroll();
+  const { ref: dragRef, onLayout: onScrollLayout, onContentSizeChange, autoScroll } = useDragAutoScroll();
+  // The tab's scroll-to-top ref and the drag auto-scroll's both point at the list.
+  const setScrollRef = useCallback(
+    (node: Animated.ScrollView | null) => {
+      dragRef(node);
+      scrollRef.current = node as unknown as ScrollView | null;
+    },
+    [dragRef, scrollRef],
+  );
   // null = the live week (the editable lineup); any other week is a
   // read-only look at that week's roster and projections.
   const [week, setWeek] = useState<number | null>(null);
@@ -69,6 +80,7 @@ function TeamScreenContent() {
   const apply = (target: MoveTarget) => void run([target.change], describe(target.change));
   const undoLast = () => {
     if (!undo) return;
+    trackTap('lineup.undo');
     void run([...undo.changes].reverse().map(undoChange), null);
   };
 
@@ -101,9 +113,11 @@ function TeamScreenContent() {
 
   return (
     <>
-      <ScrollView
+      <Animated.ScrollView
         style={styles.screen}
-        ref={scrollRef}
+        ref={setScrollRef}
+        onLayout={onScrollLayout}
+        onContentSizeChange={onContentSizeChange}
         scrollEnabled={!dragging}
         {...tabBarScroll}
         contentContainerStyle={styles.content}
@@ -185,10 +199,10 @@ function TeamScreenContent() {
                 onApply={(advice) => void run(advice.map((a) => a.change), advice.map((a) => describe(a.change)).join(' '))}
               />
             )}
-            <LineupEditor team={data} editable={editable} moving={moving} onMove={setMoving} onApply={apply} onDragChange={setDragging} />
+            <LineupEditor team={data} editable={editable} moving={moving} onMove={setMoving} onApply={apply} onDragChange={setDragging} autoScroll={autoScroll} />
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {moving && !dragging && <MoveBar entry={moving} onCancel={() => setMoving(null)} bottom={barBottom} />}
       {!moving && undo && <UndoBar label={undo.label} onUndo={undoLast} bottom={barBottom} />}

@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 
 _WINDOW_SECONDS = 60
-_MAX_EVENTS = 60
+_MAX_EVENTS = 120
 
 _events: dict[int, list[float]] = defaultdict(list)
 

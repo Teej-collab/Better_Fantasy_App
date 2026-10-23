@@ -4,54 +4,59 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Text } from '@/components/Text';
 import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { trackTap } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
-// A matchup's write-ups (2026-10-22): `narrative` is the current one
-// (the preview before kickoff, the recap once the week is final, none
-// mid-game) and `preview` is the pre-game one, kept for good. Before
-// kickoff the preview shows in full; after, it folds into a slim
-// "Pre-game write-up" card like Home's "Missed the recap?".
+// A matchup's write-ups (2026-10-22), right under the score card:
+// `narrative` is the current one (the preview before kickoff, the recap
+// once the week is final, none mid-game) and `preview` is the pre-game
+// one, kept for good. Each is a slim card like Home's "Missed the
+// recap?" that opens in place, and opening one is counted (Admin > Taps).
 
 const PREVIEW = SectionColors.matchups;
 const RECAP = SectionColors.awards;
 
 export function MatchupWriteUps({ narrative, preview, week }: { narrative: string | null; preview: string | null; week: number }) {
   const previewIsCurrent = !!narrative && narrative === preview;
+  const pregame = preview ?? (previewIsCurrent ? narrative : null);
+  const recap = narrative && !previewIsCurrent ? narrative : null;
   return (
     <>
-      {narrative ? (
-        <NeonPanel color={previewIsCurrent ? PREVIEW : RECAP} contentStyle={styles.card}>
-          <Text style={[styles.kicker, { color: previewIsCurrent ? PREVIEW : RECAP }]}>
-            {previewIsCurrent ? '🎙️ Pre-game write-up' : `📰 Week ${week} recap`}
-          </Text>
-          <Text style={styles.text}>{narrative.trim()}</Text>
-        </NeonPanel>
+      {pregame ? (
+        <WriteUpCard
+          color={PREVIEW}
+          kicker="🎙️ Pre-game write-up"
+          sub={previewIsCurrent ? 'The hype before kickoff' : 'How it looked before kickoff'}
+          text={pregame}
+          target="matchup.pregame_open"
+        />
       ) : null}
-      {preview && !previewIsCurrent ? <PreGameCard text={preview} /> : null}
+      {recap ? <WriteUpCard color={RECAP} kicker={`📰 Week ${week} recap`} sub="How it went down" text={recap} target="matchup.recap_open" /> : null}
     </>
   );
 }
 
-function PreGameCard({ text }: { text: string }) {
+function WriteUpCard({ color, kicker, sub, text, target }: { color: string; kicker: string; sub: string; text: string; target: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <NeonPanel color={PREVIEW} contentStyle={styles.card}>
+    <NeonPanel color={color} contentStyle={styles.card}>
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={[styles.kicker, { color: PREVIEW }]}>🎙️ Pre-game write-up</Text>
+          <Text style={[styles.kicker, { color }]}>{kicker}</Text>
           <Text style={styles.sub} numberOfLines={1}>
-            How it looked before kickoff
+            {sub}
           </Text>
         </View>
         <Pressable
           onPress={() => {
             haptics.select();
+            if (!open) trackTap(target);
             setOpen((v) => !v);
           }}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={open ? 'Hide the pre-game write-up' : 'Read the pre-game write-up'}
-          style={({ pressed }) => [styles.pill, pressed && styles.pressed]}>
+          accessibilityLabel={open ? `Hide the ${kicker.slice(3)}` : `Read the ${kicker.slice(3)}`}
+          style={({ pressed }) => [styles.pill, { backgroundColor: `${color}2e` }, pressed && styles.pressed]}>
           <Text style={styles.pillText}>{open ? 'Hide ↑' : 'Read it →'}</Text>
         </Pressable>
       </View>
@@ -67,7 +72,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
   sub: { color: Colors.textSecondary, fontSize: 13 },
-  pill: { borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: `${PREVIEW}2e` },
+  pill: { borderRadius: Radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
   pillText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   pressed: { opacity: 0.7 },
 });

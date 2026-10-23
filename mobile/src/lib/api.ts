@@ -161,6 +161,30 @@ export const OFFLINE_MESSAGE = "You're offline — check your connection and try
 
 initConnectivity(`${API_BASE_URL}/health`);
 
+// Every change someone makes (an add, a claim, a bet, a poll vote...) is
+// counted in Admin > Taps as `do.<path>`, ids dropped, e.g. POST
+// /me/team/waivers/claim -> do.me.team.waivers.claim (2026-10-22: see
+// what gets used and by whom). lib/analytics.ts sets the listener, so
+// this file needn't import it. Background writes are left out.
+let actionListener: ((target: string) => void) | null = null;
+export function setActionListener(fn: (target: string) => void): void {
+  actionListener = fn;
+}
+const AUTOMATIC = /^\/(auth|admin|push|chat\/conversations\/\d+\/read)(\/|$)|\/(read|seen|presence|heartbeat|ticket)(\/|\?|$)/;
+export function actionTarget(method: string, path: string): string | null {
+  const bare = path.split('?')[0];
+  if (AUTOMATIC.test(bare)) return null;
+  const parts = bare
+    .split('/')
+    .filter((p) => p && !/\d/.test(p) && p.length <= 24)
+    .map((p) => p.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^[_-]+|[_-]+$/g, ''))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!parts.length) return null;
+  const verb = method === 'DELETE' ? 'delete.' : method === 'PUT' || method === 'PATCH' ? 'edit.' : '';
+  return `do.${verb}${parts.join('.')}`.slice(0, 64).replace(/[._-]+$/, '');
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // The session this request went out with: only its own 401 means it
   // expired (see below).
@@ -209,6 +233,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // link) used to sign the phone out too (2026-10-14).
     if (res.status === 401 && sentToken !== null && sentToken === sessionToken && SESSION_ENDED.has(detail)) onUnauthorized?.();
     throw new ApiError(res.status, detail, body);
+  }
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && actionListener) {
+    const target = actionTarget(method, path);
+    if (target) actionListener(target);
   }
   // 204 No Content (logout, account deletion, some settings writes).
   if (res.status === 204) return undefined as T;
@@ -794,6 +823,7 @@ export const api = {
     security: (days = 7) => request<A.AdminSecurity>(`/admin/security?days=${days}`),
     audit: (limit = 50, offset = 0) => request<A.AdminAuditLog>(`/admin/audit?limit=${limit}&offset=${offset}`),
     recaps: () => request<A.AdminRecaps>('/admin/recaps'),
+    taps: (days = 30) => request<A.AdminTaps>(`/admin/taps?days=${days}`),
   },
   playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>
     request<PlayerViewData>(`/me/team/player-views/${view}?ids=${encodeURIComponent(playerIds.join(','))}`),

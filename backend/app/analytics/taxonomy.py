@@ -22,6 +22,7 @@ a specific product question it would answer — instrumenting it
 blindly produces a wall of noise nobody reads, the opposite of what
 this dashboard is for.
 """
+import re
 
 EVENT_TYPES = {"page_view", "feature"}
 
@@ -105,7 +106,18 @@ FEATURE_EVENTS: dict[str, set[str]] = {
     # on Home. `source`: "push" (tapped the LIVE NOW notification),
     # "home" or "page". Feeds the admin dashboard's Recaps page.
     "recap_opened": {"season", "week", "source"},
+    # A tap on something worth counting (2026-10-22, the owner's ask:
+    # "make almost anything a user can click trackable" to see what gets
+    # used and by whom). `target` is a fixed id from the app's code,
+    # e.g. "matchup.pregame_open" or "league_hub.scoring" (TAP_TARGET
+    # below), never anything a user typed; `screen` is where it was.
+    "tap": {"target", "screen"},
 }
+
+TAP_EVENT_NAME = "tap"
+# lower-case words joined by . _ or -: an id from the code, never free text.
+TAP_TARGET = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+MAX_TAP_TARGET_LENGTH = 64
 
 # app_crash rides the feature event type only so it needs no schema
 # change (analytics_events.event_type has a DB CHECK) — it isn't a
@@ -190,6 +202,10 @@ def validate_event(
         for value in metadata.values():
             if isinstance(value, str) and len(value) > MAX_METADATA_VALUE_LENGTH:
                 return "metadata value too long"
+        if event_name == TAP_EVENT_NAME:
+            target = metadata.get("target")
+            if not isinstance(target, str) or len(target) > MAX_TAP_TARGET_LENGTH or not TAP_TARGET.match(target):
+                return "tap target must be a short id like matchup.pregame_open"
     if device_type is not None and device_type not in ALLOWED_DEVICE_TYPES:
         return f"device_type must be one of {sorted(ALLOWED_DEVICE_TYPES)} or null"
     if platform is not None and platform not in ALLOWED_PLATFORMS:

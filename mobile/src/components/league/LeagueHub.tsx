@@ -5,6 +5,7 @@ import { Text } from '@/components/Text';
 import { Spacing } from '@/constants/theme';
 import { ordinal } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
+import { trackTap } from '@/lib/analytics';
 import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useScoringCatalog, useSeasonTeams, useStandings } from '@/lib/queries';
 import { scoringSummary } from '@/lib/scoringDisplay';
 import type { LeagueActivityItem } from '@/lib/types';
@@ -57,6 +58,7 @@ function HubCard({
       accessibilityLabel={`${label}${title ? `, ${title}` : ''}. ${detail}`}
       onPress={() => {
         haptics.select();
+        trackTap(`league_hub.${label.toLowerCase()}`);
         onPress();
       }}
       style={({ pressed }) => [wide ? styles.wide : styles.half, pressed && styles.pressed]}>

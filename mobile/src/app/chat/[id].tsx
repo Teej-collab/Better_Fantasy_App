@@ -17,6 +17,7 @@ import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, inkOn, Radius, Spacing, withAlpha } from '@/constants/theme';
+import { trackTap } from '@/lib/analytics';
 import { api, postChatVideo, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, pickChatVideo, type PhotoSource } from '@/lib/chatImage';
@@ -188,6 +189,7 @@ export default function ConversationScreen() {
   }
 
   function sendNow() {
+    trackTap(replyTo ? 'chat.send_reply' : 'chat.send');
     if (pendingVideo) {
       const item: OutgoingVideo = {
         key: `${Date.now()}`,
@@ -227,6 +229,7 @@ export default function ConversationScreen() {
   }
 
   function react(emoji: string) {
+    trackTap('chat.react');
     const target = actionsFor;
     setActionsFor(null);
     if (!target) return;
@@ -311,6 +314,7 @@ export default function ConversationScreen() {
   }
 
   function copyMessage() {
+    trackTap('chat.copy');
     const target = actionsFor;
     setActionsFor(null);
     if (!target?.body) return;
@@ -318,6 +322,7 @@ export default function ConversationScreen() {
   }
 
   function startReply() {
+    trackTap('chat.reply');
     const target = actionsFor;
     setActionsFor(null);
     if (!target) return;
@@ -358,12 +363,14 @@ export default function ConversationScreen() {
   }
 
   function pickGif(gif: ChatGif) {
+    trackTap('chat.gif');
     setGifPickerOpen(false);
     setPendingVideo(null);
     setPendingImage({ status: 'done', localUri: gif.preview_url, url: gif.url, gif: true });
   }
 
   function chooseAttachment() {
+    trackTap('chat.attach');
     if (pendingImage?.status === 'uploading') return;
     // No videos in Commish's Corner (the backend refuses them there).
     Alert.alert(isAnnouncements ? 'Add a photo' : 'Add a photo or video', undefined, [
@@ -459,6 +466,7 @@ export default function ConversationScreen() {
               onSwipeReply={
                 canPost && !item.deleted
                   ? () => {
+                      trackTap('chat.swipe_reply');
                       setReplyTo(item);
                       inputRef.current?.focus();
                     }

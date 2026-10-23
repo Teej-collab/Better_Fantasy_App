@@ -2,7 +2,7 @@ import { usePathname } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, Dimensions, PixelRatio, Platform } from 'react-native';
 
-import { hasSessionToken, sendQuietly } from '@/lib/api';
+import { hasSessionToken, sendQuietly, setActionListener } from '@/lib/api';
 
 // The app's half of the analytics the web already sends (frontend/src/
 // lib/analyticsEvents.ts → POST /admin/track), so the admin dashboard
@@ -148,6 +148,25 @@ export function trackRecapOpened(season: number, week: number, source: 'push' | 
     platform,
   });
 }
+
+// A tap worth counting (taxonomy.py's "tap"): `target` is a fixed id
+// like 'matchup.pregame_open' (lower-case words joined by . _ or -),
+// never anything the user typed. Logged with the screen it happened on,
+// so Admin > Taps shows what gets used and by whom.
+export function trackTap(target: string): void {
+  if (!hasSessionToken()) return;
+  sendQuietly('/admin/track', {
+    session_id: sessionId,
+    event_name: 'tap',
+    event_type: 'feature',
+    metadata: { target, screen: lastRoute ?? 'unknown' },
+    device_type: deviceType,
+    platform,
+  });
+}
+
+// Every change someone makes through the API counts too (api.ts's actionTarget).
+setActionListener(trackTap);
 
 // Logs every screen change, under its web route. The League tab logs
 // its own sections (they aren't separate screens), so it's skipped here.

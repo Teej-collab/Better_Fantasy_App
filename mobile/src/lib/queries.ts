@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Alert, AppState } from 'react-native';
 
+import { trackTap } from '@/lib/analytics';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useScreenFocused } from '@/lib/screenFocus';
@@ -289,6 +290,7 @@ export function usePlayerCard(sleeperPlayerId: string) {
 
 export function openPlayer(sleeperPlayerId: string | number | null | undefined) {
   if (sleeperPlayerId === null || sleeperPlayerId === undefined) return;
+  trackTap('player.open');
   router.push({ pathname: '/player/[id]', params: { id: String(sleeperPlayerId) } });
 }
 

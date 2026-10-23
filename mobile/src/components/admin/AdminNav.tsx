@@ -20,6 +20,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
       { href: '/admin/engagement', label: 'Engagement', icon: '◭' },
       { href: '/admin/navigation', label: 'Navigation', icon: '◉' },
       { href: '/admin/recaps', label: 'Recaps', icon: '◧' },
+      { href: '/admin/taps' as Href, label: 'Taps', icon: '◇' },
     ],
   },
   {

@@ -36,14 +36,14 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
         <MatchupScoreHeader home={home} away={away} week={matchup.week} />
       </div>
 
+      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview} week={matchup.week} />
+
       <div className="wl-card rounded-lg p-4">
         <h2 className="mb-2 text-sm font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">
           Starting Lineups
         </h2>
         <StarterComparisonTable home={home.roster} away={away.roster} season={matchup.season} week={matchup.week} />
       </div>
-
-      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview} week={matchup.week} />
 
       {hasTouchdowns && (
         <div className="wl-card rounded-lg p-4">

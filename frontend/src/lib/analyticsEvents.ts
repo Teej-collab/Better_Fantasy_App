@@ -171,6 +171,13 @@ export function trackRecapOpened(season: number, week: number, source: "push" | 
   trackFeature("recap_opened", { season, week, source });
 }
 
+// A tap worth counting (taxonomy.py's "tap"): `target` is a fixed id
+// like "matchup.pregame_open", never anything the user typed. Same as
+// the app's trackTap (mobile/src/lib/analytics.ts); Admin > Taps.
+export function trackTap(target: string): void {
+  trackFeature("tap", { target, screen: typeof window === "undefined" ? "unknown" : window.location.pathname.slice(0, 200) });
+}
+
 // Human-readable labels for the admin dashboard — every event_name
 // this taxonomy can produce (NAV_EVENT_NAMES + FEATURE_EVENTS' keys)
 // gets a real label here, not a raw "nav_power_rankings" string on
@@ -210,6 +217,7 @@ const EVENT_LABELS: Record<string, string> = {
   gamecast_game_selected: "Gamecast Game Selected",
   app_crash: "App Crash",
   recap_opened: "Recap Opened",
+  tap: "Tap",
 };
 
 export function eventLabel(eventName: string): string {
