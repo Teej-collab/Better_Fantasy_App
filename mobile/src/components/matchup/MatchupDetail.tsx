@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { openTeam } from '@/components/league/LeagueUI';
+import { MatchupWriteUps } from '@/components/matchup/WriteUps';
 import { ShareableCard } from '@/components/ShareableCard';
 import { RecordWithStreak, RankBadge, WinProbabilityBar } from '@/components/home/YourWeekCard';
 import { NeonPanel } from '@/components/NeonPanel';
@@ -60,11 +61,7 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
         <StarterComparison home={home.roster} away={away.roster} season={matchup.season} week={matchup.week} />
       </NeonPanel>
 
-      {matchup.narrative && (
-        <View style={styles.narrative}>
-          <Text style={styles.narrativeText}>{matchup.narrative}</Text>
-        </View>
-      )}
+      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview ?? null} week={matchup.week} />
 
       {hasTouchdowns && (
         <NeonPanel contentStyle={styles.card}>
@@ -467,8 +464,6 @@ const styles = StyleSheet.create({
   cellDetail: { color: 'rgba(255,255,255,0.5)', fontSize: 11 },
   benchBlock: { marginTop: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   benchTitle: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  narrative: { backgroundColor: Colors.tile, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-  narrativeText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontStyle: 'italic' },
   twoCol: { flexDirection: 'row', gap: Spacing.lg },
   tdList: { flex: 1, gap: 4 },
   tdText: { color: Colors.text, fontSize: 14 },

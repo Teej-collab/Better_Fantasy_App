@@ -163,6 +163,8 @@ export type WeekMatchupContextItem = {
     recent_meetings: RecentMeeting[];
   };
   narrative: string | null;
+  // The pre-game write-up, kept after kickoff (null until written).
+  preview?: string | null;
   home: MatchupContextSide;
   away: MatchupContextSide;
 };

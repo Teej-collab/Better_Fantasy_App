@@ -158,7 +158,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import _require
 from app.db import get_pool
-from app.domain import draft_engine, narrative_engine, recap_release, weekly_stats
+from app.domain import draft_engine, matchup_context, narrative_engine, recap_release, weekly_stats
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain import auction_engine, guillotine, live_activity, win_prob_history
 from app.notifications import game_alerts, inactives
@@ -567,6 +567,18 @@ async def _run_week_settlement_job():
                 await recap_release.release_and_notify(conn, season, settle_week, league_id)
         except Exception:
             logger.exception("Recap release failed (season=%s week=%s league_id=%s)", season, settle_week, league_id)
+
+    # Next week's pre-game write-ups, one per matchup, written now so
+    # every matchup has one before kickoff (they used to exist only for
+    # matchups someone happened to open in time).
+    for row in league_rows:
+        league_id = row["league_id"]
+        try:
+            async with pool.acquire() as conn:
+                count = await matchup_context.generate_week_previews(conn, season, settle_week + 1, league_id)
+            logger.info("Week %s previews ready: %s (league_id=%s)", settle_week + 1, count, league_id)
+        except Exception:
+            logger.exception("Preview generation failed (season=%s week=%s league_id=%s)", season, settle_week + 1, league_id)
 
     record_job_run("week_settlement")
 

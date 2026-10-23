@@ -456,3 +456,50 @@ async def test_recent_weekly_openings_are_first_sentences_newest_first(pool):
             await narrative_queries.save_weekly_narrative(conn, TEST_SEASON, week, 1, "recap", text, "test")
         openings = await narrative_queries.get_recent_weekly_openings(conn, TEST_SEASON, 3, 1, "recap")
     assert openings == ["Week 2 is in the books!", "Alright degenerates, week one."]
+
+
+async def test_preview_stays_on_the_matchup_after_kickoff_and_next_to_the_recap(pool, monkeypatch):
+    from app.domain import matchup_context
+
+    await _seed_two_teams_with_matchup(pool, "preview-stays", week=6, home_score=0.0, away_score=0.0)
+    async with pool.acquire() as conn:
+        matchup_id = await conn.fetchval(
+            "SELECT m.id FROM matchups m JOIN teams_by_season t ON t.id = m.home_team_id "
+            "WHERE t.team_name = 'Home Team preview-stays'"
+        )
+    monkeypatch.setattr(narrative_engine, "ANTHROPIC_API_KEY", "fake-key-for-tests")
+    written = []
+
+    def fake_generate_narrative(system_prompt, facts):
+        written.append(system_prompt)
+        return "Recap text." if system_prompt == narrative_engine.RECAP_PROMPT else "Preview text."
+
+    monkeypatch.setattr(narrative_engine, "generate_narrative", fake_generate_narrative)
+
+    # Before kickoff: the preview is the write-up.
+    _mock_week_scoreboard(monkeypatch, {6: "not_started"})
+    async with pool.acquire() as conn:
+        assert await matchup_context.generate_week_previews(conn, TEST_SEASON, 6, DEFAULT_LEAGUE_ID) == 1
+        detail = await matchup_context.build_matchup_detail(conn, matchup_id)
+    assert detail["narrative"] == "Preview text."
+    assert detail["preview"] == "Preview text."
+
+    # Mid-game: no current write-up, but the preview is still there.
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE matchups SET home_score = 40, away_score = 31 WHERE id = $1", matchup_id)
+    _mock_week_scoreboard(monkeypatch, {6: "in_progress"})
+    async with pool.acquire() as conn:
+        detail = await matchup_context.build_matchup_detail(conn, matchup_id)
+    assert detail["narrative"] is None
+    assert detail["preview"] == "Preview text."
+
+    # Final: the recap is the write-up, and the preview sits beside it.
+    _mock_week_scoreboard(monkeypatch, {6: "final"})
+    async with pool.acquire() as conn:
+        detail = await matchup_context.build_matchup_detail(conn, matchup_id, generate="now")
+        week = await matchup_context.build_week_matchup_context(conn, TEST_SEASON, 6, DEFAULT_LEAGUE_ID)
+    assert detail["narrative"] == "Recap text."
+    assert detail["preview"] == "Preview text."
+    assert week["matchups"][0]["preview"] == "Preview text."
+    # Written once each, then cached.
+    assert len(written) == 2

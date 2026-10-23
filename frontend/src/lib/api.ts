@@ -506,6 +506,8 @@ export type WeekMatchupContextItem = {
   // The LLM narrative engine hasn't been turned on yet (real API cost
   // per generation) — always null for now, see TODO.md.
   narrative: string | null;
+  // The pre-game write-up, kept after kickoff (null until written).
+  preview?: string | null;
 };
 
 export type WeekMatchupContext = {

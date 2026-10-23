@@ -51,6 +51,7 @@ from app.domain.weekly_awards import get_clutch_choke_status_by_team
 from app.domain.win_probability import estimate_win_probability
 from app.providers.nfl_scoreboard import get_week_scoreboard, is_week_final
 from app.queries import league as queries
+from app.queries import narrative as narrative_queries
 from app.queries import team_position_rankings as position_rankings_queries
 from app.queries.power_rankings import get_latest_power_rank_by_team
 
@@ -436,6 +437,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
         # (up to ~7 sequential Claude calls on one page load otherwise).
         async with pool.acquire() as c:
             entry["narrative"] = await narrative_engine.get_cached_narrative(c, entry)
+            entry["preview"] = await narrative_queries.get_cached_narrative(c, entry["matchup_id"], "preview")
         return entry
 
     results = await asyncio.gather(*(process(m) for m in matchups))
@@ -443,7 +445,7 @@ async def build_week_matchup_context(conn, season: int, week: int, league_id: in
     return {"season": season, "week": week, "game_of_the_week_matchup_id": gow_id, "matchups": list(results)}
 
 
-async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
+async def build_matchup_detail(conn, matchup_id: int, generate: str = "later") -> dict | None:
     """Same per-matchup shape build_week_matchup_context returns for
     one entry in its list, fetched directly for a single matchup_id
     instead of batched across a whole week — powers GET /matchups/{id}
@@ -540,5 +542,28 @@ async def build_matchup_detail(conn, matchup_id: int) -> dict | None:
     # request, a bounded cost — but in the background, never holding up
     # this response. See narrative_engine.
     # get_cached_narrative_or_generate_later's own docstring.
-    entry["narrative"] = await narrative_engine.get_cached_narrative_or_generate_later(conn, entry)
+    if generate == "now":
+        entry["narrative"] = await narrative_engine.get_or_generate_narrative(conn, entry)
+    else:
+        entry["narrative"] = await narrative_engine.get_cached_narrative_or_generate_later(conn, entry)
+    # The pre-game write-up stays readable after kickoff and next to the
+    # recap (2026-10-22): `narrative` only ever holds the current one.
+    entry["preview"] = await narrative_queries.get_cached_narrative(conn, matchup_id, "preview")
     return entry
+
+
+async def generate_week_previews(conn, season: int, week: int, league_id: int) -> int:
+    """Write every matchup's pre-game write-up for a week ahead of time
+    (the week flip, app/scheduler.py), so each matchup has one even if
+    nobody opened it before kickoff. Cached ones are skipped for free.
+    Returns how many matchups now have one."""
+    ids = await conn.fetch(
+        "SELECT id FROM matchups WHERE season = $1 AND week = $2 AND league_id = $3 ORDER BY id",
+        season, week, league_id,
+    )
+    done = 0
+    for row in ids:
+        entry = await build_matchup_detail(conn, row["id"], generate="now")
+        if entry and entry.get("preview"):
+            done += 1
+    return done

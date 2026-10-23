@@ -7,7 +7,7 @@ import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
 import { GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
-import { NarrativeSection } from "@/components/matchups/NarrativeSection";
+import { MatchupWriteUps } from "@/components/matchups/MatchupWriteUps";
 import { TeamSummary } from "@/components/matchups/TeamSummary";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 
@@ -70,7 +70,7 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
 
       {open && (
         <div className="flex flex-col gap-4 border-t border-black/10 px-3 py-4 dark:border-white/10">
-          <NarrativeSection narrative={matchup.narrative} />
+          <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview} week={matchup.week} />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TeamSummary side={home} />

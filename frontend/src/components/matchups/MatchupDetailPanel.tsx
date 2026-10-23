@@ -3,6 +3,7 @@ import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
+import { MatchupWriteUps } from "@/components/matchups/MatchupWriteUps";
 import { StarterComparisonTable } from "@/components/matchups/StarterComparisonTable";
 
 /**
@@ -42,13 +43,7 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
         <StarterComparisonTable home={home.roster} away={away.roster} season={matchup.season} week={matchup.week} />
       </div>
 
-      {/* Only renders with a real write-up — no permanent "coming
-          later" placeholder taking space when there's nothing to say. */}
-      {matchup.narrative && (
-        <div className="rounded-md bg-black/[0.03] px-3 py-2 text-sm italic text-black/50 dark:bg-white/[0.03] dark:text-white/50">
-          {matchup.narrative}
-        </div>
-      )}
+      <MatchupWriteUps narrative={matchup.narrative} preview={matchup.preview} week={matchup.week} />
 
       {hasTouchdowns && (
         <div className="wl-card rounded-lg p-4">
