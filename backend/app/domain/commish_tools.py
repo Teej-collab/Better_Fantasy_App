@@ -334,6 +334,8 @@ async def members(conn, league_id: int, season: int) -> list[dict]:
         out.append({
             "user_id": m["user_id"],
             "display_name": m["display_name"] or "Member",
+            # The photo they chose in Settings (owners.logo_url), if any.
+            "photo_url": m["logo_url"],
             "role": m["role"],
             "joined_at": _iso(m["joined_at"]),
             "last_active_at": _iso(active.get(m["user_id"])),

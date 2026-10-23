@@ -31,6 +31,7 @@ export type CommishSummary = {
 export type CommishMember = {
   user_id: number;
   display_name: string;
+  photo_url?: string | null;
   role: "commissioner" | "member";
   joined_at: string | null;
   last_active_at: string | null;

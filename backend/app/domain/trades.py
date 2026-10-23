@@ -184,16 +184,47 @@ async def _assert_capacity_ok(
 
 
 async def _validate_assets(
-    conn, season: int, league_id: int, proposing_team_id: int, receiving_team_id: int, give: list[str], receive: list[str]
+    conn, season: int, league_id: int, proposing_team_id: int, receiving_team_id: int, give: list[str], receive: list[str],
+    drops: dict[int, list[str]] | None = None, receiver_can_still_drop: bool = False,
 ) -> None:
+    """`drops`: {team_id: players that team cuts when the trade goes
+    through (trade_drops)} — they free up roster spots, so they count
+    as outgoing for the capacity check. `receiver_can_still_drop`: an
+    offer being sent — the receiver picks their drops when accepting,
+    so a full roster on their side isn't a reason to refuse the offer."""
+    drops = drops or {}
     await _assert_owns_all(conn, season, proposing_team_id, give)
     await _assert_owns_all(conn, season, receiving_team_id, receive)
     for team_id, outgoing in ((proposing_team_id, give), (receiving_team_id, receive)):
+        team_drops = drops.get(team_id, [])
+        if set(team_drops) & set(outgoing):
+            raise TradeError("A player in the trade can't also be dropped")
+        await _assert_owns_all(conn, season, team_id, team_drops)
         ir_violations = await ineligible_ir_player_names(conn, season, team_id, outgoing)
         if ir_violations:
             raise IRSlotViolationTradeError(ir_violation_message(ir_violations))
-    await _assert_capacity_ok(conn, season, league_id, proposing_team_id, len(receive), len(give))
-    await _assert_capacity_ok(conn, season, league_id, receiving_team_id, len(give), len(receive))
+    await _assert_capacity_ok(
+        conn, season, league_id, proposing_team_id, len(receive), len(give) + len(drops.get(proposing_team_id, []))
+    )
+    if not receiver_can_still_drop:
+        await _assert_capacity_ok(
+            conn, season, league_id, receiving_team_id, len(give), len(receive) + len(drops.get(receiving_team_id, []))
+        )
+
+
+async def _trade_drops(conn, trade_id: int) -> dict[int, list[str]]:
+    drops: dict[int, list[str]] = {}
+    for r in await conn.fetch("SELECT team_id, sleeper_player_id FROM trade_drops WHERE trade_id = $1", trade_id):
+        drops.setdefault(r["team_id"], []).append(r["sleeper_player_id"])
+    return drops
+
+
+async def _save_drops(conn, trade_id: int, team_id: int, drops: list[str]) -> None:
+    await conn.execute("DELETE FROM trade_drops WHERE trade_id = $1 AND team_id = $2", trade_id, team_id)
+    for pid in dict.fromkeys(drops):
+        await conn.execute(
+            "INSERT INTO trade_drops (trade_id, team_id, sleeper_player_id) VALUES ($1, $2, $3)", trade_id, team_id, pid
+        )
 
 
 async def _assert_before_deadline(conn, league_id: int, season: int) -> None:
@@ -239,6 +270,14 @@ async def get_trade(conn, trade_id: int) -> dict | None:
         trade_id,
     )
     trade["assets"] = [dict(a) for a in assets]
+    trade["drops"] = [
+        dict(d)
+        for d in await conn.fetch(
+            "SELECT d.team_id, d.sleeper_player_id, p.full_name AS player_name, p.position "
+            "FROM trade_drops d JOIN players p ON p.sleeper_player_id = d.sleeper_player_id WHERE d.trade_id = $1",
+            trade_id,
+        )
+    ]
     return trade
 
 
@@ -306,16 +345,33 @@ async def list_league_trades(conn, league_id: int, season: int, viewer_team_id: 
 async def propose_trade(
     conn, league_id: int, season: int, proposing_team_id: int, receiving_team_id: int,
     give: list[str], receive: list[str], note: str | None = None,
+    drops: list[str] | None = None, counter_of: int | None = None,
 ) -> dict:
+    """`drops`: the proposer's own cuts to make room (a 2-for-1 coming
+    in). `counter_of`: an offer made TO the proposer that this one
+    answers — it's declined in the same transaction."""
     if proposing_team_id == receiving_team_id:
         raise SameTeamTradeError("Can't propose a trade with your own team")
     if not give or not receive:
         raise EmptyTradeError("A trade needs at least one player on each side")
 
     await _assert_before_deadline(conn, league_id, season)
+    drops = list(dict.fromkeys(drops or []))
 
     async with conn.transaction():
-        await _validate_assets(conn, season, league_id, proposing_team_id, receiving_team_id, give, receive)
+        if counter_of is not None:
+            original = await get_trade(conn, counter_of)
+            if (
+                original is None or original["status"] != "pending"
+                or original["receiving_team_id"] != proposing_team_id
+                or original["proposing_team_id"] != receiving_team_id
+            ):
+                raise TradeNotPendingError("That offer can't be countered any more")
+            await conn.execute("UPDATE trades SET status = 'rejected', resolved_at = now() WHERE id = $1", counter_of)
+        await _validate_assets(
+            conn, season, league_id, proposing_team_id, receiving_team_id, give, receive, {proposing_team_id: drops},
+            receiver_can_still_drop=True,
+        )
         trade_id = await conn.fetchval(
             "INSERT INTO trades (league_id, season, proposing_team_id, receiving_team_id, expires_at, note) "
             "VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5), $6) RETURNING id",
@@ -333,6 +389,7 @@ async def propose_trade(
                 "VALUES ($1, $2, $3, $4)",
                 trade_id, pid, receiving_team_id, proposing_team_id,
             )
+        await _save_drops(conn, trade_id, proposing_team_id, drops)
     return await get_trade(conn, trade_id)
 
 
@@ -342,10 +399,33 @@ async def _apply_trade(conn, trade: dict) -> None:
     matching current_rosters' one-row-per-(team,player) shape and its
     acquired_via convention (every other acquisition path here inserts
     a fresh row too, see lineup_engine.add_free_agent)."""
-    give = [a["sleeper_player_id"] for a in trade["assets"] if a["from_team_id"] == trade["proposing_team_id"]]
-    receive = [a["sleeper_player_id"] for a in trade["assets"] if a["from_team_id"] == trade["receiving_team_id"]]
+    from app.domain import waivers
+    from app.queries.roster_transactions import log_transaction
+
+    give, receive = _sides(trade)
+    drops = await _trade_drops(conn, trade["id"])
     await _validate_assets(
-        conn, trade["season"], trade["league_id"], trade["proposing_team_id"], trade["receiving_team_id"], give, receive
+        conn, trade["season"], trade["league_id"], trade["proposing_team_id"], trade["receiving_team_id"], give, receive,
+        drops,
+    )
+    # Room first: each side's cuts go back to free agency, through
+    # waivers like any other drop (me.py's /team/lineup/drop).
+    for team_id, pids in drops.items():
+        for pid in pids:
+            await keep_if_played(conn, trade["season"], trade["league_id"], team_id, pid)
+            await conn.execute(
+                "DELETE FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
+                trade["season"], team_id, pid,
+            )
+            await log_transaction(
+                conn, trade["season"], team_id, source="free_agent", dropped_sleeper_player_id=pid,
+                league_id=trade["league_id"],
+            )
+            await waivers.start_waiver_clock(conn, trade["season"], trade["league_id"], pid)
+    # Traded players come off the trade block their old team listed them on.
+    await conn.execute(
+        "DELETE FROM trade_block WHERE sleeper_player_id = ANY($1::text[])",
+        [a["sleeper_player_id"] for a in trade["assets"]],
     )
     for asset in trade["assets"]:
         # A starter who already played this week keeps those points for
@@ -362,7 +442,11 @@ async def _apply_trade(conn, trade: dict) -> None:
         )
 
 
-async def respond_to_trade(conn, trade_id: int, responding_user_id: int, accept: bool) -> dict:
+async def respond_to_trade(
+    conn, trade_id: int, responding_user_id: int, accept: bool, drops: list[str] | None = None,
+) -> dict:
+    """`drops`: the receiver's cuts to make room, when accepting a
+    trade that brings them more players than it sends out."""
     trade = await get_trade(conn, trade_id)
     if trade is None:
         raise TradeNotFoundError(f"Trade {trade_id} not found")
@@ -379,6 +463,7 @@ async def respond_to_trade(conn, trade_id: int, responding_user_id: int, accept:
     settings = await get_trade_settings(conn, trade["league_id"], trade["season"])
     mode = settings["review_mode"]
     async with conn.transaction():
+        await _save_drops(conn, trade_id, trade["receiving_team_id"], list(drops or []))
         if mode == "none" or (mode in ("commissioner", "league_vote") and settings["review_hours"] == 0):
             await _apply_trade(conn, trade)
             await conn.execute(
@@ -391,7 +476,7 @@ async def respond_to_trade(conn, trade_id: int, responding_user_id: int, accept:
             give, receive = _sides(trade)
             await _validate_assets(
                 conn, trade["season"], trade["league_id"], trade["proposing_team_id"], trade["receiving_team_id"],
-                give, receive,
+                give, receive, await _trade_drops(conn, trade_id),
             )
             if mode == "approval":
                 await conn.execute(

@@ -305,7 +305,7 @@ async def list_members(conn, league_id: int):
     return await conn.fetch(
         """
         SELECT lm.user_id, lm.role, lm.joined_at,
-               COALESCE(o.display_name, u.display_name) AS display_name
+               COALESCE(o.display_name, u.display_name) AS display_name, o.logo_url
         FROM league_members lm
         JOIN users u ON u.id = lm.user_id
         LEFT JOIN owner_users ou ON ou.user_id = lm.user_id

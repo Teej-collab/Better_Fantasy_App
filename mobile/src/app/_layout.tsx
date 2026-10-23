@@ -201,6 +201,8 @@ function RootStack() {
           <Stack.Screen name="cards" options={{ title: 'Player Cards', headerBackTitle: 'History' }} />
           <Stack.Screen name="draft-grades/[season]" options={{ title: 'Draft', headerBackTitle: 'History' }} />
           <Stack.Screen name="trades" options={{ title: 'Trades', headerBackTitle: 'Team' }} />
+          <Stack.Screen name="trade-builder" options={{ title: 'Build a Trade', headerBackTitle: 'Trades' }} />
+          <Stack.Screen name="trade/[id]" options={{ title: 'Trade', headerBackTitle: 'Trades' }} />
           <Stack.Screen name="keepers" options={{ title: 'Keepers', headerBackTitle: 'Team' }} />
           <Stack.Screen name="leagues" options={{ title: 'Leagues' }} />
           <Stack.Screen name="whats-new" options={{ title: "What's New", headerBackTitle: 'Back' }} />

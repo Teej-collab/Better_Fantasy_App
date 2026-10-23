@@ -26,6 +26,8 @@ const ROUTE_PREFIXES: [string, string][] = [
   ['/draft', 'nav_draft'],
   ['/keepers', 'nav_keepers'],
   ['/free-agents', 'nav_free_agents'],
+  ['/trade-builder', 'nav_trade_builder'],
+  ['/trade/', 'nav_trade'],
   ['/trades', 'nav_trades'],
   ['/teams', 'nav_teams'],
   ['/team', 'nav_team'],

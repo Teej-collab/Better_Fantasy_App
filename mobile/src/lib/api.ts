@@ -63,6 +63,8 @@ import type {
   Team,
   TeamDetail,
   Trade,
+  TradeBlockPlayer,
+  TradeEvaluation,
   TradeRosterPlayer,
   KeeperRules,
   MyKeepers,
@@ -178,7 +180,9 @@ let actionListener: ((target: string) => void) | null = null;
 export function setActionListener(fn: (target: string) => void): void {
   actionListener = fn;
 }
-const AUTOMATIC = /^\/(auth|admin|push|chat\/conversations\/\d+\/read)(\/|$)|\/(read|seen|presence|heartbeat|ticket)(\/|\?|$)/;
+// The trade builder's live value read (trades/evaluate) runs on every pick:
+// not an action.
+const AUTOMATIC = /^\/(auth|admin|push|chat\/conversations\/\d+\/read|trades\/evaluate)(\/|$)|\/(read|seen|presence|heartbeat|ticket)(\/|\?|$)/;
 export function actionTarget(method: string, path: string): string | null {
   const bare = path.split('?')[0];
   if (AUTOMATIC.test(bare)) return null;
@@ -543,11 +547,37 @@ export const api = {
   tradeTeams: () => request<{ teams: Team[] }>('/trades/teams'),
   tradeRoster: (teamId: number) => request<{ roster: TradeRosterPlayer[] }>(`/trades/teams/${teamId}/roster`),
   myTrades: () => request<{ trades: Trade[] }>('/trades/mine'),
-  proposeTrade: (receivingTeamId: number, give: string[], receive: string[], note?: string) =>
+  proposeTrade: (
+    receivingTeamId: number,
+    give: string[],
+    receive: string[],
+    note?: string,
+    extra?: { drops?: string[]; counterOf?: number | null },
+  ) =>
     request<Trade>('/trades', {
       method: 'POST',
-      body: JSON.stringify({ receiving_team_id: receivingTeamId, give, receive, note: note || null }),
+      body: JSON.stringify({
+        receiving_team_id: receivingTeamId,
+        give,
+        receive,
+        note: note || null,
+        drops: extra?.drops ?? [],
+        counter_of: extra?.counterOf ?? null,
+      }),
     }),
+  evaluateTrade: (partnerTeamId: number, give: string[], receive: string[], drops: string[]) =>
+    request<TradeEvaluation>('/trades/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({ partner_team_id: partnerTeamId, give, receive, drops }),
+    }),
+  tradeEvaluation: (tradeId: number) => request<TradeEvaluation>(`/trades/${tradeId}/evaluation`),
+  acceptTrade: (tradeId: number, drops: string[]) =>
+    request<Trade>(`/trades/${tradeId}/accept`, { method: 'POST', body: JSON.stringify({ drops }) }),
+  tradeBlock: () => request<{ players: TradeBlockPlayer[] }>('/trades/block'),
+  addToTradeBlock: (sleeperPlayerId: string) =>
+    request<{ ok: boolean }>('/trades/block', { method: 'POST', body: JSON.stringify({ sleeper_player_id: sleeperPlayerId }) }),
+  removeFromTradeBlock: (sleeperPlayerId: string) =>
+    request<{ ok: boolean }>(`/trades/block/${encodeURIComponent(sleeperPlayerId)}`, { method: 'DELETE' }),
   leagueTrades: () => request<{ trades: Trade[]; settings: TradeSettings }>('/trades/league'),
   vetoVote: (tradeId: number, voting: boolean) =>
     request<Trade>(`/trades/${tradeId}/veto-vote`, { method: voting ? 'POST' : 'DELETE', body: voting ? '{}' : undefined }),

@@ -1029,9 +1029,56 @@ export type Trade = {
   veto_votes?: number;
   my_veto_vote?: boolean;
   assets: { sleeper_player_id: string; player_name: string; position: string; from_team_id: number; to_team_id: number }[];
+  // Who each side cuts to make room when it goes through (2026-10-23).
+  drops?: { team_id: number; sleeper_player_id: string; player_name: string; position: string | null }[];
+  // Points a week gained by the viewer's side, or for a trade between
+  // two other teams, which side it leans to (backend trade_values.py).
+  value?: TradeValueSummary | null;
 };
 
-export type TradeRosterPlayer = { sleeper_player_id: string; player_name: string; position: string };
+export type TradeValueSummary = { value_change: number; verdict: 'you' | 'them' | 'even' | 'leans'; leans_team_id: number | null };
+
+export type TradeRosterPlayer = {
+  sleeper_player_id: string;
+  player_name: string;
+  position: string;
+  per_week?: number;
+  pro_team?: string | null;
+  injury_status?: string | null;
+  on_block?: boolean;
+};
+
+// Trades overhaul (2026-10-23): the builder's and an offer's live read.
+export type TradeValuePlayer = { id: string; name: string; position: string | null; per_week: number };
+export type TradeEvaluation = {
+  week: number;
+  give: TradeValuePlayer[];
+  receive: TradeValuePlayer[];
+  value_change: number;
+  verdict: 'you' | 'them' | 'even';
+  my_lineup: {
+    before: number;
+    after: number;
+    change: number;
+    slots: { slot: string; before: string | null; after: string | null; delta: number }[];
+  };
+  their_lineup_change: number;
+  my_drops_needed: number;
+  their_drops_needed: number;
+  suggestion: { side: 'give' | 'receive'; player: TradeValuePlayer } | null;
+  drop_candidates: (TradeValuePlayer & { pro_team?: string | null })[];
+};
+
+export type TradeBlockPlayer = {
+  team_id: number;
+  team_name: string;
+  sleeper_player_id: string;
+  player_name: string;
+  position: string;
+  pro_team: string | null;
+  per_week: number;
+  created_at: string;
+};
 
 // Keepers (backend/app/routers/keepers.py; web types in frontend/src/lib/api.ts).
 export type KeeperRules = {
@@ -1552,6 +1599,7 @@ export type CommishSummary = {
 export type CommishMember = {
   user_id: number;
   display_name: string;
+  photo_url?: string | null;
   role: 'commissioner' | 'member';
   joined_at: string | null;
   last_active_at: string | null;

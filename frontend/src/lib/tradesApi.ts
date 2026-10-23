@@ -49,11 +49,58 @@ export type Trade = {
   // /trades/league only: whether the viewer has voted to veto it.
   my_veto_vote?: boolean;
   assets: TradeAsset[];
+  // Who each side cuts to make room when it goes through (2026-10-23).
+  drops?: { team_id: number; sleeper_player_id: string; player_name: string; position: string | null }[];
+  // Points a week gained by the viewer's side, or for a trade between
+  // two other teams, which side it leans to (backend trade_values.py).
+  value?: TradeValueSummary | null;
+};
+
+export type TradeValueSummary = { value_change: number; verdict: "you" | "them" | "even" | "leans"; leans_team_id: number | null };
+
+// Trades overhaul (2026-10-23): the builder's and an offer's live read.
+export type TradeValuePlayer = { id: string; name: string; position: string | null; per_week: number };
+export type TradeEvaluation = {
+  week: number;
+  give: TradeValuePlayer[];
+  receive: TradeValuePlayer[];
+  value_change: number;
+  verdict: "you" | "them" | "even";
+  my_lineup: {
+    before: number;
+    after: number;
+    change: number;
+    slots: { slot: string; before: string | null; after: string | null; delta: number }[];
+  };
+  their_lineup_change: number;
+  my_drops_needed: number;
+  their_drops_needed: number;
+  suggestion: { side: "give" | "receive"; player: TradeValuePlayer } | null;
+  drop_candidates: TradeValuePlayer[];
+};
+
+export type TradeBlockPlayer = {
+  team_id: number;
+  team_name: string;
+  sleeper_player_id: string;
+  player_name: string;
+  position: string;
+  pro_team: string | null;
+  per_week: number;
+  created_at: string;
 };
 
 export type TradeTeam = { team_id: number; team_name: string; owner_id: number; owner_name: string };
 
-export type TradeRosterPlayer = { sleeper_player_id: string; player_name: string; position: string };
+export type TradeRosterPlayer = {
+  sleeper_player_id: string;
+  player_name: string;
+  position: string;
+  per_week?: number;
+  pro_team?: string | null;
+  injury_status?: string | null;
+  on_block?: boolean;
+};
 
 export type TradeSettings = {
   season: number;
@@ -129,9 +176,39 @@ export async function proposeTrade(
   receivingTeamId: number,
   give: string[],
   receive: string[],
-  note?: string
+  note?: string,
+  extra?: { drops?: string[]; counterOf?: number | null }
 ): Promise<Trade> {
-  return post<Trade>("/trades", { receiving_team_id: receivingTeamId, give, receive, note: note || null });
+  return post<Trade>("/trades", {
+    receiving_team_id: receivingTeamId,
+    give,
+    receive,
+    note: note || null,
+    drops: extra?.drops ?? [],
+    counter_of: extra?.counterOf ?? null,
+  });
+}
+
+export async function evaluateTrade(partnerTeamId: number, give: string[], receive: string[], drops: string[]): Promise<TradeEvaluation> {
+  return post<TradeEvaluation>("/trades/evaluate", { partner_team_id: partnerTeamId, give, receive, drops });
+}
+
+export async function getTradeEvaluation(tradeId: number): Promise<TradeEvaluation> {
+  return get<TradeEvaluation>(`/trades/${tradeId}/evaluation`);
+}
+
+export async function getTradeBlock(): Promise<TradeBlockPlayer[]> {
+  const { players } = await get<{ players: TradeBlockPlayer[] }>("/trades/block");
+  return players;
+}
+
+export async function addToTradeBlock(sleeperPlayerId: string): Promise<void> {
+  await post("/trades/block", { sleeper_player_id: sleeperPlayerId });
+}
+
+export async function removeFromTradeBlock(sleeperPlayerId: string): Promise<void> {
+  const res = await fetch(`/api/backend/trades/block/${encodeURIComponent(sleeperPlayerId)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Couldn't take that player off the block.");
 }
 
 export async function voteToVeto(tradeId: number, voting: boolean): Promise<Trade> {
@@ -144,8 +221,8 @@ export async function voteToVeto(tradeId: number, voting: boolean): Promise<Trad
   return res.json();
 }
 
-export async function acceptTrade(tradeId: number): Promise<Trade> {
-  return post<Trade>(`/trades/${tradeId}/accept`, {});
+export async function acceptTrade(tradeId: number, drops: string[] = []): Promise<Trade> {
+  return post<Trade>(`/trades/${tradeId}/accept`, { drops });
 }
 
 export async function rejectTrade(tradeId: number): Promise<Trade> {

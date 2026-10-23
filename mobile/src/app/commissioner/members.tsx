@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router, Stack, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
@@ -125,9 +126,13 @@ function MemberCard({ member: m, color, isMe, open, onToggle, leagueId, everyone
   return (
     <View style={[styles.card, quiet && { borderColor: `${TONES.orange}66` }]}>
       <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: open }} style={styles.cardHead}>
-        <View style={[styles.avatar, { backgroundColor: color }]}>
-          <Text style={styles.initial}>{m.display_name.charAt(0).toUpperCase()}</Text>
-        </View>
+        {m.photo_url ? (
+          <Image source={{ uri: m.photo_url }} style={styles.avatar} contentFit="cover" transition={150} accessible={false} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: color }]}>
+            <Text style={styles.initial}>{m.display_name.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
         <View style={p.flex}>
           <Text style={styles.name} numberOfLines={1}>
             {m.display_name}

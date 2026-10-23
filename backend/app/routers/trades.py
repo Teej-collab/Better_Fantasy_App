@@ -21,6 +21,7 @@ from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
 from app.domain import commish_log, league_format
+from app.domain import trade_values
 from app.domain import trades as trades_domain
 from app.domain.trade_exceptions import (
     NotYourTradeError,
@@ -90,7 +91,19 @@ def _trade_dict(trade: dict) -> dict:
         "veto_votes": trade.get("veto_votes", 0),
         "my_veto_vote": trade.get("my_veto_vote", False),
         "assets": trade["assets"],
+        "drops": trade.get("drops", []),
+        "value": trade.get("value"),
     }
+
+
+async def _with_values(conn, trades_list: list[dict], season: int, my_team_id: int | None) -> list[dict]:
+    """Adds each trade's one-line value read (app/domain/trade_values.py)."""
+    week = await trade_values.current_week(conn, season)
+    ids = sorted({a["sleeper_player_id"] for t in trades_list for a in t["assets"]})
+    values = await trade_values.player_values(conn, season, week, ids)
+    for t in trades_list:
+        t["value"] = trade_values.summary_for(t, my_team_id or 0, values)
+    return trades_list
 
 
 async def _catch_up(conn, league_id: int | None = None) -> None:
@@ -117,13 +130,27 @@ async def league_teams(request: Request, pool=Depends(get_pool)):
 @router.get("/teams/{team_id}/roster")
 async def team_roster(team_id: int, request: Request, pool=Depends(get_pool)):
     """Any league member can view any team's current roster — you need
-    to see the other side's roster to propose a trade with them."""
+    to see the other side's roster to propose a trade with them. Each
+    player carries their points a week (app/domain/trade_values.py) and
+    whether they're on the trade block."""
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         await require_active_league_id(conn, payload)
         roster = await trades_domain.get_team_roster_for_trade(conn, season, team_id)
-    return {"roster": roster}
+        week = await trade_values.current_week(conn, season)
+        values = await trade_values.player_values(conn, season, week, [p["sleeper_player_id"] for p in roster])
+        on_block = {
+            r["sleeper_player_id"]
+            for r in await conn.fetch("SELECT sleeper_player_id FROM trade_block WHERE team_id = $1", team_id)
+        }
+    for p in roster:
+        v = values.get(p["sleeper_player_id"], {})
+        p["per_week"] = v.get("per_week", 0.0)
+        p["pro_team"] = v.get("pro_team")
+        p["injury_status"] = v.get("injury_status")
+        p["on_block"] = p["sleeper_player_id"] in on_block
+    return {"roster": sorted(roster, key=lambda p: -p["per_week"])}
 
 
 class ProposeTradeRequest(BaseModel):
@@ -131,6 +158,11 @@ class ProposeTradeRequest(BaseModel):
     give: list[str]
     receive: list[str]
     note: str | None = None
+    # The proposer's own cuts, when the trade brings them more players
+    # than it sends (app/domain/trades.py's trade_drops).
+    drops: list[str] = []
+    # Answering an offer made to you: that one is declined.
+    counter_of: int | None = None
 
 
 @router.post("")
@@ -143,7 +175,8 @@ async def propose_trade(body: ProposeTradeRequest, request: Request, pool=Depend
             raise HTTPException(status_code=409, detail=message)
         try:
             trade = await trades_domain.propose_trade(
-                conn, league_id, season, team_id, body.receiving_team_id, body.give, body.receive, body.note
+                conn, league_id, season, team_id, body.receiving_team_id, body.give, body.receive, body.note,
+                drops=body.drops, counter_of=body.counter_of,
             )
         except TradeError as e:
             raise _map_trade_error(e) from e
@@ -158,7 +191,7 @@ async def my_trades(request: Request, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         team_id, league_id = await _require_my_team(conn, payload, season)
         await _catch_up(conn, league_id)
-        trades_list = await trades_domain.list_trades_for_team(conn, team_id)
+        trades_list = await _with_values(conn, await trades_domain.list_trades_for_team(conn, team_id), season, team_id)
     return {"trades": [_trade_dict(t) for t in trades_list]}
 
 
@@ -176,7 +209,9 @@ async def league_trades(request: Request, pool=Depends(get_pool)):
             season, owner_id, league_id,
         )
         await _catch_up(conn, league_id)
-        trades_list = await trades_domain.list_league_trades(conn, league_id, season, my_team_id)
+        trades_list = await _with_values(
+            conn, await trades_domain.list_league_trades(conn, league_id, season, my_team_id), season, my_team_id
+        )
         settings = await trades_domain.get_trade_settings(conn, league_id, season)
     return {"trades": [_trade_dict(t) for t in trades_list], "settings": settings}
 
@@ -214,12 +249,20 @@ async def pending_trades(request: Request, pool=Depends(get_pool)):
     return {"trades": [_trade_dict(t) for t in trades_list]}
 
 
+class AcceptTradeRequest(BaseModel):
+    # The receiver's cuts to make room, for a trade bringing them more
+    # players than it sends.
+    drops: list[str] = []
+
+
 @router.post("/{trade_id}/accept")
-async def accept_trade(trade_id: int, request: Request, pool=Depends(get_pool)):
+async def accept_trade(trade_id: int, request: Request, body: AcceptTradeRequest | None = None, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
         try:
-            trade = await trades_domain.respond_to_trade(conn, trade_id, payload["user_id"], accept=True)
+            trade = await trades_domain.respond_to_trade(
+                conn, trade_id, payload["user_id"], accept=True, drops=body.drops if body else None
+            )
         except TradeError as e:
             raise _map_trade_error(e) from e
         settings = await trades_domain.get_trade_settings(conn, trade["league_id"], trade["season"])
@@ -329,3 +372,129 @@ async def update_trade_settings(body: TradeSettingsRequest, request: Request, po
         if changes:
             await commish_log.record(conn, league_id, payload["user_id"], "trades", "; ".join(changes))
     return settings
+
+
+# ---- Trades overhaul (2026-10-23): value, lineup impact, the trade block ----
+
+
+class EvaluateTradeRequest(BaseModel):
+    partner_team_id: int
+    give: list[str] = []
+    receive: list[str] = []
+    drops: list[str] = []
+
+
+@router.post("/evaluate")
+async def evaluate_trade(body: EvaluateTradeRequest, request: Request, pool=Depends(get_pool)):
+    """The builder's live read on a trade being put together: value
+    gap, your lineup before and after, drops needed, and a suggestion
+    that would even it out. Nothing is saved."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        team_id, league_id = await _require_my_team(conn, payload, season)
+        partner = await conn.fetchval(
+            "SELECT id FROM teams_by_season WHERE id = $1 AND league_id = $2 AND season = $3",
+            body.partner_team_id, league_id, season,
+        )
+        if partner is None or partner == team_id:
+            raise HTTPException(status_code=404, detail="That team isn't in your league")
+        result = await trade_values.evaluate(
+            conn, season, league_id, team_id, partner, body.give, body.receive, body.drops
+        )
+        result["drop_candidates"] = (
+            await trade_values.drop_candidates(conn, season, team_id, body.give) if result["my_drops_needed"] else []
+        )
+    return result
+
+
+@router.get("/{trade_id}/evaluation")
+async def trade_evaluation(trade_id: int, request: Request, pool=Depends(get_pool)):
+    """The same read for an existing trade, from the caller's side —
+    what an offer to you does to your lineup, and who you could drop
+    if it brings in more players than it sends."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        team_id, league_id = await _require_my_team(conn, payload, season)
+        trade = await trades_domain.get_trade(conn, trade_id)
+        if trade is None or team_id not in (trade["proposing_team_id"], trade["receiving_team_id"]):
+            raise HTTPException(status_code=404, detail="Trade not found")
+        other = trade["receiving_team_id"] if team_id == trade["proposing_team_id"] else trade["proposing_team_id"]
+        give = [a["sleeper_player_id"] for a in trade["assets"] if a["from_team_id"] == team_id]
+        receive = [a["sleeper_player_id"] for a in trade["assets"] if a["from_team_id"] == other]
+        my_drops = [d["sleeper_player_id"] for d in trade["drops"] if d["team_id"] == team_id]
+        result = await trade_values.evaluate(conn, season, league_id, team_id, other, give, receive, my_drops)
+        needed = result["my_drops_needed"]
+        result["drop_candidates"] = await trade_values.drop_candidates(conn, season, team_id, give) if needed else []
+    return result
+
+
+@router.get("/block")
+async def trade_block(request: Request, pool=Depends(get_pool)):
+    """Everyone's trade block in the caller's active league, players
+    still on the team that listed them."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        rows = await conn.fetch(
+            """
+            SELECT b.team_id, b.sleeper_player_id, b.created_at, t.team_name, p.full_name AS player_name, p.position
+            FROM trade_block b
+            JOIN current_rosters cr ON cr.team_id = b.team_id AND cr.sleeper_player_id = b.sleeper_player_id AND cr.season = b.season
+            JOIN teams_by_season t ON t.id = b.team_id
+            JOIN players p ON p.sleeper_player_id = b.sleeper_player_id
+            WHERE b.league_id = $1 AND b.season = $2
+            ORDER BY b.created_at DESC
+            """,
+            league_id, season,
+        )
+        week = await trade_values.current_week(conn, season)
+        values = await trade_values.player_values(conn, season, week, [r["sleeper_player_id"] for r in rows])
+    return {
+        "players": [
+            {
+                **dict(r),
+                "per_week": values.get(r["sleeper_player_id"], {}).get("per_week", 0.0),
+                "pro_team": values.get(r["sleeper_player_id"], {}).get("pro_team"),
+            }
+            for r in rows
+        ]
+    }
+
+
+class TradeBlockRequest(BaseModel):
+    sleeper_player_id: str
+
+
+@router.post("/block")
+async def add_to_trade_block(body: TradeBlockRequest, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        team_id, league_id = await _require_my_team(conn, payload, season)
+        on_roster = await conn.fetchval(
+            "SELECT 1 FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
+            season, team_id, body.sleeper_player_id,
+        )
+        if not on_roster:
+            raise HTTPException(status_code=400, detail="That player isn't on your team")
+        await conn.execute(
+            "INSERT INTO trade_block (league_id, season, team_id, sleeper_player_id) VALUES ($1, $2, $3, $4) "
+            "ON CONFLICT DO NOTHING",
+            league_id, season, team_id, body.sleeper_player_id,
+        )
+    return {"ok": True}
+
+
+@router.delete("/block/{sleeper_player_id}")
+async def remove_from_trade_block(sleeper_player_id: str, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        team_id, _ = await _require_my_team(conn, payload, season)
+        await conn.execute(
+            "DELETE FROM trade_block WHERE team_id = $1 AND sleeper_player_id = $2", team_id, sleeper_player_id
+        )
+    return {"ok": True}

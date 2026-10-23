@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -81,7 +81,7 @@ export default function TeamScreen() {
         {isMine ? (
           <ActionButton label="Edit lineup in My Team" onPress={() => router.navigate('/team')} />
         ) : (
-          <ActionButton label="Propose Trade" onPress={() => router.push({ pathname: '/trades', params: { team: String(t.team_id) } })} />
+          <ActionButton label="Propose Trade" onPress={() => router.push(`/trade-builder?team=${t.team_id}` as Href)} />
         )}
         <ActionButton label="Owner profile" secondary onPress={() => openOwner(t.owner_id, t.season)} />
       </View>

@@ -681,6 +681,25 @@ export function useLeagueTrades() {
   return useQuery({ queryKey: ['league-trades'], queryFn: () => api.leagueTrades() });
 }
 
+export function useTradeBlock() {
+  return useQuery({ queryKey: ['trade-block'], queryFn: async () => (await api.tradeBlock()).players });
+}
+
+export function useTradeEvaluation(tradeId: number | null) {
+  return useQuery({
+    queryKey: ['trade-evaluation', tradeId],
+    queryFn: () => api.tradeEvaluation(tradeId!),
+    enabled: tradeId !== null,
+  });
+}
+
+// After any trade action: lists, the block, rosters it may have moved.
+export function refreshTrades() {
+  for (const key of ['my-trades', 'league-trades', 'trade-block', 'trade-roster', 'trade-evaluation']) {
+    void queryClient.invalidateQueries({ queryKey: [key] });
+  }
+}
+
 export function useMyKeepers() {
   return useQuery({ queryKey: ['my-keepers'], queryFn: api.myKeepers });
 }

@@ -128,9 +128,14 @@ function MemberCard({ member: m, color, isMe, open, onToggle, leagueId, everyone
   return (
     <div className={`${panelClass} flex flex-col gap-3 p-3`} style={quiet ? { borderColor: `${TONES.orange}88` } : undefined}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-3 text-left">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full font-extrabold text-black" style={{ backgroundColor: color }}>
-          {m.display_name.charAt(0).toUpperCase()}
-        </span>
+        {m.photo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={m.photo_url} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+        ) : (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full font-extrabold text-black" style={{ backgroundColor: color }}>
+            {m.display_name.charAt(0).toUpperCase()}
+          </span>
+        )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate font-bold">
             {m.display_name}
