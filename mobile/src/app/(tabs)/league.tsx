@@ -6,6 +6,7 @@ import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { LeagueHub } from '@/components/league/LeagueHub';
 import { SeasonTabs } from '@/components/league/LeagueUI';
 import { RulesSection } from '@/components/league/RulesSection';
+import { ScoringSection } from '@/components/league/ScoringSection';
 import {
   ActivitySection,
   HistorySection,
@@ -30,6 +31,7 @@ const LEAGUE_SECTIONS = [
   { key: 'standings', label: 'Standings' },
   { key: 'powerRankings', label: 'Power Rankings' },
   { key: 'rivalries', label: 'Rivalries' },
+  { key: 'scoring', label: 'Scoring' },
   { key: 'rules', label: 'Rules' },
   { key: 'history', label: 'History' },
   { key: 'activity', label: 'Activity' },
@@ -112,6 +114,7 @@ function LeagueScreenContent() {
         {section === 'standings' && <StandingsSection key={params.w ?? params.view ?? 'standings'} season={shownSeason} initialView={params.view} whatIf={params.w} />}
         {section === 'powerRankings' && <PowerRankingsSection season={shownSeason} />}
         {section === 'rivalries' && <RivalriesSection />}
+        {section === 'scoring' && <ScoringSection />}
         {section === 'rules' && <RulesSection scrollTo={(y) => scrollRef.current?.scrollTo({ y, animated: true })} />}
         {section === 'history' && <HistorySection latestSeason={latest} />}
         {section === 'activity' && <ActivitySection season={latest} />}

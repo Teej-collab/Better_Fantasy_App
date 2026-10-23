@@ -7,7 +7,8 @@ import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAppearance } from '@/lib/appearance';
 import { formatSummary, LEAGUE_TYPES } from '@/lib/leagueFormat';
-import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings, usePunishmentWheel } from '@/lib/queries';
+import { useActiveLeagueName, useHouseRules, useMe, usePlayoffSettings, usePunishmentWheel, useScoringCatalog } from '@/lib/queries';
+import { scoringSummary } from '@/lib/scoringDisplay';
 
 // The 2026 Official Rulebook, word for word from the web's
 // frontend/src/app/(app)/rules/page.tsx. Keep the two in sync when the
@@ -72,6 +73,7 @@ function LeagueSettingsRules() {
   const playoffs = usePlayoffSettings().data;
   const houseRules = useHouseRules().data;
   const leagueName = useActiveLeagueName().data;
+  const scoring = useScoringCatalog().data;
   const noop = () => {};
   const type = format ? LEAGUE_TYPES.find((t) => t.key === format.league_type) : undefined;
   return (
@@ -92,6 +94,10 @@ function LeagueSettingsRules() {
           />
         </Section>
       )}
+      <Section onMeasure={noop} id="scoring" emoji="🧮" title="Scoring">
+        <P>{scoring ? `${scoringSummary(scoring).join(' · ')}.` : 'Every stat and what it’s worth.'}</P>
+        <Link label="→ See every scoring rule" onPress={() => router.navigate({ pathname: '/league', params: { section: 'scoring' } })} />
+      </Section>
       <Section onMeasure={noop} id="lineups" emoji="📋" title="Lineups & Waivers">
         <Bullets
           items={[
@@ -303,6 +309,7 @@ function OfficialRulebook({ scrollTo }: { scrollTo: (y: number) => void }) {
           <Row label="Missed 50+ yard FG" value="0 points" last />
         </View>
         <P soft>Punters will NOT be added as a roster position.</P>
+        <Link label="→ See every scoring rule" onPress={() => router.navigate({ pathname: '/league', params: { section: 'scoring' } })} />
       </Section>
 
       <Section onMeasure={measure} id="tiebreakers" emoji="🏆" title="Playoff Tiebreakers">

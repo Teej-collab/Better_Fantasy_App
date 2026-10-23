@@ -735,6 +735,11 @@ export function usePlayoffSettings() {
   return useQuery({ queryKey: ['playoff-settings'], queryFn: api.playoffSettings });
 }
 
+// Every rule the league scores, for League → Scoring (any member).
+export function useScoringCatalog() {
+  return useQuery({ queryKey: ['scoring-catalog'], queryFn: api.scoringCatalog });
+}
+
 export function useScoringRulesEditor() {
   return useQuery({ queryKey: ['scoring-rules-editor'], queryFn: api.scoringRulesEditor });
 }

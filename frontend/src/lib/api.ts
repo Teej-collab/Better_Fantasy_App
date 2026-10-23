@@ -1,5 +1,6 @@
 import { nflTeamColor } from "@/lib/nfl-teams";
 import type { LeagueFormat } from "@/lib/leagueFormat";
+import type { ScoringCatalog } from "@/lib/leaguesApi";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -3503,3 +3504,9 @@ export async function trackAnalyticsEvent(body: {
   }
 }
 
+
+// Every rule the league scores (League → Scoring). Null when signed out
+// or not in a league.
+export async function getScoringCatalogServer(sessionCookie: string | undefined): Promise<ScoringCatalog | null> {
+  return getServerOrNull<ScoringCatalog>("/league/scoring-catalog", sessionCookie);
+}

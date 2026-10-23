@@ -56,6 +56,7 @@ export const LEAGUE_SECTION_ROUTES: Record<string, string> = {
   standings: '/standings',
   powerRankings: '/power-rankings',
   rivalries: '/rivalries',
+  scoring: '/scoring',
   rules: '/rules',
   history: '/history',
   activity: '/activity',

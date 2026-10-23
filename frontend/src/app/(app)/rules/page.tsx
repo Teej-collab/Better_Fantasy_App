@@ -282,6 +282,9 @@ export default async function RulesPage() {
         </div>
 
         <p className="text-black/60 dark:text-white/60">Punters will NOT be added as a roster position.</p>
+        <Link href="/scoring" className="font-medium hover:underline" style={{ color: ACCENT_GLOW }}>
+          → See every scoring rule
+        </Link>
       </RuleSection>
 
       <RuleSection id="tiebreakers" emoji="🏆" title="Playoff Tiebreakers">

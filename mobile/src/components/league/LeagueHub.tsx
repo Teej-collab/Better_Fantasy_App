@@ -5,14 +5,15 @@ import { Text } from '@/components/Text';
 import { Spacing } from '@/constants/theme';
 import { ordinal } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
-import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useSeasonTeams, useStandings } from '@/lib/queries';
+import { useLeagueActivity, useMe, useMyWeek, usePowerRankingsTrend, useRivalries, useScoringCatalog, useSeasonTeams, useStandings } from '@/lib/queries';
+import { scoringSummary } from '@/lib/scoringDisplay';
 import type { LeagueActivityItem } from '@/lib/types';
 
 // The League tab's front page (2026-10-22, League page mockup C): every
 // section as a card showing your own line from it, so nothing hides in
 // a scrolling chip row. Tapping a card opens that section.
 
-export type HubSection = 'league' | 'standings' | 'powerRankings' | 'rivalries' | 'rules' | 'history' | 'activity';
+export type HubSection = 'league' | 'standings' | 'powerRankings' | 'rivalries' | 'scoring' | 'rules' | 'history' | 'activity';
 
 const COLORS = {
   standings: '#4ade80',
@@ -20,6 +21,7 @@ const COLORS = {
   rivalries: '#ff8a3d',
   activity: '#4cc3ff',
   teams: '#c084fc',
+  scoring: '#2dd4bf',
   rules: '#9aa3b2',
   history: '#f472b6',
 };
@@ -83,6 +85,7 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
   const rivalries = useRivalries().data ?? [];
   const activity = useLeagueActivity(season, 1).data ?? [];
   const teams = useSeasonTeams(season).data ?? [];
+  const scoring = useScoringCatalog().data;
 
   const myIndex = standings.findIndex((r) => r.team_id === teamId);
   const mine = myIndex >= 0 ? standings[myIndex] : null;
@@ -129,9 +132,23 @@ export function LeagueHub({ season, onOpen }: { season: number | null; onOpen: (
       />
       <HubCard label="Power" color={COLORS.power} title={nowRank ? `#${nowRank}` : null} detail={moved} onPress={() => onOpen('powerRankings')} />
       <HubCard label="Rivalries" color={COLORS.rivalries} title={rivalName} detail={series} onPress={() => onOpen('rivalries')} />
-      <HubCard label="Activity" color={COLORS.activity} title={latest?.title ?? null} detail={latest?.detail ?? 'Trades and pickups'} onPress={() => onOpen('activity')} />
+      <HubCard
+        wide
+        label="Activity"
+        color={COLORS.activity}
+        title={latest?.title ?? null}
+        detail={latest?.detail ?? 'Trades and pickups'}
+        onPress={() => onOpen('activity')}
+      />
       <HubCard label="Teams" color={COLORS.teams} title={teams.length ? `${teams.length} teams` : null} detail="Owners and polls" onPress={() => onOpen('league')} />
-      <HubCard label="Rules" color={COLORS.rules} title={null} detail="Scoring, waivers, punishments" onPress={() => onOpen('rules')} />
+      <HubCard
+        label="Scoring"
+        color={COLORS.scoring}
+        title={scoring ? (scoringSummary(scoring)[0] ?? null) : null}
+        detail="Every stat and what it's worth"
+        onPress={() => onOpen('scoring')}
+      />
+      <HubCard label="Rules" color={COLORS.rules} title={null} detail="Waivers, playoffs, house rules" onPress={() => onOpen('rules')} />
       <HubCard label="History" color={COLORS.history} title={null} detail="Recaps, awards, cards" onPress={() => onOpen('history')} />
     </View>
   );
