@@ -35,7 +35,7 @@ function describe(change: LineupChange): string {
 function TeamScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
   const tabBarScroll = useTabBarScroll();
-  const { ref: dragRef, onLayout: onScrollLayout, onContentSizeChange, autoScroll } = useDragAutoScroll();
+  const { ref: dragRef, onContentSizeChange, autoScroll } = useDragAutoScroll();
   // The tab's scroll-to-top ref and the drag auto-scroll's both point at the list.
   const setScrollRef = useCallback(
     (node: Animated.ScrollView | null) => {
@@ -116,7 +116,6 @@ function TeamScreenContent() {
       <Animated.ScrollView
         style={styles.screen}
         ref={setScrollRef}
-        onLayout={onScrollLayout}
         onContentSizeChange={onContentSizeChange}
         scrollEnabled={!dragging}
         {...tabBarScroll}

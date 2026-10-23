@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  measure,
   scrollTo,
   useAnimatedReaction,
   useAnimatedRef,
@@ -91,9 +92,9 @@ const MAX_SPEED = 14;
 export type DragAutoScroll = {
   pos: SharedValue<number>;
   speed: SharedValue<number>;
-  min: SharedValue<number>;
   edges: SharedValue<{ top: number; bottom: number }>;
-  offset: SharedValue<number>;
+  /** Call when a drag starts (UI thread): measures the list on screen. */
+  begin: () => void;
 };
 
 /** For the screen's ScrollView: an animated ref, its props, and what LineupEditor needs. */
@@ -106,7 +107,6 @@ export function useDragAutoScroll() {
   const max = useSharedValue(0);
   const edges = useSharedValue({ top: 0, bottom: 0 });
   const content = useSharedValue(0);
-  const view = useSharedValue(0);
 
   useFrameCallback(() => {
     const sp = speed.get();
@@ -117,28 +117,25 @@ export function useDragAutoScroll() {
     scrollTo(animatedRef, 0, next, false);
   });
 
-  const updateMax = useCallback(() => max.set(Math.max(0, content.get() - view.get() + TAB_BAR_CONTENT_INSET)), [max, content, view]);
+  // Measured when the drag starts, on the UI thread (2026-10-22: measuring
+  // at layout never answered on a real phone, so the page never scrolled).
+  const begin = useCallback(() => {
+    'worklet';
+    const at = offset.get();
+    pos.set(at);
+    min.set(Math.min(at, 0));
+    speed.set(0);
+    const m = measure(animatedRef);
+    if (!m) return;
+    // The tab bar sits over the bottom of the list.
+    edges.set({ top: m.pageY, bottom: m.pageY + m.height - TAB_BAR_CONTENT_INSET });
+    max.set(Math.max(at, content.get() - m.height + TAB_BAR_CONTENT_INSET));
+  }, [offset, pos, min, speed, animatedRef, edges, max, content]);
+
   const ref = useCallback((node: Animated.ScrollView | null) => void animatedRef(node), [animatedRef]);
-  const onLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      view.set(e.nativeEvent.layout.height);
-      updateMax();
-      // Where the scroll view sits on screen, minus the tab bar over its bottom.
-      (e.currentTarget as unknown as View).measureInWindow((_x, y, _w, h) => {
-        edges.set({ top: y, bottom: y + h - TAB_BAR_CONTENT_INSET });
-      });
-    },
-    [view, updateMax, edges],
-  );
-  const onContentSizeChange = useCallback(
-    (_w: number, h: number) => {
-      content.set(h);
-      updateMax();
-    },
-    [content, updateMax],
-  );
-  const autoScroll = useMemo<DragAutoScroll>(() => ({ pos, speed, min, edges, offset }), [pos, speed, min, edges, offset]);
-  return { ref, onLayout, onContentSizeChange, autoScroll };
+  const onContentSizeChange = useCallback((_w: number, h: number) => content.set(h), [content]);
+  const autoScroll = useMemo<DragAutoScroll>(() => ({ pos, speed, edges, begin }), [pos, speed, edges, begin]);
+  return { ref, onContentSizeChange, autoScroll };
 }
 
 const targetKeyOf = (item: Placed): string | null =>
@@ -378,10 +375,8 @@ function PlayerRow({
     .activateAfterLongPress(220)
     .onStart(() => {
       if (autoScroll) {
-        const at = autoScroll.offset.get();
-        autoScroll.pos.set(at);
-        autoScroll.min.set(Math.min(at, 0));
-        startPos.set(at);
+        autoScroll.begin();
+        startPos.set(autoScroll.pos.get());
       }
       lastTranslation.set(0);
       lifted.set(true);
