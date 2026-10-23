@@ -6,7 +6,7 @@ copy of the server that holds the scheduler lease.
 
 What it watches, all from this process's own memory plus one trivial
 query, never ESPN itself:
-- ESPN refusing the server (it's going through the Vercel relay);
+- the Vercel relay ESPN goes through failing (the server falls back to asking ESPN directly);
 - live scores paused (ESPN and the relay both failing, so screens show
   the saved scoreboard);
 - a scheduled job failing over and over (3 runs in a row, or a single
@@ -92,10 +92,10 @@ async def current_problems(conn) -> list[Problem]:
             "scores_paused", "Live scores paused",
             "ESPN isn't answering, even through the relay. Screens show the last saved scoreboard.",
         ))
-    elif relay_status()["using_relay"]:
+    elif relay_status()["relay_down"]:
         problems.append(Problem(
-            "espn_relay", "ESPN is refusing the server",
-            "Going through the Vercel relay instead. Scores are still live.",
+            "espn_relay", "The ESPN relay is failing",
+            "The Vercel relay ESPN goes through isn't working, so the server is asking ESPN directly, which may refuse it.",
         ))
 
     for job_id, tick in get_job_ticks().items():

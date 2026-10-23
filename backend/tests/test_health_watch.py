@@ -23,7 +23,7 @@ def pushes(monkeypatch):
 
 
 def _espn_refusing(monkeypatch, refusing: bool):
-    monkeypatch.setattr(health_watch, "relay_status", lambda: {"using_relay": refusing, "relay_configured": True, "last_refused_at": None})
+    monkeypatch.setattr(health_watch, "relay_status", lambda: {"using_relay": True, "relay_down": refusing, "relay_configured": True, "last_refused_at": None})
 
 
 async def test_alerts_after_two_checks_and_clears_after_three(pool, pushes, monkeypatch):
@@ -32,7 +32,7 @@ async def test_alerts_after_two_checks_and_clears_after_three(pool, pushes, monk
         await health_watch.check(conn)
         assert pushes == []
         await health_watch.check(conn)
-        assert [p["title"] for p in pushes] == ["🔴 ESPN is refusing the server"]
+        assert [p["title"] for p in pushes] == ["🔴 The ESPN relay is failing"]
         assert pushes[0]["data"]["url"] == "/admin/brain"
 
         # Still refusing: no repeat alert.
@@ -44,7 +44,7 @@ async def test_alerts_after_two_checks_and_clears_after_three(pool, pushes, monk
         await health_watch.check(conn)
         assert len(pushes) == 1
         await health_watch.check(conn)
-        assert pushes[-1]["title"] == "✅ Back to normal: ESPN is refusing the server"
+        assert pushes[-1]["title"] == "✅ Back to normal: The ESPN relay is failing"
 
 
 async def test_a_one_check_blip_never_pings(pool, pushes, monkeypatch):

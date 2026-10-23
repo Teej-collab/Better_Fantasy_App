@@ -6,13 +6,16 @@ On 2026-10-22 ESPN started answering requests from Railway, where this
 backend runs, with 403 Forbidden, while the same requests from anywhere
 else still worked: the scoreboard, game summaries (live scoring),
 Gamecast plays, inactives and player pages all went dark at once. Every
-ESPN call now goes through espn_client(), whose transport tries ESPN
-directly and, when ESPN refuses (403 or 429) or can't be reached, sends
-the same GET through the website's relay on Vercel
+ESPN call now goes through espn_client().
+
+Since 2026-10-23 the relay is the default route: with the relay set up,
+every request goes through the website's relay on Vercel
 (frontend/src/app/api/espn-relay/route.ts), which fetches it from ESPN
-and hands back ESPN's own answer. After a refusal, requests go straight
-to the relay for a few minutes before trying ESPN directly again, so a
-blocked backend doesn't pay a wasted round trip on every call.
+and hands back ESPN's own answer. Going to ESPN first meant a refused
+request (and a 403 in the logs) every few minutes, for nothing. ESPN
+directly is now the backup: when the relay itself fails (it can't be
+reached, errors, or ESPN refuses Vercel too), the same request goes
+straight to ESPN.
 
 Configured by ESPN_RELAY_URL (the relay's full address) and
 ESPN_RELAY_SECRET (shared with the relay; it 404s without it). With
@@ -31,25 +34,34 @@ logger = logging.getLogger(__name__)
 
 ESPN_PUBLIC_HOSTS = frozenset({"site.api.espn.com", "site.web.api.espn.com", "sports.core.api.espn.com"})
 _REFUSED = frozenset({403, 429})
-_RELAY_FOR_SECONDS = 300.0
 
-# monotonic time until which requests skip ESPN and use the relay.
-_relay_until = 0.0
-# wall-clock time ESPN last refused (or couldn't be reached by) the backend.
+_RELAY_FAILED = frozenset({403, 429, 500, 502, 503, 504})
+# How long after a relay failure the Brain and health alerts call it down.
+_RELAY_DOWN_FOR_SECONDS = 300.0
+
+# monotonic time of the relay's last failure.
+_relay_failed_mono: float | None = None
+# wall-clock times: the relay's last failure, and ESPN's last refusal of
+# a direct request (only tried when the relay fails).
+relay_last_failed_at: float | None = None
 last_refused_at: float | None = None
 
 
 def reset_relay_state() -> None:
-    global _relay_until
-    _relay_until = 0.0
+    global _relay_failed_mono, relay_last_failed_at, last_refused_at
+    _relay_failed_mono = relay_last_failed_at = last_refused_at = None
 
 
 def relay_status() -> dict:
-    """For the live system map: is ESPN reached directly or through the
-    relay right now, and when did it last refuse the backend."""
+    """For the live system map: does ESPN go through the relay, has the
+    relay failed in the last few minutes, and when did ESPN last refuse
+    the backend directly."""
+    configured = _relay_config() is not None
     return {
-        "relay_configured": _relay_config() is not None,
-        "using_relay": time.monotonic() < _relay_until,
+        "relay_configured": configured,
+        "using_relay": configured,
+        "relay_down": _relay_failed_mono is not None and time.monotonic() - _relay_failed_mono < _RELAY_DOWN_FOR_SECONDS,
+        "relay_last_failed_at": relay_last_failed_at,
         "last_refused_at": last_refused_at,
     }
 
@@ -65,24 +77,10 @@ class _EspnTransport(httpx.AsyncBaseTransport):
         self._inner = httpx.AsyncHTTPTransport()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        global _relay_until, last_refused_at
+        global _relay_failed_mono, relay_last_failed_at, last_refused_at
         relay = _relay_config()
         if relay is None or request.method != "GET" or request.url.host not in ESPN_PUBLIC_HOSTS:
             return await self._inner.handle_async_request(request)
-
-        if time.monotonic() >= _relay_until:
-            try:
-                response = await self._inner.handle_async_request(request)
-            except httpx.TransportError as error:
-                reason = repr(error)
-            else:
-                if response.status_code not in _REFUSED:
-                    return response
-                reason = f"HTTP {response.status_code}"
-                await response.aclose()
-            _relay_until = time.monotonic() + _RELAY_FOR_SECONDS
-            last_refused_at = time.time()
-            logger.warning("ESPN refused the backend (%s); using the Vercel relay for %d minutes", reason, _RELAY_FOR_SECONDS // 60)
 
         relay_url, secret = relay
         relayed = httpx.Request(
@@ -91,7 +89,23 @@ class _EspnTransport(httpx.AsyncBaseTransport):
             headers={"x-relay-secret": secret, "accept": "application/json"},
             extensions=request.extensions,
         )
-        return await self._inner.handle_async_request(relayed)
+        try:
+            response = await self._inner.handle_async_request(relayed)
+        except httpx.TransportError as error:
+            reason = repr(error)
+        else:
+            if response.status_code not in _RELAY_FAILED:
+                return response
+            reason = f"HTTP {response.status_code}"
+            await response.aclose()
+        _relay_failed_mono = time.monotonic()
+        relay_last_failed_at = time.time()
+        logger.warning("The Vercel relay failed (%s); trying ESPN directly", reason)
+
+        response = await self._inner.handle_async_request(request)
+        if response.status_code in _REFUSED:
+            last_refused_at = time.time()
+        return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()

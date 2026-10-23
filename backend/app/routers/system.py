@@ -45,6 +45,7 @@ async def status(request: Request, pool=Depends(get_pool)):
 
     espn = relay_status()
     last_refused = espn.pop("last_refused_at")
+    relay_failed = espn.pop("relay_last_failed_at")
     now = datetime.now(timezone.utc)
     return {
         "checked_at": now.isoformat(),
@@ -58,6 +59,7 @@ async def status(request: Request, pool=Depends(get_pool)):
         "espn": {
             **espn,
             "last_refused_at": datetime.fromtimestamp(last_refused, timezone.utc).isoformat() if last_refused else None,
+            "relay_last_failed_at": datetime.fromtimestamp(relay_failed, timezone.utc).isoformat() if relay_failed else None,
             "scoreboard": live_scoreboard_status(),
         },
         "jobs": get_job_ticks(),
