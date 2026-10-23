@@ -803,6 +803,8 @@ export function useLeagueChanges() {
 }
 
 export function refreshCommish() {
+  // Trades waiting on review count toward the app icon's number (lib/appBadge.ts).
+  void queryClient.invalidateQueries({ queryKey: ['app-badge'] });
   return queryClient.invalidateQueries({ queryKey: ['commish'] });
 }
 

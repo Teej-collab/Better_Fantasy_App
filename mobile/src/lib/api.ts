@@ -567,6 +567,8 @@ export const api = {
     request<{ messages: ChatMessage[] }>(
       `/chat/conversations/${conversationId}/messages${before ? `?before=${before}` : ''}`,
     ),
+  // The number on the app icon (lib/appBadge.ts).
+  chatBadge: () => request<{ chat: number; commish: number; total: number }>('/chat/badge'),
   markChatRead: (conversationId: number) =>
     request<{ last_read_message_id: number | null }>(`/chat/conversations/${conversationId}/read`, { method: 'POST' }),
   // Toggles; the server broadcasts the result to everyone over the socket.

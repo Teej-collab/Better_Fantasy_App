@@ -65,7 +65,7 @@ async def deactivate_registration(conn, owner_id: int, device_id: str) -> bool:
 
 async def list_active_registrations_for_owner(conn, owner_id: int):
     return await conn.fetch(
-        "SELECT id, platform, push_token FROM native_push_tokens WHERE owner_id = $1 AND active",
+        "SELECT id, owner_id, platform, push_token FROM native_push_tokens WHERE owner_id = $1 AND active",
         owner_id,
     )
 

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState } from 'react-native';
 
 import { api, chatSocketUrl } from '@/lib/api';
+import { refreshAppBadge, useAppBadge } from '@/lib/appBadge';
 import { useAuth } from '@/lib/auth';
 import { compareConversations } from '@/lib/chatFormat';
 import { queryClient } from '@/lib/queries';
@@ -82,7 +83,10 @@ export function markConversationRead(conversationId: number) {
   queryClient.setQueryData<ChatConversation[]>(['chat-conversations'], (prev) =>
     prev?.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c)),
   );
-  api.markChatRead(conversationId).catch(() => {});
+  api
+    .markChatRead(conversationId)
+    .then(refreshAppBadge)
+    .catch(() => {});
 }
 
 export function ChatSocketProvider({ children }: { children: ReactNode }) {
@@ -93,6 +97,7 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [typingByConversation, setTypingByConversation] = useState<Record<number, Typist[]>>({});
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  useAppBadge();
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
@@ -139,6 +144,7 @@ export function ChatSocketProvider({ children }: { children: ReactNode }) {
           .sort(compareConversations),
       );
       if (isOpen && message.owner_id !== myOwnerId) markConversationRead(message.conversation_id);
+      else if (message.owner_id !== myOwnerId) refreshAppBadge();
     } else if (event.type === 'typing') {
       const key = `${event.conversation_id}:${event.owner_id}`;
       setTypingByConversation((prev) => {

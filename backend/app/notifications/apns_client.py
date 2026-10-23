@@ -64,7 +64,9 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
     (iOS renders the app icon itself) and are dropped; url/data ride
     alongside "aps" as custom top-level payload keys, the same way
     frontend/public/sw.js's push handler already expects them under
-    the web payload's own "data"/"url" keys."""
+    the web payload's own "data"/"url" keys. app_badge, when the
+    dispatcher adds it, is the number on the app icon
+    (app/domain/app_badge.py)."""
     message = {
         # sound: without it iOS delivers silently (no buzz or tone
         # on a locked phone). thread-id groups notifications of the
@@ -77,6 +79,8 @@ async def send_apns(push_token: str, payload: dict) -> tuple[bool, bool]:
         "url": payload.get("url"),
         "data": payload.get("data", {}),
     }
+    if payload.get("app_badge") is not None:
+        message["aps"]["badge"] = payload["app_badge"]
     result = await _get_client().send_notification(NotificationRequest(device_token=push_token, message=message))
     if result.is_successful:
         return True, False

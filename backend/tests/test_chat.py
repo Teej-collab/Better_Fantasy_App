@@ -1675,3 +1675,37 @@ async def test_deleting_a_chat_hides_it_for_you_until_a_new_message(pool, monkey
     assert back["last_message"]["body"] == "fresh"
     assert back["unread_count"] == 1
     assert [m["body"] for m in messages] == ["fresh"]  # the deleted history stays gone
+
+
+async def test_app_badge_counts_unread_chat_and_trades_waiting_on_a_commissioner(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    from app.domain import app_badge
+
+    commish_user, commish, league_id = await _seed_league_owner(pool, 9101, role="commissioner")
+    _, member, _ = await _seed_league_owner(pool, 9102, league_id=league_id)
+    _, outsider, _ = await _seed_league_owner(pool, 9103)
+    conversation_id = await _seed_direct_conversation(pool, commish, member)
+
+    async with pool.acquire() as conn:
+        await chat_queries.insert_message(conn, conversation_id, member, "hey", None)
+        await chat_queries.insert_message(conn, conversation_id, member, "you there", None)
+        await conn.execute(
+            "INSERT INTO trades (league_id, season, proposing_team_id, receiving_team_id, status) "
+            "SELECT $1, $2, a.id, b.id, 'awaiting_review' "
+            "FROM teams_by_season a, teams_by_season b "
+            "WHERE a.league_id = $1 AND b.league_id = $1 AND a.season = $2 AND b.season = $2 "
+            "AND a.owner_id = $3 AND b.owner_id = $4",
+            league_id, TEST_SEASON, commish, member,
+        )
+        counts = await app_badge.counts(conn, [commish, member, outsider])
+
+    assert counts[commish] == {"chat": 2, "commish": 1, "total": 3}
+    assert counts[member]["total"] == 0  # sent both, and not the commissioner
+    assert counts[outsider]["total"] == 0
+
+    token = create_session_token(_SESSION_SECRET, user_id=commish_user, owner_id=commish, discord_user_id=None, is_commissioner=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        client.cookies.update({"session": token})
+        resp = await client.get("/chat/badge")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 3

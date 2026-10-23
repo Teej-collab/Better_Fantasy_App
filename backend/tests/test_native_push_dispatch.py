@@ -161,3 +161,48 @@ async def test_native_delivery_failure_does_not_break_web_delivery_to_the_same_o
         delivered = await dispatcher_module.send_to_owner(conn, owner_id, {"title": "x", "body": "y"})
 
     assert delivered == 1  # web succeeded; native failed but didn't take the call down
+
+
+async def test_ios_push_carries_the_owners_unread_count_as_the_app_badge(pool, monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-secret-thats-at-least-32-bytes-long")
+    from app.queries import chat as chat_queries
+
+    payloads = []
+
+    async def fake_send_apns(push_token, payload):
+        payloads.append(payload)
+        return True, False
+
+    monkeypatch.setattr(apns_client_module, "send_apns", fake_send_apns)
+
+    owner_id = await _seed_owner(pool, "dispatch-badge")
+    other = await _seed_owner(pool, "dispatch-badge-other")
+    await _register_device(None, pool, owner_id, "dispatch-device-badge", token="apns-token-badge")
+
+    async with pool.acquire() as conn:
+        conversation_id = await chat_queries.get_or_create_direct_conversation(conn, owner_id, other)
+        for body in ("one", "two", "three"):
+            await chat_queries.insert_message(conn, conversation_id, other, body, None)
+        await chat_queries.insert_message(conn, conversation_id, owner_id, "mine", None)
+        await dispatcher_module.send_to_owners(conn, [owner_id], {"title": "x", "body": "y"})
+
+    assert [p.get("app_badge") for p in payloads] == [3]
+
+
+async def test_send_apns_puts_the_badge_in_aps(monkeypatch):
+    sent = []
+
+    class FakeResult:
+        is_successful = True
+
+    class FakeClient:
+        async def send_notification(self, request):
+            sent.append(request.message)
+            return FakeResult()
+
+    monkeypatch.setattr(apns_client_module, "_get_client", lambda sandbox=False: FakeClient())
+    await apns_client_module.send_apns("t", {"title": "a", "body": "b", "app_badge": 7})
+    await apns_client_module.send_apns("t", {"title": "a", "body": "b"})
+
+    assert sent[0]["aps"]["badge"] == 7
+    assert "badge" not in sent[1]["aps"]

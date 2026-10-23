@@ -27,6 +27,7 @@ import logging
 from pywebpush import WebPushException, webpush
 
 from app.config import require_vapid_configured
+from app.domain import app_badge
 from app.notifications import apns_client, fcm_client, formatter, quiet_hours
 from app.queries import native_push_tokens as native_queries
 from app.queries import owner_preferences as preferences_queries
@@ -110,6 +111,17 @@ async def send_to_native_registration(conn, registration_row, payload: dict) -> 
     return delivered
 
 
+async def _with_app_badges(conn, registrations, payload: dict) -> list[tuple]:
+    """Pairs each native registration with its payload, carrying the
+    owner's app icon number (app/domain/app_badge.py) for iPhones."""
+    owner_ids = [r["owner_id"] for r in registrations if r["platform"] == "ios"]
+    badges = await app_badge.totals(conn, owner_ids) if owner_ids else {}
+    return [
+        (r, {**payload, "app_badge": badges[r["owner_id"]]} if badges.get(r["owner_id"]) is not None else payload)
+        for r in registrations
+    ]
+
+
 async def _quiet_hours_allow(conn, owner_id: int, payload: dict, now: datetime.datetime) -> bool:
     """True if the push can go out now. Otherwise it's held for later
     (deferred_notifications) or dropped, per quiet_hours.decide."""
@@ -138,8 +150,8 @@ async def send_to_owner(conn, owner_id: int, payload: dict, now: datetime.dateti
         if await send_to_subscription(conn, sub, payload):
             delivered += 1
     native_registrations = await native_queries.list_active_registrations_for_owner(conn, owner_id)
-    for registration in native_registrations:
-        if await send_to_native_registration(conn, registration, payload):
+    for registration, native_payload in await _with_app_badges(conn, native_registrations, payload):
+        if await send_to_native_registration(conn, registration, native_payload):
             delivered += 1
     return delivered
 
@@ -159,8 +171,8 @@ async def send_to_owners(conn, owner_ids: list[int], payload: dict) -> int:
         if await send_to_subscription(conn, sub, payload):
             delivered += 1
     native_registrations = await native_queries.list_active_registrations_for_owners(conn, owner_ids)
-    for registration in native_registrations:
-        if await send_to_native_registration(conn, registration, payload):
+    for registration, native_payload in await _with_app_badges(conn, native_registrations, payload):
+        if await send_to_native_registration(conn, registration, native_payload):
             delivered += 1
     return delivered
 

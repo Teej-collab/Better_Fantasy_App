@@ -31,6 +31,7 @@ from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_sess
 from app.chat.manager import manager
 from app.config import _require
 from app.db import get_pool
+from app.domain import app_badge
 from app.domain import chat as chat_domain
 from app.domain import chat_video
 from app.image_url import validate_blob_image_url
@@ -101,6 +102,18 @@ async def _require_participant(conn, payload: dict, conversation_id: int, owner_
             await watch_party_queries.ensure_conversation_participant(conn, conversation_id, owner_id)
             return
     raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+
+@router.get("/badge")
+async def app_badge_count(request: Request, pool=Depends(get_pool)):
+    """The number on the app icon (app/domain/app_badge.py): unread
+    chat messages plus trades waiting on a commissioner."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            return {"chat": 0, "commish": 0, "total": 0}
+        return (await app_badge.counts(conn, [owner_id]))[owner_id]
 
 
 @router.get("/conversations")
