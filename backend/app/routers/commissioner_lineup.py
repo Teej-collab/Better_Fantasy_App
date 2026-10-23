@@ -142,7 +142,31 @@ async def commissioner_get_roster(league_id: int, team_id: int, request: Request
         await require_commissioner_of(conn, payload, league_id)
         await _require_team_in_league(conn, league_id, team_id, active_season)
         roster = await lineup_engine.get_roster(conn, active_season, team_id)
-    return {"roster": [_roster_entry_dict(e) for e in roster]}
+        # This week's projection and bye (2026-10-23, Fix a lineup), so
+        # the commissioner sees who can't play and who could replace them.
+        week = await league_queries.get_cached_current_week(conn, active_season)
+        ids = [e["sleeper_player_id"] for e in roster]
+        projected, byes = {}, set()
+        if week is not None and ids:
+            projected = {
+                r["sleeper_player_id"]: float(r["projected_points"])
+                for r in await conn.fetch(
+                    "SELECT sleeper_player_id, projected_points FROM player_weekly_projections "
+                    "WHERE season = $1 AND week = $2 AND sleeper_player_id = ANY($3::text[])",
+                    active_season, week, ids,
+                )
+            }
+            byes = {
+                r["pro_team"]
+                for r in await conn.fetch("SELECT pro_team FROM team_bye_weeks WHERE season = $1 AND bye_week = $2", active_season, week)
+            }
+    return {
+        "roster": [
+            {**_roster_entry_dict(e), "points_projected": projected.get(e["sleeper_player_id"]), "on_bye": e["pro_team"] in byes}
+            for e in roster
+        ],
+        "week": week,
+    }
 
 
 class CommissionerRosterDropRequest(BaseModel):

@@ -768,6 +768,44 @@ export function usePendingTrades() {
   return useQuery({ queryKey: ['pending-trades'], queryFn: api.pendingTrades });
 }
 
+// Commissioner Tools overhaul (2026-10-23). Every key starts with
+// 'commish' so one invalidate refreshes the whole set after a change.
+export function useCommishSummary() {
+  return useQuery({ queryKey: ['commish', 'summary'], queryFn: api.commishSummary });
+}
+
+export function useCommishMembers() {
+  return useQuery({ queryKey: ['commish', 'members'], queryFn: api.commishMembers });
+}
+
+export function useCommishCalendar() {
+  return useQuery({ queryKey: ['commish', 'calendar'], queryFn: api.commishCalendar });
+}
+
+export function useCommishTrades() {
+  return useQuery({ queryKey: ['commish', 'trades'], queryFn: api.commishTrades });
+}
+
+export function useCommishWaivers() {
+  return useQuery({ queryKey: ['commish', 'waivers'], queryFn: api.commishWaivers });
+}
+
+export function useCommishAnnouncements() {
+  return useQuery({ queryKey: ['commish', 'announcements'], queryFn: api.commishAnnouncements });
+}
+
+export function useCommishLog() {
+  return useQuery({ queryKey: ['commish', 'log'], queryFn: api.commishLog });
+}
+
+export function useLeagueChanges() {
+  return useQuery({ queryKey: ['league-changes'], queryFn: api.leagueChanges });
+}
+
+export function refreshCommish() {
+  return queryClient.invalidateQueries({ queryKey: ['commish'] });
+}
+
 export function useChatFilter() {
   return useQuery({ queryKey: ['chat-filter'], queryFn: api.chatFilter });
 }

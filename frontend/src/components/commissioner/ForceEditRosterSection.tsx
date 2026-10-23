@@ -6,8 +6,10 @@ import {
   commissionerAddPlayer,
   commissionerDropPlayer,
   commissionerMovePlayer,
+  commissionerSwapPlayers,
   getTeamCurrentRoster,
 } from "@/lib/commissionerLineupApi";
+import { commishApi } from "@/lib/commishApi";
 import type { RosterEntry } from "@/lib/api";
 import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from "@/lib/rosterSlots";
 
@@ -20,6 +22,27 @@ type FreeAgentResult = { sleeper_player_id: string; full_name: string; position:
 // a team with no FLEX starter set had every slot below FLEX rendering
 // the wrong player in the head-to-head table).
 const ALL_LINEUP_SLOTS = [...STARTER_SLOT_ORDER, BENCH_SLOT_LABEL, IR_SLOT_LABEL, TAXI_SLOT_LABEL];
+const BENCHED = [BENCH_SLOT_LABEL, IR_SLOT_LABEL, TAXI_SLOT_LABEL];
+const CANT_PLAY = new Set(["Out", "IR", "Suspended", "PUP", "NFI", "Doubtful"]);
+
+// Out or on bye this week (2026-10-23, Fix a lineup).
+function flag(p: RosterEntry): { label: string; color: string } | null {
+  if (p.on_bye) return { label: "BYE", color: "#ca8a04" };
+  if (p.injury_status && CANT_PLAY.has(p.injury_status)) return { label: p.injury_status.toUpperCase(), color: "#ef4444" };
+  return null;
+}
+
+// A starter who can't play, and the best-projected healthy bench
+// player who can take his slot.
+function suggestion(roster: RosterEntry[]): { out: RosterEntry; in: RosterEntry } | null {
+  for (const starter of roster.filter((r) => !BENCHED.includes(r.lineup_slot) && flag(r))) {
+    const best = roster
+      .filter((r) => r.lineup_slot === BENCH_SLOT_LABEL && !flag(r) && isEligibleForSlot(r.position, starter.lineup_slot, r.injury_status))
+      .sort((a, b) => (b.points_projected ?? 0) - (a.points_projected ?? 0))[0];
+    if (best) return { out: starter, in: best };
+  }
+  return null;
+}
 
 /**
  * Force-add/drop a player on any member's roster (2026-09-03) — a
@@ -28,10 +51,12 @@ const ALL_LINEUP_SLOTS = [...STARTER_SLOT_ORDER, BENCH_SLOT_LABEL, IR_SLOT_LABEL
  * test harness. Same current_rosters domain logic as the self-serve
  * My Team lineup tools; only who's allowed to trigger it differs.
  */
-export function ForceEditRosterSection() {
+export function ForceEditRosterSection({ initialTeamId }: { initialTeamId?: number } = {}) {
   const [leagueId, setLeagueId] = useState<number | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | "">("");
+  const [selectedTeamId, setSelectedTeamId] = useState<number | "">(initialTeamId ?? "");
+  const [note, setNote] = useState("");
+  const [noteState, setNoteState] = useState<"idle" | "sending" | "sent">("idle");
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [dropBusyId, setDropBusyId] = useState<string | null>(null);
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null);
@@ -52,12 +77,44 @@ export function ForceEditRosterSection() {
         .then(({ leagues, activeLeagueId }) => {
           setLeagueId(activeLeagueId);
           const active = leagues.find((l) => l.id === activeLeagueId);
+          if (initialTeamId !== undefined && activeLeagueId !== null) {
+            getTeamCurrentRoster(activeLeagueId, initialTeamId).then(setRoster).catch(() => setRoster([]));
+          }
           if (active) return getLeagueTeams(active.id).then(setTeams);
         })
         .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load teams."));
     }, 0);
     return () => clearTimeout(id);
-  }, []);
+  }, [initialTeamId]);
+
+  async function swap(a: string, b: string) {
+    if (leagueId === null || selectedTeamId === "") return;
+    try {
+      const { roster: updated } = await commissionerSwapPlayers(leagueId, selectedTeamId, a, b);
+      setRoster(merge(updated));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't make that swap.");
+    }
+  }
+
+  // The move endpoints don't send projections or byes back; keep ours.
+  function merge(updated: RosterEntry[]): RosterEntry[] {
+    const known = new Map((roster ?? []).map((r) => [r.player_id, r]));
+    return updated.map((r) => ({ ...r, points_projected: known.get(r.player_id)?.points_projected ?? null, on_bye: known.get(r.player_id)?.on_bye }));
+  }
+
+  async function sendNote() {
+    if (selectedTeamId === "") return;
+    setNoteState("sending");
+    try {
+      await commishApi.lineupNote(selectedTeamId, note.trim());
+      setNote("");
+      setNoteState("sent");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send your note.");
+      setNoteState("idle");
+    }
+  }
 
   async function loadRoster(teamId: number) {
     if (leagueId === null) return;
@@ -76,7 +133,7 @@ export function ForceEditRosterSection() {
     setDropBusyId(sleeperPlayerId);
     try {
       const { roster: updated } = await commissionerDropPlayer(leagueId, selectedTeamId, sleeperPlayerId);
-      setRoster(updated);
+      setRoster(merge(updated));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't drop that player.");
     } finally {
@@ -89,7 +146,7 @@ export function ForceEditRosterSection() {
     setMoveBusyId(sleeperPlayerId);
     try {
       const { roster: updated } = await commissionerMovePlayer(leagueId, selectedTeamId, sleeperPlayerId, toSlot);
-      setRoster(updated);
+      setRoster(merge(updated));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't move that player.");
     } finally {
@@ -128,7 +185,7 @@ export function ForceEditRosterSection() {
       } else if (result.status === "on_waivers") {
         setOnWaiversFor({ id: sleeperPlayerId, detail: result.detail, clearsAt: result.clearsAt });
       } else {
-        setRoster(result.roster);
+        setRoster(merge(result.roster));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't add that player.");
@@ -140,10 +197,9 @@ export function ForceEditRosterSection() {
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-semibold">Force-Edit a Roster</h2>
         <p className="text-sm text-black/50 dark:text-white/50">
-          Add, drop, or move a player into a different lineup slot on any member&apos;s behalf — for when they
-          can&apos;t manage their own team, or to fix an already-live lineup (moves here work even after kickoff).
+          Add, drop, or move a player on any member&apos;s behalf — for when they can&apos;t manage their own team,
+          or to fix an already-live lineup (moves here work even after kickoff). Each change shows in the change log.
         </p>
       </div>
 
@@ -154,6 +210,7 @@ export function ForceEditRosterSection() {
         onChange={(e) => {
           const id = e.target.value ? Number(e.target.value) : "";
           setSelectedTeamId(id);
+          setNoteState("idle");
           setResults([]);
           setSearch("");
           if (id !== "") loadRoster(id);
@@ -167,6 +224,24 @@ export function ForceEditRosterSection() {
           </option>
         ))}
       </select>
+
+      {selectedTeamId !== "" && roster && suggestion(roster) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-emerald-500/40 p-3">
+          <span className="flex-1 text-sm">
+            <strong>
+              Start {suggestion(roster)!.in.player_name} for {suggestion(roster)!.out.player_name}
+            </strong>{" "}
+            — {suggestion(roster)!.out.player_name} can&apos;t play this week.
+          </span>
+          <button
+            type="button"
+            onClick={() => swap(suggestion(roster)!.out.player_id, suggestion(roster)!.in.player_id)}
+            className="rounded-full bg-emerald-500/15 px-3.5 py-1.5 text-sm font-bold"
+          >
+            Make this swap
+          </button>
+        </div>
+      )}
 
       {selectedTeamId !== "" && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -190,6 +265,14 @@ export function ForceEditRosterSection() {
                         <span>
                           {p.player_name}{" "}
                           <span className="text-xs text-black/50 dark:text-white/50">({p.lineup_slot})</span>
+                          {flag(p) && (
+                            <span className="ml-1.5 text-[11px] font-extrabold" style={{ color: flag(p)!.color }}>
+                              {flag(p)!.label}
+                            </span>
+                          )}
+                          {p.points_projected != null && (
+                            <span className="ml-1.5 text-xs text-black/50 tabular-nums dark:text-white/50">{p.points_projected.toFixed(1)} proj</span>
+                          )}
                         </span>
                         <button
                           onClick={() => drop(p.player_id)}
@@ -288,6 +371,27 @@ export function ForceEditRosterSection() {
               </ul>
             )}
           </div>
+        </div>
+      )}
+      {selectedTeamId !== "" && (
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xs font-semibold tracking-wide text-black/50 uppercase dark:text-white/50">Tell them why</h3>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            rows={3}
+            placeholder="e.g. Swapped out Hall since he's ruled out."
+            className="rounded-lg border border-black/10 bg-transparent px-3 py-2 text-sm dark:border-white/10"
+          />
+          <button
+            type="button"
+            onClick={sendNote}
+            disabled={!note.trim() || noteState === "sending"}
+            className="self-start rounded-full bg-violet-500/15 px-4 py-1.5 text-sm font-bold disabled:opacity-50"
+          >
+            {noteState === "sending" ? "Sending…" : noteState === "sent" ? "Sent" : "Send note"}
+          </button>
         </div>
       )}
     </section>

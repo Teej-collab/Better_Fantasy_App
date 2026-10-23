@@ -6,7 +6,7 @@ import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { KeeperRulesSection } from "@/components/commissioner/KeeperRulesSection";
 import { RosterSlotsSection } from "@/components/commissioner/RosterSlotsSection";
-import { ForceEditRosterSection } from "@/components/commissioner/ForceEditRosterSection";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Roster & Keepers — The Weekend" };
 
@@ -39,7 +39,10 @@ export default async function CommissionerRosterPage() {
       <h1 className="text-2xl font-semibold">Roster & Keepers</h1>
       <KeeperRulesSection />
       <RosterSlotsSection />
-      <ForceEditRosterSection />
+      <Link href="/commissioner/lineup" className="rounded-xl border border-black/10 px-4 py-3 text-sm dark:border-white/10">
+        <span className="font-semibold">Fix a lineup</span>
+        <span className="block text-black/55 dark:text-white/55">Moving, adding or dropping for any team is now its own tool.</span>
+      </Link>
     </div>
   );
 }

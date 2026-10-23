@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, type Href } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -8,27 +8,24 @@ import {
   ErrorText,
   errorMessage,
   fromLocalInput,
-  GroupLabel,
   Input,
   NumberRow,
   OutlineButton,
-  Picker,
   PrimaryButton,
   SectionHead,
   StatusText,
   toLocalInput,
   type SaveStatus,
 } from '@/components/commissioner/CommishUI';
-import { ListPanel } from '@/components/league/LeagueUI';
+import { Panel, ToolRow } from '@/components/commissioner/CommishParts';
 import { Text } from '@/components/Text';
 import { api } from '@/lib/api';
-import { useAppearance } from '@/lib/appearance';
-import { queryClient, useActiveLeague, useKeeperRules, useLeagueTeams, useRosterSettings } from '@/lib/queries';
-import { BENCH_SLOT_LABEL, IR_SLOT_LABEL, isEligibleForSlot, slotDisplayLabel, STARTER_SLOT_ORDER, TAXI_SLOT_LABEL } from '@/lib/rosterSlots';
-import type { FreeAgent, KeeperRules, RosterEntry } from '@/lib/types';
+import { queryClient, useKeeperRules, useRosterSettings } from '@/lib/queries';
+import type { KeeperRules } from '@/lib/types';
 
-// The web's /commissioner/roster: KeeperRulesSection,
-// RosterSlotsSection and ForceEditRosterSection, in that order.
+// The web's /commissioner/roster: KeeperRulesSection and
+// RosterSlotsSection. Force-editing a roster moved to Fix a lineup
+// (2026-10-23).
 export default function RosterAndKeepersScreen() {
   const keeperRules = useKeeperRules();
   const roster = useRosterSettings();
@@ -49,7 +46,9 @@ export default function RosterAndKeepersScreen() {
       ) : (
         roster.isError && <ErrorText>{errorMessage(roster.error, "Couldn't load roster settings.")}</ErrorText>
       )}
-      <ForceEditRosterSection />
+      <Panel>
+        <ToolRow first title="Fix a lineup" value="Move, add or drop for any team (now its own tool)" href={'/commissioner/lineup' as Href} target="roster_fix_lineup" />
+      </Panel>
     </CommishScreen>
   );
 }
@@ -232,205 +231,6 @@ function RosterSlotsSection(props: { slots: Record<string, number>; editable: bo
         <PrimaryButton label="Save roster slots" busyLabel="Saving…" busy={panel.status === 'saving'} onPress={save} />
         <StatusText panel={panel} />
       </View>
-    </View>
-  );
-}
-
-// ---- Force-edit a roster ---------------------------------------------
-
-const ALL_LINEUP_SLOTS = [...STARTER_SLOT_ORDER, BENCH_SLOT_LABEL, IR_SLOT_LABEL, TAXI_SLOT_LABEL];
-
-function ForceEditRosterSection() {
-  const accent = useAppearance().accent;
-  const league = useActiveLeague().data;
-  const teams = useLeagueTeams(league?.id).data ?? [];
-  const [teamId, setTeamId] = useState<number | null>(null);
-  const [roster, setRoster] = useState<RosterEntry[] | null>(null);
-  const [dropBusyId, setDropBusyId] = useState<string | null>(null);
-  const [moveBusyId, setMoveBusyId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState<FreeAgent[]>([]);
-  const [addBusyId, setAddBusyId] = useState<string | null>(null);
-  const [rosterFullFor, setRosterFullFor] = useState<string | null>(null);
-  const [onWaiversFor, setOnWaiversFor] = useState<{ id: string; detail: string; clearsAt: string | null } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function pickTeam(id: number) {
-    if (!league) return;
-    setTeamId(id);
-    setResults([]);
-    setSearch('');
-    setRoster(null);
-    setRosterFullFor(null);
-    setOnWaiversFor(null);
-    try {
-      setRoster(await api.teamCurrentRoster(league.id, id));
-    } catch (e) {
-      setError(errorMessage(e, "Couldn't load that team's roster."));
-    }
-  }
-
-  function changed(updated: RosterEntry[]) {
-    setRoster(updated);
-    void queryClient.invalidateQueries({ queryKey: ['my-team'] });
-  }
-
-  async function drop(playerId: string) {
-    if (!league || teamId === null) return;
-    setDropBusyId(playerId);
-    try {
-      changed((await api.commissionerDrop(league.id, teamId, playerId)).roster);
-    } catch (e) {
-      setError(errorMessage(e, "Couldn't drop that player."));
-    } finally {
-      setDropBusyId(null);
-    }
-  }
-
-  async function move(playerId: string, toSlot: string) {
-    if (!league || teamId === null) return;
-    setMoveBusyId(playerId);
-    try {
-      changed((await api.commissionerMove(league.id, teamId, playerId, toSlot)).roster);
-    } catch (e) {
-      setError(errorMessage(e, "Couldn't move that player."));
-    } finally {
-      setMoveBusyId(null);
-    }
-  }
-
-  async function runSearch() {
-    try {
-      const { players } = await api.freeAgents(undefined, search.trim() || undefined);
-      setResults(players.slice(0, 15));
-    } catch (e) {
-      setError(errorMessage(e, "Couldn't search free agents."));
-    }
-  }
-
-  async function add(playerId: string, overrideWaivers?: boolean) {
-    if (!league || teamId === null) return;
-    setAddBusyId(playerId);
-    setRosterFullFor(null);
-    setOnWaiversFor(null);
-    try {
-      const result = await api.commissionerAdd(league.id, teamId, playerId, overrideWaivers);
-      if (result.status === 'roster_full') setRosterFullFor(playerId);
-      else if (result.status === 'on_waivers') setOnWaiversFor({ id: playerId, detail: result.detail, clearsAt: result.clears_at });
-      else changed(result.roster);
-    } catch (e) {
-      setError(errorMessage(e, "Couldn't add that player."));
-    } finally {
-      setAddBusyId(null);
-    }
-  }
-
-  return (
-    <View style={s.gap}>
-      <SectionHead
-        title="Force-Edit a Roster"
-        subtitle="Add, drop, or move a player into a different lineup slot on any member's behalf — for when they can't manage their own team, or to fix an already-live lineup (moves here work even after kickoff)."
-      />
-      {error && <ErrorText>{error}</ErrorText>}
-      <Picker
-        value={teamId}
-        options={teams.map((t) => ({ value: t.team_id, label: `${t.team_name} — ${t.owner_name}` }))}
-        placeholder="Pick a team…"
-        onChange={pickTeam}
-      />
-
-      {teamId !== null && (
-        <>
-          <View style={s.gapSm}>
-            <GroupLabel>Current roster</GroupLabel>
-            {roster === null ? (
-              <Text style={s.muted}>Loading…</Text>
-            ) : roster.length === 0 ? (
-              <Text style={s.muted}>Empty roster.</Text>
-            ) : (
-              <ListPanel color={accent}>
-                {roster.map((p, i) => {
-                  const eligible = ALL_LINEUP_SLOTS.filter((slot) => slot !== p.lineup_slot && isEligibleForSlot(p.position, slot, p.injury_status));
-                  return (
-                    <View key={p.player_id} style={[s.item, { paddingHorizontal: 12, paddingVertical: 8, gap: 6 }, i > 0 && s.divided]}>
-                      <View style={[s.row, { justifyContent: 'space-between', flexWrap: 'nowrap' }]}>
-                        <Text style={[s.body, s.flex]}>
-                          {p.player_name} <Text style={s.small}>({p.lineup_slot})</Text>
-                        </Text>
-                        <OutlineButton
-                          small
-                          tone="danger"
-                          label={dropBusyId === p.player_id ? 'Dropping…' : 'Drop'}
-                          disabled={dropBusyId === p.player_id}
-                          onPress={() => drop(p.player_id)}
-                        />
-                      </View>
-                      {eligible.length > 0 && (
-                        <Picker
-                          value={null}
-                          options={eligible.map((slot) => ({ value: slot, label: slotDisplayLabel(slot) }))}
-                          placeholder={moveBusyId === p.player_id ? 'Moving…' : 'Move to…'}
-                          disabled={moveBusyId === p.player_id}
-                          onChange={(slot) => move(p.player_id, slot)}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-              </ListPanel>
-            )}
-          </View>
-
-          <View style={s.gapSm}>
-            <GroupLabel>Add a free agent</GroupLabel>
-            <View style={[s.row, { flexWrap: 'nowrap' }]}>
-              <Input value={search} onChangeText={setSearch} placeholder="Search players…" onSubmitEditing={runSearch} style={{ flex: 1 }} />
-              <OutlineButton label="Search" onPress={runSearch} />
-            </View>
-            {results.length > 0 && (
-              <ListPanel color={accent}>
-                {results.map((p, i) => (
-                  <View key={p.sleeper_player_id} style={[s.item, { paddingHorizontal: 12, paddingVertical: 8, gap: 4 }, i > 0 && s.divided]}>
-                    <View style={[s.row, { justifyContent: 'space-between', flexWrap: 'nowrap' }]}>
-                      <Text style={[s.body, s.flex]}>
-                        {p.full_name}{' '}
-                        <Text style={s.small}>
-                          {p.position === 'DEF' ? 'D/ST' : p.position}
-                          {p.pro_team ? ` — ${p.pro_team}` : ''}
-                        </Text>
-                      </Text>
-                      <OutlineButton
-                        small
-                        tone="add"
-                        label={addBusyId === p.sleeper_player_id ? 'Adding…' : 'Add'}
-                        disabled={addBusyId === p.sleeper_player_id}
-                        onPress={() => add(p.sleeper_player_id)}
-                      />
-                    </View>
-                    {rosterFullFor === p.sleeper_player_id && <Text style={s.danger}>Roster is full — drop a player above first.</Text>}
-                    {onWaiversFor?.id === p.sleeper_player_id && (
-                      <View style={s.warnBox}>
-                        <Text style={s.warnText}>
-                          {onWaiversFor.clearsAt
-                            ? `Still on waivers until ${new Date(onWaiversFor.clearsAt).toLocaleString()}.`
-                            : onWaiversFor.detail}
-                        </Text>
-                        <OutlineButton
-                          small
-                          tone="warn"
-                          label={addBusyId === p.sleeper_player_id ? 'Adding…' : 'Force add anyway (override waivers)'}
-                          disabled={addBusyId === p.sleeper_player_id}
-                          onPress={() => add(p.sleeper_player_id, true)}
-                        />
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </ListPanel>
-            )}
-          </View>
-        </>
-      )}
     </View>
   );
 }

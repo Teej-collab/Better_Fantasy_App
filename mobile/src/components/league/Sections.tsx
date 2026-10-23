@@ -28,6 +28,7 @@ import {
   useHouseRules,
   useLatestPowerRankings,
   useLeagueActivity,
+  useLeagueChanges,
   useMatchupContext,
   useMe,
   usePlayoffOdds,
@@ -641,6 +642,7 @@ export function ActivitySection({ season }: { season: number | null }) {
           ))}
         </ListPanel>
       )}
+      <CommishChanges />
       {hasMore && (
         <Pressable
           onPress={() => setLimit(limit + ACTIVITY_PAGE)}
@@ -654,7 +656,42 @@ export function ActivitySection({ season }: { season: number | null }) {
   );
 }
 
+// What the commissioner has changed (2026-10-23, backend app/domain/
+// commish_log.py), unless the commissioner made the log private.
+function CommishChanges() {
+  const [all, setAll] = useState(false);
+  const q = useLeagueChanges();
+  const changes = q.data?.public ? q.data.changes : [];
+  if (changes.length === 0) return null;
+  const shown = all ? changes : changes.slice(0, 5);
+  return (
+    <View style={styles.gap}>
+      <Text style={styles.changesTitle}>Commissioner changes</Text>
+      <ListPanel color={ACTIVITY_COLOR}>
+        {shown.map((c, i) => (
+          <View key={c.id} style={[styles.change, i > 0 && styles.changeDivided]}>
+            <Text style={styles.changeText}>{c.summary}</Text>
+            <Text style={styles.changeMeta}>
+              {c.actor_name} · {new Date(c.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </Text>
+          </View>
+        ))}
+      </ListPanel>
+      {changes.length > 5 && !all ? (
+        <Pressable onPress={() => setAll(true)} style={({ pressed }) => [styles.loadMore, pressed && { opacity: 0.6 }]} accessibilityRole="button">
+          <Text style={styles.loadMoreText}>Show all {changes.length}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  changesTitle: { color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
+  change: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, gap: 2 },
+  changeDivided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)' },
+  changeText: { color: Colors.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  changeMeta: { color: Colors.textSecondary, fontSize: 12 },
   loadMore: { alignSelf: 'center', minHeight: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', justifyContent: 'center' },
   loadMoreText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },

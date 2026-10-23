@@ -212,10 +212,14 @@ function RootStack() {
           <Stack.Screen name="lounge" options={{ title: 'The Lounge', headerBackTitle: 'Back' }} />
           <Stack.Screen name="punishment-wheel" options={{ title: 'Punishment Wheel', headerBackTitle: 'Back' }} />
           <Stack.Screen name="lounge-room/[slug]" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
-          <Stack.Screen name="commissioner/index" options={{ title: 'Commissioner Tools', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="commissioner/index" options={{ title: 'Commissioner', headerBackTitle: 'Back' }} />
           <Stack.Screen name="commissioner/league" options={{ title: 'League Settings', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/scoring" options={{ title: 'Scoring Rules', headerBackTitle: 'Tools' }} />
-          <Stack.Screen name="commissioner/members" options={{ title: 'Members', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/members" options={{ title: 'Members & Teams', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/calendar" options={{ title: 'Season Calendar', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/waivers" options={{ title: 'Waivers', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/lineup" options={{ title: 'Fix a Lineup', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/corner" options={{ title: 'Commish Corner', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/teams" options={{ title: 'Teams', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/roster" options={{ title: 'Roster & Keepers', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/trades" options={{ title: 'Trades', headerBackTitle: 'Tools' }} />

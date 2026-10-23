@@ -1518,3 +1518,107 @@ export type WinProbHistory = {
     points: number;
   }[];
 };
+
+// ---- Commissioner Tools overhaul (2026-10-23, backend app/routers/commish.py) ----
+
+export type CommishNeed = {
+  kind: 'trades' | 'lineups' | 'members' | 'inactive' | 'deadline';
+  tone: 'orange' | 'red' | 'purple' | 'blue';
+  title: string;
+  sub: string;
+  action: string;
+  href: string;
+  at?: string;
+};
+
+export type CommishSummary = {
+  league: { id: number; name: string; invite_code: string; league_type: string; matchup_type: string; commish_log_public: boolean };
+  needs_you: CommishNeed[];
+  glance: {
+    teams: number;
+    matchups: string;
+    scoring: string;
+    week: number | null;
+    last_regular_week: number | null;
+    playoff_teams: number;
+    playoff_start_week: number;
+  };
+  tools: Record<
+    'league' | 'scoring' | 'roster' | 'waivers' | 'members' | 'calendar' | 'trades' | 'lineup' | 'draft' | 'polls' | 'chat_filter' | 'wheel' | 'espn' | 'corner',
+    string
+  >;
+};
+
+export type CommishMember = {
+  user_id: number;
+  display_name: string;
+  role: 'commissioner' | 'member';
+  joined_at: string | null;
+  last_active_at: string | null;
+  team: { team_id: number; team_name: string; wins: number; losses: number; ties: number } | null;
+};
+
+export type WaiverType = 'reverse' | 'rolling' | 'faab';
+
+export type WaiverRules = {
+  waiver_type: WaiverType;
+  faab_budget: number;
+  min_bid: number;
+  clear_weekday: number;
+  clear_hour: number;
+  drop_days: number;
+  hold_played: boolean;
+  post_results: boolean;
+  custom?: boolean;
+};
+
+export type CommishWaivers = { settings: WaiverRules; pending_claims: number; players_on_waivers: number; next_run_at: string | null };
+
+export type CalendarItem = {
+  key: 'keeper_deadline' | 'draft' | 'waivers' | 'trade_deadline' | 'regular_season_end' | 'playoffs_start' | 'championship' | 'next_keeper_deadline';
+  title: string;
+  at: string | null;
+  week?: number | null;
+  detail?: string;
+  repeats?: string;
+  editable: boolean;
+  past: boolean;
+  done?: boolean;
+};
+
+export type CommishCalendar = {
+  season: number;
+  items: CalendarItem[];
+  week_kickoffs: Record<string, string>;
+  waivers: WaiverRules;
+  playoffs: { playoff_team_count: number; weeks_per_matchup: number; start_week: number | null; effective_start_week: number };
+};
+
+export type ReviewTradeSide = {
+  team_id: number;
+  team_name: string | null;
+  ros_points: number;
+  gets: { sleeper_player_id: string; name: string; position: string; pro_team: string | null; injury_status: string | null; ros_points: number }[];
+};
+
+export type ReviewTrade = {
+  id: number;
+  status: 'awaiting_review' | 'in_review';
+  accepted_at: string | null;
+  review_ends_at: string | null;
+  note: string | null;
+  veto_votes: number;
+  sides: ReviewTradeSide[];
+};
+
+export type CommishTradeReview = { trades: ReviewTrade[]; settings: TradeSettings; from_week: number };
+
+export type CommishChange = { id: number; area: string; summary: string; created_at: string; actor_user_id: number | null; actor_name: string };
+
+export type ScheduledPost = { id: number; title: string; body: string; notify: boolean; send_at: string; created_at: string };
+
+export type CommishAnnouncements = {
+  scheduled: ScheduledPost[];
+  recent: { id: number; title: string; body: string; created_at: string }[];
+  conversation_id: number | null;
+};

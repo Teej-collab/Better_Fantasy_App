@@ -3,6 +3,14 @@ import type { PlayoffWorld } from '@/lib/bracketEngine';
 import { initConnectivity, isNetworkFailure, reportReachable, reportUnreachable } from '@/lib/connectivity';
 import type {
   AddFreeAgentResult,
+  CommishAnnouncements,
+  CommishCalendar,
+  CommishChange,
+  CommishMember,
+  CommishSummary,
+  CommishTradeReview,
+  CommishWaivers,
+  WaiverRules,
   Bet,
   BetLegStatus,
   BetReaction,
@@ -725,6 +733,11 @@ export const api = {
     request<unknown>('/draft/position-max', { method: 'PUT', body: JSON.stringify({ position_max: positionMax }) }),
   teamCurrentRoster: async (leagueId: number, teamId: number) =>
     (await request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster`)).roster,
+  commissionerSwap: (leagueId: number, teamId: number, a: string, b: string) =>
+    request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster/swap`, {
+      method: 'POST',
+      body: JSON.stringify({ sleeper_player_id_a: a, sleeper_player_id_b: b }),
+    }),
   commissionerDrop: (leagueId: number, teamId: number, playerId: string) =>
     request<{ roster: RosterEntry[] }>(`/leagues/${leagueId}/teams/${teamId}/roster/drop`, {
       method: 'POST',
@@ -769,8 +782,30 @@ export const api = {
       }),
     }),
   pendingTrades: async () => (await request<{ trades: Trade[] }>('/trades/pending')).trades,
-  reviewTrade: (tradeId: number, approve: boolean) =>
-    request<Trade>(`/trades/${tradeId}/review`, { method: 'POST', body: JSON.stringify({ approve }) }),
+  reviewTrade: (tradeId: number, approve: boolean, reason?: string) =>
+    request<Trade>(`/trades/${tradeId}/review`, { method: 'POST', body: JSON.stringify({ approve, reason: reason || null }) }),
+  // ---- Commissioner Tools overhaul (2026-10-23) ----
+  commishSummary: () => request<CommishSummary>('/league/commish/summary'),
+  commishMembers: () => request<{ league_id: number; invite_code: string; me: number; members: CommishMember[] }>('/league/commish/members'),
+  commishCalendar: () => request<CommishCalendar>('/league/commish/calendar'),
+  commishTrades: () => request<CommishTradeReview>('/league/commish/trades'),
+  commishWaivers: () => request<CommishWaivers>('/league/commish/waivers'),
+  saveWaiverRules: (rules: WaiverRules) =>
+    request<{ settings: WaiverRules }>('/league/commish/waivers', { method: 'PUT', body: JSON.stringify(rules) }),
+  runWaiversNow: () => request<{ players: number; claims_won: number }>('/league/commish/waivers/run', { method: 'POST', body: '{}' }),
+  sendLineupNote: (teamId: number, note: string) =>
+    request<{ sent: boolean }>('/league/commish/lineup-note', { method: 'POST', body: JSON.stringify({ team_id: teamId, note }) }),
+  commishAnnouncements: () => request<CommishAnnouncements>('/league/commish/announcements'),
+  postAnnouncement: (title: string, body: string, notify: boolean, sendAt: string | null) =>
+    request<{ scheduled_id: number | null; message_id: number | null }>('/league/commish/announcements', {
+      method: 'POST',
+      body: JSON.stringify({ title, body, notify, send_at: sendAt }),
+    }),
+  cancelAnnouncement: (id: number) => request<unknown>(`/league/commish/announcements/${id}`, { method: 'DELETE' }),
+  commishLog: () => request<{ public: boolean; changes: CommishChange[] }>('/league/commish/log'),
+  setCommishLogPublic: (isPublic: boolean) =>
+    request<{ public: boolean }>('/league/commish/log/visibility', { method: 'PUT', body: JSON.stringify({ public: isPublic }) }),
+  leagueChanges: () => request<{ public: boolean; changes: CommishChange[] }>('/league/changes'),
   createPoll: (leagueId: number, question: string, options: string[]) =>
     request<Poll>(`/leagues/${leagueId}/polls`, { method: 'POST', body: JSON.stringify({ question, options }) }),
   closePoll: (leagueId: number, pollId: number) => request<Poll>(`/leagues/${leagueId}/polls/${pollId}`, { method: 'PATCH' }),

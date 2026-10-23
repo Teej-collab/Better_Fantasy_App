@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { CommishChanges } from "@/components/commissioner/CommishChanges";
 import {
   awardsHrefFor,
   getActiveLeagueName,
@@ -54,6 +55,7 @@ export default async function ActivityPage() {
       ) : (
         <LeagueActivityFeed items={items} />
       )}
+      <CommishChanges />
     </div>
   );
 }
