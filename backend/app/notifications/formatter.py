@@ -410,6 +410,20 @@ def trade_offer(from_team: str, summary: str, trade_id: int) -> dict:
     return _payload(f"🤝 Trade offer from {from_team}", summary, "/trades", "trade", _trade_tag(trade_id))
 
 
+def trade_block_listed(team_name: str, player_names: list[str], team_id: int) -> dict:
+    """An owner put players on the trade block (2026-10-23). Tagged per
+    team, so listing a few in a row replaces one notification that names
+    them all instead of stacking up."""
+    names = player_names[0] if len(player_names) == 1 else f"{', '.join(player_names[:-1])} and {player_names[-1]}"
+    return _payload(
+        f"📣 {team_name} is shopping {names}",
+        "On the trade block. Open Trades to make an offer.",
+        "/trades",
+        "trade",
+        tag=f"trade-block-{team_id}",
+    )
+
+
 def trade_update(title: str, body: str, trade_id: int) -> dict:
     """Every later step of a trade (accepted, under review, vetoed,
     processed…) — same tag, so each replaces the last on the lock screen."""

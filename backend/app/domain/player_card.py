@@ -153,6 +153,8 @@ async def get_player_card(
     card["rostered_team_id"] = None
     card["rostered_team_name"] = None
     card["is_on_my_team"] = False
+    # Listed by their owner as someone they'd trade (Trades' trade block).
+    card["on_trade_block"] = False
     if season is not None:
         roster_row = await conn.fetchrow(
             """
@@ -167,6 +169,10 @@ async def get_player_card(
             card["rostered_team_id"] = roster_row["team_id"]
             card["rostered_team_name"] = roster_row["team_name"]
             card["is_on_my_team"] = my_owner_id is not None and roster_row["owner_id"] == my_owner_id
+            card["on_trade_block"] = bool(await conn.fetchval(
+                "SELECT 1 FROM trade_block WHERE team_id = $1 AND sleeper_player_id = $2",
+                roster_row["team_id"], sleeper_player_id,
+            ))
 
     try:
         projection = get_player_info(card["espn_player_id"], full_name=card["full_name"])

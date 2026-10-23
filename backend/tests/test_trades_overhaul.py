@@ -203,3 +203,53 @@ async def test_trade_block_lists_only_players_still_on_the_listing_team(pool, mo
         assert all(p["sleeper_player_id"] != give_player for p in listed)
 
         assert (await client.delete(f"/trades/block/{give_player}")).status_code == 200
+
+
+async def test_listing_on_the_block_tells_the_rest_of_the_league(pool, monkeypatch):
+    _set_env(monkeypatch)
+    from app.notifications import dispatcher
+    from app.queries import owner_preferences
+
+    sent = []
+
+    async def fake_send(conn, owner_id, payload, now=None):
+        sent.append((owner_id, payload))
+        return 1
+
+    async def prefs(conn, owner_id):
+        return {"push_enabled": True, "notify_league": True}
+
+    monkeypatch.setattr(dispatcher, "send_to_owner", fake_send)
+    monkeypatch.setattr(owner_preferences, "get_preferences", prefs)
+    a, b, give_player, _ = await _setup_two_teams(pool, "ovr-push")
+    second = await _seed_player(pool, "ovr-push-second", "WR")
+    await _seed_roster_entry(pool, a["team_id"], second)
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        await client.post("/trades/block", json={"sleeper_player_id": give_player})
+        await client.post("/trades/block", json={"sleeper_player_id": give_player})  # already listed: no push
+        await client.post("/trades/block", json={"sleeper_player_id": second})
+
+    to_b = [p for owner, p in sent if owner == b["owner_id"]]
+    assert len(to_b) == 2
+    assert to_b[-1]["title"] == "📣 Team ovr-pusha is shopping Test Player ovr-push-give and Test Player ovr-push-second"
+    assert all(owner != a["owner_id"] for owner, _ in sent)
+
+
+async def test_player_card_says_when_a_player_is_on_the_block(pool, monkeypatch):
+    _set_env(monkeypatch)
+    from app.domain import player_card
+
+    monkeypatch.setattr(player_card, "get_player_info", lambda *a, **k: None)
+    a, _, give_player, _ = await _setup_two_teams(pool, "ovr-card")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO trade_block (league_id, season, team_id, sleeper_player_id) "
+            "SELECT league_id, season, id, $2 FROM teams_by_season WHERE id = $1",
+            a["team_id"], give_player,
+        )
+        league_id = await conn.fetchval("SELECT league_id FROM teams_by_season WHERE id = $1", a["team_id"])
+        card = await player_card.get_player_card(conn, give_player, season=TEST_SEASON, league_id=league_id, my_owner_id=a["owner_id"])
+    assert card["is_on_my_team"] is True
+    assert card["on_trade_block"] is True

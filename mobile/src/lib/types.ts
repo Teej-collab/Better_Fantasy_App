@@ -385,6 +385,8 @@ export type PlayerCard = {
   rostered_team_id: number | null;
   rostered_team_name: string | null;
   is_on_my_team: boolean;
+  // Listed by their owner on the Trades page's trade block (2026-10-23).
+  on_trade_block?: boolean;
 };
 
 // GET /nfl/scoreboard — ESPN's public scoreboard, this week's real NFL games.

@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { Text } from '@/components/Text';
@@ -12,7 +12,9 @@ import { Card, LoadingState, MessageState, SectionTitle } from '@/components/ui'
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatPoints } from '@/lib/format';
 import { positionColor } from '@/lib/positionColors';
-import { confirmDropPlayer, usePlayerCard } from '@/lib/queries';
+import { api } from '@/lib/api';
+import { haptics } from '@/lib/haptics';
+import { confirmDropPlayer, refreshTrades, usePlayerCard } from '@/lib/queries';
 import { proposeTradeFor } from '@/lib/tradeLinks';
 import { useAppearance } from '@/lib/appearance';
 import type { FreeAgent, PlayerCard } from '@/lib/types';
@@ -54,6 +56,22 @@ export default function PlayerScreen() {
   const card = usePlayerCard(id);
   const accent = useAppearance().accent;
   const [adding, setAdding] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
+
+  async function toggleBlock(playerId: string, listed: boolean) {
+    setBlockBusy(true);
+    try {
+      if (listed) await api.removeFromTradeBlock(playerId);
+      else await api.addToTradeBlock(playerId);
+      haptics.success();
+      refreshTrades();
+      await card.refetch();
+    } catch (e) {
+      Alert.alert('Trade block', e instanceof Error ? e.message : 'That didn’t go through.');
+    } finally {
+      setBlockBusy(false);
+    }
+  }
 
   if (card.isPending) return <LoadingState />;
   if (card.isError || !card.data) return <MessageState message="Couldn't load this player." />;
@@ -99,12 +117,26 @@ export default function PlayerScreen() {
         </View>
 
         <Card style={styles.ownerCard}>
-          <Text style={styles.ownerText}>
-            {p.is_on_my_team ? 'On your team' : p.rostered_team_name ? `On ${p.rostered_team_name}` : 'Free agent'}
-          </Text>
+          <View style={styles.ownerInfo}>
+            <Text style={styles.ownerText}>
+              {p.is_on_my_team ? 'On your team' : p.rostered_team_name ? `On ${p.rostered_team_name}` : 'Free agent'}
+            </Text>
+            {p.on_trade_block && <Text style={styles.blockTag}>On the trade block</Text>}
+          </View>
           {p.rostered_team_id === null && (
             <Pressable onPress={() => setAdding(true)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
               <Text style={styles.addText}>Add</Text>
+            </Pressable>
+          )}
+          {/* Shop your own player to the league (2026-10-23): everyone else gets a notification. */}
+          {p.is_on_my_team && (
+            <Pressable
+              onPress={() => toggleBlock(p.sleeper_player_id, !!p.on_trade_block)}
+              disabled={blockBusy}
+              accessibilityRole="button"
+              accessibilityLabel={p.on_trade_block ? `Take ${p.full_name} off the trade block` : `Put ${p.full_name} on the trade block`}
+              style={({ pressed }) => [styles.addButton, styles.blockButton, (pressed || blockBusy) && styles.pressed]}>
+              <Text style={styles.addText}>{p.on_trade_block ? 'Off block' : 'Trade block'}</Text>
             </Pressable>
           )}
           {p.is_on_my_team && (
@@ -254,7 +286,10 @@ const styles = StyleSheet.create({
   muted: { color: Colors.textSecondary, fontSize: 13 },
   injury: { color: Colors.loss, fontSize: 13, fontWeight: '700' },
   ownerCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.md },
-  ownerText: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
+  ownerInfo: { flex: 1, gap: 2 },
+  ownerText: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  blockTag: { color: '#c084fc', fontSize: 12, fontWeight: '700' },
+  blockButton: { backgroundColor: '#a855f7' },
   addButton: { backgroundColor: Colors.accent, borderRadius: Radius.pill, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
   addText: { color: Colors.bg, fontWeight: '800' },
   tradeButton: { backgroundColor: '#60a5fa' },

@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { addFreeAgent, dropPlayer, getMyTeam, listMyWaiverClaims, submitWaiverClaim, type RosterEntry } from "@/lib/api";
 import { getPlayerCard, type PlayerCard } from "@/lib/playerCardApi";
+import { addToTradeBlock, removeFromTradeBlock } from "@/lib/tradesApi";
 import { nflTeamColor, nflTeamName, teamLogoUrl } from "@/lib/nfl-teams";
 import { hasInjuryBadge, injuryShortCode } from "@/lib/injuryStatus";
 import { GameLogTable } from "@/components/players/GameLogTable";
@@ -46,6 +47,7 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
   const [headshotFailed, setHeadshotFailed] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
   const [pickup, setPickup] = useState<Pickup | null>(null);
   const [bid, setBid] = useState("1");
@@ -89,6 +91,23 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
     } catch (e) {
       setDropError(e instanceof Error ? e.message : "Drop failed");
       setDropping(false);
+    }
+  }
+
+  // Shop your own player to the league (2026-10-23): everyone else in
+  // the league gets a notification; Trades shows them on the trade block.
+  async function toggleBlock() {
+    if (!card) return;
+    setBlockBusy(true);
+    setDropError(null);
+    try {
+      if (card.on_trade_block) await removeFromTradeBlock(card.sleeper_player_id);
+      else await addToTradeBlock(card.sleeper_player_id);
+      setCard({ ...card, on_trade_block: !card.on_trade_block });
+    } catch (e) {
+      setDropError(e instanceof Error ? e.message : "That didn't go through.");
+    } finally {
+      setBlockBusy(false);
     }
   }
 
@@ -227,6 +246,18 @@ export function PlayerCardModal({ sleeperPlayerId, onClose }: { sleeperPlayerId:
                   >
                     {dropping ? "Dropping…" : "↓ Drop"}
                   </button>
+                )}
+                {card.is_on_my_team && (
+                  <button
+                    onClick={toggleBlock}
+                    disabled={blockBusy}
+                    className="rounded-full bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {blockBusy ? "Working…" : card.on_trade_block ? "Take off trade block" : "Put on trade block"}
+                  </button>
+                )}
+                {card.on_trade_block && !card.is_on_my_team && (
+                  <span className="text-xs font-bold text-violet-500 dark:text-violet-400">On the trade block</span>
                 )}
                 {/* Someone else's player: straight to a trade for them (2026-10). */}
                 <Link

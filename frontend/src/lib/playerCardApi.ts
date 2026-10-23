@@ -93,6 +93,8 @@ export type PlayerCard = {
   rostered_team_id: number | null;
   rostered_team_name: string | null;
   is_on_my_team: boolean;
+  // Listed by their owner on the Trades page's trade block (2026-10-23).
+  on_trade_block?: boolean;
   // ESPN-style game log (2026-10): each game's line by category, with our points.
   game_log?: PlayerGameLog | null;
 };

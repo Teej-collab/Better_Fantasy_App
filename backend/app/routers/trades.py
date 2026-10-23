@@ -480,11 +480,13 @@ async def add_to_trade_block(body: TradeBlockRequest, request: Request, pool=Dep
         )
         if not on_roster:
             raise HTTPException(status_code=400, detail="That player isn't on your team")
-        await conn.execute(
+        added = await conn.execute(
             "INSERT INTO trade_block (league_id, season, team_id, sleeper_player_id) VALUES ($1, $2, $3, $4) "
             "ON CONFLICT DO NOTHING",
             league_id, season, team_id, body.sleeper_player_id,
         )
+        if added.endswith(" 1"):
+            await trade_events.notify_trade_block(conn, league_id, season, team_id)
     return {"ok": True}
 
 

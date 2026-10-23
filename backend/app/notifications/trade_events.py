@@ -71,6 +71,32 @@ async def _commissioner_owner_ids(conn, trade: dict) -> list[int]:
     return [r["owner_id"] for r in rows]
 
 
+async def notify_trade_block(conn, league_id: int, season: int, team_id: int) -> None:
+    """Someone put a player on the trade block (2026-10-23): everyone
+    else in the league hears about it (the League toggle applies). Names
+    every player that team listed in the last 15 minutes, so listing a
+    few in a row reads as one notification (they share a tag)."""
+    try:
+        team = await conn.fetchrow("SELECT team_name, owner_id FROM teams_by_season WHERE id = $1", team_id)
+        names = [
+            r["full_name"]
+            for r in await conn.fetch(
+                "SELECT p.full_name FROM trade_block b JOIN players p ON p.sleeper_player_id = b.sleeper_player_id "
+                "WHERE b.team_id = $1 AND b.created_at > now() - interval '15 minutes' ORDER BY b.created_at",
+                team_id,
+            )
+        ]
+        if team is None or not names:
+            return
+        rows = await conn.fetch(
+            "SELECT DISTINCT owner_id FROM teams_by_season WHERE league_id = $1 AND season = $2", league_id, season
+        )
+        others = [r["owner_id"] for r in rows if r["owner_id"] != team["owner_id"]]
+        await _send(conn, others, formatter.trade_block_listed(team["team_name"], names, team_id), league_wide=True)
+    except Exception:
+        logger.exception("Trade block push failed (team %s)", team_id)
+
+
 async def notify_veto_reason(conn, trade: dict, reason: str) -> None:
     """The commissioner's reason for a veto, to both teams in it
     (2026-10-23)."""
