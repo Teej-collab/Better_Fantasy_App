@@ -65,6 +65,20 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
+// Dark or white ink for text drawn on a color the user picked (their own
+// chat bubbles are their accent): whichever has more contrast, so text
+// stays readable on neon green, orange, navy or anything else.
+export function inkOn(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const l = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  const dark = 0.0055; // #0d1016's luminance
+  return (l + 0.05) / (dark + 0.05) >= 1.05 / (l + 0.05) ? '#0d1016' : '#ffffff';
+}
+
 // Each destination's color (frontend/src/lib/navDestinations.ts): the
 // neon ring on its cards and its section headers.
 export const SectionColors = {

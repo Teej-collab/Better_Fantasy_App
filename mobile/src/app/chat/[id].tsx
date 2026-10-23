@@ -16,7 +16,7 @@ import { SharedBetCard } from '@/components/bets/SharedBetCard';
 import { GifPicker } from '@/components/chat/GifPicker';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, inkOn, Radius, Spacing, withAlpha } from '@/constants/theme';
 import { api, postChatVideo, uploadChatImage, WEB_BASE_URL, type ReportReason } from '@/lib/api';
 import { conversationTitle, formatMessageTime } from '@/lib/chatFormat';
 import { pickChatPhoto, pickChatVideo, type PhotoSource } from '@/lib/chatImage';
@@ -749,9 +749,9 @@ function MessageBubble(props: {
         {message.bet_id ? <SharedBetCard betId={message.bet_id} mine={mine} /> : null}
         <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, props.mentionsMe && !message.deleted && styles.bubbleMentionsMe]}>
           {message.reply_to && (
-            <View style={styles.reply}>
-              <Text style={styles.replyName}>{message.reply_to.owner_name}</Text>
-              <Text style={styles.replyBody} numberOfLines={2}>
+            <View style={[styles.reply, mine && styles.replyMine]}>
+              <Text style={[styles.replyName, mine && styles.replyNameMine]}>{message.reply_to.owner_name}</Text>
+              <Text style={[styles.replyBody, mine && styles.replyBodyMine]} numberOfLines={2}>
                 {message.reply_to.body}
               </Text>
             </View>
@@ -982,6 +982,9 @@ function ReceiptsLine({ messageId, mine }: { messageId: number; mine: boolean })
   );
 }
 
+// Text on your own bubbles, which are your accent color.
+const MINE_INK = inkOn(Colors.accent);
+
 const styles = StyleSheet.create({
   infoButton: { color: Colors.accent, fontSize: 22, fontWeight: '600', paddingHorizontal: 4 },
   link: { textDecorationLine: 'underline', fontWeight: '700' },
@@ -1006,7 +1009,7 @@ const styles = StyleSheet.create({
   bubbleTheirs: { backgroundColor: Colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border },
   bubbleMentionsMe: { borderWidth: 1.5, borderColor: Colors.accent },
   mention: { color: Colors.accent, fontWeight: '800' },
-  mentionMine: { color: Colors.bg, textDecorationLine: 'underline' },
+  mentionMine: { color: MINE_INK, textDecorationLine: 'underline' },
   mentionList: {
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
@@ -1019,14 +1022,25 @@ const styles = StyleSheet.create({
   mentionName: { color: Colors.text, fontSize: 15, fontWeight: '700' },
   mentionTeam: { color: Colors.textSecondary, fontSize: 12 },
   body: { color: Colors.text, fontSize: 16, lineHeight: 21 },
-  textMine: { color: Colors.bg },
+  textMine: { color: MINE_INK },
   announcementTitle: { color: Colors.text, fontSize: 16, fontWeight: '800', marginBottom: 2 },
   time: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, alignSelf: 'flex-end' },
-  timeMine: { color: 'rgba(13,16,22,0.6)' },
+  timeMine: { color: withAlpha(MINE_INK, 0.7) },
   image: { width: 220, height: 220, borderRadius: Radius.md, marginVertical: Spacing.xs },
   reply: { borderLeftWidth: 3, borderLeftColor: Colors.textSecondary, paddingLeft: Spacing.sm, marginBottom: Spacing.xs },
   replyName: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
   replyBody: { color: Colors.textSecondary, fontSize: 13 },
+  // The quote inside your own bubble: your bubble's ink on a faint tint
+  // of it, so it reads on whatever accent you picked.
+  replyMine: {
+    borderLeftColor: withAlpha(MINE_INK, 0.55),
+    backgroundColor: withAlpha(MINE_INK, 0.1),
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingRight: Spacing.sm,
+  },
+  replyNameMine: { color: MINE_INK },
+  replyBodyMine: { color: withAlpha(MINE_INK, 0.8) },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
   reactionChip: {
     backgroundColor: Colors.surface,
