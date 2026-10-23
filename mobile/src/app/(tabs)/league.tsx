@@ -5,6 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { TabFrame, useTabScrollRef } from '@/components/TabFrame';
 import { LeagueHub } from '@/components/league/LeagueHub';
 import { SeasonTabs } from '@/components/league/LeagueUI';
+import { SwipeBack } from '@/components/league/SwipeBack';
 import { RulesSection } from '@/components/league/RulesSection';
 import { ScoringSection } from '@/components/league/ScoringSection';
 import {
@@ -18,7 +19,7 @@ import {
 import { Text } from '@/components/Text';
 import { Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
-import { LEAGUE_SECTION_ROUTES, trackPageView } from '@/lib/analytics';
+import { LEAGUE_SECTION_ROUTES, trackPageView, trackTap } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
 import { queryClient, useActiveLeagueName, useSeasons } from '@/lib/queries';
 import { useTabBarScroll } from '@/lib/tabBar';
@@ -63,6 +64,16 @@ function LeagueScreenContent() {
   const scrollRef = useTabScrollRef<ScrollView>();
   const tabBarScroll = useTabBarScroll();
   const shownSeason = season ?? latest;
+  // Back to the hub, from "‹ League" or a swipe from the left edge.
+  const backToHub = useCallback(() => {
+    setChoice({ forLink: linked, key: 'hub' });
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [linked, scrollRef]);
+  const swipedBack = useCallback(() => {
+    haptics.select();
+    trackTap('league.swipe_back');
+    backToHub();
+  }, [backToHub]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -71,55 +82,56 @@ function LeagueScreenContent() {
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      {...tabBarScroll}
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior="automatic"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}>
-      {leagueName && <Text style={styles.leagueName}>{leagueName}</Text>}
-      {section !== 'hub' && (
-        <View style={styles.sectionHead}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to League"
-            hitSlop={12}
-            onPress={() => {
-              haptics.select();
-              setSection('hub');
-              scrollRef.current?.scrollTo({ y: 0, animated: false });
-            }}>
-            <Text style={[styles.back, { color: accent }]}>‹ League</Text>
-          </Pressable>
-          <Text style={styles.sectionTitle}>{LEAGUE_SECTIONS.find((s) => s.key === section)?.label}</Text>
-        </View>
-      )}
-
-      {SEASONAL.includes(section) && seasons.length > 1 && (
-        <SeasonTabs seasons={seasons} active={shownSeason} onSelect={setSeason} />
-      )}
-
-      <View>
-        {section === 'hub' && (
-          <LeagueHub
-            season={latest}
-            onOpen={(key) => {
-              setSection(key);
-              scrollRef.current?.scrollTo({ y: 0, animated: false });
-            }}
-          />
+    <SwipeBack enabled={section !== 'hub'} onBack={swipedBack}>
+      <ScrollView
+        ref={scrollRef}
+        {...tabBarScroll}
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}>
+        {leagueName && <Text style={styles.leagueName}>{leagueName}</Text>}
+        {section !== 'hub' && (
+          <View style={styles.sectionHead}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to League"
+              hitSlop={12}
+              onPress={() => {
+                haptics.select();
+                backToHub();
+              }}>
+              <Text style={[styles.back, { color: accent }]}>‹ League</Text>
+            </Pressable>
+            <Text style={styles.sectionTitle}>{LEAGUE_SECTIONS.find((s) => s.key === section)?.label}</Text>
+          </View>
         )}
-        {section === 'league' && <LeagueOverview season={shownSeason} />}
-        {section === 'standings' && <StandingsSection key={params.w ?? params.view ?? 'standings'} season={shownSeason} initialView={params.view} whatIf={params.w} />}
-        {section === 'powerRankings' && <PowerRankingsSection season={shownSeason} />}
-        {section === 'rivalries' && <RivalriesSection />}
-        {section === 'scoring' && <ScoringSection />}
-        {section === 'rules' && <RulesSection scrollTo={(y) => scrollRef.current?.scrollTo({ y, animated: true })} />}
-        {section === 'history' && <HistorySection latestSeason={latest} />}
-        {section === 'activity' && <ActivitySection season={latest} />}
-      </View>
-    </ScrollView>
+
+        {SEASONAL.includes(section) && seasons.length > 1 && (
+          <SeasonTabs seasons={seasons} active={shownSeason} onSelect={setSeason} />
+        )}
+
+        <View>
+          {section === 'hub' && (
+            <LeagueHub
+              season={latest}
+              onOpen={(key) => {
+                setSection(key);
+                scrollRef.current?.scrollTo({ y: 0, animated: false });
+              }}
+            />
+          )}
+          {section === 'league' && <LeagueOverview season={shownSeason} />}
+          {section === 'standings' && <StandingsSection key={params.w ?? params.view ?? 'standings'} season={shownSeason} initialView={params.view} whatIf={params.w} />}
+          {section === 'powerRankings' && <PowerRankingsSection season={shownSeason} />}
+          {section === 'rivalries' && <RivalriesSection />}
+          {section === 'scoring' && <ScoringSection />}
+          {section === 'rules' && <RulesSection scrollTo={(y) => scrollRef.current?.scrollTo({ y, animated: true })} />}
+          {section === 'history' && <HistorySection latestSeason={latest} />}
+          {section === 'activity' && <ActivitySection season={latest} />}
+        </View>
+      </ScrollView>
+    </SwipeBack>
   );
 }
 

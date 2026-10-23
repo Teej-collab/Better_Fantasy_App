@@ -13,6 +13,7 @@ const NAMED: Record<string, string> = {
   'lineup.advice_apply': 'Took the lineup advice',
   'lineup.advice_dismiss': 'Skipped the lineup advice',
   'lineup.undo': 'Undid a lineup move',
+  'league.swipe_back': 'Swiped back to the League hub',
   'chat.send': 'Sent a chat message',
   'chat.send_reply': 'Sent a chat reply',
   'chat.reply': 'Tapped Reply on a message',
