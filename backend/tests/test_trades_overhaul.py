@@ -253,3 +253,29 @@ async def test_player_card_says_when_a_player_is_on_the_block(pool, monkeypatch)
         card = await player_card.get_player_card(conn, give_player, season=TEST_SEASON, league_id=league_id, my_owner_id=a["owner_id"])
     assert card["is_on_my_team"] is True
     assert card["on_trade_block"] is True
+
+
+async def test_partners_puts_a_team_that_needs_what_you_have_first(pool, monkeypatch):
+    _set_env(monkeypatch)
+    a, b, give_player, receive_player = await _setup_two_teams(pool, "ovr-fit")
+    # a: three good RBs (RB + FLEX start, the third sits on the bench). b: a weak RB.
+    backup = await _seed_player(pool, "ovr-fit-backup", "RB")
+    third = await _seed_player(pool, "ovr-fit-third", "RB")
+    await _seed_roster_entry(pool, a["team_id"], backup)
+    await _seed_roster_entry(pool, a["team_id"], third)
+    await _project(pool, give_player, 18)
+    await _project(pool, backup, 14)
+    await _project(pool, third, 12)
+    await _project(pool, receive_player, 3)
+
+    async with _client() as client:
+        client.cookies.update(a["cookies"])
+        resp = await client.get("/trades/partners")
+    assert resp.status_code == 200, resp.text
+    teams = resp.json()["teams"]
+    mine = next(t for t in teams if t["team_id"] == b["team_id"])
+    assert all(t["team_id"] != a["team_id"] for t in teams)
+    assert "RB" in mine["needs"]
+    assert mine["fit"] >= 1
+    assert mine["fit_reason"] == "They need RB, you're deep there"
+    assert teams[0]["fit"] >= mine["fit"]

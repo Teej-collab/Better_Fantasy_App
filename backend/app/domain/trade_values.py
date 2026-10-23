@@ -232,3 +232,106 @@ def summary_for(trade: dict, my_team_id: int, values: dict[str, dict]) -> dict:
     leans = None if abs(gap) < EVEN_WITHIN else (trade["proposing_team_id"] if gap > 0 else trade["receiving_team_id"])
     return {"value_change": round(abs(gap), 1), "verdict": "even" if leans is None else "leans", "leans_team_id": leans}
 
+
+
+# ---- Trade partners (2026-10-23): who's worth calling ------------------------
+
+FIT_POSITIONS = ("QB", "RB", "WR", "TE")
+# A backup this good (points a week) is real depth, not just a body.
+DEPTH_FLOOR = 8.0
+
+
+async def partners(conn, season: int, league_id: int, my_team_id: int) -> list[dict]:
+    """Every other team, best trade partners for me first: each with
+    their record, what they're thin at (starters in the league's bottom
+    third at that position) and where they have depth (a backup in the
+    league's top third, worth DEPTH_FLOOR+ a week). A team is a fit when
+    they're thin where I'm deep, or deep where I'm thin."""
+    week = await current_week(conn, season)
+    slots = await roster_slots(conn, season, league_id)
+    teams = await conn.fetch(
+        """
+        SELECT t.id AS team_id, t.team_name, o.display_name AS owner_name, o.logo_url
+        FROM teams_by_season t JOIN owners o ON o.owner_id = t.owner_id
+        WHERE t.league_id = $1 AND t.season = $2
+        """,
+        league_id, season,
+    )
+    standings = await league_queries.get_standings(conn, season, league_id)
+    rank = {r["team_id"]: (i + 1, r) for i, r in enumerate(standings)}
+    rosters: dict[int, list[str]] = {}
+    for r in await conn.fetch(
+        "SELECT team_id, sleeper_player_id FROM current_rosters cr JOIN teams_by_season t ON t.id = cr.team_id "
+        "WHERE t.league_id = $1 AND cr.season = $2",
+        league_id, season,
+    ):
+        rosters.setdefault(r["team_id"], []).append(r["sleeper_player_id"])
+    values = await player_values(conn, season, week, [p for ids in rosters.values() for p in ids])
+
+    strength: dict[int, dict[str, float]] = {}
+    depth: dict[int, dict[str, float]] = {}
+    for t in teams:
+        players = [
+            {"id": pid, "name": values.get(pid, {}).get("name", pid), "position": values.get(pid, {}).get("position"),
+             "per_week": values.get(pid, {}).get("per_week", 0.0)}
+            for pid in rosters.get(t["team_id"], [])
+        ]
+        starters = {e["player"]["id"] for e in best_lineup(players, slots) if e["player"]}
+        strength[t["team_id"]] = {
+            pos: sum(p["per_week"] for p in players if p["id"] in starters and p["position"] == pos) for pos in FIT_POSITIONS
+        }
+        depth[t["team_id"]] = {
+            pos: max([p["per_week"] for p in players if p["id"] not in starters and p["position"] == pos] or [0.0])
+            for pos in FIT_POSITIONS
+        }
+
+    n = len(teams)
+    third = max(1, n // 3)
+
+    def thin(team_id: int) -> list[str]:
+        out = []
+        for pos in FIT_POSITIONS:
+            order = sorted(strength, key=lambda tid: strength[tid][pos])
+            if order.index(team_id) < third:
+                out.append((order.index(team_id), pos))
+        return [pos for _, pos in sorted(out)][:2]
+
+    def deep(team_id: int) -> list[str]:
+        # A weak starter with a decent backup is still thin, never both.
+        weak = thin(team_id)
+        out = []
+        for pos in FIT_POSITIONS:
+            if pos in weak:
+                continue
+            order = sorted(depth, key=lambda tid: -depth[tid][pos])
+            if order.index(team_id) < third and depth[team_id][pos] >= DEPTH_FLOOR:
+                out.append((order.index(team_id), pos))
+        return [pos for _, pos in sorted(out)][:2]
+
+    my_thin, my_deep = (thin(my_team_id), deep(my_team_id)) if my_team_id in strength else ([], [])
+    out = []
+    for t in teams:
+        if t["team_id"] == my_team_id:
+            continue
+        needs, surplus = thin(t["team_id"]), deep(t["team_id"])
+        they_need_mine = [p for p in needs if p in my_deep]
+        i_need_theirs = [p for p in surplus if p in my_thin]
+        reasons = [f"They need {p}, you're deep there" for p in they_need_mine] + [
+            f"They're deep at {p}, you need one" for p in i_need_theirs
+        ]
+        position, standing = rank.get(t["team_id"], (None, None))
+        out.append({
+            "team_id": t["team_id"],
+            "team_name": t["team_name"],
+            "owner_name": t["owner_name"],
+            "logo_url": t["logo_url"],
+            "wins": standing["wins"] if standing else 0,
+            "losses": standing["losses"] if standing else 0,
+            "ties": standing["ties"] if standing else 0,
+            "rank": position,
+            "needs": needs,
+            "deep_at": surplus,
+            "fit": len(reasons),
+            "fit_reason": reasons[0] if reasons else None,
+        })
+    return sorted(out, key=lambda p: (-p["fit"], p["rank"] or 99))

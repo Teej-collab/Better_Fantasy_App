@@ -685,6 +685,10 @@ export function useTradeBlock() {
   return useQuery({ queryKey: ['trade-block'], queryFn: async () => (await api.tradeBlock()).players });
 }
 
+export function useTradePartners() {
+  return useQuery({ queryKey: ['trade-partners'], queryFn: async () => (await api.tradePartners()).teams });
+}
+
 export function useTradeEvaluation(tradeId: number | null) {
   return useQuery({
     queryKey: ['trade-evaluation', tradeId],

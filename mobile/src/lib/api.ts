@@ -65,6 +65,7 @@ import type {
   Trade,
   TradeBlockPlayer,
   TradeEvaluation,
+  TradePartner,
   TradeRosterPlayer,
   KeeperRules,
   MyKeepers,
@@ -570,6 +571,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ partner_team_id: partnerTeamId, give, receive, drops }),
     }),
+  tradePartners: () => request<{ teams: TradePartner[] }>('/trades/partners'),
   tradeEvaluation: (tradeId: number) => request<TradeEvaluation>(`/trades/${tradeId}/evaluation`),
   acceptTrade: (tradeId: number, drops: string[]) =>
     request<Trade>(`/trades/${tradeId}/accept`, { method: 'POST', body: JSON.stringify({ drops }) }),

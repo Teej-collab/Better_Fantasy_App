@@ -79,6 +79,22 @@ export type TradeEvaluation = {
   drop_candidates: TradeValuePlayer[];
 };
 
+// The builder's team list (GET /trades/partners): best fits first.
+export type TradePartner = {
+  team_id: number;
+  team_name: string;
+  owner_name: string | null;
+  logo_url: string | null;
+  wins: number;
+  losses: number;
+  ties: number;
+  rank: number | null;
+  needs: string[];
+  deep_at: string[];
+  fit: number;
+  fit_reason: string | null;
+};
+
 export type TradeBlockPlayer = {
   team_id: number;
   team_name: string;
@@ -191,6 +207,11 @@ export async function proposeTrade(
 
 export async function evaluateTrade(partnerTeamId: number, give: string[], receive: string[], drops: string[]): Promise<TradeEvaluation> {
   return post<TradeEvaluation>("/trades/evaluate", { partner_team_id: partnerTeamId, give, receive, drops });
+}
+
+export async function getTradePartners(): Promise<TradePartner[]> {
+  const { teams } = await get<{ teams: TradePartner[] }>("/trades/partners");
+  return teams;
 }
 
 export async function getTradeEvaluation(tradeId: number): Promise<TradeEvaluation> {

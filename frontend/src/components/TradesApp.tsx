@@ -15,6 +15,7 @@ import {
   getTeamRosterForTrade,
   getTradeBlock,
   getTradeEvaluation,
+  getTradePartners,
   proposeTrade,
   rejectTrade,
   removeFromTradeBlock,
@@ -22,6 +23,7 @@ import {
   type Trade,
   type TradeBlockPlayer,
   type TradeEvaluation,
+  type TradePartner,
   type TradeRosterPlayer,
   type TradeSettings,
   type TradeStatus,
@@ -611,10 +613,13 @@ function Builder({
   const [ev, setEv] = useState<TradeEvaluation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [partners, setPartners] = useState<TradePartner[] | null>(null);
   const partnerName = teams.find((t) => t.team_id === partner)?.team_name ?? "";
+  const partnerInfo = partners?.find((t) => t.team_id === partner) ?? null;
 
   useEffect(() => {
     getTeamRosterForTrade(myTeamId).then(setMine).catch(() => setMine([]));
+    getTradePartners().then(setPartners).catch(() => setPartners([]));
   }, [myTeamId]);
   useEffect(() => {
     if (partner !== null) getTeamRosterForTrade(partner).then(setTheirs).catch(() => setTheirs([]));
@@ -686,37 +691,35 @@ function Builder({
       <button type="button" onClick={onBack} className="self-start text-sm font-semibold">
         ‹ Trades
       </button>
-      <h2 className="font-display text-2xl font-semibold uppercase">
-        {counter ? `Counter ${partnerName}` : partner ? `Trade with ${partnerName}` : "Build a trade"}
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        {teams.map((t) => {
-          const on = t.team_id === partner;
-          return (
-            <button
-              key={t.team_id}
-              type="button"
-              aria-pressed={on}
-              disabled={counter !== null && !on}
-              onClick={() => {
-                setPartner(t.team_id);
-                setReceive([]);
-                setDrops([]);
-                setEv(null);
-              }}
-              className="min-h-10 rounded-full border px-4 text-sm font-semibold disabled:opacity-35"
-              style={on ? { borderColor: THEM, backgroundColor: `${THEM}22` } : { borderColor: "rgba(127,127,127,0.3)" }}
-            >
-              {t.team_name}
-            </button>
-          );
-        })}
+      <div>
+        <h2 className="font-display text-2xl font-semibold uppercase">{counter ? "Counter offer" : "Build a trade"}</h2>
+        {partner === null && <p className={`text-sm ${MUTED}`}>Who do you want to trade with?</p>}
       </div>
 
       {partner === null ? (
-        <p className={`text-sm ${MUTED}`}>Pick a team to trade with.</p>
+        <PartnerList
+          partners={partners}
+          onPick={(id) => {
+            setPartner(id);
+            setReceive([]);
+            setDrops([]);
+            setEv(null);
+          }}
+        />
       ) : (
         <>
+          <div className={`${panelClass} flex items-center gap-3 p-3`} style={{ borderColor: `${THEM}66` }}>
+            <Avatar name={partnerName} url={partnerInfo?.logo_url ?? null} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={`text-[11px] font-extrabold tracking-wider uppercase ${MUTED}`}>Trading with</span>
+              <span className="truncate font-bold">{partnerName}</span>
+            </span>
+            {counter === null && (
+              <button type="button" onClick={() => setPartner(null)} className="min-h-10 rounded-full px-4 text-sm font-bold" style={{ backgroundColor: `color-mix(in srgb, ${NAV_ACCENT} 20%, transparent)` }}>
+                Change
+              </button>
+            )}
+          </div>
           <ValueMeter change={ev?.value_change ?? 0} empty={!ready || !ev} />
           <div className="grid grid-cols-2 gap-3">
             {column("You give", YOU, mine, give, (id) => {
@@ -750,6 +753,58 @@ function Builder({
           {ready && !dropsOk && <p className={`text-center text-xs ${MUTED}`}>Pick who you&apos;d drop first.</p>}
         </>
       )}
+    </div>
+  );
+}
+
+function Avatar({ name, url }: { name: string; url: string | null }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element -- a user-uploaded Blob URL
+    return <img src={url} alt="" className="size-10 shrink-0 rounded-full object-cover" />;
+  }
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("");
+  return (
+    <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-black/10 text-sm font-extrabold dark:bg-white/10">
+      {initials}
+    </span>
+  );
+}
+
+// Every other team as a row, best trade partners for you first: their
+// record, what they're thin at and deep at, and why they fit (backend
+// GET /trades/partners).
+function PartnerList({ partners, onPick }: { partners: TradePartner[] | null; onPick: (teamId: number) => void }) {
+  if (!partners) return <p className={`text-sm ${MUTED}`}>Loading…</p>;
+  if (partners.length === 0) return <p className={`text-sm ${MUTED}`}>No other teams in this league yet.</p>;
+  return (
+    <div className={`${panelClass} flex flex-col divide-y divide-black/5 overflow-hidden dark:divide-white/[0.08]`}>
+      {partners.map((t) => {
+        const record = `${t.wins}–${t.losses}${t.ties ? `–${t.ties}` : ""}`;
+        const shape = [t.needs.length ? `Needs ${t.needs.join(", ")}` : null, t.deep_at.length ? `Deep at ${t.deep_at.join(", ")}` : null]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <button key={t.team_id} type="button" onClick={() => onPick(t.team_id)} className="flex min-h-16 items-center gap-3 p-3 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]">
+            <Avatar name={t.team_name} url={t.logo_url} />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex items-baseline gap-2">
+                <span className="truncate font-bold">{t.team_name}</span>
+                <span className={`ml-auto shrink-0 text-sm font-bold ${MUTED}`}>{record}</span>
+              </span>
+              <span className={`text-xs ${MUTED}`}>{shape || t.owner_name || ""}</span>
+              {t.fit_reason && <span className="text-xs font-bold text-green-600 dark:text-green-400">{t.fit_reason}</span>}
+            </span>
+            <span aria-hidden className={`text-xl ${MUTED}`}>
+              ›
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -408,6 +408,17 @@ async def evaluate_trade(body: EvaluateTradeRequest, request: Request, pool=Depe
     return result
 
 
+@router.get("/partners")
+async def trade_partners(request: Request, pool=Depends(get_pool)):
+    """The builder's team list: every other team with its record, what
+    it's thin at and deep at, best fits for the caller first."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        team_id, league_id = await _require_my_team(conn, payload, season)
+        return {"teams": await trade_values.partners(conn, season, league_id, team_id)}
+
+
 @router.get("/{trade_id}/evaluation")
 async def trade_evaluation(trade_id: int, request: Request, pool=Depends(get_pool)):
     """The same read for an existing trade, from the caller's side —

@@ -5,13 +5,13 @@ import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native
 
 import { BigButton, GroupTitle, PageTitle, SmallButton, TONES } from '@/components/commissioner/CommishParts';
 import { Text } from '@/components/Text';
-import { LoadingState } from '@/components/ui';
+import { LoadingState, TeamAvatar } from '@/components/ui';
 import { DropPicker, LineupChange, THEM, ValueMeter, YOU, pos } from '@/components/trades/TradeParts';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { trackTap } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
-import { refreshTrades, useMe, useMyTrades, useTradeRoster, useTradeTeams } from '@/lib/queries';
+import { refreshTrades, useMe, useMyTrades, useTradePartners, useTradeRoster, useTradeTeams } from '@/lib/queries';
 import type { TradeRosterPlayer } from '@/lib/types';
 
 // The trade builder (2026-10-23 overhaul, mockup 5): pick a team, tap
@@ -78,6 +78,7 @@ function Builder({
   const mine = useTradeRoster(myTeamId).data ?? [];
   const theirs = useTradeRoster(partner).data ?? [];
   const partnerName = teams.find((t) => t.team_id === partner)?.team_name ?? '';
+  const partnerInfo = useTradePartners().data?.find((t) => t.team_id === partner) ?? null;
 
   const ready = partner !== null && give.length > 0 && receive.length > 0;
   const evaluation = useQuery({
@@ -131,29 +132,22 @@ function Builder({
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
-      <PageTitle title={counterOf ? `Counter ${partnerName}` : partner ? `Trade with ${partnerName}` : 'Build a trade'} />
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.teamChips}>
-        {teams.map((t) => {
-          const on = t.team_id === partner;
-          return (
-            <Pressable
-              key={t.team_id}
-              onPress={() => choosePartner(t.team_id)}
-              disabled={counterOf !== null && !on}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              style={[styles.teamChip, on && { borderColor: THEM, backgroundColor: `${THEM}22` }, counterOf !== null && !on && styles.off]}>
-              <Text style={styles.teamChipText}>{t.team_name}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <PageTitle title={counterOf ? 'Counter offer' : 'Build a trade'} subtitle={partner === null ? 'Who do you want to trade with?' : undefined} />
 
       {partner === null ? (
-        <Text style={styles.soft}>Pick a team to trade with.</Text>
+        <PartnerList onPick={choosePartner} />
       ) : (
         <>
+          <View style={styles.partnerBar}>
+            <TeamAvatar name={partnerName} logoUrl={partnerInfo?.logo_url ?? null} size={36} />
+            <View style={styles.flex}>
+              <Text style={styles.kicker}>Trading with</Text>
+              <Text style={styles.partnerName} numberOfLines={1}>
+                {partnerName}
+              </Text>
+            </View>
+            {counterOf === null && <SmallButton label="Change" onPress={() => setPartner(null)} />}
+          </View>
           <ValueMeter change={ev?.value_change ?? 0} empty={!ready || !ev} />
 
           <View style={styles.columns}>
@@ -210,6 +204,47 @@ function Builder({
   );
 }
 
+// Every other team as a row, best trade partners for you first: their
+// record, what they're thin at and deep at, and why they fit (backend
+// GET /trades/partners, app/domain/trade_values.py's partners).
+function PartnerList({ onPick }: { onPick: (teamId: number) => void }) {
+  const partners = useTradePartners();
+  if (partners.isPending) return <LoadingState />;
+  const teams = partners.data ?? [];
+  if (teams.length === 0) return <Text style={styles.soft}>No other teams in this league yet.</Text>;
+  return (
+    <View style={styles.partnerList}>
+      {teams.map((t, i) => {
+        const record = `${t.wins}–${t.losses}${t.ties ? `–${t.ties}` : ''}`;
+        const shape = [t.needs.length ? `Needs ${t.needs.join(', ')}` : null, t.deep_at.length ? `Deep at ${t.deep_at.join(', ')}` : null]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <Pressable
+            key={t.team_id}
+            onPress={() => onPick(t.team_id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.team_name}, ${record}${t.fit_reason ? `. ${t.fit_reason}` : ''}`}
+            style={({ pressed }) => [styles.partnerRow, i > 0 && styles.partnerDivider, pressed && styles.pressedRow]}>
+            <TeamAvatar name={t.team_name} logoUrl={t.logo_url} size={40} />
+            <View style={styles.flex}>
+              <View style={styles.partnerHead}>
+                <Text style={styles.partnerName} numberOfLines={1}>
+                  {t.team_name}
+                </Text>
+                <Text style={styles.record}>{record}</Text>
+              </View>
+              {shape ? <Text style={styles.partnerSub}>{shape}</Text> : <Text style={styles.partnerSub}>{t.owner_name ?? ''}</Text>}
+              {t.fit_reason && <Text style={styles.fit}>{t.fit_reason}</Text>}
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function PlayerColumn({
   title,
   color,
@@ -256,10 +291,19 @@ const styles = StyleSheet.create({
   soft: { color: 'rgba(255,255,255,0.7)', fontSize: 14 },
   meta: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center' },
   error: { color: Colors.loss, fontSize: 14 },
-  teamChips: { gap: 8 },
-  teamChip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 14, borderRadius: Radius.pill, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
-  teamChipText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
-  off: { opacity: 0.35 },
+  flex: { flex: 1, gap: 2 },
+  kicker: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  partnerBar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: `${THEM}55`, padding: Spacing.md },
+  partnerList: { backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  partnerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.md, minHeight: 64 },
+  partnerDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.08)' },
+  pressedRow: { backgroundColor: 'rgba(255,255,255,0.04)' },
+  partnerHead: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  partnerName: { flexShrink: 1, color: Colors.text, fontSize: 15, fontWeight: '700' },
+  record: { marginLeft: 'auto', color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
+  partnerSub: { color: Colors.textSecondary, fontSize: 12 },
+  fit: { color: '#4ade80', fontSize: 12, fontWeight: '700' },
+  chevron: { color: Colors.textSecondary, fontSize: 22 },
   columns: { flexDirection: 'row', gap: 10 },
   column: { flex: 1, gap: 6 },
   player: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: Colors.surface },

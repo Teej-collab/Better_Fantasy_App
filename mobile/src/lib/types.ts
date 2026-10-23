@@ -1071,6 +1071,22 @@ export type TradeEvaluation = {
   drop_candidates: (TradeValuePlayer & { pro_team?: string | null })[];
 };
 
+// The builder's team list (GET /trades/partners): best fits first.
+export type TradePartner = {
+  team_id: number;
+  team_name: string;
+  owner_name: string | null;
+  logo_url: string | null;
+  wins: number;
+  losses: number;
+  ties: number;
+  rank: number | null;
+  needs: string[];
+  deep_at: string[];
+  fit: number;
+  fit_reason: string | null;
+};
+
 export type TradeBlockPlayer = {
   team_id: number;
   team_name: string;
