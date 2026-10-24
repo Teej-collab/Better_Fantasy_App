@@ -46,7 +46,8 @@ export default async function WaitlistPage({ searchParams }: { searchParams: Pro
       </section>
 
       <section className="mx-auto grid max-w-3xl gap-8 px-4 pb-12 sm:px-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <ul className="flex flex-col gap-4">
+        {/* On a phone the form comes first; side by side, it sits on the right. */}
+        <ul className="order-2 flex flex-col gap-4 md:order-1">
           {FEATURES.map(([title, body]) => (
             <li key={title} className="flex flex-col gap-0.5">
               <span className="font-display text-base font-semibold">{title}</span>
@@ -54,7 +55,7 @@ export default async function WaitlistPage({ searchParams }: { searchParams: Pro
             </li>
           ))}
         </ul>
-        <div className="flex flex-col gap-3">
+        <div className="order-1 flex flex-col gap-3 md:order-2">
           <WaitlistForm refSource={refSource} />
           <p className="text-sm text-[color:var(--wl-text-secondary)]">
             Can&apos;t wait until next year?{" "}

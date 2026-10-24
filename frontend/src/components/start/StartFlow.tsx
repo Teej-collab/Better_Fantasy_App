@@ -24,15 +24,20 @@ import {
 } from "@/lib/leagueFormat";
 import {
   claimOwner,
+  connectEspn,
+  connectSleeper,
   createLeague,
   createTeam,
   getLeagueFormats,
   getMyLeagues,
   requestCustomLeague,
   getUnclaimedOwners,
+  importPreview,
   joinLeague,
   previewLeague,
   selectLeague,
+  syncEspnNow,
+  type ImportPreview,
   type League,
   type LeaguePreview,
   type ScoringPreset,
@@ -57,7 +62,22 @@ const anton = Anton({ weight: "400", subsets: ["latin"] });
 // Everything here is an existing endpoint (backend app/routers/
 // leagues.py); /leagues stays as the full management page.
 
-type View = "home" | "join" | "joinTeam" | "create1" | "createType" | "createCustom" | "create2" | "create3" | "invite";
+type View =
+  | "home"
+  | "join"
+  | "joinTeam"
+  | "create1"
+  | "createType"
+  | "createCustom"
+  | "create2"
+  | "create3"
+  | "invite"
+  | "connectLink"
+  | "connectFound"
+  | "connectClaim"
+  | "connectInvite";
+
+const PLATFORM_NAME = { espn: "ESPN", sleeper: "Sleeper" } as const;
 
 const TEAM_COUNTS = [8, 10, 12, 14];
 const SCORING: { key: ScoringPreset; label: string }[] = [
@@ -93,7 +113,16 @@ export function StartFlow({
 
   // Create
   const [leagueName, setLeagueName] = useState("");
-  const [source, setSource] = useState<"fresh" | "espn">("fresh");
+  // Where the league plays now (2026-10-24): ESPN or Sleeper go through
+  // the bring-it-in steps (connect*); a fresh league carries on as before.
+  const [source, setSource] = useState<"fresh" | "espn" | "sleeper">("fresh");
+  const [link, setLink] = useState("");
+  const [showPrivate, setShowPrivate] = useState(false);
+  const [espnS2, setEspnS2] = useState("");
+  const [espnSwid, setEspnSwid] = useState("");
+  const [found, setFound] = useState<ImportPreview | null>(null);
+  const [mine, setMine] = useState<number | null>(null);
+  const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
   const [teamCount, setTeamCount] = useState(12);
   const [scoring, setScoring] = useState<ScoringPreset>("ppr");
   const [draftAt, setDraftAt] = useState("");
@@ -189,6 +218,46 @@ export function StartFlow({
       if (mode === "new") await createTeam(joined.id, newTeamName.trim());
       router.push("/");
       router.refresh();
+    });
+
+  const platform = source === "sleeper" ? "sleeper" : "espn";
+
+  const findLeague = () =>
+    run(async () => {
+      try {
+        setFound(await importPreview(platform, link.trim(), showPrivate ? espnS2.trim() : undefined, showPrivate ? espnSwid.trim() : undefined));
+        go("connectFound");
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("is private")) setShowPrivate(true);
+        throw e;
+      }
+    });
+
+  const bringIn = () =>
+    run(async () => {
+      if (!found) return;
+      // A retry after a failed connect reuses the league already made.
+      const league = created ?? (await createLeague(found.name, { teamCount: found.team_count, makeActive: true }));
+      setCreated(league);
+      if (platform === "espn") {
+        await connectEspn(link.trim(), showPrivate ? espnS2.trim() : undefined, showPrivate ? espnSwid.trim() : undefined);
+        await syncEspnNow().catch(() => {});
+      } else {
+        await connectSleeper(link.trim());
+      }
+      const owners = await getUnclaimedOwners(league.id).catch(() => []);
+      setUnclaimed(owners);
+      setMine(null);
+      go("connectClaim");
+    });
+
+  const claimMine = () =>
+    run(async () => {
+      if (!created || mine === null) return;
+      await claimOwner(created.id, mine);
+      const left = await getUnclaimedOwners(created.id).catch(() => []);
+      setUnclaimedLeft(left.length);
+      go("connectInvite");
     });
 
   const createNow = () =>
@@ -306,7 +375,7 @@ export function StartFlow({
             <DownloadIcon />
           </span>
           <span>
-            <strong className="text-[color:var(--wl-text)]">Moving from ESPN?</strong> Bring your league over with every past season, record and rivalry.
+            <strong className="text-[color:var(--wl-text)]">Already playing on ESPN or Sleeper?</strong> Bring your league in and keep playing there.
           </span>
         </button>
       </>
@@ -391,7 +460,10 @@ export function StartFlow({
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#191d23] text-sm font-bold text-[#aab2bf]">
                   {initials(o.display_name)}
                 </span>
-                <span className="flex-grow font-semibold">{o.display_name}</span>
+                <span className="flex flex-grow flex-col">
+                  <span className="font-semibold">{o.team_name ?? o.display_name}</span>
+                  {o.team_name && <span className="text-xs text-[#aab2bf]">{o.display_name}</span>}
+                </span>
                 {claimId === o.owner_id && (
                   <span className="text-[color:var(--wl-accent)]">
                     <CheckIcon />
@@ -425,28 +497,30 @@ export function StartFlow({
   if (view === "create1") {
     content = (
       <>
-        <Top onBack={() => go("home")} step={1} />
+        <Top onBack={() => go("home")} />
         <div className="flex flex-col gap-2">
-          <span className={styles.kicker}>Create a league · 1 of 4</span>
-          <h1 className={`${anton.className} ${styles.title}`}>Name your league</h1>
+          <span className={styles.kicker}>Set up your league</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Where does your league play right now?</h1>
+          <p className={styles.sub}>Keep playing there. We&apos;ll pull in your teams and scores and add everything else on top.</p>
         </div>
-        <label className={styles.label}>
-          League name
-          <input className={`${styles.field} text-lg font-semibold`} value={leagueName} onChange={(e) => setLeagueName(e.target.value)} maxLength={40} placeholder="Sunday Scaries" />
-        </label>
         <div className="flex flex-col gap-2.5">
-          <span className={styles.kicker}>Start from</span>
-          <Option on={source === "fresh"} onClick={() => setSource("fresh")} icon={<PlusIcon />} color="var(--wl-accent)" title="Start fresh" text="A new league with good defaults. Tweak anything later." />
-          <Option
-            on={source === "espn"}
-            onClick={() => setSource("espn")}
-            icon={<DownloadIcon />}
-            color="#fbbf24"
-            title="Bring it over from ESPN"
-            text="After it's created, connect ESPN to import every past season, owner, matchup and record."
-          />
+          <Option on={source === "espn"} onClick={() => setSource("espn")} icon={<DownloadIcon />} color="#f87171" title="ESPN" text="Paste your league link. About 30 seconds." />
+          <Option on={source === "sleeper"} onClick={() => setSource("sleeper")} icon={<DownloadIcon />} color="#38bdf8" title="Sleeper" text="Paste your league link. No sign-in." />
+          <Option on={false} onClick={() => {}} disabled icon={<DownloadIcon />} color="#a78bfa" title="Yahoo" text="Coming soon." />
+          <Option on={source === "fresh"} onClick={() => setSource("fresh")} icon={<PlusIcon />} color="var(--wl-accent)" title="Starting a new league" text="Draft here with good defaults. Tweak anything later." />
         </div>
-        <button type="button" className={`${styles.neon} mt-auto`} disabled={!leagueName.trim()} onClick={() => go("createType")}>
+        {source === "fresh" && (
+          <label className={styles.label}>
+            League name
+            <input className={`${styles.field} text-lg font-semibold`} value={leagueName} onChange={(e) => setLeagueName(e.target.value)} maxLength={40} placeholder="Sunday Scaries" />
+          </label>
+        )}
+        <button
+          type="button"
+          className={`${styles.neon} mt-auto`}
+          disabled={source === "fresh" && !leagueName.trim()}
+          onClick={() => go(source === "fresh" ? "createType" : "connectLink")}
+        >
           Continue
         </button>
       </>
@@ -699,7 +773,144 @@ export function StartFlow({
   }
 
   if (view === "invite" && created) {
-    content = <InviteScreen league={created} teamCount={teamCount} fromEspn={source === "espn"} hasDraftDate={!!draftAt} />;
+    content = <InviteScreen league={created} teamCount={teamCount} hasDraftDate={!!draftAt} />;
+  }
+
+  if (view === "connectLink") {
+    const name = PLATFORM_NAME[platform];
+    content = (
+      <>
+        <Top onBack={() => go("create1")} />
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>{name}</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Paste your league link</h1>
+          <p className={styles.sub}>
+            {platform === "espn"
+              ? "Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the number works too."
+              : "Open your league at sleeper.com and copy the address (sleeper.com/leagues/…), or paste just the league ID. No sign-in needed."}
+          </p>
+        </div>
+        <label className={styles.label}>
+          {name} league link
+          <input
+            className={styles.field}
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder={platform === "espn" ? "https://fantasy.espn.com/football/league?leagueId=…" : "https://sleeper.com/leagues/…"}
+          />
+        </label>
+        {platform === "espn" && (
+          <div className={styles.card}>
+            <span className={styles.kicker}>Before you tap Find</span>
+            <strong>Turn on &ldquo;Viewable to Public&rdquo;</strong>
+            <span className="text-sm leading-snug text-[#aab2bf]">
+              In ESPN as the league manager: League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to Public.&rdquo;
+              Your league stays private and your rules don&apos;t change; this only lets The Weekend read your scores. You can turn it off
+              anytime.
+            </span>
+          </div>
+        )}
+        {platform === "espn" &&
+          (showPrivate ? (
+            <div className="flex flex-col gap-2.5">
+              <p className="text-sm leading-snug text-[#aab2bf]">
+                Keeping it private? Sign in at espn.com, open your browser&apos;s developer tools → Application → Cookies → espn.com, and
+                copy espn_s2 and SWID (with the curly braces).
+              </p>
+              <label className={styles.label}>
+                espn_s2
+                <input className={styles.field} type="password" autoComplete="off" value={espnS2} onChange={(e) => setEspnS2(e.target.value)} />
+              </label>
+              <label className={styles.label}>
+                SWID
+                <input className={styles.field} autoComplete="off" value={espnSwid} onChange={(e) => setEspnSwid(e.target.value)} />
+              </label>
+            </div>
+          ) : (
+            <button type="button" className={styles.ghost} onClick={() => setShowPrivate(true)}>
+              My league is private
+            </button>
+          ))}
+        {error && <p className={styles.error}>{error}</p>}
+        <button type="button" className={`${styles.neon} mt-auto`} disabled={!link.trim() || busy} onClick={findLeague}>
+          {busy ? "Looking…" : "Find my league"}
+        </button>
+      </>
+    );
+  }
+
+  if (view === "connectFound" && found) {
+    content = (
+      <>
+        <Top onBack={() => go("connectLink")} />
+        <div className={styles.card}>
+          <span className="flex items-center gap-2 font-bold text-[color:var(--wl-accent)]">
+            <CheckIcon /> Found {found.name}
+          </span>
+          <span className="text-sm text-[#aab2bf]">
+            {found.season} season · {found.team_count} teams · Week {found.current_week}
+          </span>
+          <div className="grid grid-cols-2 gap-2">
+            {found.teams.slice(0, 6).map((t, i) => (
+              <div key={`${t.team_name}-${i}`} className="flex min-w-0 flex-col rounded-lg bg-white/[0.04] p-2">
+                <span className="truncate text-sm font-bold">{t.team_name}</span>
+                {t.owner_name && <span className="truncate text-xs text-[#aab2bf]">{t.owner_name}</span>}
+              </div>
+            ))}
+          </div>
+          {found.teams.length > 6 && <span className="text-sm text-[#aab2bf]">+ {found.teams.length - 6} more teams</span>}
+        </div>
+        <ul className="flex flex-col gap-1.5 text-sm">
+          <li>✓ Every week&apos;s matchups and scores so far</li>
+          <li>✓ Live scoring during games</li>
+          <li>✓ Write-ups, recaps, trade tools and chat on top</li>
+          <li>✓ Your league keeps running on {PLATFORM_NAME[platform]}, nothing changes there</li>
+        </ul>
+        {error && <p className={styles.error}>{error}</p>}
+        <div className="mt-auto flex flex-col gap-2">
+          <button type="button" className={styles.neon} disabled={busy} onClick={bringIn}>
+            {busy ? "Bringing it in…" : "This is my league"}
+          </button>
+          <button type="button" className={styles.ghost} onClick={() => go("connectLink")}>
+            Not it? Paste a different link
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  if (view === "connectClaim" && created) {
+    content = (
+      <>
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>{created.name} is here</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Which team is yours?</h1>
+          <p className={styles.sub}>These came from your league on {PLATFORM_NAME[platform]}.</p>
+        </div>
+        {unclaimed.length === 0 && <p className="text-sm text-[#aab2bf]">Still bringing your teams in. Refresh in a minute if they don&apos;t show.</p>}
+        <div className="flex flex-col gap-2">
+          {unclaimed.map((o) => (
+            <Option
+              key={o.owner_id}
+              on={mine === o.owner_id}
+              onClick={() => setMine(o.owner_id)}
+              icon={<UsersIcon />}
+              color="var(--wl-accent)"
+              title={o.team_name ?? o.display_name}
+              text={`${PLATFORM_NAME[platform]} owner: ${o.display_name}`}
+            />
+          ))}
+        </div>
+        {error && <p className={styles.error}>{error}</p>}
+        <button type="button" className={`${styles.neon} mt-auto`} disabled={mine === null || busy} onClick={claimMine}>
+          {busy ? "Claiming…" : "That's me"}
+        </button>
+      </>
+    );
+  }
+
+  if (view === "connectInvite" && created && found) {
+    content = <ConnectInvite league={created} total={found.team_count} unclaimedLeft={unclaimedLeft} platformName={PLATFORM_NAME[platform]} />;
   }
 
   return (
@@ -711,7 +922,65 @@ export function StartFlow({
   );
 }
 
-function InviteScreen({ league, teamCount, fromEspn, hasDraftDate }: { league: League; teamCount: number; fromEspn: boolean; hasDraftDate: boolean }) {
+function ConnectInvite({ league, total, unclaimedLeft, platformName }: { league: League; total: number; unclaimedLeft: number | null; platformName: string }) {
+  const [copied, setCopied] = useState(false);
+  const [link, setLink] = useState("");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- needs the browser's own origin
+    setLink(`${window.location.origin}/start?join=${encodeURIComponent(league.invite_code)}`);
+  }, [league.invite_code]);
+  const claimed = total - (unclaimedLeft ?? total - 1);
+  const message = `Our league is on The Weekend now: write-ups before every matchup, live gamecasts and a real league chat. Still on ${platformName}, nothing changes there. Tap to claim your team: ${link}`;
+
+  async function send() {
+    if (navigator.share) {
+      await navigator.share({ title: league.name, text: message }).catch(() => {});
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked: the message is on screen to copy by hand.
+    }
+  }
+
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <span className={styles.kicker}>Your league is here</span>
+        <h1 className={`${anton.className} ${styles.title}`}>Now bring everyone in</h1>
+        <p className={styles.sub}>Send one message to your group chat. Each person taps the link, signs up and picks their team.</p>
+      </div>
+      <div className={styles.card}>
+        <span className={styles.kicker}>The message</span>
+        <p className="text-sm leading-relaxed">{message}</p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex justify-between text-sm">
+          <span className="font-semibold">Who&apos;s claimed</span>
+          <span className="font-mono font-bold text-[color:var(--wl-accent)]">
+            {claimed} / {total}
+          </span>
+        </div>
+        <div className={styles.bar}>
+          <div className={styles.barFill} style={{ width: `${Math.max(4, (claimed / Math.max(1, total)) * 100)}%` }} />
+        </div>
+      </div>
+      <div className="mt-auto flex flex-col gap-2">
+        <button type="button" className={styles.neon} onClick={send}>
+          {copied ? "Copied" : "Send to the group chat"}
+        </button>
+        <Link href="/" className="p-2.5 text-center text-sm text-[#aab2bf]">
+          Go to my league
+        </Link>
+      </div>
+    </>
+  );
+}
+
+function InviteScreen({ league, teamCount, hasDraftDate }: { league: League; teamCount: number; hasDraftDate: boolean }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [link, setLink] = useState("");
@@ -780,11 +1049,6 @@ function InviteScreen({ league, teamCount, fromEspn, hasDraftDate }: { league: L
         </div>
       </div>
       <div className="mt-auto flex flex-col gap-2">
-        {fromEspn && (
-          <Link href="/commissioner/espn" className={styles.ghost}>
-            Connect ESPN to import your history
-          </Link>
-        )}
         {!hasDraftDate && (
           <Link href="/draft" className={styles.ghost}>
             Set your draft date
@@ -835,9 +1099,31 @@ function Door({ onClick, accent, icon, title, text }: { onClick: () => void; acc
   );
 }
 
-function Option({ on, onClick, icon, color, title, text }: { on: boolean; onClick: () => void; icon: ReactNode; color: string; title: string; text: string }) {
+function Option({
+  on,
+  onClick,
+  icon,
+  color,
+  title,
+  text,
+  disabled,
+}: {
+  on: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  color: string;
+  title: string;
+  text: string;
+  disabled?: boolean;
+}) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={on} className={`${styles.option} ${on ? styles.optionOn : ""}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={on}
+      className={`${styles.option} ${on ? styles.optionOn : ""} disabled:opacity-45`}
+    >
       <span style={{ color }}>{icon}</span>
       <span className="flex flex-col gap-1">
         <span className="font-bold">{title}</span>

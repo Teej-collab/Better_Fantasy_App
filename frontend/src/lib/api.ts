@@ -3406,6 +3406,25 @@ export async function getAdminRecapsServer(sessionCookie: string | undefined): P
   return getServer<AdminRecaps>("/admin/recaps", sessionCookie).catch(() => null);
 }
 
+// The 2027 waitlist (GET /admin/waitlist, 2026-10-24): signups from the
+// public /waitlist page and the "Get this for your league" share links.
+export type WaitlistSignup = {
+  id: number;
+  email: string;
+  name: string | null;
+  role: "commissioner" | "player";
+  league_size: number | null;
+  platform: "espn" | "sleeper" | "yahoo" | "nfl" | "other" | "none" | null;
+  note: string | null;
+  ref: string | null;
+  created_at: string;
+};
+export type AdminWaitlist = { count: number; commissioners: number; players_represented: number; signups: WaitlistSignup[] };
+
+export async function getAdminWaitlistServer(sessionCookie: string | undefined): Promise<AdminWaitlist | null> {
+  return getServer<AdminWaitlist>("/admin/waitlist", sessionCookie).catch(() => null);
+}
+
 export function getAdminBadges(): Promise<AdminBadges> {
   return _adminGet("/admin/badges");
 }

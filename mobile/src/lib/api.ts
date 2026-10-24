@@ -902,6 +902,7 @@ export const api = {
     security: (days = 7) => request<A.AdminSecurity>(`/admin/security?days=${days}`),
     audit: (limit = 50, offset = 0) => request<A.AdminAuditLog>(`/admin/audit?limit=${limit}&offset=${offset}`),
     recaps: () => request<A.AdminRecaps>('/admin/recaps'),
+    waitlist: () => request<A.AdminWaitlist>('/admin/waitlist'),
     taps: (days = 30) => request<A.AdminTaps>(`/admin/taps?days=${days}`),
   },
   playerView: (view: Exclude<PlayerViewKey, 'matchup'>, playerIds: string[]) =>

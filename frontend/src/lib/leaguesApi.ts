@@ -57,7 +57,25 @@ export type Team = {
 export type UnclaimedOwner = {
   owner_id: number;
   display_name: string;
+  // Their latest team here (2026-10-24), the name people recognize.
+  team_name?: string | null;
 };
+
+// "Found your league" (2026-10-24): an ESPN or Sleeper league looked up
+// before bringing it in. Saves nothing.
+export type ImportPreview = {
+  platform: "espn" | "sleeper";
+  external_id: string;
+  name: string;
+  season: number;
+  current_week: number;
+  team_count: number;
+  teams: { team_name: string; owner_name: string | null }[];
+};
+
+export async function importPreview(platform: "espn" | "sleeper", league: string, espnS2?: string, espnSwid?: string): Promise<ImportPreview> {
+  return post<ImportPreview>("/leagues/import-preview", { platform, league, espn_s2: espnS2 || null, espn_swid: espnSwid || null });
+}
 
 export type Member = {
   user_id: number;

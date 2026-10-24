@@ -28,6 +28,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
     sections: [
       { href: '/admin/users', label: 'Users', icon: '◐' },
       { href: '/admin/leagues', label: 'Leagues', icon: '◆' },
+      { href: '/admin/waitlist' as Href, label: 'Waitlist', icon: '◌' },
     ],
   },
   {

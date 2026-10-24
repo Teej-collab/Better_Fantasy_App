@@ -275,3 +275,18 @@ export type AdminTapPerson = {
   top_screens: { screen: string; views: number }[];
 };
 export type AdminTaps = { window_days: number; total_taps: number; targets: AdminTapTarget[]; people: AdminTapPerson[] };
+
+// The 2027 waitlist (GET /admin/waitlist, 2026-10-24): signups from the
+// public /waitlist page and the "Get this for your league" share links.
+export type WaitlistSignup = {
+  id: number;
+  email: string;
+  name: string | null;
+  role: 'commissioner' | 'player';
+  league_size: number | null;
+  platform: 'espn' | 'sleeper' | 'yahoo' | 'nfl' | 'other' | 'none' | null;
+  note: string | null;
+  ref: string | null;
+  created_at: string;
+};
+export type AdminWaitlist = { count: number; commissioners: number; players_represented: number; signups: WaitlistSignup[] };
