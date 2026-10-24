@@ -17,6 +17,7 @@ import {
   Segmented,
 } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
+import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { LoadingState, TeamAvatar } from '@/components/ui';
 import { Colors, Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
@@ -166,7 +167,12 @@ export function StandingsSection({ season, initialView, whatIf }: { season: numb
     <View style={styles.gap}>
       <PageTitle>Standings</PageTitle>
       <Segmented options={options} value={view} onChange={setView} />
-      {view === 'standings' && <StandingsTable season={season} data={standingsQ.data} loading={standingsQ.isPending} />}
+      {/* Standings and this week's power rankings go to the group chat as images (2026-10-24). */}
+      {view === 'standings' && (
+        <ShareableCard title={`${season ?? ''} standings`}>
+          <StandingsTable season={season} data={standingsQ.data} loading={standingsQ.isPending} />
+        </ShareableCard>
+      )}
       {view === 'scoreboard' && season !== null && <WeekScoreboard season={season} />}
       {view === 'playoffs' && hasPlayoffs && <BracketExperience embedded initialMode={whatIf ? 'whatif' : undefined} initialW={whatIf} />}
     </View>
@@ -372,7 +378,11 @@ export function PowerRankingsSection({ season }: { season: number | null }) {
         value={view}
         onChange={setView}
       />
-      {view === 'week' && <PowerWeek season={season} />}
+      {view === 'week' && (
+        <ShareableCard title="This week's power rankings">
+          <PowerWeek season={season} />
+        </ShareableCard>
+      )}
       {view === 'trend' && <PowerTrend season={season} />}
       {view === 'all-time' && <PowerAllTime />}
     </View>

@@ -13,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 
+import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
@@ -270,13 +271,16 @@ export default function PunishmentWheelScreen() {
       {phase === 'replaying' && <Text style={styles.replayNote}>You missed the spin — here&apos;s how it went…</Text>}
 
       {revealed && result && (
-        <View style={styles.result} accessibilityLiveRegion="polite">
-          <Text style={styles.resultKicker}>{`THE WHEEL HAS SPOKEN · ${data.season} PUNISHMENT`}</Text>
-          <Text style={styles.resultText}>{result.text}</Text>
-          <Text style={styles.resultMeta}>
-            {`Locked for the ${data.season} season${result.spun_by ? ` · spun by ${result.spun_by}` : ''} · the league loser owes it`}
-          </Text>
-        </View>
+        // The verdict, for the group chat (2026-10-24).
+        <ShareableCard title={`The ${data.season} punishment wheel has spoken`}>
+          <View style={styles.result} accessibilityLiveRegion="polite">
+            <Text style={styles.resultKicker}>{`THE WHEEL HAS SPOKEN · ${data.season} PUNISHMENT`}</Text>
+            <Text style={styles.resultText}>{result.text}</Text>
+            <Text style={styles.resultMeta}>
+              {`Locked for the ${data.season} season${result.spun_by ? ` · spun by ${result.spun_by}` : ''} · the league loser owes it`}
+            </Text>
+          </View>
+        </ShareableCard>
       )}
 
       {!result && data.is_commissioner && (

@@ -22,6 +22,7 @@ import type {
   DraftBet,
   ParsedSlip,
   EspnConnectionStatus,
+  ImportPreview,
   SleeperConnectionStatus,
   LeagueBoard,
   LeagueFeed,
@@ -950,7 +951,15 @@ export const api = {
   selectLeague: (leagueId: number) =>
     request<{ active_league_id: number }>(`/leagues/${leagueId}/select`, { method: 'POST', body: '{}' }),
   unclaimedOwners: async (leagueId: number) =>
-    (await request<{ owners: { owner_id: number; display_name: string }[] }>(`/leagues/${leagueId}/unclaimed-owners`)).owners,
+    (await request<{ owners: { owner_id: number; display_name: string; team_name?: string | null }[] }>(`/leagues/${leagueId}/unclaimed-owners`))
+      .owners,
+  // "Found your league" (2026-10-24): an ESPN or Sleeper league looked up
+  // before bringing it in. Saves nothing.
+  importPreview: (platform: 'espn' | 'sleeper', league: string, espnS2?: string, espnSwid?: string) =>
+    request<ImportPreview>('/leagues/import-preview', {
+      method: 'POST',
+      body: JSON.stringify({ platform, league, espn_s2: espnS2 || null, espn_swid: espnSwid || null }),
+    }),
   // Both return a fresh session token (owner_id lives in it) — sign in with it.
   claimOwner: (leagueId: number, ownerId: number) =>
     request<{ owner_id: number; claimed: boolean; token: string }>(`/leagues/${leagueId}/claim-owner`, {

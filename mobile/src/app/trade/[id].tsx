@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { BigButton, PageTitle, TONES, formatWhen } from '@/components/commissioner/CommishParts';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
-import { DropPicker, LineupChange, THEM, YOU, pos, verdictFor } from '@/components/trades/TradeParts';
+import { ShareableCard } from '@/components/ShareableCard';
+import { DropPicker, LineupChange, THEM, YOU, leanFor, pos, verdictFor } from '@/components/trades/TradeParts';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { trackTap } from '@/lib/analytics';
@@ -17,6 +18,10 @@ import type { Trade, TradeEvaluation } from '@/lib/types';
 // get and give with each player's points a week, your starting lineup
 // before → after, who you'd drop if it's a 2-for-1, then Accept, Counter
 // or Decline. Your own offer: withdraw it. Anyone else's: what happened.
+
+function ShareCardIf({ when, title, children }: { when: boolean; title: string; children: ReactNode }) {
+  return when ? <ShareableCard title={title}>{children}</ShareableCard> : <>{children}</>;
+}
 
 const STATUS_LINE: Partial<Record<Trade['status'], string>> = {
   accepted: 'This trade went through.',
@@ -98,6 +103,8 @@ function TradeDetail({ trade, myTeamId, evaluation }: { trade: Trade; myTeamId: 
         </View>
       ) : null}
 
+      {/* A deal that's done (or in review) can go to the group chat (2026-10-24). */}
+      <ShareCardIf when={['accepted', 'in_review', 'awaiting_review'].includes(trade.status)} title={`Trade: ${trade.proposing_team_name} ↔ ${trade.receiving_team_name}`}>
       <View style={styles.sides}>
         {[left, right].map((teamId, i) => {
           const color = i === 0 ? YOU : THEM;
@@ -123,6 +130,8 @@ function TradeDetail({ trade, myTeamId, evaluation }: { trade: Trade; myTeamId: 
       </View>
 
       {v && <Text style={[styles.verdict, { color: v.color }]}>{v.text}</Text>}
+      {!v && leanFor(trade) && <Text style={[styles.verdict, { color: TONES.yellow }]}>{leanFor(trade)}</Text>}
+      </ShareCardIf>
       {evaluation && (toMe || fromMe) && <LineupChange lineup={evaluation.my_lineup} />}
 
       {myDrops.length > 0 && (

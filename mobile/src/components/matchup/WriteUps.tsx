@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { NeonPanel } from '@/components/NeonPanel';
+import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { Colors, Radius, SectionColors, Spacing } from '@/constants/theme';
 import { trackTap } from '@/lib/analytics';
@@ -38,7 +39,7 @@ export function MatchupWriteUps({ narrative, preview, week }: { narrative: strin
 
 function WriteUpCard({ color, kicker, sub, text, target }: { color: string; kicker: string; sub: string; text: string; target: string }) {
   const [open, setOpen] = useState(false);
-  return (
+  const panel = (
     <NeonPanel color={color} contentStyle={styles.card}>
       <View style={styles.row}>
         <View style={styles.rowText}>
@@ -63,6 +64,8 @@ function WriteUpCard({ color, kicker, sub, text, target }: { color: string; kick
       {open ? <Text style={styles.text}>{text.trim()}</Text> : null}
     </NeonPanel>
   );
+  // Opened, it can go to the group chat as an image (2026-10-24).
+  return open ? <ShareableCard title={`${kicker.replace(/^\W+/, '').trim()} · ${sub}`}>{panel}</ShareableCard> : panel;
 }
 
 const styles = StyleSheet.create({

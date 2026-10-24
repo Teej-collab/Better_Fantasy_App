@@ -5,7 +5,6 @@ league_id is always resolved from the session's active league, never
 accepted from the request itself.
 """
 import json
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -25,6 +24,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig, config_for_connection
 from espn_api.requests.espn_requests import ESPNAccessDenied
 from app.providers.sleeper.league import SleeperLeagueNotFound, SleeperProvider, fetch_league, parse_league_id
+from app.domain.league_import import PRIVATE_LEAGUE_MESSAGE, parse_espn_league_id
 from app.providers.sync import run_full_sync
 from app.queries import league as league_read_queries
 from app.queries import league_espn_connections as espn_connection_queries
@@ -341,25 +341,16 @@ class ConnectEspnRequest(BaseModel):
     espn_swid: str | None = None
 
 
-# Plain text so every app version shows it; the app also keys off "is private".
-PRIVATE_LEAGUE_MESSAGE = (
-    "ESPN won't share that league yet: it is private to outside apps. In ESPN, open League Manager → Settings → "
-    "Basic Settings and turn on “Make League Viewable to Public” (your league stays private and your rules don't "
-    "change), then try again. Or add your ESPN sign-in values below."
-)
-
-
 def _espn_league_id(body: ConnectEspnRequest) -> int:
     if body.espn_league_id:
         return body.espn_league_id
-    text = (body.league_url or "").strip()
-    match = re.search(r"leagueId=(\d+)", text) or re.fullmatch(r"(\d{3,12})", text)
-    if not match:
+    league_id = parse_espn_league_id(body.league_url or "")
+    if league_id is None:
         raise HTTPException(
             status_code=400,
             detail="Paste your league's link from ESPN (it has leagueId= in it), or just the number.",
         )
-    return int(match.group(1))
+    return league_id
 
 
 @router.get("/espn-connection")

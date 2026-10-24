@@ -23,7 +23,7 @@ export default function JoinScreen() {
   const [preview, setPreview] = useState<LeaguePreview | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [step, setStep] = useState<'find' | 'team'>('find');
-  const [unclaimed, setUnclaimed] = useState<{ owner_id: number; display_name: string }[]>([]);
+  const [unclaimed, setUnclaimed] = useState<{ owner_id: number; display_name: string; team_name?: string | null }[]>([]);
   const [claimId, setClaimId] = useState<number | null>(null);
   const [teamName, setTeamName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -146,7 +146,10 @@ export default function JoinScreen() {
                   <View style={styles.initials}>
                     <Text style={styles.initialsText}>{initials(o.display_name)}</Text>
                   </View>
-                  <Text style={styles.claimName}>{o.display_name}</Text>
+                  <View style={styles.claimText}>
+                    <Text style={styles.claimName}>{o.team_name ?? o.display_name}</Text>
+                    {o.team_name ? <Text style={startStyles.muted}>{o.display_name}</Text> : null}
+                  </View>
                   {on && <Icon name="check" color={Colors.accent} size={20} />}
                 </Pressable>
               );
@@ -249,7 +252,8 @@ const styles = StyleSheet.create({
   claimOn: { borderColor: Colors.accent, backgroundColor: 'rgba(57,255,20,0.08)' },
   initials: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.tile, alignItems: 'center', justifyContent: 'center' },
   initialsText: { color: '#aab2bf', fontWeight: '700' },
-  claimName: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
+  claimText: { flex: 1 },
+  claimName: { color: Colors.text, fontSize: 15, fontWeight: '600' },
 });
 
 // Your history is on your original Discord account, so it isn't in the

@@ -100,3 +100,20 @@ async def test_last_seasons_sleeper_league_is_turned_away(pool, monkeypatch):
         resp = await client.post("/league/sleeper-connection", json={"league": LEAGUE_ID})
     assert resp.status_code == 400
     assert str(TEST_SEASON) in resp.json()["detail"]
+
+
+async def test_import_preview_shows_the_league_without_saving_it(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    _fake_sleeper(monkeypatch)
+    async with _client() as client:
+        await client.post("/auth/signup", json={"email": "test-sleeper-preview@example.com", "password": "correct-horse", "display_name": "Preview"})
+        resp = await client.post("/leagues/import-preview", json={"platform": "sleeper", "league": f"https://sleeper.com/leagues/{LEAGUE_ID}"})
+        bad = await client.post("/leagues/import-preview", json={"platform": "sleeper", "league": "nope"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["name"] == "Test Sleeper League"
+    assert body["team_count"] == 2
+    assert body["teams"][0] == {"team_name": "Nap Time", "owner_name": "sleepy1"}
+    assert bad.status_code == 400
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM league_sleeper_connections WHERE sleeper_league_id = $1 AND league_id NOT IN (SELECT id FROM leagues WHERE name LIKE 'Test League Sleeper%')", LEAGUE_ID) == 0

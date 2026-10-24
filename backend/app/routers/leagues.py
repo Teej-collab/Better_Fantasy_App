@@ -24,7 +24,7 @@ from app.db import get_pool
 from app import monitoring
 from app.notifications import admin_alerts
 from app.notifications import email as email_notifications
-from app.domain import commish_log, league_format
+from app.domain import commish_log, league_format, league_import
 from app.queries import auth as auth_queries
 from app.queries import chat as chat_queries
 from app.queries import draft as draft_queries
@@ -328,6 +328,28 @@ async def list_teams(league_id: int, request: Request):
             raise HTTPException(status_code=403, detail="You're not a member of this league")
         rows = await team_queries.list_teams_for_league(conn, league_id, season)
     return {"teams": [dict(r) for r in rows]}
+
+
+class ImportPreviewRequest(BaseModel):
+    platform: str
+    league: str
+    espn_s2: str | None = None
+    espn_swid: str | None = None
+
+
+@router.post("/import-preview")
+async def import_preview(body: ImportPreviewRequest, request: Request):
+    """The new-commissioner flow's "Found your league" (2026-10-24): an
+    ESPN or Sleeper league's name, week and teams, looked up without
+    saving anything. Signed-in only."""
+    _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    try:
+        return await league_import.preview(
+            body.platform, body.league, season, (body.espn_s2 or "").strip(), (body.espn_swid or "").strip()
+        )
+    except league_import.ImportLookupError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/{league_id}/unclaimed-owners")

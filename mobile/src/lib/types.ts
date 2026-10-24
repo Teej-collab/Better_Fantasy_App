@@ -1226,6 +1226,16 @@ export type PlayoffSettings = {
 
 export type ScoringRule = { stat_category: string; points_per_unit: number };
 
+export type ImportPreview = {
+  platform: 'espn' | 'sleeper';
+  external_id: string;
+  name: string;
+  season: number;
+  current_week: number;
+  team_count: number;
+  teams: { team_name: string; owner_name: string | null }[];
+};
+
 export type SleeperConnectionStatus =
   | { connected: false }
   | { connected: true; sleeper_league_id: string; league_name: string | null; last_synced_at: string | null; last_sync_error: string | null };

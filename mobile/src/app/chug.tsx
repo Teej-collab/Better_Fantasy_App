@@ -7,6 +7,7 @@ import { ActionSheetIOS, Alert, Modal, Platform, Pressable, RefreshControl, Scro
 import { ChugFeedCard } from '@/components/home/FeedCards';
 import { ChugBreakdown } from '@/components/ChugBreakdown';
 import { NeonPanel } from '@/components/NeonPanel';
+import { ShareableCard } from '@/components/ShareableCard';
 import { Display, Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, Radius, SectionColors, Spacing, withAlpha } from '@/constants/theme';
@@ -71,6 +72,7 @@ export default function ChugScreen() {
         ) : rows.length === 0 ? (
           <Text style={styles.muted}>No chug data yet.</Text>
         ) : (
+          <ShareableCard title={`${season ?? 'All-time'} Chug leaderboard`}>
           <NeonPanel color={SectionColors.chug} radius={Radius.md} contentStyle={styles.list}>
             {rows.map((row, i) => (
               <LeaderboardRow
@@ -83,6 +85,7 @@ export default function ChugScreen() {
               />
             ))}
           </NeonPanel>
+          </ShareableCard>
         )}
       </View>
     </ScrollView>
@@ -186,6 +189,8 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
       {status === 'error' && error && <Text style={styles.error}>{error}</Text>}
       {status === 'done' && result && !result.can_to_mouth && <Text style={styles.soft}>{result.message}</Text>}
       {status === 'done' && result && result.can_to_mouth && (
+        // The grade and the roast, for the group chat (2026-10-24).
+        <ShareableCard title={`Chug graded ${result.final_score}/10`}>
         <View style={styles.grade}>
           <Text style={styles.gradeTitle}>🍺 Grade: {result.final_score}/10</Text>
           <Text style={styles.small}>
@@ -208,6 +213,7 @@ function ChugUpload({ creditable }: { creditable?: { id: number; name: string }[
           )}
           {result.roast && <Text style={styles.roast}>{result.roast}</Text>}
         </View>
+        </ShareableCard>
       )}
     </NeonPanel>
   );

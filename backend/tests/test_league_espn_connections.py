@@ -343,3 +343,28 @@ async def test_a_private_league_without_cookies_says_how_to_make_it_public(pool,
     assert "is private" in resp.json()["detail"]
     assert "Viewable to Public" in resp.json()["detail"]
     assert junk.status_code == 400
+
+
+async def test_import_preview_reads_an_espn_league_and_explains_a_private_one(pool, monkeypatch):
+    from types import SimpleNamespace
+
+    from espn_api.requests.espn_requests import ESPNAccessDenied
+
+    league = FakeLeague(current_week=7, teams=[SimpleNamespace(team_name="Bench Mob", owners=[{"firstName": "Sam", "lastName": "Lee"}])])
+    league.settings.name = "Office League"
+    monkeypatch.setattr("app.providers.espn.adapter.League", lambda **kwargs: league)
+    async with _client() as client:
+        await _sign_up(client, "test-espn-preview@example.com")
+        ok = await client.post("/leagues/import-preview", json={"platform": "espn", "league": "https://fantasy.espn.com/football/league?leagueId=555"})
+
+        def _denied(**kwargs):
+            raise ESPNAccessDenied("espn_s2 and swid are required")
+
+        monkeypatch.setattr("app.providers.espn.adapter.League", _denied)
+        private = await client.post("/leagues/import-preview", json={"platform": "espn", "league": "555"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["name"] == "Office League"
+    assert ok.json()["teams"] == [{"team_name": "Bench Mob", "owner_name": "Sam Lee"}]
+    assert ok.json()["current_week"] == 7
+    assert private.status_code == 400
+    assert "Viewable to Public" in private.json()["detail"]

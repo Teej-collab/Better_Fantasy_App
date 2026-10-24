@@ -1,4 +1,4 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -28,11 +28,12 @@ import { joinLinkFor } from '@/lib/qrJoin';
 import { queryClient } from '@/lib/queries';
 import type { LeagueInfo, ScoringPreset } from '@/lib/types';
 
-// Create a league (port of the web's StartFlow create steps): 1) name +
-// start fresh or from ESPN, 2) the kind of league (2026-10), 3) the
+// Create a league (port of the web's StartFlow create steps): 1) where the
+// league plays now (ESPN/Sleeper go to start/connect.tsx) and a fresh
+// league's name, 2) the kind of league (2026-10), 3) the
 // basics — teams, scoring, roster, matchups, draft and the type's own
 // settings, 4) your team; then the invite screen with the league's QR.
-// ?from=espn preselects "Bring it over from ESPN".
+// ?from=espn|sleeper preselects that.
 
 const SCORING: { key: ScoringPreset; label: string }[] = [
   { key: 'ppr', label: 'PPR' },
@@ -52,7 +53,11 @@ export default function CreateScreen() {
   const params = useLocalSearchParams<{ from?: string }>();
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [name, setName] = useState('');
-  const [source, setSource] = useState<'fresh' | 'espn'>(params.from === 'espn' ? 'espn' : 'fresh');
+  // Where the league plays now (2026-10-24): ESPN or Sleeper go to the
+  // bring-it-in flow (start/connect.tsx); a fresh league carries on here.
+  const [source, setSource] = useState<'fresh' | 'espn' | 'sleeper'>(
+    params.from === 'espn' ? 'espn' : params.from === 'sleeper' ? 'sleeper' : 'fresh',
+  );
   const [teamCount, setTeamCount] = useState(12);
   const [scoring, setScoring] = useState<ScoringPreset>('ppr');
   const [draftDay, setDraftDay] = useState<number | null>(null);
@@ -120,7 +125,6 @@ export default function CreateScreen() {
       <StartScreen
         footer={
           <>
-            {source === 'espn' && <GhostButton label="Connect ESPN to import your history" onPress={() => router.replace('/commissioner/espn')} />}
             {!draftAt && <GhostButton label="Set your draft date" onPress={() => router.replace('/draft')} />}
             <Pressable onPress={() => router.replace('/')} accessibilityRole="button" style={styles.textButton}>
               <Text style={startStyles.muted}>Go to my league</Text>
@@ -393,26 +397,29 @@ export default function CreateScreen() {
   }
 
   return (
-    <StartScreen footer={<NeonButton label="Continue" onPress={() => setStep(2)} disabled={!name.trim()} />}>
-      <Stack.Screen options={{ title: 'Create a League' }} />
-      <StepDots step={1} total={4} />
-      <View style={styles.head}>
-        <Kicker>Create a league · 1 of 4</Kicker>
-        <Title>Name your league</Title>
-      </View>
-      <Field label="League name" value={name} onChangeText={setName} maxLength={40} placeholder="Sunday Scaries" style={styles.bigField} />
-      <View style={styles.group}>
-        <Kicker>Start from</Kicker>
-        <OptionCard on={source === 'fresh'} onPress={() => setSource('fresh')} icon="plus" color={Colors.accent} title="Start fresh" text="A new league with good defaults. Tweak anything later." />
-        <OptionCard
-          on={source === 'espn'}
-          onPress={() => setSource('espn')}
-          icon="download"
-          color="#fbbf24"
-          title="Bring it over from ESPN"
-          text="After it's created, connect ESPN to import every past season, owner, matchup and record."
+    <StartScreen
+      footer={
+        <NeonButton
+          label="Continue"
+          onPress={() => (source === 'fresh' ? setStep(2) : router.push(`/start/connect?from=${source}` as Href))}
+          disabled={source === 'fresh' && !name.trim()}
         />
+      }>
+      <Stack.Screen options={{ title: 'Set Up Your League' }} />
+      <View style={styles.head}>
+        <Kicker>Set up your league</Kicker>
+        <Title>Where does your league play right now?</Title>
+        <Sub>Keep playing there. We&apos;ll pull in your teams and scores and add everything else on top.</Sub>
       </View>
+      <View style={styles.group}>
+        <OptionCard on={source === 'espn'} onPress={() => setSource('espn')} icon="download" color="#f87171" title="ESPN" text="Paste your league link. About 30 seconds." />
+        <OptionCard on={source === 'sleeper'} onPress={() => setSource('sleeper')} icon="download" color="#38bdf8" title="Sleeper" text="Paste your league link. No sign-in." />
+        <OptionCard on={false} onPress={() => {}} disabled icon="download" color="#a78bfa" title="Yahoo" text="Coming soon." />
+        <OptionCard on={source === 'fresh'} onPress={() => setSource('fresh')} icon="plus" color={Colors.accent} title="Starting a new league" text="Draft here with good defaults. Tweak anything later." />
+      </View>
+      {source === 'fresh' && (
+        <Field label="League name" value={name} onChangeText={setName} maxLength={40} placeholder="Sunday Scaries" style={styles.bigField} />
+      )}
     </StartScreen>
   );
 }

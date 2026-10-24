@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { ListPanel, Muted, openOwner, PageTitle, RankedCategoryCard, SeasonTabs, SmallHeader } from '@/components/league/LeagueUI';
 import { NeonPanel } from '@/components/NeonPanel';
+import { ShareableCard } from '@/components/ShareableCard';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { Colors, SectionColors, Spacing } from '@/constants/theme';
@@ -46,7 +47,9 @@ function SeasonAwardsView({ season }: { season: number }) {
   const awards = q.data?.awards ?? [];
   return (
     <View style={styles.gap}>
+      {/* The champion and the season's awards go to the group chat as images (2026-10-24). */}
       {champion && (
+        <ShareableCard title={`${season} champion: ${champion.team_name}`}>
         <NeonPanel color={SectionColors.awards} contentStyle={styles.champion}>
           <Text style={styles.trophy}>🏆</Text>
           <View>
@@ -56,10 +59,12 @@ function SeasonAwardsView({ season }: { season: number }) {
             </Pressable>
           </View>
         </NeonPanel>
+        </ShareableCard>
       )}
       {awards.length === 0 ? (
         <Muted>No awards recorded for {season} yet.</Muted>
       ) : (
+        <ShareableCard title={`${season} season awards`}>
         <ListPanel color={SectionColors.awards}>
           {awards.map((a, i) => (
             <View key={i} style={[styles.row, i > 0 && styles.divided]}>
@@ -73,6 +78,7 @@ function SeasonAwardsView({ season }: { season: number }) {
             </View>
           ))}
         </ListPanel>
+        </ShareableCard>
       )}
     </View>
   );

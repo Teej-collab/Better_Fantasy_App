@@ -125,16 +125,33 @@ export function Door({ title, text, accent, icon, onPress }: { title: string; te
   );
 }
 
-export function OptionCard({ on, title, text, color, icon, onPress }: { on: boolean; title: string; text: string; color: string; icon: 'plus' | 'download'; onPress: () => void }) {
+export function OptionCard({
+  on,
+  title,
+  text,
+  color,
+  icon,
+  onPress,
+  disabled,
+}: {
+  on: boolean;
+  title: string;
+  text: string;
+  color: string;
+  icon: 'plus' | 'download';
+  onPress: () => void;
+  disabled?: boolean;
+}) {
   return (
     <Pressable
       onPress={() => {
         haptics.select();
         onPress();
       }}
+      disabled={disabled}
       accessibilityRole="radio"
-      accessibilityState={{ checked: on }}
-      style={[styles.option, on && styles.optionOn]}>
+      accessibilityState={{ checked: on, disabled }}
+      style={[styles.option, on && styles.optionOn, disabled && { opacity: 0.45 }]}>
       <Icon name={icon} color={color} size={22} />
       <View style={styles.flex}>
         <Text style={styles.optionTitle}>{title}</Text>

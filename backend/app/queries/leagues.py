@@ -193,11 +193,13 @@ async def list_unclaimed_owners(conn, league_id: int):
     have a team in it."""
     return await conn.fetch(
         """
-        SELECT DISTINCT o.owner_id, o.display_name
+        SELECT DISTINCT ON (o.owner_id) o.owner_id, o.display_name, t.team_name
         FROM owners o
         JOIN teams_by_season t ON t.owner_id = o.owner_id
         WHERE t.league_id = $1 AND NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.owner_id = o.owner_id)
-        ORDER BY o.display_name
+        -- team_name: their latest team here, so a picker can show the
+        -- team people recognize (2026-10-24), not just an owner name.
+        ORDER BY o.owner_id, t.season DESC
         """,
         league_id,
     )
