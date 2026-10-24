@@ -6,6 +6,7 @@ import { GroupTitle, panelClass } from "@/components/commissioner/CommishBits";
 import { trackTap } from "@/lib/analyticsEvents";
 import { commishApi, TONES, type CommishSummary } from "@/lib/commishApi";
 import { NAV_ACCENT } from "@/lib/navDestinations";
+import { SwitchCard } from "@/components/commissioner/LeagueSwitch";
 
 // The Commissioner hub (2026-10-23 overhaul, mockup 1): what needs the
 // commissioner now, the league at a glance, and every tool in four
@@ -79,6 +80,7 @@ export function CommishHub() {
 
   return (
     <div className="flex flex-col gap-6">
+      <SwitchCard />
       <section className={`${panelClass} overflow-hidden`} style={{ borderColor: `color-mix(in srgb, ${NAV_ACCENT} 45%, transparent)` }}>
         <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
           <h2 className="text-xs font-extrabold tracking-widest uppercase" style={{ color: NAV_ACCENT }}>

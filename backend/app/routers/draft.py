@@ -28,7 +28,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import auction_engine, commish_log
+from app.domain import auction_engine, commish_log, league_mode
 from app.domain import draft_engine
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
@@ -201,6 +201,7 @@ async def submit_pick(body: PickRequest, request: Request):
     try:
         async with pool.acquire() as conn:
             league_id = await require_active_league_id(conn, payload)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             owner_id = await resolve_owner_id(conn, payload)
             result = await draft_engine.make_pick(
                 conn, season, owner_id, body.sleeper_player_id, league_id=league_id
@@ -285,6 +286,7 @@ async def setup_draft(body: SetupRequest, request: Request):
     try:
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             position_max = body.position_max
             if position_max is None:
                 position_max = await draft_queries.get_position_max_setting(conn, season, league_id)
@@ -566,6 +568,7 @@ async def start_draft(request: Request):
     try:
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             config = await draft_engine.start_draft(conn, season, league_id=league_id)
             await commish_log.record(conn, league_id, payload["user_id"], "draft", "Started the draft")
     except DraftError as e:

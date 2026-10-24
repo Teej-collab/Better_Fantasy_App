@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BigButton, GroupTitle, PageTitle, SmallButton, TONES, formatWhen } from '@/components/commissioner/CommishParts';
+import { MirrorBanner } from '@/components/MirrorBanner';
 import { Text } from '@/components/Text';
 import { LoadingState } from '@/components/ui';
 import { THEM, YOU, leanFor, pos, verdictFor } from '@/components/trades/TradeParts';
@@ -143,6 +144,7 @@ function TradesInbox() {
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}>
       <PageTitle title="Trades" subtitle={deadlineLine(settings, now)} />
+      <MirrorBanner />
       <BigButton
         label="Build a trade"
         onPress={() => {

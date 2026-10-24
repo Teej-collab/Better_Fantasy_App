@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getMe, getMyPreferences, getMyTeamOwnershipServer, getMyTeamServer } from "@/lib/api";
 import { MyTeamApp } from "@/components/MyTeamApp";
 import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
+import { MirrorBanner } from "@/components/MirrorBanner";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { SignInCard } from "@/components/SignInCard";
 
@@ -50,6 +51,7 @@ export default async function MyTeamPage() {
   return (
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="team" />
+      <MirrorBanner />
       <MyTeamApp
         initialTeam={team}
         initialOwnership={ownership}

@@ -1138,6 +1138,35 @@ async def _run_trade_processing_job():
     record_job_run("trade_processing")
 
 
+async def _run_mirror_job():
+    """Mirror mode (2026-10-24, app/domain/league_switch.py): every
+    league still on ESPN/Sleeper gets its rosters copied — Sleeper every
+    run (5 minutes), ESPN every third — and its rules re-read once a day
+    around 4 AM. Then any switch to The Weekend whose week has come is
+    carried out."""
+    from app.domain import league_switch
+
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    now = datetime.now(timezone.utc)
+    async with pool.acquire() as conn:
+        rows = [("sleeper", r["league_id"]) for r in await sleeper_connection_queries.list_all_connections(conn)]
+        rows += [("espn", r["league_id"]) for r in await espn_connection_queries.list_all_connections(conn)]
+        week = await league_queries.get_cached_current_week(conn, season)
+    for platform, league_id in rows:
+        if platform == "espn" and now.minute % 15 >= 5:
+            continue
+        try:
+            await league_switch.refresh(pool, league_id, season, settings=now.hour == 9 and now.minute < 5)
+        except Exception:
+            logger.exception("Mirror refresh failed (league %s)", league_id)
+    if week:
+        switched = await league_switch.process_due(pool, season, week)
+        if switched:
+            logger.info("Leagues moved to The Weekend: %s", switched)
+    record_job_run("mirror")
+
+
 async def _run_scheduled_posts_job():
     """Posts Commish Corner announcements whose scheduled time has come
     (Commissioner → Commish Corner → Schedule)."""
@@ -1299,6 +1328,7 @@ def start_scheduler():
         _scheduler.add_job(_run_waiver_processing_job, "interval", seconds=interval_seconds, id="waiver_processing")
         _scheduler.add_job(_run_trade_processing_job, "interval", seconds=60, id="trade_processing")
         _scheduler.add_job(_run_scheduled_posts_job, "interval", seconds=60, id="scheduled_posts")
+        _scheduler.add_job(_run_mirror_job, "interval", seconds=300, id="mirror")
         logger.info("Waiver processing scheduler started (every %d seconds)", interval_seconds)
         started_any = True
 

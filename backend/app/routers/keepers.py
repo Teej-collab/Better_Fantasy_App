@@ -77,7 +77,7 @@ from app.config import _require
 from app.db import get_pool
 from app.providers.espn.lineup_client import ESPNLineupClient
 from app.providers.espn.slots import slot_label
-from app.domain import commish_log
+from app.domain import commish_log, league_mode
 from app.queries import draft as draft_queries
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
@@ -257,6 +257,7 @@ async def update_my_keepers(body: KeeperSelectionsBody, request: Request, pool=D
 
     async with pool.acquire() as conn:
         league_id = await require_active_league_id(conn, payload)
+        await league_mode.forbid_if_mirrored(conn, league_id)
         owner_id = await resolve_owner_id(conn, payload)
         rules_row = await keeper_queries.get_rules(conn, active_season, league_id)
         rules = _rules_dict(rules_row, active_season)

@@ -203,7 +203,13 @@ async def compute_and_store_week(
         # lineup before it's scored.
         if lineups_are_automatic(await get_league_format(conn, league_id)):
             await reslot_best_ball_lineups(conn, season, week, league_id)
-        matchups_updated = await compute_matchup_scores_for_week(conn, season, week, league_id)
+        # A league still on ESPN/Sleeper (mirror mode) takes its matchup
+        # scores from there; its players' points here are still computed.
+        from app.domain.league_mode import mirror_platform
+
+        matchups_updated = (
+            0 if await mirror_platform(conn, league_id) else await compute_matchup_scores_for_week(conn, season, week, league_id)
+        )
         # ESPN's in-game rulings ("ruled out", "questionable to
         # return") — only while a game is in progress, best-effort.
         if record_injuries and any(g.get("state") == "in" for g in games):

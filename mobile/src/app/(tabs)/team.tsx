@@ -11,6 +11,7 @@ import { PlayerViewTable, PlayerViewsPill, usePlayerView } from '@/components/pl
 import { PlayerHeadshot } from '@/components/PlayerHeadshot';
 import { PositionStripe } from '@/components/PositionStripe';
 import { WeekStepper } from '@/components/WeekStepper';
+import { MirrorBanner } from '@/components/MirrorBanner';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -122,6 +123,7 @@ function TeamScreenContent() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}>
+        <MirrorBanner />
         <View style={styles.titleRow}>
           <TeamAvatar name={data.owner_name ?? data.team_name} logoUrl={data.logo_url ?? null} size={44} />
           <Text style={[styles.title, styles.titleText]} numberOfLines={1}>

@@ -23,6 +23,7 @@ import type {
   ParsedSlip,
   EspnConnectionStatus,
   ImportPreview,
+  LeagueSwitchStatus,
   SleeperConnectionStatus,
   LeagueBoard,
   LeagueFeed,
@@ -858,6 +859,11 @@ export const api = {
       body: JSON.stringify({ league_url: leagueUrl, espn_s2: espnS2 || null, espn_swid: espnSwid || null }),
     }),
   disconnectEspn: () => request<unknown>('/league/espn-connection', { method: 'DELETE' }),
+  // Mirror mode and moving the league over for good (2026-10-24).
+  leagueSwitch: () => request<LeagueSwitchStatus>('/league/switch'),
+  requestLeagueSwitch: () =>
+    request<{ switched: boolean; effective_week: number; status: LeagueSwitchStatus }>('/league/switch', { method: 'POST', body: '{}' }),
+  cancelLeagueSwitch: () => request<unknown>('/league/switch', { method: 'DELETE' }),
   // A league brought in from Sleeper (2026-10-24): just its link or id.
   sleeperConnection: () => request<SleeperConnectionStatus>('/league/sleeper-connection'),
   connectSleeper: (league: string) =>

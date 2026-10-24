@@ -115,7 +115,11 @@ class SleeperProvider(FantasyProvider):
                     member_key = f"sleeper-roster:{self.sleeper_league_id}:{roster['roster_id']}"
                     display_name = "Open team"
                     team_name = f"Team {roster['roster_id']}"
+                # A Sleeper user already claimed here maps to their owner
+                # (app/domain/owner_merge.py records the alias).
                 owner_id = await conn.fetchval(
+                    "SELECT owner_id FROM owner_espn_aliases WHERE espn_member_id = $1", member_key
+                ) or await conn.fetchval(
                     """
                     INSERT INTO owners (espn_member_id, display_name)
                     VALUES ($1, $2)
@@ -151,9 +155,13 @@ class SleeperProvider(FantasyProvider):
     async def _save_matchups(self, conn, season: int, week: int, league_id: int, playoff_start: int) -> int:
         entries = await self._matchups(week)
         teams = await self._team_ids(conn, season, league_id)
+        # Mirror mode copies Sleeper's rosters into current_rosters, but
+        # Sleeper still keeps the score until the league switches over.
+        from app.domain.league_mode import mirror_platform
+
         has_in_app_scoring = await conn.fetchval(
             "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 LIMIT 1", season, league_id
-        )
+        ) and not await mirror_platform(conn, league_id)
         pairs: dict[int, list] = {}
         for e in entries:
             if e.get("matchup_id") is not None:

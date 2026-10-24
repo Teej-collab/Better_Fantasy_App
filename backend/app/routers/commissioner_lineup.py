@@ -20,7 +20,7 @@ from app.auth.league_context import require_commissioner_of
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import commish_log, lineup_engine
+from app.domain import commish_log, league_mode, lineup_engine
 from app.domain import waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.lineup_exceptions import (
@@ -196,6 +196,7 @@ async def commissioner_drop_player(league_id: int, team_id: int, body: Commissio
     try:
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
             roster = await lineup_engine.drop_player(
                 conn, active_season, team_id, body.sleeper_player_id, league_id=league_id, source="commissioner"
@@ -233,6 +234,7 @@ async def commissioner_add_player(league_id: int, team_id: int, body: Commission
     try:
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
             if not body.override_waivers:
                 # A player whose game just kicked off this week may
@@ -314,6 +316,7 @@ async def commissioner_move_player(league_id: int, team_id: int, body: Commissio
     try:
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
             roster = await lineup_engine.move_player(
                 conn, active_season, team_id, body.sleeper_player_id, body.to_slot, league_id=league_id,
@@ -342,6 +345,7 @@ async def commissioner_swap_players(league_id: int, team_id: int, body: Commissi
     try:
         async with pool.acquire() as conn:
             await require_commissioner_of(conn, payload, league_id)
+            await league_mode.forbid_if_mirrored(conn, league_id)
             await _require_team_in_league(conn, league_id, team_id, active_season)
             roster = await lineup_engine.swap_players(
                 conn, active_season, team_id, body.sleeper_player_id_a, body.sleeper_player_id_b,

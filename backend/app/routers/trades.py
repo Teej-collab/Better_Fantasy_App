@@ -20,7 +20,7 @@ from app.auth.league_context import require_active_league_id, require_league_com
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
 from app.db import get_pool
-from app.domain import commish_log, league_format
+from app.domain import commish_log, league_format, league_mode
 from app.domain import trade_values
 from app.domain import trades as trades_domain
 from app.domain.trade_exceptions import (
@@ -259,6 +259,9 @@ class AcceptTradeRequest(BaseModel):
 async def accept_trade(trade_id: int, request: Request, body: AcceptTradeRequest | None = None, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
+        league_id = await conn.fetchval("SELECT league_id FROM trades WHERE id = $1", trade_id)
+        if league_id is not None:
+            await league_mode.forbid_if_mirrored(conn, league_id)
         try:
             trade = await trades_domain.respond_to_trade(
                 conn, trade_id, payload["user_id"], accept=True, drops=body.drops if body else None
@@ -485,6 +488,7 @@ async def add_to_trade_block(body: TradeBlockRequest, request: Request, pool=Dep
     season = int(_require("ACTIVE_SEASON"))
     async with pool.acquire() as conn:
         team_id, league_id = await _require_my_team(conn, payload, season)
+        await league_mode.forbid_if_mirrored(conn, league_id)
         on_roster = await conn.fetchval(
             "SELECT 1 FROM current_rosters WHERE season = $1 AND team_id = $2 AND sleeper_player_id = $3",
             season, team_id, body.sleeper_player_id,

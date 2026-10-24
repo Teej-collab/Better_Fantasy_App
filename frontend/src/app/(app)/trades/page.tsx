@@ -5,6 +5,7 @@ import { MyTeamSubNav } from "@/components/nav/MyTeamSubNav";
 import { SignInCard } from "@/components/SignInCard";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { TradesApp } from "@/components/TradesApp";
+import { MirrorBanner } from "@/components/MirrorBanner";
 
 export const metadata: Metadata = { title: "Trades — The Weekend" };
 
@@ -43,6 +44,7 @@ export default async function TradesPage({
     <div className="flex flex-col gap-4">
       <MyTeamSubNav active="trades" />
       <h1 className="text-2xl font-semibold">Trades</h1>
+      <MirrorBanner />
       <TradesApp
         myOwnerId={me.owner_id}
         initialTeamId={team ? Number(team) || null : null}

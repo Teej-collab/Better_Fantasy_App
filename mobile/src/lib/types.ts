@@ -1226,6 +1226,19 @@ export type PlayoffSettings = {
 
 export type ScoringRule = { stat_category: string; points_per_unit: number };
 
+// Mirror mode and the switch to The Weekend (GET /league/switch, 2026-10-24).
+export type LeagueSwitchStatus = {
+  mirrored: boolean;
+  platform: 'espn' | 'sleeper' | null;
+  platform_name: string | null;
+  teams: number;
+  claimed: number;
+  unclaimed: string[];
+  notes: string[];
+  pending: { effective_week: number } | null;
+  switched_from: string | null;
+};
+
 export type ImportPreview = {
   platform: 'espn' | 'sleeper';
   external_id: string;

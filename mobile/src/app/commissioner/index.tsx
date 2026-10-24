@@ -8,7 +8,7 @@ import { LoadingState } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { trackTap } from '@/lib/analytics';
 import { useAppearance } from '@/lib/appearance';
-import { useCommishSummary } from '@/lib/queries';
+import { useCommishSummary, useLeagueSwitch } from '@/lib/queries';
 import type { CommishSummary } from '@/lib/types';
 
 // The Commissioner hub (2026-10-23 overhaul, mockup 1): what needs the
@@ -59,6 +59,35 @@ const GROUPS: { title: string; color: string; tools: Tool[] }[] = [
   },
 ];
 
+// A league still on ESPN/Sleeper (mirror mode, 2026-10-24): how many teams
+// are here, and the way to move over for good once they are.
+function SwitchCard() {
+  const s = useLeagueSwitch().data;
+  if (!s?.mirrored) return null;
+  const allIn = s.claimed >= s.teams && s.teams > 0;
+  return (
+    <Panel color={allIn ? Colors.accent : TONES.blue}>
+      <Text style={[p.label, { color: allIn ? Colors.accent : TONES.blue }]}>{allIn ? 'Everyone’s here' : `Running on ${s.platform_name}`}</Text>
+      <Text style={styles.needTitle}>
+        {s.pending
+          ? `Moving to The Weekend in Week ${s.pending.effective_week}`
+          : allIn
+            ? `${s.claimed} of ${s.teams} teams are here. Loving The Weekend? Move your league over.`
+            : `${s.claimed} of ${s.teams} teams are here. Once everyone is, move the league over for good.`}
+      </Text>
+      <View style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+        <SmallButton
+          label={allIn ? 'Move us over' : 'See what moving does'}
+          onPress={() => {
+            trackTap('commish.switch_open');
+            router.push('/commissioner/switch' as Href);
+          }}
+        />
+      </View>
+    </Panel>
+  );
+}
+
 export default function CommissionerHub() {
   const summary = useCommishSummary();
   return (
@@ -87,6 +116,7 @@ function Hub({ data }: { data: CommishSummary }) {
   ];
   return (
     <>
+      <SwitchCard />
       <Panel color={accent}>
         <View style={styles.needsHead}>
           <Text style={[p.label, { color: accent }]}>Needs you</Text>

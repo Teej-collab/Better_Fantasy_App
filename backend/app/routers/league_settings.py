@@ -5,6 +5,7 @@ league_id is always resolved from the session's active league, never
 accepted from the request itself.
 """
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -24,6 +25,7 @@ from app.providers.espn.adapter import ESPNProvider
 from app.providers.espn.config import ESPNConfig, config_for_connection
 from espn_api.requests.espn_requests import ESPNAccessDenied
 from app.providers.sleeper.league import SleeperLeagueNotFound, SleeperProvider, fetch_league, parse_league_id
+from app.domain import league_switch
 from app.domain.league_import import PRIVATE_LEAGUE_MESSAGE, parse_espn_league_id
 from app.providers.sync import run_full_sync
 from app.queries import league as league_read_queries
@@ -32,6 +34,7 @@ from app.queries import league_sleeper_connections as sleeper_connection_queries
 from app.queries import leagues as league_queries
 
 router = APIRouter(prefix="/league", tags=["league-settings"])
+logger = logging.getLogger(__name__)
 
 
 def _require_session(request: Request) -> dict:
@@ -470,6 +473,7 @@ async def sync_espn_now(request: Request, pool=Depends(get_pool)):
     try:
         espn_config = config_for_connection(connection, season)
         results = await run_full_sync(ESPNProvider(espn_config), season, season, league_id=league_id)
+        await _mirror_refresh(pool, league_id, season)
     except Exception as e:
         async with pool.acquire() as conn:
             await espn_connection_queries.mark_sync_failure(conn, league_id, str(e))
@@ -548,6 +552,7 @@ async def connect_sleeper(body: ConnectSleeperRequest, request: Request, pool=De
         )
 
     results = await run_full_sync(SleeperProvider(sleeper_league_id), season, season, league_id=league_id)
+    await _mirror_refresh(pool, league_id, season)
     teams_result = results.get(season, {}).get("teams", {})
     async with pool.acquire() as conn:
         if teams_result.get("status") == "failed":
@@ -578,6 +583,7 @@ async def sync_sleeper_now(request: Request, pool=Depends(get_pool)):
     if connection is None:
         raise HTTPException(status_code=409, detail="Connect a Sleeper league first")
     results = await run_full_sync(SleeperProvider(connection["sleeper_league_id"]), season, season, league_id=league_id)
+    await _mirror_refresh(pool, league_id, season)
     teams_result = results.get(season, {}).get("teams", {})
     async with pool.acquire() as conn:
         if teams_result.get("status") == "failed":
@@ -585,3 +591,55 @@ async def sync_sleeper_now(request: Request, pool=Depends(get_pool)):
         else:
             await sleeper_connection_queries.mark_sync_success(conn, league_id)
     return {"season": season, "results": results}
+
+
+
+async def _mirror_refresh(pool, league_id: int, season: int) -> None:
+    """After a sync: the league's rosters and rules copied over (mirror
+    mode, app/domain/league_switch.py). Never fails the sync itself."""
+    try:
+        await league_switch.refresh(pool, league_id, season, settings=True)
+    except Exception:
+        logger.exception("Mirror refresh failed (league %s)", league_id)
+
+
+# ---- Moving over to The Weekend (2026-10-24) --------------------------------------
+
+
+@router.get("/switch")
+async def switch_status(request: Request, pool=Depends(get_pool)):
+    """Whether this league is still mirroring ESPN/Sleeper, who's here,
+    what couldn't be matched exactly and any switch that's set. Any
+    member (the app shows the mirror banner from it)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        return await league_switch.status(conn, league_id, season)
+
+
+@router.post("/switch")
+async def switch_league(request: Request, pool=Depends(get_pool)):
+    """The commissioner moves the league over for good: now if this
+    week hasn't kicked off, otherwise at the start of next week."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        week = await league_read_queries.get_cached_current_week(conn, season) or 1
+    try:
+        result = await league_switch.request(pool, league_id, season, payload["user_id"], week)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    async with pool.acquire() as conn:
+        result["status"] = await league_switch.status(conn, league_id, season)
+    return result
+
+
+@router.delete("/switch")
+async def cancel_switch(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        await league_switch.cancel(conn, league_id)
+    return Response(status_code=204)

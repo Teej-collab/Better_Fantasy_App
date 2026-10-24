@@ -160,10 +160,14 @@ class ESPNProvider(FantasyProvider):
         # A season with no in-app rosters (2023-2025, synced before
         # this app had its own draft/scoring) is unaffected — ESPN is
         # still the only real source those seasons ever had.
+        # A connected league in mirror mode (2026-10-24) has current_rosters
+        # copied from ESPN, but ESPN still keeps its score.
+        from app.domain.league_mode import mirror_platform
+
         has_in_app_scoring = await conn.fetchval(
             "SELECT 1 FROM current_rosters WHERE season = $1 AND league_id = $2 LIMIT 1",
             season, league_id,
-        )
+        ) and not await mirror_platform(conn, league_id)
 
         for m in matchups:
             if m.away_team == 0:  # bye week, no real opponent

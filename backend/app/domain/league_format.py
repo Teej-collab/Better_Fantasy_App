@@ -140,7 +140,13 @@ BEST_BALL_ROSTER_MESSAGE = "This is a best ball league: rosters are set at the d
 async def best_ball_block(conn, league_id: int, kind: str) -> str | None:
     """The message to refuse a lineup move (`kind` "lineup") or a
     roster move — add, drop, claim, trade — (`kind` "roster") with in a
-    best-ball league; None anywhere else."""
+    best-ball league; None anywhere else. A league in mirror mode (still
+    on ESPN/Sleeper, app/domain/league_mode.py) refuses both, with its
+    own message (2026-10-24)."""
+    from app.domain.league_mode import mirror_block
+
+    if message := await mirror_block(conn, league_id):
+        return message
     if not lineups_are_automatic(await get_league_format(conn, league_id)):
         return None
     return BEST_BALL_LINEUP_MESSAGE if kind == "lineup" else BEST_BALL_ROSTER_MESSAGE

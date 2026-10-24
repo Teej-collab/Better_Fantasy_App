@@ -396,7 +396,17 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
         membership = await league_queries.get_membership(conn, league_id, payload["user_id"])
         if membership is None:
             raise HTTPException(status_code=403, detail="You're not a member of this league")
+        claimed_owner_id = body.owner_id
         claimed = await league_queries.claim_owner(conn, league_id, body.owner_id, payload["user_id"])
+        if not claimed:
+            # A league brought in from ESPN/Sleeper (2026-10-24): its teams'
+            # owners were made by the sync, but the person claiming one
+            # usually has an owner here already (one per account). Their
+            # team is merged into the owner they already have; the sync
+            # then maps that ESPN/Sleeper user to them for good.
+            merged = await _merge_synced_owner(conn, league_id, body.owner_id, payload["user_id"])
+            if merged is not None:
+                claimed, claimed_owner_id = True, merged
         if not claimed:
             raise HTTPException(
                 status_code=409,
@@ -407,19 +417,48 @@ async def claim_owner(league_id: int, body: ClaimOwnerRequest, request: Request)
         # owner (pre-dating real accounts) rejoining chat — unlike the
         # team-creation hooks above, a claimed owner already has a real
         # team/history and would otherwise never trigger either of them.
-        await chat_queries.add_owner_to_league_conversations(conn, league_id, body.owner_id)
+        await chat_queries.add_owner_to_league_conversations(conn, league_id, claimed_owner_id)
         token_version = await auth_queries.get_token_version(conn, payload["user_id"])
 
     config = SessionConfig()
     token = create_session_token(
         config.session_secret,
         user_id=payload["user_id"],
-        owner_id=body.owner_id,
+        owner_id=claimed_owner_id,
         discord_user_id=payload.get("discord_user_id"),
         is_commissioner=payload.get("is_commissioner", False),
         token_version=token_version,
     )
-    return {"owner_id": body.owner_id, "claimed": True, "token": token}
+    return {"owner_id": claimed_owner_id, "claimed": True, "token": token}
+
+
+async def _merge_synced_owner(conn, league_id: int, owner_id: int, user_id: int) -> int | None:
+    """Claiming a synced team with an account that already has an owner:
+    only in a league connected to (or moved over from) ESPN/Sleeper, only
+    an unclaimed owner with a team in this league, and only while the
+    caller has no team of their own here yet. Returns the caller's owner."""
+    from app.domain.league_mode import mirror_platform
+    from app.domain.owner_merge import merge_owners
+
+    connected = await mirror_platform(conn, league_id) or await conn.fetchval(
+        "SELECT 1 FROM league_switches WHERE league_id = $1", league_id
+    )
+    mine = await auth_queries.get_owner_id_for_user(conn, user_id)
+    if not connected or mine is None or mine == owner_id:
+        return None
+    eligible = await conn.fetchval(
+        """
+        SELECT 1 FROM teams_by_season t
+        WHERE t.owner_id = $1 AND t.league_id = $2
+          AND NOT EXISTS (SELECT 1 FROM owner_users ou WHERE ou.owner_id = $1)
+          AND NOT EXISTS (SELECT 1 FROM teams_by_season m WHERE m.owner_id = $3 AND m.league_id = $2)
+        """,
+        owner_id, league_id, mine,
+    )
+    if not eligible:
+        return None
+    await merge_owners(conn, owner_id, mine)
+    return mine
 
 
 @router.post("/co-owner-invite")

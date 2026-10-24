@@ -485,3 +485,30 @@ export async function disconnectEspn(): Promise<void> {
 export async function syncEspnNow(): Promise<{ season: number; results: unknown }> {
   return post<{ season: number; results: unknown }>("/league/espn-connection/sync", {});
 }
+
+
+// Mirror mode and moving the league over for good (GET/POST/DELETE
+// /league/switch, 2026-10-24).
+export type LeagueSwitchStatus = {
+  mirrored: boolean;
+  platform: "espn" | "sleeper" | null;
+  platform_name: string | null;
+  teams: number;
+  claimed: number;
+  unclaimed: string[];
+  notes: string[];
+  pending: { effective_week: number } | null;
+  switched_from: string | null;
+};
+
+export async function getLeagueSwitch(): Promise<LeagueSwitchStatus> {
+  return get<LeagueSwitchStatus>("/league/switch");
+}
+
+export async function requestLeagueSwitch(): Promise<{ switched: boolean; effective_week: number; status: LeagueSwitchStatus }> {
+  return post("/league/switch", {});
+}
+
+export async function cancelLeagueSwitch(): Promise<void> {
+  await del("/league/switch");
+}

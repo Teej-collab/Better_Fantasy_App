@@ -429,7 +429,12 @@ async def faab_remaining(conn, season: int, league_id: int, team_id: int, settin
         """,
         season, league_id, team_id,
     )
-    return int(settings["faab_budget"]) - int(spent)
+    # Spent on ESPN/Sleeper before the league switched over (2026-10-24).
+    carried = await conn.fetchval(
+        "SELECT amount FROM faab_carryover WHERE league_id = $1 AND season = $2 AND team_id = $3",
+        league_id, season, team_id,
+    ) or 0
+    return int(settings["faab_budget"]) - int(spent) - int(carried)
 
 
 async def submit_claim(

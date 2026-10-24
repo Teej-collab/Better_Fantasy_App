@@ -51,6 +51,7 @@ JOB_NAMES = {
     "waiver_processing": "The waiver run",
     "trade_processing": "Trades",
     "scheduled_posts": "Scheduled Commish Corner posts",
+    "mirror": "ESPN / Sleeper roster copy",
     "sleeper_player_sync": "The Sleeper player update",
     "injury_watch": "Injury checks",
     "game_alerts": "Game alerts",
