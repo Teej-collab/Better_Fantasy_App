@@ -262,6 +262,9 @@ async def summary(conn, league_id: int, season: int) -> dict:
         "SELECT count(*) FROM punishment_wheel_items WHERE league_id = $1 AND season = $2", league_id, season
     )
     espn = await conn.fetchrow("SELECT last_synced_at, last_sync_error FROM league_espn_connections WHERE league_id = $1", league_id)
+    sleeper = await conn.fetchrow(
+        "SELECT last_synced_at, last_sync_error FROM league_sleeper_connections WHERE league_id = $1", league_id
+    )
     draft = await conn.fetchrow(
         "SELECT status, scheduled_start, completed_at FROM draft_config WHERE season = $1 AND league_id = $2", season, league_id
     )
@@ -315,7 +318,9 @@ async def summary(conn, league_id: int, season: int) -> dict:
             "chat_filter": f"{filter_words} extra word{'s' if filter_words != 1 else ''} hidden" if filter_words else "Only the built-in list",
             "wheel": f"{wheel_items} punishment{'s' if wheel_items != 1 else ''} loaded" if wheel_items else "Empty",
             "espn": (
-                ("Sync problem" if espn["last_sync_error"] else "Connected") if espn else "Not connected"
+                ("ESPN · sync problem" if espn["last_sync_error"] else "ESPN connected") if espn
+                else ("Sleeper · sync problem" if sleeper["last_sync_error"] else "Sleeper connected") if sleeper
+                else "ESPN or Sleeper"
             ),
             "corner": "Post an announcement to everyone",
         },

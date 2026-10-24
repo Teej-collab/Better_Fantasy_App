@@ -16,7 +16,7 @@ const OBJECTIONS = [
   },
   {
     q: "“I don’t want to move everyone’s teams.”",
-    a: "Being straight with you: there’s no automatic import from ESPN, Sleeper, or Yahoo for a brand-new league yet. The switch works best at a fresh draft, between seasons — not mid-season.",
+    a: "You don’t have to. Connect your ESPN or Sleeper league with its link and your teams, matchups and live scores come with it, mid-season included. A full move works best at a fresh draft, between seasons.",
   },
   {
     q: "“My league already uses ESPN / Sleeper / Yahoo.”",
@@ -29,14 +29,15 @@ const TOOLS = [
   "Force-edit a team’s roster when you need to step in",
   "League-wide polls and announcements",
   "Granular scoring rules — 45+ stat categories, distance-tiered kicking",
-  "Real waivers with a visible, weekly priority order",
+  "Real waivers with a visible, weekly priority order — your schedule, your rules (rolling, reverse standings, or FAAB)",
+  "A trade builder that shows whether a deal is fair and what it does to each lineup, plus a league trade block",
   "A commissioner announcement channel that bypasses chat mute",
 ];
 
 const NOT_YET = [
   "Auction drafts — snake drafts only, for now",
-  "Multi-team trades or a trade block",
-  "Automatic roster import from ESPN, Sleeper, or Yahoo for a brand-new league",
+  "Trades between more than two teams",
+  "Yahoo leagues (ESPN and Sleeper connect today)",
 ];
 
 export default function CommissionersPage() {

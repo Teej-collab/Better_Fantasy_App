@@ -50,7 +50,7 @@ const GROUPS: { title: string; color: string; tools: Tool[] }[] = [
       { title: "Commish Corner", href: "/commissioner/corner", value: "corner", target: "corner", badge: "NEW" },
       { title: "Polls", href: "/commissioner/polls", value: "polls", target: "polls" },
       { title: "Punishment Wheel", href: "/punishment-wheel", value: "wheel", target: "wheel" },
-      { title: "ESPN connection", href: "/commissioner/espn", value: "espn", target: "espn" },
+      { title: "Bring your league in", href: "/commissioner/espn", value: "espn", target: "espn" },
     ],
   },
 ];

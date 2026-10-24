@@ -40,6 +40,7 @@ from app.routers import (
     settings,
     system,
     trades,
+    waitlist,
     watch_party,
 )
 from app.scheduler import start_scheduler, stop_scheduler
@@ -184,6 +185,7 @@ app.include_router(trades.router)
 app.include_router(watch_party.router)
 app.include_router(punishment_wheel.router)
 app.include_router(system.router)
+app.include_router(waitlist.router)
 
 
 @app.get("/health")

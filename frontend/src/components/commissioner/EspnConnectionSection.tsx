@@ -36,7 +36,8 @@ const FIELD_CLASS =
  */
 export function EspnConnectionSection() {
   const [status, setStatus] = useState<EspnConnectionStatus | null>(null);
-  const [espnLeagueId, setEspnLeagueId] = useState("");
+  const [link, setLink] = useState("");
+  const [showPrivate, setShowPrivate] = useState(false);
   const [espnS2, setEspnS2] = useState("");
   const [espnSwid, setEspnSwid] = useState("");
   const [panel, setPanel] = useState<Panel>({ status: "idle" });
@@ -49,24 +50,25 @@ export function EspnConnectionSection() {
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
-    const leagueId = Number(espnLeagueId);
-    if (!Number.isFinite(leagueId) || leagueId <= 0) {
-      setPanel({ status: "error", message: "Enter a valid ESPN League ID." });
+    if (!link.trim()) {
+      setPanel({ status: "error", message: "Paste your league's link from ESPN." });
       return;
     }
-    if (!espnS2.trim() || !espnSwid.trim()) {
-      setPanel({ status: "error", message: "ESPN_S2 and SWID are both required." });
+    if (showPrivate && (!espnS2.trim() || !espnSwid.trim())) {
+      setPanel({ status: "error", message: "Add both espn_s2 and SWID, or leave both empty." });
       return;
     }
     setPanel({ status: "connecting" });
     try {
-      await connectEspn(leagueId, espnS2.trim(), espnSwid.trim());
+      await connectEspn(link.trim(), showPrivate ? espnS2.trim() : undefined, showPrivate ? espnSwid.trim() : undefined);
       setStatus(await getEspnConnection());
       setEspnS2("");
       setEspnSwid("");
       setPanel({ status: "idle" });
     } catch (err) {
-      setPanel({ status: "error", message: err instanceof Error ? err.message : "Couldn't connect that ESPN league." });
+      const message = err instanceof Error ? err.message : "Couldn't connect that ESPN league.";
+      setPanel({ status: "error", message });
+      if (message.includes("is private")) setShowPrivate(true);
     }
   }
 
@@ -101,7 +103,7 @@ export function EspnConnectionSection() {
       <div>
         <h2 className="text-lg font-semibold">ESPN Connection</h2>
         <p className="text-sm text-black/50 dark:text-white/50">
-          Import teams, matchups, and standings from a real ESPN league into this league.
+          Bring your ESPN league in: teams, matchups and live scores, with everything else here built on top.
         </p>
       </div>
 
@@ -110,6 +112,7 @@ export function EspnConnectionSection() {
           <div className="flex flex-col gap-1 text-sm">
             <span className="text-black/70 dark:text-white/70">
               Connected to ESPN league <span className="font-medium">{status.espn_league_id}</span>
+              {status.public ? " (public)" : ""}
             </span>
             <span className="text-black/50 dark:text-white/50">
               {status.last_synced_at
@@ -141,44 +144,47 @@ export function EspnConnectionSection() {
       ) : (
         <form onSubmit={handleConnect} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-black/70 dark:text-white/70">ESPN League ID</span>
+            <span className="text-black/70 dark:text-white/70">1. Your league&apos;s ESPN link</span>
             <span className="text-xs text-black/45 dark:text-white/45">
-              The number in your league&apos;s ESPN URL (fantasy.espn.com/football/league?leagueId=...).
+              Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the number
+              works too.
             </span>
             <input
               type="text"
-              inputMode="numeric"
-              value={espnLeagueId}
-              onChange={(e) => setEspnLeagueId(e.target.value)}
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://fantasy.espn.com/football/league?leagueId=…"
               className={FIELD_CLASS}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-black/70 dark:text-white/70">ESPN_S2</span>
+          <div className="flex flex-col gap-1 text-sm">
+            <span className="text-black/70 dark:text-white/70">2. Turn on &ldquo;Viewable to Public&rdquo;</span>
             <span className="text-xs text-black/45 dark:text-white/45">
-              From a private league only — your browser&apos;s espn_s2 cookie value while signed into ESPN.
+              In ESPN as the league manager: League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to
+              Public.&rdquo; Your league stays private and your rules don&apos;t change; this only lets The Weekend read your
+              scores. You can turn it off anytime.
             </span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={espnS2}
-              onChange={(e) => setEspnS2(e.target.value)}
-              className={FIELD_CLASS}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-black/70 dark:text-white/70">SWID</span>
-            <span className="text-xs text-black/45 dark:text-white/45">
-              Your browser&apos;s SWID cookie value, including the curly braces.
-            </span>
-            <input
-              type="text"
-              autoComplete="off"
-              value={espnSwid}
-              onChange={(e) => setEspnSwid(e.target.value)}
-              className={FIELD_CLASS}
-            />
-          </label>
+          </div>
+          {showPrivate ? (
+            <>
+              <p className="text-xs text-black/55 dark:text-white/55">
+                Keeping it private? Sign in at espn.com, open your browser&apos;s developer tools → Application → Cookies →
+                espn.com, and copy espn_s2 and SWID (with the curly braces).
+              </p>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-black/70 dark:text-white/70">espn_s2</span>
+                <input type="password" autoComplete="off" value={espnS2} onChange={(e) => setEspnS2(e.target.value)} className={FIELD_CLASS} />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-black/70 dark:text-white/70">SWID</span>
+                <input type="text" autoComplete="off" value={espnSwid} onChange={(e) => setEspnSwid(e.target.value)} className={FIELD_CLASS} />
+              </label>
+            </>
+          ) : (
+            <button type="button" onClick={() => setShowPrivate(true)} className="w-fit text-sm font-semibold underline">
+              My league is private
+            </button>
+          )}
 
           <div className="flex items-center gap-3">
             <button

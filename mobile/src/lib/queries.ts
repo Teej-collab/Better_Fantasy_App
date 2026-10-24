@@ -839,6 +839,10 @@ export function useEspnConnection() {
   return useQuery({ queryKey: ['espn-connection'], queryFn: api.espnConnection });
 }
 
+export function useSleeperConnection() {
+  return useQuery({ queryKey: ['sleeper-connection'], queryFn: api.sleeperConnection });
+}
+
 // ---- Bet tracking ----
 
 export function useBets() {

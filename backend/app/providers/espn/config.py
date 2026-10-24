@@ -10,6 +10,22 @@ import os
 from app.config import _require
 
 
+def config_for_connection(row, active_season: int) -> "ESPNConfig":
+    """A saved per-league connection (league_espn_connections) as a
+    config. A public league is saved without cookies (NULL), and ESPN's
+    library sends none when they're empty (2026-10-24)."""
+    from app.encryption import decrypt_secret
+
+    s2 = row["espn_s2_encrypted"]
+    swid = row["espn_swid_encrypted"]
+    return ESPNConfig(
+        league_id=row["espn_league_id"],
+        espn_s2=decrypt_secret(s2) if s2 else "",
+        swid=decrypt_secret(swid) if swid else "",
+        active_season=active_season,
+    )
+
+
 class ESPNConfig:
     def __init__(
         self, *, league_id: int | None = None, espn_s2: str | None = None,

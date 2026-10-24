@@ -4,11 +4,11 @@ import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type Vi
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
-import { canShareImages, shareViewAsImage } from '@/lib/shareImage';
+import { canShareImages, GET_IT_TEXT, shareViewAsImage } from '@/lib/shareImage';
 
 // Wraps a card that can be sent to the group chat as an image: a Share
-// button, and on share a "WEEKEND LEAGUE" signature strip added to the
-// bottom of the captured image only for that moment.
+// button, and on share a "THE WEEKEND" signature strip, with where to get
+// it for your own league, added to the captured image only for that moment.
 export function ShareableCard({
   children,
   title,
@@ -43,6 +43,7 @@ export function ShareableCard({
         {capturing && (
           <View style={styles.signature}>
             <Text style={styles.signatureText}>THE WEEKEND</Text>
+            <Text style={styles.getIt}>{GET_IT_TEXT}</Text>
           </View>
         )}
       </View>
@@ -60,6 +61,7 @@ const styles = StyleSheet.create({
   capture: { backgroundColor: Colors.bg, padding: Spacing.md, borderRadius: Radius.lg },
   signature: { alignItems: 'center', paddingTop: Spacing.md },
   signatureText: { fontFamily: Fonts.display, color: Colors.accent, fontSize: 13, letterSpacing: 3 },
+  getIt: { color: Colors.textSecondary, fontSize: 11, marginTop: 3 },
   share: { alignSelf: 'flex-end', marginTop: 6, paddingHorizontal: 10, paddingVertical: 4 },
   shareText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   pressed: { opacity: 0.6 },

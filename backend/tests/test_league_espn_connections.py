@@ -299,3 +299,47 @@ async def test_two_leagues_espn_connections_are_fully_isolated(pool, monkeypatch
         await league_b.post("/leagues", json={"name": "Test League ESPN Isolation B"})
         status_resp = await league_b.get("/league/espn-connection")
     assert status_resp.json() == {"connected": False}
+
+
+# --- Connect by link, no cookies (2026-10-24) ---------------------------
+
+
+async def test_a_public_league_connects_from_its_link_alone(pool, monkeypatch):
+    seen = {}
+
+    def _league(**kwargs):
+        seen.update(kwargs)
+        return FakeLeague(current_week=4)
+
+    monkeypatch.setattr("app.providers.espn.adapter.League", _league)
+    async with _client() as client:
+        await _sign_up(client, "test-espn-public@example.com")
+        await client.post("/leagues", json={"name": "Test League ESPN Public"})
+        connect_resp = await client.post(
+            "/league/espn-connection",
+            json={"league_url": "https://fantasy.espn.com/football/league?leagueId=7654321&seasonId=2026"},
+        )
+        status_resp = await client.get("/league/espn-connection")
+    assert connect_resp.status_code == 200, connect_resp.text
+    assert connect_resp.json()["espn_league_id"] == 7654321
+    assert seen["league_id"] == 7654321
+    assert not seen["espn_s2"] and not seen["swid"]  # no cookies sent
+    assert status_resp.json()["public"] is True
+
+
+async def test_a_private_league_without_cookies_says_how_to_make_it_public(pool, monkeypatch):
+    from espn_api.requests.espn_requests import ESPNAccessDenied
+
+    def _denied(**kwargs):
+        raise ESPNAccessDenied("espn_s2 and swid are required")
+
+    monkeypatch.setattr("app.providers.espn.adapter.League", _denied)
+    async with _client() as client:
+        await _sign_up(client, "test-espn-private@example.com")
+        await client.post("/leagues", json={"name": "Test League ESPN Private"})
+        resp = await client.post("/league/espn-connection", json={"league_url": "1234567"})
+        junk = await client.post("/league/espn-connection", json={"league_url": "my league"})
+    assert resp.status_code == 400
+    assert "is private" in resp.json()["detail"]
+    assert "Viewable to Public" in resp.json()["detail"]
+    assert junk.status_code == 400

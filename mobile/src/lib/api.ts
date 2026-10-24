@@ -22,6 +22,7 @@ import type {
   DraftBet,
   ParsedSlip,
   EspnConnectionStatus,
+  SleeperConnectionStatus,
   LeagueBoard,
   LeagueFeed,
   LeagueGame,
@@ -848,12 +849,20 @@ export const api = {
   chatFilter: () => request<{ words: string[] }>('/league/chat-filter'),
   updateChatFilter: (words: string[]) =>
     request<{ words: string[] }>('/league/chat-filter', { method: 'PUT', body: JSON.stringify({ words }) }),
-  connectEspn: (espnLeagueId: number, espnS2: string, espnSwid: string) =>
+  // The league's ESPN link (or its number); the two cookies only for a
+  // private league (2026-10-24).
+  connectEspn: (leagueUrl: string, espnS2?: string, espnSwid?: string) =>
     request<unknown>('/league/espn-connection', {
       method: 'POST',
-      body: JSON.stringify({ espn_league_id: espnLeagueId, espn_s2: espnS2, espn_swid: espnSwid }),
+      body: JSON.stringify({ league_url: leagueUrl, espn_s2: espnS2 || null, espn_swid: espnSwid || null }),
     }),
   disconnectEspn: () => request<unknown>('/league/espn-connection', { method: 'DELETE' }),
+  // A league brought in from Sleeper (2026-10-24): just its link or id.
+  sleeperConnection: () => request<SleeperConnectionStatus>('/league/sleeper-connection'),
+  connectSleeper: (league: string) =>
+    request<unknown>('/league/sleeper-connection', { method: 'POST', body: JSON.stringify({ league }) }),
+  disconnectSleeper: () => request<unknown>('/league/sleeper-connection', { method: 'DELETE' }),
+  syncSleeper: () => request<unknown>('/league/sleeper-connection/sync', { method: 'POST', body: '{}' }),
   syncEspn: () => request<unknown>('/league/espn-connection/sync', { method: 'POST', body: '{}' }),
   // ---- Admin dashboard (site owner only; the backend checks every call) ----
   admin: {

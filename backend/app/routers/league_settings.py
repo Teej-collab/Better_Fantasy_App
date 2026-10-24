@@ -5,6 +5,7 @@ league_id is always resolved from the session's active league, never
 accepted from the request itself.
 """
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -19,12 +20,15 @@ from app.domain.scoring_engine import compute_player_points, rules_dict_from_row
 from app.domain.stat_derivations import derive_stat_line
 from app.domain.schedule import generate_regular_season_schedule
 from app.domain.schedule_exceptions import ScheduleError
-from app.encryption import decrypt_secret, encrypt_secret
+from app.encryption import encrypt_secret
 from app.providers.espn.adapter import ESPNProvider
-from app.providers.espn.config import ESPNConfig
+from app.providers.espn.config import ESPNConfig, config_for_connection
+from espn_api.requests.espn_requests import ESPNAccessDenied
+from app.providers.sleeper.league import SleeperLeagueNotFound, SleeperProvider, fetch_league, parse_league_id
 from app.providers.sync import run_full_sync
 from app.queries import league as league_read_queries
 from app.queries import league_espn_connections as espn_connection_queries
+from app.queries import league_sleeper_connections as sleeper_connection_queries
 from app.queries import leagues as league_queries
 
 router = APIRouter(prefix="/league", tags=["league-settings"])
@@ -328,9 +332,34 @@ async def generate_schedule(body: GenerateScheduleRequest, request: Request, poo
 
 
 class ConnectEspnRequest(BaseModel):
-    espn_league_id: int
-    espn_s2: str
-    espn_swid: str
+    # The league's ID, or (2026-10-24) its link pasted straight from ESPN
+    # (…/football/league?leagueId=12345). One of the two is required.
+    espn_league_id: int | None = None
+    league_url: str | None = None
+    # Only a private league needs these; a public one connects without.
+    espn_s2: str | None = None
+    espn_swid: str | None = None
+
+
+# Plain text so every app version shows it; the app also keys off "is private".
+PRIVATE_LEAGUE_MESSAGE = (
+    "ESPN won't share that league yet: it is private to outside apps. In ESPN, open League Manager → Settings → "
+    "Basic Settings and turn on “Make League Viewable to Public” (your league stays private and your rules don't "
+    "change), then try again. Or add your ESPN sign-in values below."
+)
+
+
+def _espn_league_id(body: ConnectEspnRequest) -> int:
+    if body.espn_league_id:
+        return body.espn_league_id
+    text = (body.league_url or "").strip()
+    match = re.search(r"leagueId=(\d+)", text) or re.fullmatch(r"(\d{3,12})", text)
+    if not match:
+        raise HTTPException(
+            status_code=400,
+            detail="Paste your league's link from ESPN (it has leagueId= in it), or just the number.",
+        )
+    return int(match.group(1))
 
 
 @router.get("/espn-connection")
@@ -348,6 +377,8 @@ async def get_espn_connection(request: Request, pool=Depends(get_pool)):
     return {
         "connected": True,
         "espn_league_id": row["espn_league_id"],
+        # Connected by link alone, no cookies (a public ESPN league).
+        "public": row["espn_s2_encrypted"] is None,
         "last_synced_at": row["last_synced_at"],
         "last_sync_error": row["last_sync_error"],
     }
@@ -365,26 +396,43 @@ async def connect_espn(body: ConnectEspnRequest, request: Request, pool=Depends(
     ever reading from an env var."""
     payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
+    espn_league_id = _espn_league_id(body)
+    s2 = (body.espn_s2 or "").strip()
+    swid = (body.espn_swid or "").strip()
+    private = bool(s2 and swid)
 
-    espn_config = ESPNConfig(
-        league_id=body.espn_league_id, espn_s2=body.espn_s2, swid=body.espn_swid, active_season=season,
-    )
+    # A public league needs no cookies (2026-10-24): the commissioner
+    # pastes the link and that's it. Empty strings make ESPN's library
+    # send none.
+    espn_config = ESPNConfig(league_id=espn_league_id, espn_s2=s2, swid=swid, active_season=season)
     try:
         await ESPNProvider(espn_config).get_current_week(season)
+    except ESPNAccessDenied as e:
+        if private:
+            raise HTTPException(
+                status_code=400,
+                detail="ESPN didn't accept those sign-in values. Copy espn_s2 and SWID again and retry.",
+            ) from e
+        raise HTTPException(
+            status_code=400,
+            detail=PRIVATE_LEAGUE_MESSAGE,
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail="Couldn't connect to that ESPN league — check the League ID, ESPN_S2, and SWID values.",
+            detail="Couldn't find that ESPN league. Check the link and try again.",
         ) from e
 
     async with pool.acquire() as conn:
         league_id = await require_league_commissioner(conn, payload)
+        if await sleeper_connection_queries.get_connection(conn, league_id):
+            raise HTTPException(status_code=409, detail="This league is connected to Sleeper. Disconnect it first.")
         row = await espn_connection_queries.upsert_connection(
-            conn, league_id, body.espn_league_id,
-            encrypt_secret(body.espn_s2), encrypt_secret(body.espn_swid),
+            conn, league_id, espn_league_id,
+            encrypt_secret(s2) if private else None, encrypt_secret(swid) if private else None,
             payload["user_id"],
         )
-        await commish_log.record(conn, league_id, payload["user_id"], "espn", f"Connected ESPN league {body.espn_league_id}")
+        await commish_log.record(conn, league_id, payload["user_id"], "espn", f"Connected ESPN league {espn_league_id}")
     return {"connected": True, "espn_league_id": row["espn_league_id"]}
 
 
@@ -429,12 +477,7 @@ async def sync_espn_now(request: Request, pool=Depends(get_pool)):
         raise HTTPException(status_code=409, detail="Connect an ESPN league first")
 
     try:
-        espn_config = ESPNConfig(
-            league_id=connection["espn_league_id"],
-            espn_s2=decrypt_secret(connection["espn_s2_encrypted"]),
-            swid=decrypt_secret(connection["espn_swid_encrypted"]),
-            active_season=season,
-        )
+        espn_config = config_for_connection(connection, season)
         results = await run_full_sync(ESPNProvider(espn_config), season, season, league_id=league_id)
     except Exception as e:
         async with pool.acquire() as conn:
@@ -447,4 +490,107 @@ async def sync_espn_now(request: Request, pool=Depends(get_pool)):
             await espn_connection_queries.mark_sync_failure(conn, league_id, teams_result.get("detail", "Sync failed"))
         else:
             await espn_connection_queries.mark_sync_success(conn, league_id)
+    return {"season": season, "results": results}
+
+
+
+# ---- Sleeper (2026-10-24) ------------------------------------------------
+# A league brought in from Sleeper, synced like an ESPN one (app/providers/
+# sleeper/league.py). Sleeper's league API is public: no sign-in values,
+# just the league's link or id.
+
+
+class ConnectSleeperRequest(BaseModel):
+    league: str
+
+
+@router.get("/sleeper-connection")
+async def get_sleeper_connection(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        row = await sleeper_connection_queries.get_connection(conn, league_id)
+    if row is None:
+        return {"connected": False}
+    return {
+        "connected": True,
+        "sleeper_league_id": row["sleeper_league_id"],
+        "league_name": row["league_name"],
+        "last_synced_at": row["last_synced_at"],
+        "last_sync_error": row["last_sync_error"],
+    }
+
+
+@router.post("/sleeper-connection")
+async def connect_sleeper(body: ConnectSleeperRequest, request: Request, pool=Depends(get_pool)):
+    """Checks the league exists on Sleeper and is this season's before
+    saving, then syncs it straight away so the league fills in on the
+    spot (a failed first sync still keeps the connection, with the
+    error shown, for a retry)."""
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    sleeper_league_id = parse_league_id(body.league)
+    if sleeper_league_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Paste your league's link from Sleeper (sleeper.com/leagues/…) or its league ID.",
+        )
+    try:
+        sleeper_league = await fetch_league(sleeper_league_id)
+    except SleeperLeagueNotFound as e:
+        raise HTTPException(status_code=400, detail="Couldn't find that league on Sleeper. Check the link.") from e
+    if str(sleeper_league.get("season")) != str(season):
+        raise HTTPException(
+            status_code=400,
+            detail=f"That's Sleeper's {sleeper_league.get('season')} league. Use your {season} league's link.",
+        )
+
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        if await espn_connection_queries.get_connection(conn, league_id):
+            raise HTTPException(status_code=409, detail="This league is connected to ESPN. Disconnect it first.")
+        await sleeper_connection_queries.upsert_connection(
+            conn, league_id, sleeper_league_id, sleeper_league.get("name"), payload["user_id"]
+        )
+        await commish_log.record(
+            conn, league_id, payload["user_id"], "league", f"Connected Sleeper league {sleeper_league.get('name') or sleeper_league_id}"
+        )
+
+    results = await run_full_sync(SleeperProvider(sleeper_league_id), season, season, league_id=league_id)
+    teams_result = results.get(season, {}).get("teams", {})
+    async with pool.acquire() as conn:
+        if teams_result.get("status") == "failed":
+            await sleeper_connection_queries.mark_sync_failure(conn, league_id, teams_result.get("detail", "Sync failed"))
+        else:
+            await sleeper_connection_queries.mark_sync_success(conn, league_id)
+    return {"connected": True, "sleeper_league_id": sleeper_league_id, "league_name": sleeper_league.get("name")}
+
+
+@router.delete("/sleeper-connection")
+async def disconnect_sleeper(request: Request, pool=Depends(get_pool)):
+    """Removes the connection only; what it already synced stays."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        await sleeper_connection_queries.delete_connection(conn, league_id)
+        await commish_log.record(conn, league_id, payload["user_id"], "league", "Disconnected Sleeper")
+    return Response(status_code=204)
+
+
+@router.post("/sleeper-connection/sync")
+async def sync_sleeper_now(request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    async with pool.acquire() as conn:
+        league_id = await require_league_commissioner(conn, payload)
+        connection = await sleeper_connection_queries.get_connection(conn, league_id)
+    if connection is None:
+        raise HTTPException(status_code=409, detail="Connect a Sleeper league first")
+    results = await run_full_sync(SleeperProvider(connection["sleeper_league_id"]), season, season, league_id=league_id)
+    teams_result = results.get(season, {}).get("teams", {})
+    async with pool.acquire() as conn:
+        if teams_result.get("status") == "failed":
+            await sleeper_connection_queries.mark_sync_failure(conn, league_id, teams_result.get("detail", "Sync failed"))
+        else:
+            await sleeper_connection_queries.mark_sync_success(conn, league_id)
     return {"season": season, "results": results}

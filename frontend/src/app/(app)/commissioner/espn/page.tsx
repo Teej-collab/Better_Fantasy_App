@@ -5,8 +5,9 @@ import { SignInCard } from "@/components/SignInCard";
 import { NeedsLeagueCard } from "@/components/NeedsLeagueCard";
 import { BackButton } from "@/components/BackButton";
 import { EspnConnectionSection } from "@/components/commissioner/EspnConnectionSection";
+import { SleeperConnectionSection } from "@/components/commissioner/SleeperConnectionSection";
 
-export const metadata: Metadata = { title: "ESPN Connection — The Weekend" };
+export const metadata: Metadata = { title: "Bring Your League In — The Weekend" };
 
 export default async function CommissionerEspnPage() {
   const cookieStore = await cookies();
@@ -34,7 +35,16 @@ export default async function CommissionerEspnPage() {
   return (
     <div className="flex flex-col gap-4">
       <BackButton fallbackHref="/commissioner" label="Commissioner Tools" />
+      <div>
+        <h1 className="font-display text-2xl font-semibold uppercase">Bring your league in</h1>
+        <p className="text-sm text-black/55 dark:text-white/55">
+          Keep playing where you play. Your teams, matchups and live scores sync here, and everything else is built on top. Yahoo
+          is coming next.
+        </p>
+      </div>
       <EspnConnectionSection />
+      <hr className="border-black/10 dark:border-white/10" />
+      <SleeperConnectionSection />
     </div>
   );
 }

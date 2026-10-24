@@ -23,6 +23,7 @@ import {
   type WorldTeam,
 } from '@/lib/bracketEngine';
 import { haptics } from '@/lib/haptics';
+import { getItLink } from '@/lib/shareImage';
 import { useMe, usePlayoffOdds, usePlayoffWorld, useSeasons } from '@/lib/queries';
 
 // The Bracket (2026-10): one world — reality or the user's what-if —
@@ -110,7 +111,7 @@ export function BracketExperience({
     const link = `${WEB_BASE_URL}/standings?view=playoffs&mode=whatif&w=${encodeScenario(scenario, meId)}`;
     const text = `What if… ${scenarioHeadline(world, alt, meId)}. See it: ${link}`;
     if (to === 'sheet') {
-      await Share.share({ message: text });
+      await Share.share({ message: `${text}\n\nGet this for your league: ${getItLink('what-if-bracket')}` });
       return;
     }
     try {

@@ -39,6 +39,10 @@ export function MarketingFooter() {
           For commissioners
         </Link>
         {" · "}
+        <Link href="/waitlist" className="hover:text-[color:var(--wl-text)]">
+          2027 waitlist
+        </Link>
+        {" · "}
         <Link href="/privacy" className="hover:text-[color:var(--wl-text)]">
           Privacy
         </Link>

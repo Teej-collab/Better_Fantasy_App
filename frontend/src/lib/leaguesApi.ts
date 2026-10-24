@@ -410,7 +410,7 @@ export async function updateScoringRules(
 // past the moment they're saved.
 export type EspnConnectionStatus =
   | { connected: false }
-  | { connected: true; espn_league_id: number; last_synced_at: string | null; last_sync_error: string | null };
+  | { connected: true; espn_league_id: number; public?: boolean; last_synced_at: string | null; last_sync_error: string | null };
 
 export async function getEspnConnection(): Promise<EspnConnectionStatus> {
   return get<EspnConnectionStatus>("/league/espn-connection");
@@ -420,20 +420,43 @@ export async function getEspnConnection(): Promise<EspnConnectionStatus> {
 // The backend validates these credentials against a real ESPN fetch
 // before saving anything — a bad League ID/S2/SWID surfaces here as a
 // thrown Error (see this file's own post() helper), not a silent save.
+// The league's ESPN link (or its number); the two cookies only for a
+// private league (2026-10-24).
 export async function connectEspn(
-  espnLeagueId: number,
-  espnS2: string,
-  espnSwid: string
+  leagueUrl: string,
+  espnS2?: string,
+  espnSwid?: string
 ): Promise<{ connected: true; espn_league_id: number }> {
   return post<{ connected: true; espn_league_id: number }>("/league/espn-connection", {
-    espn_league_id: espnLeagueId,
-    espn_s2: espnS2,
-    espn_swid: espnSwid,
+    league_url: leagueUrl,
+    espn_s2: espnS2 || null,
+    espn_swid: espnSwid || null,
   });
 }
 
 // Commissioner-only — removes the connection, never the data it already
 // synced (teams, matchups, rosters, ...).
+export type SleeperConnectionStatus =
+  | { connected: false }
+  | { connected: true; sleeper_league_id: string; league_name: string | null; last_synced_at: string | null; last_sync_error: string | null };
+
+// A league brought in from Sleeper (2026-10-24): just its link or id.
+export async function getSleeperConnection(): Promise<SleeperConnectionStatus> {
+  return get<SleeperConnectionStatus>("/league/sleeper-connection");
+}
+
+export async function connectSleeper(league: string): Promise<unknown> {
+  return post("/league/sleeper-connection", { league });
+}
+
+export async function disconnectSleeper(): Promise<void> {
+  await del("/league/sleeper-connection");
+}
+
+export async function syncSleeperNow(): Promise<unknown> {
+  return post("/league/sleeper-connection/sync", {});
+}
+
 export async function disconnectEspn(): Promise<void> {
   await del("/league/espn-connection");
 }

@@ -171,7 +171,6 @@ from app.domain.draft_grades import compute_draft_grades
 from app.domain.draft_narratives import generate_draft_narratives
 from app.domain.player_projections import sync_projected_points, sync_weekly_projections
 from app.draft.manager import manager as draft_manager
-from app.encryption import decrypt_secret
 from app.gamecast import service as gamecast_service
 from app.notifications import dispatcher, fantasy_events, injury_events
 from app.notifications.draft_events import (
@@ -183,7 +182,8 @@ from app.notifications.draft_events import (
 )
 from app.gamecast.manager import manager as gamecast_manager
 from app.providers.espn.adapter import ESPNProvider
-from app.providers.espn.config import ESPNConfig
+from app.providers.espn.config import ESPNConfig, config_for_connection
+from app.providers.sleeper.league import SleeperProvider
 from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
@@ -194,6 +194,7 @@ from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
 from app.queries import league as league_queries
 from app.queries import league_espn_connections as espn_connection_queries
+from app.queries import league_sleeper_connections as sleeper_connection_queries
 from app.queries import watch_party as watch_party_queries
 from app import scheduler_lease, scheduler_status
 from app.scheduler_status import record_job_run
@@ -217,16 +218,22 @@ async def _connected_espn_providers(active_season: int) -> list[tuple[int, ESPNP
     providers = []
     for row in rows:
         try:
-            config = ESPNConfig(
-                league_id=row["espn_league_id"],
-                espn_s2=decrypt_secret(row["espn_s2_encrypted"]),
-                swid=decrypt_secret(row["espn_swid_encrypted"]),
-                active_season=active_season,
-            )
+            config = config_for_connection(row, active_season)
             providers.append((row["league_id"], ESPNProvider(config)))
         except Exception:
             logger.exception("Couldn't build ESPN config for league_id=%s", row["league_id"])
     return providers
+
+
+async def _connected_providers(active_season: int) -> list[tuple[int, object, object]]:
+    """Every connected league, ESPN and Sleeper (2026-10-24): (league_id,
+    provider, the connection store to mark sync success/failure on)."""
+    out = [(lid, provider, espn_connection_queries) for lid, provider in await _connected_espn_providers(active_season)]
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await sleeper_connection_queries.list_all_connections(conn)
+    out += [(row["league_id"], SleeperProvider(row["sleeper_league_id"]), sleeper_connection_queries) for row in rows]
+    return out
 
 
 async def _run_full_sync_job():
@@ -246,24 +253,22 @@ async def _run_full_sync_job():
     # (app/routers/league_settings.py), since a scheduled tick re-runs
     # regularly anyway.
     pool = await get_pool()
-    for league_id, connected_provider in await _connected_espn_providers(espn_config.active_season):
+    for league_id, connected_provider, store in await _connected_providers(espn_config.active_season):
         season = espn_config.active_season
         try:
             connected_results = await run_full_sync(connected_provider, season, season, league_id=league_id)
         except Exception as e:
             async with pool.acquire() as conn:
-                await espn_connection_queries.mark_sync_failure(conn, league_id, str(e))
+                await store.mark_sync_failure(conn, league_id, str(e))
             logger.exception("Scheduled full ESPN sync failed for league_id=%s", league_id)
             continue
 
         teams_result = connected_results.get(season, {}).get("teams", {})
         async with pool.acquire() as conn:
             if teams_result.get("status") == "failed":
-                await espn_connection_queries.mark_sync_failure(
-                    conn, league_id, teams_result.get("detail", "Sync failed")
-                )
+                await store.mark_sync_failure(conn, league_id, teams_result.get("detail", "Sync failed"))
             else:
-                await espn_connection_queries.mark_sync_success(conn, league_id)
+                await store.mark_sync_success(conn, league_id)
         logger.info("Scheduled full ESPN sync finished for league_id=%s: %s", league_id, connected_results)
 
 
@@ -293,23 +298,21 @@ async def _run_live_sync_job():
     # is. The fantasy_events diff below runs after all of these, so
     # touchdown and lead-change alerts cover every league, not just
     # League #1.
-    for league_id, connected_provider in await _connected_espn_providers(season):
+    for league_id, connected_provider, store in await _connected_providers(season):
         try:
             connected_results = await run_live_sync(connected_provider, season, week, league_id=league_id)
         except Exception as e:
             async with pool.acquire() as conn:
-                await espn_connection_queries.mark_sync_failure(conn, league_id, str(e))
+                await store.mark_sync_failure(conn, league_id, str(e))
             logger.exception("Live sync failed for league_id=%s", league_id)
             continue
 
         matchups_result = connected_results.get("matchups", {})
         async with pool.acquire() as conn:
             if matchups_result.get("status") == "failed":
-                await espn_connection_queries.mark_sync_failure(
-                    conn, league_id, matchups_result.get("detail", "Sync failed")
-                )
+                await store.mark_sync_failure(conn, league_id, matchups_result.get("detail", "Sync failed"))
             else:
-                await espn_connection_queries.mark_sync_success(conn, league_id)
+                await store.mark_sync_success(conn, league_id)
         logger.info(
             "Live sync finished for league_id=%s (season=%s week=%s): %s",
             league_id, season, week, connected_results,
