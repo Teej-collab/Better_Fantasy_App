@@ -40,6 +40,9 @@ export default function ConnectLeagueScreen() {
   const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sleeper by username (2026-10-24): no link to copy.
+  const [username, setUsername] = useState('');
+  const [sleeperLeagues, setSleeperLeagues] = useState<{ league_id: string; name: string; teams: number | null }[] | null>(null);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -56,10 +59,24 @@ export default function ConnectLeagueScreen() {
     }
   }
 
-  const find = () =>
+  const lookUp = () =>
     run(async () => {
-      if (!link.trim()) throw new Error(`Paste your league's ${name} link.`);
-      const found = await api.importPreview(platform, link.trim(), showPrivate ? s2.trim() : undefined, showPrivate ? swid.trim() : undefined);
+      if (!username.trim()) throw new Error('Type your Sleeper username.');
+      const r = await api.sleeperLeagues(username.trim());
+      setSleeperLeagues(r.leagues);
+      if (r.leagues.length === 0) throw new Error(`No ${r.season} leagues on that account yet.`);
+    });
+
+  const pickSleeper = (leagueId: string) => {
+    setLink(leagueId);
+    void find(leagueId);
+  };
+
+  const find = (picked?: string) =>
+    run(async () => {
+      const target = (picked ?? link).trim();
+      if (!target) throw new Error(`Paste your league's ${name} link.`);
+      const found = await api.importPreview(platform, target, showPrivate ? s2.trim() : undefined, showPrivate ? swid.trim() : undefined);
       setPreview(found);
       haptics.success();
       setStep('found');
@@ -224,17 +241,53 @@ export default function ConnectLeagueScreen() {
   }
 
   return (
-    <StartScreen footer={<NeonButton label="Find my league" onPress={find} busy={busy} disabled={!link.trim()} />}>
+    <StartScreen
+      footer={
+        platform === 'espn' || link.trim() ? (
+          <NeonButton label="Find my league" onPress={() => void find()} busy={busy} disabled={!link.trim()} />
+        ) : undefined
+      }>
       <Stack.Screen options={{ title: `From ${name}` }} />
       <View style={styles.head}>
         <Kicker>{name}</Kicker>
-        <Title>Paste your league link</Title>
+        <Title>{platform === 'espn' ? 'Paste your league link' : "What's your Sleeper username?"}</Title>
         <Sub>
           {platform === 'espn'
-            ? 'Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the number works too.'
-            : 'Open your league at sleeper.com and copy the address (sleeper.com/leagues/…), or paste just the league ID. No sign-in needed.'}
+            ? 'In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link, and paste it here. A link from fantasy.espn.com or just the league number works too.'
+            : 'We’ll find your leagues. No sign-in or link needed.'}
         </Sub>
       </View>
+      {platform === 'sleeper' && (
+        <View style={styles.list}>
+          <Field
+            label="Sleeper username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="your username"
+            onSubmitEditing={() => void lookUp()}
+          />
+          <GhostButton label={busy && !sleeperLeagues ? 'Looking…' : 'Find my leagues'} onPress={() => void lookUp()} disabled={!username.trim() || busy} />
+          {sleeperLeagues?.map((lg) => (
+            <Pressable
+              key={lg.league_id}
+              onPress={() => {
+                haptics.select();
+                pickSleeper(lg.league_id);
+              }}
+              accessibilityRole="button"
+              style={styles.team}>
+              <View style={styles.flex}>
+                <Text style={styles.teamName}>{lg.name}</Text>
+                {lg.teams ? <Text style={startStyles.muted}>{lg.teams} teams</Text> : null}
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
+          <Text style={startStyles.muted}>Or paste a league link from sleeper.com instead:</Text>
+        </View>
+      )}
       <Field
         label={`${name} league link`}
         value={link}
@@ -248,8 +301,9 @@ export default function ConnectLeagueScreen() {
           <Kicker>Before you tap Find</Kicker>
           <Text style={styles.cardTitle}>Turn on “Viewable to Public”</Text>
           <Text style={startStyles.muted}>
-            In ESPN as the league manager: League Manager → Settings → Basic Settings → “Make League Viewable to Public.” Your league stays
-            private and your rules don’t change; this only lets The Weekend read your scores. You can turn it off anytime.
+            On fantasy.espn.com as the league manager (your phone’s browser works; the ESPN app doesn’t have this setting): League Manager →
+            Settings → Basic Settings → “Make League Viewable to Public.” Your league stays private and your rules don’t change; this only lets
+            The Weekend read your scores. You can turn it off anytime.
           </Text>
         </View>
       )}
@@ -294,4 +348,5 @@ const styles = StyleSheet.create({
   bar: { height: 8, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
   barFill: { height: 8, backgroundColor: Colors.accent },
   textButton: { alignItems: 'center', paddingVertical: Spacing.md },
+  chevron: { color: Colors.textSecondary, fontSize: 22 },
 });

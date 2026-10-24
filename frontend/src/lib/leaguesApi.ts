@@ -73,6 +73,12 @@ export type ImportPreview = {
   teams: { team_name: string; owner_name: string | null }[];
 };
 
+// A Sleeper user's leagues this season, by username (2026-10-24).
+export type SleeperLeagueOption = { league_id: string; name: string; teams: number | null; status: string | null };
+export async function getSleeperLeagues(username: string): Promise<{ leagues: SleeperLeagueOption[]; season: number }> {
+  return get(`/leagues/sleeper-leagues?username=${encodeURIComponent(username)}`);
+}
+
 export async function importPreview(platform: "espn" | "sleeper", league: string, espnS2?: string, espnSwid?: string): Promise<ImportPreview> {
   return post<ImportPreview>("/leagues/import-preview", { platform, league, espn_s2: espnS2 || null, espn_swid: espnSwid || null });
 }

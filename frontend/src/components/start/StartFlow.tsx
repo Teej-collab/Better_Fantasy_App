@@ -32,6 +32,7 @@ import {
   getMyLeagues,
   requestCustomLeague,
   getUnclaimedOwners,
+  getSleeperLeagues,
   importPreview,
   joinLeague,
   previewLeague,
@@ -39,6 +40,7 @@ import {
   syncEspnNow,
   type ImportPreview,
   type League,
+  type SleeperLeagueOption,
   type LeaguePreview,
   type ScoringPreset,
   type UnclaimedOwner,
@@ -123,6 +125,9 @@ export function StartFlow({
   const [found, setFound] = useState<ImportPreview | null>(null);
   const [mine, setMine] = useState<number | null>(null);
   const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
+  // Sleeper by username (2026-10-24): no link to copy.
+  const [sleeperName, setSleeperName] = useState("");
+  const [sleeperOptions, setSleeperOptions] = useState<SleeperLeagueOption[] | null>(null);
   const [teamCount, setTeamCount] = useState(12);
   const [scoring, setScoring] = useState<ScoringPreset>("ppr");
   const [draftAt, setDraftAt] = useState("");
@@ -222,10 +227,18 @@ export function StartFlow({
 
   const platform = source === "sleeper" ? "sleeper" : "espn";
 
-  const findLeague = () =>
+  const lookUpSleeper = () =>
     run(async () => {
+      const r = await getSleeperLeagues(sleeperName.trim());
+      setSleeperOptions(r.leagues);
+      if (r.leagues.length === 0) throw new Error(`No ${r.season} leagues on that account yet.`);
+    });
+
+  const findLeague = (picked?: string) =>
+    run(async () => {
+      const target = (picked ?? link).trim();
       try {
-        setFound(await importPreview(platform, link.trim(), showPrivate ? espnS2.trim() : undefined, showPrivate ? espnSwid.trim() : undefined));
+        setFound(await importPreview(platform, target, showPrivate ? espnS2.trim() : undefined, showPrivate ? espnSwid.trim() : undefined));
         go("connectFound");
       } catch (e) {
         if (e instanceof Error && e.message.includes("is private")) setShowPrivate(true);
@@ -783,13 +796,39 @@ export function StartFlow({
         <Top onBack={() => go("create1")} />
         <div className="flex flex-col gap-2">
           <span className={styles.kicker}>{name}</span>
-          <h1 className={`${anton.className} ${styles.title}`}>Paste your league link</h1>
+          <h1 className={`${anton.className} ${styles.title}`}>{platform === "espn" ? "Paste your league link" : "What's your Sleeper username?"}</h1>
           <p className={styles.sub}>
             {platform === "espn"
-              ? "Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the number works too."
-              : "Open your league at sleeper.com and copy the address (sleeper.com/leagues/…), or paste just the league ID. No sign-in needed."}
+              ? "In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link, and paste it here. A link from fantasy.espn.com or just the league number works too."
+              : "We'll find your leagues. No sign-in or link needed."}
           </p>
         </div>
+        {platform === "sleeper" && (
+          <div className="flex flex-col gap-2.5">
+            <label className={styles.label}>
+              Sleeper username
+              <input className={styles.field} value={sleeperName} onChange={(e) => setSleeperName(e.target.value)} placeholder="your username" />
+            </label>
+            <button type="button" className={styles.ghost} disabled={!sleeperName.trim() || busy} onClick={lookUpSleeper}>
+              {busy && !sleeperOptions ? "Looking…" : "Find my leagues"}
+            </button>
+            {sleeperOptions?.map((lg) => (
+              <Option
+                key={lg.league_id}
+                on={false}
+                onClick={() => {
+                  setLink(lg.league_id);
+                  findLeague(lg.league_id);
+                }}
+                icon={<UsersIcon />}
+                color="#38bdf8"
+                title={lg.name}
+                text={lg.teams ? `${lg.teams} teams` : "Sleeper league"}
+              />
+            ))}
+            <p className="text-sm text-[#aab2bf]">Or paste a league link from sleeper.com instead:</p>
+          </div>
+        )}
         <label className={styles.label}>
           {name} league link
           <input
@@ -804,9 +843,9 @@ export function StartFlow({
             <span className={styles.kicker}>Before you tap Find</span>
             <strong>Turn on &ldquo;Viewable to Public&rdquo;</strong>
             <span className="text-sm leading-snug text-[#aab2bf]">
-              In ESPN as the league manager: League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to Public.&rdquo;
-              Your league stays private and your rules don&apos;t change; this only lets The Weekend read your scores. You can turn it off
-              anytime.
+              On fantasy.espn.com as the league manager (your phone&apos;s browser works; the ESPN app doesn&apos;t have this setting):
+              League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to Public.&rdquo; Your league stays private and your
+              rules don&apos;t change; this only lets The Weekend read your scores. You can turn it off anytime.
             </span>
           </div>
         )}
@@ -832,7 +871,7 @@ export function StartFlow({
             </button>
           ))}
         {error && <p className={styles.error}>{error}</p>}
-        <button type="button" className={`${styles.neon} mt-auto`} disabled={!link.trim() || busy} onClick={findLeague}>
+        <button type="button" className={`${styles.neon} mt-auto`} disabled={!link.trim() || busy} onClick={() => findLeague()}>
           {busy ? "Looking…" : "Find my league"}
         </button>
       </>

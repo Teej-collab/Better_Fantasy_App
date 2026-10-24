@@ -117,3 +117,23 @@ async def test_import_preview_shows_the_league_without_saving_it(pool, monkeypat
     assert bad.status_code == 400
     async with pool.acquire() as conn:
         assert await conn.fetchval("SELECT count(*) FROM league_sleeper_connections WHERE sleeper_league_id = $1 AND league_id NOT IN (SELECT id FROM leagues WHERE name LIKE 'Test League Sleeper%')", LEAGUE_ID) == 0
+
+
+async def test_sleeper_leagues_by_username(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    data = {
+        "/user/sleepyfan": {"user_id": "u-99", "username": "sleepyfan"},
+        f"/user/u-99/leagues/nfl/{TEST_SEASON}": [{"league_id": LEAGUE_ID, "name": "Test Sleeper League", "total_rosters": 12, "status": "in_season"}],
+    }
+
+    async def fake_get(path):
+        return data.get(path)
+
+    monkeypatch.setattr(sleeper_league, "_get", fake_get)
+    async with _client() as client:
+        await client.post("/auth/signup", json={"email": "test-sleeper-user@example.com", "password": "correct-horse", "display_name": "U"})
+        ok = await client.get("/leagues/sleeper-leagues", params={"username": "@sleepyfan"})
+        missing = await client.get("/leagues/sleeper-leagues", params={"username": "nobody"})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["leagues"] == [{"league_id": LEAGUE_ID, "name": "Test Sleeper League", "teams": 12, "status": "in_season"}]
+    assert missing.status_code == 404

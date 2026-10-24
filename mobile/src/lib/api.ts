@@ -962,6 +962,11 @@ export const api = {
       .owners,
   // "Found your league" (2026-10-24): an ESPN or Sleeper league looked up
   // before bringing it in. Saves nothing.
+  // A Sleeper user's leagues this season, by username (2026-10-24).
+  sleeperLeagues: (username: string) =>
+    request<{ leagues: { league_id: string; name: string; teams: number | null; status: string | null }[]; season: number }>(
+      `/leagues/sleeper-leagues?username=${encodeURIComponent(username)}`,
+    ),
   importPreview: (platform: 'espn' | 'sleeper', league: string, espnS2?: string, espnSwid?: string) =>
     request<ImportPreview>('/leagues/import-preview', {
       method: 'POST',

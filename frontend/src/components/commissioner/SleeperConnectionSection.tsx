@@ -5,8 +5,10 @@ import {
   connectSleeper,
   disconnectSleeper,
   getSleeperConnection,
+  getSleeperLeagues,
   syncSleeperNow,
   type SleeperConnectionStatus,
+  type SleeperLeagueOption,
 } from "@/lib/leaguesApi";
 
 const FIELD_CLASS =
@@ -23,6 +25,8 @@ type Busy = "connecting" | "syncing" | "disconnecting" | null;
 export function SleeperConnectionSection() {
   const [status, setStatus] = useState<SleeperConnectionStatus | null>(null);
   const [link, setLink] = useState("");
+  const [username, setUsername] = useState("");
+  const [options, setOptions] = useState<SleeperLeagueOption[] | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +95,35 @@ export function SleeperConnectionSection() {
           className="flex flex-col gap-3"
         >
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-black/70 dark:text-white/70">Your league&apos;s Sleeper link</span>
+            <span className="text-black/70 dark:text-white/70">Your Sleeper username</span>
+            <span className="text-xs text-black/45 dark:text-white/45">We&apos;ll find your leagues. No sign-in or link needed.</span>
+            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="your username" className={FIELD_CLASS} />
+          </label>
+          <button
+            type="button"
+            disabled={!username.trim() || busy !== null}
+            onClick={() =>
+              void run("connecting", async () => setOptions((await getSleeperLeagues(username.trim())).leagues), "No Sleeper user by that name.")
+            }
+            className="w-fit rounded-full border border-black/10 px-4 py-2 text-sm font-medium disabled:opacity-40 dark:border-white/10"
+          >
+            Find my leagues
+          </button>
+          {options?.length === 0 && <span className="text-xs text-black/55 dark:text-white/55">No leagues on that account this season.</span>}
+          {options?.map((lg) => (
+            <button
+              key={lg.league_id}
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void run("connecting", () => connectSleeper(lg.league_id), "Couldn't connect that Sleeper league.")}
+              className="w-fit rounded-full bg-[var(--wl-accent)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-40"
+            >
+              Connect {lg.name}
+              {lg.teams ? ` · ${lg.teams} teams` : ""}
+            </button>
+          ))}
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-black/70 dark:text-white/70">Or your league&apos;s Sleeper link</span>
             <span className="text-xs text-black/45 dark:text-white/45">
               Open your league at sleeper.com and copy the address (sleeper.com/leagues/…), or paste just the league ID.
             </span>

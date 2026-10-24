@@ -146,8 +146,8 @@ export function EspnConnectionSection() {
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-black/70 dark:text-white/70">1. Your league&apos;s ESPN link</span>
             <span className="text-xs text-black/45 dark:text-white/45">
-              Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the number
-              works too.
+              In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link. A link from fantasy.espn.com or just
+              the league number works too.
             </span>
             <input
               type="text"
@@ -160,9 +160,9 @@ export function EspnConnectionSection() {
           <div className="flex flex-col gap-1 text-sm">
             <span className="text-black/70 dark:text-white/70">2. Turn on &ldquo;Viewable to Public&rdquo;</span>
             <span className="text-xs text-black/45 dark:text-white/45">
-              In ESPN as the league manager: League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to
-              Public.&rdquo; Your league stays private and your rules don&apos;t change; this only lets The Weekend read your
-              scores. You can turn it off anytime.
+              On fantasy.espn.com as the league manager (your phone&apos;s browser works; the ESPN app doesn&apos;t have this
+              setting): League Manager → Settings → Basic Settings → &ldquo;Make League Viewable to Public.&rdquo; Your league stays
+              private and your rules don&apos;t change; this only lets The Weekend read your scores. You can turn it off anytime.
             </span>
           </div>
           {showPrivate ? (

@@ -352,6 +352,21 @@ async def import_preview(body: ImportPreviewRequest, request: Request):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@router.get("/sleeper-leagues")
+async def sleeper_leagues(username: str, request: Request):
+    """A Sleeper user's leagues this season, looked up by username
+    (2026-10-24) — no link to copy. Signed-in only; saves nothing."""
+    from app.providers.sleeper.league import SleeperLeagueNotFound, leagues_for_username
+
+    _require_session(request)
+    season = int(_require("ACTIVE_SEASON"))
+    try:
+        leagues = await leagues_for_username(username, season)
+    except SleeperLeagueNotFound as e:
+        raise HTTPException(status_code=404, detail="No Sleeper user by that name. Check the spelling.") from e
+    return {"leagues": leagues, "season": season}
+
+
 @router.get("/{league_id}/unclaimed-owners")
 async def unclaimed_owners(league_id: int, request: Request):
     """Powers the "is one of these you?" picker (see TODO.md's PHASE 9

@@ -60,6 +60,8 @@ export default function ImportLeagueScreen() {
 function SleeperPanel() {
   const q = useSleeperConnection();
   const [link, setLink] = useState('');
+  const [username, setUsername] = useState('');
+  const [found, setFound] = useState<{ league_id: string; name: string; teams: number | null }[] | null>(null);
   const [panel, setPanel] = useState<Panel>('idle');
   const [error, setError] = useState<string | null>(null);
   const status = q.data;
@@ -113,7 +115,28 @@ function SleeperPanel() {
   return (
     <View style={s.gap}>
       <View style={s.gapSm}>
-        <Text style={s.bodySoft}>Your league’s Sleeper link</Text>
+        <Text style={s.bodySoft}>Your Sleeper username</Text>
+        <Text style={s.small}>We’ll find your leagues. No sign-in or link needed.</Text>
+        <Input value={username} onChangeText={setUsername} placeholder="your username" />
+        <OutlineButton
+          label="Find my leagues"
+          disabled={!username.trim() || panel !== 'idle'}
+          onPress={() =>
+            void run('connecting', async () => setFound((await api.sleeperLeagues(username.trim())).leagues), 'No Sleeper user by that name.')
+          }
+        />
+        {found?.length === 0 && <Text style={s.small}>No leagues on that account this season.</Text>}
+        {found?.map((lg) => (
+          <OutlineButton
+            key={lg.league_id}
+            label={`Connect ${lg.name}${lg.teams ? ` · ${lg.teams} teams` : ''}`}
+            disabled={panel !== 'idle'}
+            onPress={() => void run('connecting', () => api.connectSleeper(lg.league_id), "Couldn't connect that Sleeper league.")}
+          />
+        ))}
+      </View>
+      <View style={s.gapSm}>
+        <Text style={s.bodySoft}>Or your league’s Sleeper link</Text>
         <Text style={s.small}>
           Open your league at sleeper.com and copy the address (sleeper.com/leagues/…), or paste just the league ID. Nothing else is
           needed: Sleeper leagues connect without a sign-in.
@@ -221,16 +244,17 @@ function EspnPanel() {
           <View style={s.gapSm}>
             <Text style={s.bodySoft}>1. Copy your league’s link</Text>
             <Text style={s.small}>
-              Open your league at fantasy.espn.com and copy the address from the browser bar. It has leagueId= in it. Just the
-              number works too.
+              In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link. A link from fantasy.espn.com or just
+              the league number works too.
             </Text>
             <Input value={link} onChangeText={setLink} placeholder="https://fantasy.espn.com/football/league?leagueId=…" />
           </View>
           <View style={s.gapSm}>
             <Text style={s.bodySoft}>2. Turn on “Viewable to Public”</Text>
             <Text style={s.small}>
-              In ESPN as the league manager: League Manager → Settings → Basic Settings → “Make League Viewable to Public.” Your league
-              stays private and your rules don’t change; this only lets The Weekend read your scores. You can turn it off anytime.
+              On fantasy.espn.com as the league manager (your phone’s browser works; the ESPN app doesn’t have this setting): League
+              Manager → Settings → Basic Settings → “Make League Viewable to Public.” Your league stays private and your rules don’t
+              change; this only lets The Weekend read your scores. You can turn it off anytime.
             </Text>
           </View>
 

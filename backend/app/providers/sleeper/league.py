@@ -311,3 +311,30 @@ class SleeperProvider(FantasyProvider):
                 )
                 saved += 1
         return saved
+
+
+async def leagues_for_username(username: str, season: int) -> list[dict]:
+    """A Sleeper user's NFL leagues this season, by username (2026-10-24):
+    the connect flow's "What's your Sleeper username?" instead of copying a
+    link. Raises SleeperLeagueNotFound when there's no such user."""
+    import re
+
+    name = (username or "").strip().lstrip("@")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{2,40}", name):
+        raise SleeperLeagueNotFound(username)
+    try:
+        user = await _get(f"/user/{name}")
+    except httpx.HTTPError as e:
+        raise SleeperLeagueNotFound(username) from e
+    if not user or not user.get("user_id"):
+        raise SleeperLeagueNotFound(username)
+    leagues = await _get(f"/user/{user['user_id']}/leagues/nfl/{season}") or []
+    return [
+        {
+            "league_id": lg["league_id"],
+            "name": lg.get("name") or "Sleeper league",
+            "teams": lg.get("total_rosters"),
+            "status": lg.get("status"),
+        }
+        for lg in leagues
+    ]

@@ -14,9 +14,9 @@ from app.providers.espn.config import ESPNConfig
 from app.providers.sleeper import league as sleeper
 
 PRIVATE_LEAGUE_MESSAGE = (
-    "ESPN won't share that league yet: it is private to outside apps. In ESPN, open League Manager → Settings → "
-    "Basic Settings and turn on “Make League Viewable to Public” (your league stays private and your rules don't "
-    "change), then try again. Or add your ESPN sign-in values below."
+    "ESPN won't share that league yet: it is private to outside apps. On fantasy.espn.com (your phone's browser "
+    "works), open League Manager → Settings → Basic Settings and turn on “Make League Viewable to Public” (your "
+    "league stays private and your rules don't change), then try again. Or add your ESPN sign-in values below."
 )
 
 
