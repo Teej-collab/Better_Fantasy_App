@@ -1,3 +1,4 @@
+import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
@@ -10,7 +11,7 @@ import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
 import { enterPartyRoom } from '@/lib/loungeSession';
 import { lastName } from '@/lib/loungeSweat';
-import { queryClient, useLoungeLobby, useWatchPartyRooms } from '@/lib/queries';
+import { queryClient, useLoungeInvites, useLoungeLobby, useWatchPartyRooms } from '@/lib/queries';
 import type { LoungeLobbyGame, WatchPartyRoom } from '@/lib/types';
 
 const FACE_COLORS = ['#7c2d12', '#4c1d95', '#1e3a8a', '#065f46', '#831843', '#3f3f46'];
@@ -47,6 +48,7 @@ export function LoungeLobby() {
   const accent = useAppearance().accent;
   const rooms = useWatchPartyRooms().data;
   const lobby = useLoungeLobby().data;
+  const invites = useLoungeInvites().data ?? [];
   const [joining, setJoining] = useState<number | null>(null);
   const games = lobby?.games ?? [];
   const gameById = new Map(games.map((g) => [g.game_id, g]));
@@ -178,6 +180,13 @@ export function LoungeLobby() {
             </View>
           );
         })}
+        <Pressable onPress={() => router.push('/lounge-private' as Href)} style={[styles.privateRow, { marginTop: 8 }]} accessibilityRole="button">
+          <View style={{ flex: 1 }}>
+            <Text style={styles.privateName}>Private lounges{invites.length ? ` · ${invites.length} invite${invites.length === 1 ? '' : 's'}` : ''}</Text>
+            <Text style={styles.privateSub}>Invite friends from any league, or anyone with the link</Text>
+          </View>
+          <Text style={styles.privateSub}>›</Text>
+        </Pressable>
         <Pressable onPress={() => void startParty()} disabled={starting} style={[styles.cta, { backgroundColor: accent }, starting && { opacity: 0.6 }]} accessibilityRole="button">
           <Text style={styles.ctaText}>{starting ? 'Starting…' : 'Start a watch party'}</Text>
         </Pressable>

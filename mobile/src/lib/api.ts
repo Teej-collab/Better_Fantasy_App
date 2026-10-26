@@ -44,6 +44,10 @@ import type {
   TradeSettings,
   LoungeLobby,
   LoungeRoom,
+  LoungeInvite,
+  FriendsList,
+  FriendPerson,
+  FriendRelationship,
   WatchPartyRoomMember,
   WatchPartyRoomsResponse,
   FeedbackItem,
@@ -717,6 +721,24 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ password: password || '', display_name: displayName || '' }),
     }),
+  // Friends you invite to a Lounge get in without the password.
+  inviteToLounge: (roomId: number, userIds: number[]) =>
+    request<{ invited: number; new: number }>(`/lounge/rooms/${roomId}/invites`, { method: 'POST', body: JSON.stringify({ user_ids: userIds }) }),
+  uninviteFromLounge: (roomId: number, userId: number) =>
+    request<unknown>(`/lounge/rooms/${roomId}/invites/${userId}`, { method: 'DELETE' }),
+  loungeInvites: async () => (await request<{ invites: LoungeInvite[] }>('/lounge/invites')).invites,
+  // ---- Friends (accounts, not league owners: they work across leagues) ----
+  friends: () => request<FriendsList>('/friends'),
+  myUsername: async () => (await request<{ username: string | null }>('/friends/me')).username,
+  setUsername: (username: string) =>
+    request<{ username: string }>('/friends/me/username', { method: 'PUT', body: JSON.stringify({ username }) }),
+  searchFriends: async (q: string) =>
+    (await request<{ results: FriendPerson[] }>(`/friends/search?q=${encodeURIComponent(q)}`)).results,
+  playedWith: async () => (await request<{ people: FriendPerson[] }>('/friends/played-with')).people,
+  sendFriendRequest: (userId: number) =>
+    request<{ relationship: FriendRelationship }>('/friends/requests', { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+  acceptFriend: (userId: number) => request<{ relationship: FriendRelationship }>(`/friends/requests/${userId}/accept`, { method: 'POST' }),
+  removeFriend: (userId: number) => request<unknown>(`/friends/${userId}`, { method: 'DELETE' }),
   // ---- Commissioner tools (backend enforces commissioner-only) ----
   leaguesMine: () => request<{ leagues: LeagueInfo[]; active_league_id: number | null }>('/leagues/mine'),
   // Commissioner-only (2026-10). Type, roster and draft style change only

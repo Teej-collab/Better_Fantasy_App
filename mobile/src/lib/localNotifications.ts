@@ -147,6 +147,9 @@ export function toNativePath(url: string): string {
   // Tagged in a Lounge / watch party's chat: straight into the room.
   m = url.match(/^\/chat\?party=(\d+)/);
   if (m) return `/lounge-room/party-${m[1]}`;
+  // A friend's Lounge invite: the web opens the room; the app's private
+  // Lounge lists it under "Friends invited you".
+  if (/^\/lounge\/[\w-]+$/.test(url)) return '/lounge-private';
   m = url.match(/^\/matchups\/(\d+)/);
   if (m) return `/matchup/${m[1]}`;
   m = url.match(/^\/seasons\/(\d+)\/weeks\/(\d+)\/recap/);

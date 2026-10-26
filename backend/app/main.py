@@ -22,6 +22,7 @@ from app.routers import (
     draft,
     feedback,
     free_agents,
+    friends,
     game_day,
     gamecast,
     keepers,
@@ -186,6 +187,7 @@ app.include_router(watch_party.router)
 app.include_router(punishment_wheel.router)
 app.include_router(system.router)
 app.include_router(waitlist.router)
+app.include_router(friends.router)
 
 
 @app.get("/health")

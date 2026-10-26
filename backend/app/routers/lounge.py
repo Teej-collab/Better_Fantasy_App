@@ -22,19 +22,25 @@ The invite link a creator shares only ever contains the room's slug —
 the password is always typed separately by the joiner, never embedded
 in a URL, never cached client-side.
 """
+import logging
 import secrets
 import time
 from datetime import datetime, timezone
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app.auth.config import SessionConfig
 from app.auth.passwords import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.auth.session import decode_session_token, get_session_token
 from app.config import require_livekit_configured
 from app.db import get_pool
+from app.notifications import dispatcher, formatter
+from app.queries import friends as friend_queries
 from app.queries import lounge as lounge_queries
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/lounge", tags=["lounge"])
 
@@ -117,6 +123,9 @@ async def list_rooms(request: Request, pool=Depends(get_pool)):
     payload = _require_session(request)
     async with pool.acquire() as conn:
         rows = await lounge_queries.list_rooms_for_creator(conn, payload["user_id"])
+        invited: dict[int, list[dict]] = {}
+        for i in await lounge_queries.invited_for_rooms(conn, [r["id"] for r in rows]):
+            invited.setdefault(i["room_id"], []).append({"user_id": i["user_id"], "name": i["name"]})
     return {
         "rooms": [
             {
@@ -125,7 +134,66 @@ async def list_rooms(request: Request, pool=Depends(get_pool)):
                 "name": r["name"],
                 "closed": r["closed_at"] is not None,
                 "created_at": r["created_at"],
+                "invited": invited.get(r["id"], []),
             }
+            for r in rows
+        ]
+    }
+
+
+class InviteBody(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+@router.post("/rooms/{room_id}/invites")
+async def invite_friends(room_id: int, body: InviteBody, request: Request, pool=Depends(get_pool)):
+    """The host invites friends (app/routers/friends.py), league or not.
+    Invited friends get a push and join without the password. Only
+    accepted friends can be invited, so this can't page strangers."""
+    payload = _require_session(request)
+    user_id = payload["user_id"]
+    async with pool.acquire() as conn:
+        room = await lounge_queries.get_room(conn, room_id)
+        if room is None or room["created_by_user_id"] != user_id or room["closed_at"] is not None:
+            raise HTTPException(status_code=404, detail="Room not found")
+        wanted = sorted({u for u in body.user_ids if u != user_id})
+        allowed = await friend_queries.friend_ids(conn, user_id, wanted)
+        if not allowed:
+            raise HTTPException(status_code=400, detail="You can only invite friends.")
+        added = await lounge_queries.add_invites(conn, room_id, sorted(allowed), user_id)
+        host = await friend_queries.person(conn, user_id)
+        for invitee in added:
+            try:
+                owner_id = await friend_queries.owner_id_for_user(conn, invitee)
+                if owner_id is not None:
+                    await dispatcher.send_to_owner(
+                        conn, owner_id, formatter.lounge_invite(host["name"], room["name"], room["slug"])
+                    )
+            except Exception:
+                logger.exception("Lounge invite push failed (room %s, user %s)", room_id, invitee)
+    return {"invited": len(allowed), "new": len(added)}
+
+
+@router.delete("/rooms/{room_id}/invites/{invitee_id}")
+async def uninvite(room_id: int, invitee_id: int, request: Request, pool=Depends(get_pool)):
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        room = await lounge_queries.get_room(conn, room_id)
+        if room is None or room["created_by_user_id"] != payload["user_id"]:
+            raise HTTPException(status_code=404, detail="Room not found")
+        await lounge_queries.remove_invite(conn, room_id, invitee_id)
+    return {"status": "removed"}
+
+
+@router.get("/invites")
+async def my_invites(request: Request, pool=Depends(get_pool)):
+    """Open rooms friends have invited you to."""
+    payload = _require_session(request)
+    async with pool.acquire() as conn:
+        rows = await lounge_queries.invites_for_user(conn, payload["user_id"])
+    return {
+        "invites": [
+            {"id": r["id"], "slug": r["slug"], "name": r["name"], "host_name": r["host_name"], "invited_at": r["invited_at"]}
             for r in rows
         ]
     }
@@ -161,8 +229,13 @@ async def join_room(slug: str, request: Request, pool=Depends(get_pool)):
         # with no real security benefit; nobody but them can ever match
         # created_by_user_id. Guests still always need the password.
         is_host = session_payload is not None and session_payload["user_id"] == room["created_by_user_id"]
+        # A friend the host invited (POST /rooms/{id}/invites) is let in
+        # the same way — the invite is the host vouching for them.
+        is_invited = session_payload is not None and not is_host and await lounge_queries.is_invited(
+            conn, room["id"], session_payload["user_id"]
+        )
 
-        if not is_host:
+        if not is_host and not is_invited:
             if _is_locked(room):
                 raise HTTPException(
                     status_code=429, detail="Too many incorrect attempts — try again later"

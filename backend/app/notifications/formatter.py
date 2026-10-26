@@ -440,3 +440,26 @@ def guillotine_cut(team_name: str, week: int, points: float, survivors: int) -> 
         "guillotine_cut",
         tag=f"guillotine-{week}",
     )
+
+
+def friend_request(name: str, user_id: int) -> dict:
+    """Someone sent you a friend request (friends, 2026-10-26)."""
+    return _payload(f"👋 {name} wants to be friends", "Open Friends to accept.", "/friends", "friend", tag=f"friend-{user_id}")
+
+
+def friend_accepted(name: str, user_id: int) -> dict:
+    """Someone accepted your friend request."""
+    return _payload(
+        f"🤝 You and {name} are friends", "Invite them to your next Lounge.", "/friends", "friend", tag=f"friend-{user_id}"
+    )
+
+
+def lounge_invite(host_name: str, room_name: str, slug: str) -> dict:
+    """A friend invited you to their Lounge room. No password needed."""
+    return _payload(
+        f"🍻 {host_name} invited you to their Lounge",
+        f"“{room_name}” · tap to jump in, no password needed.",
+        f"/lounge/{slug}",
+        "lounge",
+        tag=f"lounge-{slug}",
+    )

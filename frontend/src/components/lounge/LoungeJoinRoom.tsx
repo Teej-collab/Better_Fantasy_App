@@ -109,7 +109,7 @@ export function LoungeJoinRoom({ slug, roomName }: { slug: string; roomName: str
     <div className="mx-auto flex w-full max-w-sm flex-col gap-4 px-6 py-16">
       <h1 className="font-display text-2xl font-bold">{roomName}</h1>
       <p className="text-sm text-white/60">
-        {signedIn ? "Choose a name and enter the password to join." : "Enter your name and the password to join this video lounge."}
+        {signedIn ? "Choose a name and enter the password to join. Invited by a friend? Leave it blank." : "Enter your name and the password to join this video lounge."}
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">

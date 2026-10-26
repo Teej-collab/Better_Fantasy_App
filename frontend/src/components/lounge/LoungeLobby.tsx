@@ -233,7 +233,7 @@ export function LoungeLobby() {
         </>
       )}
       <Link href="/lounge/private" className="text-center text-xs font-semibold text-[#9aa3b2] hover:underline">
-        Private lounge with a password — no league needed →
+        Private lounge — invite friends from any league →
       </Link>
     </div>
   );

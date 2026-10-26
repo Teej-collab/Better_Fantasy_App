@@ -98,6 +98,7 @@ export function AccountMenu({ me }: { me: Me }) {
     { key: "profile", label: "Profile", href: "/settings?section=profile" },
     { key: "leagues", label: "Leagues", href: "/leagues" },
     { key: "lounge", label: "Lounge", href: "/lounge" },
+    { key: "friends", label: "Friends", href: "/friends" },
     // Commissioner-only — the one place a commissioner needs to find
     // their league's admin tools, right under their own name rather
     // than a small text link buried on the League page (2026-09).

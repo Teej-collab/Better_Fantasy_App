@@ -739,6 +739,22 @@ export function useLoungeRooms() {
   return useQuery({ queryKey: ['lounge-rooms'], queryFn: api.loungeRooms });
 }
 
+export function useLoungeInvites() {
+  return useQuery({ queryKey: ['lounge-invites'], queryFn: api.loungeInvites });
+}
+
+export function useFriends() {
+  return useQuery({ queryKey: ['friends'], queryFn: api.friends });
+}
+
+export function useMyUsername() {
+  return useQuery({ queryKey: ['my-username'], queryFn: api.myUsername });
+}
+
+export function usePlayedWith() {
+  return useQuery({ queryKey: ['played-with'], queryFn: api.playedWith });
+}
+
 // ---- Commissioner tools ----
 export function useActiveLeague() {
   return useQuery({

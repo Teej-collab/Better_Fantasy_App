@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   closeLoungeRoom,
   createLoungeRoom,
+  getFriends,
+  inviteToLounge,
   joinLoungeRoom,
+  listLoungeInvites,
   listMyLoungeRooms,
+  uninviteFromLounge,
+  type FriendPerson,
+  type LoungeInvite,
   type LoungeJoinResult,
   type LoungeRoom,
 } from "@/lib/api";
@@ -23,10 +30,15 @@ type SignedInState = "checking" | "in" | "out";
  * re-typing anything. Deliberately not gated by league membership,
  * unlike most of (app)/ — any signed-in account can use this, same as
  * email/password signup itself requires no league.
+ *
+ * Friends (/friends, any league or none) can be invited to a room; they
+ * see it under "Friends invited you" and join without the password.
  */
 export default function LoungePage() {
   const [signedIn, setSignedIn] = useState<SignedInState>("checking");
   const [rooms, setRooms] = useState<LoungeRoom[] | null>(null);
+  const [invites, setInvites] = useState<LoungeInvite[]>([]);
+  const [inviting, setInviting] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -37,7 +49,23 @@ export default function LoungePage() {
   const [hosting, setHosting] = useState<{ slug: string; roomName: string; join: LoungeJoinResult } | null>(null);
 
   async function refresh() {
-    setRooms(await listMyLoungeRooms());
+    const [mine, invitedTo] = await Promise.all([listMyLoungeRooms(), listLoungeInvites().catch(() => [])]);
+    setRooms(mine);
+    setInvites(invitedTo);
+  }
+
+  async function handleJoinInvite(invite: LoungeInvite) {
+    setJoiningRoomId(invite.id);
+    setError(null);
+    try {
+      // Invited friends get in without the password.
+      const join = await joinLoungeRoom(invite.slug, { display_name: displayName.trim() || undefined });
+      setHosting({ slug: invite.slug, roomName: invite.name, join });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't join the lounge.");
+    } finally {
+      setJoiningRoomId(null);
+    }
   }
 
   useEffect(() => {
@@ -156,6 +184,28 @@ export default function LoungePage() {
 
       {signedIn === "in" && (
         <>
+          {invites.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold text-black/60 dark:text-white/60">Friends invited you</h2>
+              {invites.map((invite) => (
+                <div key={invite.id} className="flex items-center justify-between gap-2 rounded-xl border border-black/10 p-4 dark:border-white/10">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{invite.name}</p>
+                    <p className="text-xs text-black/50 dark:text-white/50">{invite.host_name}&apos;s lounge · no password needed</p>
+                  </div>
+                  <button
+                    onClick={() => handleJoinInvite(invite)}
+                    disabled={joiningRoomId === invite.id}
+                    className="rounded-full px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                    style={{ background: "var(--user-accent, var(--wl-accent))" }}
+                  >
+                    {joiningRoomId === invite.id ? "Joining…" : "Join"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <form
             onSubmit={handleCreate}
             className="flex flex-col gap-3 rounded-2xl border border-black/10 p-6 dark:border-white/10"
@@ -233,7 +283,25 @@ export default function LoungePage() {
                       >
                         {copiedRoomId === room.id ? "Copied!" : "Copy link"}
                       </button>
+                      <button
+                        onClick={() => setInviting(inviting === room.id ? null : room.id)}
+                        className="rounded-full border border-black/10 px-2 py-0.5 text-[11px] dark:border-white/10"
+                      >
+                        Invite friends
+                      </button>
                     </div>
+                  )}
+                  {!room.closed && !!room.invited?.length && inviting !== room.id && (
+                    <p className="text-xs text-black/50 dark:text-white/50">Invited: {room.invited.map((i) => i.name).join(", ")}</p>
+                  )}
+                  {!room.closed && inviting === room.id && (
+                    <InvitePicker
+                      room={room}
+                      onDone={() => {
+                        setInviting(null);
+                        refresh().catch(() => {});
+                      }}
+                    />
                   )}
                 </div>
               ))}
@@ -241,6 +309,85 @@ export default function LoungePage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Tick friends to invite; un-tick someone already invited to take it back. */
+function InvitePicker({ room, onDone }: { room: LoungeRoom; onDone: () => void }) {
+  const [friends, setFriends] = useState<FriendPerson[] | null>(null);
+  const already = new Set((room.invited ?? []).map((i) => i.user_id));
+  const [picked, setPicked] = useState<Set<number>>(() => new Set(already));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getFriends()
+      .then((l) => setFriends(l.friends))
+      .catch(() => setFriends([]));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const add = [...picked].filter((id) => !already.has(id));
+      const drop = [...already].filter((id) => !picked.has(id));
+      if (add.length) await inviteToLounge(room.id, add);
+      for (const id of drop) await uninviteFromLounge(room.id, id);
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send the invites.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (friends === null) return <p className="text-xs text-black/50 dark:text-white/50">Loading friends…</p>;
+  if (!friends.length) {
+    return (
+      <p className="text-xs text-black/50 dark:text-white/50">
+        Add friends first. They can be from any league, or none.{" "}
+        <Link href="/friends" className="font-semibold underline">
+          Find friends
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 border-t border-black/10 pt-2 dark:border-white/10">
+      <p className="text-xs text-black/50 dark:text-white/50">They&apos;ll get a notification and can join without the password.</p>
+      {friends.map((f) => (
+        <label key={f.user_id} className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={picked.has(f.user_id)}
+            onChange={() =>
+              setPicked((cur) => {
+                const next = new Set(cur);
+                if (next.has(f.user_id)) next.delete(f.user_id);
+                else next.add(f.user_id);
+                return next;
+              })
+            }
+          />
+          {f.name}
+        </label>
+      ))}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-full px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+          style={{ background: "var(--user-accent, var(--wl-accent))" }}
+        >
+          {saving ? "Sending…" : "Send invites"}
+        </button>
+        <button onClick={onDone} className="rounded-full border border-black/10 px-2.5 py-1 text-xs dark:border-white/10">
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

@@ -212,6 +212,7 @@ function RootStack() {
           <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />
           <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
           <Stack.Screen name="lounge-private" options={{ title: 'Private Lounge', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="friends" options={{ title: 'Friends', headerBackTitle: 'Back' }} />
           <Stack.Screen name="lounge" options={{ title: 'The Lounge', headerBackTitle: 'Back' }} />
           <Stack.Screen name="punishment-wheel" options={{ title: 'Punishment Wheel', headerBackTitle: 'Back' }} />
           <Stack.Screen name="lounge-room/[slug]" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />

@@ -2654,7 +2654,58 @@ export type LoungeRoom = {
   name: string;
   closed: boolean;
   created_at: string;
+  invited?: { user_id: number; name: string }[];
 };
+
+export type LoungeInvite = { id: number; slug: string; name: string; host_name: string; invited_at: string };
+
+async function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(typeof data?.detail === "string" ? data.detail : `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// Friends you invite to a lounge get in without the password.
+export async function inviteToLounge(roomId: number, userIds: number[]) {
+  return sendJson<{ invited: number; new: number }>(`/lounge/rooms/${roomId}/invites`, "POST", { user_ids: userIds });
+}
+export async function uninviteFromLounge(roomId: number, userId: number) {
+  return sendJson<unknown>(`/lounge/rooms/${roomId}/invites/${userId}`, "DELETE");
+}
+export async function listLoungeInvites(): Promise<LoungeInvite[]> {
+  return (await authedGet<{ invites: LoungeInvite[] }>("/lounge/invites")).invites;
+}
+
+// ---- Friends (backend/app/routers/friends.py) — accounts, not league owners.
+export type FriendRelationship = "friends" | "outgoing" | "incoming" | "none";
+export type FriendPerson = {
+  user_id: number;
+  name: string;
+  username: string | null;
+  photo_url: string | null;
+  shared_leagues?: string[];
+  relationship?: FriendRelationship;
+};
+export type FriendsList = { friends: FriendPerson[]; incoming: FriendPerson[]; outgoing: FriendPerson[] };
+
+export const getFriends = () => authedGet<FriendsList>("/friends");
+export const getMyUsername = async () => (await authedGet<{ username: string | null }>("/friends/me")).username;
+export const setMyUsername = (username: string) => sendJson<{ username: string }>("/friends/me/username", "PUT", { username });
+export const searchFriends = async (q: string) =>
+  (await authedGet<{ results: FriendPerson[] }>(`/friends/search?q=${encodeURIComponent(q)}`)).results;
+export const getPlayedWith = async () => (await authedGet<{ people: FriendPerson[] }>("/friends/played-with")).people;
+export const sendFriendRequest = (userId: number) =>
+  sendJson<{ relationship: FriendRelationship }>("/friends/requests", "POST", { user_id: userId });
+export const acceptFriend = (userId: number) =>
+  sendJson<{ relationship: FriendRelationship }>(`/friends/requests/${userId}/accept`, "POST");
+export const removeFriend = (userId: number) => sendJson<unknown>(`/friends/${userId}`, "DELETE");
 
 export async function listMyLoungeRooms(): Promise<LoungeRoom[]> {
   const { rooms } = await authedGet<{ rooms: LoungeRoom[] }>("/lounge/rooms");

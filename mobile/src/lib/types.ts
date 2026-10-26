@@ -1168,7 +1168,27 @@ export type FantasyDigest = {
 };
 
 // Lounge (backend/app/routers/lounge.py).
-export type LoungeRoom = { id: number; slug: string; name: string; closed: boolean; created_at: string };
+export type LoungeRoom = {
+  id: number;
+  slug: string;
+  name: string;
+  closed: boolean;
+  created_at: string;
+  invited?: { user_id: number; name: string }[];
+};
+export type LoungeInvite = { id: number; slug: string; name: string; host_name: string; invited_at: string };
+
+// Friends (backend/app/routers/friends.py).
+export type FriendRelationship = 'friends' | 'outgoing' | 'incoming' | 'none';
+export type FriendPerson = {
+  user_id: number;
+  name: string;
+  username: string | null;
+  photo_url: string | null;
+  shared_leagues?: string[];
+  relationship?: FriendRelationship;
+};
+export type FriendsList = { friends: FriendPerson[]; incoming: FriendPerson[]; outgoing: FriendPerson[] };
 
 // Commissioner tools (frontend/src/lib/leaguesApi.ts, tradesApi.ts).
 export type LeagueInfo = {

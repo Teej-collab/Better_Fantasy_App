@@ -72,3 +72,69 @@ async def close_room(conn, room_id: int) -> None:
         "UPDATE lounge_rooms SET closed_at = now() WHERE id = $1 AND closed_at IS NULL",
         room_id,
     )
+
+
+async def is_invited(conn, room_id: int, user_id: int) -> bool:
+    return bool(
+        await conn.fetchval("SELECT 1 FROM lounge_room_invites WHERE room_id = $1 AND user_id = $2", room_id, user_id)
+    )
+
+
+async def add_invites(conn, room_id: int, user_ids: list[int], invited_by: int) -> list[int]:
+    """Returns who was newly invited (already-invited friends aren't
+    pushed again)."""
+    rows = await conn.fetch(
+        """
+        INSERT INTO lounge_room_invites (room_id, user_id, invited_by)
+        SELECT $1, unnest($2::int[]), $3
+        ON CONFLICT (room_id, user_id) DO NOTHING
+        RETURNING user_id
+        """,
+        room_id,
+        user_ids,
+        invited_by,
+    )
+    return [r["user_id"] for r in rows]
+
+
+async def remove_invite(conn, room_id: int, user_id: int) -> None:
+    await conn.execute("DELETE FROM lounge_room_invites WHERE room_id = $1 AND user_id = $2", room_id, user_id)
+
+
+async def invited_for_rooms(conn, room_ids: list[int]):
+    """Who each room's host invited, for "Your lounges"."""
+    return await conn.fetch(
+        """
+        SELECT i.room_id, u.id AS user_id,
+               COALESCE(o.display_name, u.display_name, u.username, 'Someone') AS name
+        FROM lounge_room_invites i
+        JOIN users u ON u.id = i.user_id
+        LEFT JOIN LATERAL (
+            SELECT ow.display_name FROM owner_users ou JOIN owners ow ON ow.owner_id = ou.owner_id
+            WHERE ou.user_id = u.id ORDER BY ou.owner_id LIMIT 1
+        ) o ON TRUE
+        WHERE i.room_id = ANY($1::int[])
+        ORDER BY i.created_at
+        """,
+        room_ids,
+    )
+
+
+async def invites_for_user(conn, user_id: int):
+    """Open rooms friends invited you to, newest first."""
+    return await conn.fetch(
+        """
+        SELECT r.id, r.slug, r.name, i.created_at AS invited_at,
+               COALESCE(o.display_name, u.display_name, u.username, 'A friend') AS host_name
+        FROM lounge_room_invites i
+        JOIN lounge_rooms r ON r.id = i.room_id AND r.closed_at IS NULL
+        JOIN users u ON u.id = r.created_by_user_id
+        LEFT JOIN LATERAL (
+            SELECT ow.display_name FROM owner_users ou JOIN owners ow ON ow.owner_id = ou.owner_id
+            WHERE ou.user_id = u.id ORDER BY ou.owner_id LIMIT 1
+        ) o ON TRUE
+        WHERE i.user_id = $1
+        ORDER BY i.created_at DESC
+        """,
+        user_id,
+    )

@@ -8,8 +8,8 @@ import { Display, Text } from '@/components/Text';
 import { Colors, Fonts, Radius, SectionColors, Spacing } from '@/constants/theme';
 import { api, WEB_BASE_URL } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
-import { queryClient, useLoungeRooms } from '@/lib/queries';
-import type { LoungeRoom } from '@/lib/types';
+import { queryClient, useFriends, useLoungeInvites, useLoungeRooms } from '@/lib/queries';
+import type { LoungeInvite, LoungeRoom } from '@/lib/types';
 import { loungeSlugFrom, nativeLoungeAvailable, setLoungeTicket } from '@/lib/loungeSession';
 import { openSignedInWeb } from '@/lib/webHandoff';
 
@@ -22,10 +22,13 @@ function shareUrl(slug: string) {
 // someone else's from their link, and manage the ones you've made. In
 // our own app builds the call runs natively (app/lounge-room/[slug].tsx);
 // in Expo Go, which can't load LiveKit, it opens in the in-app browser.
-// As the room's creator you go straight in, no password.
+// As the room's creator you go straight in, no password, and so do
+// friends you invite (app/friends.tsx) — league or not.
 export default function LoungeScreen() {
   const accent = useAppearance().accent;
   const rooms = useLoungeRooms();
+  const invites = useLoungeInvites();
+  const [inviting, setInviting] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -96,6 +99,18 @@ export default function LoungeScreen() {
     }
   }
 
+  async function joinInvite(invite: LoungeInvite) {
+    setJoiningRoomId(invite.id);
+    setError(null);
+    try {
+      await enter(invite.slug, invite.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't join the lounge.");
+    } finally {
+      setJoiningRoomId(null);
+    }
+  }
+
   function confirmClose(room: LoungeRoom) {
     Alert.alert(`Close "${room.name}"?`, 'Its link stops working for everyone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -122,6 +137,26 @@ export default function LoungeScreen() {
           to join.
         </Text>
       </View>
+
+      {!!invites.data?.length && (
+        <View style={styles.gap}>
+          <Text style={styles.heading}>Friends invited you</Text>
+          {invites.data.map((invite) => (
+            <View key={invite.id} style={[styles.room, styles.roomHead]}>
+              <View style={{ flexShrink: 1 }}>
+                <Text style={styles.roomName}>{invite.name}</Text>
+                <Text style={styles.closed}>{invite.host_name}’s lounge · no password needed</Text>
+              </View>
+              <Pressable
+                onPress={() => void joinInvite(invite)}
+                disabled={joiningRoomId === invite.id}
+                style={[styles.join, { backgroundColor: accent }, joiningRoomId === invite.id && styles.disabled]}>
+                <Text style={styles.joinText}>{joiningRoomId === invite.id ? 'Joining…' : 'Join'}</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
 
       <NeonPanel color={SectionColors.chat} contentStyle={styles.gap}>
         <TextInput value={name} onChangeText={setName} placeholder="Room name" placeholderTextColor="rgba(255,255,255,0.4)" style={styles.input} />
@@ -209,8 +244,17 @@ export default function LoungeScreen() {
                   <Pressable onPress={() => Share.share({ url: shareUrl(room.slug), message: shareUrl(room.slug) })} style={styles.outlineSm}>
                     <Text style={styles.outlineSmText}>Share link</Text>
                   </Pressable>
+                  <Pressable onPress={() => setInviting(inviting === room.id ? null : room.id)} style={styles.outlineSm} accessibilityRole="button">
+                    <Text style={styles.outlineSmText}>Invite friends</Text>
+                  </Pressable>
                 </View>
               )}
+              {!room.closed && !!room.invited?.length && inviting !== room.id && (
+                <Text style={styles.closed} numberOfLines={2}>
+                  Invited: {room.invited.map((i) => i.name).join(', ')}
+                </Text>
+              )}
+              {!room.closed && inviting === room.id && <InvitePicker room={room} accent={accent} onDone={() => setInviting(null)} />}
             </View>
           ))}
         </View>
@@ -219,7 +263,89 @@ export default function LoungeScreen() {
   );
 }
 
+/** Tick friends to invite; ticked ones already invited can be un-ticked. */
+function InvitePicker({ room, accent, onDone }: { room: LoungeRoom; accent: string; onDone: () => void }) {
+  const friends = useFriends();
+  const already = new Set((room.invited ?? []).map((i) => i.user_id));
+  const [picked, setPicked] = useState<Set<number>>(() => new Set(already));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const list = friends.data?.friends ?? [];
+
+  function toggle(userId: number) {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const add = [...picked].filter((id) => !already.has(id));
+      const drop = [...already].filter((id) => !picked.has(id));
+      if (add.length) await api.inviteToLounge(room.id, add);
+      for (const id of drop) await api.uninviteFromLounge(room.id, id);
+      void queryClient.invalidateQueries({ queryKey: ['lounge-rooms'] });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send the invites.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (friends.isLoading) return <ActivityIndicator color={accent} />;
+  if (!list.length) {
+    return (
+      <View style={styles.gap}>
+        <Text style={styles.closed}>Add friends first. They can be from any league, or none.</Text>
+        <Pressable onPress={() => router.push('/friends' as Href)} style={[styles.join, { backgroundColor: accent, alignSelf: 'flex-start' }]}>
+          <Text style={styles.joinText}>Find friends</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.gap}>
+      <Text style={styles.closed}>They’ll get a notification and can join without the password.</Text>
+      {list.map((f) => {
+        const on = picked.has(f.user_id);
+        return (
+          <Pressable
+            key={f.user_id}
+            onPress={() => toggle(f.user_id)}
+            style={styles.pickRow}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on }}
+            accessibilityLabel={f.name}>
+            <View style={[styles.check, on && { backgroundColor: accent, borderColor: accent }]}>{on && <Text style={styles.checkMark}>✓</Text>}</View>
+            <Text style={styles.roomName} numberOfLines={1}>
+              {f.name}
+            </Text>
+          </Pressable>
+        );
+      })}
+      {error && <Text style={styles.error}>{error}</Text>}
+      <View style={styles.actions}>
+        <Pressable onPress={() => void save()} disabled={saving} style={[styles.join, { backgroundColor: accent }, saving && styles.disabled]}>
+          <Text style={styles.joinText}>{saving ? 'Sending…' : 'Send invites'}</Text>
+        </Pressable>
+        <Pressable onPress={onDone} style={styles.outline}>
+          <Text style={styles.outlineText}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 6 },
+  check: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  checkMark: { color: '#000', fontSize: 14, fontWeight: '800' },
   screen: { flex: 1 },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xl * 2, gap: Spacing.xl },
   gap: { gap: Spacing.md },
