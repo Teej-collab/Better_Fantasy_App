@@ -126,7 +126,11 @@ def draft_live() -> dict:
 
 
 def keeper_deadline_approaching(minutes: int) -> dict:
-    return _payload("⏰ Keeper picks lock soon", f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.", "/keepers", "keeper_deadline_approaching")
+    return _payload("⏰ Keeper picks lock soon", f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.", "/war-room", "keeper_deadline_approaching")
+
+
+def keeper_nudge(sender: str) -> dict:
+    return _payload("⏰ Your keepers are due", f"{sender} is waiting on your keepers. Pick them in the War Room.", "/war-room", "keeper_nudge", tag="keeper_nudge")
 
 
 def draft_on_the_clock(round_num: int, pick_number: int, seconds: int) -> dict:

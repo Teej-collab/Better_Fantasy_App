@@ -43,6 +43,7 @@ _ROUTE_PREFIXES: list[tuple[str, str]] = [
     ("/power-rankings", "nav_power_rankings"),
     ("/draft", "nav_draft"),
     ("/keepers", "nav_keepers"),
+    ("/war-room", "nav_war_room"),
     ("/free-agents", "nav_free_agents"),
     ("/trades", "nav_trades"),
     ("/teams", "nav_teams"),

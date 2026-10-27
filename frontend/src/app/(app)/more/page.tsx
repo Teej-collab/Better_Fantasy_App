@@ -40,8 +40,7 @@ export default async function MorePage() {
 
   const myTeamTiles = [
     { href: "/team", title: "My Team", description: "Your roster — starters, bench, and lineup" },
-    { href: "/draft", title: "Draft", description: "Live draft room, board, and grades" },
-    { href: "/keepers", title: "Keepers", description: "This season's keeper picks and rules" },
+    { href: "/war-room", title: "War Room", description: "Keepers, draft day, and your draft's report card" },
     { href: "/free-agents", title: "Free Agents", description: "Add or drop a player" },
     { href: "/trades", title: "Trades", description: "Propose, review, and track trades" },
   ];

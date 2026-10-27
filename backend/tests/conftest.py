@@ -405,6 +405,7 @@ async def cleanup_test_season(pool):
             "DELETE FROM keeper_selections WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM league_keeper_rules WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        await conn.execute("DELETE FROM notification_once WHERE key LIKE $1", f"keeper-nudge:%:{TEST_SEASON}:%")
         # Leagues a test created directly via POST /leagues, and
         # everything that references leagues.id, cleaned up FIRST and
         # entirely before any owners/users deletion below — a test

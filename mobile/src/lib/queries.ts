@@ -713,6 +713,10 @@ export function refreshTrades() {
   }
 }
 
+export function useWarRoom() {
+  return useQuery({ queryKey: ['war-room'], queryFn: api.warRoom });
+}
+
 export function useMyKeepers() {
   return useQuery({ queryKey: ['my-keepers'], queryFn: api.myKeepers });
 }

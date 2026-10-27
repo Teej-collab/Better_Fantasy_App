@@ -236,8 +236,8 @@ function InviteCoOwner() {
   );
 }
 
-// The web's MyTeamSubNav (MY_TEAM_SUBNAV_ORDER): My Team, then Draft,
-// Keepers, Free Agents and Trades — plus this week's Matchup up front,
+// The web's MyTeamSubNav (MY_TEAM_SUBNAV_ORDER): My Team, then the War
+// Room (draft and keepers, 2026-10-27), Free Agents and Trades — plus this week's Matchup up front,
 // which on the web is a nav item of its own (2026-10 navigation pass).
 function TeamSubNav() {
   const matchupId = useMyWeek().data?.matchup?.matchup_id ?? null;
@@ -245,8 +245,7 @@ function TeamSubNav() {
     ...(matchupId !== null
       ? [{ label: 'Matchup', go: () => router.push({ pathname: '/matchup/[id]', params: { id: String(matchupId) } }) }]
       : []),
-    { label: 'Draft', go: () => router.push('/draft') },
-    { label: 'Keepers', go: () => router.push('/keepers') },
+    { label: 'War Room', go: () => router.push('/war-room' as Href) },
     { label: 'Free Agents', go: () => router.push('/players' as Href) },
     { label: 'Trades', go: () => router.push('/trades') },
   ];

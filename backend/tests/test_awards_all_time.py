@@ -76,9 +76,10 @@ async def test_all_time_awards_include_every_award_type_even_with_no_wins(pool, 
         "Clutch Performer", "Choke Artist", "Overachiever", "Underachiever",
         "Boom Week", "Bust Week", "Snakebit Award", "Luckiest Win",
         "Heater", "Cold Streak", "Bullseye Award", "Highway Robbery",
+        "Great White Buffalo", "Manager of the Year",
     ):
         assert award_type in keys
-    assert len(categories) == 13  # season_champion + the 12 season_awards types
+    assert len(categories) == 15  # season_champion + the 14 season_awards types
 
     # Every category is present in the response shape even when nobody in
     # this test run has ever won it — an empty list, not a missing key.

@@ -20,6 +20,10 @@ export const AWARD_DESCRIPTIONS: Record<string, string> = {
   "Cold Streak": "Longest losing streak in a single season.",
   "Bullseye Award": "Most weeks landing within half a point of your projection.",
   "Highway Robbery": "Biggest single-week upset — won despite the lower projection.",
+  "Great White Buffalo":
+    "The one that got away: most points in big games (15+, started) by players you dropped or traded away.",
+  "Manager of the Year":
+    "Best managed season: comebacks, pickups and trades that delivered, injuries overcome, and smart lineup calls.",
 
   // All-time record book (records.py)
   highest_week: "The 3 highest-scoring weeks anyone's ever posted.",

@@ -38,6 +38,8 @@ _AWARD_TYPES = [
     ("Cold Streak", "🥶"),
     ("Bullseye Award", "🎯"),
     ("Highway Robbery", "🕵️"),
+    ("Great White Buffalo", "🦬"),
+    ("Manager of the Year", "📋"),
 ]
 
 

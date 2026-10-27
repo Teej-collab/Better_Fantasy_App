@@ -17,7 +17,7 @@ export default async function DraftPage() {
   if (!me) {
     return (
       <div className="flex flex-col gap-4">
-        <MyTeamSubNav active="draft" />
+        <MyTeamSubNav active="warRoom" />
         <div className="flex justify-center py-6">
           <SignInCard />
         </div>
@@ -27,7 +27,7 @@ export default async function DraftPage() {
   if (me.active_league_id === null) {
     return (
       <div className="flex flex-col gap-4">
-        <MyTeamSubNav active="draft" />
+        <MyTeamSubNav active="warRoom" />
         <NeedsLeagueCard />
       </div>
     );
@@ -60,7 +60,7 @@ export default async function DraftPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MyTeamSubNav active="draft" />
+      <MyTeamSubNav active="warRoom" />
       <h1 className="text-2xl font-semibold">Draft</h1>
       <DraftRoom
         myOwnerId={me.owner_id}

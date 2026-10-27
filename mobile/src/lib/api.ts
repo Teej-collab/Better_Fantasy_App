@@ -77,6 +77,7 @@ import type {
   TradeRosterPlayer,
   KeeperRules,
   MyKeepers,
+  WarRoom,
   ChugDeadline,
   ChugLedgerEvent,
   ScoringPreset,
@@ -594,6 +595,8 @@ export const api = {
   tradeAction: (tradeId: number, action: 'accept' | 'reject' | 'cancel') =>
     request<Trade>(`/trades/${tradeId}/${action}`, { method: 'POST', body: '{}' }),
   myKeepers: () => request<MyKeepers>('/keepers/me'),
+  warRoom: () => request<WarRoom>('/war-room'),
+  nudgeKeepers: () => request<{ nudged: number }>('/war-room/keeper-nudge', { method: 'POST' }),
   saveKeepers: (espnPlayerIds: number[]) =>
     request<unknown>('/keepers/me', { method: 'PUT', body: JSON.stringify({ espn_player_ids: espnPlayerIds }) }),
   // Commissioner only.

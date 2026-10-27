@@ -46,7 +46,7 @@ import logging
 
 from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
 from app.db import get_pool
-from app.domain import recap_context, weekly_awards
+from app.domain import manager_awards, recap_context, weekly_awards
 from app.domain.team_profile import get_owner_badges
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 from app.providers.nfl_scoreboard import get_week_scoreboard
@@ -147,7 +147,8 @@ their due where it's real ("Kyren tried to put the team on his back for Lorenzo,
 them for everything else. Specific, true shit-talk lands harder than generic insults: every paragraph \
 needs at least one real punchline built on a real number, not filler like "love it" or "drink up".
 - Work in the week's AWARDS by name (overachiever, meltdown, bench crime, clutch or choke) and rivalry lore \
-when rivals met.
+when rivals met. A "Great White Buffalo watch" line (a player someone let go blowing up for his new team) is \
+prime roast material for whoever let him go: use it when it's there.
 - Close on where things stand, from POWER RANKINGS & PLAYOFF RACE: the power rankings (big movers, who's \
 better or worse than their record, who's been lucky), then the playoff picture, which comes from the STANDINGS, never the power rankings — who's in, who's chasing \
 and how far back, whose remaining schedule is brutal. Late in the season, spell out who has clinched, who's \
@@ -558,6 +559,8 @@ async def _build_weekly_facts(conn, week_context: dict, league_id: int, kind: st
             facts.append(f"Clutch performance of the week: {who(clutch['team_name'])} ({clutch['reason']})")
         if choke:
             facts.append(f"Choke of the week: {who(choke['team_name'])} ({choke['reason']})")
+
+        facts += await manager_awards.buffalo_facts(conn, season, week, league_id, who)
 
         booms, busts = await weekly_awards.get_boom_bust_leaders(conn, season, week, limit=3, league_id=league_id)
         if booms:

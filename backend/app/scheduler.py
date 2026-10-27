@@ -166,6 +166,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import _require
 from app.db import get_pool
 from app.domain import draft_engine, matchup_context, narrative_engine, recap_release, weekly_stats
+from app.domain.season_awards import determine_and_save_season_awards
 from app.domain.weekly_team_stats import compute_weekly_team_stats_for_week, lock_power_ranks_for_week
 from app.domain import auction_engine, guillotine, live_activity, win_prob_history
 from app.notifications import game_alerts, inactives
@@ -528,6 +529,14 @@ async def _run_week_settlement_job():
                     await game_alerts.notify_matchup_finals(conn, season, settle_week, league_id)
             except Exception:
                 logger.exception("Matchup final pushes failed (league_id=%s)", league_id)
+            # Season awards for every league, not only the synced ones
+            # (their full sync also runs this). Idempotent upserts; Manager
+            # of the Year waits for the title game (manager_awards.py).
+            try:
+                async with pool.acquire() as conn:
+                    await determine_and_save_season_awards(conn, season, league_id)
+            except Exception:
+                logger.exception("Season awards failed (league_id=%s)", league_id)
             # Guillotine leagues cut the week's lowest score (a no-op
             # anywhere else, and after the first tick — app/domain/guillotine.py).
             async with pool.acquire() as conn:

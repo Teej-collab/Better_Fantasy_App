@@ -13,6 +13,7 @@ const EVENT_LABELS: Record<string, string> = {
   nav_power_rankings: 'Power Rankings',
   nav_draft: 'Draft',
   nav_keepers: 'Keepers',
+  nav_war_room: 'War Room',
   nav_free_agents: 'Free Agents',
   nav_trades: 'Trades',
   nav_teams: 'Team (other)',

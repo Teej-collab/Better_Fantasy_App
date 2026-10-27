@@ -33,6 +33,7 @@ export type DestinationKey =
   | "keepers"
   | "powerRankings"
   | "draft"
+  | "warRoom"
   | "gamecast"
   | "awardsAllTime"
   | "history"
@@ -93,6 +94,8 @@ export const DESTINATIONS: Record<DestinationKey, Destination> = {
   // Agents but distinct from both (emerald/teal), and from Rules'
   // lime.
   draft: { key: "draft", label: "Draft", color: "#eab308" },
+  // My Team's Draft and Keepers tabs as one (2026-10-27); takes Draft's hue.
+  warRoom: { key: "warRoom", label: "War Room", color: "#eab308" },
   // Distinct red — Gamecast is the one destination that ever carries a
   // genuine "live" state of its own (as opposed to reflecting the
   // signed-in visitor's own matchup, like My Team/Matchups' LiveMark
@@ -151,6 +154,7 @@ export const DESTINATION_HREF: Partial<Record<DestinationKey, string>> = {
   keepers: "/keepers",
   powerRankings: "/power-rankings",
   draft: "/draft",
+  warRoom: "/war-room",
   gamecast: "/gamecast",
   history: "/history",
   trades: "/trades",
@@ -266,7 +270,7 @@ export const LEAGUE_SUBNAV_PRIMARY = new Set<DestinationKey>([
 // league" ones. `team` itself (labeled "Roster" there) is first but
 // isn't repeated here since it's the page these tabs sit on top of,
 // not a link to itself.
-export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["draft", "keepers", "freeAgents", "trades"];
+export const MY_TEAM_SUBNAV_ORDER: DestinationKey[] = ["warRoom", "freeAgents", "trades"];
 
 // /gamecast/[gameId] (a single game) is still deliberately absent from
 // this config — a game_id has no stable identity between weeks, so a

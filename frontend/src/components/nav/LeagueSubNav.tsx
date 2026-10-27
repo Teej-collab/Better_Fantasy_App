@@ -9,7 +9,7 @@ import {
 } from "@/lib/navDestinations";
 import { LeagueSwitcher } from "@/components/nav/LeagueSwitcher";
 
-export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers" | "freeAgents">;
+export type LeagueTab = Exclude<DestinationKey, "team" | "home" | "matchups" | "chat" | "keepers" | "freeAgents" | "warRoom">;
 
 // "League" reads fine as a top-level destination, but repeating the
 // same word as the first tab *inside* the page you already tapped

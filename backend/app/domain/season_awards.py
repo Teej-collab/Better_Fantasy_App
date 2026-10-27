@@ -30,6 +30,7 @@ after that season's playoffs finish), so it's a no-op mid-season rather
 than an error.
 """
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain import manager_awards
 from app.domain.expected_score import get_expected_score
 from app.domain.weekly_awards import _team_clutch_choke
 
@@ -299,6 +300,14 @@ async def determine_and_save_season_awards(conn, season: int, league_id: int = D
         robbery = await compute_highway_robbery(conn, season, owner_id, league_id)
         if robbery:
             consider("Highway Robbery", owner_id, robbery["projection_gap"], f"upset by {robbery['projection_gap']} pts (week {robbery['week']})", lambda a, b: a > b)
+
+    # League-wide awards: each needs every team's season at once.
+    buffalo = await manager_awards.great_white_buffalo(conn, season, league_id)
+    if buffalo:
+        winners[manager_awards.GREAT_WHITE_BUFFALO] = (buffalo["owner_id"], buffalo["detail"], buffalo["total"])
+    manager = await manager_awards.manager_of_the_year(conn, season, league_id)
+    if manager:
+        winners[manager_awards.MANAGER_OF_THE_YEAR] = (manager["owner_id"], manager["detail"], manager["score"])
 
     for award_type, (owner_id, detail, _value) in winners.items():
         await conn.execute(
