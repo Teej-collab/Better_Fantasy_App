@@ -46,17 +46,34 @@ close with a verdict on the whole draft class. Compliment what deserves it, roas
 brutal, sharp, genuinely funny — same voice as this league's matchup write-ups. Four to six \
 sentences. No hedging, no disclaimers."""
 
-def _pick_label(gain: float | None) -> str | None:
-    """Rounds gained (app/domain/draft_grades.py's pick_gains) -> the
-    plain label the write-up gets, so it can call steals and reaches
-    without quoting the math behind them."""
-    if gain is None or -0.75 < gain < 0.75:
-        return None
-    if gain >= 1.5:
-        return "a big steal"
-    if gain > 0:
-        return "a steal"
-    return "a big reach" if gain <= -1.5 else "a reach"
+# Share of the room's picks (from each end) that get each label, so a
+# write-up gets a pick or two worth calling out per team instead of
+# half its roster: the value-board fallback scatters too widely for
+# fixed cutoffs (2026: ~45% of picks came out as "big" steals or
+# reaches). Kickers and defenses never get one.
+BIG_SHARE = 0.05
+LABEL_SHARE = 0.15
+_NO_LABEL_POSITIONS = {"K", "DEF"}
+
+
+def pick_labels(gains: dict[str, float], positions: dict[str, str]) -> dict[str, str]:
+    """sleeper_player_id -> "a big steal" / "a steal" / "a reach" / "a
+    big reach" for the picks at either end of the room's rounds gained
+    (app/domain/draft_grades.py's pick_gains)."""
+    ranked = sorted(
+        (player_id for player_id in gains if positions.get(player_id) not in _NO_LABEL_POSITIONS),
+        key=lambda player_id: gains[player_id],
+    )
+    n = len(ranked)
+    big, labeled = round(n * BIG_SHARE), round(n * LABEL_SHARE)
+    labels = {}
+    for i, player_id in enumerate(ranked):
+        from_top = n - 1 - i
+        if gains[player_id] > 0 and from_top < labeled:
+            labels[player_id] = "a big steal" if from_top < big else "a steal"
+        elif gains[player_id] < 0 and i < labeled:
+            labels[player_id] = "a big reach" if i < big else "a reach"
+    return labels
 
 
 def _lineup_standing(grade: dict) -> str:
@@ -84,8 +101,7 @@ def _build_draft_facts(picks: list[dict], grade: dict) -> str:
         if p.get("is_keeper"):
             note = " — KEEPER, locked in before the draft by this league's keeper rules"
         else:
-            label = _pick_label(p.get("gain"))
-            note = f" — {label}" if label else ""
+            note = f" — {p['label']}" if p.get("label") else ""
         facts.append(f"Round {p['round']}: {p['player_name']} ({p['player_position']}){note}")
     return "; ".join(facts)
 
@@ -103,6 +119,15 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
 
     grades = await get_draft_grades_for_season(conn, season, league_id)
     gains = await pick_gains(conn, season, league_id)
+    positions = {
+        r["sleeper_player_id"]: r["position"]
+        for r in await conn.fetch(
+            "SELECT p.sleeper_player_id, p.position FROM draft_picks dp JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id "
+            "WHERE dp.season = $1 AND dp.league_id = $2",
+            season, league_id,
+        )
+    }
+    labels = pick_labels(gains, positions)
     generated = {}
     for grade in grades:
         picks = await conn.fetch(
@@ -118,7 +143,7 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         if not picks:
             continue
         facts = _build_draft_facts(
-            [{**dict(p), "gain": gains.get(p["sleeper_player_id"])} for p in picks], dict(grade)
+            [{**dict(p), "label": labels.get(p["sleeper_player_id"])} for p in picks], dict(grade)
         )
         # max_tokens above the 500 default: a real production failure
         # (2026-09) showed the model can spend its whole budget on

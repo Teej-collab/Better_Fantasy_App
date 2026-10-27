@@ -147,10 +147,10 @@ def test_draft_facts_give_plain_labels_not_the_math():
     steal/reach labels and a lineup standing, never ADP, ranks, rounds
     or percentiles to quote (owner request, 2026-10-27)."""
     picks = [
-        {"round": 1, "player_name": "Early Guy", "player_position": "RB", "is_keeper": False, "gain": 2.1},
-        {"round": 2, "player_name": "Reach Guy", "player_position": "QB", "is_keeper": False, "gain": -1.0},
-        {"round": 3, "player_name": "Fair Guy", "player_position": "QB", "is_keeper": False, "gain": 0.2},
-        {"round": 4, "player_name": "Kept Guy", "player_position": "WR", "is_keeper": True, "gain": 3.0},
+        {"round": 1, "player_name": "Early Guy", "player_position": "RB", "is_keeper": False, "label": "a big steal"},
+        {"round": 2, "player_name": "Reach Guy", "player_position": "QB", "is_keeper": False, "label": "a reach"},
+        {"round": 3, "player_name": "Fair Guy", "player_position": "QB", "is_keeper": False, "label": None},
+        {"round": 4, "player_name": "Kept Guy", "player_position": "WR", "is_keeper": True, "label": "a big steal"},
     ]
     grade = {
         "letter_grade": "B", "percentile": 66.7, "starter_projected_points": 1300,
@@ -338,3 +338,14 @@ async def test_compute_draft_grades_skips_pick_value_for_an_auction(pool):
         finally:
             await conn.execute("DELETE FROM draft_picks WHERE sleeper_player_id LIKE 'test-dg-pv-%'")
             await conn.execute("DELETE FROM players WHERE sleeper_player_id LIKE 'test-dg-pv-%'")
+
+
+def test_pick_labels_only_call_out_the_ends_of_the_room():
+    gains = {f"p{i}": float(i - 10) for i in range(21)}  # -10 .. +10
+    gains["k"] = 9.5
+    positions = {"k": "K"}
+    labels = draft_narratives.pick_labels(gains, positions)
+    assert labels["p20"] == "a big steal" and labels["p0"] == "a big reach"
+    assert labels["p18"] == "a steal" and labels["p2"] == "a reach"
+    assert "p10" not in labels and "p15" not in labels
+    assert "k" not in labels  # kickers and defenses never get one

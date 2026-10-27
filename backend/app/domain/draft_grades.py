@@ -123,7 +123,12 @@ def _pick_gain(pick, market: dict[str, float], board: dict[str, int], team_count
 
 async def pick_gains(conn, season: int, league_id: int) -> dict[str, float]:
     """sleeper_player_id -> rounds gained (steal +, reach -) for every
-    non-keeper pick in a snake or linear draft; empty for an auction."""
+    non-keeper pick in a snake or linear draft, measured against how
+    this room drafted overall: the league's average gain is taken out,
+    so a board that runs early or late across the whole draft (the
+    value-board fallback ran about a round harsh on real 2026 drafts)
+    doesn't make every pick a reach. Empty for an auction. Grades don't
+    need this — they compare teams to each other already."""
     picks = await conn.fetch(
         "SELECT owner_id, pick_number, is_keeper, price, sleeper_player_id FROM draft_picks "
         "WHERE season = $1 AND league_id = $2 AND sleeper_player_id IS NOT NULL",
@@ -140,6 +145,9 @@ async def pick_gains(conn, season: int, league_id: int) -> dict[str, float]:
             gain = _pick_gain(p, market, board, team_count)
             if gain is not None:
                 gains[p["sleeper_player_id"]] = gain
+    if gains:
+        mean = sum(gains.values()) / len(gains)
+        gains = {player_id: gain - mean for player_id, gain in gains.items()}
     return gains
 
 
