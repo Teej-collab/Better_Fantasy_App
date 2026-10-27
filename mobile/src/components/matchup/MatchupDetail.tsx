@@ -45,8 +45,9 @@ export function MatchupDetail({ matchup }: { matchup: WeekMatchupContextItem }) 
     <View style={styles.panel}>
       <ShareableCard title={`Week ${matchup.week}: ${home.team_name} vs ${away.team_name}`}>
       <NeonPanel contentStyle={styles.card}>
-        {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
+        {(matchup.headline || matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <View style={styles.badges}>
+            {matchup.headline && <Badge text={matchup.headline} color="#7dd3fc" bg="rgba(56,189,248,0.2)" />}
             {matchup.is_game_of_the_week && <Badge text="⭐ Game of the Week" color="#fcd34d" bg="rgba(251,191,36,0.2)" />}
             {matchup.is_rivalry && matchup.rivalry && <RivalryBadge rivalry={matchup.rivalry} />}
             {matchup.is_playoff && <Badge text="Playoffs" color="#c4b5fd" bg="rgba(167,139,250,0.2)" />}

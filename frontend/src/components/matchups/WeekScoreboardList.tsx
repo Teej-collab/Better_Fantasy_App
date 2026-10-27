@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { MatchupContextSide, WeekMatchupContextItem } from "@/lib/api";
 import { TeamLogo } from "@/components/matchups/MatchupScoreHeader";
-import { GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
+import { GameOfWeekBadge, HeadlineBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { TeamRankBadge } from "@/components/TeamRankBadge";
 import { LiveProjectionValue } from "@/components/matchups/liveProjection";
@@ -43,8 +43,9 @@ export function WeekScoreboardList({ matchups }: { matchups: WeekMatchupContextI
     <div className="flex flex-col gap-3">
       {matchups.map((m) => (
         <div key={m.matchup_id} className="wl-card overflow-hidden rounded-lg">
-          {(m.is_game_of_the_week || m.is_rivalry || m.is_playoff) && (
+          {(m.headline || m.is_game_of_the_week || m.is_rivalry || m.is_playoff) && (
             <div className="flex flex-wrap items-center gap-1.5 border-b border-black/5 px-3 py-2 dark:border-white/5">
+              {m.headline && <HeadlineBadge headline={m.headline} />}
               {m.is_game_of_the_week && <GameOfWeekBadge />}
               {m.is_rivalry && m.rivalry && <RivalryBadge rivalry={m.rivalry} />}
               {m.is_playoff && <PlayoffBadge />}

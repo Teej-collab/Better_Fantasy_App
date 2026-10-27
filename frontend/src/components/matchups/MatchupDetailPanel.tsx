@@ -1,6 +1,6 @@
 import type { MatchupContextSide, TeamTouchdown, WeekMatchupContextItem } from "@/lib/api";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
-import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
+import { BenchCrimeBadge, ClutchChokeBadge, GameOfWeekBadge, HeadlineBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
 import { MatchupScoreHeader } from "@/components/matchups/MatchupScoreHeader";
 import { MatchupWriteUps } from "@/components/matchups/MatchupWriteUps";
@@ -25,8 +25,9 @@ export function MatchupDetailPanel({ matchup }: { matchup: WeekMatchupContextIte
   return (
     <div className="flex flex-col gap-5">
       <div className="wl-card rounded-lg p-4">
-        {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
+        {(matchup.headline || matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+            {matchup.headline && <HeadlineBadge headline={matchup.headline} />}
             {matchup.is_game_of_the_week && <GameOfWeekBadge />}
             {matchup.is_rivalry && matchup.rivalry && <RivalryBadge rivalry={matchup.rivalry} />}
             {matchup.is_playoff && <PlayoffBadge />}

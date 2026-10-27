@@ -18,6 +18,15 @@ export function GameOfWeekBadge() {
   );
 }
 
+// A schedule's marquee game (backend app/domain/schedule_builder.py).
+export function HeadlineBadge({ headline }: { headline: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-800 dark:bg-sky-400/20 dark:text-sky-300">
+      {headline}
+    </span>
+  );
+}
+
 export function RivalryBadge({ rivalry }: { rivalry: MatchupRivalry }) {
   const colorClass = TIER_BADGE_CLASS[rivalry.tier ?? ""] ?? TIER_BADGE_CLASS.Developing;
   return (

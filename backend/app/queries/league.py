@@ -330,7 +330,7 @@ async def get_playoff_settings(conn, season: int, league_id: int = DEFAULT_LEAGU
 async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID):
     return await conn.fetch(
         """
-        SELECT m.id AS matchup_id, m.is_playoff,
+        SELECT m.id AS matchup_id, m.is_playoff, m.headline,
                ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
                at.id AS away_team_id, at.team_name AS away_team_name, m.away_score
         FROM matchups m
@@ -346,7 +346,7 @@ async def list_week_matchups(conn, season: int, week: int, league_id: int = DEFA
 async def get_matchup(conn, matchup_id: int):
     return await conn.fetchrow(
         """
-        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff, m.league_id,
+        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff, m.headline, m.league_id,
                ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
                at.id AS away_team_id, at.team_name AS away_team_name, m.away_score
         FROM matchups m
@@ -364,7 +364,7 @@ async def get_matchup_for_team(conn, team_id: int, season: int, week: int, leagu
     matchup by its own ID."""
     return await conn.fetchrow(
         """
-        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff,
+        SELECT m.id AS matchup_id, m.season, m.week, m.is_playoff, m.headline,
                ht.id AS home_team_id, ht.team_name AS home_team_name, m.home_score,
                at.id AS away_team_id, at.team_name AS away_team_name, m.away_score
         FROM matchups m

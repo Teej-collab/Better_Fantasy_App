@@ -6,7 +6,7 @@ import type { WeekMatchupContextItem } from "@/lib/api";
 import { RosterList } from "@/components/RosterList";
 import { PlayoffBadge } from "@/components/PlayoffBadge";
 import { SECTION_COLORS, panelGlowStyle } from "@/lib/sectionColors";
-import { GameOfWeekBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
+import { GameOfWeekBadge, HeadlineBadge, RivalryBadge } from "@/components/matchups/MatchupBadges";
 import { MatchupWriteUps } from "@/components/matchups/MatchupWriteUps";
 import { TeamSummary } from "@/components/matchups/TeamSummary";
 import { HeadToHeadSection } from "@/components/matchups/HeadToHeadSection";
@@ -33,8 +33,9 @@ export function MatchupCard({ matchup }: { matchup: WeekMatchupContextItem }) {
         aria-expanded={open}
         className="flex w-full flex-col gap-2 px-3 py-3 text-left"
       >
-        {(matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
+        {(matchup.headline || matchup.is_game_of_the_week || matchup.is_rivalry || matchup.is_playoff) && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {matchup.headline && <HeadlineBadge headline={matchup.headline} />}
             {matchup.is_game_of_the_week && <GameOfWeekBadge />}
             {matchup.is_rivalry && matchup.rivalry && <RivalryBadge rivalry={matchup.rivalry} />}
             {matchup.is_playoff && <PlayoffBadge />}

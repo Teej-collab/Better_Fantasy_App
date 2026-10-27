@@ -145,6 +145,9 @@ export type WeekMatchupContextItem = {
   week: number;
   is_playoff: boolean;
   is_game_of_the_week: boolean;
+  // A marquee game on a schedule the app built ("Season Opener",
+  // "Rivalry Week", "Championship Rematch"); null otherwise.
+  headline?: string | null;
   is_rivalry: boolean;
   rivalry: {
     name: string;

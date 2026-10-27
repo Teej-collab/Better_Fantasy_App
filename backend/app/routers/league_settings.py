@@ -18,7 +18,7 @@ from app.db import get_pool
 from app.domain import commish_log, league_format, scoring_catalog
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
 from app.domain.stat_derivations import derive_stat_line
-from app.domain.schedule import generate_regular_season_schedule
+from app.domain.schedule_builder import build_and_save
 from app.domain.schedule_exceptions import ScheduleError
 from app.encryption import encrypt_secret
 from app.providers.espn.adapter import ESPNProvider
@@ -298,7 +298,7 @@ class GenerateScheduleRequest(BaseModel):
 @router.post("/schedule/generate")
 async def generate_schedule(body: GenerateScheduleRequest, request: Request, pool=Depends(get_pool)):
     """Real write — generates this season's real regular-season matchup
-    schedule in-app (app/domain/schedule.py), no ESPN read involved.
+    schedule in-app (app/domain/schedule_builder.py), no ESPN read involved.
     Only ever makes sense for a season that hasn't been scheduled yet
     (typically right after teams exist, e.g. right after the draft) —
     refuses with 409 if regular-season matchups already exist for this
@@ -310,7 +310,7 @@ async def generate_schedule(body: GenerateScheduleRequest, request: Request, poo
     try:
         async with pool.acquire() as conn:
             league_id = await require_league_commissioner(conn, payload)
-            created = await generate_regular_season_schedule(conn, body.season, league_id, body.weeks)
+            created = await build_and_save(conn, body.season, league_id, body.weeks)
             await commish_log.record(
                 conn, league_id, payload["user_id"], "league", f"Made the {body.weeks}-week regular-season schedule"
             )

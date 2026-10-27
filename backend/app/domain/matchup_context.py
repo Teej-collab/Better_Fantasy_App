@@ -271,6 +271,10 @@ def _matchup_entry(
         "league_id": league_id,
         "is_playoff": m["is_playoff"],
         "is_game_of_the_week": is_gow,
+        # "Season Opener" / "Rivalry Week" / "Championship Rematch" on a
+        # schedule this app built (app/domain/schedule_builder.py); null
+        # otherwise.
+        "headline": m.get("headline"),
         "is_rivalry": rivalry is not None,
         "rivalry": _rivalry_dict(rivalry, h2h) if rivalry else None,
         "head_to_head": {

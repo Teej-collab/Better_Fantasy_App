@@ -195,7 +195,7 @@ from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync, update_league_state
-from app.domain import adp, announcements, rivalry_detection, waivers
+from app.domain import adp, announcements, rivalry_detection, schedule_builder, waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
@@ -959,6 +959,11 @@ async def _run_draft_grades_job():
                 count = await compute_draft_grades(conn, season, league_id)
                 if count:
                     await generate_draft_narratives(conn, season, league_id)
+                    # The schedule comes out once the draft is graded — it
+                    # uses the grades to pick the favorite and contenders
+                    # (app/domain/schedule_builder.py).
+                    if await schedule_builder.release_after_draft(conn, season, league_id):
+                        logger.info("Schedule released: season=%s league_id=%s", season, league_id)
                 logger.info("Draft grades computed: season=%s league_id=%s teams=%s", season, league_id, count)
             except Exception:
                 logger.exception("Draft grade computation failed: season=%s league_id=%s", season, league_id)
