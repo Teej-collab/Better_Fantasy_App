@@ -75,7 +75,8 @@
 .neon:hover:not(:disabled) {
   box-shadow: 0 0 20px color-mix(in srgb, var(--wl-accent) 70%, transparent), inset 0 0 12px color-mix(in srgb, var(--wl-accent) 18%, transparent);
 }
-.neon:disabled {
+.neon:disabled,
+.incomplete {
   opacity: 0.45;
   cursor: default;
 }
@@ -149,6 +150,9 @@
 }
 .field:focus {
   border-color: var(--wl-accent);
+}
+.field[aria-invalid="true"] {
+  border: 2px solid #f87171;
 }
 .label {
   display: flex;

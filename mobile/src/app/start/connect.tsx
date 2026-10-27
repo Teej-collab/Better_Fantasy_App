@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
 
-import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Sub, Title } from '@/components/start/StartUI';
+import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -42,6 +42,8 @@ export default function ConnectLeagueScreen() {
   const [error, setError] = useState<string | null>(null);
   // Sleeper by username (2026-10-24): no link to copy.
   const [username, setUsername] = useState('');
+  const linkField = useRequiredField(link, 'Paste your league link first.');
+  const usernameField = useRequiredField(username, 'Type your Sleeper username first.');
   const [sleeperLeagues, setSleeperLeagues] = useState<{ league_id: string; name: string; teams: number | null }[] | null>(null);
 
   async function run(action: () => Promise<void>) {
@@ -244,7 +246,7 @@ export default function ConnectLeagueScreen() {
     <StartScreen
       footer={
         platform === 'espn' || link.trim() ? (
-          <NeonButton label="Find my league" onPress={() => void find()} busy={busy} disabled={!link.trim()} />
+          <NeonButton label="Find my league" onPress={() => linkField.check() && void find()} busy={busy} incomplete={linkField.empty} />
         ) : undefined
       }>
       <Stack.Screen options={{ title: `From ${name}` }} />
@@ -260,6 +262,7 @@ export default function ConnectLeagueScreen() {
       {platform === 'sleeper' && (
         <View style={styles.list}>
           <Field
+            {...usernameField.field}
             label="Sleeper username"
             value={username}
             onChangeText={setUsername}
@@ -268,7 +271,7 @@ export default function ConnectLeagueScreen() {
             placeholder="your username"
             onSubmitEditing={() => void lookUp()}
           />
-          <GhostButton label={busy && !sleeperLeagues ? 'Looking…' : 'Find my leagues'} onPress={() => void lookUp()} disabled={!username.trim() || busy} />
+          <GhostButton label={busy && !sleeperLeagues ? 'Looking…' : 'Find my leagues'} onPress={() => usernameField.check() && void lookUp()} incomplete={usernameField.empty} disabled={busy} />
           {sleeperLeagues?.map((lg) => (
             <Pressable
               key={lg.league_id}
@@ -289,6 +292,7 @@ export default function ConnectLeagueScreen() {
         </View>
       )}
       <Field
+        {...linkField.field}
         label={`${name} league link`}
         value={link}
         onChangeText={setLink}

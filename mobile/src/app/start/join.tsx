@@ -2,7 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
-import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Stat, Sub, Title } from '@/components/start/StartUI';
+import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Stat, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -26,6 +26,7 @@ export default function JoinScreen() {
   const [unclaimed, setUnclaimed] = useState<{ owner_id: number; display_name: string; team_name?: string | null }[]>([]);
   const [claimId, setClaimId] = useState<number | null>(null);
   const [teamName, setTeamName] = useState('');
+  const teamField = useRequiredField(teamName, 'Give your team a name first.');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +119,7 @@ export default function JoinScreen() {
           unclaimed.length > 0 ? (
             <NeonButton label="That's me — claim it" onPress={claim} disabled={claimId === null} busy={busy} />
           ) : (
-            <NeonButton label="Start my team" onPress={newTeam} disabled={!teamName.trim()} busy={busy} />
+            <NeonButton label="Start my team" onPress={() => teamField.check() && newTeam()} incomplete={teamField.empty} busy={busy} />
           )
         }>
         <Stack.Screen options={{ title: 'Join a League' }} />
@@ -161,8 +162,8 @@ export default function JoinScreen() {
             </View>
           </View>
         )}
-        <Field label="Your team name" value={teamName} onChangeText={setTeamName} maxLength={40} placeholder="Name your team" />
-        {unclaimed.length > 0 && <GhostButton label="Start a new team" onPress={newTeam} disabled={!teamName.trim() || busy} />}
+        <Field {...teamField.field} label="Your team name" value={teamName} onChangeText={setTeamName} maxLength={40} placeholder="Name your team" />
+        {unclaimed.length > 0 && <GhostButton label="Start a new team" onPress={() => teamField.check() && newTeam()} incomplete={teamField.empty} disabled={busy} />}
         {error && <Text style={startStyles.error}>{error}</Text>}
       </StartScreen>
     );

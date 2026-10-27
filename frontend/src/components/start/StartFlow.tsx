@@ -140,6 +140,11 @@ export function StartFlow({
   const [customText, setCustomText] = useState("");
   const [customSent, setCustomSent] = useState(false);
   const [teamName, setTeamName] = useState("");
+  const newTeamField = useRequired("start-new-team-name", newTeamName, "Give your team a name first.");
+  const leagueField = useRequired("start-league-name", leagueName, "Give your league a name first.");
+  const teamField = useRequired("start-team-name", teamName, "Give your team a name first.");
+  const linkField = useRequired("start-league-link", link, "Paste your league link first.");
+  const sleeperField = useRequired("start-sleeper-name", sleeperName, "Type your Sleeper username first.");
   const [created, setCreated] = useState<League | null>(null);
 
   useEffect(() => {
@@ -492,14 +497,15 @@ export function StartFlow({
         )}
         <label className={styles.label}>
           Your team name
-          <input className={styles.field} value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} maxLength={40} placeholder="Name your team" />
+          <input {...newTeamField.field} className={styles.field} value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} maxLength={40} placeholder="Name your team" />
         </label>
+        {newTeamField.message}
         {error && <p className={styles.error}>{error}</p>}
         <button
           type="button"
-          className={unclaimed.length > 0 ? styles.ghost : `${styles.neon} mt-auto`}
-          disabled={!newTeamName.trim() || busy}
-          onClick={() => finishJoin("new")}
+          className={`${unclaimed.length > 0 ? styles.ghost : `${styles.neon} mt-auto`} ${newTeamField.empty ? styles.incomplete : ""}`}
+          disabled={busy}
+          onClick={() => newTeamField.check() && finishJoin("new")}
         >
           Start a new team
         </button>
@@ -525,14 +531,17 @@ export function StartFlow({
         {source === "fresh" && (
           <label className={styles.label}>
             League name
-            <input className={`${styles.field} text-lg font-semibold`} value={leagueName} onChange={(e) => setLeagueName(e.target.value)} maxLength={40} placeholder="Sunday Scaries" />
+            <input {...leagueField.field} className={`${styles.field} text-lg font-semibold`} value={leagueName} onChange={(e) => setLeagueName(e.target.value)} maxLength={40} placeholder="Sunday Scaries" />
           </label>
         )}
+        {source === "fresh" && leagueField.message}
         <button
           type="button"
-          className={`${styles.neon} mt-auto`}
-          disabled={source === "fresh" && !leagueName.trim()}
-          onClick={() => go(source === "fresh" ? "createType" : "connectLink")}
+          className={`${styles.neon} mt-auto ${source === "fresh" && leagueField.empty ? styles.incomplete : ""}`}
+          onClick={() => {
+            if (source !== "fresh") go("connectLink");
+            else if (leagueField.check()) go("createType");
+          }}
         >
           Continue
         </button>
@@ -766,8 +775,9 @@ export function StartFlow({
         </div>
         <label className={styles.label}>
           Team name
-          <input className={`${styles.field} text-lg font-semibold`} value={teamName} onChange={(e) => setTeamName(e.target.value)} maxLength={40} placeholder="Name your team" />
+          <input {...teamField.field} className={`${styles.field} text-lg font-semibold`} value={teamName} onChange={(e) => setTeamName(e.target.value)} maxLength={40} placeholder="Name your team" />
         </label>
+        {teamField.message}
         <div className={styles.card}>
           <span className={styles.kicker}>Your league</span>
           <span className={`${anton.className} text-2xl tracking-wide uppercase`}>{leagueName}</span>
@@ -778,7 +788,7 @@ export function StartFlow({
           </span>
         </div>
         {error && <p className={styles.error}>{error}</p>}
-        <button type="button" className={`${styles.neon} mt-auto`} disabled={!teamName.trim() || busy} onClick={createNow}>
+        <button type="button" className={`${styles.neon} mt-auto ${teamField.empty ? styles.incomplete : ""}`} disabled={busy} onClick={() => teamField.check() && createNow()}>
           {busy ? "Creating…" : "Create league"}
         </button>
       </>
@@ -807,9 +817,10 @@ export function StartFlow({
           <div className="flex flex-col gap-2.5">
             <label className={styles.label}>
               Sleeper username
-              <input className={styles.field} value={sleeperName} onChange={(e) => setSleeperName(e.target.value)} placeholder="your username" />
+              <input {...sleeperField.field} className={styles.field} value={sleeperName} onChange={(e) => setSleeperName(e.target.value)} placeholder="your username" />
             </label>
-            <button type="button" className={styles.ghost} disabled={!sleeperName.trim() || busy} onClick={lookUpSleeper}>
+            {sleeperField.message}
+            <button type="button" className={`${styles.ghost} ${sleeperField.empty ? styles.incomplete : ""}`} disabled={busy} onClick={() => sleeperField.check() && lookUpSleeper()}>
               {busy && !sleeperOptions ? "Looking…" : "Find my leagues"}
             </button>
             {sleeperOptions?.map((lg) => (
@@ -832,12 +843,14 @@ export function StartFlow({
         <label className={styles.label}>
           {name} league link
           <input
+            {...linkField.field}
             className={styles.field}
             value={link}
             onChange={(e) => setLink(e.target.value)}
             placeholder={platform === "espn" ? "https://fantasy.espn.com/football/league?leagueId=…" : "https://sleeper.com/leagues/…"}
           />
         </label>
+        {linkField.message}
         {platform === "espn" && (
           <div className={styles.card}>
             <span className={styles.kicker}>Before you tap Find</span>
@@ -871,7 +884,7 @@ export function StartFlow({
             </button>
           ))}
         {error && <p className={styles.error}>{error}</p>}
-        <button type="button" className={`${styles.neon} mt-auto`} disabled={!link.trim() || busy} onClick={() => findLeague()}>
+        <button type="button" className={`${styles.neon} mt-auto ${linkField.empty ? styles.incomplete : ""}`} disabled={busy} onClick={() => linkField.check() && findLeague()}>
           {busy ? "Looking…" : "Find my league"}
         </button>
       </>
@@ -1099,6 +1112,29 @@ function InviteScreen({ league, teamCount, hasDraftDate }: { league: League; tea
       </div>
     </>
   );
+}
+
+// A text field a button needs filled in (2026-10-27: a beta tester read
+// a dimmed Continue as broken). The button stays clickable; check()
+// returns true when the field's filled, else outlines it, says what's
+// missing and puts the cursor there. Spread `field` onto the input and
+// render `message` under it.
+function useRequired(id: string, value: string, message: string) {
+  const [tried, setTried] = useState(false);
+  const empty = !value.trim();
+  const showing = tried && empty;
+  const check = () => {
+    if (!empty) return true;
+    setTried(true);
+    document.getElementById(id)?.focus();
+    return false;
+  };
+  return {
+    empty,
+    check,
+    field: { id, "aria-invalid": showing, "aria-describedby": showing ? `${id}-error` : undefined },
+    message: showing ? <p id={`${id}-error`} className={styles.error} role="alert">{message}</p> : null,
+  };
 }
 
 function Top({ onBack, step }: { onBack: () => void; step?: number }) {

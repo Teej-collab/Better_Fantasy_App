@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -74,30 +74,33 @@ export function Sub({ children }: { children: ReactNode }) {
   return <Text style={styles.sub}>{children}</Text>;
 }
 
-export function NeonButton({ label, onPress, disabled, busy, icon }: { label: string; onPress: () => void; disabled?: boolean; busy?: boolean; icon?: ReactNode }) {
+// `incomplete`: looks dimmed but still takes the tap, so the screen can
+// point at what's missing (useRequiredField) instead of the button
+// seeming broken (2026-10-27, a beta tester's report).
+export function NeonButton({ label, onPress, disabled, incomplete, busy, icon }: { label: string; onPress: () => void; disabled?: boolean; incomplete?: boolean; busy?: boolean; icon?: ReactNode }) {
   return (
     <Pressable
       onPress={() => {
-        haptics.tap();
+        if (!incomplete) haptics.tap();
         onPress();
       }}
       disabled={disabled || busy}
       accessibilityRole="button"
       accessibilityState={{ disabled: disabled || busy }}
-      style={({ pressed }) => [styles.neon, (disabled || busy) && styles.dim, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.neon, (disabled || incomplete || busy) && styles.dim, pressed && styles.pressed]}>
       {busy ? <ActivityIndicator color={ACCENT} /> : icon}
       {!busy && <Text style={styles.neonText}>{label}</Text>}
     </Pressable>
   );
 }
 
-export function GhostButton({ label, onPress, disabled, flex }: { label: string; onPress: () => void; disabled?: boolean; flex?: boolean }) {
+export function GhostButton({ label, onPress, disabled, incomplete, flex }: { label: string; onPress: () => void; disabled?: boolean; incomplete?: boolean; flex?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.ghost, flex && styles.flex, disabled && styles.dim, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.ghost, flex && styles.flex, (disabled || incomplete) && styles.dim, pressed && styles.pressed]}>
       <Text style={styles.ghostText}>{label}</Text>
     </Pressable>
   );
@@ -204,13 +207,41 @@ export function Segments<T extends string | number>({
   );
 }
 
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({ label, error, flagged, ...props }: TextInputProps & { label: string; error?: string | null; flagged?: number }) {
+  const input = useRef<TextInput>(null);
+  // Each new flag (useRequiredField's check) puts the cursor here.
+  useEffect(() => {
+    if (flagged) input.current?.focus();
+  }, [flagged]);
   return (
     <View style={styles.group}>
       <Text style={styles.groupLabel}>{label}</Text>
-      <TextInput placeholderTextColor={Colors.textSecondary} accessibilityLabel={label} {...props} style={[styles.field, props.style]} />
+      <TextInput
+        ref={input}
+        placeholderTextColor={Colors.textSecondary}
+        accessibilityLabel={label}
+        accessibilityHint={error ?? undefined}
+        {...props}
+        style={[styles.field, props.style, error ? styles.fieldError : null]}
+      />
+      {error ? <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text> : null}
     </View>
   );
+}
+
+// A text field a button needs filled in: check() returns true when it
+// is, else outlines the field, says what's missing and puts the cursor
+// there. Spread `field` onto the Field.
+export function useRequiredField(value: string, message: string) {
+  const [flagged, setFlagged] = useState(0);
+  const empty = !value.trim();
+  const check = () => {
+    if (!empty) return true;
+    setFlagged((n) => n + 1);
+    haptics.warning();
+    return false;
+  };
+  return { empty, check, field: { flagged, error: flagged && empty ? message : null } };
 }
 
 export function Stat({ value, label }: { value: string; label: string }) {
@@ -329,6 +360,8 @@ const styles = StyleSheet.create({
   segOn: { borderColor: ACCENT, backgroundColor: 'rgba(57,255,20,0.12)' },
   segText: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   segTextOn: { color: ACCENT },
+  fieldError: { borderColor: '#f87171', borderWidth: 2 },
+  errorText: { color: '#f87171', fontSize: 13, fontWeight: '600' },
   field: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: '#2a303a', backgroundColor: Colors.tile, color: Colors.text, fontSize: 16, paddingHorizontal: 14 },
   stat: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.tile, alignItems: 'center' },
   statValue: { color: Colors.text, fontFamily: Fonts.monoBold, fontSize: 17 },

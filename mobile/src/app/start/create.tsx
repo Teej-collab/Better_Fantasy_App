@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react
 import Svg, { Circle, Path } from 'react-native-svg';
 import QRCode from 'react-native-qrcode-svg';
 
-import { Field, GhostButton, Icon, Kicker, NeonButton, OptionCard, Segments, StartScreen, startStyles, StepDots, Sub, Title } from '@/components/start/StartUI';
+import { Field, GhostButton, Icon, Kicker, NeonButton, OptionCard, Segments, StartScreen, startStyles, StepDots, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -73,6 +73,8 @@ export default function CreateScreen() {
   const [customText, setCustomText] = useState('');
   const [customSent, setCustomSent] = useState(false);
   const [teamName, setTeamName] = useState('');
+  const nameField = useRequiredField(name, 'Give your league a name first.');
+  const teamField = useRequiredField(teamName, 'Give your team a name first.');
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +181,7 @@ export default function CreateScreen() {
 
   if (step === 4) {
     return (
-      <StartScreen footer={<NeonButton label="Create league" onPress={() => void create()} disabled={!teamName.trim()} busy={busy} />}>
+      <StartScreen footer={<NeonButton label="Create league" onPress={() => teamField.check() && void create()} incomplete={teamField.empty} busy={busy} />}>
         <Stack.Screen options={{ title: 'Create a League' }} />
         <StepDots step={4} total={4} />
         <View style={styles.head}>
@@ -187,7 +189,7 @@ export default function CreateScreen() {
           <Title>Now your team</Title>
           <Sub>This is what everyone sees in standings, matchups and chat. Add a logo any time in Settings.</Sub>
         </View>
-        <Field label="Team name" value={teamName} onChangeText={setTeamName} maxLength={40} placeholder="Name your team" style={styles.bigField} />
+        <Field {...teamField.field} label="Team name" value={teamName} onChangeText={setTeamName} maxLength={40} placeholder="Name your team" style={styles.bigField} />
         <View style={startStyles.card}>
           <Kicker>Your league</Kicker>
           <Text style={startStyles.cardTitle}>{name}</Text>
@@ -401,8 +403,11 @@ export default function CreateScreen() {
       footer={
         <NeonButton
           label="Continue"
-          onPress={() => (source === 'fresh' ? setStep(2) : router.push(`/start/connect?from=${source}` as Href))}
-          disabled={source === 'fresh' && !name.trim()}
+          onPress={() => {
+            if (source !== 'fresh') router.push(`/start/connect?from=${source}` as Href);
+            else if (nameField.check()) setStep(2);
+          }}
+          incomplete={source === 'fresh' && nameField.empty}
         />
       }>
       <Stack.Screen options={{ title: 'Set Up Your League' }} />
@@ -418,7 +423,7 @@ export default function CreateScreen() {
         <OptionCard on={source === 'fresh'} onPress={() => setSource('fresh')} icon="plus" color={Colors.accent} title="Starting a new league" text="Draft here with good defaults. Tweak anything later." />
       </View>
       {source === 'fresh' && (
-        <Field label="League name" value={name} onChangeText={setName} maxLength={40} placeholder="Sunday Scaries" style={styles.bigField} />
+        <Field {...nameField.field} label="League name" value={name} onChangeText={setName} maxLength={40} placeholder="Sunday Scaries" style={styles.bigField} />
       )}
     </StartScreen>
   );
