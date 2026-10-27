@@ -701,6 +701,8 @@ export type DraftGrade = {
   owner_name: string;
   total_projected_points: number;
   league_avg_projected_points: number;
+  // Null on grades computed before 2026-10-27 (migration c2e4a6b8d0f3).
+  starter_projected_points: number | null;
   percentile: number;
   letter_grade: string;
 };

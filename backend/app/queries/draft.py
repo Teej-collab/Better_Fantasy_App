@@ -16,12 +16,13 @@ async def get_draft_pool(
     # resolved. bye_week: NOT sourced from ESPN at all — a per-team (not
     # per-player) join against team_bye_weeks, the same real, already-
     # populated source app/domain/bye_weeks.py maintains independently
-    # of any per-player ESPN lookup. search_rank doubles as this app's
-    # ADP-equivalent (see draft_autopick.py's own docstring) — no new
-    # column for that.
+    # of any per-player ESPN lookup. adp: market ADP from the copy this
+    # draft is pinned to (app/domain/adp.py), null without one; the
+    # pool sorts by it, falling back to Sleeper's search_rank, the same
+    # order autopick uses (draft_engine.py's _POOL_SQL).
     query = """
         SELECT p.sleeper_player_id, p.full_name, p.position, p.pro_team, p.search_rank, p.injury_status,
-               p.projected_points, tbw.bye_week,
+               p.projected_points, tbw.bye_week, ae.adp,
                (dp.pick_number IS NOT NULL OR cr.id IS NOT NULL) AS drafted
         FROM players p
         LEFT JOIN draft_picks dp ON dp.sleeper_player_id = p.sleeper_player_id
@@ -35,6 +36,8 @@ async def get_draft_pool(
         LEFT JOIN current_rosters cr ON cr.sleeper_player_id = p.sleeper_player_id
             AND cr.season = $1 AND cr.league_id = $2
         LEFT JOIN team_bye_weeks tbw ON tbw.season = $1 AND tbw.pro_team = p.pro_team
+        LEFT JOIN adp_entries ae ON ae.sleeper_player_id = p.sleeper_player_id
+            AND ae.snapshot_id = (SELECT adp_snapshot_id FROM draft_config WHERE season = $1 AND league_id = $2)
         WHERE (p.is_draftable OR (p.position = ANY($3::text[]) AND p.pro_team IS NOT NULL))
           AND ($4::boolean IS FALSE OR p.years_exp = 0)
     """
@@ -50,7 +53,7 @@ async def get_draft_pool(
     if search:
         query += f" AND p.full_name ILIKE ${len(params) + 1}"
         params.append(f"%{search}%")
-    query += " ORDER BY drafted ASC, p.search_rank ASC NULLS LAST, p.full_name ASC"
+    query += " ORDER BY drafted ASC, COALESCE(ae.adp, p.search_rank) ASC NULLS LAST, p.full_name ASC"
     return await conn.fetch(query, *params)
 
 
@@ -70,22 +73,36 @@ async def get_draft_state(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID)
         """
         SELECT dp.pick_number, dp.round, dp.round_pick, dp.owner_id, o.display_name AS owner_name,
                dp.sleeper_player_id, p.full_name AS player_name, p.position AS player_position,
-               dp.is_autopick, dp.is_keeper, dp.made_at, dp.price
+               dp.is_autopick, dp.is_keeper, dp.made_at, dp.price, ae.adp
         FROM draft_picks dp
         JOIN owners o ON o.owner_id = dp.owner_id
         LEFT JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id
+        LEFT JOIN adp_entries ae ON ae.sleeper_player_id = dp.sleeper_player_id
+            AND ae.snapshot_id = $3::int
         WHERE dp.season = $1 AND dp.league_id = $2
         ORDER BY dp.pick_number
         """,
-        season, league_id,
+        season, league_id, config_dict.get("adp_snapshot_id"),
     )
+    picks = [dict(p) for p in picks]
+    # The board's STEAL / REACH tags: a non-keeper pick a full round or
+    # more after (or before) the player's ADP. Never in an auction.
+    teams = len({p["owner_id"] for p in picks}) or 1
+    for p in picks:
+        p["adp"] = float(p["adp"]) if p["adp"] is not None else None
+        p["adp_verdict"] = None
+        if p["adp"] is not None and not p["is_keeper"] and config_dict.get("draft_type") != "auction":
+            if p["pick_number"] - p["adp"] >= teams:
+                p["adp_verdict"] = "steal"
+            elif p["adp"] - p["pick_number"] >= teams:
+                p["adp_verdict"] = "reach"
     # Auction drafts (2026-10): the live auction rides along.
     auction = None
     if config_dict.get("draft_type") == "auction":
         from app.domain import auction_engine
 
         auction = await auction_engine.get_state(conn, season, league_id)
-    return {"config": config_dict, "picks": [dict(p) for p in picks], "auction": auction}
+    return {"config": config_dict, "picks": picks, "auction": auction}
 
 
 async def get_team_roster_positions(conn, season: int, team_id: int) -> list[str]:

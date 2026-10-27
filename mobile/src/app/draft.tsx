@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppRefreshControl } from '@/components/AppRefreshControl';
@@ -376,11 +376,18 @@ function PlayersView({ canDraft, onDraft, actionLabel }: { canDraft: boolean; on
         </View>
       }
       ListEmptyComponent={pool.isPending ? <LoadingState /> : <MessageState message="No players match." />}
+      ListFooterComponent={
+        available.some((p) => p.adp != null) ? (
+          <Pressable onPress={() => Linking.openURL('https://fantasyfootballcalculator.com')} style={styles.credit}>
+            <Text style={styles.muted}>ADP from Fantasy Football Calculator</Text>
+          </Pressable>
+        ) : null
+      }
       renderItem={({ item }) => (
         <PlayerRow
           position={item.position}
           name={item.full_name}
-          detail={`${positionLabel(item.position)}${item.pro_team ? ` · ${item.pro_team}` : ''}${item.bye_week ? ` · Bye ${item.bye_week}` : ''}`}
+          detail={`${positionLabel(item.position)}${item.pro_team ? ` · ${item.pro_team}` : ''}${item.bye_week ? ` · Bye ${item.bye_week}` : ''}${item.adp != null ? ` · ADP ${Math.round(item.adp)}` : ''}`}
           value={formatPoints(item.projected_points)}
           onOpen={() => openPlayer(item.sleeper_player_id)}
           actions={
@@ -507,6 +514,11 @@ function BoardView({ picks, currentPickNumber, myOwnerId }: { picks: DraftPick[]
                     {p.player_name ?? (p.pick_number === currentPickNumber ? 'On the clock' : '—')}
                     {p.player_position ? `  ${positionLabel(p.player_position)}` : ''}
                     {p.is_keeper ? '  (K)' : p.is_autopick ? '  (auto)' : ''}
+                    {p.adp_verdict ? (
+                      <Text style={p.adp_verdict === 'steal' ? styles.steal : styles.reach}>
+                        {p.adp_verdict === 'steal' ? '  STEAL' : '  REACH'}
+                      </Text>
+                    ) : null}
                   </Text>
                   <Text style={styles.muted} numberOfLines={1}>
                     {p.owner_name}
@@ -801,6 +813,9 @@ const styles = StyleSheet.create({
   boardNumber: { width: 40, color: Colors.textSecondary, fontSize: 13, fontVariant: ['tabular-nums'] },
   boardText: { flex: 1, gap: 2 },
   boardPlayer: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  steal: { color: '#38bdf8', fontSize: 11, fontWeight: '700' },
+  reach: { color: '#fb923c', fontSize: 11, fontWeight: '700' },
+  credit: { alignItems: 'center', paddingVertical: 16 },
   chatList: { padding: Spacing.md },
   chatEmpty: { textAlign: 'center', marginTop: Spacing.xl, transform: [{ scaleY: -1 }] },
   chatLine: { marginVertical: 4, padding: Spacing.sm, borderRadius: Radius.md, backgroundColor: Colors.surface, maxWidth: '85%', alignSelf: 'flex-start' },

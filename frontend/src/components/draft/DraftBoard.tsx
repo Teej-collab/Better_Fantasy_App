@@ -5,6 +5,21 @@ import type { DraftConfig, DraftPick } from "@/lib/draftApi";
 import { usePlayerCard } from "@/components/players/PlayerCardProvider";
 import { positionColor } from "@/lib/positionColors";
 
+// STEAL / REACH: the pick landed a full round or more after (or before)
+// the player's ADP — the backend decides (app/queries/draft.py).
+function AdpTag({ pick }: { pick: DraftPick }) {
+  if (!pick.adp_verdict || pick.adp == null) return null;
+  const steal = pick.adp_verdict === "steal";
+  return (
+    <span
+      className={`shrink-0 text-[10px] font-semibold ${steal ? "text-sky-500" : "text-orange-500"}`}
+      title={`Pick ${pick.pick_number}, ADP ${pick.adp.toFixed(1)}`}
+    >
+      {steal ? "STEAL" : "REACH"}
+    </span>
+  );
+}
+
 /**
  * The real team x round grid — the single most-used artifact in every
  * competitor's draft room (ESPN/Yahoo/Sleeper all ship one; this app
@@ -145,6 +160,7 @@ export function DraftBoard({
                       </span>
                       {pick.is_autopick && <span className="shrink-0 text-[10px] text-amber-500">AUTO</span>}
                       {pick.is_keeper && <span className="shrink-0 text-[10px] text-emerald-500">KEEP</span>}
+                      <AdpTag pick={pick} />
                     </span>
                   ) : (
                     <span className="text-sm text-black/25 dark:text-white/25">
@@ -227,6 +243,7 @@ export function DraftBoard({
                             {pick.player_position}
                             {pick.is_autopick && <span className="text-amber-500">AUTO</span>}
                             {pick.is_keeper && <span className="text-emerald-500">KEEP</span>}
+                            <AdpTag pick={pick} />
                           </span>
                         </>
                       ) : (

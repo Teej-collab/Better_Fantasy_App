@@ -2,6 +2,7 @@ import asyncio
 import os
 import uuid
 
+import httpx
 import pytest
 import pytest_asyncio
 from starlette.testclient import WebSocketTestSession
@@ -22,7 +23,7 @@ from app.auth.rate_limit import reset_for_tests as _reset_rate_limits_for_tests
 from app.config import DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.providers.espn.config import ESPNConfig
-from app.providers import nfl_scoreboard
+from app.providers import ffc_adp, nfl_scoreboard
 from app.providers.nfl_scoreboard import clear_scoreboard_cache
 from app.providers.nfl_stats.espn_public import clear_game_stats_cache
 
@@ -218,6 +219,18 @@ def _reset_scoreboard_cache(monkeypatch):
     clear_game_stats_cache()
 
 
+@pytest.fixture(autouse=True)
+def _no_live_adp_feed(monkeypatch):
+    """start_draft pins ADP (app/domain/adp.py) and fetches today's copy
+    from Fantasy Football Calculator when none is saved — every draft
+    test would hit the real API without this. A test that wants ADP
+    patches ffc_adp.fetch_adp itself."""
+    async def _offline(*args, **kwargs):
+        raise httpx.ConnectError("ADP feed is off in tests")
+
+    monkeypatch.setattr(ffc_adp, "fetch_adp", _offline)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_test_season(pool):
     yield
@@ -367,6 +380,9 @@ async def cleanup_test_season(pool):
         await conn.execute("DELETE FROM draft_grades WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_narratives WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
         await conn.execute("DELETE FROM draft_config WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1])
+        # After draft_config (its adp_snapshot_id points here).
+        await conn.execute("DELETE FROM adp_snapshots WHERE season = $1", TEST_SEASON)
+        await conn.execute("DELETE FROM draft_projection_snapshots WHERE season = $1", TEST_SEASON)
         await conn.execute(
             "DELETE FROM league_draft_schedule WHERE season = ANY($1::int[])", [TEST_SEASON, TEST_SEASON - 1]
         )

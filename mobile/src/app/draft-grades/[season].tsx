@@ -70,7 +70,10 @@ export default function DraftGradesScreen() {
                         <View style={styles.flex}>
                           <Text style={styles.name}>{teamByOwner.get(g.owner_id) ?? g.owner_name}</Text>
                           <Text style={styles.small}>
-                            {Math.round(g.percentile)}th percentile · {g.total_projected_points.toFixed(1)} pts drafted
+                            {Math.round(g.percentile)}th percentile ·{' '}
+                            {g.starter_projected_points != null
+                              ? `${g.starter_projected_points.toFixed(1)} proj pts in starting lineup`
+                              : `${g.total_projected_points.toFixed(1)} pts drafted`}
                           </Text>
                         </View>
                         <Text style={styles.toggle}>{isOpen ? 'Hide recap ▲' : 'Read recap ▼'}</Text>

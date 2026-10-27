@@ -56,7 +56,10 @@ export function DraftGradesLeaderboard({
                     {teamNameByOwner.get(g.owner_id) ?? g.owner_name}
                   </span>
                   <span className="block text-xs text-black/50 dark:text-white/50">
-                    {Math.round(g.percentile)}th percentile · {g.total_projected_points.toFixed(1)} pts drafted
+                    {Math.round(g.percentile)}th percentile ·{" "}
+                    {g.starter_projected_points != null
+                      ? `${g.starter_projected_points.toFixed(1)} proj pts in starting lineup`
+                      : `${g.total_projected_points.toFixed(1)} pts drafted`}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs text-black/50 dark:text-white/50">

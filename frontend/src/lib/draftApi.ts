@@ -52,6 +52,12 @@ export type DraftPick = {
   made_at: string | null;
   // Auction drafts: what he went for.
   price?: number | null;
+  // Market ADP from the copy this draft is pinned to (backend
+  // app/domain/adp.py), and the board's tag when the pick landed a
+  // full round or more off it. Null without ADP, for keepers, and in
+  // an auction.
+  adp?: number | null;
+  adp_verdict?: "steal" | "reach" | null;
 };
 
 // The live auction (auction drafts, 2026-10 — backend app/domain/
@@ -96,9 +102,11 @@ export type DraftPoolPlayer = {
   full_name: string;
   position: string;
   pro_team: string | null;
-  // Sleeper's own overall-rank proxy — this app's real ADP-equivalent
-  // (see backend/app/domain/draft_autopick.py's own docstring); shown
-  // in the pool as "ADP" since that's the closest real signal there is.
+  // Market ADP (Fantasy Football Calculator, pinned when the draft
+  // starts — backend app/domain/adp.py); null before then or for a
+  // player the feed doesn't cover. The pool is sorted by it, falling
+  // back to Sleeper's overall-rank proxy, search_rank.
+  adp: number | null;
   search_rank: number | null;
   injury_status: string | null;
   // Both null until the bulk ESPN sync (player_projections.py) resolves

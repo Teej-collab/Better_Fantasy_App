@@ -16,45 +16,77 @@ using it at the same time.
 import asyncio
 
 from app import config
-from app.domain.draft_grades import get_draft_grades_for_season
+from app.domain.draft_grades import get_draft_grades_for_season, pick_gains
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 
 DRAFT_RECAP_PROMPT = """You are the voice of a fantasy football league's website, writing a draft \
 recap for one team's draft class — and you are NOT neutral. You are a professional shit-talker: \
 roasting (or grudgingly crediting) how this team's draft actually went, using ONLY the real facts \
-you're given: this team's letter grade and percentile among the league's real drafters, its total \
-projected points versus the league average, and every real pick it made (round, player, position, \
-that player's real projected season points, and Sleeper's own rough overall-rank proxy where \
-available). Never invent a stat, a player, or an event not present in the data — every jab must be \
-traceable to a specific fact you were handed. The rank proxy is a single-source estimate, not real \
-market consensus ADP — treat it as rough color ("a bit of a reach," "great value"), never as gospel.
+you're given: this team's letter grade, how its starting lineup stacks up against the league, how \
+many players it took at each position, and every real pick it made (round, player, position), with \
+the clear steals and reaches already called out for you. Never invent a stat, a player, or an event \
+not present in the data — every jab must be traceable to a specific fact you were handed.
+
+The grade itself was worked out from the numbers (projections, market draft position, lineup value); \
+your job is NOT to explain that math. Talk like the funniest guy in the group chat, not a draft \
+analyst: never mention ADP, rankings, rounds gained, percentiles, projections, value or any formula, \
+and never quote a number other than the grade, a round, or a count of players. Say "stole X in the \
+ninth" or "reached for X in the second" or "drafted four quarterbacks like he's starting a backup \
+QB farm," not "taken 2.1 rounds after his ADP."
 
 Some picks are marked KEEPER — that slot was locked in by this league's keeper rules before the draft \
 even started, not a decision this team made on draft day. Never call a keeper pick a "steal," "value \
 pick," or "reach" — that framing only ever applies to a real, live draft-day decision. You may still \
 mention a keeper matter-of-factly (e.g. "kept X, a real anchor") or note the team got a strong keeper \
-slot, but credit or blame for keepers belongs to the keeper rules, not this team's draft-day judgment — \
-reserve all "steal"/"reach"/"value" language for the team's actual, non-keeper picks.
+slot, but credit or blame for keepers belongs to the keeper rules, not this team's draft-day judgment.
 
-Open with the letter grade and what it means relative to the league, call out the single best value \
-pick and the single biggest reach among this team's real (non-keeper) picks using the rank proxy, and \
-close with a verdict on the whole draft class. Tone: brutal, sharp, genuinely funny, zero mercy — same \
-voice as this league's matchup write-ups. Four to six sentences. No hedging, no disclaimers."""
+Open with the letter grade and what it says about this team, hit the best steal and the worst reach \
+if any were called out (and the lineup's strength or holes, or any position this team hoarded), and \
+close with a verdict on the whole draft class. Compliment what deserves it, roast what doesn't. Tone: \
+brutal, sharp, genuinely funny — same voice as this league's matchup write-ups. Four to six \
+sentences. No hedging, no disclaimers."""
+
+def _pick_label(gain: float | None) -> str | None:
+    """Rounds gained (app/domain/draft_grades.py's pick_gains) -> the
+    plain label the write-up gets, so it can call steals and reaches
+    without quoting the math behind them."""
+    if gain is None or -0.75 < gain < 0.75:
+        return None
+    if gain >= 1.5:
+        return "a big steal"
+    if gain > 0:
+        return "a steal"
+    return "a big reach" if gain <= -1.5 else "a reach"
+
+
+def _lineup_standing(grade: dict) -> str:
+    ratio = float(grade["starter_projected_points"]) / float(grade["league_avg_starter_projected_points"] or 1)
+    if ratio >= 1.06:
+        return "one of the strongest starting lineups in the league on paper"
+    if ratio >= 1.02:
+        return "a starting lineup a bit better than the league average on paper"
+    if ratio > 0.98:
+        return "a starting lineup right around the league average on paper"
+    if ratio > 0.94:
+        return "a starting lineup a bit worse than the league average on paper"
+    return "one of the weakest starting lineups in the league on paper"
 
 
 def _build_draft_facts(picks: list[dict], grade: dict) -> str:
-    facts = [
-        f"This team's draft grade: {grade['letter_grade']} ({grade['percentile']:.0f}th percentile in the league)",
-        f"Total projected points drafted: {float(grade['total_projected_points']):.1f} "
-        f"(league average: {float(grade['league_avg_projected_points']):.1f})",
-    ]
+    facts = [f"This team's draft grade: {grade['letter_grade']}"]
+    counts: dict[str, int] = {}
     for p in picks:
-        rank_note = f", overall rank proxy {p['search_rank']}" if p.get("search_rank") is not None else ""
-        keeper_note = " — KEEPER, locked in before the draft by this league's keeper rules" if p.get("is_keeper") else ""
-        facts.append(
-            f"Round {p['round']}, pick {p['pick_number']}: {p['player_name']} ({p['player_position']}), "
-            f"projected {float(p['projected_points']):.1f} points{rank_note}{keeper_note}"
-        )
+        counts[p["player_position"]] = counts.get(p["player_position"], 0) + 1
+    if grade.get("starter_projected_points") is not None:
+        facts.append(f"This team built {_lineup_standing(grade)}")
+    facts.append("Players drafted by position: " + ", ".join(f"{n} {pos}" for pos, n in sorted(counts.items())))
+    for p in picks:
+        if p.get("is_keeper"):
+            note = " — KEEPER, locked in before the draft by this league's keeper rules"
+        else:
+            label = _pick_label(p.get("gain"))
+            note = f" — {label}" if label else ""
+        facts.append(f"Round {p['round']}: {p['player_name']} ({p['player_position']}){note}")
     return "; ".join(facts)
 
 
@@ -70,11 +102,12 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         return {}
 
     grades = await get_draft_grades_for_season(conn, season, league_id)
+    gains = await pick_gains(conn, season, league_id)
     generated = {}
     for grade in grades:
         picks = await conn.fetch(
             """
-            SELECT dp.round, dp.pick_number, dp.is_keeper, p.full_name AS player_name,
+            SELECT dp.round, dp.pick_number, dp.is_keeper, dp.sleeper_player_id, p.full_name AS player_name,
                    p.position AS player_position, p.projected_points, p.search_rank
             FROM draft_picks dp JOIN players p ON p.sleeper_player_id = dp.sleeper_player_id
             WHERE dp.season = $1 AND dp.league_id = $2 AND dp.owner_id = $3
@@ -84,7 +117,9 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         )
         if not picks:
             continue
-        facts = _build_draft_facts([dict(p) for p in picks], dict(grade))
+        facts = _build_draft_facts(
+            [{**dict(p), "gain": gains.get(p["sleeper_player_id"])} for p in picks], dict(grade)
+        )
         # max_tokens above the 500 default: a real production failure
         # (2026-09) showed the model can spend its whole budget on
         # internal reasoning before ever emitting the actual text block

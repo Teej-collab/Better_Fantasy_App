@@ -81,9 +81,8 @@ async def set_username(body: UsernameBody, request: Request, pool=Depends(get_po
             status_code=400, detail="3–20 characters: letters, numbers, underscores and periods."
         )
     async with pool.acquire() as conn:
-        if await friend_queries.username_taken(conn, username, user_id):
+        if not await friend_queries.set_username(conn, user_id, username):
             raise HTTPException(status_code=409, detail=f"@{username} is taken.")
-        await friend_queries.set_username(conn, user_id, username)
     return {"username": username}
 
 

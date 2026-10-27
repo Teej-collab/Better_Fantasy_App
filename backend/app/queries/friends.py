@@ -6,6 +6,7 @@ across leagues and for people with no league at all. A person's name and
 photo come from their owner record when they have one (the name and photo
 their league sees), else the account's own display name or username.
 """
+import asyncpg
 
 # Name and photo for a user. LATERAL picks one owner when a co-owned
 # account somehow has several links.
@@ -41,16 +42,15 @@ async def get_username(conn, user_id: int) -> str | None:
     return await conn.fetchval("SELECT username FROM users WHERE id = $1", user_id)
 
 
-async def username_taken(conn, username: str, user_id: int) -> bool:
-    return bool(
-        await conn.fetchval(
-            "SELECT 1 FROM users WHERE lower(username) = lower($1) AND id <> $2", username, user_id
-        )
-    )
-
-
-async def set_username(conn, user_id: int, username: str | None) -> None:
-    await conn.execute("UPDATE users SET username = $2 WHERE id = $1", user_id, username)
+async def set_username(conn, user_id: int, username: str | None) -> bool:
+    """False when someone else has the name. The unique index on
+    lower(username) is the check, not a SELECT first, so two people
+    claiming the same free name at once can't both get it."""
+    try:
+        await conn.execute("UPDATE users SET username = $2 WHERE id = $1", user_id, username)
+        return True
+    except asyncpg.UniqueViolationError:
+        return False
 
 
 async def relationship(conn, user_id: int, other_id: int) -> str:

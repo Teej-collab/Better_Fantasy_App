@@ -71,6 +71,12 @@ provider and writing to whatever DATABASE_URL happens to be configured:
   client.py). There's also a manual POST /admin/players/sync trigger
   for the first-ever ingestion so it doesn't have to wait on a cron
   tick.
+- ADP snapshots (ENABLE_ADP_SNAPSHOT_SCHEDULER, 2026-10-27): once a day
+  at 6:00 AM Central, July 15 - September 15 only, saves Fantasy
+  Football Calculator's ADP for every format a league here uses (see
+  app/domain/adp.py — the feed only shows its latest window, so a
+  preseason's ADP has to be saved while it's live). The feed refreshes
+  once a day, so more often would only repeat the same copy.
 - Draft clock (ENABLE_DRAFT_CLOCK_SCHEDULER): every tick, autopicks any
   team whose pick_time_limit has expired with no pick made and
   broadcasts the result over the draft WebSocket (app/draft/manager.py).
@@ -153,6 +159,7 @@ import logging
 import time
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -188,7 +195,7 @@ from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync, update_league_state
-from app.domain import announcements, waivers
+from app.domain import adp, announcements, waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
@@ -672,6 +679,18 @@ async def _run_sleeper_player_sync_job():
     count = await sync_players(await get_pool())
     logger.info("Sleeper player sync finished: %d players upserted", count)
     record_job_run("sleeper_player_sync")
+
+
+async def _run_adp_snapshot_job():
+    today = datetime.now(timezone.utc).astimezone(ZoneInfo("America/Chicago")).date()
+    if not adp.in_snapshot_window(today):
+        return
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        saved = await adp.snapshot_preseason_adp(conn, season, today)
+    logger.info("ADP snapshot finished: season=%s formats=%s", season, saved)
+    record_job_run("adp_snapshot")
 
 
 async def _run_projected_points_sync_job():
@@ -1278,6 +1297,13 @@ def start_scheduler():
             timezone="America/Chicago", id="sleeper_player_sync",
         )
         logger.info("Sleeper player sync scheduler started (daily at 7:00 PM Central)")
+        started_any = True
+
+    if os.getenv("ENABLE_ADP_SNAPSHOT_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        _scheduler.add_job(
+            _run_adp_snapshot_job, "cron", hour=6, minute=0, timezone="America/Chicago", id="adp_snapshot",
+        )
+        logger.info("ADP snapshot scheduler started (daily at 6:00 AM Central, Jul 15 - Sep 15)")
         started_any = True
 
     if os.getenv("ENABLE_DRAFT_CLOCK_SCHEDULER", "").lower() in ("1", "true", "yes"):

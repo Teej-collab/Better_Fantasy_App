@@ -16,9 +16,10 @@ keeper's round a no-op for the live draft without any special-casing at
 pick-submission time.
 """
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.config import DEFAULT_LEAGUE_ID
+from app.domain import adp
 from app.domain.draft_autopick import choose_autopick
 from app.domain.draft_exceptions import (
     DraftAlreadyExistsError,
@@ -83,8 +84,14 @@ def _config_dict(row) -> dict:
     return d
 
 
+# Best first: market ADP from the copy this draft is pinned to (see
+# app/domain/adp.py), else Sleeper's search_rank — both are roughly an
+# overall pick number, so a player the ADP feed doesn't cover still
+# slots in about where he belongs.
 _POOL_SQL = """
-    SELECT p.sleeper_player_id, p.position, p.search_rank FROM players p
+    SELECT p.sleeper_player_id, p.position, p.search_rank, ae.adp FROM players p
+    LEFT JOIN adp_entries ae ON ae.sleeper_player_id = p.sleeper_player_id
+        AND ae.snapshot_id = (SELECT adp_snapshot_id FROM draft_config WHERE season = $1 AND league_id = $2)
     WHERE (p.is_draftable OR (p.position = ANY($3::text[]) AND p.pro_team IS NOT NULL))
       AND ($4::boolean IS FALSE OR p.years_exp = 0)
       AND p.sleeper_player_id NOT IN (
@@ -108,7 +115,7 @@ async def draftable_pool(conn, season: int, league_id: int) -> list[dict]:
     — individual defenders included in an IDP league, first-year
     players only in a dynasty rookie draft (league formats, 2026-10)."""
     rows = await conn.fetch(
-        _POOL_SQL + " ORDER BY p.search_rank ASC NULLS LAST",
+        _POOL_SQL + " ORDER BY COALESCE(ae.adp, p.search_rank) ASC NULLS LAST",
         season, league_id, await extra_draftable_positions(conn, league_id), await _rookies_only(conn, season, league_id),
     )
     return [dict(r) for r in rows]
@@ -588,7 +595,12 @@ async def start_draft(conn, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> 
     idempotency). A genuine unresolved keeper (KeeperResolutionError)
     still propagates and blocks the start entirely — better a stalled
     draft the commissioner has to look at than one that silently
-    started without someone's real keeper."""
+    started without someone's real keeper.
+
+    Pins market ADP and every player's projection to the draft first
+    (app/domain/adp.py) — outside the transaction below, since it may
+    call the ADP feed, and a no-op on a draft that's already started."""
+    await adp.freeze_for_draft(conn, season, league_id, date.today())
     async with conn.transaction():
         config = await conn.fetchrow(
             "SELECT * FROM draft_config WHERE season = $1 AND league_id = $2 FOR UPDATE", season, league_id

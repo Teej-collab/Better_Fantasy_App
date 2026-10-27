@@ -443,6 +443,10 @@ export type DraftPick = {
   made_at: string | null;
   // Auction drafts: what he went for.
   price?: number | null;
+  // Market ADP the draft is pinned to, and the board's tag when the
+  // pick landed a full round or more off it (backend app/queries/draft.py).
+  adp?: number | null;
+  adp_verdict?: 'steal' | 'reach' | null;
 };
 
 // The live auction (auction drafts, 2026-10 — backend app/domain/
@@ -474,6 +478,9 @@ export type DraftPoolPlayer = {
   full_name: string;
   position: string;
   pro_team: string | null;
+  // Market ADP (Fantasy Football Calculator), null until the draft
+  // starts or for a player the feed doesn't cover.
+  adp: number | null;
   search_rank: number | null;
   injury_status: string | null;
   projected_points: number | null;
@@ -983,6 +990,8 @@ export type DraftGrade = {
   owner_id: number;
   owner_name: string;
   total_projected_points: number;
+  // Null on grades computed before 2026-10-27 (migration c2e4a6b8d0f3).
+  starter_projected_points: number | null;
   percentile: number;
   letter_grade: string;
 };

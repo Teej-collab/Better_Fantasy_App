@@ -382,7 +382,7 @@ export function DraftRoom({
         const aQ = queue.isQueued(a.sleeper_player_id);
         const bQ = queue.isQueued(b.sleeper_player_id);
         if (aQ !== bQ) return aQ ? -1 : 1;
-        return 0; // stable sort — pool already arrives sorted by search_rank
+        return 0; // stable sort — pool already arrives sorted by ADP, else search_rank
       }),
     [pool, queue]
   );
@@ -608,6 +608,19 @@ export function DraftRoom({
                 );
               })}
             </div>
+            {pool.some((p) => p.adp !== null) && (
+              <p className="pb-1 text-[10px] text-black/40 dark:text-white/40">
+                ADP from{" "}
+                <a
+                  href="https://fantasyfootballcalculator.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Fantasy Football Calculator
+                </a>
+              </p>
+            )}
             <ul className="max-h-[28rem] overflow-y-auto">
               {sortedPool.map((p) => {
                 const queued = queue.isQueued(p.sleeper_player_id);
@@ -628,10 +641,10 @@ export function DraftRoom({
                         {queued ? "★" : "☆"}
                       </button>
                       <span
-                        title="ADP (Sleeper overall rank)"
+                        title={p.adp !== null ? `ADP ${p.adp.toFixed(1)}` : "Sleeper overall rank (no ADP for this player)"}
                         className="w-7 shrink-0 text-right text-[10px] text-black/30 tabular-nums dark:text-white/30"
                       >
-                        {p.search_rank ?? "—"}
+                        {p.adp !== null ? Math.round(p.adp) : (p.search_rank ?? "—")}
                       </span>
                       <PositionBadge position={p.position} />
                       <div className="flex min-w-0 flex-col">

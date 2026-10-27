@@ -116,12 +116,12 @@ async def test_get_or_generate_narrative_caches_after_first_generation(pool, mon
         "home": {
             "team_id": 999101, "owner_id": 999101,
             "team_name": "Team Alpha", "owner_name": "Alice", "record": "3-2", "streak": "neutral",
-            "projected_total": 110.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            "pregame_projected_total": 110.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
         "away": {
             "team_id": 999102, "owner_id": 999102,
             "team_name": "Team Beta", "owner_name": "Bob", "record": "2-3", "streak": "hot",
-            "projected_total": 105.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            "pregame_projected_total": 105.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
     }
 
@@ -157,11 +157,11 @@ async def test_get_or_generate_narrative_returns_none_without_a_real_api_key(poo
         "head_to_head": {"wins_home": 0, "wins_away": 0, "ties": 0, "last_season": None, "last_week": None},
         "home": {
             "team_name": "Team Alpha", "owner_name": "Alice", "record": "0-0", "streak": "neutral",
-            "projected_total": 100.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            "pregame_projected_total": 100.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
         "away": {
             "team_name": "Team Beta", "owner_name": "Bob", "record": "0-0", "streak": "neutral",
-            "projected_total": 95.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+            "pregame_projected_total": 95.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
         },
     }
 
@@ -237,12 +237,12 @@ async def test_get_or_generate_narrative_includes_career_and_live_league_context
             "home": {
                 "team_id": team_champ, "owner_id": owner_champ,
                 "team_name": "Champ Team", "owner_name": "Champ Owner", "record": "5-0", "streak": "hot",
-                "projected_total": 120.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+                "pregame_projected_total": 120.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
             },
             "away": {
                 "team_id": team_scrub, "owner_id": owner_scrub,
                 "team_name": "Scrub Team", "owner_name": "Scrub Owner", "record": "0-5", "streak": "cold",
-                "projected_total": 80.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
+                "pregame_projected_total": 80.0, "score": 0, "clutch_choke": None, "bench_crime": None, "roster": [],
             },
         }
 

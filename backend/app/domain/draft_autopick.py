@@ -3,9 +3,10 @@ Pure autopick logic for the real-time draft (app/domain/draft_engine.py
 calls this when a team's pick clock expires — see project plan Phase B).
 No DB access, no network — fully unit-testable against plain lists.
 
-This app has no player rankings of its own, so "best available" means
-Sleeper's own search_rank (a rough overall-rank proxy, lower is better —
-see app/providers/sleeper/). The algorithm is true best-player-available,
+"Best available" means market ADP from the copy the draft is pinned to
+(app/domain/adp.py, 2026-10-27), else Sleeper's own search_rank (a
+rough overall-rank proxy, lower is better — see app/providers/sleeper/);
+the caller's query sorts the pool that way. The algorithm is true best-player-available,
 matching how ESPN's and Sleeper's own auto-draft actually behave: take
 the single best-ranked player on the board, full stop — real-world ADP
 already encodes positional scarcity (that's *why* QBs go in round 3+
@@ -68,8 +69,8 @@ def choose_autopick(
     position_max: dict[str, int] | None = None, queue: list[str] | None = None,
 ) -> dict | None:
     """available_players: list of {"sleeper_player_id", "position",
-    "search_rank"}, already filtered to undrafted/draftable and sorted
-    by search_rank ascending (None/unranked last — caller's
+    "search_rank", "adp"}, already filtered to undrafted/draftable and
+    sorted best first — ADP, else search_rank, unranked last (caller's
     responsibility, see draft_engine.py's query).
 
     queue (2026-09, draft night feature): this team's own ranked player

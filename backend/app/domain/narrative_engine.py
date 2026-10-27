@@ -194,8 +194,11 @@ def _side_facts(side: dict, include_result: bool) -> list[str]:
     if side["streak"] != "neutral":
         facts.append(f"{side['team_name']} is on a {side['streak']} streak")
 
-    if side["projected_total"] is not None:
-        facts.append(f"{side['team_name']}'s projected total: {side['projected_total']}")
+    # The pregame sum, not projected_total: that one is the live
+    # projection, which lands on the final score once games end, so a
+    # recap would claim every team hit its projection to the decimal.
+    if side["pregame_projected_total"] is not None:
+        facts.append(f"{side['team_name']}'s pregame projected total: {side['pregame_projected_total']}")
 
     if include_result:
         if side["score"] is not None:
