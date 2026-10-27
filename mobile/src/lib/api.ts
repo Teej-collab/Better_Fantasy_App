@@ -62,6 +62,7 @@ import type {
   OwnerBadges,
   PlayoffBracketNode,
   Poll,
+  RivalrySuggestion,
   PowerRankTrendTeam,
   ProjectedPlayoffMatchup,
   RecordCategory,
@@ -868,6 +869,15 @@ export const api = {
   createPoll: (leagueId: number, question: string, options: string[]) =>
     request<Poll>(`/leagues/${leagueId}/polls`, { method: 'POST', body: JSON.stringify({ question, options }) }),
   closePoll: (leagueId: number, pollId: number) => request<Poll>(`/leagues/${leagueId}/polls/${pollId}`, { method: 'PATCH' }),
+  rivalrySuggestions: (leagueId: number) =>
+    request<{ suggestions: RivalrySuggestion[] }>(`/leagues/${leagueId}/rivalry-suggestions`),
+  approveRivalry: (leagueId: number, id: number, name: string, tagline: string) =>
+    request<{ rivalry: unknown }>(`/leagues/${leagueId}/rivalry-suggestions/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ name, tagline: tagline || null }),
+    }),
+  dismissRivalry: (leagueId: number, id: number) =>
+    request<{ ok: boolean }>(`/leagues/${leagueId}/rivalry-suggestions/${id}/dismiss`, { method: 'POST' }),
   espnConnection: () => request<EspnConnectionStatus>('/league/espn-connection'),
   // The league's own chat-filter words (backend app/moderation.py), commissioner only.
   chatFilter: () => request<{ words: string[] }>('/league/chat-filter'),

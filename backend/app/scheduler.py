@@ -195,7 +195,7 @@ from app.providers.nfl_stats.espn_public import fetch_injury_news
 from app.providers.nfl_scoreboard import get_nfl_scoreboard, get_real_current_week, get_week_scoreboard, is_nfl_game_live
 from app.providers.sleeper.ingest import sync_players
 from app.providers.sync import run_full_sync, run_live_sync, update_league_state
-from app.domain import adp, announcements, waivers
+from app.domain import adp, announcements, rivalry_detection, waivers
 from app.domain.waiver_settings import get_waiver_settings
 from app.domain.playoffs import resolve_ready_playoff_matchups
 from app.queries import keepers as keeper_queries
@@ -578,6 +578,17 @@ async def _run_week_settlement_job():
                 await recap_release.release_and_notify(conn, season, settle_week, league_id)
         except Exception:
             logger.exception("Recap release failed (season=%s week=%s league_id=%s)", season, settle_week, league_id)
+
+    # A finished week is new history, so rivalry suggestions are
+    # re-scored here too (app/domain/rivalry_detection.py) — the
+    # commissioner hub then shows any new ones to review.
+    for row in league_rows:
+        league_id = row["league_id"]
+        try:
+            async with pool.acquire() as conn:
+                await rivalry_detection.refresh_suggestions(conn, league_id)
+        except Exception:
+            logger.exception("Rivalry suggestions failed (season=%s week=%s league_id=%s)", season, settle_week, league_id)
 
     # Next week's pre-game write-ups, one per matchup, written now so
     # every matchup has one before kickoff (they used to exist only for

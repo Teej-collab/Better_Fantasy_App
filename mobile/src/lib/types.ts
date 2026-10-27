@@ -858,6 +858,20 @@ export type ChugUploadResult =
 
 export type Team = { team_id: number; team_name: string; owner_id: number; owner_name: string };
 
+// Suggested rivalries (backend app/routers/rivalry_suggestions.py), commissioner only.
+export type RivalrySuggestion = {
+  id: number;
+  owner_a_id: number;
+  owner_b_id: number;
+  owner_a_name: string;
+  owner_b_name: string;
+  score: number;
+  tier: string;
+  reasons: string[];
+  suggested_name: string | null;
+  suggested_tagline: string | null;
+};
+
 export type Poll = {
   id: number;
   question: string;
@@ -1665,7 +1679,7 @@ export type CommishSummary = {
     playoff_start_week: number;
   };
   tools: Record<
-    'league' | 'scoring' | 'roster' | 'waivers' | 'members' | 'calendar' | 'trades' | 'lineup' | 'draft' | 'polls' | 'chat_filter' | 'wheel' | 'espn' | 'corner',
+    'league' | 'scoring' | 'roster' | 'waivers' | 'members' | 'calendar' | 'trades' | 'lineup' | 'draft' | 'polls' | 'rivalries' | 'chat_filter' | 'wheel' | 'espn' | 'corner',
     string
   >;
 };

@@ -228,6 +228,7 @@ function RootStack() {
           <Stack.Screen name="commissioner/roster" options={{ title: 'Roster & Keepers', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/trades" options={{ title: 'Trades', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/polls" options={{ title: 'Polls', headerBackTitle: 'Tools' }} />
+          <Stack.Screen name="commissioner/rivalries" options={{ title: 'Rivalries', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/chat-filter" options={{ title: 'Chat Filter', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/espn" options={{ title: 'Bring Your League In', headerBackTitle: 'Tools' }} />
           <Stack.Screen name="commissioner/switch" options={{ title: 'Move to The Weekend', headerBackTitle: 'Tools' }} />

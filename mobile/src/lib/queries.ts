@@ -534,6 +534,15 @@ export function useSeasonTeams(season: number | null) {
   });
 }
 
+// Refreshes the league's suggestions on the backend each time it loads.
+export function useRivalrySuggestions(leagueId: number | null) {
+  return useQuery({
+    queryKey: ['rivalrySuggestions', leagueId],
+    queryFn: async () => (await api.rivalrySuggestions(leagueId!)).suggestions,
+    enabled: leagueId !== null,
+  });
+}
+
 export function usePolls(leagueId: number | null) {
   return useQuery({
     queryKey: ['polls', leagueId],

@@ -37,6 +37,7 @@ from app.routers import (
     polls,
     profile,
     punishment_wheel,
+    rivalry_suggestions,
     push,
     settings,
     system,
@@ -179,6 +180,7 @@ app.include_router(me.router)
 app.include_router(nfl.router)
 app.include_router(players.router)
 app.include_router(polls.router)
+app.include_router(rivalry_suggestions.router)
 app.include_router(profile.router)
 app.include_router(push.router)
 app.include_router(settings.router)

@@ -12,6 +12,7 @@ import math
 import time
 from datetime import datetime, timedelta, timezone
 
+from app.domain import rivalry_detection
 from app.domain import trades as trades_domain
 from app.domain.waiver_settings import get_waiver_settings, next_clear
 from app.providers.nfl_scoreboard import get_week_scoreboard
@@ -233,6 +234,15 @@ async def summary(conn, league_id: int, season: int) -> dict:
             "title": f"{len(quiet)} member{'s' if len(quiet) != 1 else ''} haven't been around in 10+ days",
             "sub": ", ".join(m["display_name"] or "Member" for m in quiet[:3]), "action": "See", "href": "/commissioner/members",
         })
+    # Filled in after each week by the scheduler's week flip
+    # (app/domain/rivalry_detection.py), so this only counts.
+    rivalries = await rivalry_detection.count_pending(conn, league_id)
+    if rivalries:
+        needs.append({
+            "kind": "rivalries", "tone": "red",
+            "title": f"{rivalries} suggested rivalr{'ies' if rivalries != 1 else 'y'} to review",
+            "sub": "Your league's history says these two have beef", "action": "Review", "href": "/commissioner/rivalries",
+        })
     deadline = trade_settings.get("trade_deadline")
     if deadline and now < deadline < now + SOON:
         needs.append({
@@ -315,6 +325,7 @@ async def summary(conn, league_id: int, season: int) -> dict:
                 else "Not set up yet"
             ),
             "polls": f"{open_polls} open poll{'s' if open_polls != 1 else ''}" if open_polls else "No open polls",
+            "rivalries": f"{rivalries} suggested to review" if rivalries else "Suggested from your league's history",
             "chat_filter": f"{filter_words} extra word{'s' if filter_words != 1 else ''} hidden" if filter_words else "Only the built-in list",
             "wheel": f"{wheel_items} punishment{'s' if wheel_items != 1 else ''} loaded" if wheel_items else "Empty",
             "espn": (

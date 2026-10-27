@@ -53,6 +53,7 @@ const GROUPS: { title: string; color: string; tools: Tool[] }[] = [
     tools: [
       { title: 'Commish Corner', href: '/commissioner/corner' as Href, value: 'corner', target: 'corner', badge: 'NEW' },
       { title: 'Polls', href: '/commissioner/polls', value: 'polls', target: 'polls' },
+      { title: 'Rivalries', href: '/commissioner/rivalries' as Href, value: 'rivalries', target: 'rivalries', badge: 'NEW' },
       { title: 'Punishment Wheel', href: '/punishment-wheel' as Href, value: 'wheel', target: 'wheel' },
       { title: 'Bring your league in', href: '/commissioner/espn', value: 'espn', target: 'espn' },
     ],

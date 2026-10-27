@@ -19,7 +19,7 @@ _ET = ZoneInfo("America/New_York")
 
 AREAS = (
     "league", "scoring", "roster", "keepers", "waivers", "draft", "trades", "members",
-    "teams", "lineups", "chat", "polls", "espn", "announcements", "playoffs",
+    "teams", "lineups", "chat", "polls", "espn", "announcements", "playoffs", "rivalries",
 )
 
 
