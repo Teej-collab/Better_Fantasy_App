@@ -15,7 +15,7 @@ using it at the same time.
 """
 import asyncio
 
-from app import config
+from app import ai_usage, config
 from app.domain.draft_grades import get_draft_grades_for_season, pick_gains
 from app.providers.anthropic_narrative import MODEL, generate_narrative
 
@@ -150,7 +150,8 @@ async def generate_draft_narratives(conn, season: int, league_id: int) -> dict:
         # internal reasoning before ever emitting the actual text block
         # when given ~16 real picks' worth of facts to weigh — 500 left
         # no room for the answer itself once that happened.
-        text = await asyncio.to_thread(generate_narrative, DRAFT_RECAP_PROMPT, facts, 1200)
+        with ai_usage.tagged("draft_writeup", league_id):
+            text = await asyncio.to_thread(generate_narrative, DRAFT_RECAP_PROMPT, facts, 1200)
         await conn.execute(
             """
             INSERT INTO draft_narratives (season, league_id, owner_id, text, model)

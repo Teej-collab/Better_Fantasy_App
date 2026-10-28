@@ -24,6 +24,7 @@ from app.auth.config import SessionConfig
 from app.auth.league_context import require_commissioner_of, require_site_admin, resolve_owner_id
 from app.auth.session import decode_session_token, get_session_token
 from app.config import DEFAULT_LEAGUE_ID, _require
+from app import ai_usage
 from app.db import get_pool
 from app.domain.bye_weeks import sync_bye_weeks
 from app.domain.playoff_exceptions import PlayoffError
@@ -578,6 +579,18 @@ async def get_recaps(request: Request, league_id: int = DEFAULT_LEAGUE_ID, seaso
     async with pool.acquire() as conn:
         await require_site_admin(conn, payload)
         return await admin_recaps.get_recap_stats(conn, league_id, season)
+
+
+@router.get("/ai-usage")
+async def get_ai_usage(request: Request, days: int = 7):
+    """Admin > AI Costs: what the write-ups, roasts, hype grades and bet
+    slip reads cost over the last `days` (app/ai_usage.py)."""
+    payload = _require_session(request)
+    days = max(1, min(days, 365))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await require_site_admin(conn, payload)
+        return await ai_usage.report(conn, days)
 
 
 @router.get("/paths")

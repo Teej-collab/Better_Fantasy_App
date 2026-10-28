@@ -44,6 +44,7 @@ visitor until a real key is supplied.
 import asyncio
 import logging
 
+from app import ai_usage
 from app.config import ANTHROPIC_API_KEY, DEFAULT_LEAGUE_ID
 from app.db import get_pool
 from app.domain import manager_awards, recap_context, weekly_awards
@@ -387,7 +388,8 @@ async def get_or_generate_narrative(conn, matchup: dict) -> str | None:
     # event loop (every user's request, not just this one) for the
     # length of each generation. Same to_thread fix chug_roast.py and
     # draft_narratives.py already use.
-    text = await asyncio.to_thread(generate_narrative, system_prompt, facts)
+    with ai_usage.tagged(f"matchup_{kind}", matchup.get("league_id")):
+        text = await asyncio.to_thread(generate_narrative, system_prompt, facts)
     await narrative_queries.save_narrative(conn, matchup["matchup_id"], kind, text, MODEL)
     return text
 
@@ -693,7 +695,8 @@ async def generate_weekly_recap(
                 openings = await narrative_queries.get_recent_weekly_openings(conn, season, week, league_id, kind)
                 if openings:
                     facts += "\n\nRECENT OPENINGS (don't reuse):\n" + "\n".join(f"- {o}" for o in openings)
-            text = await asyncio.to_thread(generate_narrative, system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
+            with ai_usage.tagged(f"weekly_{kind}", league_id):
+                text = await asyncio.to_thread(generate_narrative, system_prompt, facts, max_tokens=WEEKLY_MAX_TOKENS)
             await narrative_queries.save_weekly_narrative(conn, season, week, league_id, kind, text, MODEL)
         if text is not None:
             weekly_narrative = {"text": text, "kind": kind}

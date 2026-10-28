@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -5,6 +7,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app import ai_usage
 from app.auth.config import SessionConfig
 from app.auth.session import decode_session_token, get_session_token
 from app.db import get_pool
@@ -52,7 +55,17 @@ from app.scheduler import start_scheduler, stop_scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_scheduler()
+    # AI usage (app/ai_usage.py) is queued in memory and written every
+    # few seconds; the last batch is written on the way down.
+    usage_writer = asyncio.create_task(ai_usage.flush_forever(get_pool))
     yield
+    usage_writer.cancel()
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await ai_usage.flush(conn)
+    except Exception:
+        logging.getLogger(__name__).exception("Couldn't write the last AI usage")
     await stop_scheduler()
 
 

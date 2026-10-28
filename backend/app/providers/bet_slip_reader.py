@@ -13,7 +13,7 @@ never prose.
 """
 import logging
 
-from app import config
+from app import ai_usage, config
 from app.domain.bets import STAT_KEYS
 from app.providers.anthropic_narrative import MODEL, _get_client
 
@@ -132,6 +132,7 @@ def _read(content: list[dict]) -> dict:
         tool_choice={"type": "tool", "name": _TOOL["name"]},
         messages=[{"role": "user", "content": content}],
     )
+    ai_usage.record(response, MODEL, "bet_slip")
     for block in response.content:
         if getattr(block, "type", None) == "tool_use":
             return dict(block.input)

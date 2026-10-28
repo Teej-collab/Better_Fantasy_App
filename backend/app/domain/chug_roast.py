@@ -13,7 +13,7 @@ the grade and debt payoff never depend on it.
 import asyncio
 import logging
 
-from app import config
+from app import ai_usage, config
 from app.providers.anthropic_narrative import generate_narrative
 
 logger = logging.getLogger(__name__)
@@ -102,10 +102,11 @@ async def write_roast(facts: str) -> str | None:
     if not config.ANTHROPIC_API_KEY:
         return None
     try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(generate_narrative, ROAST_PROMPT, facts, ROAST_MAX_TOKENS),
-            timeout=ROAST_TIMEOUT_SECONDS,
-        )
+        with ai_usage.tagged("chug_roast"):
+            return await asyncio.wait_for(
+                asyncio.to_thread(generate_narrative, ROAST_PROMPT, facts, ROAST_MAX_TOKENS),
+                timeout=ROAST_TIMEOUT_SECONDS,
+            )
     except Exception:
         logger.warning("Chug roast generation failed or timed out", exc_info=True)
         return None

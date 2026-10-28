@@ -18,7 +18,7 @@ import re
 
 from anthropic import Anthropic
 
-from app import config
+from app import ai_usage, config
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ def generate_narrative(system_prompt: str, facts: str, max_tokens: int = 500) ->
         system=system_prompt,
         messages=[{"role": "user", "content": facts}],
     )
+    ai_usage.record(response, MODEL)
     # 2026-09-15 fix, real report: a real weekly recap shipped cut off
     # mid-sentence because it hit max_tokens — the API returns whatever
     # it managed to generate with no error, so that failure was

@@ -24,7 +24,7 @@ import asyncio
 import json
 import logging
 
-from app import config
+from app import ai_usage, config
 from app.providers.anthropic_narrative import generate_narrative
 
 logger = logging.getLogger(__name__)
@@ -198,7 +198,8 @@ async def _suggest_name(a_name: str, b_name: str, reasons: list[str]) -> tuple[s
         return _default_name(a_name, b_name), None
     facts = f"{a_name} vs {b_name}. " + "; ".join(reasons)
     try:
-        text = await asyncio.to_thread(generate_narrative, NAME_PROMPT, facts, 200)
+        with ai_usage.tagged("rivalry_name"):
+            text = await asyncio.to_thread(generate_narrative, NAME_PROMPT, facts, 200)
     except Exception:
         logger.exception("Rivalry naming failed for %s vs %s", a_name, b_name)
         return _default_name(a_name, b_name), None

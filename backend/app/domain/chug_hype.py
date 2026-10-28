@@ -25,7 +25,7 @@ import logging
 import os
 import tempfile
 
-from app import config
+from app import ai_usage, config
 from app.providers.anthropic_narrative import MODEL, _get_client
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,7 @@ def _call_claude(content: list[dict]) -> dict | None:
         tool_choice={"type": "tool", "name": "grade_hype"},
         messages=[{"role": "user", "content": content}],
     )
+    ai_usage.record(response, MODEL, "chug_hype")
     for block in response.content:
         if getattr(block, "type", None) == "tool_use":
             return dict(block.input)
