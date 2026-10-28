@@ -209,6 +209,29 @@ export async function selectLeague(leagueId: number): Promise<{ active_league_id
   return post<{ active_league_id: number }>(`/leagues/${leagueId}/select`, {});
 }
 
+// Who's left to claim, plus your own team if your account already has
+// one here and who else is already on The Weekend (2026-10-28).
+export type LeagueClaims = {
+  owners: UnclaimedOwner[];
+  yours?: { owner_id: number; team_name: string } | null;
+  already_here?: { display_name: string; team_name: string; member: boolean }[];
+  // One login runs several teams here: you pick yours (chooseMyTeam).
+  shared_login?: { team_id: number; team_name: string }[];
+};
+
+export async function chooseMyTeam(leagueId: number, teamId: number): Promise<{ kept_team_id: number; freed: string[] }> {
+  return post(`/leagues/${leagueId}/my-team`, { team_id: teamId });
+}
+
+// "Not my team?": reports a wrong match to the admins; changes nothing by itself.
+export async function notMyTeam(leagueId: number, note?: string): Promise<void> {
+  await post(`/leagues/${leagueId}/not-my-team`, { note: note ?? null });
+}
+
+export async function getLeagueClaims(leagueId: number): Promise<LeagueClaims> {
+  return get<LeagueClaims>(`/leagues/${leagueId}/unclaimed-owners`);
+}
+
 export async function getUnclaimedOwners(leagueId: number): Promise<UnclaimedOwner[]> {
   const { owners } = await get<{ owners: UnclaimedOwner[] }>(`/leagues/${leagueId}/unclaimed-owners`);
   return owners;

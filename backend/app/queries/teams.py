@@ -59,13 +59,59 @@ async def reassign_team(conn, league_id: int, season: int, team_id: int, new_use
     owner_id = await get_or_create_owner_for_user(conn, new_user_id, display_name)
     row = await conn.fetchrow(
         """
-        UPDATE teams_by_season SET owner_id = $1
+        UPDATE teams_by_season SET owner_id = $1, owner_locked = TRUE
         WHERE id = $2 AND league_id = $3 AND season = $4
         RETURNING id AS team_id, team_name, owner_id
         """,
         owner_id, team_id, league_id, season,
     )
     return dict(row) if row else None
+
+
+async def teams_for_user_in_league(conn, league_id: int, user_id: int):
+    """The caller's teams in this league's latest season, through the
+    owner their account is linked to. Usually one; two or more means one
+    ESPN/Sleeper login runs several teams here (a family league, say)."""
+    return await conn.fetch(
+        """
+        SELECT t.id AS team_id, t.team_name, t.espn_team_id, t.owner_id
+        FROM teams_by_season t
+        JOIN owner_users ou ON ou.owner_id = t.owner_id
+        WHERE t.league_id = $1 AND ou.user_id = $2
+          AND t.season = (SELECT max(season) FROM teams_by_season WHERE league_id = $1)
+        ORDER BY t.team_name
+        """,
+        league_id, user_id,
+    )
+
+
+async def split_shared_login(conn, league_id: int, user_id: int, keep_team_id: int) -> list[str] | None:
+    """One login runs several teams here and the caller has said which is
+    theirs: every other one gets an owner of its own (unclaimed, so its
+    real manager can claim it), locked so the sync doesn't hand it back.
+    Returns the other teams' names, or None if keep_team_id isn't one of
+    the caller's teams or they only have one."""
+    mine = await teams_for_user_in_league(conn, league_id, user_id)
+    if len(mine) < 2 or keep_team_id not in {t["team_id"] for t in mine}:
+        return None
+    others = [t for t in mine if t["team_id"] != keep_team_id]
+    async with conn.transaction():
+        for t in others:
+            owner_id = await conn.fetchval(
+                """
+                INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2)
+                ON CONFLICT (espn_member_id) DO UPDATE SET display_name = EXCLUDED.display_name
+                RETURNING owner_id
+                """,
+                f"split:{league_id}:{t['espn_team_id']}", f"{t['team_name']} manager",
+            )
+            # Every season of that team in this league, not only this one.
+            await conn.execute(
+                "UPDATE teams_by_season SET owner_id = $1, owner_locked = TRUE "
+                "WHERE league_id = $2 AND espn_team_id = $3 AND owner_id = $4",
+                owner_id, league_id, t["espn_team_id"], t["owner_id"],
+            )
+    return [t["team_name"] for t in others]
 
 
 async def list_teams_for_league(conn, league_id: int, season: int):

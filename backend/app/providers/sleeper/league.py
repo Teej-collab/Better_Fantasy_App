@@ -137,7 +137,12 @@ class SleeperProvider(FantasyProvider):
                     INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id)
                     VALUES ($1, $2, $3, $4, $5)
                     ON CONFLICT (season, espn_team_id, league_id)
-                    DO UPDATE SET owner_id = EXCLUDED.owner_id, team_name = CASE
+                    DO UPDATE SET owner_id = CASE
+                        -- Set by hand (one login running two teams, 2026-10-28):
+                        -- the sync doesn't hand it back.
+                        WHEN teams_by_season.owner_locked THEN teams_by_season.owner_id
+                        ELSE EXCLUDED.owner_id
+                    END, team_name = CASE
                         WHEN teams_by_season.team_name_is_custom THEN teams_by_season.team_name
                         ELSE EXCLUDED.team_name
                     END

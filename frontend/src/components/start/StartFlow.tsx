@@ -31,6 +31,9 @@ import {
   getLeagueFormats,
   getMyLeagues,
   requestCustomLeague,
+  chooseMyTeam,
+  getLeagueClaims,
+  notMyTeam,
   getUnclaimedOwners,
   getSleeperLeagues,
   importPreview,
@@ -125,6 +128,14 @@ export function StartFlow({
   const [found, setFound] = useState<ImportPreview | null>(null);
   const [mine, setMine] = useState<number | null>(null);
   const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
+  // Your team when your account already had it, and who else in the
+  // league is already on The Weekend (2026-10-28).
+  const [yours, setYours] = useState<{ owner_id: number; team_name: string } | null>(null);
+  const [alreadyHere, setAlreadyHere] = useState<{ display_name: string; team_name: string; member: boolean }[]>([]);
+  // One login runs several teams in the league: you pick yours first.
+  const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
+  const [sharedPick, setSharedPick] = useState<number | null>(null);
+  const [reported, setReported] = useState(false);
   // Sleeper by username (2026-10-24): no link to copy.
   const [sleeperName, setSleeperName] = useState("");
   const [sleeperOptions, setSleeperOptions] = useState<SleeperLeagueOption[] | null>(null);
@@ -214,7 +225,21 @@ export function StartFlow({
       const league = preview.already_member ? null : await joinLeague(preview.invite_code, true);
       if (preview.already_member) await selectLeague(preview.id);
       setJoined(league ?? ({ id: preview.id, name: preview.name, invite_code: preview.invite_code, created_at: "", role: "member" } as League));
-      const owners = await getUnclaimedOwners(preview.id).catch(() => []);
+      const claims = await getLeagueClaims(preview.id).catch(() => null);
+      // Already have a team here (connected from ESPN, and you were
+      // already on The Weekend): it's yours, nothing to pick.
+      if (claims?.yours) {
+        router.push("/");
+        router.refresh();
+        return;
+      }
+      if (claims?.shared_login?.length) {
+        setSharedLogin(claims.shared_login);
+        setSharedPick(null);
+        go("joinTeam");
+        return;
+      }
+      const owners = claims?.owners ?? [];
       setUnclaimed(owners);
       setClaimId(owners[0]?.owner_id ?? null);
       setNewTeamName("");
@@ -224,7 +249,11 @@ export function StartFlow({
   const finishJoin = (mode: "claim" | "new") =>
     run(async () => {
       if (!joined) return;
-      if (mode === "claim" && claimId !== null) await claimOwner(joined.id, claimId);
+      if (mode === "claim" && claimId !== null) {
+        const picked = unclaimed.find((o) => o.owner_id === claimId);
+        if (!confirmClaim(picked?.team_name ?? picked?.display_name ?? "this team")) return;
+        await claimOwner(joined.id, claimId);
+      }
       if (mode === "new") await createTeam(joined.id, newTeamName.trim());
       router.push("/");
       router.refresh();
@@ -263,8 +292,12 @@ export function StartFlow({
       } else {
         await connectSleeper(link.trim());
       }
-      const owners = await getUnclaimedOwners(league.id).catch(() => []);
-      setUnclaimed(owners);
+      const claims = await getLeagueClaims(league.id).catch(() => null);
+      setUnclaimed(claims?.owners ?? []);
+      setYours(claims?.yours ?? null);
+      setAlreadyHere(claims?.already_here ?? []);
+      setSharedLogin(claims?.shared_login ?? []);
+      setSharedPick(null);
       setMine(null);
       go("connectClaim");
     });
@@ -272,6 +305,8 @@ export function StartFlow({
   const claimMine = () =>
     run(async () => {
       if (!created || mine === null) return;
+      const picked = unclaimed.find((o) => o.owner_id === mine);
+      if (!confirmClaim(picked?.team_name ?? picked?.display_name ?? "this team")) return;
       await claimOwner(created.id, mine);
       const left = await getUnclaimedOwners(created.id).catch(() => []);
       setUnclaimedLeft(left.length);
@@ -454,7 +489,61 @@ export function StartFlow({
     );
   }
 
-  if (view === "joinTeam" && joined) {
+  const keepSharedTeam = (leagueId: number, after: (teamName: string) => void) =>
+    run(async () => {
+      const team = sharedLogin.find((t) => t.team_id === sharedPick);
+      if (!team) return;
+      await chooseMyTeam(leagueId, team.team_id);
+      setSharedLogin([]);
+      after(team.team_name);
+    });
+
+  const sharedPicker = (leagueId: number, platformName: string, after: (teamName: string) => void) => (
+    <>
+      <p className={styles.sub}>
+        Your {platformName} account runs {sharedLogin.length} teams in this league. Which one is yours? The others stay open for
+        whoever really manages them.
+      </p>
+      <div className="flex flex-col gap-2">
+        {sharedLogin.map((t) => (
+          <Option
+            key={t.team_id}
+            on={sharedPick === t.team_id}
+            onClick={() => setSharedPick(t.team_id)}
+            icon={<UsersIcon />}
+            color="var(--wl-accent)"
+            title={t.team_name}
+            text="Run by your account"
+          />
+        ))}
+      </div>
+      {error && <p className={styles.error}>{error}</p>}
+      <button
+        type="button"
+        className={`${styles.neon} mt-auto`}
+        disabled={sharedPick === null || busy}
+        onClick={() => keepSharedTeam(leagueId, after)}
+      >
+        This one&apos;s mine
+      </button>
+    </>
+  );
+
+  if (view === "joinTeam" && joined && sharedLogin.length > 0) {
+    content = (
+      <>
+        <Top onBack={() => go("join")} />
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>{joined.name}</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Which team is yours?</h1>
+        </div>
+        {sharedPicker(joined.id, "ESPN or Sleeper", () => {
+          router.push("/");
+          router.refresh();
+        })}
+      </>
+    );
+  } else if (view === "joinTeam" && joined) {
     content = (
       <>
         <Top onBack={() => go("join")} />
@@ -947,7 +1036,58 @@ export function StartFlow({
     );
   }
 
-  if (view === "connectClaim" && created) {
+  if (view === "connectClaim" && created && sharedLogin.length > 0) {
+    content = (
+      <>
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>{created.name} is here</span>
+          <h1 className={`${anton.className} ${styles.title}`}>Which team is yours?</h1>
+        </div>
+        {sharedPicker(created.id, PLATFORM_NAME[platform], (teamName) => {
+          setYours({ owner_id: 0, team_name: teamName });
+          void getLeagueClaims(created.id).then((c) => setUnclaimed(c.owners)).catch(() => {});
+        })}
+      </>
+    );
+  } else if (view === "connectClaim" && created && yours) {
+    content = (
+      <>
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>{created.name} is here</span>
+          <h1 className={`${anton.className} ${styles.title}`}>You&apos;re {yours.team_name}</h1>
+          <p className={styles.sub}>
+            Your {PLATFORM_NAME[platform]} team was already linked to your account, so there&apos;s nothing to pick.
+          </p>
+        </div>
+        {reported ? (
+          <p className="text-sm text-[#aab2bf]">Thanks. We&apos;ll look into it.</p>
+        ) : (
+          <button
+            type="button"
+            className="w-fit text-sm text-[#aab2bf] underline"
+            onClick={() => {
+              if (window.confirm("Not your team? We'll tell the people who run The Weekend and fix it by hand.")) {
+                void notMyTeam(created.id).then(() => setReported(true)).catch(() => setError("Couldn't send that. Try again in a minute."));
+              }
+            }}
+          >
+            Not my team?
+          </button>
+        )}
+        <AlreadyHere people={alreadyHere} />
+        <button
+          type="button"
+          className={`${styles.neon} mt-auto`}
+          onClick={() => {
+            setUnclaimedLeft(unclaimed.length);
+            go("connectInvite");
+          }}
+        >
+          Continue
+        </button>
+      </>
+    );
+  } else if (view === "connectClaim" && created) {
     content = (
       <>
         <div className="flex flex-col gap-2">
@@ -955,6 +1095,7 @@ export function StartFlow({
           <h1 className={`${anton.className} ${styles.title}`}>Which team is yours?</h1>
           <p className={styles.sub}>These came from your league on {PLATFORM_NAME[platform]}.</p>
         </div>
+        <AlreadyHere people={alreadyHere} />
         {unclaimed.length === 0 && <p className="text-sm text-[#aab2bf]">Still bringing your teams in. Refresh in a minute if they don&apos;t show.</p>}
         <div className="flex flex-col gap-2">
           {unclaimed.map((o) => (
@@ -986,6 +1127,26 @@ export function StartFlow({
       <div className={styles.glowA} aria-hidden />
       <div className={styles.glowB} aria-hidden />
       {content}
+    </div>
+  );
+}
+
+// Managers in this league who are already on The Weekend: they aren't in
+// the picker, so say who they are instead of leaving them out.
+function AlreadyHere({ people }: { people: { display_name: string; team_name: string; member: boolean }[] }) {
+  if (people.length === 0) return null;
+  return (
+    <div className={styles.card}>
+      <span className={styles.kicker}>Already on The Weekend</span>
+      {people.map((p) => (
+        <span key={`${p.display_name}-${p.team_name}`} className="text-sm">
+          {p.display_name} · {p.team_name}
+          {p.member ? " ✓" : ""}
+        </span>
+      ))}
+      <span className="text-sm leading-snug text-[#aab2bf]">
+        Their teams are already theirs. They just open your invite link to see this league.
+      </span>
     </div>
   );
 }
@@ -1157,6 +1318,12 @@ function useRequired(id: string, value: string, message: string) {
 // with ESPN (2026-10-27): set this to the public TestFlight link (later
 // the App Store page). Until then the card just says what to tap.
 const IOS_APP_URL: string | null = null;
+
+// Claiming a team links it to your account in every league, so it asks
+// first: a wrong tap is the one way a team gets mixed up (2026-10-28).
+function confirmClaim(teamName: string): boolean {
+  return window.confirm(`Is ${teamName} your team? Claiming it links it to your account in every league.`);
+}
 
 function Top({ onBack, step }: { onBack: () => void; step?: number }) {
   return (

@@ -764,3 +764,188 @@ async def test_my_leagues_carry_a_card_summary(pool, monkeypatch):
     assert summary["team_name"] == "Test Summary Team"
     assert summary["teams"] == 1 and summary["team_count"] == 10
     assert summary["record"] == "0-0"
+
+
+async def test_managers_already_on_the_weekend_see_their_team_instead_of_a_picker(pool, monkeypatch):
+    """2026-10-28: a league connected from ESPN matched two managers who
+    were already on The Weekend; the picker silently left them out, so
+    one couldn't find their team and the other would have started a
+    duplicate."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    async with _client() as commish:
+        await _sign_up(commish, "test-leagues-linked-commish@example.com", "Commish")
+        created = await commish.post("/leagues", json={"name": "Test League Linked"})
+        league_id, invite_code = created.json()["id"], created.json()["invite_code"]
+
+        from app.db import get_pool as _get_pool
+
+        real_pool = await _get_pool()
+        async with real_pool.acquire() as conn:
+            async def team_for(email, name, team):
+                user_id = await conn.fetchval("SELECT id FROM users WHERE email = $1", email)
+                # Creating a league already gave the commissioner an owner.
+                owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
+                if owner_id is None:
+                    owner_id = await conn.fetchval(
+                        "INSERT INTO owners (espn_member_id, display_name) VALUES ($1, $2) RETURNING owner_id",
+                        f"test-leagues-linked-{name}", name,
+                    )
+                    if user_id:
+                        await conn.execute("INSERT INTO owner_users (owner_id, user_id) VALUES ($1, $2)", owner_id, user_id)
+                await conn.execute(
+                    "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+                    "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, $3, $4)",
+                    TEST_SEASON, owner_id, team, league_id,
+                )
+                return owner_id
+
+            async with _client() as early:
+                await _sign_up(early, "test-leagues-linked-jeff@example.com", "Jeff")
+            commish_owner = await team_for("test-leagues-linked-commish@example.com", "Commish", "Purdy Brown Tutes")
+            jeff_owner = await team_for("test-leagues-linked-jeff@example.com", "Jeff Horak", "Smokin' Darts")
+            await team_for("nobody@example.com", "Kim Horak", "Mr. Swift")
+
+        mine = (await commish.get(f"/leagues/{league_id}/unclaimed-owners")).json()
+
+    assert mine["yours"] == {"owner_id": commish_owner, "team_name": "Purdy Brown Tutes"}
+    assert [o["display_name"] for o in mine["owners"]] == ["Kim Horak"]
+    assert mine["already_here"] == [{"display_name": "Jeff Horak", "team_name": "Smokin' Darts", "member": False}]
+
+    async with _client() as jeff:
+        await _login(jeff, "test-leagues-linked-jeff@example.com")
+        assert (await jeff.post("/leagues/join", json={"invite_code": invite_code})).status_code == 200
+        theirs = (await jeff.get(f"/leagues/{league_id}/unclaimed-owners")).json()
+    assert theirs["yours"] == {"owner_id": jeff_owner, "team_name": "Smokin' Darts"}
+    async with real_pool.acquire() as conn:
+        in_chat = await conn.fetchval(
+            "SELECT count(*) FROM conversation_participants p JOIN conversations c ON c.id = p.conversation_id "
+            "WHERE c.league_id = $1 AND p.owner_id = $2",
+            league_id, jeff_owner,
+        )
+    assert in_chat >= 1
+
+
+async def _league_with_member(email, name, league_name):
+    """A signed-up commissioner's league, plus that user's id and owner."""
+    async with _client() as client:
+        await _sign_up(client, email, name)
+        created = (await client.post("/leagues", json={"name": league_name})).json()
+    from app.db import get_pool as _get_pool
+
+    pool_ = await _get_pool()
+    async with pool_.acquire() as conn:
+        user_id = await conn.fetchval("SELECT id FROM users WHERE email = $1", email)
+        owner_id = await conn.fetchval("SELECT owner_id FROM owner_users WHERE user_id = $1", user_id)
+    return created, user_id, owner_id, pool_
+
+
+async def test_claiming_your_team_from_a_second_account_links_it_to_you(pool, monkeypatch):
+    """Already on The Weekend, joining a Sleeper league (or one on a second
+    ESPN login): your team there came in under another identity. Claiming
+    it merges it into you, and the sync maps that account to you after."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    created, _, _, pool_ = await _league_with_member("test-leagues-xacct-commish@example.com", "Commish", "Test League XAcct")
+    league_id = created["id"]
+    async with pool_.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_sleeper_connections (league_id, sleeper_league_id) VALUES ($1, 'test-xacct')", league_id
+        )
+        synced = await conn.fetchval(
+            "INSERT INTO owners (espn_member_id, display_name) VALUES ('test-sleeper-xacct', 'tj_sleeper') RETURNING owner_id"
+        )
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Sleeper Squad', $3)",
+            TEST_SEASON, synced, league_id,
+        )
+
+    # Someone already on The Weekend, with a team in another league.
+    other, me_user, me_owner, _ = await _league_with_member("test-leagues-xacct-me@example.com", "Me", "Test League XAcct Home")
+    async with pool_.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Home Team', $3)",
+            TEST_SEASON, me_owner, other["id"],
+        )
+    async with _client() as me:
+        await _login(me, "test-leagues-xacct-me@example.com")
+        await me.post("/leagues/join", json={"invite_code": created["invite_code"]})
+        resp = await me.post(f"/leagues/{league_id}/claim-owner", json={"owner_id": synced})
+    assert resp.status_code == 200
+    async with pool_.acquire() as conn:
+        team_owner = await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE team_name = 'Sleeper Squad'")
+        alias = await conn.fetchval("SELECT owner_id FROM owner_espn_aliases WHERE espn_member_id = 'test-sleeper-xacct'")
+        links = await conn.fetchval("SELECT count(*) FROM owner_users WHERE user_id = $1", me_user)
+    assert team_owner == me_owner and alias == me_owner and links == 1
+
+
+async def test_one_login_running_two_teams_asks_which_is_yours_and_the_sync_keeps_it(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    created, _, owner_id, pool_ = await _league_with_member(
+        "test-leagues-shared-login@example.com", "Wayne", "Test League Shared Login"
+    )
+    league_id = created["id"]
+    async with pool_.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_sleeper_connections (league_id, sleeper_league_id) VALUES ($1, 'test-shared')", league_id
+        )
+        await conn.execute(
+            "INSERT INTO owner_espn_aliases (espn_member_id, owner_id) VALUES ('sleeper:test-shared-user', $1)", owner_id
+        )
+        for roster_id, team in ((901, "Wayne The Train"), (902, "Mr. Swift")):
+            await conn.execute(
+                "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) VALUES ($1, $2, $3, $4, $5)",
+                TEST_SEASON, roster_id, owner_id, team, league_id,
+            )
+
+    async with _client() as me:
+        await _login(me, "test-leagues-shared-login@example.com")
+        before = (await me.get(f"/leagues/{league_id}/unclaimed-owners")).json()
+        assert before["yours"] is None
+        assert sorted(t["team_name"] for t in before["shared_login"]) == ["Mr. Swift", "Wayne The Train"]
+        keep = next(t["team_id"] for t in before["shared_login"] if t["team_name"] == "Wayne The Train")
+        picked = await me.post(f"/leagues/{league_id}/my-team", json={"team_id": keep})
+        assert picked.status_code == 200 and picked.json()["freed"] == ["Mr. Swift"]
+        after = (await me.get(f"/leagues/{league_id}/unclaimed-owners")).json()
+    assert after["yours"]["team_name"] == "Wayne The Train" and after["shared_login"] == []
+    assert [o["team_name"] for o in after["owners"]] == ["Mr. Swift"]
+
+    # The next Sleeper sync still sees one login running both teams; the
+    # split-off team stays with its own owner.
+    from app.providers.sleeper import league as sleeper_league
+
+    async def fake_get(path):
+        if path.endswith("/users"):
+            return [{"user_id": "test-shared-user", "display_name": "wayne"}]
+        return [{"roster_id": 901, "owner_id": "test-shared-user"}, {"roster_id": 902, "owner_id": "test-shared-user"}]
+
+    monkeypatch.setattr(sleeper_league, "_get", fake_get)
+    await sleeper_league.SleeperProvider("test-shared").sync_teams(pool_, TEST_SEASON, league_id)
+    async with pool_.acquire() as conn:
+        owners = {
+            r["espn_team_id"]: r["owner_id"]
+            for r in await conn.fetch("SELECT espn_team_id, owner_id FROM teams_by_season WHERE league_id = $1", league_id)
+        }
+    assert owners[901] == owner_id and owners[902] != owner_id
+
+
+async def test_not_my_team_files_a_report_and_changes_nothing(pool, monkeypatch):
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    created, user_id, owner_id, pool_ = await _league_with_member(
+        "test-leagues-notmine@example.com", "Wrong Match", "Test League Not Mine"
+    )
+    async with pool_.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO teams_by_season (season, espn_team_id, owner_id, team_name, league_id) "
+            "VALUES ($1, nextval('synthetic_espn_team_id_seq'), $2, 'Not Actually Mine', $3)",
+            TEST_SEASON, owner_id, created["id"],
+        )
+    async with _client() as me:
+        await _login(me, "test-leagues-notmine@example.com")
+        resp = await me.post(f"/leagues/{created['id']}/not-my-team", json={"note": "I'm the other Horak"})
+    assert resp.status_code == 200
+    async with pool_.acquire() as conn:
+        report = await conn.fetchval("SELECT message FROM feedback WHERE user_id = $1", user_id)
+        still = await conn.fetchval("SELECT owner_id FROM teams_by_season WHERE team_name = 'Not Actually Mine'")
+    assert "Not my team" in report and "Not Actually Mine" in report and "other Horak" in report
+    assert still == owner_id

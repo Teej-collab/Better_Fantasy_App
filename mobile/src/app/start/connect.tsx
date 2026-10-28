@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { EspnSignIn, espnSignInAvailable, type EspnSession } from '@/components/start/EspnSignIn';
+import { confirmClaim, NotMyTeamLink, SharedLoginPicker } from '@/components/start/TeamMatch';
 import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Sub, Title, useRequiredField } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -42,6 +43,12 @@ export default function ConnectLeagueScreen() {
   const [league, setLeague] = useState<LeagueInfo | null>(null);
   const [owners, setOwners] = useState<{ owner_id: number; display_name: string; team_name?: string | null }[]>([]);
   const [mine, setMine] = useState<number | null>(null);
+  // Your team when your account already had it (a manager already on The
+  // Weekend), and who else in the league is (2026-10-28).
+  const [yours, setYours] = useState<{ owner_id: number; team_name: string } | null>(null);
+  const [alreadyHere, setAlreadyHere] = useState<{ display_name: string; team_name: string; member: boolean }[]>([]);
+  // One login runs several teams here: you pick yours first.
+  const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
   const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,14 +120,19 @@ export default function ConnectLeagueScreen() {
       else await api.connectSleeper(link.trim());
       if (platform === 'espn') await api.syncEspn().catch(() => {});
       setLeague(created);
-      const list = await api.unclaimedOwners(created.id).catch(() => []);
-      setOwners(list);
+      const claims = await api.leagueClaims(created.id).catch(() => null);
+      setOwners(claims?.owners ?? []);
+      setYours(claims?.yours ?? null);
+      setAlreadyHere(claims?.already_here ?? []);
+      setSharedLogin(claims?.shared_login ?? []);
       setStep('claim');
     });
 
   const claim = () =>
     run(async () => {
       if (!league || mine === null) return;
+      const picked = owners.find((o) => o.owner_id === mine);
+      if (!(await confirmClaim(picked?.team_name ?? picked?.display_name ?? 'this'))) return;
       const { token } = await api.claimOwner(league.id, mine);
       await signInWithToken(token);
       const left = await api.unclaimedOwners(league.id).catch(() => []);
@@ -174,6 +186,52 @@ export default function ConnectLeagueScreen() {
     );
   }
 
+  const continueAsYours = () =>
+    run(async () => {
+      setUnclaimedLeft(owners.length);
+      await queryClient.invalidateQueries();
+      haptics.success();
+      setStep('invite');
+    });
+
+  if (step === 'claim' && league && sharedLogin.length > 0) {
+    return (
+      <StartScreen>
+        <Stack.Screen options={{ title: 'Your Team', headerBackVisible: false }} />
+        <View style={styles.head}>
+          <Kicker>{league.name} is here</Kicker>
+          <Title>Which team is yours?</Title>
+        </View>
+        <SharedLoginPicker
+          leagueId={league.id}
+          teams={sharedLogin}
+          platform={name}
+          onPicked={(team) => {
+            setSharedLogin([]);
+            setYours({ owner_id: 0, team_name: team.team_name });
+            void api.leagueClaims(league.id).then((c) => setOwners(c.owners)).catch(() => {});
+          }}
+        />
+      </StartScreen>
+    );
+  }
+
+  if (step === 'claim' && league && yours) {
+    return (
+      <StartScreen footer={<NeonButton label="Continue" onPress={continueAsYours} busy={busy} />}>
+        <Stack.Screen options={{ title: 'Your Team', headerBackVisible: false }} />
+        <View style={styles.head}>
+          <Kicker>{league.name} is here</Kicker>
+          <Title>You&apos;re {yours.team_name}</Title>
+          <Sub>Your {name} team was already linked to your account, so there&apos;s nothing to pick.</Sub>
+        </View>
+        <NotMyTeamLink leagueId={league.id} />
+        <AlreadyHere people={alreadyHere} />
+        {error && <Text style={startStyles.error}>{error}</Text>}
+      </StartScreen>
+    );
+  }
+
   if (step === 'claim' && league) {
     return (
       <StartScreen footer={<NeonButton label="That's me" onPress={claim} disabled={mine === null} busy={busy} />}>
@@ -183,6 +241,7 @@ export default function ConnectLeagueScreen() {
           <Title>Which team is yours?</Title>
           <Sub>These came from your league on {name}.</Sub>
         </View>
+        <AlreadyHere people={alreadyHere} />
         {owners.length === 0 && <Text style={startStyles.muted}>Still bringing your teams in. Pull down on Home in a minute if they don&apos;t show.</Text>}
         {owners.map((o, i) => {
           const on = mine === o.owner_id;
@@ -359,6 +418,24 @@ export default function ConnectLeagueScreen() {
         ))}
       {error && <Text style={startStyles.error}>{error}</Text>}
     </StartScreen>
+  );
+}
+
+// Managers in this league who are already on The Weekend: they aren't in
+// the picker, so say who they are instead of leaving them out.
+function AlreadyHere({ people }: { people: { display_name: string; team_name: string; member: boolean }[] }) {
+  if (people.length === 0) return null;
+  return (
+    <View style={startStyles.card}>
+      <Kicker>Already on The Weekend</Kicker>
+      {people.map((p) => (
+        <Text key={`${p.display_name}-${p.team_name}`} style={styles.check}>
+          {p.display_name} · {p.team_name}
+          {p.member ? ' ✓' : ''}
+        </Text>
+      ))}
+      <Text style={startStyles.muted}>Their teams are already theirs. They just open your invite link to see this league.</Text>
+    </View>
   );
 }
 

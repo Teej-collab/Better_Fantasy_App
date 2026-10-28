@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Stat, Sub, Title, useRequiredField } from '@/components/start/StartUI';
+import { confirmClaim, SharedLoginPicker } from '@/components/start/TeamMatch';
 import { Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -25,6 +26,8 @@ export default function JoinScreen() {
   const [step, setStep] = useState<'find' | 'team'>('find');
   const [unclaimed, setUnclaimed] = useState<{ owner_id: number; display_name: string; team_name?: string | null }[]>([]);
   const [claimId, setClaimId] = useState<number | null>(null);
+  // One login runs several teams here: you pick yours first.
+  const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
   const [teamName, setTeamName] = useState('');
   const teamField = useRequiredField(teamName, 'Give your team a name first.');
   const [busy, setBusy] = useState(false);
@@ -91,7 +94,19 @@ export default function JoinScreen() {
         return;
       }
       await api.joinLeague(preview.invite_code, true);
-      const owners = await api.unclaimedOwners(preview.id).catch(() => []);
+      const claims = await api.leagueClaims(preview.id).catch(() => null);
+      // Already have a team here (connected from ESPN, and you were
+      // already on The Weekend): it's yours, nothing to pick.
+      if (claims?.yours) {
+        await done();
+        return;
+      }
+      if (claims?.shared_login?.length) {
+        setSharedLogin(claims.shared_login);
+        setStep('team');
+        return;
+      }
+      const owners = claims?.owners ?? [];
       setUnclaimed(owners);
       setClaimId(owners[0]?.owner_id ?? null);
       setStep('team');
@@ -100,6 +115,8 @@ export default function JoinScreen() {
   const claim = () =>
     run(async () => {
       if (!preview || claimId === null) return;
+      const picked = unclaimed.find((o) => o.owner_id === claimId);
+      if (!(await confirmClaim(picked?.team_name ?? picked?.display_name ?? 'this'))) return;
       const { token } = await api.claimOwner(preview.id, claimId);
       await signInWithToken(token);
       await done();
@@ -111,6 +128,19 @@ export default function JoinScreen() {
       await api.createTeam(preview.id, teamName.trim());
       await done();
     });
+
+  if (step === 'team' && preview && sharedLogin.length > 0) {
+    return (
+      <StartScreen>
+        <Stack.Screen options={{ title: 'Join a League' }} />
+        <View style={styles.head}>
+          <Kicker>{preview.name}</Kicker>
+          <Title>Which team is yours?</Title>
+        </View>
+        <SharedLoginPicker leagueId={preview.id} teams={sharedLogin} platform="ESPN or Sleeper" onPicked={() => void done()} />
+      </StartScreen>
+    );
+  }
 
   if (step === 'team' && preview) {
     return (

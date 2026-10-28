@@ -580,6 +580,11 @@ async def cleanup_test_season(pool):
             "DELETE FROM co_owner_invites WHERE owner_id IN (SELECT owner_id FROM owners WHERE espn_member_id LIKE 'test-%')"
         )
         await conn.execute("DELETE FROM owners WHERE espn_member_id LIKE 'test-%'")
+        # A shared login's split-off teams get "split:<league>:<team>" owners.
+        await conn.execute(
+            "DELETE FROM owners o WHERE o.espn_member_id LIKE 'split:%' "
+            "AND NOT EXISTS (SELECT 1 FROM teams_by_season t WHERE t.owner_id = o.owner_id)"
+        )
         if linked_user_ids:
             # league_members.user_id -> users.id (Phase 2 of the multi-
             # league migration auto-enrolls every login into the default

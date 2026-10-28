@@ -205,6 +205,27 @@ async def list_unclaimed_owners(conn, league_id: int):
     )
 
 
+async def linked_owners_in_league(conn, league_id: int):
+    """Owners with a team in this league who are already linked to an
+    account: they never show up as claimable (list_unclaimed_owners), so
+    the claim screens say who they are instead (2026-10-28: a league
+    connected from ESPN matched two managers who were already on The
+    Weekend, and the picker silently left them out). `member` says
+    whether that account has joined this league yet."""
+    return await conn.fetch(
+        """
+        SELECT DISTINCT ON (o.owner_id) o.owner_id, o.display_name, t.team_name, ou.user_id,
+               EXISTS (SELECT 1 FROM league_members m WHERE m.league_id = $1 AND m.user_id = ou.user_id) AS member
+        FROM owners o
+        JOIN teams_by_season t ON t.owner_id = o.owner_id
+        JOIN owner_users ou ON ou.owner_id = o.owner_id
+        WHERE t.league_id = $1
+        ORDER BY o.owner_id, t.season DESC
+        """,
+        league_id,
+    )
+
+
 async def claim_owner(conn, league_id: int, owner_id: int, user_id: int) -> bool:
     """Links a real historical owner to the caller's account — every
     table already keyed by that owner_id (chug debts, keeper picks,

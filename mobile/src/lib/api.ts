@@ -996,6 +996,22 @@ export const api = {
     request<LeagueTeam>(`/leagues/${leagueId}/teams`, { method: 'POST', body: JSON.stringify({ team_name: teamName }) }),
   selectLeague: (leagueId: number) =>
     request<{ active_league_id: number }>(`/leagues/${leagueId}/select`, { method: 'POST', body: '{}' }),
+  // Who's left to claim, plus your own team if your account already has
+  // one here and who else is already on The Weekend (2026-10-28).
+  leagueClaims: (leagueId: number) =>
+    request<{
+      owners: { owner_id: number; display_name: string; team_name?: string | null }[];
+      yours?: { owner_id: number; team_name: string } | null;
+      already_here?: { display_name: string; team_name: string; member: boolean }[];
+      shared_login?: { team_id: number; team_name: string }[];
+    }>(`/leagues/${leagueId}/unclaimed-owners`),
+  chooseMyTeam: (leagueId: number, teamId: number) =>
+    request<{ kept_team_id: number; freed: string[] }>(`/leagues/${leagueId}/my-team`, {
+      method: 'POST',
+      body: JSON.stringify({ team_id: teamId }),
+    }),
+  notMyTeam: (leagueId: number, note?: string) =>
+    request<{ reported: boolean }>(`/leagues/${leagueId}/not-my-team`, { method: 'POST', body: JSON.stringify({ note: note ?? null }) }),
   unclaimedOwners: async (leagueId: number) =>
     (await request<{ owners: { owner_id: number; display_name: string; team_name?: string | null }[] }>(`/leagues/${leagueId}/unclaimed-owners`))
       .owners,

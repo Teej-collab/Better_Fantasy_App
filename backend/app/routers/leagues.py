@@ -277,6 +277,15 @@ async def join_league(body: JoinLeagueRequest, request: Request):
         if league is None:
             raise HTTPException(status_code=404, detail="No league found for that invite code")
         await league_queries.add_member(conn, league["id"], payload["user_id"], "member")
+        # Already has a team here (their ESPN identity matched when the
+        # league was connected): they're in its chats like anyone who
+        # claimed theirs, with nothing to pick.
+        mine = next(
+            (r for r in await league_queries.linked_owners_in_league(conn, league["id"]) if r["user_id"] == payload["user_id"]),
+            None,
+        )
+        if mine:
+            await chat_queries.add_owner_to_league_conversations(conn, league["id"], mine["owner_id"])
         if body.make_active:
             await league_queries.set_active_league_id(conn, payload["user_id"], league["id"])
         membership = await league_queries.get_membership(conn, league["id"], payload["user_id"])
@@ -367,6 +376,59 @@ async def sleeper_leagues(username: str, request: Request):
     return {"leagues": leagues, "season": season}
 
 
+class MyTeamRequest(BaseModel):
+    team_id: int
+
+
+@router.post("/{league_id}/my-team")
+async def choose_my_team(league_id: int, body: MyTeamRequest, request: Request):
+    """One ESPN/Sleeper login runs several teams in this league: the
+    caller keeps the one they pick, and each other team gets its own
+    unclaimed owner for its real manager to claim (2026-10-28)."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if await league_queries.get_membership(conn, league_id, payload["user_id"]) is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        freed = await team_queries.split_shared_login(conn, league_id, payload["user_id"], body.team_id)
+    if freed is None:
+        raise HTTPException(status_code=409, detail="That isn't one of the teams your account runs here.")
+    return {"kept_team_id": body.team_id, "freed": freed}
+
+
+class NotMyTeamRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/{league_id}/not-my-team")
+async def report_not_my_team(league_id: int, body: NotMyTeamRequest, request: Request):
+    """"Not my team?" on the screen that says which team is yours: it
+    changes nothing by itself (a wrong unlink would be worse than a wrong
+    match); it lands in Feedback and alerts the admins, who can merge or
+    split owners by hand."""
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if await league_queries.get_membership(conn, league_id, payload["user_id"]) is None:
+            raise HTTPException(status_code=403, detail="You're not a member of this league")
+        league = await conn.fetchval("SELECT name FROM leagues WHERE id = $1", league_id)
+        who = await conn.fetchval("SELECT COALESCE(display_name, email) FROM users WHERE id = $1", payload["user_id"])
+        teams = await team_queries.teams_for_user_in_league(conn, league_id, payload["user_id"])
+        owner_id = teams[0]["owner_id"] if teams else None
+        message = (
+            f"Not my team: {who} says the team the app matched them to in {league} (league {league_id}) "
+            f"isn't theirs. Matched: {', '.join(t['team_name'] for t in teams) or 'none'}."
+            + (f" Note: {body.note.strip()}" if body.note and body.note.strip() else "")
+        )
+        await conn.execute(
+            "INSERT INTO feedback (user_id, submitted_by, message, page_url) VALUES ($1, $2, $3, $4)",
+            payload["user_id"], who or "Unknown", message, f"/leagues/{league_id}",
+        )
+        if not monitoring.is_test_request(request):
+            await admin_alerts.alert_feedback(conn, who or "Unknown", message, False, owner_id)
+    return {"reported": True}
+
+
 @router.get("/{league_id}/unclaimed-owners")
 async def unclaimed_owners(league_id: int, request: Request):
     """Powers the "is one of these you?" picker (see TODO.md's PHASE 9
@@ -379,7 +441,25 @@ async def unclaimed_owners(league_id: int, request: Request):
         if membership is None:
             raise HTTPException(status_code=403, detail="You're not a member of this league")
         rows = await league_queries.list_unclaimed_owners(conn, league_id)
-    return {"owners": [dict(r) for r in rows]}
+        linked = await league_queries.linked_owners_in_league(conn, league_id)
+        my_teams = await team_queries.teams_for_user_in_league(conn, league_id, payload["user_id"])
+    # Your own team here, if your account already has one (an ESPN league
+    # whose teams include managers already on The Weekend): nothing to
+    # pick. Several means one login runs them all: you say which is yours
+    # (POST my-team) rather than us guessing. Everyone else already here
+    # is named, not silently left out.
+    yours = my_teams[0] if len(my_teams) == 1 else None
+    return {
+        "owners": [dict(r) for r in rows],
+        "yours": {"owner_id": yours["owner_id"], "team_name": yours["team_name"]} if yours else None,
+        "shared_login": [{"team_id": t["team_id"], "team_name": t["team_name"]} for t in my_teams]
+        if len(my_teams) > 1 else [],
+        "already_here": [
+            {"display_name": r["display_name"], "team_name": r["team_name"], "member": r["member"]}
+            for r in linked
+            if r["user_id"] != payload["user_id"]
+        ],
+    }
 
 
 class ClaimOwnerRequest(BaseModel):
