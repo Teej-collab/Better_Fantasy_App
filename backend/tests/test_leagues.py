@@ -808,6 +808,7 @@ async def test_managers_already_on_the_weekend_see_their_team_instead_of_a_picke
         mine = (await commish.get(f"/leagues/{league_id}/unclaimed-owners")).json()
 
     assert mine["yours"] == {"owner_id": commish_owner, "team_name": "Purdy Brown Tutes"}
+    assert mine["platform"] is None  # not connected to ESPN or Sleeper
     assert [o["display_name"] for o in mine["owners"]] == ["Kim Horak"]
     assert mine["already_here"] == [{"display_name": "Jeff Horak", "team_name": "Smokin' Darts", "member": False}]
 
@@ -902,6 +903,7 @@ async def test_one_login_running_two_teams_asks_which_is_yours_and_the_sync_keep
         await _login(me, "test-leagues-shared-login@example.com")
         before = (await me.get(f"/leagues/{league_id}/unclaimed-owners")).json()
         assert before["yours"] is None
+        assert before["platform"] == "sleeper"
         assert sorted(t["team_name"] for t in before["shared_login"]) == ["Mr. Swift", "Wayne The Train"]
         keep = next(t["team_id"] for t in before["shared_login"] if t["team_name"] == "Wayne The Train")
         picked = await me.post(f"/leagues/{league_id}/my-team", json={"team_id": keep})

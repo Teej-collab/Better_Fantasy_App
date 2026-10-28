@@ -3,14 +3,14 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { Field, GhostButton, Icon, Kicker, NeonButton, StartScreen, startStyles, Stat, Sub, Title, useRequiredField } from '@/components/start/StartUI';
-import { confirmClaim, SharedLoginPicker } from '@/components/start/TeamMatch';
+import { confirmClaim, MatchedTeamBanner, SharedLoginPicker } from '@/components/start/TeamMatch';
 import { Text } from '@/components/Text';
 import { Colors, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
 import { canScanQr, scanInvite } from '@/lib/qrJoin';
-import { queryClient } from '@/lib/queries';
+import { queryClient, useMe } from '@/lib/queries';
 import type { LeaguePreview } from '@/lib/types';
 
 // Join a league (port of the web's StartFlow join steps): scan the QR,
@@ -28,6 +28,9 @@ export default function JoinScreen() {
   const [claimId, setClaimId] = useState<number | null>(null);
   // One login runs several teams here: you pick yours first.
   const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
+  // Matched to your team by your ESPN/Sleeper account: say so (the pop-up).
+  const [matched, setMatched] = useState<{ teamName: string; platform: string | null } | null>(null);
+  const me = useMe().data;
   const [teamName, setTeamName] = useState('');
   const teamField = useRequiredField(teamName, 'Give your team a name first.');
   const [busy, setBusy] = useState(false);
@@ -98,7 +101,7 @@ export default function JoinScreen() {
       // Already have a team here (connected from ESPN, and you were
       // already on The Weekend): it's yours, nothing to pick.
       if (claims?.yours) {
-        await done();
+        setMatched({ teamName: claims.yours.team_name, platform: claims.platform ?? null });
         return;
       }
       if (claims?.shared_login?.length) {
@@ -257,6 +260,17 @@ export default function JoinScreen() {
         </View>
       )}
       {error && <Text style={startStyles.error}>{error}</Text>}
+      {matched && preview && (
+        <MatchedTeamBanner
+          visible
+          leagueId={preview.id}
+          leagueName={preview.name}
+          teamName={matched.teamName}
+          platform={matched.platform}
+          displayName={me?.display_name ?? null}
+          onEnter={() => void done()}
+        />
+      )}
     </StartScreen>
   );
 }

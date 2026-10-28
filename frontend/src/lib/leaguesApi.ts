@@ -212,6 +212,8 @@ export async function selectLeague(leagueId: number): Promise<{ active_league_id
 // Who's left to claim, plus your own team if your account already has
 // one here and who else is already on The Weekend (2026-10-28).
 export type LeagueClaims = {
+  // Where the league's teams came from ("espn" | "sleeper"), when known.
+  platform?: string | null;
   owners: UnclaimedOwner[];
   yours?: { owner_id: number; team_name: string } | null;
   already_here?: { display_name: string; team_name: string; member: boolean }[];

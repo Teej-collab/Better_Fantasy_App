@@ -443,6 +443,13 @@ async def unclaimed_owners(league_id: int, request: Request):
         rows = await league_queries.list_unclaimed_owners(conn, league_id)
         linked = await league_queries.linked_owners_in_league(conn, league_id)
         my_teams = await team_queries.teams_for_user_in_league(conn, league_id, payload["user_id"])
+        from app.domain.league_mode import mirror_platform
+
+        # Where the teams came from, so "we matched your ESPN account" can
+        # name it: the live connection, or the platform it switched from.
+        platform = await mirror_platform(conn, league_id) or await conn.fetchval(
+            "SELECT platform FROM league_switches WHERE league_id = $1", league_id
+        )
     # Your own team here, if your account already has one (an ESPN league
     # whose teams include managers already on The Weekend): nothing to
     # pick. Several means one login runs them all: you say which is yours
@@ -450,6 +457,7 @@ async def unclaimed_owners(league_id: int, request: Request):
     # is named, not silently left out.
     yours = my_teams[0] if len(my_teams) == 1 else None
     return {
+        "platform": platform,
         "owners": [dict(r) for r in rows],
         "yours": {"owner_id": yours["owner_id"], "team_name": yours["team_name"]} if yours else None,
         "shared_login": [{"team_id": t["team_id"], "team_name": t["team_name"]} for t in my_teams]

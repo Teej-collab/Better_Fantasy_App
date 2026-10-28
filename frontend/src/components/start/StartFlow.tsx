@@ -136,6 +136,9 @@ export function StartFlow({
   const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
   const [sharedPick, setSharedPick] = useState<number | null>(null);
   const [reported, setReported] = useState(false);
+  // Joining put you straight onto a team matched to your ESPN/Sleeper
+  // account: the pop-up says so (2026-10-28).
+  const [matched, setMatched] = useState<{ teamName: string; platform: string | null } | null>(null);
   // Sleeper by username (2026-10-24): no link to copy.
   const [sleeperName, setSleeperName] = useState("");
   const [sleeperOptions, setSleeperOptions] = useState<SleeperLeagueOption[] | null>(null);
@@ -229,8 +232,8 @@ export function StartFlow({
       // Already have a team here (connected from ESPN, and you were
       // already on The Weekend): it's yours, nothing to pick.
       if (claims?.yours) {
-        router.push("/");
-        router.refresh();
+        setMatched({ teamName: claims.yours.team_name, platform: claims.platform ?? null });
+        setReported(false);
         return;
       }
       if (claims?.shared_login?.length) {
@@ -529,7 +532,54 @@ export function StartFlow({
     </>
   );
 
-  if (view === "joinTeam" && joined && sharedLogin.length > 0) {
+  if (matched && preview) {
+    const account = matched.platform === "sleeper" ? "Sleeper account" : matched.platform === "espn" ? "ESPN account" : "fantasy account";
+    content = (
+      <>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="matched-title">
+          <div className={`${styles.card} w-full max-w-md gap-3 border border-[color:var(--wl-accent)] p-5`}>
+            <span className={styles.kicker}>{reported ? "Got it" : "Matched to your team"}</span>
+            <h2 id="matched-title" className={`${anton.className} text-3xl uppercase`}>
+              {reported ? "Thanks for telling us" : `You're ${matched.teamName}`}
+            </h2>
+            <p className="text-sm leading-snug text-[#aab2bf]">
+              {reported
+                ? `We'll sort out ${matched.teamName} in ${preview.name} and fix it by hand. You can head in now.`
+                : `We matched your ${account} to this team in ${preview.name}, so you're all set.`}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {!reported && (
+                <button
+                  type="button"
+                  className={`${styles.ghost} flex-1 rounded-full`}
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      await notMyTeam(preview.id);
+                      setReported(true);
+                    })
+                  }
+                >
+                  Not my team
+                </button>
+              )}
+              <button
+                type="button"
+                className={`${styles.neon} flex-1 rounded-full`}
+                // A full load of Home plays the Welcome to The Weekend intro;
+                // router.push would skip it.
+                // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+                onClick={() => window.location.assign("/")}
+              >
+                Send it
+              </button>
+            </div>
+            {error && <p className={styles.error}>{error}</p>}
+          </div>
+        </div>
+      </>
+    );
+  } else if (view === "joinTeam" && joined && sharedLogin.length > 0) {
     content = (
       <>
         <Top onBack={() => go("join")} />

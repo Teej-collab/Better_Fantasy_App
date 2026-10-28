@@ -1000,6 +1000,7 @@ export const api = {
   // one here and who else is already on The Weekend (2026-10-28).
   leagueClaims: (leagueId: number) =>
     request<{
+      platform?: string | null;
       owners: { owner_id: number; display_name: string; team_name?: string | null }[];
       yours?: { owner_id: number; team_name: string } | null;
       already_here?: { display_name: string; team_name: string; member: boolean }[];
