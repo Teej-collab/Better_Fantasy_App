@@ -1052,6 +1052,12 @@ export const api = {
     request<{ leagues: { league_id: string; name: string; teams: number | null; status: string | null }[]; season: number }>(
       `/leagues/sleeper-leagues?username=${encodeURIComponent(username)}`,
     ),
+  // "Ask to join" a league that's already on The Weekend: pushes its commissioner.
+  requestJoin: (platform: 'espn' | 'sleeper', externalId: string) =>
+    request<{ sent: boolean; league: string; commissioner: string }>('/leagues/request-join', {
+      method: 'POST',
+      body: JSON.stringify({ platform, external_id: externalId }),
+    }),
   importPreview: (platform: 'espn' | 'sleeper', league: string, espnS2?: string, espnSwid?: string) =>
     request<ImportPreview>('/leagues/import-preview', {
       method: 'POST',

@@ -11,8 +11,8 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { timeAgo } from '@/components/admin/AdminUI';
 import { api } from '@/lib/api';
 import { haptics } from '@/lib/haptics';
-import { joinLinkFor } from '@/lib/qrJoin';
-import { refreshCommish, useCommishMembers } from '@/lib/queries';
+import { inviteMessage } from '@/components/league/InviteSheet';
+import { refreshCommish, useActiveLeagueName, useCommishMembers } from '@/lib/queries';
 import type { CommishMember } from '@/lib/types';
 
 // Members & teams (2026-10-23 overhaul, mockup 4): the old Members and
@@ -31,6 +31,7 @@ const AVATAR_COLORS = ['#39ff14', '#38bdf8', '#f472b6', '#facc15', '#a855f7', '#
 
 export default function MembersScreen() {
   const q = useCommishMembers();
+  const leagueName = useActiveLeagueName().data;
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const data = q.data;
@@ -55,7 +56,7 @@ export default function MembersScreen() {
               </View>
               <BigButton
                 label="Share invite"
-                onPress={() => void Share.share({ message: `Join my league on The Weekend — code ${data.invite_code}: ${joinLinkFor(data.invite_code)}` })}
+                onPress={() => void Share.share({ message: inviteMessage(leagueName ?? 'our league', data.invite_code) })}
               />
             </View>
           </Panel>

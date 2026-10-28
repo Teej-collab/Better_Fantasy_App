@@ -37,6 +37,7 @@ import {
   getUnclaimedOwners,
   getSleeperLeagues,
   importPreview,
+  requestJoin,
   joinLeague,
   previewLeague,
   selectLeague,
@@ -49,6 +50,7 @@ import {
   type UnclaimedOwner,
 } from "@/lib/leaguesApi";
 import { seasonalEmblem } from "@/lib/seasonal";
+import { IOS_APP_URL } from "@/lib/appLinks";
 import styles from "./StartFlow.module.css";
 
 const anton = Anton({ weight: "400", subsets: ["latin"] });
@@ -106,6 +108,7 @@ export function StartFlow({
   const [activeId, setActiveId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [joinAsked, setJoinAsked] = useState(false);
 
   // Join
   const [code, setCode] = useState(initialCode ?? "");
@@ -488,6 +491,10 @@ export function StartFlow({
         <button type="button" className={`${styles.neon} mt-auto`} disabled={!preview || busy} onClick={joinLeagueNow}>
           {preview ? (preview.already_member ? `Go to ${preview.name}` : `Join ${preview.name}`) : "Join league"}
         </button>
+        {/* The app is the best way in (2026-10-28): the iPhone download. */}
+        <a href={IOS_APP_URL} className={`${styles.ghost} text-center`} target="_blank" rel="noopener">
+          Get the iPhone app
+        </a>
       </>
     );
   }
@@ -1046,7 +1053,59 @@ export function StartFlow({
     );
   }
 
-  if (view === "connectFound" && found) {
+  // Already on The Weekend (2026-10-28): one copy per ESPN or Sleeper
+  // league, so a second person joins that one instead of splitting it.
+  if (view === "connectFound" && found?.existing) {
+    const existing = found.existing;
+    content = (
+      <>
+        <Top onBack={() => go("connectLink")} />
+        <div className="flex flex-col gap-2">
+          <span className={styles.kicker}>Already on The Weekend</span>
+          <h1 className={`${anton.className} ${styles.title}`}>
+            {existing.you_are_in_it ? `You're already in ${existing.name}` : `${existing.name} is already here`}
+          </h1>
+          <p className={styles.sub}>
+            {existing.you_are_in_it
+              ? "No need to bring it in again. Open it from your leagues."
+              : `${existing.commissioner} brought it in already. Join theirs so everyone's in one league, with one chat and one set of standings.`}
+          </p>
+        </div>
+        {joinAsked && !existing.you_are_in_it && (
+          <div className={styles.card}>
+            <span className="text-sm text-[#aab2bf]">
+              Sent. {existing.commissioner} got a notification to send you the invite. You can also ask them in your group text.
+            </span>
+          </div>
+        )}
+        {error && <p className={styles.error}>{error}</p>}
+        {existing.you_are_in_it ? (
+          <Link href="/leagues" className={`${styles.neon} mt-auto text-center`}>
+            Open my leagues
+          </Link>
+        ) : (
+          <div className="mt-auto flex flex-col gap-2">
+            <button
+              type="button"
+              className={styles.neon}
+              disabled={busy || joinAsked}
+              onClick={() =>
+                run(async () => {
+                  await requestJoin(found.platform, found.external_id);
+                  setJoinAsked(true);
+                })
+              }
+            >
+              {joinAsked ? "Asked ✓" : `Ask ${existing.commissioner} to let me in`}
+            </button>
+            <button type="button" className={styles.ghost} onClick={() => go("join")}>
+              I have an invite code
+            </button>
+          </div>
+        )}
+      </>
+    );
+  } else if (view === "connectFound" && found) {
     content = (
       <>
         <Top onBack={() => go("connectLink")} />
@@ -1284,7 +1343,7 @@ function InviteScreen({ league, teamCount, hasDraftDate }: { league: League; tea
   }
 
   async function share() {
-    const text = `Join my league "${league.name}" on The Weekend — code ${league.invite_code}`;
+    const text = `Join my league "${league.name}" on The Weekend — code ${league.invite_code}. Get the iPhone app: ${IOS_APP_URL}`;
     if (navigator.share) {
       await navigator.share({ title: league.name, text, url: link }).catch(() => {});
     } else {
@@ -1364,10 +1423,6 @@ function useRequired(id: string, value: string, message: string) {
   };
 }
 
-// Where the website sends people to get the iPhone app, for Sign in
-// with ESPN (2026-10-27): set this to the public TestFlight link (later
-// the App Store page). Until then the card just says what to tap.
-const IOS_APP_URL: string | null = null;
 
 // Claiming a team links it to your account in every league, so it asks
 // first: a wrong tap is the one way a team gets mixed up (2026-10-28).

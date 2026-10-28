@@ -101,3 +101,39 @@ async def _preview_sleeper(text: str, season: int) -> dict:
         "team_count": len(teams),
         "teams": teams,
     }
+
+
+async def existing_league(conn, platform: str, external_id: str | int) -> dict | None:
+    """An ESPN or Sleeper league that's already on The Weekend (2026-10-28):
+    one copy per outside league, so a second person bringing it in joins
+    that one instead of splitting the league in two. League #1 is
+    connected through the server's own ESPN settings, not a row."""
+    import os
+
+    from app.config import DEFAULT_LEAGUE_ID
+
+    league_id = None
+    if platform == "espn":
+        try:
+            espn_id = int(external_id)
+        except (TypeError, ValueError):
+            return None
+        league_id = await conn.fetchval("SELECT league_id FROM league_espn_connections WHERE espn_league_id = $1", espn_id)
+        if league_id is None and os.getenv("ESPN_LEAGUE_ID", "").strip() == str(espn_id):
+            league_id = DEFAULT_LEAGUE_ID
+    elif platform == "sleeper":
+        league_id = await conn.fetchval(
+            "SELECT league_id FROM league_sleeper_connections WHERE sleeper_league_id = $1", str(external_id)
+        )
+    if league_id is None:
+        return None
+    row = await conn.fetchrow(
+        """
+        SELECT l.id, l.name,
+               (SELECT COALESCE(u.display_name, 'the commissioner') FROM league_members lm JOIN users u ON u.id = lm.user_id
+                WHERE lm.league_id = l.id AND lm.role = 'commissioner' ORDER BY lm.user_id LIMIT 1) AS commissioner
+        FROM leagues l WHERE l.id = $1
+        """,
+        league_id,
+    )
+    return {"league_id": row["id"], "name": row["name"], "commissioner": row["commissioner"]} if row else None

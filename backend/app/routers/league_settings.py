@@ -380,6 +380,18 @@ async def get_espn_connection(request: Request, pool=Depends(get_pool)):
     }
 
 
+async def _refuse_second_copy(conn, platform: str, external_id, league_id: int) -> None:
+    """One copy of an outside league on The Weekend (2026-10-28)."""
+    from app.domain import league_import
+
+    existing = await league_import.existing_league(conn, platform, external_id)
+    if existing and existing["league_id"] != league_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"That league is already on The Weekend as {existing['name']}. Ask {existing['commissioner']} for the invite instead.",
+        )
+
+
 @router.post("/espn-connection")
 async def connect_espn(body: ConnectEspnRequest, request: Request, pool=Depends(get_pool)):
     """Validates the given credentials against a real ESPN fetch BEFORE
@@ -423,6 +435,7 @@ async def connect_espn(body: ConnectEspnRequest, request: Request, pool=Depends(
         league_id = await require_league_commissioner(conn, payload)
         if await sleeper_connection_queries.get_connection(conn, league_id):
             raise HTTPException(status_code=409, detail="This league is connected to Sleeper. Disconnect it first.")
+        await _refuse_second_copy(conn, "espn", espn_league_id, league_id)
         try:
             row = await espn_connection_queries.upsert_connection(
                 conn, league_id, espn_league_id,
@@ -560,6 +573,7 @@ async def connect_sleeper(body: ConnectSleeperRequest, request: Request, pool=De
         league_id = await require_league_commissioner(conn, payload)
         if await espn_connection_queries.get_connection(conn, league_id):
             raise HTTPException(status_code=409, detail="This league is connected to ESPN. Disconnect it first.")
+        await _refuse_second_copy(conn, "sleeper", sleeper_league_id, league_id)
         await sleeper_connection_queries.upsert_connection(
             conn, league_id, sleeper_league_id, sleeper_league.get("name"), payload["user_id"]
         )

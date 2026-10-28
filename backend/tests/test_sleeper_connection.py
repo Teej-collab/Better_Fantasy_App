@@ -137,3 +137,37 @@ async def test_sleeper_leagues_by_username(pool, monkeypatch):
     assert ok.status_code == 200, ok.text
     assert ok.json()["leagues"] == [{"league_id": LEAGUE_ID, "name": "Test Sleeper League", "teams": 12, "status": "in_season"}]
     assert missing.status_code == 404
+
+
+async def test_a_league_already_on_the_weekend_is_offered_to_join_not_copied(pool, monkeypatch):
+    """2026-10-28: one copy per outside league. A second person bringing
+    the same Sleeper league in sees it's already here (and can ask to
+    join); connecting it to a second league is refused."""
+    monkeypatch.setenv("ACTIVE_SEASON", str(TEST_SEASON))
+    _fake_sleeper(monkeypatch)
+    await _seed_players(pool)
+    pushes = []
+
+    async def fake_send(conn, owner_id, payload, now=None):
+        pushes.append((owner_id, payload["title"]))
+        return 1
+
+    monkeypatch.setattr("app.notifications.dispatcher.send_to_owner", fake_send)
+    async with _client() as first:
+        await first.post("/auth/signup", json={"email": "test-sleeper-first@example.com", "password": "correct-horse", "display_name": "First Commish"})
+        await first.post("/leagues", json={"name": "Test League Sleeper First"})
+        assert (await first.post("/league/sleeper-connection", json={"league": LEAGUE_ID})).status_code == 200
+        mine = (await first.post("/leagues/import-preview", json={"platform": "sleeper", "league": LEAGUE_ID})).json()
+    assert mine["existing"]["you_are_in_it"] is True
+
+    async with _client() as second:
+        await second.post("/auth/signup", json={"email": "test-sleeper-second@example.com", "password": "correct-horse", "display_name": "Second Person"})
+        preview = (await second.post("/leagues/import-preview", json={"platform": "sleeper", "league": LEAGUE_ID})).json()
+        asked = await second.post("/leagues/request-join", json={"platform": "sleeper", "external_id": LEAGUE_ID})
+        await second.post("/leagues", json={"name": "Test League Sleeper Copy"})
+        copy = await second.post("/league/sleeper-connection", json={"league": LEAGUE_ID})
+    assert preview["existing"] == {"name": "Test League Sleeper First", "commissioner": "First Commish", "you_are_in_it": False}
+    assert "invite_code" not in str(preview)
+    assert asked.status_code == 200 and len(pushes) == 1
+    assert copy.status_code == 409
+    assert "already on The Weekend" in copy.json()["detail"]

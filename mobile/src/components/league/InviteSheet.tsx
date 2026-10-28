@@ -8,15 +8,18 @@ import { Kicker, NeonButton } from '@/components/start/StartUI';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
+import { IOS_APP_URL } from '@/lib/appLinks';
 import { joinLinkFor } from '@/lib/qrJoin';
 
-/** The invite text: the web link everyone can open, plus a link that
- *  opens the app's join screen for anyone who already has the app. */
+/** The invite text: the app download (TestFlight, 2026-10-28), the web
+ *  join link everyone can open, and a link that opens the app's join
+ *  screen for anyone who already has the app. */
 export function inviteMessage(leagueName: string, code: string): string {
   return [
     `Join my league "${leagueName}" on The Weekend!`,
     `Invite code: ${code}`,
-    joinLinkFor(code),
+    `Get the iPhone app: ${IOS_APP_URL}`,
+    `Then join here: ${joinLinkFor(code)}`,
     `Have the app? Open: weekendleague://start/join?code=${encodeURIComponent(code)}`,
   ].join('\n');
 }

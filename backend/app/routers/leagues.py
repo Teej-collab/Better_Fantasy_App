@@ -9,6 +9,7 @@ draft setup (POST /draft/setup) and scoring already work per-league as
 of Phase 4, so nothing else needs to change for a self-serve league to
 become fully playable once it has teams.
 """
+import datetime
 import html
 import re
 from urllib.parse import unquote
@@ -351,14 +352,64 @@ async def import_preview(body: ImportPreviewRequest, request: Request):
     """The new-commissioner flow's "Found your league" (2026-10-24): an
     ESPN or Sleeper league's name, week and teams, looked up without
     saving anything. Signed-in only."""
-    _require_session(request)
+    payload = _require_session(request)
     season = int(_require("ACTIVE_SEASON"))
     try:
-        return await league_import.preview(
+        found = await league_import.preview(
             body.platform, body.league, season, (body.espn_s2 or "").strip(), (body.espn_swid or "").strip()
         )
     except league_import.ImportLookupError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Already on The Weekend (2026-10-28): the flow offers joining it
+    # instead of making a second copy. Its invite code isn't shared here;
+    # "Ask to join" tells the commissioner.
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await league_import.existing_league(conn, found["platform"], found["external_id"])
+        if existing:
+            member = await league_queries.get_membership(conn, existing["league_id"], payload["user_id"]) is not None
+            found["existing"] = {"name": existing["name"], "commissioner": existing["commissioner"], "you_are_in_it": member}
+            if member:
+                found["existing"]["league_id"] = existing["league_id"]
+    return found
+
+
+class RequestJoinBody(BaseModel):
+    platform: str
+    external_id: str
+
+
+@router.post("/request-join")
+async def request_join(body: RequestJoinBody, request: Request):
+    """"Ask to join" on a league that's already on The Weekend: pushes its
+    commissioner your name so they can send you the invite. Once a day
+    per person per league."""
+    from app.notifications import dispatcher, formatter
+    from app.notifications.game_alerts import claim_once
+
+    payload = _require_session(request)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await league_import.existing_league(conn, body.platform, body.external_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="That league isn't on The Weekend yet. You can bring it in.")
+        if await league_queries.get_membership(conn, existing["league_id"], payload["user_id"]) is not None:
+            raise HTTPException(status_code=409, detail="You're already in this league.")
+        if not await claim_once(conn, f"join-request:{existing['league_id']}:{payload['user_id']}:{datetime.date.today().isoformat()}"):
+            return {"sent": True, "league": existing["name"], "commissioner": existing["commissioner"]}
+        who = await conn.fetchval("SELECT COALESCE(display_name, email) FROM users WHERE id = $1", payload["user_id"])
+        owners = [
+            r["owner_id"]
+            for r in await conn.fetch(
+                "SELECT DISTINCT ou.owner_id FROM league_members lm JOIN owner_users ou ON ou.user_id = lm.user_id "
+                "WHERE lm.league_id = $1 AND lm.role = 'commissioner'",
+                existing["league_id"],
+            )
+        ]
+        push = formatter.join_request(who or "Someone", existing["name"])
+        for owner in owners:
+            await dispatcher.send_to_owner(conn, owner, push)
+    return {"sent": True, "league": existing["name"], "commissioner": existing["commissioner"]}
 
 
 @router.get("/sleeper-leagues")

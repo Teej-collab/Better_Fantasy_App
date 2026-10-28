@@ -129,6 +129,17 @@ def keeper_deadline_approaching(minutes: int) -> dict:
     return _payload("⏰ Keeper picks lock soon", f"Keeper selections lock in {minutes} minutes — make your pick now if you haven't.", "/war-room", "keeper_deadline_approaching")
 
 
+def join_request(who: str, league_name: str) -> dict:
+    """Someone tried to bring in an ESPN/Sleeper league that's already on
+    The Weekend and asked to join (2026-10-28)."""
+    return _payload(
+        "👋 Someone wants in",
+        f"{who} tried to bring {league_name} onto The Weekend. It's already here: send them your invite from League › Invite friends.",
+        "/leagues",
+        "join_request",
+    )
+
+
 def keeper_nudge(sender: str) -> dict:
     return _payload("⏰ Your keepers are due", f"{sender} is waiting on your keepers. Pick them in the War Room.", "/war-room", "keeper_nudge", tag="keeper_nudge")
 

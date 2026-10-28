@@ -10,6 +10,7 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { haptics } from '@/lib/haptics';
+import { IOS_APP_URL } from '@/lib/appLinks';
 import { joinLinkFor } from '@/lib/qrJoin';
 import { queryClient } from '@/lib/queries';
 import type { ImportPreview, LeagueInfo } from '@/lib/types';
@@ -51,6 +52,7 @@ export default function ConnectLeagueScreen() {
   const [sharedLogin, setSharedLogin] = useState<{ team_id: number; team_name: string }[]>([]);
   const [unclaimedLeft, setUnclaimedLeft] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [joinAsked, setJoinAsked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Sleeper by username (2026-10-24): no link to copy.
   const [username, setUsername] = useState('');
@@ -145,7 +147,7 @@ export default function ConnectLeagueScreen() {
   if (step === 'invite' && league && preview) {
     const joinLink = joinLinkFor(league.invite_code);
     const claimed = preview.team_count - (unclaimedLeft ?? preview.team_count - 1);
-    const message = `Our league is on The Weekend now: write-ups before every matchup, live gamecasts and a real league chat. Still on ${name}, nothing changes there. Tap to claim your team: ${joinLink}`;
+    const message = `Our league is on The Weekend now: write-ups before every matchup, live gamecasts and a real league chat. Still on ${name}, nothing changes there. Get the iPhone app: ${IOS_APP_URL} then tap to claim your team: ${joinLink}`;
     return (
       <StartScreen
         footer={
@@ -267,6 +269,53 @@ export default function ConnectLeagueScreen() {
             </Pressable>
           );
         })}
+        {error && <Text style={startStyles.error}>{error}</Text>}
+      </StartScreen>
+    );
+  }
+
+  // Already on The Weekend (2026-10-28): one copy per ESPN or Sleeper
+  // league, so a second person joins that one instead of splitting it.
+  if (step === 'found' && preview?.existing) {
+    const existing = preview.existing;
+    return (
+      <StartScreen
+        footer={
+          existing.you_are_in_it ? (
+            <NeonButton label="Open my leagues" onPress={() => router.replace('/start')} />
+          ) : (
+            <>
+              <NeonButton
+                label={joinAsked ? 'Asked ✓' : `Ask ${existing.commissioner} to let me in`}
+                busy={busy}
+                onPress={() =>
+                  run(async () => {
+                    await api.requestJoin(preview.platform, preview.external_id);
+                    haptics.success();
+                    setJoinAsked(true);
+                  })
+                }
+              />
+              <GhostButton label="I have an invite code" onPress={() => router.replace('/start/join')} />
+              <GhostButton label="Not it? Paste a different link" onPress={() => setStep('link')} />
+            </>
+          )
+        }>
+        <Stack.Screen options={{ title: `From ${name}` }} />
+        <Kicker>ALREADY ON THE WEEKEND</Kicker>
+        <Title>{existing.you_are_in_it ? `You're already in ${existing.name}` : `${existing.name} is already here`}</Title>
+        <Sub>
+          {existing.you_are_in_it
+            ? 'No need to bring it in again. Open it from your leagues.'
+            : `${existing.commissioner} brought it in already. Join theirs so everyone's in one league, with one chat and one set of standings.`}
+        </Sub>
+        {joinAsked && !existing.you_are_in_it && (
+          <View style={startStyles.card}>
+            <Text style={startStyles.muted}>
+              Sent. {existing.commissioner} got a notification to send you the invite. You can also ask them in your group text.
+            </Text>
+          </View>
+        )}
         {error && <Text style={startStyles.error}>{error}</Text>}
       </StartScreen>
     );

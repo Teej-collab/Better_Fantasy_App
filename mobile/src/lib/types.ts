@@ -1336,6 +1336,8 @@ export type ImportPreview = {
   current_week: number;
   team_count: number;
   teams: { team_name: string; owner_name: string | null }[];
+  // Already on The Weekend (2026-10-28): join it rather than make a copy.
+  existing?: { name: string; commissioner: string; you_are_in_it: boolean; league_id?: number } | null;
 };
 
 export type SleeperConnectionStatus =

@@ -71,7 +71,14 @@ export type ImportPreview = {
   current_week: number;
   team_count: number;
   teams: { team_name: string; owner_name: string | null }[];
+  // Already on The Weekend (2026-10-28): join it rather than make a copy.
+  existing?: { name: string; commissioner: string; you_are_in_it: boolean; league_id?: number } | null;
 };
+
+// "Ask to join" a league that's already on The Weekend: pushes its commissioner.
+export async function requestJoin(platform: "espn" | "sleeper", externalId: string): Promise<{ sent: boolean }> {
+  return post<{ sent: boolean }>("/leagues/request-join", { platform, external_id: externalId });
+}
 
 // A Sleeper user's leagues this season, by username (2026-10-24).
 export type SleeperLeagueOption = { league_id: string; name: string; teams: number | null; status: string | null };
