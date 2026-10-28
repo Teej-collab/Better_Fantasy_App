@@ -12,6 +12,16 @@ const INTRO_SOUND_MODES: { key: IntroSoundMode; label: string }[] = [
   { key: "off", label: "Off" },
 ];
 
+// Keep in step with the app's THEME_PRESETS (mobile SettingsSections.tsx).
+const THEME_PRESETS: { name: string; theme: OwnerPreferences["theme"]; accent: string; honeycomb: string | null; surface: string; bg: string }[] = [
+  { name: "Neon Green", theme: "calm", accent: "#39ff14", honeycomb: null, surface: "#12161c", bg: "#0d1016" },
+  { name: "Ice Blue", theme: "calm", accent: "#4cc3ff", honeycomb: "#0ea5e9", surface: "#111823", bg: "#0b1018" },
+  { name: "Cosmic", theme: "cosmic", accent: "#39ffb0", honeycomb: "multi", surface: "#171129", bg: "#0a0716" },
+  { name: "Sunset", theme: "calm", accent: "#fb923c", honeycomb: "#dc143c", surface: "#1b1410", bg: "#120d0b" },
+  { name: "Royal", theme: "cosmic", accent: "#a855f7", honeycomb: "#a855f7", surface: "#16131f", bg: "#0e0c16" },
+  { name: "Gold Rush", theme: "calm", accent: "#facc15", honeycomb: "#facc15", surface: "#18160e", bg: "#100f0a" },
+];
+
 const NEON_LEVELS: { key: OwnerPreferences["neon_intensity"]; label: string }[] = [
   { key: "subtle", label: "Subtle" },
   { key: "standard", label: "Standard" },
@@ -104,6 +114,36 @@ export function AppearanceSection() {
       .then(setPrefs)
       .catch(() => setError("Couldn't load your appearance settings."));
   }, []);
+
+  // A theme (the same six as the app's Settings › Look & feel): look,
+  // accent and background lights in one save; the card and border
+  // colors go back to following the accent.
+  async function applyPreset(t: (typeof THEME_PRESETS)[number]) {
+    if (!prefs) return;
+    const previous = prefs;
+    const fields = { theme: t.theme, accent_color: t.accent, honeycomb_color: t.honeycomb, your_week_color: null, border_glow_color: null };
+    setPrefs({ ...prefs, ...fields });
+    document.documentElement.setAttribute("data-wl-theme", t.theme);
+    setPreferenceCookie("wl_theme", t.theme);
+    applyAccentColor(t.accent);
+    applyHoneycombColor(t.honeycomb);
+    applyYourWeekColor(null);
+    applyBorderGlowColor(null);
+    try {
+      setPrefs(await updatePreferences(fields));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      setPrefs(previous);
+      document.documentElement.setAttribute("data-wl-theme", previous.theme);
+      setPreferenceCookie("wl_theme", previous.theme);
+      applyAccentColor(previous.accent_color);
+      applyHoneycombColor(previous.honeycomb_color);
+      applyYourWeekColor(previous.your_week_color);
+      applyBorderGlowColor(previous.border_glow_color);
+      setError("Couldn't save that change — try again.");
+    }
+  }
 
   async function setTheme(theme: OwnerPreferences["theme"]) {
     if (!prefs) return;
@@ -244,8 +284,8 @@ export function AppearanceSection() {
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Appearance</h1>
-          <p className="text-sm text-black/50 dark:text-white/50">The Weekend&apos;s look, tuned to your taste.</p>
+          <h1 className="text-xl font-semibold">Look &amp; feel</h1>
+          <p className="text-sm text-black/50 dark:text-white/50">Pick a theme in one click, or fine-tune it below.</p>
         </div>
         <SavedIndicator show={saved} />
       </div>
@@ -255,6 +295,39 @@ export function AppearanceSection() {
           {error}
         </p>
       )}
+
+      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Themes</h2>
+          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
+            One click sets the look, accent and background lights together. Change any of them below after.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Themes">
+          {THEME_PRESETS.map((t) => {
+            const on = prefs.theme === t.theme && (prefs.accent_color ?? "").toLowerCase() === t.accent.toLowerCase();
+            return (
+              <button
+                key={t.name}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => void applyPreset(t)}
+                className="flex min-h-20 flex-col items-start justify-between rounded-xl border-2 p-2.5 text-left text-sm font-semibold text-white"
+                style={{ background: t.bg, borderColor: on ? t.accent : "rgba(255,255,255,0.12)" }}
+              >
+                <span className="flex gap-1">
+                  <span className="h-4 w-4 rounded-full" style={{ background: t.accent }} />
+                  <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: t.surface }} />
+                </span>
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <p className="text-xs font-bold tracking-[0.14em] text-black/50 dark:text-white/50">FINE-TUNE</p>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
@@ -473,7 +546,18 @@ export function AppearanceSection() {
           </button>
         </div>
       </section>
+    </div>
+  );
+}
 
+// Sound (2026-10-28 cleanup): the intro sound, apart from the look.
+export function SoundSection() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-xl font-semibold">Sound</h1>
+        <p className="text-sm text-black/50 dark:text-white/50">The intro when you open The Weekend.</p>
+      </div>
       <IntroSoundSetting />
     </div>
   );

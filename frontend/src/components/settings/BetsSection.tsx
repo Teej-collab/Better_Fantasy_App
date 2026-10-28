@@ -43,8 +43,8 @@ export function BetsSection() {
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Bets</h1>
-          <p className="text-sm text-black/50 dark:text-white/50">Track your bets live. Tracking only — nothing is ever placed.</p>
+          <h1 className="text-xl font-semibold">Features</h1>
+          <p className="text-sm text-black/50 dark:text-white/50">Optional extras you can turn on or off.</p>
         </div>
         <SavedIndicator show={saved} />
       </div>

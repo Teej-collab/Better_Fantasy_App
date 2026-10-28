@@ -34,8 +34,6 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
   const [teamNameStatus, setTeamNameStatus] = useState<"idle" | "saving" | "error">("idle");
   const [teamNameError, setTeamNameError] = useState<string | null>(null);
 
-  const [color, setColor] = useState(initial.chat_color);
-  const [colorStatus, setColorStatus] = useState<"idle" | "saving" | "error">("idle");
 
   const [logoUrl, setLogoUrl] = useState(initial.logo_url);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -116,21 +114,6 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
       setTeamNameStatus("idle");
     }
   }
-
-  async function applyColor(next: string | null) {
-    setColorStatus("saving");
-    try {
-      await updateChatColor(next);
-      setColor(next);
-      router.refresh();
-    } catch {
-      setColorStatus("error");
-      return;
-    }
-    setColorStatus("idle");
-  }
-
-  const previewStyle = chatColorStyle(color) ?? { backgroundColor: DEFAULT_BUBBLE_COLOR, color: readableTextColor(DEFAULT_BUBBLE_COLOR) };
 
   return (
     <div className="flex flex-col gap-6">
@@ -235,6 +218,33 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
         </section>
       )}
 
+    </div>
+  );
+}
+
+// Your chat bubble color (moved here from Profile, 2026-10-28): it's how
+// your messages look in League Chat, so it lives with Chat now.
+export function ChatBubbleSection({ initialColor }: { initialColor: string | null }) {
+  const router = useRouter();
+  const [color, setColor] = useState(initialColor);
+  const [colorStatus, setColorStatus] = useState<"idle" | "saving" | "error">("idle");
+
+  async function applyColor(next: string | null) {
+    setColorStatus("saving");
+    try {
+      await updateChatColor(next);
+      setColor(next);
+      router.refresh();
+    } catch {
+      setColorStatus("error");
+      return;
+    }
+    setColorStatus("idle");
+  }
+
+  const previewStyle = chatColorStyle(color) ?? { backgroundColor: DEFAULT_BUBBLE_COLOR, color: readableTextColor(DEFAULT_BUBBLE_COLOR) };
+
+  return (
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
           <h2 className="text-sm font-semibold tracking-wide uppercase">Chat Bubble Color</h2>
@@ -264,6 +274,5 @@ export function ProfileSection({ initial }: { initial: MySettings }) {
           </div>
         </div>
       </section>
-    </div>
   );
 }

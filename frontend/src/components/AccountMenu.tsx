@@ -94,28 +94,19 @@ export function AccountMenu({ me }: { me: Me }) {
     router.refresh();
   }
 
+  // The trimmed menu (2026-10-28 cleanup, like the app's): profile,
+  // notifications, feedback and What's New now live in Settings and Help.
+  // The Lounge and Friends stay here; the web has no grid button for them.
   const items: { key: string; label: string; href?: string; onClick?: () => void; danger?: boolean }[] = [
-    { key: "profile", label: "Profile", href: "/settings?section=profile" },
-    { key: "leagues", label: "Leagues", href: "/leagues" },
-    { key: "lounge", label: "Lounge", href: "/lounge" },
+    { key: "settings", label: "Settings", href: "/settings" },
+    { key: "leagues", label: "Leagues & invites", href: "/leagues" },
+    { key: "lounge", label: "The Lounge", href: "/lounge" },
     { key: "friends", label: "Friends", href: "/friends" },
-    // Commissioner-only — the one place a commissioner needs to find
-    // their league's admin tools, right under their own name rather
-    // than a small text link buried on the League page (2026-09).
     ...(me.is_commissioner
       ? [{ key: "commissioner", label: "Commissioner Tools", href: "/commissioner" }]
       : []),
-    { key: "settings", label: "Settings", href: "/settings" },
-    // Right under Settings, not buried at the bottom of the Settings
-    // sidebar — the owner's own request (2026-09) was to make reporting
-    // a bug or an idea a one-tap action from anywhere, not a multi-step
-    // trip through Settings first.
-    { key: "feedback", label: "Feedback", href: "/settings?section=feedback" },
-    { key: "whats-new", label: "What's New", href: "/whats-new" },
-    { key: "notifications", label: "Notifications", href: "/settings?section=notifications" },
-    // Site-owner-only (2026-09) — who's currently in the app, usage
-    // stats. Not a per-league commissioner tool, so it lives here
-    // rather than under Commissioner Tools above.
+    { key: "help", label: "Help & feedback", href: "/settings?section=help" },
+    // Site-owner-only (2026-09): usage and app health.
     ...(me.is_site_owner ? [{ key: "admin", label: "Admin", href: "/admin" }] : []),
     { key: "logout", label: "Log Out", onClick: handleLogout, danger: true },
   ];

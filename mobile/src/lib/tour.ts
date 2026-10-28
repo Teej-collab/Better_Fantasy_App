@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 
 // The New Here tour (2026-10-28): twelve slides that walk a new member
 // through what The Weekend does and where each thing lives, plus the
-// Glossary (Profile circle › Glossary) that explains every term and
+// Glossary (Profile circle › Help › Glossary) that explains every term and
 // replays the tour. Content lives here so the tour, its "Show me"
 // banner and the Glossary all name the same paths.
 
@@ -43,7 +43,7 @@ export function tourSlides(opts: { chugEnabled: boolean; chugRuleName: string })
       key: 'tickers', kicker: 'Tickers & Live Activities', title: 'Every score, always in view',
       body: "Ticker strips across the top of every screen show NFL scores and your league's matchups, live. Turn on the lock-screen score and your matchup rides on your Lock Screen and Dynamic Island too.",
       chips: ['NFL ticker', 'League ticker', 'Lock screen', 'Widgets'],
-      where: ['Profile circle', 'Notifications', 'Live score on Lock Screen'],
+      where: ['Profile circle', 'Settings', 'Notifications', 'Live score on Lock Screen'],
       href: { pathname: '/settings', params: { section: 'notifications' } } as Href, place: 'Notifications',
     },
     {
@@ -86,23 +86,23 @@ export function tourSlides(opts: { chugEnabled: boolean; chugRuleName: string })
     },
     {
       key: 'appearance', kicker: 'Make it yours', title: 'Your colors, your name, your team',
-      body: 'Pick the Calm or Cosmic look, any accent color (or Multi), how hard the neon glows, a seasonal app icon and the intro sound. Set your name, team name, logo and chat bubble color.',
-      chips: ['Look', 'Accent color', 'Neon intensity', 'Team logo', 'App icon'],
-      where: ['Profile circle', 'Settings', 'Appearance'],
-      href: { pathname: '/settings', params: { section: 'appearance' } } as Href, place: 'Appearance',
+      body: 'Pick a theme in one tap (Neon Green, Ice Blue, Cosmic and more) or fine-tune the accent, the glow and the background. Set the intro sound and app icon, your name, team name and logo, and your chat bubble color.',
+      chips: ['Themes', 'Accent color', 'Neon glow', 'Intro sound', 'Team logo'],
+      where: ['Profile circle', 'Settings', 'Look & feel'],
+      href: { pathname: '/settings', params: { section: 'look' } } as Href, place: 'Look & feel',
     },
     {
       key: 'alerts', kicker: 'Notifications', title: 'Only the alerts you want',
       body: 'Pick a Sunday Mode, or choose alert by alert: touchdowns, red zone, injuries, waivers and watch parties. Set quiet hours, and get phone reminders before lineups lock and chugs are due.',
       chips: ['Sunday Mode', 'Touchdowns', 'Quiet hours', 'Reminders'],
-      where: ['Profile circle', 'Notifications'],
+      where: ['Profile circle', 'Settings', 'Notifications'],
       href: { pathname: '/settings', params: { section: 'notifications' } } as Href, place: 'Notifications',
     },
     {
       key: 'glossary', kicker: 'Glossary', title: "Lost? It's all in the Glossary",
-      body: 'Every term in the app, explained in a sentence, plus where to find each feature. Tap your profile circle at the top right, then Glossary. You can replay this tour from there too.',
+      body: 'Every term in the app, explained in a sentence, plus where to find each feature. Tap your profile circle at the top right, then Help. You can replay this tour from there too.',
       chips: ['Every term', 'Where to find it', 'Replay the tour'],
-      where: ['Profile circle', 'Glossary'], href: '/glossary' as Href, place: 'the Glossary',
+      where: ['Profile circle', 'Help', 'Glossary'], href: '/glossary' as Href, place: 'the Glossary',
     },
   ];
   return opts.chugEnabled ? slides : slides.filter((s) => s.key !== 'chug');
@@ -115,7 +115,7 @@ export function glossary(chugRuleName: string, chugEnabled: boolean): GlossaryGr
     { name: 'Game day', color: '#39ff14', terms: [
       { term: 'Living Home', def: 'Your home screen, which changes through the week: the Monday sweat, recap day, waivers and game day.', where: 'Home tab' },
       { term: 'Ticker', def: "The strips across the top with live NFL scores and your league's matchups.", where: 'Top of every screen' },
-      { term: 'Live Activity', def: 'Your live score on the Lock Screen and Dynamic Island during games.', where: 'Profile circle › Notifications › Live score on Lock Screen' },
+      { term: 'Live Activity', def: 'Your live score on the Lock Screen and Dynamic Island during games.', where: 'Profile circle › Settings › Notifications › Live score on Lock Screen' },
       { term: 'Gamecast', def: "Live play-by-play with a field view, the last play and each play's fantasy impact.", where: 'Grid button › Gamecast' },
       { term: 'Win odds', def: 'Your chance to win the matchup right now, updated as plays happen.', where: 'Grid button › Matchup' },
       { term: 'Turning point', def: 'A play that swung your win odds the most, marked on the win-odds chart.', where: 'Your matchup › Win odds chart' },
@@ -153,8 +153,11 @@ export function glossary(chugRuleName: string, chugEnabled: boolean): GlossaryGr
     { name: 'Social & settings', color: '#ec4899', terms: [
       { term: 'The Lounge', def: "Watch-party rooms with the game and everyone's cameras.", where: 'Grid button › Lounge' },
       { term: 'Tail / Fade', def: "Copy a league mate's bet (tail), or bet against it (fade).", where: 'Grid button › League Bets' },
-      { term: 'Sunday Mode', def: 'A one-tap notification preset: Full Send, Game Day or Leave Me Alone.', where: 'Profile circle › Notifications' },
-      { term: 'Look & accent color', def: 'Calm or Cosmic, your accent color, neon intensity, app icon and intro sound.', where: 'Profile circle › Settings › Appearance' },
+      { term: 'Friends', def: 'People you watch games with, from any league, for private lounges.', where: 'Grid button › Lounge › Friends' },
+      { term: 'League Kitty', def: "The league's pot: who owes what (franchise tag fees and anything the commissioner adds) and who's paid.", where: 'Profile circle › League Kitty' },
+      { term: 'Sunday Mode', def: 'A one-tap notification preset: Full Send, Game Day or Leave Me Alone.', where: 'Profile circle › Settings › Notifications' },
+      { term: 'Themes', def: 'One-tap looks (Neon Green, Ice Blue, Cosmic and more) that set your accent, glow and background together; fine-tune any of it after.', where: 'Profile circle › Settings › Look & feel' },
+      { term: 'Intro sound & app icon', def: 'How often the opening sound plays, and the seasonal home-screen icon.', where: 'Profile circle › Settings › Sound & app icon' },
     ] },
   ];
   return chugEnabled ? groups : groups.filter((g) => g.name !== chugRuleName);

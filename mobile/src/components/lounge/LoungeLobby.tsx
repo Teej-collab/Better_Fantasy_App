@@ -187,6 +187,14 @@ export function LoungeLobby() {
           </View>
           <Text style={styles.privateSub}>›</Text>
         </Pressable>
+        {/* Friends' home now that the account menu is trimmed (2026-10-28). */}
+        <Pressable onPress={() => router.push('/friends' as Href)} style={[styles.privateRow, { marginTop: 8 }]} accessibilityRole="button">
+          <View style={{ flex: 1 }}>
+            <Text style={styles.privateName}>Friends</Text>
+            <Text style={styles.privateSub}>People you watch with, from any league</Text>
+          </View>
+          <Text style={styles.privateSub}>›</Text>
+        </Pressable>
         <Pressable onPress={() => void startParty()} disabled={starting} style={[styles.cta, { backgroundColor: accent }, starting && { opacity: 0.6 }]} accessibilityRole="button">
           <Text style={styles.ctaText}>{starting ? 'Starting…' : 'Start a watch party'}</Text>
         </Pressable>

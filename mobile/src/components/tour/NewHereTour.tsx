@@ -192,8 +192,8 @@ function Preview({ slide, ruleName }: { slide: TourSlide; ruleName: string }) {
       return (
         <View style={[styles.row, { justifyContent: 'flex-end', alignItems: 'flex-start' }]}>
           <View style={styles.menu}>
-            {['Settings', 'Glossary', 'Notifications', 'The Lounge'].map((m) => (
-              <Text key={m} style={[styles.menuItem, m === 'Glossary' && styles.menuItemOn]}>{m}</Text>
+            {['Settings', 'League Kitty', 'Help', 'Commissioner Tools'].map((m) => (
+              <Text key={m} style={[styles.menuItem, m === 'Help' && styles.menuItemOn]}>{m}</Text>
             ))}
           </View>
           <View style={styles.avatar}><Text style={styles.tileTitle}>You</Text></View>
@@ -295,7 +295,7 @@ function TourSheet() {
               </View>
             )}
             {i === 0 && (
-              <Text style={styles.hint}>Every slide shows where that feature lives. Replay this tour anytime: Profile circle › Glossary.</Text>
+              <Text style={styles.hint}>Every slide shows where that feature lives. Replay this tour anytime: Profile circle › Help.</Text>
             )}
           </ScrollView>
 

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ColorPicker, Host } from '@expo/ui/swift-ui';
@@ -29,6 +29,7 @@ import { applyAccent, applyTheme, flushAccentReload, useAppearance } from '@/lib
 import { COLOR_PRESETS, isHexColor, isMulti, MULTI, MULTI_COLORS } from '@/lib/colorChoice';
 import { canChangeAppIcon, seasonalIconEnabled, setSeasonalIconEnabled } from '@/lib/seasonal';
 import { useAuth } from '@/lib/auth';
+import { tour } from '@/lib/tour';
 import { pickChatPhoto } from '@/lib/chatImage';
 import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from '@/lib/introSound';
 import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
@@ -390,8 +391,6 @@ function ProfileForm({ settings }: { settings: MySettings }) {
     });
   }
 
-  const multiBubble = isMulti(settings.chat_color);
-  const preview = isHexColor(settings.chat_color) ? settings.chat_color : DEFAULT_BUBBLE_COLOR;
   return (
     <View style={styles.gap}>
       <Header title="Profile" subtitle="How you appear throughout The Weekend." />
@@ -453,22 +452,6 @@ function ProfileForm({ settings }: { settings: MySettings }) {
         </Panel>
       )}
 
-      <Panel title="Chat Bubble Color" description="Everyone in League Chat sees your messages in this color.">
-        <Swatches
-          value={settings.chat_color}
-          onChange={(hex) => run('color', () => api.updateChatColor(hex))}
-          defaultSwatch={{ color: DEFAULT_BUBBLE_COLOR }}
-        />
-        <Text style={styles.small}>Preview</Text>
-        <View style={styles.previewRow}>
-          <View style={[styles.bubble, { backgroundColor: preview }, multiBubble && styles.bubbleClip]}>
-            {multiBubble && (
-              <LinearGradient colors={[MULTI_COLORS[0], MULTI_COLORS[1], MULTI_COLORS[3]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-            )}
-            <Text style={{ color: multiBubble ? '#ffffff' : readableTextColor(preview), fontSize: 14 }}>This is how your messages will appear in League Chat.</Text>
-          </View>
-        </View>
-      </Panel>
     </View>
   );
 }
@@ -483,7 +466,7 @@ async function pickedToJpeg(uri: string): Promise<string> {
 
 // ---- Notifications ----
 
-const SUNDAY_MODES: { key: SundayMode; emoji: string; label: string; description: string }[] = [
+export const SUNDAY_MODES: { key: SundayMode; emoji: string; label: string; description: string }[] = [
   { key: 'full_send', emoji: '🔥', label: 'Full Send', description: 'Everything — every message notification on.' },
   { key: 'game_day', emoji: '🏈', label: 'Game Day', description: 'Direct messages and @mentions only.' },
   { key: 'leave_me_alone', emoji: '😎', label: 'Leave Me Alone', description: 'Only direct messages and @mentions.' },
@@ -647,14 +630,56 @@ const CHAT_TOGGLES: { key: keyof OwnerPreferences; label: string; description: s
   { key: 'mention_highlighting_enabled', label: 'Mention Notifications', description: 'Highlight messages in chat that @mention you.' },
 ];
 
+// Your chat bubble color (moved here from Profile, 2026-10-28): it's
+// how your messages look in League Chat.
+function ChatBubbleColor() {
+  const settings = useMySettings().data;
+  const [error, setError] = useState<string | null>(null);
+  if (!settings) return null;
+  const multiBubble = isMulti(settings.chat_color);
+  const preview = isHexColor(settings.chat_color) ? settings.chat_color : DEFAULT_BUBBLE_COLOR;
+  async function run(_key: string, action: () => Promise<unknown>) {
+    setError(null);
+    try {
+      await action();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await queryClient.invalidateQueries();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    }
+  }
+  return (
+    <>
+      {error && <Text style={styles.error}>{error}</Text>}
+      <Panel title="Chat Bubble Color" description="Everyone in League Chat sees your messages in this color.">
+        <Swatches
+          value={settings.chat_color}
+          onChange={(hex) => run('color', () => api.updateChatColor(hex))}
+          defaultSwatch={{ color: DEFAULT_BUBBLE_COLOR }}
+        />
+        <Text style={styles.small}>Preview</Text>
+        <View style={styles.previewRow}>
+          <View style={[styles.bubble, { backgroundColor: preview }, multiBubble && styles.bubbleClip]}>
+            {multiBubble && (
+              <LinearGradient colors={[MULTI_COLORS[0], MULTI_COLORS[1], MULTI_COLORS[3]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            )}
+            <Text style={{ color: multiBubble ? '#ffffff' : readableTextColor(preview), fontSize: 14 }}>This is how your messages will appear in League Chat.</Text>
+          </View>
+        </View>
+      </Panel>
+    </>
+  );
+}
+
 export function ChatSettings() {
   const prefs = usePreferences().data;
   const { patch, saved, error } = usePatchPreferences();
   if (!prefs) return <LoadingState />;
   return (
     <View style={styles.gap}>
-      <Header title="Chat" subtitle="How League Chat behaves for you." saved={saved} />
+      <Header title="Chat" subtitle="How League Chat looks and behaves for you." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
+      <ChatBubbleColor />
       <Panel color={SectionColors.chat}>
         {CHAT_TOGGLES.map((t, i) => (
           <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} onChange={(v) => patch({ [t.key]: v })} />
@@ -714,8 +739,12 @@ export function AppearanceSettings() {
   if (!prefs) return <LoadingState />;
   return (
     <View style={styles.gap}>
-      <Header title="Appearance" subtitle="The Weekend's look, tuned to your taste." saved={saved} />
+      <Header title="Look & feel" subtitle="Pick a theme in one tap, or fine-tune it below." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
+
+      <ThemePresets prefs={prefs} patch={patch} />
+
+      <Text style={styles.fineTune}>FINE-TUNE</Text>
 
       <Panel
         title="Look"
@@ -775,10 +804,6 @@ export function AppearanceSettings() {
         <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
       </Panel>
 
-      {canChangeAppIcon && <SeasonalIconSetting />}
-
-      <IntroSoundSetting />
-
       <Panel title="Animations" description="Your device's own reduced-motion setting is always respected regardless of this choice.">
         <Segment
           options={[
@@ -789,6 +814,126 @@ export function AppearanceSettings() {
           onChange={(v) => patch({ reduced_motion: v === 'reduced' })}
         />
       </Panel>
+    </View>
+  );
+}
+
+// ---- Look & feel: one-tap themes ----
+
+// A theme sets the look, the accent and the background lights together
+// (2026-10-28, the approved Settings mockup); everything else follows
+// the accent. Fine-tune below still changes any one of them.
+export const THEME_PRESETS: {
+  name: string;
+  theme: 'calm' | 'cosmic';
+  accent: string;
+  honeycomb: string | null;
+  surface: string;
+  bg: string;
+}[] = [
+  { name: 'Neon Green', theme: 'calm', accent: '#39ff14', honeycomb: null, surface: '#12161c', bg: '#0d1016' },
+  { name: 'Ice Blue', theme: 'calm', accent: '#4cc3ff', honeycomb: '#0ea5e9', surface: '#111823', bg: '#0b1018' },
+  { name: 'Cosmic', theme: 'cosmic', accent: '#39ffb0', honeycomb: 'multi', surface: '#171129', bg: '#0a0716' },
+  { name: 'Sunset', theme: 'calm', accent: '#fb923c', honeycomb: '#dc143c', surface: '#1b1410', bg: '#120d0b' },
+  { name: 'Royal', theme: 'cosmic', accent: '#a855f7', honeycomb: '#a855f7', surface: '#16131f', bg: '#0e0c16' },
+  { name: 'Gold Rush', theme: 'calm', accent: '#facc15', honeycomb: '#facc15', surface: '#18160e', bg: '#100f0a' },
+];
+
+export function presetFor(prefs: OwnerPreferences | undefined): (typeof THEME_PRESETS)[number] | null {
+  if (!prefs) return null;
+  return (
+    THEME_PRESETS.find(
+      (t) => t.theme === prefs.theme && (prefs.accent_color ?? DefaultAccent).toLowerCase() === t.accent.toLowerCase(),
+    ) ?? null
+  );
+}
+
+function ThemePresets({ prefs, patch }: { prefs: OwnerPreferences; patch: ReturnType<typeof usePatchPreferences>['patch'] }) {
+  const current = presetFor(prefs);
+  const [shown, setShown] = useState(current ?? THEME_PRESETS[0]);
+  async function pick(t: (typeof THEME_PRESETS)[number]) {
+    setShown(t);
+    const ok = await patch({ theme: t.theme, accent_color: t.accent, honeycomb_color: t.honeycomb, your_week_color: null, border_glow_color: null });
+    if (!ok) return;
+    applyAccent(t.accent);
+    // A new look reloads the app now; a new accent when you leave Settings.
+    applyTheme(t.theme);
+  }
+  return (
+    <View style={styles.gap}>
+      <View style={[styles.themePreview, { backgroundColor: shown.surface, borderColor: shown.accent }]} accessible accessibilityLabel={`Preview of ${shown.name}`}>
+        <Text style={[styles.themeKicker, { color: shown.accent }]}>PREVIEW · YOUR WEEK</Text>
+        <View style={styles.themeScore}>
+          <Text style={styles.themeBig}>You 104.2</Text>
+          <Text style={[styles.themeBig, { color: Colors.textSecondary }]}>97.5</Text>
+        </View>
+        <View style={styles.themeTrack}>
+          <View style={[styles.themeFill, { backgroundColor: shown.accent }]} />
+        </View>
+        <Text style={styles.small}>68% to win · 3 players left</Text>
+      </View>
+      <Text style={styles.fineTune}>THEMES · ONE TAP</Text>
+      <View style={styles.themeGrid}>
+        {THEME_PRESETS.map((t) => {
+          const on = current?.name === t.name;
+          return (
+            <Pressable
+              key={t.name}
+              onPress={() => void pick(t)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={`${t.name} theme`}
+              style={[styles.themeTile, { backgroundColor: t.bg, borderColor: on ? t.accent : Colors.border }]}>
+              <View style={styles.themeDots}>
+                <View style={[styles.themeDot, { backgroundColor: t.accent }]} />
+                <View style={[styles.themeDot, { backgroundColor: t.surface, borderWidth: 1, borderColor: '#343b47' }]} />
+              </View>
+              <Text style={styles.bodyMedium}>{t.name}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.small}>The app restarts to apply a new theme when you leave Settings (right away if it switches between Calm and Cosmic).</Text>
+    </View>
+  );
+}
+
+// ---- Sound & app icon ----
+
+export function SoundSettings() {
+  return (
+    <View style={styles.gap}>
+      <Header title="Sound & app icon" subtitle="The intro sound, and the icon on your home screen." />
+      <IntroSoundSetting />
+      {canChangeAppIcon && <SeasonalIconSetting />}
+    </View>
+  );
+}
+
+// ---- Help ----
+
+export function HelpSettings() {
+  const accent = useAppearance().accent;
+  const links: { label: string; sub: string; onPress: () => void }[] = [
+    { label: 'Glossary', sub: 'Every term in The Weekend, and where to find it', onPress: () => router.push('/glossary' as Href) },
+    { label: 'Replay the New Here tour', sub: 'The welcome slides, any time', onPress: () => tour.open(0) },
+    { label: "What's New", sub: 'The latest changes', onPress: () => router.push('/whats-new' as Href) },
+  ];
+  return (
+    <View style={styles.gap}>
+      <Header title="Help & feedback" subtitle="How things work, what's new, and how to reach us." />
+      <Panel>
+        {links.map((l, i) => (
+          <Pressable key={l.label} onPress={l.onPress} accessibilityRole="button" style={[styles.helpRow, i > 0 && styles.divided]}>
+            <View style={styles.flex}>
+              <Text style={styles.bodyMedium}>{l.label}</Text>
+              <Text style={styles.small}>{l.sub}</Text>
+            </View>
+            <Text style={[styles.helpChevron, { color: accent }]}>›</Text>
+          </Pressable>
+        ))}
+      </Panel>
+      <FeedbackSettings />
     </View>
   );
 }
@@ -804,7 +949,7 @@ export function BetSettings() {
   if (!prefs) return <LoadingState />;
   return (
     <View style={styles.gap}>
-      <Header title="Bets" subtitle="Track your bets live. Tracking only — nothing is ever placed." saved={saved} />
+      <Header title="Features" subtitle="Optional extras you can turn on or off." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
       <Panel>
         <ToggleRow
@@ -1058,6 +1203,19 @@ function RecentFeedback() {
 }
 
 const styles = StyleSheet.create({
+  fineTune: { color: Colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1.4, marginTop: Spacing.sm },
+  themePreview: { borderRadius: 18, borderWidth: 1.5, padding: 14, gap: 8 },
+  themeKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
+  themeScore: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  themeBig: { color: Colors.text, fontSize: 22, fontWeight: '800' },
+  themeTrack: { height: 8, borderRadius: 4, backgroundColor: '#232933', overflow: 'hidden' },
+  themeFill: { width: '64%', height: '100%' },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  themeTile: { flexBasis: '30%', flexGrow: 1, minHeight: 80, borderRadius: 14, borderWidth: 2, padding: 10, justifyContent: 'space-between' },
+  themeDots: { flexDirection: 'row', gap: 4 },
+  themeDot: { width: 16, height: 16, borderRadius: 8 },
+  helpRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingVertical: 6 },
+  helpChevron: { fontSize: 22 },
   gap: { gap: Spacing.lg },
   gapSm: { gap: 6 },
   flex: { flex: 1 },

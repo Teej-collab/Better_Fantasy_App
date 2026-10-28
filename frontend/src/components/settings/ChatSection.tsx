@@ -68,7 +68,7 @@ export function ChatSection() {
       <div className="flex items-baseline justify-between">
         <div>
           <h1 className="text-xl font-semibold">Chat</h1>
-          <p className="text-sm text-black/50 dark:text-white/50">How League Chat behaves for you.</p>
+          <p className="text-sm text-black/50 dark:text-white/50">How League Chat looks and behaves for you.</p>
         </div>
         <SavedIndicator show={saved} />
       </div>

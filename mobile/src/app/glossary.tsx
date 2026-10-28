@@ -10,7 +10,8 @@ import { glossary, tour } from '@/lib/tour';
 
 // Every term in The Weekend in a sentence, with where to find it
 // (2026-10-28, the approved New Here mockup). Opened from the profile
-// circle's menu, right under Settings; the top row replays the tour.
+// circle's menu under Help (and Settings › Help & feedback); the top row
+// replays the tour.
 
 export default function GlossaryScreen() {
   const insets = useSafeAreaInsets();
