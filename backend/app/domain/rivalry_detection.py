@@ -313,14 +313,15 @@ async def approve(conn, league_id: int, suggestion_id: int, user_id: int, name: 
         )
         if s is None:
             raise SuggestionNotFoundError("That suggestion isn't there anymore.")
-        # rivalries is unique on the owner pair across leagues (it
-        # predates multi-league), so a pair can only be a rivalry once.
+        # Once per pair in THIS league; the same two can be rivals in
+        # another league too (2026-10-28, migration c8e0a2d4f6b9).
         if await conn.fetchval(
             """
             SELECT 1 FROM rivalries
-            WHERE (owner_a_id = $1 AND owner_b_id = $2) OR (owner_a_id = $2 AND owner_b_id = $1)
+            WHERE league_id = $3
+              AND ((owner_a_id = $1 AND owner_b_id = $2) OR (owner_a_id = $2 AND owner_b_id = $1))
             """,
-            s["owner_a_id"], s["owner_b_id"],
+            s["owner_a_id"], s["owner_b_id"], league_id,
         ):
             raise RivalryExistsError("Those two are already a rivalry.")
         rivalry = await conn.fetchrow(

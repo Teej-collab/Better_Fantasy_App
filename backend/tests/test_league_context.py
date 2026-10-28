@@ -25,17 +25,19 @@ async def _make_user(conn, suffix: str) -> int:
     )
 
 
-async def test_resolve_active_league_id_falls_back_to_default_for_signed_out(pool):
+async def test_resolve_active_league_id_is_none_signed_out(pool):
+    """No League #1 fallback (2026-10-28): nobody sees a league they
+    aren't in."""
     async with pool.acquire() as conn:
         result = await resolve_active_league_id(conn, None)
-    assert result == DEFAULT_LEAGUE_ID
+    assert result is None
 
 
-async def test_resolve_active_league_id_falls_back_to_default_when_none_set(pool):
+async def test_resolve_active_league_id_is_none_without_a_league(pool):
     async with pool.acquire() as conn:
         user_id = await _make_user(conn, "resolve-none")
         result = await resolve_active_league_id(conn, {"user_id": user_id})
-    assert result == DEFAULT_LEAGUE_ID
+    assert result is None
 
 
 async def test_resolve_active_league_id_returns_the_real_active_league(pool):

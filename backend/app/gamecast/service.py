@@ -22,6 +22,7 @@ import time
 from collections import deque
 
 from app.auth.league_context import resolve_active_league_id, resolve_owner_id
+from app.config import DEFAULT_LEAGUE_ID
 from app.domain.scoring_engine import rules_dict_from_rows
 from app.gamecast import last_play
 from app.gamecast.models import GameStatus, LiveGame
@@ -212,6 +213,7 @@ async def build_fantasy_impact(conn, game: LiveGame, payload: dict | None) -> di
     your_players: list[dict] = []
     opponent_team = None
     opponent_players: list[dict] = []
+    league_id = None
 
     if payload is not None:
         # resolve_active_league_id (not require_active_league_id): a
@@ -258,8 +260,11 @@ async def build_fantasy_impact(conn, game: LiveGame, payload: dict | None) -> di
             if opp_team_id is not None:
                 opponent_team = {"team_id": opp_team_id, "team_name": opp_team_name}
 
+    # Points under the viewer's own league's scoring; signed out or not
+    # in a league, the default league's (a public NFL stat line, nothing
+    # league-private).
     leader_rows = await queries.get_top_scorers_by_pro_team(
-        conn, game.season, game.week, pro_teams, limit=_TOP_N
+        conn, game.season, game.week, pro_teams, league_id or DEFAULT_LEAGUE_ID, limit=_TOP_N
     )
     leaders_by_team: dict[str, list[dict]] = {abbr: [] for abbr in pro_teams}
     for r in leader_rows:

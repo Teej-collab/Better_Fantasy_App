@@ -16,5 +16,11 @@ unchanged; this only branches which table today's real season reads.
 """
 
 
-async def uses_in_app_rosters(conn, season: int) -> bool:
-    return bool(await conn.fetchval("SELECT EXISTS(SELECT 1 FROM draft_config WHERE season = $1)", season))
+async def uses_in_app_rosters(conn, season: int, league_id: int) -> bool:
+    """Per league (2026-10-28): it used to ask whether ANY league had a
+    draft_config row this season, so one league's draft decided which
+    roster table every other league's chug debt, bench crimes and
+    boom/bust read."""
+    return bool(await conn.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM draft_config WHERE season = $1 AND league_id = $2)", season, league_id,
+    ))

@@ -21,9 +21,9 @@ async def test_get_scoring_rules_requires_session():
 
 
 async def test_new_league_has_real_scoring_rules_seeded(pool):
-    """POST /leagues seeds a new league's scoring rules from League #1's
-    real values (seed_default_scoring_rules) — confirms there's
-    actually something for GET /league/scoring-rules to read."""
+    """POST /leagues seeds a new league with standard scoring
+    (seed_default_scoring_rules) — confirms there's actually something
+    for GET /league/scoring-rules to read."""
     async with _client() as client:
         await _sign_up(client, "test-scoring-seeded@example.com")
         await client.post("/leagues", json={"name": "Test League Scoring Seeded"})
@@ -33,6 +33,30 @@ async def test_new_league_has_real_scoring_rules_seeded(pool):
     assert len(body["rules"]) > 0
     categories = {r["stat_category"] for r in body["rules"]}
     assert "pass_td" in categories
+
+
+async def test_new_league_starts_standard_not_with_league_ones_house_rules(pool):
+    """2026-10-28: a new league used to copy League #1's live rules (a
+    15-point QB tackle, FGs by the yard). It starts from standard PPR
+    now, whatever League #1 scores."""
+    from app.config import DEFAULT_LEAGUE_ID
+
+    from app.config import _require
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit, league_id) VALUES ($1, 'qb_tackle', 15, $2) "
+            "ON CONFLICT (season, stat_category, league_id) DO NOTHING",
+            int(_require("ACTIVE_SEASON")), DEFAULT_LEAGUE_ID,
+        )
+    async with _client() as client:
+        await _sign_up(client, "test-scoring-standard@example.com")
+        await client.post("/leagues", json={"name": "Test League Scoring Standard"})
+        body = (await client.get("/league/scoring-rules")).json()
+    rules = {r["stat_category"]: r["points_per_unit"] for r in body["rules"]}
+    assert "qb_tackle" not in rules and "fg_yds" not in rules
+    assert rules["fg_made_40_49"] == 4
+    assert rules["rec"] == 1
 
 
 async def test_commissioner_can_update_scoring_rules(pool):
@@ -261,7 +285,7 @@ async def test_playoff_setting_overrides_the_historical_inference(pool):
 
 
 async def test_updating_scoring_rules_only_affects_this_league(pool):
-    """Two leagues both seeded from League #1's real values — updating
+    """Two leagues both seeded with standard scoring — updating
     one's rules doesn't leak into the other (league_scoring_rules'
     (season, stat_category, league_id) unique constraint / this
     endpoint's league_id scoping actually working)."""

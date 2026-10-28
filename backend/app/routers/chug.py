@@ -74,9 +74,11 @@ def _decode_session(token: str | None) -> dict | None:
 
 
 @router.get("/seasons")
-async def chug_seasons(pool=Depends(get_pool)):
+async def chug_seasons(league_id: int = Depends(require_league_access), pool=Depends(get_pool)):
+    """Your league's chug seasons (it used to list League #1's for
+    everyone, 2026-10-28)."""
     async with pool.acquire() as conn:
-        rows = await chug_queries.list_chug_seasons(conn)
+        rows = await chug_queries.list_chug_seasons(conn, league_id)
     return {"seasons": [r["season"] for r in rows]}
 
 

@@ -8,7 +8,6 @@ import json
 
 import secrets
 
-from app.config import DEFAULT_LEAGUE_ID
 
 
 async def create_league(conn, name: str, created_by_user_id: int, invite_code: str, team_count: int | None = None) -> int:
@@ -123,7 +122,7 @@ def scoring_label(points_per_reception) -> str:
 
 async def apply_scoring_preset(conn, league_id: int, season: int, preset: str) -> None:
     """PPR / Half PPR / Standard differ only in points per catch; every
-    other rule stays the seeded default (a copy of League #1's)."""
+    other rule stays the seeded standard (scoring_catalog.STANDARD_RULES)."""
     await conn.execute(
         """
         INSERT INTO league_scoring_rules (season, stat_category, points_per_unit, league_id)
@@ -160,28 +159,20 @@ async def get_membership(conn, league_id: int, user_id: int):
     )
 
 
-async def seed_default_scoring_rules(conn, league_id: int, season: int, source_league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    """Copies League #1's real scoring rules into a newly created
-    league, so it has a real, working configuration from the moment
-    it's created rather than empty rows and a failed weekly compute
-    the first time someone tries to score a week. Only possible at all
-    since migration 130f4acc3a50 widened league_scoring_rules' unique
-    constraint to include league_id — before that, two leagues could
-    never both have a row for the same (season, stat_category). A
-    commissioner can customize their own copy afterward, once a
-    scoring-rules editing UI exists (see TODO.md's PHASE 9 entry)."""
-    rows = await conn.fetch(
-        "SELECT stat_category, points_per_unit FROM league_scoring_rules WHERE league_id = $1 AND season = $2",
-        source_league_id, season,
-    )
-    if not rows:
-        return 0
+async def seed_default_scoring_rules(conn, league_id: int, season: int) -> int:
+    """Gives a newly created league standard PPR scoring
+    (scoring_catalog.STANDARD_RULES), so it scores from day one. It
+    used to copy League #1's live rules, house quirks and all; every
+    league starts from the same standard now and never reads another
+    league's settings (2026-10-28)."""
+    from app.domain.scoring_catalog import STANDARD_RULES
+
     await conn.executemany(
         "INSERT INTO league_scoring_rules (season, stat_category, points_per_unit, league_id) "
         "VALUES ($1, $2, $3, $4) ON CONFLICT (season, stat_category, league_id) DO NOTHING",
-        [(season, r["stat_category"], r["points_per_unit"], league_id) for r in rows],
+        [(season, key, value, league_id) for key, value in STANDARD_RULES.items()],
     )
-    return len(rows)
+    return len(STANDARD_RULES)
 
 
 async def list_unclaimed_owners(conn, league_id: int):

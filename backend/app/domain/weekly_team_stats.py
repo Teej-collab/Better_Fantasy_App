@@ -266,7 +266,7 @@ async def compute_chaos_scores_for_week(conn, season: int, week: int, league_id:
     # boom_bust.py's is_boom/is_bust flags — in roster_history, so no
     # 2026 team ever got a chaos score. Same branch boom_bust.py,
     # bench_crimes.py and chug_debt.py already use.
-    in_app = await uses_in_app_rosters(conn, season)
+    in_app = await uses_in_app_rosters(conn, season, league_id)
     if in_app:
         team_rows = await conn.fetch(
             "SELECT DISTINCT rh.team_id FROM roster_history rh JOIN teams_by_season tbs ON tbs.id = rh.team_id "

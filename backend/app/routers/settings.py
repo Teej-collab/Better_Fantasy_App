@@ -32,6 +32,7 @@ from app.db import get_pool
 from app.image_url import validate_blob_image_url
 from app.notifications.quiet_hours import is_valid_timezone
 from app.queries import owner_preferences as preferences_queries
+from app.queries import leagues as league_queries
 from app.queries import settings as settings_queries
 from app import moderation
 
@@ -146,7 +147,8 @@ async def reset_display_name(request: Request, pool=Depends(get_pool)):
     async with pool.acquire() as conn:
         owner_id = await resolve_owner_id(conn, payload)
         await settings_queries.reset_display_name(conn, owner_id)
-        row = await settings_queries.get_settings(conn, owner_id, payload["user_id"], active_season)
+        league_id = await league_queries.get_active_league_id(conn, payload["user_id"])
+        row = await settings_queries.get_settings(conn, owner_id, payload["user_id"], active_season, league_id)
     return {"display_name": row["display_name"]}
 
 

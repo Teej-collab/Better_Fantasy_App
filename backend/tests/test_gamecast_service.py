@@ -9,6 +9,7 @@ Sources current_rosters/players/player_week_stats now (the
 ESPN-independence pivot's own tables), not the legacy ESPN-synced
 `rosters` table this used to diff against.
 """
+from app.config import DEFAULT_LEAGUE_ID
 from app.gamecast import service
 from app.gamecast.models import GameStatus, LiveGame, TeamRef
 from tests.conftest import TEST_SEASON
@@ -172,7 +173,11 @@ async def test_build_fantasy_impact_splits_your_players_and_opponent_players(poo
     async def _fake_resolve_owner_id(conn, p):
         return my_owner_id
 
+    async def _fake_resolve_league_id(conn, p):
+        return DEFAULT_LEAGUE_ID
+
     monkeypatch.setattr("app.gamecast.service.resolve_owner_id", _fake_resolve_owner_id)
+    monkeypatch.setattr("app.gamecast.service.resolve_active_league_id", _fake_resolve_league_id)
 
     async with pool.acquire() as conn:
         result = await service.build_fantasy_impact(conn, game, payload)

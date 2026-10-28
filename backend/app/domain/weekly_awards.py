@@ -195,7 +195,7 @@ async def get_clutch_choke_status_by_team(conn, season: int, week: int, league_i
 
 
 async def get_boom_bust_leaders(conn, season: int, week: int, limit: int = 3, league_id: int = DEFAULT_LEAGUE_ID):
-    if await uses_in_app_rosters(conn, season):
+    if await uses_in_app_rosters(conn, season, league_id):
         # Booms: the starters who beat their projection by the most, not
         # only rh.is_boom rows. is_boom needs +20 over projection
         # (app/domain/boom_bust.py), which most weeks nobody clears —

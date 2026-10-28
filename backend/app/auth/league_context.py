@@ -36,16 +36,15 @@ async def resolve_owner_id(conn, payload: dict) -> int | None:
     return await auth_queries.get_owner_id_for_user(conn, payload["user_id"])
 
 
-async def resolve_active_league_id(conn, payload: dict | None) -> int:
-    """For read-mostly, public-preview-friendly routes (standings,
-    awards, free agents, game day): signed-out, or signed-in but
-    without an active league selected yet, both fall back to the real
-    public default (League #1) rather than erroring — same as this
-    app's behavior before per-user league selection existed."""
+async def resolve_active_league_id(conn, payload: dict | None) -> int | None:
+    """For routes that work signed out (Gamecast, the season list): the
+    caller's active league, or None when signed out or not in a league
+    yet. It used to fall back to League #1, so anyone without a league
+    saw League #1's seasons; every league is its own world now
+    (2026-10-28), and nobody sees a league they aren't in."""
     if payload is None:
-        return DEFAULT_LEAGUE_ID
-    active = await league_queries.get_active_league_id(conn, payload["user_id"])
-    return active if active is not None else DEFAULT_LEAGUE_ID
+        return None
+    return await league_queries.get_active_league_id(conn, payload["user_id"])
 
 
 async def require_active_league_id(conn, payload: dict) -> int:

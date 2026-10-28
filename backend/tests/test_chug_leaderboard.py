@@ -133,8 +133,9 @@ async def test_leaderboard_endpoint_returns_seasons_and_rows(pool, monkeypatch):
         )
 
     async with _client() as client:
-        seasons_resp = await client.get("/chug/seasons")
+        assert (await client.get("/chug/seasons")).status_code == 401
         client.cookies.update(cookies)
+        seasons_resp = await client.get("/chug/seasons")
         board_resp = await client.get(f"/chug/leaderboard?season={TEST_SEASON}")
 
     async with pool.acquire() as conn:

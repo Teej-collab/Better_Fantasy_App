@@ -56,7 +56,7 @@ def detect_bench_crimes(roster_rows: list[dict]) -> list[dict]:
 
 
 async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    in_app = await uses_in_app_rosters(conn, season)
+    in_app = await uses_in_app_rosters(conn, season, league_id)
     if in_app:
         # Only this league's teams. roster_history has no league column,
         # and reading every league's lineups filed the sandbox leagues'
@@ -123,7 +123,7 @@ async def compute_bench_crimes_for_week(conn, season: int, week: int, league_id:
 
 async def compute_bench_crimes_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        if await uses_in_app_rosters(conn, season):
+        if await uses_in_app_rosters(conn, season, league_id):
             weeks = await conn.fetch(
                 "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
             )

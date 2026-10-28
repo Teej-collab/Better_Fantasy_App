@@ -76,9 +76,11 @@ async def test_seasons_and_teams(pool, monkeypatch):
     team_a, team_b = await _seed_two_teams(pool)
     cookies = await _member_cookies(pool, "seasons-teams")
 
-    resp = await _get("/seasons")
+    resp = await _get("/seasons", cookies)
     assert resp.status_code == 200
     assert TEST_SEASON in resp.json()["seasons"]
+    # Signed out: no league's seasons at all, not League #1's (2026-10-28).
+    assert (await _get("/seasons")).json()["seasons"] == []
 
     resp = await _get(f"/seasons/{TEST_SEASON}/teams", cookies)
     assert resp.status_code == 200

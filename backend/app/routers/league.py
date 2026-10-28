@@ -41,12 +41,13 @@ router = APIRouter(tags=["league"])
 
 @router.get("/seasons")
 async def seasons(request: Request, pool=Depends(get_pool)):
-    """Your active league's seasons; signed out, League #1's (2026-10-22:
-    every league used to get League #1's list, so a league that started
-    this season saw seasons it never played, and the app's League hub
-    asked about the wrong ones)."""
+    """Your active league's seasons (2026-10-22: every league used to get
+    League #1's list). Signed out or not in a league yet: none, never
+    another league's (2026-10-28)."""
     async with pool.acquire() as conn:
         league_id = await resolve_active_league_id(conn, optional_session_payload(request))
+        if league_id is None:
+            return {"seasons": []}
         return {"seasons": await queries.list_seasons(conn, league_id)}
 
 

@@ -153,3 +153,26 @@ async def test_only_the_commissioner_sees_suggestions(pool):
         )
         await member.post("/leagues/join", json={"invite_code": invite_code})
         assert (await member.get(f"/leagues/{league_id}/rivalry-suggestions")).status_code == 403
+
+
+async def test_the_same_two_people_can_be_rivals_in_two_leagues(pool, monkeypatch):
+    """Rivalries are per league (2026-10-28, migration c8e0a2d4f6b9): a
+    pair already rivals in one league can still be approved in another."""
+    monkeypatch.setattr(rivalry_detection.config, "ANTHROPIC_API_KEY", None)
+    async with _client() as other:
+        other_league_id, _ = await _commissioner_league(other, "test-rivalry-elsewhere@example.com")
+    async with _client() as client:
+        league_id, _ = await _commissioner_league(client, "test-rivalry-twoleagues@example.com")
+        owners = await _seed_league_history(pool, league_id)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO rivalries (owner_a_id, owner_b_id, name, tier, league_id) VALUES ($1, $2, 'Old Feud', 'Historic', $3)",
+                owners["Feud"], owners["Rival"], other_league_id,
+            )
+        s = (await client.get(f"/leagues/{league_id}/rivalry-suggestions")).json()["suggestions"][0]
+        approved = await client.post(
+            f"/leagues/{league_id}/rivalry-suggestions/{s['id']}/approve", json={"name": "Round Two"}
+        )
+    assert approved.status_code == 200
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM rivalries WHERE owner_a_id = ANY($1::int[])", [owners["Feud"], owners["Rival"]]) == 2

@@ -122,7 +122,7 @@ async def _reasons_by_owner_week(conn, season: int, league_id: int) -> dict[tupl
     """The starters behind each week's chugs: every active (non-bench,
     non-IR) slot that scored 0 or less — chug_debt.compute_chugs_owed's
     rule, read from whichever roster source that season used."""
-    if await uses_in_app_rosters(conn, season):
+    if await uses_in_app_rosters(conn, season, league_id):
         rows = await conn.fetch(
             """
             SELECT tbs.owner_id, rh.week, p.full_name AS player_name, p.position, rh.lineup_slot,

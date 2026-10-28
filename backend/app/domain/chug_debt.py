@@ -43,7 +43,7 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
     if not is_week_final(games):
         return 0
 
-    in_app = await uses_in_app_rosters(conn, season)
+    in_app = await uses_in_app_rosters(conn, season, league_id)
     if in_app:
         team_owners = await conn.fetch(
             "SELECT DISTINCT rh.team_id, tbs.owner_id FROM roster_history rh "
@@ -94,7 +94,7 @@ async def compute_chug_debts_for_week(conn, season: int, week: int, league_id: i
 
 async def compute_chug_debts_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        if await uses_in_app_rosters(conn, season):
+        if await uses_in_app_rosters(conn, season, league_id):
             weeks = await conn.fetch(
                 "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
             )

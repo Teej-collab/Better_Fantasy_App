@@ -104,6 +104,29 @@ _STATS: tuple[tuple[str, str, str, str, bool, bool], ...] = (
     ("safety_1pt", "other", "1-point safety", "a safety during an extra-point or 2-point try (very rare)", False, False),
 )
 
+# What a league created in the app starts with (2026-10-28): ESPN's
+# standard PPR scoring. New leagues used to copy League #1's own house
+# rules (15 points for a QB tackle, FGs by the yard, harsh miss
+# penalties), so a brand-new league inherited another league's quirks.
+# A commissioner changes any of it in the scoring editor; a league
+# brought in from ESPN or Sleeper takes that platform's real rules.
+STANDARD_RULES: dict[str, float] = {
+    "pass_yd": 0.04, "pass_td": 4, "pass_int": -2, "two_pt_pass": 2,
+    "rush_yd": 0.1, "rush_td": 6, "two_pt_rush": 2,
+    "rec": 1, "rec_yd": 0.1, "rec_td": 6, "two_pt_rec": 2,
+    "fg_made_0_39": 3, "fg_made_40_49": 4, "fg_made_50_plus": 5,
+    "fg_miss_0_29": -1, "fg_miss_30_39": -1, "fg_miss_40_49": -1, "fg_miss_50_plus": -1,
+    "xp_made": 1,
+    "def_sack": 1, "def_int": 2, "def_fum_rec": 2, "def_return_td": 6, "def_block": 2, "def_safety": 2,
+    "two_pt_return": 2,
+    "pts_allow_0": 5, "pts_allow_1_6": 4, "pts_allow_7_13": 3, "pts_allow_14_17": 1,
+    "pts_allow_18_27": 0, "pts_allow_28_34": -1, "pts_allow_35_45": -3, "pts_allow_46_plus": -5,
+    "yds_allow_lt100": 5, "yds_allow_100_199": 3, "yds_allow_200_299": 2, "yds_allow_300_349": 0,
+    "yds_allow_350_399": -1, "yds_allow_400_449": -3, "yds_allow_450_499": -5,
+    "yds_allow_500_549": -6, "yds_allow_550_plus": -7,
+    "fum_lost": -2, "ret_td": 6,
+}
+
 CATALOG: dict[str, dict] = {
     key: {"key": key, "group": group, "label": label, "hint": hint, "tracked": tracked, "idp": idp}
     for key, group, label, hint, tracked, idp in _STATS

@@ -46,7 +46,7 @@ def get_baseline(points_projected: float, position_scores: list[float]):
 
 
 async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
-    if await uses_in_app_rosters(conn, season):
+    if await uses_in_app_rosters(conn, season, league_id):
         rows = await conn.fetch(
             """
             SELECT rh.id, p.position, pws.fantasy_points AS points_scored, rh.points_projected
@@ -99,7 +99,7 @@ async def compute_boom_bust_for_week(conn, season: int, week: int, league_id: in
 
 async def compute_boom_bust_for_season(pool, season: int, league_id: int = DEFAULT_LEAGUE_ID) -> int:
     async with pool.acquire() as conn:
-        if await uses_in_app_rosters(conn, season):
+        if await uses_in_app_rosters(conn, season, league_id):
             weeks = await conn.fetch(
                 "SELECT DISTINCT week FROM roster_history WHERE season = $1 ORDER BY week", season
             )
