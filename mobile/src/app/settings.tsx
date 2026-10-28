@@ -75,7 +75,15 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
-      <Stack.Screen options={{ title, headerBackTitle: tuneTitle ? sectionTitle : section ? 'Settings' : 'Back' }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerBackTitle: tuneTitle ? sectionTitle : section ? 'Settings' : 'Back',
+          // Opened with nothing behind it (a restart that came back here):
+          // a way out anyway, so nobody's stuck on a page.
+          headerLeft: router.canGoBack() ? undefined : () => <HomeButton to={section ? '/settings' : '/'} />,
+        }}
+      />
       {section === null && <SettingsHome />}
       {section === 'profile' && <ProfileSettings />}
       {section === 'notifications' && <NotificationSettings tune={tune} />}
@@ -86,6 +94,20 @@ export default function SettingsScreen() {
       {section === 'account' && <AccountSettings />}
       {section === 'help' && <HelpSettings />}
     </ScrollView>
+  );
+}
+
+function HomeButton({ to }: { to: '/' | '/settings' }) {
+  const accent = useAppearance().accent;
+  return (
+    <Pressable
+      onPress={() => (to === '/' ? router.replace('/') : router.replace('/settings'))}
+      accessibilityRole="button"
+      accessibilityLabel={to === '/' ? 'Back to Home' : 'Back to Settings'}
+      hitSlop={10}
+      style={styles.homeButton}>
+      <Text style={[styles.homeButtonText, { color: accent }]}>‹ {to === '/' ? 'Home' : 'Settings'}</Text>
+    </Pressable>
   );
 }
 
@@ -184,5 +206,7 @@ const styles = StyleSheet.create({
   label: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
   value: { maxWidth: 150, color: Colors.textSecondary, fontSize: 13, textAlign: 'right' },
   chevron: { fontSize: 22, fontWeight: '300' },
+  homeButton: { minHeight: 44, justifyContent: 'center', paddingRight: 8 },
+  homeButtonText: { fontSize: 17 },
   version: { color: Colors.textSecondary, fontSize: 11, textAlign: 'center', marginTop: Spacing.lg },
 });

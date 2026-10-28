@@ -12,7 +12,7 @@ import {
 import { Oswald_500Medium, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Satisfy_400Regular } from '@expo-google-fonts/satisfy';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { DarkTheme, router, Stack, ThemeProvider, usePathname, type Href } from 'expo-router';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname, useRootNavigationState, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -92,6 +92,7 @@ function RootStack() {
   const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>(() => (takeSkipIntro() ? 'done' : 'pending'));
   // Back to the screen a settings reload came from (lib/appearance.ts).
   const [returnTo] = useState(takeReturnTo);
+  const navReady = Boolean(useRootNavigationState()?.key);
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
   const me = useMe(Boolean(token)).data;
   const displayName = me?.display_name ?? null;
@@ -164,10 +165,16 @@ function RootStack() {
   }, [wasSignedIn]);
 
   useEffect(() => {
-    if (!returnTo || !token) return;
-    const id = setTimeout(() => router.push(returnTo as Href), 0);
+    if (!returnTo || !token || !ready || !navReady) return;
+    // Once the tabs exist, rebuild the path to it (Settings, then the
+    // page) so Back works: pushed straight away it became the only screen,
+    // with no way back (2026-10-28).
+    const id = setTimeout(() => {
+      router.push('/settings');
+      if (returnTo !== '/settings') router.push(returnTo as Href);
+    }, 250);
     return () => clearTimeout(id);
-  }, [returnTo, token]);
+  }, [returnTo, token, ready, navReady]);
 
   useEffect(() => {
     // Keep the splash up until the fonts are in and we know whether
