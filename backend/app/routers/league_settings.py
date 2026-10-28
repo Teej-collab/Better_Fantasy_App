@@ -6,6 +6,7 @@ accepted from the request itself.
 """
 import json
 import logging
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, require_league_commissioner
 from app.auth.session import decode_session_token, get_session_token
 from app.config import _require
+from app import monitoring
 from app.db import get_pool
 from app.domain import commish_log, league_format, scoring_catalog
 from app.domain.scoring_engine import compute_player_points, rules_dict_from_rows
@@ -421,11 +423,25 @@ async def connect_espn(body: ConnectEspnRequest, request: Request, pool=Depends(
         league_id = await require_league_commissioner(conn, payload)
         if await sleeper_connection_queries.get_connection(conn, league_id):
             raise HTTPException(status_code=409, detail="This league is connected to Sleeper. Disconnect it first.")
-        row = await espn_connection_queries.upsert_connection(
-            conn, league_id, espn_league_id,
-            encrypt_secret(s2) if private else None, encrypt_secret(swid) if private else None,
-            payload["user_id"],
-        )
+        try:
+            row = await espn_connection_queries.upsert_connection(
+                conn, league_id, espn_league_id,
+                encrypt_secret(s2) if private else None, encrypt_secret(swid) if private else None,
+                payload["user_id"],
+            )
+        except Exception as e:
+            # Our side, not theirs (2026-10-27: the encryption key was
+            # missing on the server). Say so plainly, and still log it and
+            # alert the admins the way an unhandled 500 would.
+            monitoring.run_in_background(monitoring._record_server_error(
+                f"{type(e).__name__}: {e}", traceback.format_exc(), "/league/espn-connection", "POST", 503,
+                payload["user_id"],
+            ))
+            raise HTTPException(
+                status_code=503,
+                detail="We found your league but couldn't finish connecting it on our end. "
+                "We've been alerted. Try again in a few minutes.",
+            ) from e
         await commish_log.record(conn, league_id, payload["user_id"], "espn", f"Connected ESPN league {espn_league_id}")
     return {"connected": True, "espn_league_id": row["espn_league_id"]}
 

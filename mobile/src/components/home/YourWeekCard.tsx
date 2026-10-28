@@ -172,7 +172,9 @@ function ScoreBlock(props: {
             </View>
           )}
         </View>
-        <Text style={styles.projected}>{props.projected.toFixed(2)}</Text>
+        <Text style={styles.projected} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {props.projected.toFixed(2)}
+        </Text>
       </View>
     </View>
   );
@@ -183,7 +185,9 @@ function ScoreBlock(props: {
 export function WinProbabilityBar({ left, right }: { left: number; right: number }) {
   return (
     <View style={styles.winRow}>
-      <Text style={styles.winPct}>{Math.round(left)}%</Text>
+      <Text style={styles.winPct} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+        {Math.round(left)}%
+      </Text>
       <View style={styles.winTrack}>
         <View style={[styles.winFill, { width: `${left}%` }]} />
       </View>
@@ -191,7 +195,9 @@ export function WinProbabilityBar({ left, right }: { left: number; right: number
       <View style={[styles.winTrack, styles.winTrackRight]}>
         <View style={[styles.winFill, { width: `${right}%` }]} />
       </View>
-      <Text style={[styles.winPct, styles.textRight]}>{Math.round(right)}%</Text>
+      <Text style={[styles.winPct, styles.textRight]} numberOfLines={1} maxFontSizeMultiplier={1.15}>
+        {Math.round(right)}%
+      </Text>
     </View>
   );
 }
@@ -269,23 +275,26 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
   dotted: { borderTopWidth: 1, borderStyle: 'dotted', borderColor: 'rgba(255,255,255,0.2)', marginVertical: Spacing.md },
   scores: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.md },
-  scoreBlock: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexShrink: 1 },
+  // Each side owns half the row, so a big score shrinks to fit its half
+  // (adjustsFontSizeToFit needs a bounded width) instead of running into
+  // the other one: a phone with Larger Text on overlapped them (2026-10-28).
+  scoreBlock: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   reverse: { flexDirection: 'row-reverse' },
   alignStart: { alignItems: 'flex-start' },
   alignEnd: { alignItems: 'flex-end' },
-  score: { fontFamily: Fonts.monoBold, fontSize: 30, color: '#fff', fontVariant: ['tabular-nums'] },
+  score: { flexShrink: 1, fontFamily: Fonts.monoBold, fontSize: 30, color: '#fff', fontVariant: ['tabular-nums'] },
   scoreTrailing: { color: 'rgba(255,255,255,0.7)' },
   scoreLost: { color: 'rgba(255,255,255,0.4)' },
   scoreLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
-  shrink: { flexShrink: 1, minWidth: 0 },
-  outcome: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  shrink: { flex: 1, minWidth: 0 },
+  outcome: { flexShrink: 0, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   outcomeText: { fontSize: 13, fontWeight: '800' },
   resultBanner: { borderWidth: 1, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 10, gap: 2, marginTop: -Spacing.sm },
   resultKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 1.3, textTransform: 'uppercase' },
   resultText: { fontSize: 18, fontWeight: '800' },
   projected: { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginTop: 4, fontVariant: ['tabular-nums'] },
   winRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
-  winPct: { width: 40, color: Colors.text, fontSize: 14, fontVariant: ['tabular-nums'] },
+  winPct: { minWidth: 40, color: Colors.text, fontSize: 14, fontVariant: ['tabular-nums'] },
   winTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' },
   winTrackRight: { alignItems: 'flex-end' },
   winFill: { height: 8, borderRadius: 4, backgroundColor: Colors.accent },

@@ -207,6 +207,10 @@ export function actionTarget(method: string, path: string): string | null {
   return `do.${verb}${parts.join('.')}`.slice(0, 64).replace(/[._-]+$/, '');
 }
 
+// What a server error with no message of its own says, instead of
+// "Request failed (500)" (2026-10-27, a manager connecting ESPN).
+const SERVER_TROUBLE = 'Something went wrong on our end. Try again in a minute.';
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // The session this request went out with: only its own 401 means it
   // expired (see below).
@@ -242,7 +246,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // loading has no token, and its 401 used to erase that session as
   // soon as it loaded: Niko kept having to sign in again (2026-10-12).
   if (!res.ok) {
-    let detail = `Request failed (${res.status})`;
+    let detail = res.status >= 500 ? SERVER_TROUBLE : `Request failed (${res.status})`;
     let body: Record<string, unknown> | null = null;
     try {
       body = await res.json();

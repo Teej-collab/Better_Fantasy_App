@@ -137,6 +137,29 @@ async def test_connect_espn_succeeds_and_encrypts_credentials_at_rest(pool, monk
     assert decrypt_secret(row["espn_swid_encrypted"]) == "{REAL-SWID}"
 
 
+async def test_a_server_side_failure_says_so_plainly_and_still_alerts(pool, monkeypatch):
+    """2026-10-27: production had no encryption key, so saving a private
+    league crashed with a bare 500 ("Request failed (500)" in the app)."""
+    _mock_league_success(monkeypatch)
+    monkeypatch.setattr("app.config.ESPN_CREDENTIAL_ENCRYPTION_KEY", None)
+    recorded = []
+
+    async def fake_record(message, stack, route, method, status_code, user_id):
+        recorded.append((message, route, status_code))
+
+    monkeypatch.setattr("app.monitoring._record_server_error", fake_record)
+    async with _client() as client:
+        await _sign_up(client, "test-espn-connect-nokey@example.com")
+        await client.post("/leagues", json={"name": "Test League ESPN No Key"})
+        resp = await client.post(
+            "/league/espn-connection",
+            json={"espn_league_id": 434343, "espn_s2": "s2-value", "espn_swid": "{SWID}"},
+        )
+    assert resp.status_code == 503
+    assert resp.json()["detail"].startswith("We found your league but couldn't finish connecting it on our end.")
+    assert recorded and "ESPN_CREDENTIAL_ENCRYPTION_KEY" in recorded[0][0] and recorded[0][2] == 503
+
+
 async def test_reconnecting_replaces_credentials_and_clears_prior_sync_error(pool, monkeypatch):
     _mock_league_success(monkeypatch)
     async with _client() as client:

@@ -1174,6 +1174,12 @@ export function buildLeagueTickerItems(data: { items: LeagueTickerItem[] }): Tic
 // depend on the visitor's local timezone the way an absolute clock
 // reading does, so there's no hydration-mismatch risk to gate behind a
 // mounted flag.
+// What a failed request says when the server sent no message of its own:
+// a server error reads as ours, not as "Request failed (500)" (2026-10-27).
+export function requestFailed(status: number): string {
+  return status >= 500 ? "Something went wrong on our end. Try again in a minute." : `Request failed (${status})`;
+}
+
 export function formatCountdown(targetIso: string): string {
   const diffMs = new Date(targetIso).getTime() - Date.now();
   if (diffMs <= 0) return "now";
@@ -1539,7 +1545,7 @@ async function _settingsRequest(path: string, method: string, body?: object): Pr
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
 }
 
@@ -1678,7 +1684,7 @@ async function _preferencesRequest(path: string, method: string, body?: object):
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
   return withFixedLayout(await res.json());
 }
@@ -2379,7 +2385,7 @@ async function chatSafetyCall(path: string, method: "POST" | "DELETE", body?: un
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
 }
 
@@ -2913,7 +2919,7 @@ async function _keepersRequest<T>(path: string, method: string, body?: object): 
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
   return res.json();
 }
@@ -2983,7 +2989,7 @@ export async function submitFeedback(message: string, pageUrl: string | null, im
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
 }
 
@@ -3527,7 +3533,7 @@ export async function setAdminUserIsAdmin(userId: number, isAdmin: boolean): Pro
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail ?? `Request failed (${res.status})`);
+    throw new Error(data?.detail ?? requestFailed(res.status));
   }
   return res.json();
 }
@@ -3543,7 +3549,7 @@ export async function deleteAdminUser(userId: number): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     const blockers = data?.detail?.blockers as string[] | undefined;
-    throw new Error(blockers?.length ? blockers.join("; ") : (data?.detail ?? `Request failed (${res.status})`));
+    throw new Error(blockers?.length ? blockers.join("; ") : (data?.detail ?? requestFailed(res.status)));
   }
 }
 

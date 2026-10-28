@@ -840,6 +840,22 @@ export function StartFlow({
             <p className="text-sm text-[#aab2bf]">Or paste a league link from sleeper.com instead:</p>
           </div>
         )}
+        {platform === "espn" && (
+          <div className={styles.card}>
+            <span className={styles.kicker}>Easiest, and works for private leagues</span>
+            <strong>Connect it in The Weekend app</strong>
+            <span className="text-sm leading-snug text-[#aab2bf]">
+              On your iPhone, open The Weekend → Set up your league → ESPN → <b>Sign in with ESPN</b>. Sign in on ESPN&apos;s own page and
+              tap your team. There&apos;s nothing to change in your ESPN settings, and we never see your password. Your league then shows up
+              here on the website too.
+            </span>
+            {IOS_APP_URL && (
+              <a href={IOS_APP_URL} className={styles.ghost} target="_blank" rel="noopener">
+                Get the iPhone app
+              </a>
+            )}
+          </div>
+        )}
         <label className={styles.label}>
           {name} league link
           <input
@@ -853,7 +869,7 @@ export function StartFlow({
         {linkField.message}
         {platform === "espn" && (
           <div className={styles.card}>
-            <span className={styles.kicker}>Before you tap Find</span>
+            <span className={styles.kicker}>Or, from here: before you tap Find</span>
             <strong>Turn on &ldquo;Viewable to Public&rdquo;</strong>
             <span className="text-sm leading-snug text-[#aab2bf]">
               On fantasy.espn.com as the league manager (your phone&apos;s browser works; the ESPN app doesn&apos;t have this setting):
@@ -866,7 +882,7 @@ export function StartFlow({
           (showPrivate ? (
             <div className="flex flex-col gap-2.5">
               <p className="text-sm leading-snug text-[#aab2bf]">
-                Keeping it private? Sign in at espn.com, open your browser&apos;s developer tools → Application → Cookies → espn.com, and
+                The app (above) is the easy way. To do it here instead: sign in at espn.com, open your browser&apos;s developer tools → Application → Cookies → espn.com, and
                 copy espn_s2 and SWID (with the curly braces).
               </p>
               <label className={styles.label}>
@@ -880,7 +896,7 @@ export function StartFlow({
             </div>
           ) : (
             <button type="button" className={styles.ghost} onClick={() => setShowPrivate(true)}>
-              My league is private
+              Private league? Paste ESPN&apos;s login cookies instead
             </button>
           ))}
         {error && <p className={styles.error}>{error}</p>}
@@ -1136,6 +1152,11 @@ function useRequired(id: string, value: string, message: string) {
     message: showing ? <p id={`${id}-error`} className={styles.error} role="alert">{message}</p> : null,
   };
 }
+
+// Where the website sends people to get the iPhone app, for Sign in
+// with ESPN (2026-10-27): set this to the public TestFlight link (later
+// the App Store page). Until then the card just says what to tap.
+const IOS_APP_URL: string | null = null;
 
 function Top({ onBack, step }: { onBack: () => void; step?: number }) {
   return (
