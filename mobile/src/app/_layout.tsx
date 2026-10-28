@@ -24,9 +24,11 @@ import { AppTickerBar } from '@/components/AppTickerBar';
 import { HoneycombBackground } from '@/components/HoneycombBackground';
 import { IntroOverlay } from '@/components/IntroOverlay';
 import { LaunchPicker } from '@/components/LaunchPicker';
+import { NewHereTourHost } from '@/components/tour/NewHereTour';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
+import { applyUpdateOnLaunch } from '@/lib/appUpdates';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { takeSkipIntro } from '@/lib/appearance';
 import { AWAY_RESET_MS, openedByLinkRecently } from '@/lib/freshStart';
@@ -41,6 +43,8 @@ SplashScreen.preventAutoHideAsync();
 void lockPortrait();
 // Uncaught JavaScript errors go to Admin > Errors, like the web's.
 startErrorReporter();
+// A new update runs on this open, not the next one (lib/appUpdates.ts).
+void applyUpdateOnLaunch();
 
 const theme = {
   ...DarkTheme,
@@ -210,6 +214,7 @@ function RootStack() {
           <Stack.Screen name="leagues" options={{ title: 'Leagues' }} />
           <Stack.Screen name="whats-new" options={{ title: "What's New", headerBackTitle: 'Back' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="glossary" options={{ title: 'Glossary', headerBackTitle: 'Back' }} />
           <Stack.Screen name="watch-party/[id]" options={{ title: 'Watch Party', headerBackTitle: 'Chat' }} />
           <Stack.Screen name="watch-party/new" options={{ title: 'Start a Party', presentation: 'modal' }} />
           <Stack.Screen name="watch-party/manage/[id]" options={{ title: 'Manage party', presentation: 'modal' }} />
@@ -254,6 +259,8 @@ function RootStack() {
       </Stack>
       {picker && token && me && <LaunchPicker onDismiss={() => setPicker(false)} />}
       {intro === 'playing' && <IntroOverlay displayName={displayName} onDone={() => setIntro('done')} />}
+      {/* The New Here tour, once per phone, after the intro and league picker. */}
+      <NewHereTourHost ready={intro === 'done' && !picker} />
     </>
   );
 }

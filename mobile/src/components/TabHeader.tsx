@@ -74,6 +74,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
   const insets = useSafeAreaInsets();
   const items: { label: string; href: Href }[] = [
     { label: 'Settings', href: '/settings' },
+    { label: 'Glossary', href: '/glossary' as Href },
     { label: 'Notifications', href: { pathname: '/settings', params: { section: 'notifications' } } },
     { label: 'The Lounge', href: '/lounge' as Href },
     { label: 'Friends', href: '/friends' as Href },
