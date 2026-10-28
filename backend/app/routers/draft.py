@@ -17,8 +17,11 @@ their own active league's draft, never one they merely guess the
 season of (see TODO.md's PHASE 9 entry).
 """
 import json
+import secrets
+import time
 from datetime import datetime
 
+import jwt
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -26,7 +29,7 @@ from pydantic import BaseModel
 from app.auth.config import SessionConfig
 from app.auth.league_context import require_active_league_id, require_league_commissioner, resolve_owner_id
 from app.auth.session import SESSION_COOKIE_NAME, decode_session_token, get_session_token, decode_ticket_token
-from app.config import _require
+from app.config import _require, require_livekit_configured
 from app.db import get_pool
 from app.domain import auction_engine, commish_log, league_mode
 from app.domain import draft_engine
@@ -719,3 +722,36 @@ async def draft_ws(websocket: WebSocket, season: int, ticket: str | None = None)
         pass
     finally:
         await manager.disconnect(room, owner_id, websocket)
+
+
+VIDEO_TOKEN_TTL_SECONDS = 6 * 60 * 60
+
+
+@router.post("/video-token")
+async def draft_video_token(request: Request):
+    """Cameras for the draft room (2026-10-28): a LiveKit room per
+    league and season, the same video setup as the Lounge
+    (routers/watch_party.py), so a league drafting from far apart can
+    see each other. Members only, and only your own league's room."""
+    payload = _require_session(request)
+    api_key, api_secret, livekit_url = require_livekit_configured()
+    season = int(_require("ACTIVE_SEASON"))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        league_id = await require_active_league_id(conn, payload)
+        owner_id = await resolve_owner_id(conn, payload)
+        if owner_id is None:
+            raise HTTPException(status_code=404, detail="You don't have a team in this league")
+        name = await conn.fetchval("SELECT COALESCE(goes_by, display_name) FROM owners WHERE owner_id = $1", owner_id)
+    now = int(time.time())
+    room = f"league-{league_id}-draft-{season}"
+    claims = {
+        "iss": api_key,
+        # owner_id#device, like the Lounge: two devices don't kick each other.
+        "sub": f"{owner_id}#{secrets.token_hex(3)}",
+        "name": name or "Owner",
+        "nbf": now,
+        "exp": now + VIDEO_TOKEN_TTL_SECONDS,
+        "video": {"room": room, "roomJoin": True, "canPublish": True, "canSubscribe": True, "canPublishData": True},
+    }
+    return {"token": jwt.encode(claims, api_secret, algorithm="HS256"), "url": livekit_url, "room_name": room}

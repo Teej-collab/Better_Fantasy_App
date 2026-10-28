@@ -7,6 +7,8 @@ import { AppRefreshControl } from '@/components/AppRefreshControl';
 import { PositionStripe } from '@/components/PositionStripe';
 import { Text } from '@/components/Text';
 import { LoadingState, MessageState } from '@/components/ui';
+import { DraftVideoProvider } from '@/components/draft/DraftCams';
+import { RoomBar, RoomPicker, StageView, TableView, useRoomStyle, type Direction, type Seat } from '@/components/draft/DraftRooms';
 import { QueueHeader, QueueList } from '@/components/warroom/QueueList';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { api, draftSocketUrl } from '@/lib/api';
@@ -152,9 +154,13 @@ export default function DraftScreen() {
   const season = draft.data?.config.season ?? null;
   const { connected, sendChat } = useDraftSocket(season);
   const [tab, setTab] = useState<Tab>('players');
+  // The Stage or the Table (components/draft/DraftRooms.tsx), chosen the
+  // first time in and remembered; the cameras can fold away.
+  const [roomStyle, styleLoaded, chooseStyle] = useRoomStyle();
+  const [collapsed, setCollapsed] = useState(false);
 
   const config = draft.data?.config;
-  const picks = draft.data?.picks ?? [];
+  const picks = useMemo(() => draft.data?.picks ?? [], [draft.data?.picks]);
   const myOwnerId = me.data?.owner_id ?? null;
   const currentPick = picks.find((p) => p.pick_number === config?.current_pick_number);
   // Auction drafts (2026-10): "my turn" is my turn to nominate, and a
@@ -193,11 +199,58 @@ export default function DraftScreen() {
     ]);
   }
 
+  const seconds = useCountdown(config?.status === 'in_progress' ? config.current_pick_deadline : null);
+  const room = useMemo(() => {
+    if (!config) return null;
+    const names = new Map(picks.map((p) => [p.owner_id, p.owner_name]));
+    const online = new Set(draft.data?.connected_owner_ids ?? []);
+    const live = config.status === 'in_progress' || config.status === 'paused';
+    const clockOwner = isAuction ? (auction?.nominator_owner_id ?? null) : live ? (currentPick?.owner_id ?? null) : null;
+    const upcoming = picks
+      .filter((p) => p.pick_number > config.current_pick_number && !p.sleeper_player_id)
+      .sort((a, b) => a.pick_number - b.pick_number)
+      .map((p) => p.owner_id);
+    const upNext = new Map<number, number>();
+    for (const o of upcoming) {
+      if (upNext.size >= 3) break;
+      if (o !== clockOwner && !upNext.has(o)) upNext.set(o, upNext.size + 1);
+    }
+    const seats: Seat[] = config.draft_order.map((ownerId, i) => ({
+      ownerId,
+      name: names.get(ownerId) ?? `Team ${i + 1}`,
+      slot: i + 1,
+      online: online.has(ownerId),
+      clock: ownerId === clockOwner,
+      me: ownerId === myOwnerId,
+      upNext: upNext.get(ownerId) ?? null,
+    }));
+    const round = currentPick?.round ?? 1;
+    const direction: Direction = isAuction ? 'none' : config.draft_type === 'linear' || round % 2 === 1 ? 'forward' : 'back';
+    const lastPick = [...picks].filter((p) => p.sleeper_player_id).sort((a, b) => b.pick_number - a.pick_number)[0];
+    const until = myNextPick ? picks.filter((p) => p.pick_number >= config.current_pick_number && p.pick_number < myNextPick.pick_number && !p.sleeper_player_id).length : null;
+    const statusLine =
+      config.status === 'complete'
+        ? 'The draft is done'
+        : !live
+          ? 'The draft hasn’t started'
+          : isMyTurn
+            ? 'Make your pick'
+            : until !== null
+              ? `You pick in ${until}`
+              : config.status === 'paused'
+                ? 'Paused'
+                : '';
+    return { seats, direction, round, lastPick, statusLine };
+  }, [config, picks, draft.data?.connected_owner_ids, isAuction, auction?.nominator_owner_id, currentPick, myOwnerId, myNextPick, isMyTurn]);
+
   if (draft.isPending) return <LoadingState />;
-  if (draft.isError || !draft.data || !config) return <MessageState message="Your league doesn't have a draft set up yet." />;
+  if (draft.isError || !draft.data || !config || !room) return <MessageState message="Your league doesn't have a draft set up yet." />;
+  const showRoom = roomStyle !== null && !collapsed;
 
   return (
+    <DraftVideoProvider>
     <View style={styles.screen}>
+      <RoomPicker visible={styleLoaded && roomStyle === null} onPick={chooseStyle} />
       <DraftHeader
         state={draft.data}
         currentPick={currentPick}
@@ -206,7 +259,13 @@ export default function DraftScreen() {
         connected={connected}
         isCommissioner={me.data?.is_commissioner ?? false}
         isAuction={isAuction}
+        compact={showRoom}
       />
+      {roomStyle && <RoomBar style={roomStyle} onStyle={chooseStyle} collapsed={collapsed} onCollapse={() => setCollapsed((c) => !c)} />}
+      {showRoom && roomStyle === 'stage' && <StageView seats={room.seats} seconds={isAuction ? null : seconds} lastPick={room.lastPick} statusLine={room.statusLine} />}
+      {showRoom && roomStyle === 'table' && (
+        <TableView seats={room.seats} direction={room.direction} round={room.round} lastPick={room.lastPick} seconds={isAuction ? null : seconds} />
+      )}
       {isAuction && auction && config.status === 'in_progress' && <AuctionCard auction={auction} myOwnerId={myOwnerId} picks={picks} />}
 
       <View style={styles.tabs}>
@@ -222,6 +281,7 @@ export default function DraftScreen() {
       {tab === 'board' && <BoardView picks={picks} currentPickNumber={config.current_pick_number} myOwnerId={myOwnerId} />}
       {tab === 'chat' && <ChatView messages={draft.data.chat_messages} myOwnerId={myOwnerId} onSend={sendChat} />}
     </View>
+    </DraftVideoProvider>
   );
 }
 
@@ -233,6 +293,8 @@ function DraftHeader(props: {
   connected: boolean;
   isCommissioner: boolean;
   isAuction: boolean;
+  // The Stage or the Table is showing the clock and who's up.
+  compact?: boolean;
 }) {
   const { config } = props.state;
   const seconds = useCountdown(config.status === 'in_progress' ? config.current_pick_deadline : null);
@@ -270,11 +332,11 @@ function DraftHeader(props: {
     <View style={[styles.header, props.isMyTurn && styles.headerMyTurn]}>
       <View style={styles.headerTop}>
         <Text style={styles.headerTitle}>{title}</Text>
-        {seconds !== null && !props.isAuction && (
+        {seconds !== null && !props.isAuction && !props.compact && (
           <Text style={[styles.clock, seconds <= 10 && styles.clockUrgent]}>{formatClock(seconds)}</Text>
         )}
       </View>
-      {props.isMyTurn ? (
+      {props.compact ? null : props.isMyTurn ? (
         <Text style={styles.yourPick}>{props.isAuction ? 'Your turn to nominate' : 'You\'re on the clock'}</Text>
       ) : (
         config.status === 'in_progress' &&

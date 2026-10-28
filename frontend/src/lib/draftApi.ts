@@ -408,3 +408,9 @@ export async function getDraftWsTicket(): Promise<string | null> {
 export function getDraftWebSocketUrl(ticket: string, season: number): string {
   return `${API_BASE_URL.replace(/^http/, "ws")}/draft/ws?ticket=${encodeURIComponent(ticket)}&season=${season}`;
 }
+
+// The draft room's cameras (backend POST /draft/video-token, 2026-10-28):
+// one LiveKit room per league and season, minted fresh per join.
+export async function getDraftVideoToken(): Promise<{ token: string; url: string; room_name: string }> {
+  return post("/draft/video-token");
+}

@@ -1090,3 +1090,24 @@ async def test_queue_scoped_to_league_a_non_member_cannot_read_or_write(pool, mo
     # what, since no league id is ever accepted from the request at all.
     assert get_resp.status_code == 200
     assert add_resp.status_code == 200
+
+
+async def test_draft_video_token_is_your_leagues_room(pool, monkeypatch):
+    """2026-10-28: the draft room's cameras join one LiveKit room per
+    league and season."""
+    import jwt as pyjwt
+
+    from app import config
+
+    _set_env(monkeypatch)
+    monkeypatch.setattr(config, "LIVEKIT_API_KEY", "test-key")
+    monkeypatch.setattr(config, "LIVEKIT_API_SECRET", "test-secret-livekit-at-least-32-bytes")
+    monkeypatch.setattr(config, "LIVEKIT_URL", "wss://test.livekit.cloud")
+    user_id, owner_id = await _seed_member(pool, 1, "video")
+    async with _client() as client:
+        client.cookies.update(_session_cookie(user_id, owner_id))
+        body = (await client.post("/draft/video-token")).json()
+    assert body["room_name"] == f"league-1-draft-{TEST_SEASON}"
+    claims = pyjwt.decode(body["token"], options={"verify_signature": False})
+    assert claims["video"]["room"] == body["room_name"]
+    assert claims["sub"].startswith(f"{owner_id}#")

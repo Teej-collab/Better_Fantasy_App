@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { BoardWall } from "@/components/draft/BoardWall";
 import {
   getDraftPool,
   getDraftState,
@@ -393,11 +395,28 @@ export function DraftRoom({
   );
 
   function sendChatMessage() {
-    const text = chatDraft.trim();
-    if (!text || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
-    socketRef.current.send(JSON.stringify({ type: "chat", text }));
-    setChatDraft("");
+    if (sendChatText(chatDraft.trim())) setChatDraft("");
   }
+
+  function sendChatText(text: string): boolean {
+    if (!text || !socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return false;
+    socketRef.current.send(JSON.stringify({ type: "chat", text }));
+    return true;
+  }
+
+  // The Board Wall (components/draft/BoardWall.tsx): the full board and
+  // everyone's camera for a TV, iPad or computer.
+  // ?wall=1 opens straight onto it (the app's iPad button, a TV's browser).
+  const searchParams = useSearchParams();
+  const [wall, setWall] = useState(() => searchParams.get("wall") === "1");
+  const bestAvailable = useMemo(
+    () =>
+      pool
+        .filter((p) => !p.drafted)
+        .sort((a, b) => (a.adp ?? a.search_rank ?? 9999) - (b.adp ?? b.search_rank ?? 9999))
+        .slice(0, 5),
+    [pool]
+  );
 
   // Merges real persisted chat with ephemeral join/leave lines into one
   // timeline, oldest first — the only place these two sources meet.
@@ -508,7 +527,31 @@ export function DraftRoom({
           <div className="text-3xl font-bold tabular-nums">{formatCountdown(secondsUntilStart)}</div>
         )}
         <span className="text-xs text-black/50 dark:text-white/50">{connected ? "● live" : "○ reconnecting…"}</span>
+        <button
+          type="button"
+          onClick={() => setWall(true)}
+          className="min-h-11 rounded-full border border-emerald-500/60 px-4 text-sm font-semibold text-emerald-600 dark:text-emerald-400"
+        >
+          Board Wall (TV)
+        </button>
       </div>
+
+      {wall && (
+        <BoardWall
+          config={config!}
+          picks={draftState.picks}
+          connectedOwnerIds={connectedOwnerIds}
+          chatMessages={chatMessages}
+          onSendChat={sendChatText}
+          bestAvailable={bestAvailable}
+          nameByOwner={teamNameByOwner}
+          myOwnerId={myOwnerId}
+          secondsRemaining={secondsRemaining}
+          isAuction={isAuction}
+          leagueLine={`${config!.draft_type === "linear" ? "Rookie draft" : config!.draft_type === "auction" ? "Auction" : "Snake"} · ${config!.draft_order.length} teams · ${Math.max(0, ...draftState.picks.map((p) => p.round))} rounds`}
+          onClose={() => setWall(false)}
+        />
+      )}
 
       {isAuction && auction && config!.status === "in_progress" && (
         <AuctionPanel

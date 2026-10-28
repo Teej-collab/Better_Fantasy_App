@@ -741,6 +741,8 @@ export const api = {
     request<unknown>(`/watch-party/rooms/${roomId}/members/${ownerId}`, { method: 'DELETE' }),
   // Long-lived (one sitting) ticket for the fantasy-digest socket.
   // A LiveKit token for a Watch Party's video call (League Lounge included).
+  // The draft room's cameras (backend POST /draft/video-token, 2026-10-28).
+  draftVideoToken: () => request<{ token: string; url: string; room_name: string }>('/draft/video-token', { method: 'POST' }),
   watchPartyToken: (roomId: number) =>
     request<{ token: string; url: string; room_name: string }>(`/watch-party/rooms/${roomId}/token`, { method: 'POST', body: '{}' }),
   watchPartySocketTicket: () => request<{ ticket: string }>('/auth/ticket?purpose=watch_party_ws', { method: 'POST' }),
