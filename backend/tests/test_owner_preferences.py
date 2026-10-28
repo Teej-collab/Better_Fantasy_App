@@ -183,6 +183,18 @@ async def test_put_preferences_sets_cosmic_theme(pool, monkeypatch):
     assert reread["theme"] == "cosmic"
 
 
+async def test_put_preferences_accepts_the_new_looks(pool, monkeypatch):
+    """2026-10-28: Midnight, Graphite, Ember and Gridiron are full looks too."""
+    monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
+    owner_id = await _seed_owner(pool, 43)
+    async with _client() as client:
+        client.cookies.update(await _session_cookie(pool, owner_id))
+        for look in ("midnight", "graphite", "ember", "gridiron"):
+            resp = await client.put("/settings/preferences", json={"theme": look})
+            assert resp.status_code == 200
+            assert resp.json()["theme"] == look
+
+
 async def test_put_preferences_rejects_invalid_theme(pool, monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", _SESSION_SECRET)
     owner_id = await _seed_owner(pool, 42)

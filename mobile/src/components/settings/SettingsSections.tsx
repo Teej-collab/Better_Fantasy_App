@@ -13,7 +13,7 @@ import { ImageViewer } from '@/components/ImageViewer';
 import { NeonPanel } from '@/components/NeonPanel';
 import { Display, Text } from '@/components/Text';
 import { LoadingState, MessageState, TeamAvatar } from '@/components/ui';
-import { Colors, DefaultAccent, HoneycombColor, Radius, SectionColors, Spacing } from '@/constants/theme';
+import { Colors, DefaultAccent, HoneycombColor, Radius, SectionColors, Spacing, type ThemeName } from '@/constants/theme';
 import { api, uploadChatImage } from '@/lib/api';
 import {
   canScheduleReminders,
@@ -34,7 +34,7 @@ import { pickChatPhoto } from '@/lib/chatImage';
 import { getIntroSoundMode, setIntroSoundMode, type IntroSoundMode } from '@/lib/introSound';
 import { canUseLiveActivities, liveActivityEnabled, setLiveActivityEnabled } from '@/lib/liveActivity';
 import { registerForPush } from '@/lib/pushRegistration';
-import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, usePreferences } from '@/lib/queries';
+import { queryClient, useFeedbackList, useHouseRules, useMe, useMySettings, useMyUsername, usePreferences } from '@/lib/queries';
 import type { MySettings, OwnerPreferences, SundayMode } from '@/lib/types';
 
 // Ports of the web's components/settings/*Section.tsx.
@@ -415,6 +415,8 @@ function ProfileForm({ settings }: { settings: MySettings }) {
         )}
       </Panel>
 
+      <UsernamePanel />
+
       <Panel title="Team Logo" description="Shown next to your name in League Chat.">
         <View style={styles.logoRow}>
           <TeamAvatar name={settings.display_name ?? settings.team_name ?? '?'} logoUrl={settings.logo_url} size={64} />
@@ -453,6 +455,27 @@ function ProfileForm({ settings }: { settings: MySettings }) {
       )}
 
     </View>
+  );
+}
+
+// Your @username: how people outside your leagues find you as a friend.
+// Picked and changed on the Friends screen, which also finds and adds people.
+function UsernamePanel() {
+  const accent = useAppearance().accent;
+  const username = useMyUsername();
+  if (username.isLoading) return null;
+  return (
+    <Panel title="Username" description="How people outside your leagues find you to add you as a friend.">
+      <View style={styles.inputRow}>
+        <Text style={[styles.bodyMedium, styles.flex]}>{username.data ? `@${username.data}` : 'Not picked yet'}</Text>
+        <Pressable onPress={() => router.push('/friends' as Href)} accessibilityRole="button" style={[styles.secondary, { borderColor: accent }]}>
+          <Text style={styles.body}>{username.data ? 'Change' : 'Pick one'}</Text>
+        </Pressable>
+      </View>
+      <Pressable onPress={() => router.push('/friends' as Href)} accessibilityRole="link" hitSlop={6}>
+        <Text style={[styles.linkSmall, { color: accent }]}>Find and add friends →</Text>
+      </Pressable>
+    </Panel>
   );
 }
 
@@ -508,12 +531,66 @@ function normalizeTime(text: string): string | null {
   return `${m[1].padStart(2, '0')}:${m[2]}:00`;
 }
 
-export function NotificationSettings() {
+// The list rows (2026-10-28, the approved Settings mockup): a label, a
+// line on what it is, what it's set to, and a chevron to its own page.
+function ListCard({ children }: { children: ReactNode }) {
+  return <View style={styles.listCard}>{children}</View>;
+}
+
+function ListRow({ label, sub, value, onPress, first }: { label: string; sub?: string; value?: string; onPress: () => void; first?: boolean }) {
+  const accent = useAppearance().accent;
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.selectionAsync();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}${value ? `, ${value}` : ''}`}
+      accessibilityHint={sub}
+      style={({ pressed }) => [styles.listRow, !first && styles.listLine, pressed && styles.listPressed]}>
+      <View style={styles.flex}>
+        <Text style={styles.listLabel}>{label}</Text>
+        {sub ? <Text style={styles.small}>{sub}</Text> : null}
+      </View>
+      {value ? (
+        <Text style={styles.listValue} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      <Text style={[styles.listChevron, { color: accent }]}>›</Text>
+    </Pressable>
+  );
+}
+
+function openTune(section: string, tune: string) {
+  router.push({ pathname: '/settings', params: { section, tune } });
+}
+
+// "22:00:00" → "10 PM".
+function clockLabel(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+export const NOTIFICATION_TUNES: Record<string, string> = {
+  game: 'Game day alerts',
+  messages: 'Messages',
+  push: 'Push notifications',
+  quiet: 'Quiet hours',
+  lock: 'Live score on Lock Screen',
+  reminders: 'Phone reminders',
+};
+
+export function NotificationSettings({ tune }: { tune?: string }) {
   const prefs = usePreferences().data;
   const accent = useAppearance().accent;
   const { patch, saved, error } = usePatchPreferences();
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
+  const [lockOn, setLockOn] = useState<boolean | null>(null);
+  const [reminders, setReminders] = useState<ReminderSettings | null>(null);
 
   // Quiet hours run on the account's time zone; keep it matched to
   // this device, same as the web's Notifications section.
@@ -525,98 +602,143 @@ export function NotificationSettings() {
       api.updatePreferences({ timezone: deviceZone }).then((p) => queryClient.setQueryData(['preferences'], p), () => {});
     }
   }, [savedZone]);
+  // The two saved on this phone, for the rows' values.
+  useEffect(() => {
+    if (tune) return;
+    liveActivityEnabled().then(setLockOn).catch(() => setLockOn(true));
+    getReminderSettings().then(setReminders).catch(() => setReminders(DEFAULT_REMINDER_SETTINGS));
+  }, [tune]);
 
   if (!prefs) return <LoadingState />;
+
+  if (tune === 'game') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Game day alerts" subtitle="Which push notifications you get on game day." saved={saved} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Panel description={prefs.push_enabled ? undefined : 'Turn on push notifications first to get these.'}>
+          {FANTASY_TOGGLES.map((t, i) => (
+            <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} disabled={!prefs.push_enabled} onChange={(v) => patch({ [t.key]: v })} />
+          ))}
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'messages') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Messages" subtitle="Chat notifications: DMs, league chat, mentions and replies." saved={saved} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Panel>
+          {MESSAGE_TOGGLES.map((t, i) => (
+            <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} onChange={(v) => patch({ [t.key]: v })} />
+          ))}
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'push') return <PushPanel on={prefs.push_enabled} />;
+  if (tune === 'lock') return <LiveActivityPanel />;
+  if (tune === 'reminders') return <PhoneReminders />;
+  if (tune === 'quiet') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Quiet hours" subtitle="Nothing buzzes overnight." saved={saved} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Panel>
+          <ToggleRow
+            label="Quiet Hours"
+            description="Silences notifications overnight. Injury alerts and player news wait until quiet hours end; draft alerts still come through."
+            value={prefs.quiet_hours_enabled}
+            onChange={(v) => patch({ quiet_hours_enabled: v })}
+          />
+          {prefs.quiet_hours_enabled && (
+            <View style={styles.quietRow}>
+              <View style={styles.gapSm}>
+                <Text style={styles.small}>From</Text>
+                <TextInput
+                  value={from ?? prefs.quiet_hours_start.slice(0, 5)}
+                  onChangeText={setFrom}
+                  onEndEditing={() => {
+                    const t = from !== null ? normalizeTime(from) : null;
+                    if (t) void patch({ quiet_hours_start: t });
+                    setFrom(null);
+                  }}
+                  placeholder="22:00"
+                  accessibilityLabel="Quiet hours start"
+                  style={[styles.input, styles.timeInput]}
+                />
+              </View>
+              <Text style={styles.arrow} accessibilityElementsHidden importantForAccessibility="no">→</Text>
+              <View style={styles.gapSm}>
+                <Text style={styles.small}>To</Text>
+                <TextInput
+                  value={to ?? prefs.quiet_hours_end.slice(0, 5)}
+                  onChangeText={setTo}
+                  onEndEditing={() => {
+                    const t = to !== null ? normalizeTime(to) : null;
+                    if (t) void patch({ quiet_hours_end: t });
+                    setTo(null);
+                  }}
+                  placeholder="08:00"
+                  accessibilityLabel="Quiet hours end"
+                  style={[styles.input, styles.timeInput]}
+                />
+              </View>
+            </View>
+          )}
+        </Panel>
+      </View>
+    );
+  }
+
+  const gameOn = FANTASY_TOGGLES.filter((t) => prefs[t.key]).length;
+  const messagesOn = MESSAGE_TOGGLES.filter((t) => prefs[t.key]).length;
+  const remindersOn = reminders ? REMINDER_TOGGLES.filter((t) => reminders[t.key]).length : null;
 
   return (
     <View style={styles.gap}>
       <Header title="Notifications" subtitle="What The Weekend lets you know about, and when." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Panel title="Sunday Mode" description="A quick preset instead of tuning every toggle by hand — pick one, or keep customizing below.">
-        {SUNDAY_MODES.map((m) => (
-          <Pressable
-            key={m.key}
-            onPress={() => patch({ sunday_mode: m.key }, () => api.applySundayMode(m.key))}
-            style={[styles.option, prefs.sunday_mode === m.key && { borderColor: accent, backgroundColor: `${accent}1a` }]}>
-            <Text style={styles.bodyMedium}>
-              {m.emoji} {m.label}
-            </Text>
-            <Text style={styles.small}>{m.description}</Text>
-          </Pressable>
-        ))}
-        <Text style={styles.small}>
-          {prefs.sunday_mode ? `Active: ${SUNDAY_MODES.find((m) => m.key === prefs.sunday_mode)?.label}` : "Customized — doesn't match a preset."}
-        </Text>
-      </Panel>
+      <View style={[styles.sundayCard, { borderColor: accent }]}>
+        <Text style={[styles.sectionKicker, { color: accent }]}>SUNDAY MODE · THE EASY WAY</Text>
+        {SUNDAY_MODES.map((m) => {
+          const on = prefs.sunday_mode === m.key;
+          return (
+            <Pressable
+              key={m.key}
+              onPress={() => patch({ sunday_mode: m.key }, () => api.applySundayMode(m.key))}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              style={[styles.sundayOption, on && { borderColor: accent, backgroundColor: `${accent}14` }]}>
+              <View style={[styles.radio, { borderColor: on ? accent : Colors.border }]}>{on && <View style={[styles.radioDot, { backgroundColor: accent }]} />}</View>
+              <View style={styles.flex}>
+                <Text style={styles.listLabel}>{m.label}</Text>
+                <Text style={styles.small}>{m.description}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+        {!prefs.sunday_mode && <Text style={styles.small}>Customized below, so no preset is on.</Text>}
+      </View>
 
-      <Panel title="Messages">
-        {MESSAGE_TOGGLES.map((t, i) => (
-          <ToggleRow key={t.key} divided={i > 0} label={t.label} description={t.description} value={Boolean(prefs[t.key])} onChange={(v) => patch({ [t.key]: v })} />
-        ))}
-      </Panel>
-
-      <PushPanel on={prefs.push_enabled} />
-
-      <LiveActivityPanel />
-
-      <PhoneReminders />
-
-      <Panel title="Fantasy Activity" description={prefs.push_enabled ? 'What push notifications you get, by category.' : 'Turn on push notifications above to receive these.'}>
-        {FANTASY_TOGGLES.map((t, i) => (
-          <ToggleRow
-            key={t.key}
-            divided={i > 0}
-            label={t.label}
-            description={t.description}
-            value={Boolean(prefs[t.key])}
-            disabled={!prefs.push_enabled}
-            onChange={(v) => patch({ [t.key]: v })}
-          />
-        ))}
-      </Panel>
-
-      <Panel>
-        <ToggleRow
-          label="Quiet Hours"
-          description="Silences notifications overnight. Injury alerts and player news wait until quiet hours end; draft alerts still come through."
-          value={prefs.quiet_hours_enabled}
-          onChange={(v) => patch({ quiet_hours_enabled: v })}
+      <Text style={styles.fineTune}>CUSTOMIZE</Text>
+      <ListCard>
+        <ListRow first label="Game day alerts" sub="Touchdowns, red zone, injuries, your matchup" value={`${gameOn} on`} onPress={() => openTune('notifications', 'game')} />
+        <ListRow label="Messages" sub="DMs, league chat, mentions, replies" value={`${messagesOn} on`} onPress={() => openTune('notifications', 'messages')} />
+        <ListRow label="Push notifications" sub="Alerts on this phone when the app's closed" value={prefs.push_enabled ? 'On' : 'Off'} onPress={() => openTune('notifications', 'push')} />
+        <ListRow
+          label="Quiet hours"
+          sub="Nothing buzzes overnight"
+          value={prefs.quiet_hours_enabled ? `${clockLabel(prefs.quiet_hours_start)} – ${clockLabel(prefs.quiet_hours_end)}` : 'Off'}
+          onPress={() => openTune('notifications', 'quiet')}
         />
-        {prefs.quiet_hours_enabled && (
-          <View style={styles.quietRow}>
-            <View style={styles.gapSm}>
-              <Text style={styles.small}>From</Text>
-              <TextInput
-                value={from ?? prefs.quiet_hours_start.slice(0, 5)}
-                onChangeText={setFrom}
-                onEndEditing={() => {
-                  const t = from !== null ? normalizeTime(from) : null;
-                  if (t) void patch({ quiet_hours_start: t });
-                  setFrom(null);
-                }}
-                placeholder="22:00"
-                style={[styles.input, styles.timeInput]}
-              />
-            </View>
-            <Text style={styles.arrow} accessibilityElementsHidden importantForAccessibility="no">→</Text>
-            <View style={styles.gapSm}>
-              <Text style={styles.small}>To</Text>
-              <TextInput
-                value={to ?? prefs.quiet_hours_end.slice(0, 5)}
-                onChangeText={setTo}
-                onEndEditing={() => {
-                  const t = to !== null ? normalizeTime(to) : null;
-                  if (t) void patch({ quiet_hours_end: t });
-                  setTo(null);
-                }}
-                placeholder="08:00"
-                style={[styles.input, styles.timeInput]}
-              />
-            </View>
-          </View>
+        {canUseLiveActivities && (
+          <ListRow label="Live score on Lock Screen" sub="Your matchup on game day" value={lockOn === null ? undefined : lockOn ? 'On' : 'Off'} onPress={() => openTune('notifications', 'lock')} />
         )}
-      </Panel>
+        <ListRow label="Phone reminders" sub="Lineups, the draft, the chug deadline" value={remindersOn === null ? undefined : `${remindersOn} on`} onPress={() => openTune('notifications', 'reminders')} />
+      </ListCard>
     </View>
   );
 }
@@ -728,141 +850,184 @@ function BlockedPeople() {
   );
 }
 
-// ---- Appearance ----
+// ---- Look & feel ----
 
-export function AppearanceSettings() {
+// The looks (2026-10-28, the approved "The Weekend Themes" mockup): each
+// is the whole app's background, panels and accent. Fine-tune below
+// changes any one piece on top of it. The logo and the opening intro
+// stay the brand's own colors whatever you pick.
+export const LOOKS: { key: ThemeName; name: string; blurb: string; bg: string; surface: string; accent: string }[] = [
+  { key: 'calm', name: 'Calm', blurb: 'The classic: neon green on dark', bg: '#0d1016', surface: '#12161c', accent: '#39ff14' },
+  { key: 'cosmic', name: 'Cosmic', blurb: 'Deep purple, each section its own color', bg: '#0a0716', surface: '#171129', accent: '#39ffb0' },
+  { key: 'midnight', name: 'Midnight', blurb: 'Navy panels, ice-blue accent', bg: '#060a13', surface: '#0e1526', accent: '#5cc8ff' },
+  { key: 'graphite', name: 'Graphite', blurb: 'True black and silver', bg: '#000000', surface: '#121214', accent: '#f2f2f7' },
+  { key: 'ember', name: 'Ember', blurb: 'Warm charcoal, orange accent', bg: '#110a07', surface: '#1a110c', accent: '#ff7a2f' },
+  { key: 'gridiron', name: 'Gridiron', blurb: 'Field green, lime accent', bg: '#06100a', surface: '#0c1a12', accent: '#b4f03a' },
+];
+
+export function lookName(theme: string | undefined): string {
+  return LOOKS.find((l) => l.key === theme)?.name ?? 'Calm';
+}
+
+const LOOK_PAGE = '/settings?section=look';
+
+export const LOOK_TUNES: Record<string, string> = {
+  accent: 'Accent color',
+  glow: 'Neon glow',
+  background: 'Background lights',
+  yourweek: 'Your Week card',
+  border: 'Border animation',
+  motion: 'Motion',
+};
+
+function colorLabel(value: string | null | undefined, fallback: string): string {
+  if (!value) return fallback;
+  if (value === 'off') return 'Off';
+  if (isMulti(value)) return 'Multi';
+  return COLOR_PRESETS.find((p) => p.hex.toLowerCase() === value.toLowerCase())?.name ?? 'Custom';
+}
+
+export function AppearanceSettings({ tune }: { tune?: string }) {
   const prefs = usePreferences().data;
   const { patch, saved, error } = usePatchPreferences();
   // A new Accent Color reloads the app so everything changes together —
   // once you're done here, not while you're still picking.
-  useFocusEffect(useCallback(() => () => flushAccentReload(), []));
+  useFocusEffect(useCallback(() => () => flushAccentReload(tune ? LOOK_PAGE : '/settings'), [tune]));
   if (!prefs) return <LoadingState />;
+
+  if (tune === 'glow') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Neon glow" subtitle="How strong the decorative glow reads. Never affects text or contrast." saved={saved} />
+        <Panel>
+          <Segment
+            options={[
+              { key: 'subtle', label: 'Subtle' },
+              { key: 'standard', label: 'Standard' },
+              { key: 'high', label: 'High' },
+            ]}
+            value={prefs.neon_intensity}
+            onChange={(neon_intensity) => patch({ neon_intensity })}
+          />
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'accent') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Accent color" subtitle="The current tab, buttons and glows. Default is your look's own accent; it applies everywhere when you leave this page." saved={saved} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Panel>
+          <Swatches
+            value={prefs.accent_color}
+            onChange={(accent_color) => void patch({ accent_color }).then((ok) => ok && applyAccent(accent_color))}
+            without={[DefaultAccent]}
+            defaultSwatch={{ color: DefaultAccent }}
+          />
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'background') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Background lights" subtitle="The faint breathing honeycomb behind every page. Multi: lights in several colors." saved={saved} />
+        <Panel>
+          <Swatches value={prefs.honeycomb_color} onChange={(honeycomb_color) => patch({ honeycomb_color })} defaultSwatch={{ color: HoneycombColor }} offOption />
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'yourweek') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Your Week card" subtitle="Just your own Your Week card on Home. Default follows your accent." saved={saved} />
+        <Panel>
+          <Swatches value={prefs.your_week_color} onChange={(your_week_color) => patch({ your_week_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'border') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Border animation" subtitle="The moving neon ring on every card and countdown. Default follows your accent." saved={saved} />
+        <Panel>
+          <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
+        </Panel>
+      </View>
+    );
+  }
+  if (tune === 'motion') {
+    return (
+      <View style={styles.gap}>
+        <Header title="Motion" subtitle="Your phone's own Reduce Motion setting is always respected." saved={saved} />
+        <Panel>
+          <Segment
+            options={[
+              { key: 'full', label: 'Full' },
+              { key: 'reduced', label: 'Reduced' },
+            ]}
+            value={prefs.reduced_motion ? 'reduced' : 'full'}
+            onChange={(v) => patch({ reduced_motion: v === 'reduced' })}
+          />
+        </Panel>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.gap}>
-      <Header title="Look & feel" subtitle="Pick a theme in one tap, or fine-tune it below." saved={saved} />
+      <Header title="Look & feel" subtitle="Pick a look, then fine-tune it your way." saved={saved} />
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <ThemePresets prefs={prefs} patch={patch} />
+      <LookPicker prefs={prefs} patch={patch} />
 
       <Text style={styles.fineTune}>FINE-TUNE</Text>
-
-      <Panel
-        title="Look"
-        description="Calm is The Weekend's current look. Cosmic swaps in deep-purple panels, a brighter accent, and each section's own color on its card — everything else (layout, pages, features) stays exactly the same either way. The app restarts to switch.">
-        <Segment
-          options={[
-            { key: 'calm', label: 'Calm' },
-            { key: 'cosmic', label: 'Cosmic' },
-          ]}
-          value={prefs.theme}
-          onChange={(theme) => {
-            // The app reloads into the new palette once it's saved.
-            void patch({ theme }).then((ok) => ok && applyTheme(theme));
-          }}
-        />
-      </Panel>
-
-      <Panel title="Neon Intensity" description="How strong The Weekend's decorative glow reads — never affects text or contrast.">
-        <Segment
-          options={[
-            { key: 'subtle', label: 'Subtle' },
-            { key: 'standard', label: 'Standard' },
-            { key: 'high', label: 'High' },
-          ]}
-          value={prefs.neon_intensity}
-          onChange={(neon_intensity) => patch({ neon_intensity })}
-        />
-      </Panel>
-
-      <Panel
-        title="Accent Color"
-        description="Colors the nav bar's current tab everywhere in the app, plus the glow on boxes that aren't already tied to a league section. Multi: every card glows in its own section's color. A new accent applies everywhere when you leave Settings.">
-        <Swatches
-          value={prefs.accent_color}
-          onChange={(accent_color) => void patch({ accent_color }).then((ok) => ok && applyAccent(accent_color))}
-          without={[DefaultAccent]}
-          defaultSwatch={{ color: DefaultAccent }}
-        />
-      </Panel>
-
-      <Panel title="Background" description="The color of the faint breathing honeycomb behind every page. Multi: the lights behind it come in several colors, so the lines between the hexagons glow in all of them.">
-        <Swatches
-          value={prefs.honeycomb_color}
-          onChange={(honeycomb_color) => patch({ honeycomb_color })}
-          defaultSwatch={{ color: HoneycombColor }}
-          offOption
-        />
-      </Panel>
-
-      <Panel title="Your Week Card Color" description="Just your own Your Week card on Home — independent of Accent Color. Default follows your Accent Color.">
-        <Swatches value={prefs.your_week_color} onChange={(your_week_color) => patch({ your_week_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
-      </Panel>
-
-      <Panel
-        title="Border Animation Color"
-        description="The moving neon ring on every card and countdown tile — independent of Accent Color and Your Week Card Color. Default follows your Accent Color.">
-        <Swatches value={prefs.border_glow_color} onChange={(border_glow_color) => patch({ border_glow_color })} defaultSwatch={{ color: 'rgba(255,255,255,0.15)' }} />
-      </Panel>
-
-      <Panel title="Animations" description="Your device's own reduced-motion setting is always respected regardless of this choice.">
-        <Segment
-          options={[
-            { key: 'full', label: 'Full' },
-            { key: 'reduced', label: 'Reduced' },
-          ]}
-          value={prefs.reduced_motion ? 'reduced' : 'full'}
-          onChange={(v) => patch({ reduced_motion: v === 'reduced' })}
-        />
-      </Panel>
+      <ListCard>
+        <ListRow first label="Accent color" value={colorLabel(prefs.accent_color, `${lookName(prefs.theme)} default`)} onPress={() => openTune('look', 'accent')} />
+        <ListRow label="Neon glow" value={{ subtle: 'Subtle', standard: 'Standard', high: 'High' }[prefs.neon_intensity]} onPress={() => openTune('look', 'glow')} />
+        <ListRow label="Background lights" value={colorLabel(prefs.honeycomb_color, `${lookName(prefs.theme)} default`)} onPress={() => openTune('look', 'background')} />
+        <ListRow label="Your Week card" value={colorLabel(prefs.your_week_color, 'Match accent')} onPress={() => openTune('look', 'yourweek')} />
+        <ListRow label="Border animation" value={colorLabel(prefs.border_glow_color, 'Match accent')} onPress={() => openTune('look', 'border')} />
+        <ListRow label="Motion" value={prefs.reduced_motion ? 'Reduced' : 'Full'} onPress={() => openTune('look', 'motion')} />
+      </ListCard>
     </View>
   );
 }
 
-// ---- Look & feel: one-tap themes ----
+function LookPicker({ prefs, patch }: { prefs: OwnerPreferences; patch: ReturnType<typeof usePatchPreferences>['patch'] }) {
+  const current = LOOKS.find((l) => l.key === prefs.theme) ?? LOOKS[0];
+  const [shown, setShown] = useState(current);
 
-// A theme sets the look, the accent and the background lights together
-// (2026-10-28, the approved Settings mockup); everything else follows
-// the accent. Fine-tune below still changes any one of them.
-export const THEME_PRESETS: {
-  name: string;
-  theme: 'calm' | 'cosmic';
-  accent: string;
-  honeycomb: string | null;
-  surface: string;
-  bg: string;
-}[] = [
-  { name: 'Neon Green', theme: 'calm', accent: '#39ff14', honeycomb: null, surface: '#12161c', bg: '#0d1016' },
-  { name: 'Ice Blue', theme: 'calm', accent: '#4cc3ff', honeycomb: '#0ea5e9', surface: '#111823', bg: '#0b1018' },
-  { name: 'Cosmic', theme: 'cosmic', accent: '#39ffb0', honeycomb: 'multi', surface: '#171129', bg: '#0a0716' },
-  { name: 'Sunset', theme: 'calm', accent: '#fb923c', honeycomb: '#dc143c', surface: '#1b1410', bg: '#120d0b' },
-  { name: 'Royal', theme: 'cosmic', accent: '#a855f7', honeycomb: '#a855f7', surface: '#16131f', bg: '#0e0c16' },
-  { name: 'Gold Rush', theme: 'calm', accent: '#facc15', honeycomb: '#facc15', surface: '#18160e', bg: '#100f0a' },
-];
-
-export function presetFor(prefs: OwnerPreferences | undefined): (typeof THEME_PRESETS)[number] | null {
-  if (!prefs) return null;
-  return (
-    THEME_PRESETS.find(
-      (t) => t.theme === prefs.theme && (prefs.accent_color ?? DefaultAccent).toLowerCase() === t.accent.toLowerCase(),
-    ) ?? null
-  );
-}
-
-function ThemePresets({ prefs, patch }: { prefs: OwnerPreferences; patch: ReturnType<typeof usePatchPreferences>['patch'] }) {
-  const current = presetFor(prefs);
-  const [shown, setShown] = useState(current ?? THEME_PRESETS[0]);
-  async function pick(t: (typeof THEME_PRESETS)[number]) {
-    setShown(t);
-    const ok = await patch({ theme: t.theme, accent_color: t.accent, honeycomb_color: t.honeycomb, your_week_color: null, border_glow_color: null });
-    if (!ok) return;
-    applyAccent(t.accent);
-    // A new look reloads the app now; a new accent when you leave Settings.
-    applyTheme(t.theme);
+  function pick(l: (typeof LOOKS)[number]) {
+    setShown(l);
+    if (l.key === prefs.theme) return;
+    // Every look rebuilds every color, so the app restarts; say so first,
+    // and say it comes back here.
+    Alert.alert(
+      `Switch to ${l.name}?`,
+      `${l.blurb}. The app restarts to apply it, then brings you right back here. Your accent and color picks go back to ${l.name}'s own; fine-tune them after.`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => setShown(current) },
+        {
+          text: 'Switch',
+          onPress: () =>
+            void patch({ theme: l.key, accent_color: null, honeycomb_color: null, your_week_color: null, border_glow_color: null }).then((ok) => {
+              if (!ok) return;
+              applyAccent(null);
+              applyTheme(l.key, LOOK_PAGE);
+            }),
+        },
+      ],
+    );
   }
+
   return (
     <View style={styles.gap}>
       <View style={[styles.themePreview, { backgroundColor: shown.surface, borderColor: shown.accent }]} accessible accessibilityLabel={`Preview of ${shown.name}`}>
-        <Text style={[styles.themeKicker, { color: shown.accent }]}>PREVIEW · YOUR WEEK</Text>
+        <Text style={[styles.themeKicker, { color: shown.accent }]}>PREVIEW · {shown.name.toUpperCase()}</Text>
         <View style={styles.themeScore}>
           <Text style={styles.themeBig}>You 104.2</Text>
           <Text style={[styles.themeBig, { color: Colors.textSecondary }]}>97.5</Text>
@@ -872,28 +1037,31 @@ function ThemePresets({ prefs, patch }: { prefs: OwnerPreferences; patch: Return
         </View>
         <Text style={styles.small}>68% to win · 3 players left</Text>
       </View>
-      <Text style={styles.fineTune}>THEMES · ONE TAP</Text>
+      <Text style={styles.fineTune}>LOOKS</Text>
       <View style={styles.themeGrid}>
-        {THEME_PRESETS.map((t) => {
-          const on = current?.name === t.name;
+        {LOOKS.map((l) => {
+          const on = prefs.theme === l.key;
           return (
             <Pressable
-              key={t.name}
-              onPress={() => void pick(t)}
+              key={l.key}
+              onPress={() => pick(l)}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
-              accessibilityLabel={`${t.name} theme`}
-              style={[styles.themeTile, { backgroundColor: t.bg, borderColor: on ? t.accent : Colors.border }]}>
+              accessibilityLabel={`${l.name}: ${l.blurb}`}
+              style={[styles.themeTile, { backgroundColor: l.bg, borderColor: on ? l.accent : Colors.border }]}>
               <View style={styles.themeDots}>
-                <View style={[styles.themeDot, { backgroundColor: t.accent }]} />
-                <View style={[styles.themeDot, { backgroundColor: t.surface, borderWidth: 1, borderColor: '#343b47' }]} />
+                <View style={[styles.themeDot, { backgroundColor: l.accent }]} />
+                <View style={[styles.themeDot, { backgroundColor: l.surface, borderWidth: 1, borderColor: '#343b47' }]} />
               </View>
-              <Text style={styles.bodyMedium}>{t.name}</Text>
+              <View>
+                <Text style={styles.bodyMedium}>{l.name}</Text>
+                {on && <Text style={[styles.lookTag, { color: l.accent }]}>Current</Text>}
+              </View>
             </Pressable>
           );
         })}
       </View>
-      <Text style={styles.small}>The app restarts to apply a new theme when you leave Settings (right away if it switches between Calm and Cosmic).</Text>
+      <Text style={styles.small}>You&apos;re on {current.name}. A new look restarts the app and brings you back here. The logo and the opening intro stay the same for everyone.</Text>
     </View>
   );
 }
@@ -1203,6 +1371,18 @@ function RecentFeedback() {
 }
 
 const styles = StyleSheet.create({
+  listCard: { borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, overflow: 'hidden' },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 14, paddingVertical: 8 },
+  listLine: { borderTopWidth: 1, borderTopColor: Colors.border },
+  listPressed: { backgroundColor: 'rgba(255,255,255,0.04)' },
+  listLabel: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  listValue: { maxWidth: 150, color: Colors.textSecondary, fontSize: 13, textAlign: 'right' },
+  listChevron: { fontSize: 22, fontWeight: '300' },
+  sundayCard: { borderRadius: 18, borderWidth: 1, backgroundColor: Colors.surface, padding: 14, gap: 10 },
+  sectionKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 1.4 },
+  sundayOption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, borderRadius: 14, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.bg, paddingHorizontal: 12, paddingVertical: 8 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
   fineTune: { color: Colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1.4, marginTop: Spacing.sm },
   themePreview: { borderRadius: 18, borderWidth: 1.5, padding: 14, gap: 8 },
   themeKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
@@ -1214,6 +1394,7 @@ const styles = StyleSheet.create({
   themeTile: { flexBasis: '30%', flexGrow: 1, minHeight: 80, borderRadius: 14, borderWidth: 2, padding: 10, justifyContent: 'space-between' },
   themeDots: { flexDirection: 'row', gap: 4 },
   themeDot: { width: 16, height: 16, borderRadius: 8 },
+  lookTag: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700' },
   helpRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingVertical: 6 },
   helpChevron: { fontSize: 22 },
   gap: { gap: Spacing.lg },

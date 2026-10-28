@@ -5,18 +5,19 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { SettingsIcon, type SettingsIconName } from '@/components/settings/SettingsIcon';
 import { Text } from '@/components/Text';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAppearance } from '@/lib/appearance';
 import { haptics } from '@/lib/haptics';
-import { useActiveLeagueName, useMe, useMySettings } from '@/lib/queries';
+import { useActiveLeagueName, useMe, useMySettings, useMyUsername } from '@/lib/queries';
 
 // The bar across the top of every tab (2026-10 navigation pass): your
 // league on the left — tap for the league picker (switch, join, or
 // start one) — and you on
-// the right, opening the account menu (Settings, Commissioner Tools,
-// League Kitty, Help, Admin — the 2026-10-28 cleanup).
+// the right, opening the account menu (Settings, Friends, Commissioner
+// Tools, League Kitty, Help, Admin — the 2026-10-28 cleanup).
 // Replaces the lone ⚙︎ that only Home had, so none of those were more
 // than one tap from any tab.
 export function TabHeader() {
@@ -80,20 +81,23 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
   const insets = useSafeAreaInsets();
   const team = useMySettings().data?.team_name ?? null;
   const leagueName = useActiveLeagueName().data;
+  const username = useMyUsername().data ?? null;
   const kitty = useQuery({ queryKey: ['kitty'], queryFn: api.kitty, enabled: visible, staleTime: 60_000 }).data;
   const money = (n: number) => `$${n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)}`;
-  const items: { label: string; sub: string; href: Href; color: string; glyph: string }[] = [
-    { label: 'Settings', sub: 'You, alerts, look, account', href: '/settings', color: Colors.accent, glyph: 'S' },
-    ...(isCommissioner ? [{ label: 'Commissioner Tools', sub: 'Run your league', href: '/commissioner' as Href, color: '#facc15', glyph: 'C' }] : []),
+  const items: { label: string; sub: string; href: Href; icon: SettingsIconName }[] = [
+    { label: 'Settings', sub: 'You, alerts, look, account', href: '/settings', icon: 'settings' },
+    // Friends came back (2026-10-28): finding people, adding them and your
+    // @username live there, and the trimmed menu had left it only in the Lounge.
+    { label: 'Friends', sub: username ? `You're @${username} · find and add people` : 'Find and add people, pick your @username', href: '/friends' as Href, icon: 'friends' },
+    ...(isCommissioner ? [{ label: 'Commissioner Tools', sub: 'Run your league', href: '/commissioner' as Href, icon: 'commissioner' as const }] : []),
     {
       label: 'League Kitty',
       sub: kitty ? `${money(kitty.collected)} in · ${money(kitty.outstanding)} owed` : 'Who owes the pot',
       href: '/kitty' as Href,
-      color: '#4ade80',
-      glyph: '$',
+      icon: 'kitty',
     },
-    { label: 'Help', sub: 'Glossary, tour, what’s new, feedback', href: { pathname: '/settings', params: { section: 'help' } }, color: '#4cc3ff', glyph: '?' },
-    ...(isSiteOwner ? [{ label: 'Admin', sub: 'Only you', href: '/admin' as Href, color: '#c084fc', glyph: 'A' }] : []),
+    { label: 'Help', sub: 'Glossary, tour, what’s new, feedback', href: { pathname: '/settings', params: { section: 'help' } }, icon: 'help' },
+    ...(isSiteOwner ? [{ label: 'Admin', sub: 'Only you', href: '/admin' as Href, icon: 'admin' as const }] : []),
   ];
   function go(href: Href) {
     onClose();
@@ -125,6 +129,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
             </View>
           </View>
           <Pressable onPress={() => go('/leagues')} accessibilityRole="button" accessibilityLabel={`League: ${leagueName ?? 'none'}. Switch, invite or join`} style={({ pressed }) => [styles.leagueRow, pressed && styles.menuItemPressed]}>
+            <SettingsIcon name="league" />
             <View style={styles.flex}>
               <Text style={[styles.menuKicker, { color: Colors.accent }]}>LEAGUE</Text>
               <Text style={styles.menuText} numberOfLines={1}>
@@ -140,9 +145,7 @@ function AccountMenu({ visible, onClose, name, isCommissioner, isSiteOwner }: { 
               style={({ pressed }) => [styles.menuItem, i > 0 && styles.menuDivider, pressed && styles.menuItemPressed]}
               accessibilityRole="button"
               accessibilityHint={item.sub}>
-              <View style={[styles.menuIcon, { backgroundColor: `${item.color}1f` }]}>
-                <Text style={[styles.menuGlyph, { color: item.color }]}>{item.glyph}</Text>
-              </View>
+              <SettingsIcon name={item.icon} />
               <View style={styles.flex}>
                 <Text style={styles.menuText}>{item.label}</Text>
                 <Text style={styles.menuSub} numberOfLines={1}>
@@ -182,12 +185,10 @@ const styles = StyleSheet.create({
   menuAvatarText: { color: Colors.text, fontFamily: Fonts.display, fontSize: 18 },
   menuNameBig: { color: Colors.text, fontSize: 17, fontWeight: '700' },
   menuKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
-  leagueRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingHorizontal: 16, backgroundColor: 'rgba(57,255,20,0.05)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  leagueRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 16, backgroundColor: 'rgba(57,255,20,0.05)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 16 },
   menuDivider: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   menuItemPressed: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  menuIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  menuGlyph: { fontSize: 13, fontWeight: '800' },
   menuText: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   menuSub: { color: Colors.textSecondary, fontSize: 12 },
   menuChevron: { color: '#5b6372', fontSize: 18 },

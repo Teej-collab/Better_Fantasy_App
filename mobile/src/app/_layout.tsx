@@ -30,7 +30,7 @@ import { Colors } from '@/constants/theme';
 import { startErrorReporter, useScreenTracking } from '@/lib/analytics';
 import { applyUpdateOnLaunch } from '@/lib/appUpdates';
 import { AuthProvider, useAuth } from '@/lib/auth';
-import { takeSkipIntro } from '@/lib/appearance';
+import { takeReturnTo, takeSkipIntro } from '@/lib/appearance';
 import { AWAY_RESET_MS, openedByLinkRecently } from '@/lib/freshStart';
 import { ChatSocketProvider } from '@/lib/chatSocket';
 import { takeLinkForAfterSignIn } from '@/lib/inviteLinks';
@@ -90,6 +90,8 @@ function RootStack() {
   // once the saved session is known; signing in later doesn't replay it.
   // A reload to apply a setting (lib/appearance.ts) skips it.
   const [intro, setIntro] = useState<'pending' | 'playing' | 'done'>(() => (takeSkipIntro() ? 'done' : 'pending'));
+  // Back to the screen a settings reload came from (lib/appearance.ts).
+  const [returnTo] = useState(takeReturnTo);
   if (intro === 'pending' && token !== undefined) setIntro(token ? 'playing' : 'done');
   const me = useMe(Boolean(token)).data;
   const displayName = me?.display_name ?? null;
@@ -160,6 +162,12 @@ function RootStack() {
     // Only on sign-in/out, not on every navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wasSignedIn]);
+
+  useEffect(() => {
+    if (!returnTo || !token) return;
+    const id = setTimeout(() => router.push(returnTo as Href), 0);
+    return () => clearTimeout(id);
+  }, [returnTo, token]);
 
   useEffect(() => {
     // Keep the splash up until the fonts are in and we know whether

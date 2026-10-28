@@ -304,7 +304,7 @@ class PreferencesPatch(BaseModel):
 
 
 _VALID_NEON_INTENSITIES = {"subtle", "standard", "high"}
-_VALID_THEMES = {"calm", "cosmic"}
+_VALID_THEMES = {"calm", "cosmic", "midnight", "graphite", "ember", "gridiron"}
 _VALID_DESIGN_DIRECTIONS = {"default", "broadcast", "stadium"}
 
 

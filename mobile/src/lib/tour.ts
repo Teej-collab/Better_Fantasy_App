@@ -86,8 +86,8 @@ export function tourSlides(opts: { chugEnabled: boolean; chugRuleName: string })
     },
     {
       key: 'appearance', kicker: 'Make it yours', title: 'Your colors, your name, your team',
-      body: 'Pick a theme in one tap (Neon Green, Ice Blue, Cosmic and more) or fine-tune the accent, the glow and the background. Set the intro sound and app icon, your name, team name and logo, and your chat bubble color.',
-      chips: ['Themes', 'Accent color', 'Neon glow', 'Intro sound', 'Team logo'],
+      body: 'Pick one of six looks for the whole app (Calm, Cosmic, Midnight, Graphite, Ember, Gridiron), then fine-tune the accent, the glow and the background. Set the intro sound and app icon, your name, team name and logo, and your chat bubble color.',
+      chips: ['Six looks', 'Accent color', 'Neon glow', 'Intro sound', 'Team logo'],
       where: ['Profile circle', 'Settings', 'Look & feel'],
       href: { pathname: '/settings', params: { section: 'look' } } as Href, place: 'Look & feel',
     },
@@ -153,10 +153,11 @@ export function glossary(chugRuleName: string, chugEnabled: boolean): GlossaryGr
     { name: 'Social & settings', color: '#ec4899', terms: [
       { term: 'The Lounge', def: "Watch-party rooms with the game and everyone's cameras.", where: 'Grid button › Lounge' },
       { term: 'Tail / Fade', def: "Copy a league mate's bet (tail), or bet against it (fade).", where: 'Grid button › League Bets' },
-      { term: 'Friends', def: 'People you watch games with, from any league, for private lounges.', where: 'Grid button › Lounge › Friends' },
+      { term: 'Friends', def: 'People you know from any league, found by @username, to invite to private lounges.', where: 'Profile circle › Friends' },
+      { term: 'Username', def: 'Your @name, so people outside your leagues can find and add you.', where: 'Profile circle › Friends (or Settings › Profile)' },
       { term: 'League Kitty', def: "The league's pot: who owes what (franchise tag fees and anything the commissioner adds) and who's paid.", where: 'Profile circle › League Kitty' },
       { term: 'Sunday Mode', def: 'A one-tap notification preset: Full Send, Game Day or Leave Me Alone.', where: 'Profile circle › Settings › Notifications' },
-      { term: 'Themes', def: 'One-tap looks (Neon Green, Ice Blue, Cosmic and more) that set your accent, glow and background together; fine-tune any of it after.', where: 'Profile circle › Settings › Look & feel' },
+      { term: 'Looks', def: 'Six full looks for the whole app (Calm, Cosmic, Midnight, Graphite, Ember, Gridiron), then fine-tune the accent, glow and background on top. The logo stays the same for everyone.', where: 'Profile circle › Settings › Look & feel' },
       { term: 'Intro sound & app icon', def: 'How often the opening sound plays, and the seasonal home-screen icon.', where: 'Profile circle › Settings › Sound & app icon' },
     ] },
   ];

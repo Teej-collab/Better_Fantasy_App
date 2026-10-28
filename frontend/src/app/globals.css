@@ -30,6 +30,10 @@
   --wl-border: #1c2027;
   --wl-accent: #39ff14;
   --wl-accent-dim: #1f890b;
+  /* The brand (2026-10-28): the WEEKEND logo and the opening intro, the
+     same for everyone whatever their look or accent, like ESPN's or
+     Sleeper's. Never redefined by a theme. */
+  --wl-brand: #39ff14;
   --wl-text: #eceef1;
   --wl-text-secondary: #8790a0;
   --wl-live: #ef4444;
@@ -67,6 +71,41 @@
   --wl-border: #35285f;
   --wl-accent: #39ffb0;
   --wl-accent-dim: #1b8f6c;
+}
+
+/* Four more full looks (2026-10-28, the approved "The Weekend Themes"
+   mockup; the app's constants/theme.ts PALETTES — keep in step). */
+[data-wl-theme="midnight"] {
+  --background: #060a13;
+  --wl-bg: #060a13;
+  --wl-surface: #0e1526;
+  --wl-border: #1d2b48;
+  --wl-accent: #5cc8ff;
+  --wl-accent-dim: #1d6f99;
+}
+[data-wl-theme="graphite"] {
+  --background: #000000;
+  --wl-bg: #000000;
+  --wl-surface: #121214;
+  --wl-border: #2a2a2e;
+  --wl-accent: #f2f2f7;
+  --wl-accent-dim: #8e8e93;
+}
+[data-wl-theme="ember"] {
+  --background: #110a07;
+  --wl-bg: #110a07;
+  --wl-surface: #1a110c;
+  --wl-border: #3a2418;
+  --wl-accent: #ff7a2f;
+  --wl-accent-dim: #a3461a;
+}
+[data-wl-theme="gridiron"] {
+  --background: #06100a;
+  --wl-bg: #06100a;
+  --wl-surface: #0c1a12;
+  --wl-border: #1c3a27;
+  --wl-accent: #b4f03a;
+  --wl-accent-dim: #5f8a17;
 }
 
 /* Settings > Labs > Design Direction — two full opt-in palette +
@@ -1897,7 +1936,7 @@ html[data-honeycomb="off"] .hc-bg {
 }
 .wl-weekend {
   letter-spacing: 0.03em;
-  color: var(--wl-accent);
+  color: var(--wl-brand);
   text-shadow:
     0 0 6px rgba(57, 255, 20, 0.9),
     0 0 18px rgba(57, 255, 20, 0.7),
@@ -1960,7 +1999,7 @@ html[data-honeycomb="off"] .hc-bg {
    reads as the logo itself speaking, not a separate UI element. */
 .wl-welcome-back {
   opacity: 0;
-  color: var(--wl-accent);
+  color: var(--wl-brand);
   text-shadow:
     0 0 4px rgba(57, 255, 20, 0.85),
     0 0 12px rgba(57, 255, 20, 0.55),
@@ -1972,7 +2011,7 @@ html[data-honeycomb="off"] .hc-bg {
    "electrical" idle glow (not a clean sine wave) that brightens on
    hover/press — the mobile affordance, since there's no hover there. */
 .wl-enter-sign {
-  --neon-color: var(--wl-accent);
+  --neon-color: var(--wl-brand);
   position: relative;
   border-radius: 0.75rem;
   border: 2px solid var(--neon-color);

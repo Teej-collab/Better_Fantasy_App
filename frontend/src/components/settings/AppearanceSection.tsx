@@ -12,14 +12,16 @@ const INTRO_SOUND_MODES: { key: IntroSoundMode; label: string }[] = [
   { key: "off", label: "Off" },
 ];
 
-// Keep in step with the app's THEME_PRESETS (mobile SettingsSections.tsx).
-const THEME_PRESETS: { name: string; theme: OwnerPreferences["theme"]; accent: string; honeycomb: string | null; surface: string; bg: string }[] = [
-  { name: "Neon Green", theme: "calm", accent: "#39ff14", honeycomb: null, surface: "#12161c", bg: "#0d1016" },
-  { name: "Ice Blue", theme: "calm", accent: "#4cc3ff", honeycomb: "#0ea5e9", surface: "#111823", bg: "#0b1018" },
-  { name: "Cosmic", theme: "cosmic", accent: "#39ffb0", honeycomb: "multi", surface: "#171129", bg: "#0a0716" },
-  { name: "Sunset", theme: "calm", accent: "#fb923c", honeycomb: "#dc143c", surface: "#1b1410", bg: "#120d0b" },
-  { name: "Royal", theme: "cosmic", accent: "#a855f7", honeycomb: "#a855f7", surface: "#16131f", bg: "#0e0c16" },
-  { name: "Gold Rush", theme: "calm", accent: "#facc15", honeycomb: "#facc15", surface: "#18160e", bg: "#100f0a" },
+// The six looks (2026-10-28): each the whole site's background, panels
+// and accent. Keep in step with the app's LOOKS (mobile
+// SettingsSections.tsx) and globals.css's [data-wl-theme] blocks.
+const LOOKS: { key: OwnerPreferences["theme"]; name: string; blurb: string; surface: string; bg: string; accent: string }[] = [
+  { key: "calm", name: "Calm", blurb: "The classic: neon green on dark", surface: "#12161c", bg: "#0d1016", accent: "#39ff14" },
+  { key: "cosmic", name: "Cosmic", blurb: "Deep purple, each section its own color", surface: "#171129", bg: "#0a0716", accent: "#39ffb0" },
+  { key: "midnight", name: "Midnight", blurb: "Navy panels, ice-blue accent", surface: "#0e1526", bg: "#060a13", accent: "#5cc8ff" },
+  { key: "graphite", name: "Graphite", blurb: "True black and silver", surface: "#121214", bg: "#000000", accent: "#f2f2f7" },
+  { key: "ember", name: "Ember", blurb: "Warm charcoal, orange accent", surface: "#1a110c", bg: "#110a07", accent: "#ff7a2f" },
+  { key: "gridiron", name: "Gridiron", blurb: "Field green, lime accent", surface: "#0c1a12", bg: "#06100a", accent: "#b4f03a" },
 ];
 
 const NEON_LEVELS: { key: OwnerPreferences["neon_intensity"]; label: string }[] = [
@@ -115,18 +117,17 @@ export function AppearanceSection() {
       .catch(() => setError("Couldn't load your appearance settings."));
   }, []);
 
-  // A theme (the same six as the app's Settings › Look & feel): look,
-  // accent and background lights in one save; the card and border
-  // colors go back to following the accent.
-  async function applyPreset(t: (typeof THEME_PRESETS)[number]) {
+  // A look (the same six as the app's Settings › Look & feel): the whole
+  // palette, with the accent and color picks back to the look's own.
+  async function applyLook(t: (typeof LOOKS)[number]) {
     if (!prefs) return;
     const previous = prefs;
-    const fields = { theme: t.theme, accent_color: t.accent, honeycomb_color: t.honeycomb, your_week_color: null, border_glow_color: null };
+    const fields = { theme: t.key, accent_color: null, honeycomb_color: null, your_week_color: null, border_glow_color: null };
     setPrefs({ ...prefs, ...fields });
-    document.documentElement.setAttribute("data-wl-theme", t.theme);
-    setPreferenceCookie("wl_theme", t.theme);
-    applyAccentColor(t.accent);
-    applyHoneycombColor(t.honeycomb);
+    document.documentElement.setAttribute("data-wl-theme", t.key);
+    setPreferenceCookie("wl_theme", t.key);
+    applyAccentColor(null);
+    applyHoneycombColor(null);
     applyYourWeekColor(null);
     applyBorderGlowColor(null);
     try {
@@ -141,25 +142,6 @@ export function AppearanceSection() {
       applyHoneycombColor(previous.honeycomb_color);
       applyYourWeekColor(previous.your_week_color);
       applyBorderGlowColor(previous.border_glow_color);
-      setError("Couldn't save that change — try again.");
-    }
-  }
-
-  async function setTheme(theme: OwnerPreferences["theme"]) {
-    if (!prefs) return;
-    const previous = prefs;
-    setPrefs({ ...prefs, theme });
-    document.documentElement.setAttribute("data-wl-theme", theme);
-    setPreferenceCookie("wl_theme", theme);
-    try {
-      const updated = await updatePreferences({ theme });
-      setPrefs(updated);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-    } catch {
-      setPrefs(previous);
-      document.documentElement.setAttribute("data-wl-theme", previous.theme);
-      setPreferenceCookie("wl_theme", previous.theme);
       setError("Couldn't save that change — try again.");
     }
   }
@@ -298,21 +280,23 @@ export function AppearanceSection() {
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Themes</h2>
+          <h2 className="text-sm font-semibold tracking-wide uppercase">Looks</h2>
           <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            One click sets the look, accent and background lights together. Change any of them below after.
+            The whole site&apos;s colors in one click. Fine-tune the accent and the rest below. The logo stays the same for
+            everyone.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Themes">
-          {THEME_PRESETS.map((t) => {
-            const on = prefs.theme === t.theme && (prefs.accent_color ?? "").toLowerCase() === t.accent.toLowerCase();
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Looks">
+          {LOOKS.map((t) => {
+            const on = prefs.theme === t.key;
             return (
               <button
                 key={t.name}
                 type="button"
                 role="radio"
                 aria-checked={on}
-                onClick={() => void applyPreset(t)}
+                onClick={() => void applyLook(t)}
+                disabled={prefs.design_direction !== "default"}
                 className="flex min-h-20 flex-col items-start justify-between rounded-xl border-2 p-2.5 text-left text-sm font-semibold text-white"
                 style={{ background: t.bg, borderColor: on ? t.accent : "rgba(255,255,255,0.12)" }}
               >
@@ -320,7 +304,10 @@ export function AppearanceSection() {
                   <span className="h-4 w-4 rounded-full" style={{ background: t.accent }} />
                   <span className="h-4 w-4 rounded-full border border-white/20" style={{ background: t.surface }} />
                 </span>
-                {t.name}
+                <span className="flex flex-col">
+                  {t.name}
+                  <span className="text-[11px] font-medium text-white/60">{on ? "Current" : t.blurb}</span>
+                </span>
               </button>
             );
           })}
@@ -328,60 +315,6 @@ export function AppearanceSection() {
       </section>
 
       <p className="text-xs font-bold tracking-[0.14em] text-black/50 dark:text-white/50">FINE-TUNE</p>
-
-      <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
-        <div>
-          <h2 className="text-sm font-semibold tracking-wide uppercase">Look</h2>
-          <p className="mt-1 text-xs text-black/50 dark:text-white/50">
-            {prefs.design_direction !== "default" ? (
-              <>
-                Controlled by your Design Direction in Labs right now — a Direction sets its own palette. Switch
-                back to Default there to choose Calm or Cosmic again.
-              </>
-            ) : (
-              <>
-                Calm is The Weekend&apos;s current look. Cosmic brings back the starfield background and a
-                brighter accent — everything else (layout, pages, features) stays exactly the same either way.
-              </>
-            )}
-          </p>
-        </div>
-        <div
-          className={`flex gap-2 ${prefs.design_direction !== "default" ? "pointer-events-none opacity-40" : ""}`}
-          role="radiogroup"
-          aria-label="Look"
-          aria-disabled={prefs.design_direction !== "default"}
-        >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={prefs.theme === "calm"}
-            disabled={prefs.design_direction !== "default"}
-            onClick={() => setTheme("calm")}
-            className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
-              prefs.theme === "calm"
-                ? "border-[var(--wl-accent)] text-black dark:text-white"
-                : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"
-            }`}
-          >
-            Calm
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={prefs.theme === "cosmic"}
-            disabled={prefs.design_direction !== "default"}
-            onClick={() => setTheme("cosmic")}
-            className={`rounded-full border-2 px-3 py-1.5 text-sm font-medium transition-colors ${
-              prefs.theme === "cosmic"
-                ? "border-[var(--wl-accent)] text-black dark:text-white"
-                : "border-transparent bg-black/5 text-black/60 hover:bg-black/10 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/15"
-            }`}
-          >
-            Cosmic
-          </button>
-        </div>
-      </section>
 
       <section className="neon-panel flex flex-col gap-3 rounded-xl bg-black/[0.015] p-5 dark:bg-white/[0.03]">
         <div>

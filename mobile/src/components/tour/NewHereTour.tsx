@@ -192,7 +192,7 @@ function Preview({ slide, ruleName }: { slide: TourSlide; ruleName: string }) {
       return (
         <View style={[styles.row, { justifyContent: 'flex-end', alignItems: 'flex-start' }]}>
           <View style={styles.menu}>
-            {['Settings', 'League Kitty', 'Help', 'Commissioner Tools'].map((m) => (
+            {['Settings', 'Friends', 'League Kitty', 'Help'].map((m) => (
               <Text key={m} style={[styles.menuItem, m === 'Help' && styles.menuItemOn]}>{m}</Text>
             ))}
           </View>

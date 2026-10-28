@@ -10,19 +10,22 @@ import {
   ChatSettings,
   HelpSettings,
   NotificationSettings,
-  presetFor,
+  LOOK_TUNES,
+  lookName,
+  NOTIFICATION_TUNES,
   ProfileSettings,
   SoundSettings,
   SUNDAY_MODES,
 } from '@/components/settings/SettingsSections';
 import { AppRefreshControl } from '@/components/AppRefreshControl';
+import { SettingsIcon } from '@/components/settings/SettingsIcon';
 import { Display, Text } from '@/components/Text';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 import { useAppearance } from '@/lib/appearance';
 import { COLOR_PRESETS, isMulti } from '@/lib/colorChoice';
 import { getIntroSoundMode } from '@/lib/introSound';
-import { useMySettings, usePreferences } from '@/lib/queries';
+import { useMyUsername, useMySettings, usePreferences } from '@/lib/queries';
 
 // Settings (2026-10-28 cleanup, the approved mockup): one grouped list,
 // like the iPhone's, each row showing what it's set to, and a search
@@ -34,22 +37,22 @@ type SectionKey = 'profile' | 'notifications' | 'look' | 'sound' | 'chat' | 'fea
 
 const ALIASES: Record<string, SectionKey> = { appearance: 'look', bets: 'features', feedback: 'help' };
 
-type Row = { key: SectionKey; label: string; glyph: string; color: string; keywords: string };
+type Row = { key: SectionKey; label: string; keywords: string };
 
 const GROUPS: { title: string; rows: Row[] }[] = [
-  { title: 'YOU', rows: [{ key: 'profile', label: 'Profile', glyph: 'P', color: Colors.accent, keywords: 'name display team name logo' }] },
+  { title: 'YOU', rows: [{ key: 'profile', label: 'Profile', keywords: 'name display team name logo username friends find me' }] },
   {
     title: 'HOW IT WORKS FOR YOU',
     rows: [
-      { key: 'notifications', label: 'Notifications', glyph: 'N', color: '#facc15', keywords: 'sunday mode push alerts touchdowns red zone injuries quiet hours lock screen live activity reminders messages mentions' },
-      { key: 'look', label: 'Look & feel', glyph: 'L', color: '#4cc3ff', keywords: 'theme appearance accent color glow neon background honeycomb your week card border animation motion calm cosmic' },
-      { key: 'sound', label: 'Sound & app icon', glyph: 'S', color: '#c084fc', keywords: 'intro sound audio app icon seasonal' },
-      { key: 'chat', label: 'Chat', glyph: 'C', color: '#fb923c', keywords: 'bubble color read receipts typing previews mentions blocked block' },
-      { key: 'features', label: 'Features', glyph: 'F', color: '#4ade80', keywords: 'bets bet tracking my bets' },
+      { key: 'notifications', label: 'Notifications', keywords: 'sunday mode push alerts touchdowns red zone injuries quiet hours lock screen live activity reminders messages mentions' },
+      { key: 'look', label: 'Look & feel', keywords: 'theme appearance accent color glow neon background honeycomb your week card border animation motion calm cosmic' },
+      { key: 'sound', label: 'Sound & app icon', keywords: 'intro sound audio app icon seasonal' },
+      { key: 'chat', label: 'Chat', keywords: 'bubble color read receipts typing previews mentions blocked block' },
+      { key: 'features', label: 'Features', keywords: 'bets bet tracking my bets' },
     ],
   },
-  { title: 'ACCOUNT', rows: [{ key: 'account', label: 'Account & security', glyph: 'A', color: '#aeb5c1', keywords: 'sign in log out password google discord delete account' }] },
-  { title: 'HELP', rows: [{ key: 'help', label: 'Help & feedback', glyph: '?', color: '#4cc3ff', keywords: 'glossary tour new here whats new feedback bug email support' }] },
+  { title: 'ACCOUNT', rows: [{ key: 'account', label: 'Account & security', keywords: 'sign in log out password google discord delete account' }] },
+  { title: 'HELP', rows: [{ key: 'help', label: 'Help & feedback', keywords: 'glossary tour new here whats new feedback bug email support' }] },
 ];
 
 const INTRO_LABEL = { daily: 'Intro sound: once a day', always: 'Intro sound: every time', off: 'Intro sound off' } as const;
@@ -61,18 +64,22 @@ function colorName(value: string | null | undefined): string {
 }
 
 export default function SettingsScreen() {
-  const params = useLocalSearchParams<{ section?: string }>();
+  const params = useLocalSearchParams<{ section?: string; tune?: string }>();
+  const tune = params.tune;
   const raw = params.section ?? '';
   const section = (ALIASES[raw] ?? (GROUPS.some((g) => g.rows.some((r) => r.key === raw)) ? raw : null)) as SectionKey | null;
-  const title = GROUPS.flatMap((g) => g.rows).find((r) => r.key === section)?.label ?? 'Settings';
+  const sectionTitle = GROUPS.flatMap((g) => g.rows).find((r) => r.key === section)?.label ?? 'Settings';
+  // A single setting's own page (?tune=), from a row on Look & feel or Notifications.
+  const tuneTitle = tune ? (section === 'look' ? LOOK_TUNES[tune] : section === 'notifications' ? NOTIFICATION_TUNES[tune] : undefined) : undefined;
+  const title = tuneTitle ?? sectionTitle;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" refreshControl={<AppRefreshControl />} automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
-      <Stack.Screen options={{ title, headerBackTitle: section ? 'Settings' : 'Back' }} />
+      <Stack.Screen options={{ title, headerBackTitle: tuneTitle ? sectionTitle : section ? 'Settings' : 'Back' }} />
       {section === null && <SettingsHome />}
       {section === 'profile' && <ProfileSettings />}
-      {section === 'notifications' && <NotificationSettings />}
-      {section === 'look' && <AppearanceSettings />}
+      {section === 'notifications' && <NotificationSettings tune={tune} />}
+      {section === 'look' && <AppearanceSettings tune={tune} />}
       {section === 'sound' && <SoundSettings />}
       {section === 'chat' && <ChatSettings />}
       {section === 'features' && <BetSettings />}
@@ -86,13 +93,14 @@ function SettingsHome() {
   const accent = useAppearance().accent;
   const prefs = usePreferences().data;
   const me = useMySettings().data;
+  const username = useMyUsername().data ?? null;
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
   const values: Record<SectionKey, string> = {
-    profile: [me?.display_name, me?.team_name].filter(Boolean).join(' · '),
+    profile: username ? `@${username}` : [me?.display_name, me?.team_name].filter(Boolean).join(' · '),
     notifications: prefs ? (prefs.sunday_mode ? `Sunday Mode: ${SUNDAY_MODES.find((m) => m.key === prefs.sunday_mode)?.label ?? ''}` : 'Customized') : '',
-    look: prefs ? `${prefs.theme === 'cosmic' ? 'Cosmic' : 'Calm'} · ${presetFor(prefs)?.name ?? colorName(prefs.accent_color)}` : '',
+    look: prefs ? `${lookName(prefs.theme)}${prefs.accent_color ? ` · ${colorName(prefs.accent_color)} accent` : ''}` : '',
     sound: INTRO_LABEL[getIntroSoundMode()],
     chat: me ? `Bubble: ${colorName(me.chat_color)}` : '',
     features: prefs ? `Bet tracking ${(prefs.bet_tracking_enabled ?? true) ? 'on' : 'off'}` : '',
@@ -134,9 +142,7 @@ function SettingsHome() {
                 accessibilityRole="button"
                 accessibilityLabel={`${r.label}${values[r.key] ? `, ${values[r.key]}` : ''}`}
                 style={({ pressed }) => [styles.row, i > 0 && styles.rowLine, pressed && styles.pressed]}>
-                <View style={[styles.icon, { backgroundColor: `${r.color}1f` }]}>
-                  <Text style={[styles.glyph, { color: r.color }]}>{r.glyph}</Text>
-                </View>
+                <SettingsIcon name={r.key} />
                 <Text style={styles.label}>{r.label}</Text>
                 {values[r.key] ? (
                   <Text style={styles.value} numberOfLines={1}>
@@ -175,8 +181,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingHorizontal: 14, paddingVertical: 8 },
   rowLine: { borderTopWidth: 1, borderTopColor: Colors.border },
   pressed: { backgroundColor: 'rgba(255,255,255,0.04)' },
-  icon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  glyph: { fontSize: 13, fontWeight: '800' },
   label: { flex: 1, color: Colors.text, fontSize: 15, fontWeight: '600' },
   value: { maxWidth: 150, color: Colors.textSecondary, fontSize: 13, textAlign: 'right' },
   chevron: { fontSize: 22, fontWeight: '300' },

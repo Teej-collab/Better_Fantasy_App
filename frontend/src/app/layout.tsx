@@ -192,7 +192,8 @@ const APPEARANCE_SCRIPT = `
       document.documentElement.style.setProperty("--honeycomb-color", hc[1]);
     }
     var t = document.cookie.match(/(?:^|; )wl_theme=([^;]+)/);
-    document.documentElement.setAttribute("data-wl-theme", t && t[1] === "cosmic" ? "cosmic" : "calm");
+    var looks = ["cosmic", "midnight", "graphite", "ember", "gridiron"];
+    document.documentElement.setAttribute("data-wl-theme", t && looks.indexOf(t[1]) >= 0 ? t[1] : "calm");
     // The hamburger-nav layout is everyone's now (2026-10-20); the
     // design directions are gone. data-wl-layout lets CSS that needs to
     // know before hydration read it, same as data-wl-theme above.

@@ -19,7 +19,7 @@ import { haptics } from '@/lib/haptics';
 import { takeFullIntro } from '@/lib/introSound';
 import { currentSeason } from '@/lib/seasonal';
 import { Text } from '@/components/Text';
-import { Colors } from '@/constants/theme';
+import { Brand, Colors } from '@/constants/theme';
 
 // Port of the web's "Welcome Back" boot sequence (HomeWelcomeBackEntry.tsx
 // + useWeekendIntro.ts + useIntroSound.ts + the .wl-* rules in
@@ -44,7 +44,9 @@ const FAST_HOLD_MS = 150;
 const REVEAL_MS = 900;
 const CAN_OPENING_MS = 1100;
 
-const ACCENT = Colors.accent;
+// The brand green, never the user's accent: the opening looks the same
+// for everyone, whatever their theme (2026-10-28).
+const ACCENT = Brand.green;
 const THE_BLUE = '#5cc6ff';
 
 type Stage = 'dark' | 'word' | 'final';
@@ -391,7 +393,7 @@ export function IntroOverlay({
 }
 
 const styles = StyleSheet.create({
-  gate: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100, backgroundColor: Colors.bg },
+  gate: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 100, backgroundColor: Brand.bg },
   scene: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 24, transformOrigin: 'center 62%' },
   skip: { position: 'absolute', right: 20, zIndex: 10 },
   skipText: { color: 'rgba(245,244,236,0.4)', fontSize: 12 },

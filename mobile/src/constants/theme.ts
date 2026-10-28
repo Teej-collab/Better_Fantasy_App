@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 
-export type ThemeName = 'calm' | 'cosmic';
+export type ThemeName = 'calm' | 'cosmic' | 'midnight' | 'graphite' | 'ember' | 'gridiron';
+
+export const THEME_NAMES: ThemeName[] = ['calm', 'cosmic', 'midnight', 'graphite', 'ember', 'gridiron'];
 
 // Settings > Appearance > Look, as last saved on this phone. Read
 // synchronously here because every StyleSheet in the app is built from
@@ -11,7 +13,8 @@ export const THEME_STORE_KEY = 'wl-theme';
 
 function storedTheme(): ThemeName {
   try {
-    return SecureStore.getItem(THEME_STORE_KEY) === 'cosmic' ? 'cosmic' : 'calm';
+    const saved = SecureStore.getItem(THEME_STORE_KEY) as ThemeName | null;
+    return saved && THEME_NAMES.includes(saved) ? saved : 'calm';
   } catch {
     return 'calm';
   }
@@ -39,15 +42,40 @@ function storedAccent(): string | null {
 // tile/tileRaised are solid versions of the web's faint white tiles (3% /
 // 5% white over surface): they look the same inside a card, but stay
 // readable when a tile sits straight on the honeycomb.
-const PALETTES = {
+// 2026-10-28: four more full looks (the approved "The Weekend Themes"
+// mockup), each its own background, panels and accent: Midnight (navy),
+// Graphite (true black), Ember (warm charcoal) and Gridiron (field green).
+const PALETTES: Record<ThemeName, { bg: string; surface: string; tile: string; tileRaised: string; border: string; accent: string }> = {
   calm: { bg: '#0d1016', surface: '#12161c', tile: '#191d23', tileRaised: '#1e2227', border: '#1c2027', accent: '#39ff14' },
   cosmic: { bg: '#0a0716', surface: '#171129', tile: '#1e182f', tileRaised: '#231d34', border: '#35285f', accent: '#39ffb0' },
-} as const;
+  midnight: { bg: '#060a13', surface: '#0e1526', tile: '#152038', tileRaised: '#1a2642', border: '#1d2b48', accent: '#5cc8ff' },
+  graphite: { bg: '#000000', surface: '#121214', tile: '#1c1c1f', tileRaised: '#232327', border: '#2a2a2e', accent: '#f2f2f7' },
+  ember: { bg: '#110a07', surface: '#1a110c', tile: '#241812', tileRaised: '#2b1d16', border: '#3a2418', accent: '#ff7a2f' },
+  gridiron: { bg: '#06100a', surface: '#0c1a12', tile: '#12261a', tileRaised: '#17301f', border: '#1c3a27', accent: '#b4f03a' },
+};
+
+// The brand, the same for everyone whatever their look or accent, like
+// ESPN's or Sleeper's: the opening intro and the logo never take a
+// theme's colors.
+export const Brand = { green: '#39ff14', bg: '#0d1016' } as const;
 
 // The Look's own accent, for "Default" in Settings.
 export const DefaultAccent: string = PALETTES[ActiveTheme].accent;
 
-export const Colors = {
+export const Colors: {
+  bg: string;
+  surface: string;
+  tile: string;
+  tileRaised: string;
+  border: string;
+  accent: string;
+  text: string;
+  textSecondary: string;
+  live: string;
+  win: string;
+  loss: string;
+  discord: string;
+} = {
   ...PALETTES[ActiveTheme],
   accent: storedAccent() ?? DefaultAccent,
   text: '#eceef1',
@@ -56,7 +84,7 @@ export const Colors = {
   win: '#22c55e',
   loss: '#f87171',
   discord: '#5865F2',
-} as const;
+};
 
 // A palette hex at the given opacity, e.g. the see-through surface behind
 // list cards.
@@ -105,7 +133,17 @@ export const SectionColors = {
 
 // The honeycomb background's default color (frontend/src/components/
 // CinematicHoneycombBackground.tsx).
-export const HoneycombColor = '#dc143c';
+// Each look has its own default (2026-10-28); a color picked in Settings
+// still wins.
+const THEME_HONEYCOMB: Record<ThemeName, string> = {
+  calm: '#dc143c',
+  cosmic: '#a855f7',
+  midnight: '#2563eb',
+  graphite: '#636366',
+  ember: '#ea580c',
+  gridiron: '#16a34a',
+};
+export const HoneycombColor = THEME_HONEYCOMB[ActiveTheme];
 
 // Same families as the web (frontend/src/app/layout.tsx): Oswald for
 // display type, IBM Plex Sans for body, Geist Mono for numbers. Loaded

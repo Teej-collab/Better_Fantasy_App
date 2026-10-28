@@ -1641,7 +1641,7 @@ export type OwnerPreferences = {
   // flat-panel palette) or "cosmic" (starfield/nebula background,
   // brighter mint-green default accent). Not a light/dark mode switch;
   // the app stays dark either way.
-  theme: "calm" | "cosmic";
+  theme: "calm" | "cosmic" | "midnight" | "graphite" | "ember" | "gridiron";
   // Settings > Labs > "Try the new look" — opts into the redesigned
   // nav (Home/League/Matchup/Chat/More) and page layouts. Orthogonal
   // to theme above (palette vs. structure) — see

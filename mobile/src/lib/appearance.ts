@@ -14,7 +14,7 @@ function hexOr(value: string | null | undefined, fallback: string): string {
 }
 
 export type Appearance = {
-  theme: 'calm' | 'cosmic';
+  theme: ThemeName;
   // Settings > Appearance > Accent Color. Multi: each card takes its own
   // section's color (accentMulti), the rest the default accent.
   accent: string;
@@ -87,26 +87,47 @@ export function ringColorsFor(appearance: Appearance, sectionColor: string | und
 // Remember the Look for the next launch (constants/theme.ts reads it
 // before any screen's styles are built), and reload now if it changed
 // so the new palette shows right away.
-export function applyTheme(theme: ThemeName): void {
+export function applyTheme(theme: ThemeName, returnTo?: string): void {
   try {
     SecureStore.setItem(THEME_STORE_KEY, theme);
   } catch {
     return;
   }
   if (theme === ActiveTheme) return;
-  reloadQuietly();
+  reloadQuietly(returnTo);
+}
+
+/** True when switching to this look restarts the app (Calm ⇄ Cosmic). */
+export function themeNeedsRestart(theme: ThemeName): boolean {
+  return theme !== ActiveTheme;
 }
 
 // The intro is for opening the app, not for a reload to apply a setting.
 const SKIP_INTRO_KEY = 'wl-skip-intro-once';
+// Where to come back to after a reload (2026-10-28: switching Calm ⇄
+// Cosmic used to drop you on Home with no sign anything had changed).
+const RETURN_TO_KEY = 'wl-return-to-once';
 
-function reloadQuietly(): void {
+function reloadQuietly(returnTo?: string): void {
   try {
     SecureStore.setItem(SKIP_INTRO_KEY, '1');
+    if (returnTo) SecureStore.setItem(RETURN_TO_KEY, returnTo);
   } catch {
     // Plays the intro, then.
   }
   Updates.reloadAsync().catch(() => DevSettings.reload());
+}
+
+/** The screen to reopen after a settings reload, once (app/_layout.tsx). */
+export function takeReturnTo(): string | null {
+  try {
+    const path = SecureStore.getItem(RETURN_TO_KEY);
+    if (!path) return null;
+    void SecureStore.deleteItemAsync(RETURN_TO_KEY);
+    return path;
+  } catch {
+    return null;
+  }
 }
 
 /** True once right after reloadQuietly(), for app/_layout.tsx. */
@@ -150,10 +171,10 @@ export function applyAccent(accent: string | null): void {
   accentReloadPending = (next ?? DefaultAccent) !== Colors.accent;
 }
 
-export function flushAccentReload(): void {
+export function flushAccentReload(returnTo?: string): void {
   if (!accentReloadPending) return;
   accentReloadPending = false;
-  reloadQuietly();
+  reloadQuietly(returnTo);
 }
 
 // Picks up a Look chosen on the web (or on another phone). It's saved for
