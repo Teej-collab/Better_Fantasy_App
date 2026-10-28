@@ -310,8 +310,8 @@ const styles = StyleSheet.create({
   muted: { color: '#9aa3b2', fontSize: 12 },
   more: { color: '#9aa3b2', fontSize: 16, paddingHorizontal: 4 },
   error: { color: Colors.loss, fontSize: 14 },
-  btn: { height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
+  btn: { minHeight: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
   btnText: { color: Colors.text, fontSize: 12, fontWeight: '800' },
-  cta: { height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm },
+  cta: { minHeight: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm },
   ctaText: { color: '#06110a', fontSize: 14, fontWeight: '800' },
 });

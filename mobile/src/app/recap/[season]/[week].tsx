@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   preview: { borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.1)', paddingHorizontal: 10, paddingVertical: 6 },
   previewText: { color: '#fbbf24', fontSize: 12 },
   adminRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  adminBtn: { minWidth: 120, height: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  adminBtn: { minWidth: 120, minHeight: 36, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   adminBtnText: { fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.6 },
   note: { color: '#fca5a5', fontSize: 13 },

@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   tile: {
     width: '31%',
     flexGrow: 1,
-    height: 92,
+    minHeight: 92,
     borderRadius: 18,
     borderWidth: 1,
     alignItems: 'center',

@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   sheetTitle: { color: '#f3f4f6', fontFamily: Fonts.displayBold, fontSize: 20, letterSpacing: 0.5 },
   done: { color: '#9aa3b2', fontSize: 14 },
   tabs: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingBottom: 10 },
-  tab: { flex: 1, height: 34, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: '#161a24', alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, minHeight: 34, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: '#161a24', alignItems: 'center', justifyContent: 'center' },
   tabText: { color: '#f3f4f6', fontSize: 13, fontWeight: '700' },
   tabTextOn: { color: '#06110a' },
   sheetBody: { paddingHorizontal: 16, gap: 10 },

@@ -112,7 +112,7 @@ export function FullBracket({
 const styles = StyleSheet.create({
   wrap: { gap: 12 },
   tabs: { flexDirection: 'row', marginHorizontal: 16, padding: 4, gap: 4, borderRadius: 14, backgroundColor: '#12161c', borderWidth: 1, borderColor: '#1c2027' },
-  tab: { flex: 1, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, minHeight: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   tabOn: { backgroundColor: '#eceef1' },
   tabText: { fontFamily: Fonts.display, fontSize: 13, letterSpacing: 1, color: '#9aa3b2' },
   tabTextOn: { color: '#0d1016' },

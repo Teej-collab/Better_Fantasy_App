@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   faded: { opacity: 0.55 },
   rank: { color: Colors.textSecondary, fontSize: 12, width: 32, fontVariant: ['tabular-nums'] },
-  pos: { width: 34, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  pos: { width: 34, minHeight: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   posText: { fontSize: 11, fontWeight: '800' },
   tag: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 3 },
   tagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },

@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    height: 34,
+    minHeight: 34,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',

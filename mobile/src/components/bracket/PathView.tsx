@@ -155,7 +155,7 @@ export function PathView({
 const styles = StyleSheet.create({
   wrap: { gap: 14 },
   chips: { paddingHorizontal: 16, gap: 8 },
-  chip: { height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#2b3340', justifyContent: 'center', backgroundColor: '#12161c' },
+  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#2b3340', justifyContent: 'center', backgroundColor: '#12161c' },
   chipOn: { backgroundColor: '#eceef1', borderColor: '#ffffff' },
   chipText: { fontFamily: Fonts.display, fontSize: 14, color: '#eceef1' },
   chipTextOn: { color: '#0d1016' },
