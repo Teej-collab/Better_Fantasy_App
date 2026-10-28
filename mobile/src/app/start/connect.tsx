@@ -320,21 +320,32 @@ export default function ConnectLeagueScreen() {
     );
   }
 
+  // Sign in with ESPN is the whole ESPN step (2026-10-28): the link box,
+  // "Viewable to Public" and the cookie paste are gone. The link box comes
+  // back only if someone signed in without tapping a team, and the old
+  // screen stays for builds without the in-app browser (before iOS build 7).
+  const espnSignInOnly = platform === 'espn' && espnSignInAvailable;
+  const showLinkBox = !espnSignInOnly || (espnSignedIn && !link.trim()) || Boolean(link.trim());
+
   return (
     <StartScreen
       footer={
-        platform === 'espn' || link.trim() ? (
+        (platform === 'espn' && showLinkBox) || link.trim() ? (
           <NeonButton label="Find my league" onPress={() => linkField.check() && void find()} busy={busy} incomplete={linkField.empty} />
         ) : undefined
       }>
       <Stack.Screen options={{ title: `From ${name}` }} />
       <View style={styles.head}>
         <Kicker>{name}</Kicker>
-        <Title>{platform === 'espn' ? 'Paste your league link' : "What's your Sleeper username?"}</Title>
+        <Title>
+          {espnSignInOnly ? 'Sign in with ESPN' : platform === 'espn' ? 'Paste your league link' : "What's your Sleeper username?"}
+        </Title>
         <Sub>
-          {platform === 'espn'
-            ? 'In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link, and paste it here. A link from fantasy.espn.com or just the league number works too.'
-            : 'We’ll find your leagues. No sign-in or link needed.'}
+          {espnSignInOnly
+            ? 'Sign in on ESPN’s own page, then tap your team. Works for private leagues, nothing to change in ESPN, and we never see your password.'
+            : platform === 'espn'
+              ? 'In the ESPN Fantasy app, open your league → Invite friends (or Share) → Copy link, and paste it here. A link from fantasy.espn.com or just the league number works too.'
+              : 'We’ll find your leagues. No sign-in or link needed.'}
         </Sub>
       </View>
       {platform === 'sleeper' && (
@@ -369,31 +380,33 @@ export default function ConnectLeagueScreen() {
           <Text style={startStyles.muted}>Or paste a league link from sleeper.com instead:</Text>
         </View>
       )}
-      {platform === 'espn' && espnSignInAvailable && (
+      {espnSignInOnly && (
         <View style={startStyles.card}>
-          <Kicker>{espnSignedIn ? 'Signed in to ESPN' : 'Easiest, and works for private leagues'}</Kicker>
-          <Text style={styles.cardTitle}>{espnSignedIn ? 'You’re signed in ✓' : 'Sign in with ESPN'}</Text>
-          <Text style={startStyles.muted}>
-            {espnSignedIn
-              ? 'Tap Find my league, or sign in again and tap your league on ESPN to fill in the link.'
-              : 'Sign in on ESPN’s own page, then tap your league. Nothing to turn on, and we never see your password.'}
-          </Text>
+          {espnSignedIn && (
+            <>
+              <Kicker>Signed in to ESPN</Kicker>
+              <Text style={styles.cardTitle}>You’re signed in ✓</Text>
+              <Text style={startStyles.muted}>Sign in again and tap your team on ESPN, or paste your league link below.</Text>
+            </>
+          )}
           <NeonButton label={espnSignedIn ? 'Sign in again' : 'Sign in with ESPN'} onPress={() => setEspnSheet(true)} />
         </View>
       )}
       {platform === 'espn' && <EspnSignIn visible={espnSheet} onDone={onEspnSignedIn} onClose={() => setEspnSheet(false)} />}
-      <Field
-        {...linkField.field}
-        label={`${name} league link`}
-        value={link}
-        onChangeText={setLink}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder={platform === 'espn' ? 'https://fantasy.espn.com/football/league?leagueId=…' : 'https://sleeper.com/leagues/…'}
-      />
-      {platform === 'espn' && !espnSignedIn && (
+      {showLinkBox && (
+        <Field
+          {...linkField.field}
+          label={`${name} league link`}
+          value={link}
+          onChangeText={setLink}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder={platform === 'espn' ? 'https://fantasy.espn.com/football/league?leagueId=…' : 'https://sleeper.com/leagues/…'}
+        />
+      )}
+      {platform === 'espn' && !espnSignInOnly && (
         <View style={startStyles.card}>
-          <Kicker>{espnSignInAvailable ? 'Or, without signing in' : 'Before you tap Find'}</Kicker>
+          <Kicker>Before you tap Find</Kicker>
           <Text style={styles.cardTitle}>Turn on “Viewable to Public”</Text>
           <Text style={startStyles.muted}>
             On fantasy.espn.com as the league manager (your phone’s browser works; the ESPN app doesn’t have this setting): League Manager →
@@ -403,7 +416,7 @@ export default function ConnectLeagueScreen() {
         </View>
       )}
       {platform === 'espn' &&
-        !espnSignedIn &&
+        !espnSignInOnly &&
         (showPrivate ? (
           <View style={styles.list}>
             <Text style={startStyles.muted}>
