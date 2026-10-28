@@ -39,6 +39,7 @@ const GROUPS: { title: string; sections: Section[] }[] = [
       { href: '/admin/errors', label: 'Errors', icon: '◮', badge: 'errors' },
       { href: '/admin/security', label: 'Security', icon: '◘', badge: 'security' },
       { href: '/admin/audit', label: 'Audit Log', icon: '◫' },
+      { href: '/admin/ai-costs' as Href, label: 'AI Costs', icon: '◈' },
     ],
   },
 ];

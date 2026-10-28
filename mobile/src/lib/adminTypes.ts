@@ -290,3 +290,15 @@ export type WaitlistSignup = {
   created_at: string;
 };
 export type AdminWaitlist = { count: number; commissioners: number; players_represented: number; signups: WaitlistSignup[] };
+
+// GET /admin/ai-usage (2026-10-28): what the AI write-ups, roasts, hype
+// grades and bet slip reads cost (backend app/ai_usage.py).
+export type AdminAiUsage = {
+  days: number;
+  since: string | null;
+  total_cost: number;
+  calls: number;
+  per_league_per_week: number | null;
+  by_feature: { feature: string; calls: number; input_tokens: number; output_tokens: number; cost: number }[];
+  by_league: { league_id: number | null; name: string; calls: number; cost: number }[];
+};

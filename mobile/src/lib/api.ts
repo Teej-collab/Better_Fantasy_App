@@ -922,6 +922,7 @@ export const api = {
     online: () => request<{ owners: A.OnlineOwner[] }>('/admin/online'),
     live: () => request<A.AdminLive>('/admin/live'),
     engagement: (days = 30) => request<A.AdminEngagement>(`/admin/engagement?days=${days}`),
+    aiUsage: (days = 7) => request<A.AdminAiUsage>(`/admin/ai-usage?days=${days}`),
     navigation: (days = 30) => request<A.NavigationHeatmap>(`/admin/navigation?days=${days}`),
     paths: (days = 30) => request<A.AdminPaths>(`/admin/paths?days=${days}`),
     users: (search: string, status: A.AdminUserStatus) =>

@@ -192,6 +192,7 @@ function RootStack() {
           <Stack.Screen name="draft" options={{ title: 'Draft Room', headerBackTitle: 'Home' }} />
           <Stack.Screen name="recap/[season]/[week]" options={{ title: 'Recap' }} />
           <Stack.Screen name="admin/recaps" options={{ title: 'Recaps', headerBackTitle: 'Admin' }} />
+          <Stack.Screen name="admin/ai-costs" options={{ title: 'AI Costs', headerBackTitle: 'Admin' }} />
           <Stack.Screen name="admin/waitlist" options={{ title: 'Waitlist', headerBackTitle: 'Admin' }} />
           <Stack.Screen name="gamecast/index" options={{ title: 'Gamecast' }} />
           <Stack.Screen name="gamecast/[id]" options={{ title: 'Gamecast', headerBackTitle: 'Back' }} />
